@@ -554,7 +554,7 @@ TestTensorCreation.test_new_tensor_device = retarget_outermost_onlycuda_to_onlyo
     TestTensorCreation.test_new_tensor_device
 )
 
-TestTensorCreation.test_range_factories_64bit_indexing = (
+TestTensorCreation.test_range_factories_64bit_indexing = largeTensorTest("16GB", "xpu")(
     retarget_outermost_onlycuda_to_onlyon(
         TestTensorCreation.test_range_factories_64bit_indexing
     )

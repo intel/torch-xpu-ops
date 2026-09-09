@@ -53,11 +53,19 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
+    from xpu_test_utils import (
+        ensure_pytorch_test_path,
+        retarget_outermost_onlycuda_to_onlyon,
+        XPUImportCtx,
+    )
 except Exception:
-    from .xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
+    from .xpu_test_utils import (
+        ensure_pytorch_test_path,
+        retarget_outermost_onlycuda_to_onlyon,
+        XPUImportCtx,
+    )
 
-with XPUImportCtx(False):
+with XPUImportCtx(False) as patcher:
     from test_sparse import (
         all_sparse_layouts,
         gradcheck_semantics,
@@ -69,6 +77,11 @@ with XPUImportCtx(False):
         TestSparseOneOff,
         TestSparseUnaryUfuncs,
     )
+
+# XPUImportCtx restores sys.path on exit; keep test/ on it permanently so
+# multiprocessing.spawn (Windows) can re-import test_sparse for the DataLoader
+# workers spawned by TestSparseAny.test_dataloader.
+ensure_pytorch_test_path(os.path.abspath(patcher.test_package[0]))
 
 
 # ======================================================================

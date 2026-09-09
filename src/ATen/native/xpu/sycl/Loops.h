@@ -573,6 +573,13 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
 
+  // Fast path for mixed fp32/bf16/fp16 elementwise ops using a compact
+  // 3-case switch (LoadWithCastFP/StoreWithCastFP) to avoid register
+  // spilling from the generic large ScalarType switch (see #4904).
+  // fp_result (compile-time) ensures the functor output type is exactly
+  // float32 (excluding double, bool, etc);
+  // dtype(0)==Float (runtime) guarantees the output pointer is float*
+  // as StoreWithCastFP expects.
   constexpr bool fp_result = std::is_same_v<arg0_t, float>;
   bool use_fp_cast = fp_result && (iter.dtype(0) == at::ScalarType::Float);
   if (use_fp_cast) {

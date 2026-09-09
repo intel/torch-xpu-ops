@@ -143,6 +143,8 @@ struct LoadWithCastFP {
           return c10::convert<float>(c10::load<c10::Half>(ptr));
         case at::ScalarType::BFloat16:
           return c10::convert<float>(c10::load<c10::BFloat16>(ptr));
+        default:
+          break;
       }
     }
     // Satisfy compiler for non-float scalar_t instantiations that never run.

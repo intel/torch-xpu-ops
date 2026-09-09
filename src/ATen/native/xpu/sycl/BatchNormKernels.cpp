@@ -2361,16 +2361,13 @@ batch_norm_backward_reduce_channels_last_template(
   at::Tensor sumn_dy = at::empty({stride}, mean.options());
   at::Tensor sum_dy_xmu = at::empty({stride}, mean.options());
 
-  at::Tensor grad_weight;
-  at::Tensor grad_bias;
-  if (weight.defined()) {
-    grad_weight = at::zeros({stride}, weight.options());
-    grad_bias = at::zeros({stride}, weight.options());
-  } else {
-    // because I cannot return an uninitialized at::Tensor
-    grad_weight = at::empty({0}, mean.options());
-    grad_bias = at::empty({0}, mean.options());
-  }
+  // Without a weight the gradients are empty rather than undefined, since an
+  // undefined Tensor cannot be returned.
+  const bool has_weight = weight.defined();
+  const auto grad_opts = has_weight ? weight.options() : mean.options();
+  const int64_t grad_size = has_weight ? stride : 0;
+  at::Tensor grad_weight = at::empty({grad_size}, grad_opts);
+  at::Tensor grad_bias = at::empty({grad_size}, grad_opts);
 
   auto config = get_adaptive_launch_config(
       syclMaxWorkItemsPerSubSlice() * 2,

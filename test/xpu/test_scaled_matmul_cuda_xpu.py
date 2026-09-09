@@ -13,8 +13,19 @@ import unittest
 import torch
 from torch.nn.functional import ScalingType
 from torch.testing._internal.common_cuda import PLATFORM_SUPPORTS_FP8
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import parametrize, run_tests, skipIfXpu
+from torch.testing._internal.common_device_type import (
+    instantiate_device_type_tests,
+    onlyXPU,
+)
+from torch.testing._internal.common_utils import (
+    IS_WINDOWS,
+    parametrize,
+    random_matrix_with_scaled_reduction_dim,
+    run_tests,
+    skipIfXpu,
+)
+
+f8_msg = "FP8 is only supported on H100+, SM 8.9 and MI300+ and XPU devices"
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -85,6 +96,68 @@ def _xpu_test_float8_rowwise_scaling_sanity(self, device, use_fast_accum: bool) 
 TestFP8Matmul.test_float8_rowwise_scaling_sanity = parametrize(
     "use_fast_accum", [True, False]
 )(_xpu_test_float8_rowwise_scaling_sanity)
+
+
+# XPU supports row-wise fp32 output with bias, so skip the upstream error expectation.
+TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors = skipIfXpu(
+    msg="XPU supports row-wise fp32 output with bias"
+)(TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors)
+
+
+@onlyXPU
+@unittest.skipIf(not PLATFORM_SUPPORTS_FP8 or IS_WINDOWS, f8_msg)
+@parametrize("wrap_v2", [True, False])
+def _xpu_test_scaled_mm_row_wise_fp32_out_with_bias(self, wrap_v2, device):
+    M, K, N = 16, 32, 48
+    input_dtype = e4m3_type
+    x = random_matrix_with_scaled_reduction_dim(
+        M, K, dtype=torch.float32, device=device, reduction_dim=-1
+    )
+    y = random_matrix_with_scaled_reduction_dim(
+        N, K, dtype=torch.float32, device=device, reduction_dim=-1
+    ).t()
+    x_scales = tensor_to_scale(x, input_dtype, dim=1).float()
+    y_scales = tensor_to_scale(y, input_dtype, dim=0).float()
+    x_fp8 = to_fp8_saturated(x * x_scales, e4m3_type)
+    y_fp8 = to_fp8_saturated(y * y_scales, e4m3_type)
+    bias = torch.randn((N,), device=device, dtype=torch.bfloat16)
+
+    out = scaled_mm_wrap(
+        x_fp8,
+        y_fp8,
+        scale_a=x_scales.reciprocal(),
+        scale_b=y_scales.reciprocal(),
+        out_dtype=torch.float32,
+        bias=bias,
+        wrap_v2=wrap_v2,
+    )
+    self.assertEqual(out.dtype, torch.float32)
+    self.assertEqual(out.shape, (M, N))
+
+    x_dequantized = x_fp8.float() * x_scales.reciprocal()
+    y_dequantized = y_fp8.float() * y_scales.reciprocal()
+    expected = torch.mm(x_dequantized, y_dequantized)
+    self.assertEqual(out, expected + bias, atol=1e-2, rtol=1e-2)
+
+    out_without_bias = scaled_mm_wrap(
+        x_fp8,
+        y_fp8,
+        scale_a=x_scales.reciprocal(),
+        scale_b=y_scales.reciprocal(),
+        out_dtype=torch.float32,
+        wrap_v2=wrap_v2,
+    )
+    self.assertEqual(
+        out - out_without_bias,
+        bias.float().expand_as(out),
+        atol=1e-2,
+        rtol=1e-2,
+    )
+
+
+TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias = (
+    _xpu_test_scaled_mm_row_wise_fp32_out_with_bias
+)
 
 
 # Override test_scaled_mm_deepseek_error_messages: upstream gates with @onlyCUDA and a
@@ -158,8 +231,6 @@ TestFP8Matmul.test_scaled_mm_deepseek_error_messages = (
 # Note that the test is still parameterized by base_dtype, which may be
 # fp16/bf16 even if fp8 isn't supported,
 # so we check FP8 support at runtime rather than gating the entire test with @skipIfXpu.
-
-f8_msg = "FP8 is only supported on H100+, SM 8.9 and MI300+ and XPU devices"
 
 current_accelerator_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"

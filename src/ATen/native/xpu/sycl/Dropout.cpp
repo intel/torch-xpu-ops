@@ -37,103 +37,89 @@ template <
     int ADims,
     int VecSize,
     typename mask_t>
-struct FusedDropoutVecFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    // make sure we don't break assumption that we can't have > 4 elements /
-    // thread
-    static_assert(VecSize <= 4, "Value of VecSize must be in [2, 4]");
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void fused_dropout_vec_kernel(
+    TensorInfo<const scalar_t, IndexType> a,
+    TensorInfo<scalar_t, IndexType> b,
+    TensorInfo<mask_t, IndexType> c,
+    IndexType total_elements,
+    accscalar_t p,
+    PhiloxXpuState philox_args) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    using LoadT = memory::aligned_vector<scalar_t, VecSize>;
-    using MaskLoadT = memory::aligned_vector<mask_t, VecSize>;
+  // make sure we don't break assumption that we can't have > 4 elements /
+  // thread
+  static_assert(VecSize <= 4, "Value of VecSize must be in [2, 4]");
 
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    IndexType idx = item.get_global_linear_id();
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+  using LoadT = memory::aligned_vector<scalar_t, VecSize>;
+  using MaskLoadT = memory::aligned_vector<mask_t, VecSize>;
 
-    // Helps align the total number of times rand_uniform4 is called by each
-    // thread for the same total_elements in the vec=2 and vec=4 cases.
-    bool gridxvec_loop_state = false;
-    accscalar_t scale = 1.0 / p_;
+  auto seeds = at::xpu::philox::unpack(philox_args);
+  IndexType idx = item.get_global_linear_id();
+  randStatePhilox4_32_10_t state;
+  rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
 
-    float4 rand;
+  // Helps align the total number of times rand_uniform4 is called by each
+  // thread for the same total_elements in the vec=2 and vec=4 cases.
+  bool gridxvec_loop_state = false;
+  accscalar_t scale = 1.0 / p;
 
-    // Note: Vectorized loads means we'll stride each thread by an additional
-    // VecSize factor, as we'll load VecSize elements at a time
-    IndexType full_tile_work_size =
-        item.get_group_range(0) * item.get_local_range(0) * VecSize;
-    for (IndexType linearIndex = idx * VecSize; linearIndex < total_elements_;
-         linearIndex += full_tile_work_size) {
-      // local storage
-      scalar_t src[VecSize];
-      // We'll use this to actually cause vectorized loads later
-      LoadT* value = reinterpret_cast<LoadT*>(&src);
+  float4 rand;
 
-      // rand_uniform_double was pure evil anyway, not doing what it promises,
-      // and there's nothing for halfs, so generate float for everything
-      //  Note: need a new set of random values per 4 elements -- we'll handle
-      //  VecSize elements in this thread, so need ceil(VecSize / 4) sets of
-      //  rand.
-      if ((VecSize == 4) || (gridxvec_loop_state == 0)) {
-        rand = rand_uniform4(&state);
-      } else {
-        // sets up the last two values we generated last iteration to be used
-        // this iteration.
-        rand.x = rand.z;
-        rand.y = rand.w;
-        gridxvec_loop_state ^= 1;
-      }
+  // Note: Vectorized loads means we'll stride each thread by an additional
+  // VecSize factor, as we'll load VecSize elements at a time
+  IndexType full_tile_work_size =
+      item.get_group_range(0) * item.get_local_range(0) * VecSize;
+  for (IndexType linearIndex = idx * VecSize; linearIndex < total_elements;
+       linearIndex += full_tile_work_size) {
+    // local storage
+    scalar_t src[VecSize];
+    // We'll use this to actually cause vectorized loads later
+    LoadT* value = reinterpret_cast<LoadT*>(&src);
 
-      rand.x = rand.x < p_;
-      rand.y = rand.y < p_;
-      if (VecSize == 4) {
-        rand.z = rand.z < p_;
-        rand.w = rand.w < p_;
-      }
+    // rand_uniform_double was pure evil anyway, not doing what it promises,
+    // and there's nothing for halfs, so generate float for everything
+    //  Note: need a new set of random values per 4 elements -- we'll handle
+    //  VecSize elements in this thread, so need ceil(VecSize / 4) sets of
+    //  rand.
+    if ((VecSize == 4) || (gridxvec_loop_state == 0)) {
+      rand = rand_uniform4(&state);
+    } else {
+      // sets up the last two values we generated last iteration to be used
+      // this iteration.
+      rand.x = rand.z;
+      rand.y = rand.w;
+      gridxvec_loop_state ^= 1;
+    }
 
-      // Note: We explicitly check for is_contiguous() before launching the
-      // vectorized kernel and replace IndexToOffset call with linearIndex to
-      // allow vectorization of NHWC (or other) ordering. Single vectorized load
-      *value = *reinterpret_cast<const LoadT*>(&a_.data[linearIndex]);
+    rand.x = rand.x < p;
+    rand.y = rand.y < p;
+    if (VecSize == 4) {
+      rand.z = rand.z < p;
+      rand.w = rand.w < p;
+    }
 
-      scalar_t r[VecSize];
-      mask_t mask[VecSize];
+    // Note: We explicitly check for is_contiguous() before launching the
+    // vectorized kernel and replace IndexToOffset call with linearIndex to
+    // allow vectorization of NHWC (or other) ordering. Single vectorized load
+    *value = *reinterpret_cast<const LoadT*>(&a.data[linearIndex]);
+
+    scalar_t r[VecSize];
+    mask_t mask[VecSize];
 
 // Perform the actual computation
 #pragma unroll
-      for (int ii = 0; ii < VecSize; ii++) {
-        r[ii] = src[ii] * (&rand.x)[ii] * scale;
-        mask[ii] = (mask_t)(&rand.x)[ii];
-      }
-      // Vectorized writes for both mask & result
-      *(reinterpret_cast<LoadT*>(&b_.data[linearIndex])) =
-          *reinterpret_cast<LoadT*>(&r[0]);
-      *(reinterpret_cast<MaskLoadT*>(&c_.data[linearIndex])) =
-          *reinterpret_cast<MaskLoadT*>(&mask[0]);
+    for (int ii = 0; ii < VecSize; ii++) {
+      r[ii] = src[ii] * (&rand.x)[ii] * scale;
+      mask[ii] = (mask_t)(&rand.x)[ii];
     }
+    // Vectorized writes for both mask & result
+    *(reinterpret_cast<LoadT*>(&b.data[linearIndex])) =
+        *reinterpret_cast<LoadT*>(&r[0]);
+    *(reinterpret_cast<MaskLoadT*>(&c.data[linearIndex])) =
+        *reinterpret_cast<MaskLoadT*>(&mask[0]);
   }
-  FusedDropoutVecFunctor(
-      TensorInfo<const scalar_t, IndexType> a,
-      TensorInfo<scalar_t, IndexType> b,
-      TensorInfo<mask_t, IndexType> c,
-      IndexType total_elements,
-      accscalar_t p,
-      PhiloxXpuState philox_args)
-      : a_(a),
-        b_(b),
-        c_(c),
-        total_elements_(total_elements),
-        p_(p),
-        philox_args_(philox_args) {}
-
- private:
-  TensorInfo<const scalar_t, IndexType> a_;
-  TensorInfo<scalar_t, IndexType> b_;
-  TensorInfo<mask_t, IndexType> c_;
-  IndexType total_elements_;
-  accscalar_t p_;
-  PhiloxXpuState philox_args_;
-};
+}
 
 template <
     typename scalar_t,
@@ -142,73 +128,57 @@ template <
     int ADims,
     int BDims,
     typename mask_t>
-struct FusedDropoutUnrollFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    constexpr int UNROLL = 4;
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    IndexType idx = item.get_global_linear_id();
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
-    accscalar_t scale = 1.0 / p_;
-    IndexType group_work_size =
-        item.get_group_range(0) * item.get_local_range(0);
-    IndexType full_tile_work_size = group_work_size * UNROLL;
-    IndexType rounded_size =
-        ((total_elements_ - 1) / full_tile_work_size + 1) * full_tile_work_size;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void fused_dropout_unroll_kernel(
+    TensorInfo<const scalar_t, IndexType> a,
+    TensorInfo<scalar_t, IndexType> b,
+    TensorInfo<mask_t, IndexType> c,
+    IndexType total_elements,
+    accscalar_t p,
+    PhiloxXpuState philox_args) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  constexpr int UNROLL = 4;
+  auto seeds = at::xpu::philox::unpack(philox_args);
+  IndexType idx = item.get_global_linear_id();
+  randStatePhilox4_32_10_t state;
+  rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+  accscalar_t scale = 1.0 / p;
+  IndexType group_work_size = item.get_group_range(0) * item.get_local_range(0);
+  IndexType full_tile_work_size = group_work_size * UNROLL;
+  IndexType rounded_size =
+      ((total_elements - 1) / full_tile_work_size + 1) * full_tile_work_size;
 
-    for (IndexType linearIndex = idx; linearIndex < rounded_size;
-         linearIndex += full_tile_work_size) {
-      // rand_uniform_double was pure evil anyway, not doing what it promises,
-      // and there's nothing for halfs, so generate float for everything
-      float4 rand = rand_uniform4(&state);
-      scalar_t src[UNROLL];
-      rand.x = rand.x < p_;
-      rand.y = rand.y < p_;
-      rand.z = rand.z < p_;
-      rand.w = rand.w < p_;
-      for (int ii = 0; ii < UNROLL; ii++) {
-        IndexType li = linearIndex + group_work_size * ii;
-        if (li < total_elements_) {
-          // Convert `linearIndex` into an offset of `a`
-          const IndexType aOffset =
-              IndexToOffset<const scalar_t, IndexType, ADims>::get(li, a_);
-          src[ii] = a_.data[aOffset];
-        }
+  for (IndexType linearIndex = idx; linearIndex < rounded_size;
+       linearIndex += full_tile_work_size) {
+    // rand_uniform_double was pure evil anyway, not doing what it promises,
+    // and there's nothing for halfs, so generate float for everything
+    float4 rand = rand_uniform4(&state);
+    scalar_t src[UNROLL];
+    rand.x = rand.x < p;
+    rand.y = rand.y < p;
+    rand.z = rand.z < p;
+    rand.w = rand.w < p;
+    for (int ii = 0; ii < UNROLL; ii++) {
+      IndexType li = linearIndex + group_work_size * ii;
+      if (li < total_elements) {
+        // Convert `linearIndex` into an offset of `a`
+        const IndexType aOffset =
+            IndexToOffset<const scalar_t, IndexType, ADims>::get(li, a);
+        src[ii] = a.data[aOffset];
       }
-      for (int ii = 0; ii < UNROLL; ii++) {
-        IndexType li = linearIndex + group_work_size * ii;
-        if (li < total_elements_) {
-          // Convert `linearIndex` into an offset of `b`
-          const IndexType bOffset =
-              IndexToOffset<scalar_t, IndexType, BDims>::get(li, b_);
-          b_.data[bOffset] = src[ii] * (&rand.x)[ii] * scale;
-          c_.data[bOffset] = (mask_t)(&rand.x)[ii];
-        }
+    }
+    for (int ii = 0; ii < UNROLL; ii++) {
+      IndexType li = linearIndex + group_work_size * ii;
+      if (li < total_elements) {
+        // Convert `linearIndex` into an offset of `b`
+        const IndexType bOffset =
+            IndexToOffset<scalar_t, IndexType, BDims>::get(li, b);
+        b.data[bOffset] = src[ii] * (&rand.x)[ii] * scale;
+        c.data[bOffset] = (mask_t)(&rand.x)[ii];
       }
     }
   }
-  FusedDropoutUnrollFunctor(
-      TensorInfo<const scalar_t, IndexType> a,
-      TensorInfo<scalar_t, IndexType> b,
-      TensorInfo<mask_t, IndexType> c,
-      IndexType total_elements,
-      accscalar_t p,
-      PhiloxXpuState philox_args)
-      : a_(a),
-        b_(b),
-        c_(c),
-        total_elements_(total_elements),
-        p_(p),
-        philox_args_(philox_args) {}
-
- private:
-  TensorInfo<const scalar_t, IndexType> a_;
-  TensorInfo<scalar_t, IndexType> b_;
-  TensorInfo<mask_t, IndexType> c_;
-  IndexType total_elements_;
-  accscalar_t p_;
-  PhiloxXpuState philox_args_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t, typename mask_t>
 struct MaskedScaleKernelFunctor {
@@ -302,77 +272,97 @@ inline void launcher(
             vec_size);
 
         if (vec_size == 4) {
-          auto caller = FusedDropoutVecFunctor<
+          sycl_kernel_submit<fused_dropout_vec_kernel<
               scalar_t,
               accscalar_t,
               index_type,
               1,
               4,
-              mask_t>(
-              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
-          sycl_kernel_submit(
+              mask_t>>(
               num_groups * group_size,
               group_size,
               getCurrentSYCLQueue(),
-              caller);
+              0,
+              self_info,
+              ret_info,
+              mask_info,
+              nelem,
+              pa,
+              rng_engine_inputs);
         } else if (vec_size == 2) {
-          auto caller = FusedDropoutVecFunctor<
+          sycl_kernel_submit<fused_dropout_vec_kernel<
               scalar_t,
               accscalar_t,
               index_type,
               1,
               2,
-              mask_t>(
-              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
-          sycl_kernel_submit(
+              mask_t>>(
               num_groups * group_size,
               group_size,
               getCurrentSYCLQueue(),
-              caller);
+              0,
+              self_info,
+              ret_info,
+              mask_info,
+              nelem,
+              pa,
+              rng_engine_inputs);
         } else if (self_info.dims == 1) {
-          auto caller = FusedDropoutUnrollFunctor<
+          sycl_kernel_submit<fused_dropout_unroll_kernel<
               scalar_t,
               accscalar_t,
               index_type,
               1,
               1,
-              mask_t>(
-              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
-          sycl_kernel_submit(
+              mask_t>>(
               num_groups * group_size,
               group_size,
               getCurrentSYCLQueue(),
-              caller);
+              0,
+              self_info,
+              ret_info,
+              mask_info,
+              nelem,
+              pa,
+              rng_engine_inputs);
         } else if (
             !self.is_contiguous() && ret.is_contiguous() &&
             mask.is_contiguous()) {
-          auto caller = FusedDropoutUnrollFunctor<
+          sycl_kernel_submit<fused_dropout_unroll_kernel<
               scalar_t,
               accscalar_t,
               index_type,
               -1,
               1,
-              mask_t>(
-              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
-          sycl_kernel_submit(
+              mask_t>>(
               num_groups * group_size,
               group_size,
               getCurrentSYCLQueue(),
-              caller);
+              0,
+              self_info,
+              ret_info,
+              mask_info,
+              nelem,
+              pa,
+              rng_engine_inputs);
         } else {
-          auto caller = FusedDropoutUnrollFunctor<
+          sycl_kernel_submit<fused_dropout_unroll_kernel<
               scalar_t,
               accscalar_t,
               index_type,
               -1,
               -1,
-              mask_t>(
-              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
-          sycl_kernel_submit(
+              mask_t>>(
               num_groups * group_size,
               group_size,
               getCurrentSYCLQueue(),
-              caller);
+              0,
+              self_info,
+              ret_info,
+              mask_info,
+              nelem,
+              pa,
+              rng_engine_inputs);
         }
       });
 }
