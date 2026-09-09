@@ -156,7 +156,7 @@ inline int64_t get_ldc(const bool is_transposed, const Tensor& c) {
   return ldc;
 }
 
-inline int64_t get_stridec(const Tensor c) {
+inline int64_t get_stridec(const Tensor& c) {
   return c.sizes()[1] * c.sizes()[2];
 }
 
@@ -348,8 +348,8 @@ void dot_kernel(Tensor& out, const Tensor& self, const Tensor& other) {
   int64_t incy = other.stride(0);
 
   if constexpr (
-      std::is_same<T, std::complex<float>>::value ||
-      std::is_same<T, std::complex<double>>::value) {
+      std::is_same_v<T, std::complex<float>> ||
+      std::is_same_v<T, std::complex<double>>) {
     oneapi::mkl::blas::column_major::dotu(queue, n, x, incx, y, incy, result);
   } else {
     oneapi::mkl::blas::column_major::dot(queue, n, x, incx, y, incy, result);

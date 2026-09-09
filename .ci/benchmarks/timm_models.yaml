@@ -88,6 +88,9 @@ require_larger_multiplier_for_smaller_tensor:
 # small natural gradient magnitudes (e.g. LayerScale init=1e-5).
 emulate_precision_casts:
   - vit_base_patch14_dinov2.lvd142m
+  - fbnetv3_b
+  - levit_128
+  - convnextv2_nano.fcmae_ft_in22k_in1k
 
 
 dtype:

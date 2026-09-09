@@ -94,7 +94,7 @@ struct FakeQuantizeTensorCachemaskTensorQparamsFunctor {
     const auto qval =
         static_cast<int64_t>(sycl::rint(input_val * inv_scale) + (*zp_ptr_));
     return {// fake_quantized value
-            (std::min(quant_max_, std::max(quant_min_, qval)) - (*zp_ptr_)) *
+            (sycl::clamp(qval, quant_min_, quant_max_) - (*zp_ptr_)) *
                 (*scale_ptr_),
             // mask for grad
             ((quant_min_ <= qval) && (qval <= quant_max_))};
@@ -166,8 +166,7 @@ struct FakeQuantizeGradLearnableTensorFunctor {
     int64_t xq = sycl::rint(XInput * inv_scale_) + zero_point_;
     dXOutput = dYInput * (xq >= quant_min_ && xq <= quant_max_);
     float xfq = static_cast<float>(
-        (std::max(std::min(xq, quant_max_), quant_min_) - zero_point_) *
-        scale_);
+        (sycl::clamp(xq, quant_min_, quant_max_) - zero_point_) * scale_);
     if (xq < quant_min_ || xq > quant_max_) {
       dZeroPointOutput = (dYInput) * (-1) * scale_ * grad_factor_;
       dScaleOutput = ((xq < quant_min_) ? (dYInput * dscale_small_)
@@ -307,7 +306,7 @@ struct FakeQuantPerChannelCachemaskHelperDFunctor {
     const float inv_scale = 1.0f / scale;
     const auto qval =
         static_cast<int64_t>(sycl::rint(input_val * inv_scale)) + zero_point;
-    const auto bounded_qval = std::min(quant_max_, std::max(quant_min_, qval));
+    const auto bounded_qval = sycl::clamp(qval, quant_min_, quant_max_);
     return (bounded_qval - zero_point) * scale;
   }
   FakeQuantPerChannelCachemaskHelperDFunctor(
@@ -396,7 +395,7 @@ struct FakeQuantizeGradLearnableChannelFunctor {
     dx_output = dy_input * (xqi >= quant_min_ && xqi <= quant_max_);
     // Calculate gradients for scale and zero point.
     float xfqi = static_cast<float>(
-        (std::max(std::min(xqi, quant_max_), quant_min_) - zero_point_input) *
+        (sycl::clamp(xqi, quant_min_, quant_max_) - zero_point_input) *
         scale_input);
     if (xqi < quant_min_ || xqi > quant_max_) {
       dzero_point_output = dy_input * (-1) * scale_input * grad_factor_;

@@ -72,8 +72,10 @@ tolerance:
     - sam
     - sam_fast
     - vision_maskrcnn
+    - detectron2_maskrcnn
     - detectron2_maskrcnn_r_101_fpn
     - detectron2_maskrcnn_r_50_c4
+    - detectron2_maskrcnn_r_50_fpn
 
   # Custom IoU thresholds per model (default is 0.99)
   iou_thresholds:

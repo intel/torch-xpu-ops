@@ -375,9 +375,14 @@ FOREACH_UNARY_KERNEL(sqrt) {
 
 template <typename T>
 struct Sigmoid {
-  T one = T(1);
   T operator()(T t) const {
-    return (one / (one + std::exp(-t)));
+    using opmath_t = at::opmath_type<T>;
+    const opmath_t one = opmath_t{1};
+    if constexpr (c10::is_complex<opmath_t>::value) {
+      return one / (one + std::exp(-static_cast<opmath_t>(t)));
+    } else {
+      return one / (one + sycl::exp(-static_cast<opmath_t>(t)));
+    }
   }
 };
 

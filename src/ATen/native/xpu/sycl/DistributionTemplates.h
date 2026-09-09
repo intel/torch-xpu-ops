@@ -28,6 +28,8 @@
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
+#include <concepts>
+
 namespace at {
 namespace native {
 namespace xpu {
@@ -45,10 +47,12 @@ inline std::tuple<uint64_t, uint32_t, uint32_t> calc_execution_policy(
   auto num_groups = (total_elements + group_size - 1) / group_size;
   auto hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
-  // number of times random will be generated per thread, to offset philox
-  // counter in thc random state
+  // Increment must be at least the number of 32-bit values consumed per
+  // dist_func call. Our distribution functors consume one rand4-equivalent
+  // block per loop iteration for both float and double paths.
   uint64_t counter_offset =
-      ((total_elements - 1) / (group_size * num_groups * UNROLL) + 1) * UNROLL;
+      ((total_elements - 1) / (group_size * num_groups * UNROLL) + 1) *
+      rand4_engine_calls;
   return std::make_tuple(counter_offset, num_groups, group_size);
 }
 
@@ -59,61 +63,47 @@ template <
     typename dist_t,
     typename transform_t,
     typename offset_calc_t>
-struct DistributionElementwiseKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int group_size = item.get_local_range(0);
-    int num_groups = item.get_group_range(0);
-    int idx = item.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void distribution_elementwise_kernel(
+    int64_t numel,
+    PhiloxXpuState philox_args,
+    dist_t dist_func,
+    transform_t transform_func,
+    char* out_data,
+    offset_calc_t offset_calc) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+  int group_size = item.get_local_range(0);
+  int num_groups = item.get_group_range(0);
+  int idx = item.get_global_linear_id();
 
-    int full_tile_work_size = group_size * num_groups * unroll_factor;
-    int rounded_size =
-        ((numel_ - 1) / full_tile_work_size + 1) * full_tile_work_size;
-    for (int linear_index = idx; linear_index < rounded_size;
-         linear_index += full_tile_work_size) { // global range stride
-      auto rand = dist_func_(&state);
+  auto seeds = at::xpu::philox::unpack(philox_args);
+  randStatePhilox4_32_10_t state;
+  rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+
+  int full_tile_work_size = group_size * num_groups * unroll_factor;
+  int rounded_size =
+      ((numel - 1) / full_tile_work_size + 1) * full_tile_work_size;
+  for (int linear_index = idx; linear_index < rounded_size;
+       linear_index += full_tile_work_size) { // global range stride
+    auto rand = dist_func(&state);
 #pragma unroll
-      for (int i = 0; i < unroll_factor; i++) {
-        int li = linear_index + group_size * num_groups * i;
-        if (li < numel_) {
-          if constexpr (std::is_integral<offset_calc_t>::value) {
-            scalar_t* out = (scalar_t*)&out_data_[offset_calc_ * li];
-            *out = transform_func_(static_cast<accscalar_t>((&rand.x)[i]));
-          } else {
-            auto offsets = offset_calc_.get(li);
-            scalar_t* out = (scalar_t*)&out_data_[offsets[0]];
-            *out = transform_func_(static_cast<accscalar_t>((&rand.x)[i]));
-          }
+    for (int i = 0; i < unroll_factor; i++) {
+      int li = linear_index + group_size * num_groups * i;
+      if (li < numel) {
+        if constexpr (std::is_integral_v<offset_calc_t>) {
+          scalar_t* out = (scalar_t*)&out_data[offset_calc * li];
+          *out = transform_func(static_cast<accscalar_t>((&rand.x)[i]));
+        } else {
+          auto offsets = offset_calc.get(li);
+          scalar_t* out = (scalar_t*)&out_data[offsets[0]];
+          *out = transform_func(static_cast<accscalar_t>((&rand.x)[i]));
         }
       }
-      // Some state (e.g. MTGP32) need to add barrier there.
     }
+    // Some state (e.g. MTGP32) need to add barrier there.
   }
-  DistributionElementwiseKernelFunctor(
-      int64_t numel,
-      PhiloxXpuState rng_engine_inputs,
-      dist_t dist_func,
-      transform_t transform_func,
-      char* out_data,
-      offset_calc_t offset_calc)
-      : numel_(numel),
-        philox_args_(rng_engine_inputs),
-        dist_func_(dist_func),
-        transform_func_(transform_func),
-        out_data_(out_data),
-        offset_calc_(offset_calc) {}
-
- private:
-  int64_t numel_;
-  PhiloxXpuState philox_args_;
-  dist_t dist_func_;
-  transform_t transform_func_;
-  char* out_data_;
-  offset_calc_t offset_calc_;
-};
+}
 
 template <
     typename scalar_t,
@@ -133,7 +123,7 @@ void distribution_nullary_kernel(
     return;
   }
 
-  auto execution_policy = calc_execution_policy(numel);
+  auto execution_policy = calc_execution_policy<unroll_factor>(numel);
   auto counter_offset = std::get<0>(execution_policy);
   auto num_groups = std::get<1>(execution_policy);
   auto group_size = std::get<2>(execution_policy);
@@ -158,33 +148,42 @@ void distribution_nullary_kernel(
   if (iter.is_trivial_1d()) {
     auto strides = iter.get_inner_strides();
     int stride0 = strides[0];
-    auto caller = DistributionElementwiseKernelFunctor<
+    sycl_kernel_submit<distribution_elementwise_kernel<
         scalar_t,
         accscalar_t,
         unroll_factor,
         dist_t,
         transform_t,
-        decltype(stride0)>(
-        numel, rng_engine_inputs, dist_func, transform_func, out_data, stride0);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+        decltype(stride0)>>(
+        num_groups * group_size,
+        group_size,
+        getCurrentSYCLQueue(),
+        0,
+        numel,
+        rng_engine_inputs,
+        dist_func,
+        transform_func,
+        out_data,
+        stride0);
   } else {
     auto offset_calc = make_offset_calculator<1>(iter);
-    auto caller = DistributionElementwiseKernelFunctor<
+    sycl_kernel_submit<distribution_elementwise_kernel<
         scalar_t,
         accscalar_t,
         unroll_factor,
         dist_t,
         transform_t,
-        decltype(offset_calc)>(
+        decltype(offset_calc)>>(
+        num_groups * group_size,
+        group_size,
+        getCurrentSYCLQueue(),
+        0,
         numel,
         rng_engine_inputs,
         dist_func,
         transform_func,
         out_data,
         offset_calc);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
   }
 }
 
@@ -195,47 +194,31 @@ template <
     typename func_t,
     typename inp_offset_calc_t,
     typename out_offset_calc_t>
-struct DistributionUnaryElementwiseKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int group_size = item.get_local_range(0);
-    int global_size = item.get_global_range(0);
-    int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void distribution_unary_elementwise_kernel(
+    int numel,
+    const func_t f,
+    PhiloxXpuState philox_args,
+    scalar1_t* output_data,
+    const scalar2_t* input_data,
+    inp_offset_calc_t inp_calc,
+    out_offset_calc_t out_calc) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+  int group_size = item.get_local_range(0);
+  int global_size = item.get_global_range(0);
+  int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
 
-    for (int i = global_idx; i < numel_; i += global_size) {
-      auto in_offsets = inp_calc_.get(i);
-      auto out_offsets = out_calc_.get(i);
-      f_(state, output_data_[out_offsets[0]], input_data_[in_offsets[0]]);
-    }
+  auto seeds = at::xpu::philox::unpack(philox_args);
+  randStatePhilox4_32_10_t state;
+  rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+
+  for (int i = global_idx; i < numel; i += global_size) {
+    auto in_offsets = inp_calc.get(i);
+    auto out_offsets = out_calc.get(i);
+    f(state, output_data[out_offsets[0]], input_data[in_offsets[0]]);
   }
-  DistributionUnaryElementwiseKernelFunctor(
-      int numel,
-      const func_t f,
-      PhiloxXpuState philox_args,
-      scalar1_t* output_data,
-      const scalar2_t* input_data,
-      inp_offset_calc_t input_offset_calculator,
-      out_offset_calc_t output_offset_calculator)
-      : numel_(numel),
-        f_(f),
-        philox_args_(philox_args),
-        output_data_(output_data),
-        input_data_(input_data),
-        inp_calc_(input_offset_calculator),
-        out_calc_(output_offset_calculator) {}
-
- private:
-  int numel_;
-  const func_t f_;
-  PhiloxXpuState philox_args_;
-  scalar1_t* output_data_;
-  const scalar2_t* input_data_;
-  inp_offset_calc_t inp_calc_;
-  out_offset_calc_t out_calc_;
-};
+}
 
 template <typename scalar1_t, typename scalar2_t, typename func_t>
 void distribution_unary_kernel(
@@ -267,7 +250,16 @@ void distribution_unary_kernel(
   if (iter.is_contiguous()) {
     auto input_offset_calculator = TrivialOffsetCalculator<1>();
     auto output_offset_calculator = TrivialOffsetCalculator<1>();
-    auto caller = DistributionUnaryElementwiseKernelFunctor(
+    sycl_kernel_submit<distribution_unary_elementwise_kernel<
+        scalar1_t,
+        scalar2_t,
+        func_t,
+        decltype(input_offset_calculator),
+        decltype(output_offset_calculator)>>(
+        num_groups * group_size,
+        group_size,
+        getCurrentSYCLQueue(),
+        0,
         numel,
         f,
         philox_args,
@@ -275,12 +267,19 @@ void distribution_unary_kernel(
         input_data,
         input_offset_calculator,
         output_offset_calculator);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
   } else {
     auto input_offset_calculator = make_input_offset_calculator<1>(iter);
     auto output_offset_calculator = make_output_offset_calculator(iter);
-    auto caller = DistributionUnaryElementwiseKernelFunctor(
+    sycl_kernel_submit<distribution_unary_elementwise_kernel<
+        scalar1_t,
+        scalar2_t,
+        func_t,
+        decltype(input_offset_calculator),
+        decltype(output_offset_calculator)>>(
+        num_groups * group_size,
+        group_size,
+        getCurrentSYCLQueue(),
+        0,
         numel,
         f,
         philox_args,
@@ -288,66 +287,45 @@ void distribution_unary_kernel(
         input_data,
         input_offset_calculator,
         output_offset_calculator);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
   }
 }
 
 // Binary kernel
 template <
     typename func_t,
+    typename output_t,
+    typename input_t_1,
+    typename input_t_2,
     typename inp_offset_calc_t,
     typename out_offset_calc_t>
-struct DistributionBinaryElementwiseKernelFunctor {
-  using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
-  using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
-  using output_t = typename function_traits<func_t>::result_type;
-  void operator()(sycl::nd_item<1> item) const {
-    int group_size = item.get_local_range(0);
-    int global_size = item.get_global_range(0);
-    int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void distribution_binary_elementwise_kernel(
+    int numel,
+    func_t f,
+    PhiloxXpuState philox_args,
+    output_t* out_data,
+    const input_t_1* inp_data_1,
+    const input_t_2* inp_data_2,
+    inp_offset_calc_t inp_calc,
+    out_offset_calc_t out_calc) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    auto seeds = at::xpu::philox::unpack(philox_args_);
+  int group_size = item.get_local_range(0);
+  int global_size = item.get_global_range(0);
+  int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
 
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+  auto seeds = at::xpu::philox::unpack(philox_args);
 
-    for (int i = global_idx; i < numel_; i += global_size) {
-      auto in_offsets = inp_calc_.get(i);
-      auto out_offsets = out_calc_.get(i);
-      out_data_[out_offsets[0]] =
-          f_(state, inp_data_1_[in_offsets[0]], inp_data_2_[in_offsets[1]]);
-    }
+  randStatePhilox4_32_10_t state;
+  rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+
+  for (int i = global_idx; i < numel; i += global_size) {
+    auto in_offsets = inp_calc.get(i);
+    auto out_offsets = out_calc.get(i);
+    out_data[out_offsets[0]] =
+        f(state, inp_data_1[in_offsets[0]], inp_data_2[in_offsets[1]]);
   }
-
-  DistributionBinaryElementwiseKernelFunctor(
-      int numel,
-      func_t f,
-      PhiloxXpuState philox_args,
-      output_t* output_data,
-      const input_t_1* input_data_1,
-      const input_t_2* input_data_2,
-      inp_offset_calc_t inp_calc,
-      out_offset_calc_t out_calc)
-      : numel_(numel),
-        f_(f),
-        philox_args_(philox_args),
-        out_data_(output_data),
-        inp_data_1_(input_data_1),
-        inp_data_2_(input_data_2),
-        inp_calc_(inp_calc),
-        out_calc_(out_calc) {}
-
- private:
-  int64_t numel_;
-  func_t f_;
-  PhiloxXpuState philox_args_;
-  output_t* out_data_;
-  const input_t_1* inp_data_1_;
-  const input_t_2* inp_data_2_;
-  inp_offset_calc_t inp_calc_;
-  out_offset_calc_t out_calc_;
-};
+}
 
 template <typename func_t>
 void distribution_binary_kernel(
@@ -355,9 +333,9 @@ void distribution_binary_kernel(
     PhiloxXpuState philox_args,
     const func_t& f) {
   static_assert(
-      std::is_same<
+      std::is_same_v<
           typename function_traits<func_t>::template arg<0>::type,
-          randStatePhilox4_32_10_t&>::value,
+          randStatePhilox4_32_10_t&>,
       "the first argument of functor must be randStatePhilox4_32_10_t");
   using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
   using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
@@ -390,7 +368,17 @@ void distribution_binary_kernel(
   if (iter.is_contiguous()) {
     auto input_offset_calculator = TrivialOffsetCalculator<2>();
     auto output_offset_calculator = TrivialOffsetCalculator<1>();
-    auto caller = DistributionBinaryElementwiseKernelFunctor(
+    sycl_kernel_submit<distribution_binary_elementwise_kernel<
+        func_t,
+        output_t,
+        input_t_1,
+        input_t_2,
+        decltype(input_offset_calculator),
+        decltype(output_offset_calculator)>>(
+        num_groups * group_size,
+        group_size,
+        getCurrentSYCLQueue(),
+        0,
         numel,
         f,
         philox_args,
@@ -399,12 +387,20 @@ void distribution_binary_kernel(
         input_data_2,
         input_offset_calculator,
         output_offset_calculator);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
   } else {
     auto input_offset_calculator = make_input_offset_calculator<2>(iter);
     auto output_offset_calculator = make_output_offset_calculator(iter);
-    auto caller = DistributionBinaryElementwiseKernelFunctor(
+    sycl_kernel_submit<distribution_binary_elementwise_kernel<
+        func_t,
+        output_t,
+        input_t_1,
+        input_t_2,
+        decltype(input_offset_calculator),
+        decltype(output_offset_calculator)>>(
+        num_groups * group_size,
+        group_size,
+        getCurrentSYCLQueue(),
+        0,
         numel,
         f,
         philox_args,
@@ -413,8 +409,6 @@ void distribution_binary_kernel(
         input_data_2,
         input_offset_calculator,
         output_offset_calculator);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
   }
 }
 
@@ -510,10 +504,10 @@ void random_full_64_bits_range_kernel(TensorIteratorBase& iter, RNG gen) {
       iter.dtype(),
       "random_full_64_bits_range_kernel_xpu",
       [&] {
-        if (std::is_same<scalar_t, int64_t>::value ||
-            std::is_same<scalar_t, double>::value ||
-            std::is_same<scalar_t, float>::value ||
-            std::is_same<scalar_t, at::BFloat16>::value) {
+        if constexpr (
+            std::same_as<scalar_t, int64_t> || std::same_as<scalar_t, double> ||
+            std::same_as<scalar_t, float> ||
+            std::same_as<scalar_t, at::BFloat16>) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -546,8 +540,8 @@ void random_kernel(TensorIteratorBase& iter, RNG gen) {
       iter.dtype(),
       "random_kernel_xpu",
       [&] {
-        if (std::is_same<scalar_t, double>::value ||
-            std::is_same<scalar_t, int64_t>::value) {
+        if constexpr (
+            std::same_as<scalar_t, double> || std::same_as<scalar_t, int64_t>) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -591,7 +585,7 @@ void uniform_and_transform(
     RNG gen,
     transform_t transform) {
   // Distribution backbone only handle two accumulate type.
-  if (std::is_same<scalar_t, double>::value) {
+  if constexpr (std::same_as<scalar_t, double>) {
     Uniform2DistributionFunctor f;
     distribution_nullary_kernel<scalar_t, accscalar_t, engine_calls / 2>(
         iter, gen, f, transform);
@@ -624,7 +618,7 @@ void normal_and_transform(
     TensorIteratorBase& iter,
     RNG gen,
     transform_t transform) {
-  if (std::is_same<scalar_t, double>::value) {
+  if constexpr (std::same_as<scalar_t, double>) {
     Normal2DistributionFunctor f;
     distribution_nullary_kernel<scalar_t, accscalar_t, engine_calls / 2>(
         iter, gen, f, transform);
@@ -803,7 +797,7 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
       self.scalar_type(),
       "bernoulli_tensor_xpu_self_",
       [&] {
-        if (std::is_same<scalar_t, double>::value) {
+        if constexpr (std::same_as<scalar_t, double>) {
           return bernoulli_tensor_kernel<double, double>(
               const_cast<TensorBase&>(self),
               const_cast<TensorBase&>(*p),

@@ -27,59 +27,45 @@ struct alignas(N) OpaqueType {
 };
 
 template <typename T, typename scalar_t>
-struct HandleDuplicateKeysKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto tid = item.get_global_id(0);
-    // find the beginning of islands
-    if (tid >= n_ - 1)
-      return; // out of range
-    if ((keys_[tid] & mask_) != (keys_[tid + 1] & mask_))
-      return; // not in an island
-    if (tid != 0 && (keys_[tid] & mask_) == (keys_[tid - 1] & mask_))
-      return; // not the beginning of an island
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void handle_duplicate_keys_kernel(
+    const T* keys,
+    scalar_t* data,
+    const T mask,
+    const int n,
+    const PhiloxXpuState philox_args) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto tid = item.get_global_id(0);
+  // find the beginning of islands
+  if (tid >= n - 1)
+    return; // out of range
+  if ((keys[tid] & mask) != (keys[tid + 1] & mask))
+    return; // not in an island
+  if (tid != 0 && (keys[tid] & mask) == (keys[tid - 1] & mask))
+    return; // not the beginning of an island
 
-    // find the size of islands
-    int island_size = 0;
-    do {
-      island_size++;
-    } while ((tid + island_size < n_) &&
-             (keys_[tid + island_size] & mask_) == (keys_[tid] & mask_));
+  // find the size of islands
+  int island_size = 0;
+  do {
+    island_size++;
+  } while ((tid + island_size < n) &&
+           (keys[tid + island_size] & mask) == (keys[tid] & mask));
 
-    // do random permutation inside each island.
-    auto data = data_;
-    data += tid;
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), tid, std::get<1>(seeds), &state);
+  // do random permutation inside each island.
+  data += tid;
+  auto seeds = at::xpu::philox::unpack(philox_args);
+  randStatePhilox4_32_10_t state;
+  rand_init(std::get<0>(seeds), tid, std::get<1>(seeds), &state);
 
-    for (int i = island_size - 1; i > 0; i--) {
-      unsigned int r = rand(&state) % (i + 1);
-      if (i != r) {
-        scalar_t tmp = data[i];
-        data[i] = data[r];
-        data[r] = tmp;
-      }
+  for (int i = island_size - 1; i > 0; i--) {
+    unsigned int r = rand(&state) % (i + 1);
+    if (i != r) {
+      scalar_t tmp = data[i];
+      data[i] = data[r];
+      data[r] = tmp;
     }
   }
-  HandleDuplicateKeysKernelFunctor(
-      T* keys,
-      scalar_t* data,
-      T mask,
-      int n,
-      PhiloxXpuState philox_args)
-      : keys_(keys),
-        data_(data),
-        mask_(mask),
-        n_(n),
-        philox_args_(philox_args) {}
-
- private:
-  const T* keys_;
-  scalar_t* data_;
-  const T mask_;
-  const int n_;
-  const PhiloxXpuState philox_args_;
-};
+}
 
 // See note [Algorithm of randperm]
 template <typename T, typename scalar_t>
@@ -102,14 +88,22 @@ void randperm_handle_duplicate_keys(
   }
 
   T mask = static_cast<T>((1UL << bits) - 1);
-  HandleDuplicateKeysKernelFunctor kfn(keys, data, mask, n, rng_engine_inputs);
 
-  auto local_range = syclMaxWorkGroupSize(kfn) / 2;
+  auto local_range =
+      syclMaxWorkGroupSize<handle_duplicate_keys_kernel<T, scalar_t>>() / 2;
   auto num_wg = (n + local_range - 1) / local_range;
   auto global_range = num_wg * local_range;
 
-  sycl_kernel_submit(
-      global_range, local_range, at::xpu::getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit<handle_duplicate_keys_kernel<T, scalar_t>>(
+      global_range,
+      local_range,
+      at::xpu::getCurrentSYCLQueue(),
+      0,
+      keys,
+      data,
+      mask,
+      n,
+      rng_engine_inputs);
 }
 
 Tensor randperm_kernel(

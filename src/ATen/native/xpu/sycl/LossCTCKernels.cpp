@@ -292,8 +292,7 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
   // log_probs: input_len x batch_size x num_labels
   // targets [int64]: batch_size x target_length OR sum(target_lengths)
   CheckedFrom c = "ctc_loss_kernel";
-  using target_t =
-      typename std::conditional<target_scalar_type == kInt, int, int64_t>::type;
+  using target_t = std::conditional_t<target_scalar_type == kInt, int, int64_t>;
   auto log_probs_arg = TensorArg(log_probs, "log_probs", 1);
   auto targets_arg = TensorArg(targets, "targets", 2);
   checkAllSameGPU(c, {log_probs_arg, targets_arg});
@@ -680,9 +679,10 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
                lb_target_stride_ * (s * 2 + 1)] +
           nll - lp));
       atomicAdd(
-          &gradient_data_
-              [gr_batch_offset + t * gr_input_stride_ +
-               gr_char_stride_ * target],
+          sycl_global_ptr<scalar_t>(
+              &gradient_data_
+                  [gr_batch_offset + t * gr_input_stride_ +
+                   gr_char_stride_ * target]),
           -exp_val * gr);
     }
   }
@@ -1002,8 +1002,7 @@ Tensor ctc_loss_backward_kernel_template(
     int64_t BLANK,
     bool zero_infinity) {
   constexpr scalar_t neginf = -INFINITY;
-  using target_t =
-      typename std::conditional<target_scalar_type == kInt, int, int64_t>::type;
+  using target_t = std::conditional_t<target_scalar_type == kInt, int, int64_t>;
   int64_t batch_size = log_probs.size(1);
   int64_t num_labels = log_probs.size(2);
   int64_t tg_target_stride;

@@ -573,21 +573,56 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
 
+  // Fast path for mixed fp32/bf16/fp16 elementwise ops using a compact
+  // 3-case switch (LoadWithCastFP/StoreWithCastFP) to avoid register
+  // spilling from the generic large ScalarType switch (see #4904).
+  // fp_result (compile-time) ensures the functor output type is exactly
+  // float32 (excluding double, bool, etc);
+  // dtype(0)==Float (runtime) guarantees the output pointer is float*
+  // as StoreWithCastFP expects.
+  constexpr bool fp_result = std::is_same_v<arg0_t, float>;
+  bool use_fp_cast = fp_result && (iter.dtype(0) == at::ScalarType::Float);
+  if (use_fp_cast) {
+    for (int i = 1; i < ntensors; i++) {
+      auto dt = iter.dtype(i);
+      if (dt != at::ScalarType::Float && dt != at::ScalarType::Half &&
+          dt != at::ScalarType::BFloat16) {
+        use_fp_cast = false;
+        break;
+      }
+    }
+  }
+
   bool contiguous = iter.is_contiguous();
 
   if (contiguous) {
-    auto loader = memory::LoadWithCast<traits::arity>(iter);
-    auto storer = memory::StoreWithCast<1>(iter);
-    auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
-    auto output_offset_calculator = TrivialOffsetCalculator<1>();
-    launch_unrolled_kernel(
-        numel,
-        f,
-        data,
-        input_offset_calculator,
-        output_offset_calculator,
-        loader,
-        storer);
+    if (use_fp_cast) {
+      auto loader = memory::LoadWithCastFP<traits::arity>(iter);
+      auto storer = memory::StoreWithCastFP<1>();
+      auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
+      auto output_offset_calculator = TrivialOffsetCalculator<1>();
+      launch_unrolled_kernel(
+          numel,
+          f,
+          data,
+          input_offset_calculator,
+          output_offset_calculator,
+          loader,
+          storer);
+    } else {
+      auto loader = memory::LoadWithCast<traits::arity>(iter);
+      auto storer = memory::StoreWithCast<1>(iter);
+      auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
+      auto output_offset_calculator = TrivialOffsetCalculator<1>();
+      launch_unrolled_kernel(
+          numel,
+          f,
+          data,
+          input_offset_calculator,
+          output_offset_calculator,
+          loader,
+          storer);
+    }
   } else {
     at::detail::Array<ScalarType, ntensors> dtypes;
     for (int i = 0; i < ntensors; i++) {
@@ -741,7 +776,7 @@ void opmath_symmetric_gpu_kernel_with_scalars(
       traits::arity == 2,
       "gpu_kernel_with_scalars only supports two input arguments");
   static_assert(
-      std::is_same<opmath_arg_t, typename traits::template arg<1>::type>::value,
+      std::is_same_v<opmath_arg_t, typename traits::template arg<1>::type>,
       "f is not symmetric");
 
   OptionalDeviceGuard device_guard;
@@ -785,7 +820,7 @@ void gpu_kernel_multiple_outputs_impl(
     const func_t& f) {
   using traits = function_traits<func_t>;
   using output_t = typename traits::result_type;
-  constexpr int num_outputs = std::tuple_size<output_t>::value;
+  constexpr int num_outputs = std::tuple_size_v<output_t>;
   constexpr int num_inputs = traits::arity;
   constexpr int ntensors = num_outputs + num_inputs;
 
