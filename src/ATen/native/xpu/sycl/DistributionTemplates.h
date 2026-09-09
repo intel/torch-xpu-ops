@@ -758,32 +758,20 @@ struct BernoulliTensorApplyFunctor {
   }
 };
 
-template <typename scalar_t, typename prob_t>
-void bernoulli_tensor_kernel(
-    TensorBase& ret,
-    TensorBase& p,
-    PhiloxXpuState rng_engine_inputs) {
+template <typename scalar_t, typename prob_t, typename RNG>
+void bernoulli_tensor_kernel(TensorBase& ret, TensorBase& p, RNG gen) {
   BernoulliTensorApplyFunctor<scalar_t, prob_t> functor;
   at::native::xpu::tensor_apply2<
       scalar_t,
       const prob_t,
       bernoulli_tensor_step,
       decltype(functor),
-      bernoulli_threads_per_group>(ret, p, rng_engine_inputs, functor);
+      bernoulli_threads_per_group>(
+      ret, p, gen, /*offsets_per_op=*/rand4_engine_calls, functor);
 }
 
 template <typename RNG>
 void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
-  PhiloxXpuState rng_engine_inputs;
-  {
-    // See Note [Acquire lock when using random generators]
-    std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs =
-        gen->philox_xpu_state(get_apply_counter_offset<bernoulli_tensor_step>(
-            self.numel(),
-            bernoulli_threads_per_group,
-            /*offsets_per_op=*/rand4_engine_calls));
-  }
   TORCH_CHECK(
       at::isFloatingType(p_.scalar_type()),
       "expected probabilities tensor to have floating type, got ",
@@ -802,14 +790,10 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
       [&] {
         if constexpr (std::same_as<scalar_t, double>) {
           return bernoulli_tensor_kernel<double, double>(
-              const_cast<TensorBase&>(self),
-              const_cast<TensorBase&>(*p),
-              rng_engine_inputs);
+              const_cast<TensorBase&>(self), const_cast<TensorBase&>(*p), gen);
         } else {
           return bernoulli_tensor_kernel<scalar_t, float>(
-              const_cast<TensorBase&>(self),
-              const_cast<TensorBase&>(*p),
-              rng_engine_inputs);
+              const_cast<TensorBase&>(self), const_cast<TensorBase&>(*p), gen);
         }
       });
 }

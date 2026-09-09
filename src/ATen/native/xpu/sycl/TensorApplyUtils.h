@@ -15,6 +15,7 @@
 #include <ATen/native/xpu/sycl/IndexUtils.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/xpu/PhiloxXpuState.h>
+#include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <cmath>
@@ -133,10 +134,14 @@ inline void rearrangeDims(
 }
 
 // Note [tensor_apply2 RNG state]
-// The kernel below strides over the global range, so one work-item processes
-// many elements. Philox is seeded once per work-item, outside that loop, and
-// the state is handed to the op by reference so it advances from element to
-// element instead of being replayed.
+// One work-item handles one `step`-sized block and seeds Philox from its own
+// index, so the launch is sized to the tensor rather than to the device. The
+// state is handed to the op by reference so a multi-element `step` advances it
+// rather than replaying it.
+//
+// Seeding costs two `philox4x32_10` rounds per block and keeps the sample
+// independent of the launch geometry, so a seed reproduces across device
+// models.
 template <
     typename Op,
     typename scalar1,
@@ -244,10 +249,8 @@ struct PointwiseApply2Functor {
         item.get_global_linear_id(),
         std::get<1>(seeds),
         &state);
-    for (IndexType linearIndex = item.get_global_linear_id() * step;
-         linearIndex < totalElements_;
-         linearIndex +=
-         item.get_group_range(0) * item.get_local_range(0) * step) {
+    IndexType linearIndex = item.get_global_linear_id() * step;
+    if (linearIndex < totalElements_) {
       ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
           a_,
           b_,
@@ -285,31 +288,7 @@ inline uint64_t get_apply_group_count(
       static_cast<uint64_t>(threads_per_group) * static_cast<uint64_t>(step);
   uint64_t num_groups =
       (total_elements + numel_per_thread - 1) / numel_per_thread;
-  uint64_t estimated_max_groups_per_tile =
-      syclMaxWorkItemsPerTile() / threads_per_group;
-  if (num_groups > estimated_max_groups_per_tile)
-    num_groups = estimated_max_groups_per_tile;
   return num_groups;
-}
-
-// `tensor_apply2` counterpart to `calc_execution_policy`: the launch is capped
-// by the hardware, so a work-item runs the op once per stride of its loop, and
-// `offsets_per_op` is the number of 32-bit values one op invocation may draw.
-template <int step = 1>
-inline uint64_t get_apply_counter_offset(
-    uint64_t total_elements,
-    int threads_per_group,
-    uint64_t offsets_per_op) {
-  if (total_elements == 0) {
-    return 0;
-  }
-  uint64_t num_groups =
-      get_apply_group_count<step>(total_elements, threads_per_group);
-  uint64_t elements_per_stride = num_groups *
-      static_cast<uint64_t>(threads_per_group) * static_cast<uint64_t>(step);
-  uint64_t ops_per_item =
-      (total_elements + elements_per_stride - 1) / elements_per_stride;
-  return ops_per_item * offsets_per_op;
 }
 
 template <
@@ -317,11 +296,13 @@ template <
     typename scalar2,
     int step,
     typename Op,
-    int threads_per_group>
+    int threads_per_group,
+    typename RNG>
 inline bool tensor_apply2(
     at::TensorBase& a,
     at::TensorBase& b,
-    PhiloxXpuState philox_args,
+    RNG gen,
+    uint64_t offsets_per_op,
     const Op op,
     TensorArgType aType = TensorArgType::ReadWrite,
     TensorArgType bType = TensorArgType::ReadOnly) {
@@ -342,8 +323,18 @@ inline bool tensor_apply2(
     return false;
   }
 
+  // Each work-item invokes `op` exactly once, so `offsets_per_op` -- the number
+  // of 32-bit values a single invocation may draw -- is the whole reservation.
+  PhiloxXpuState philox_args;
+  {
+    // See Note [Acquire lock when using random generators]
+    std::lock_guard<std::mutex> lock(gen->mutex_);
+    philox_args = gen->philox_xpu_state(offsets_per_op);
+  }
+
   if (a.numel() == 0) {
-    // Empty tensor; do nothing
+    // Empty tensor; do nothing. The generator is still advanced above, matching
+    // CUDA, which reserves in the launcher before the same early return.
     return true;
   }
 
@@ -421,16 +412,18 @@ template <
     typename scalar1,
     typename scalar2,
     typename Op,
-    int max_threads_per_group>
+    int max_threads_per_group,
+    typename RNG>
 inline bool tensor_apply2(
     at::TensorBase& a,
     at::TensorBase& b,
-    PhiloxXpuState philox_args,
+    RNG gen,
+    uint64_t offsets_per_op,
     const Op op,
     TensorArgType aType = TensorArgType::ReadWrite,
     TensorArgType bType = TensorArgType::ReadOnly) {
   return tensor_apply2<scalar1, scalar2, 1, Op, max_threads_per_group>(
-      a, b, philox_args, op, aType, bType);
+      a, b, gen, offsets_per_op, op, aType, bType);
 }
 
 } // namespace xpu

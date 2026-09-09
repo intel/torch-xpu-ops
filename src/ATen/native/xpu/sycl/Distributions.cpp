@@ -38,7 +38,7 @@ template <typename scalar_t>
 void poisson_kernel(
     const at::TensorBase& ret,
     const at::TensorBase& lambda,
-    PhiloxXpuState rng_engine_inputs) {
+    XPUGeneratorImpl* gen) {
   PoissonTensorApplyFunctor<scalar_t> functor;
   at::native::xpu::tensor_apply2<
       scalar_t,
@@ -47,7 +47,10 @@ void poisson_kernel(
       poisson_threads_per_group>(
       const_cast<at::TensorBase&>(ret),
       const_cast<at::TensorBase&>(lambda),
-      rng_engine_inputs,
+      gen,
+      // Knuth (lambda < 64) draws k+1 uniforms for k ~ Poisson(lambda), so the
+      // count is unbounded; 256 holds the overrun probability under 1e-70.
+      /*offsets_per_op=*/256,
       functor);
 }
 
@@ -55,19 +58,12 @@ void launch_poisson_kernel(
     const TensorBase& ret,
     const TensorBase& lambda,
     at::XPUGeneratorImpl* gen) {
-  PhiloxXpuState rng_engine_inputs;
-  {
-    // See Note [Acquire lock when using random generators]
-    std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(get_apply_counter_offset(
-        ret.numel(), poisson_threads_per_group, /*offsets_per_op=*/20));
-  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       ret.scalar_type(),
       "poisson_xpu",
-      [&] { poisson_kernel<scalar_t>(ret, lambda, rng_engine_inputs); });
+      [&] { poisson_kernel<scalar_t>(ret, lambda, gen); });
 }
 
 struct rand_uniform_wrapper {
@@ -151,7 +147,7 @@ template <typename scalar_t>
 void gamma_kernel(
     const at::TensorBase& ret,
     const at::TensorBase& alpha,
-    PhiloxXpuState philox_args) {
+    XPUGeneratorImpl* gen) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   GammaTensorApplyFunctor<scalar_t, accscalar_t> functor;
   at::native::xpu::tensor_apply2<
@@ -161,7 +157,10 @@ void gamma_kernel(
       gamma_threads_per_group>(
       const_cast<at::TensorBase&>(ret),
       const_cast<at::TensorBase&>(alpha),
-      philox_args,
+      gen,
+      // Rejection sampling overruns this only in the tail, unlike poisson's
+      // systematic overrun; kept at 10 to match CUDA's philox_cuda_state(10).
+      /*offsets_per_op=*/10,
       functor);
 }
 
@@ -169,21 +168,12 @@ void launch_gamma_kernel(
     Tensor& ret,
     const Tensor& alpha,
     XPUGeneratorImpl* gen) {
-  PhiloxXpuState rng_engine_inputs;
-  {
-    // See Note [Acquire lock when using random generators]
-    std::lock_guard<std::mutex> lock(gen->mutex_);
-    // 10 values per sample matches CUDA's `philox_cuda_state(10)` for gamma.
-    rng_engine_inputs = gen->philox_xpu_state(get_apply_counter_offset(
-        ret.numel(), gamma_threads_per_group, /*offsets_per_op=*/10));
-  }
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       ret.scalar_type(),
       "gamma_xpu",
-      [&] { gamma_kernel<scalar_t>(ret, alpha, rng_engine_inputs); });
+      [&] { gamma_kernel<scalar_t>(ret, alpha, gen); });
 }
 
 template <typename scalar_t, typename accscalar_t>
