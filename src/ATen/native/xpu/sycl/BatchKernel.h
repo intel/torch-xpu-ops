@@ -78,6 +78,28 @@ class BatchKernelConfig {
     return cfg;
   }
 
+  template <auto* kptr>
+  static BatchKernelConfig make_config(
+      int64_t batch,
+      int64_t problem,
+      int64_t stride,
+      int64_t problem_batch,
+      bool problem_along_x,
+      std::vector<Policy> policies,
+      int64_t prefer_wg_size = 0) {
+    BatchKernelConfig cfg = {
+        batch,
+        problem,
+        stride,
+        problem_batch,
+        problem_along_x,
+        policies,
+        prefer_wg_size};
+    cfg.template build<kptr>();
+
+    return cfg;
+  }
+
   sycl::range<2> global_size() const {
     return {glb_range_y_, glb_range_x_};
   }
@@ -199,8 +221,7 @@ class BatchKernelConfig {
         wg_range_x_(0),
         wg_range_y_(0) {}
 
-  template <class KernelClass>
-  void build() {
+  void build(size_t max_work_group_size) {
     size_t wg_size;
     size_t sg_size = syclMaxSubGroupSize();
     // Caller takes responsibility of if work group size is valid or compatible.
@@ -208,7 +229,7 @@ class BatchKernelConfig {
         prefer_wg_size_ <= syclDeviceMaxWorkGroupSize()) {
       wg_size = prefer_wg_size_;
     } else {
-      wg_size = syclMaxWorkGroupSize<KernelClass>();
+      wg_size = max_work_group_size;
     }
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;
@@ -298,6 +319,16 @@ class BatchKernelConfig {
     batch_range_ = problem_along_x_
         ? (problem_batch_ + glb_range_y_ - 1) / glb_range_y_ * glb_range_y_
         : (problem_batch_ + glb_range_x_ - 1) / glb_range_x_ * glb_range_x_;
+  }
+
+  template <class KernelClass>
+  void build() {
+    build(syclMaxWorkGroupSize<KernelClass>());
+  }
+
+  template <auto* kptr>
+  void build() {
+    build(syclMaxWorkGroupSize<kptr>());
   }
 
   BatchKernelConfig(
