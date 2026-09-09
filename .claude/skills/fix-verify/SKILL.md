@@ -5,7 +5,7 @@ description: >
   failure, or produce a before/after summary of a fix.
   Runs the test command against a source build with the fix applied and
   reports PASSED / FAILED / CANNOT_VERIFY. Called by both issue-handler
-  and xpu-nightly-ci-fix orchestrators after fix-implement.
+  orchestrator after fix-implement.
 ---
 
 # Verify — Confirm the Fix Works
