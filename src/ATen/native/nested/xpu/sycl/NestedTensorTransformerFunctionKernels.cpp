@@ -23,177 +23,125 @@
 namespace at::native::xpu {
 
 template <typename T>
-struct RemovePaddingFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    const int batch_id = item.get_group(1);
-    const int grid_id = item.get_group(0);
-    const int actual_wg_size = item.get_local_range(1);
-    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
-    const int grainsize = item.get_group_range(0) * actual_wg_size;
-    const int offset = offsets_[batch_id];
-    const int* sizes_i = output_sizes_ + batch_id * output_dim_;
-    const int numel_i = sizes_i[0] * sizes_i[1] * sizes_i[2];
-    int input_offset =
-        batch_id * input_sizes_[1] * input_sizes_[2] * input_sizes_[3];
-    for (int ii = 0; ii < (numel_i / grainsize); ii++) {
-      const int i = ii * grainsize + tid;
-      const int i0 = i / (sizes_i[1] * sizes_i[2]);
-      const int i1 = (i % (sizes_i[1] * sizes_i[2])) / sizes_i[2];
-      const int i2 = i % sizes_i[2];
-      const int i0_offset = i0 * input_sizes_[2] * input_sizes_[3];
-      const int i1_offset = i1 * input_sizes_[3];
-      output_[offset + i] = input_[input_offset + i0_offset + i1_offset + i2];
-    }
-    const int i = (numel_i / grainsize) * grainsize + tid;
-    if (i < numel_i) {
-      const int i0 = i / (sizes_i[1] * sizes_i[2]);
-      const int i1 = (i % (sizes_i[1] * sizes_i[2])) / sizes_i[2];
-      const int i2 = i % sizes_i[2];
-      const int i0_offset = i0 * input_sizes_[2] * input_sizes_[3];
-      const int i1_offset = i1 * input_sizes_[3];
-      output_[offset + i] = input_[input_offset + i0_offset + i1_offset + i2];
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void remove_padding_fn(
+    const T* input,
+    T* output,
+    const int* offsets,
+    const int* input_sizes,
+    const int* output_sizes,
+    int output_dim,
+    const int batch_size) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int batch_id = item.get_group(1);
+  const int grid_id = item.get_group(0);
+  const int actual_wg_size = item.get_local_range(1);
+  const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+  const int grainsize = item.get_group_range(0) * actual_wg_size;
+  const int offset = offsets[batch_id];
+  const int* sizes_i = output_sizes + batch_id * output_dim;
+  const int numel_i = sizes_i[0] * sizes_i[1] * sizes_i[2];
+  int input_offset =
+      batch_id * input_sizes[1] * input_sizes[2] * input_sizes[3];
+  for (int ii = 0; ii < (numel_i / grainsize); ii++) {
+    const int i = ii * grainsize + tid;
+    const int i0 = i / (sizes_i[1] * sizes_i[2]);
+    const int i1 = (i % (sizes_i[1] * sizes_i[2])) / sizes_i[2];
+    const int i2 = i % sizes_i[2];
+    const int i0_offset = i0 * input_sizes[2] * input_sizes[3];
+    const int i1_offset = i1 * input_sizes[3];
+    output[offset + i] = input[input_offset + i0_offset + i1_offset + i2];
   }
-
-  RemovePaddingFunctor(
-      const T* input,
-      T* output,
-      const int* offsets,
-      const int* input_sizes,
-      const int* output_sizes,
-      int output_dim,
-      const int batch_size)
-      : input_(input),
-        output_(output),
-        offsets_(offsets),
-        input_sizes_(input_sizes),
-        output_sizes_(output_sizes),
-        output_dim_(output_dim),
-        batch_size_(batch_size) {}
-
- private:
-  const T* input_;
-  T* output_;
-  const int* offsets_;
-  const int* input_sizes_;
-  const int* output_sizes_;
-  int output_dim_;
-  const int batch_size_;
-};
+  const int i = (numel_i / grainsize) * grainsize + tid;
+  if (i < numel_i) {
+    const int i0 = i / (sizes_i[1] * sizes_i[2]);
+    const int i1 = (i % (sizes_i[1] * sizes_i[2])) / sizes_i[2];
+    const int i2 = i % sizes_i[2];
+    const int i0_offset = i0 * input_sizes[2] * input_sizes[3];
+    const int i1_offset = i1 * input_sizes[3];
+    output[offset + i] = input[input_offset + i0_offset + i1_offset + i2];
+  }
+}
 
 template <typename T>
-struct RemovePadding2Functor {
-  void operator()(sycl::nd_item<2> item) const {
-    const int batch_id = item.get_group(1);
-    const int grid_id = item.get_group(0);
-    const int actual_wg_size = item.get_local_range(1);
-    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
-    const int grainsize = item.get_group_range(0) * actual_wg_size;
-    const int offset = offsets_[batch_id];
-    const int* sizes_i = output_sizes_ + batch_id * output_dim_;
-    const int numel_i = sizes_i[0] * sizes_i[1];
-    int input_offset = batch_id * input_sizes_[1] * input_sizes_[2];
-    for (int ii = 0; ii < (numel_i / grainsize); ii++) {
-      const int i = ii * grainsize + tid;
-      const int i0 = i / sizes_i[1];
-      const int i1 = i % sizes_i[1];
-      const int i0_offset = i0 * input_sizes_[2];
-      output_[offset + i] = input_[input_offset + i0_offset + i1];
-    }
-    const int i = (numel_i / grainsize) * grainsize + tid;
-    if (i < numel_i) {
-      const int i0 = i / sizes_i[1];
-      const int i1 = i % sizes_i[1];
-      const int i0_offset = i0 * input_sizes_[2];
-      output_[offset + i] = input_[input_offset + i0_offset + i1];
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void remove_padding2_fn(
+    const T* input,
+    T* output,
+    const int* offsets,
+    const int* input_sizes,
+    const int* output_sizes,
+    int output_dim,
+    const int batch_size) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int batch_id = item.get_group(1);
+  const int grid_id = item.get_group(0);
+  const int actual_wg_size = item.get_local_range(1);
+  const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+  const int grainsize = item.get_group_range(0) * actual_wg_size;
+  const int offset = offsets[batch_id];
+  const int* sizes_i = output_sizes + batch_id * output_dim;
+  const int numel_i = sizes_i[0] * sizes_i[1];
+  int input_offset = batch_id * input_sizes[1] * input_sizes[2];
+  for (int ii = 0; ii < (numel_i / grainsize); ii++) {
+    const int i = ii * grainsize + tid;
+    const int i0 = i / sizes_i[1];
+    const int i1 = i % sizes_i[1];
+    const int i0_offset = i0 * input_sizes[2];
+    output[offset + i] = input[input_offset + i0_offset + i1];
   }
-
-  RemovePadding2Functor(
-      const T* input,
-      T* output,
-      const int* offsets,
-      const int* input_sizes,
-      const int* output_sizes,
-      int output_dim,
-      const int batch_size)
-      : input_(input),
-        output_(output),
-        offsets_(offsets),
-        input_sizes_(input_sizes),
-        output_sizes_(output_sizes),
-        output_dim_(output_dim),
-        batch_size_(batch_size) {}
-
-  const T* input_;
-  T* output_;
-  const int* offsets_;
-  const int* input_sizes_;
-  const int* output_sizes_;
-  int output_dim_;
-  const int batch_size_;
-};
+  const int i = (numel_i / grainsize) * grainsize + tid;
+  if (i < numel_i) {
+    const int i0 = i / sizes_i[1];
+    const int i1 = i % sizes_i[1];
+    const int i0_offset = i0 * input_sizes[2];
+    output[offset + i] = input[input_offset + i0_offset + i1];
+  }
+}
 
 template <typename T>
-struct RemovePaddingTransform0213Functor {
-  void operator()(sycl::nd_item<2> item) const {
-    const int batch_id = item.get_group(1);
-    const int grid_id = item.get_group(0);
-    const int actual_wg_size = item.get_local_range(1);
-    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
-    const int grainsize = item.get_group_range(0) * actual_wg_size;
-    const int offset = offsets_[batch_id];
-    const int* sizes_i = output_sizes_ + batch_id * output_dim_;
-    const int numel_i = sizes_i[0] * sizes_i[1];
-    int input_offset =
-        batch_id * input_sizes_[1] * input_sizes_[2] * input_sizes_[3];
-    for (int ii = 0; ii < (numel_i / grainsize); ii++) {
-      const int i = ii * grainsize + tid;
-      const int i2 = i / sizes_i[1];
-      const int i13 = i % sizes_i[1];
-      const int i1 = i13 / (sizes_i[1] / input_sizes_[1]);
-      const int i3 = i13 % (sizes_i[1] / input_sizes_[1]);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void remove_padding_transform0213_fn(
+    const T* input,
+    T* output,
+    const int* offsets,
+    const int* input_sizes,
+    const int* output_sizes,
+    int output_dim,
+    const int batch_size) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int batch_id = item.get_group(1);
+  const int grid_id = item.get_group(0);
+  const int actual_wg_size = item.get_local_range(1);
+  const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+  const int grainsize = item.get_group_range(0) * actual_wg_size;
+  const int offset = offsets[batch_id];
+  const int* sizes_i = output_sizes + batch_id * output_dim;
+  const int numel_i = sizes_i[0] * sizes_i[1];
+  int input_offset =
+      batch_id * input_sizes[1] * input_sizes[2] * input_sizes[3];
+  for (int ii = 0; ii < (numel_i / grainsize); ii++) {
+    const int i = ii * grainsize + tid;
+    const int i2 = i / sizes_i[1];
+    const int i13 = i % sizes_i[1];
+    const int i1 = i13 / (sizes_i[1] / input_sizes[1]);
+    const int i3 = i13 % (sizes_i[1] / input_sizes[1]);
 
-      output_[offset + i] = input_
-          [input_offset + i1 * input_sizes_[2] * input_sizes_[3] +
-           i2 * input_sizes_[3] + i3];
-    }
-    const int i = (numel_i / grainsize) * grainsize + tid;
-    if (i < numel_i) {
-      const int i2 = i / sizes_i[1];
-      const int i13 = i % sizes_i[1];
-      const int i1 = i13 / (sizes_i[1] / input_sizes_[1]);
-      const int i3 = i13 % (sizes_i[1] / input_sizes_[1]);
-      output_[offset + i] = input_
-          [input_offset + i1 * input_sizes_[2] * input_sizes_[3] +
-           i2 * input_sizes_[3] + i3];
-    }
+    output[offset + i] = input
+        [input_offset + i1 * input_sizes[2] * input_sizes[3] +
+         i2 * input_sizes[3] + i3];
   }
-
-  RemovePaddingTransform0213Functor(
-      const T* input,
-      T* output,
-      const int* offsets,
-      const int* input_sizes,
-      const int* output_sizes,
-      int output_dim,
-      const int batch_size)
-      : input_(input),
-        output_(output),
-        offsets_(offsets),
-        input_sizes_(input_sizes),
-        output_sizes_(output_sizes),
-        output_dim_(output_dim),
-        batch_size_(batch_size) {}
-
-  const T* input_;
-  T* output_;
-  const int* offsets_;
-  const int* input_sizes_;
-  const int* output_sizes_;
-  int output_dim_;
-  const int batch_size_;
-};
+  const int i = (numel_i / grainsize) * grainsize + tid;
+  if (i < numel_i) {
+    const int i2 = i / sizes_i[1];
+    const int i13 = i % sizes_i[1];
+    const int i1 = i13 / (sizes_i[1] / input_sizes[1]);
+    const int i3 = i13 % (sizes_i[1] / input_sizes[1]);
+    output[offset + i] = input
+        [input_offset + i1 * input_sizes[2] * input_sizes[3] +
+         i2 * input_sizes[3] + i3];
+  }
+}
 
 template <typename T>
 void remove_padding_kernel(
@@ -206,7 +154,15 @@ void remove_padding_kernel(
     const int64_t batch_size) {
   auto queue = getCurrentSYCLQueue();
   if (output_dim == 2) {
-    auto kfn = RemovePadding2Functor<T>(
+    constexpr auto kptr = remove_padding2_fn<T>;
+    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
+    sycl::range<2> local_range(1, max_wg_size);
+    sycl_kernel_submit<kptr>(
+        global_range,
+        local_range,
+        queue,
+        0,
         input,
         output,
         offsets,
@@ -214,12 +170,16 @@ void remove_padding_kernel(
         output_sizes,
         output_dim,
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
-    sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
-    sycl::range<2> local_range(1, max_wg_size);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
-    auto kfn = RemovePaddingFunctor<T>(
+    constexpr auto kptr = remove_padding_fn<T>;
+    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
+    sycl::range<2> local_range(1, max_wg_size);
+    sycl_kernel_submit<kptr>(
+        global_range,
+        local_range,
+        queue,
+        0,
         input,
         output,
         offsets,
@@ -227,10 +187,6 @@ void remove_padding_kernel(
         output_sizes,
         output_dim,
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
-    sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
-    sycl::range<2> local_range(1, max_wg_size);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
 }
 
@@ -248,7 +204,17 @@ void remove_padding_transform0213_kernel(
       "remove padding transform0213 only support output dim == 2");
 
   auto queue = getCurrentSYCLQueue();
-  auto kfn = RemovePaddingTransform0213Functor<T>(
+  constexpr auto kptr = remove_padding_transform0213_fn<T>;
+
+  int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+  sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
+  sycl::range<2> local_range(1, max_wg_size);
+
+  sycl_kernel_submit<kptr>(
+      global_range,
+      local_range,
+      queue,
+      0,
       input,
       output,
       offsets,
@@ -256,12 +222,6 @@ void remove_padding_transform0213_kernel(
       output_sizes,
       output_dim,
       batch_size);
-
-  int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
-  sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
-  sycl::range<2> local_range(1, max_wg_size);
-
-  sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
 void remove_padding_kernel_float(
@@ -337,213 +297,147 @@ void remove_padding_transform0213_kernel_half(
 }
 
 template <typename T>
-struct AddPadding1Functor {
-  void operator()(sycl::nd_item<2> item) const {
-    const int batch_id = item.get_group(1);
-    const int grid_id = item.get_group(0);
-    const int actual_wg_size = item.get_local_range(1);
-    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
-    const int grainsize = item.get_group_range(0) * actual_wg_size;
-    const int* sizes_i = input_sizes_ + batch_id * input_dim_;
-    const int batch_output_offset = batch_id * output_sizes_1_;
-    for (int ii = 0; ii < (output_sizes_1_ / grainsize); ii++) {
-      const int i = ii * grainsize + tid;
-      const int output_offset = batch_output_offset + i;
-      if (batch_id < batch_size_ && i < sizes_i[0]) {
-        const int batch_input_offset = offsets_[batch_id];
-        output_[output_offset] = input_[batch_input_offset + i];
-      } else {
-        output_[output_offset] = padding_value_;
-      }
-    }
-    const int i = (output_sizes_1_ / grainsize) * grainsize + tid;
-    if (i < output_sizes_1_) {
-      const int output_offset = batch_output_offset + i;
-      if (batch_id < batch_size_ && (i < sizes_i[0])) {
-        const int batch_input_offset = offsets_[batch_id];
-        output_[output_offset] = input_[batch_input_offset + i];
-      } else {
-        output_[output_offset] = padding_value_;
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void add_padding1_fn(
+    const T* input,
+    T* output,
+    T padding_value,
+    const int* offsets,
+    const int* input_sizes,
+    int input_dim,
+    int output_sizes_1,
+    const int batch_size) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int batch_id = item.get_group(1);
+  const int grid_id = item.get_group(0);
+  const int actual_wg_size = item.get_local_range(1);
+  const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+  const int grainsize = item.get_group_range(0) * actual_wg_size;
+  const int* sizes_i = input_sizes + batch_id * input_dim;
+  const int batch_output_offset = batch_id * output_sizes_1;
+  for (int ii = 0; ii < (output_sizes_1 / grainsize); ii++) {
+    const int i = ii * grainsize + tid;
+    const int output_offset = batch_output_offset + i;
+    if (batch_id < batch_size && i < sizes_i[0]) {
+      const int batch_input_offset = offsets[batch_id];
+      output[output_offset] = input[batch_input_offset + i];
+    } else {
+      output[output_offset] = padding_value;
     }
   }
-  AddPadding1Functor(
-      const T* input,
-      T* output,
-      T padding_value,
-      const int* offsets,
-      const int* input_sizes,
-      int input_dim,
-      int output_sizes_1,
-      const int batch_size)
-      : input_(input),
-        output_(output),
-        padding_value_(padding_value),
-        offsets_(offsets),
-        input_sizes_(input_sizes),
-        input_dim_(input_dim),
-        output_sizes_1_(output_sizes_1),
-        batch_size_(batch_size) {}
-
- private:
-  const T* input_;
-  T* output_;
-  T padding_value_;
-  const int* offsets_;
-  const int* input_sizes_;
-  int input_dim_;
-  int output_sizes_1_;
-  const int batch_size_;
-};
+  const int i = (output_sizes_1 / grainsize) * grainsize + tid;
+  if (i < output_sizes_1) {
+    const int output_offset = batch_output_offset + i;
+    if (batch_id < batch_size && (i < sizes_i[0])) {
+      const int batch_input_offset = offsets[batch_id];
+      output[output_offset] = input[batch_input_offset + i];
+    } else {
+      output[output_offset] = padding_value;
+    }
+  }
+}
 
 template <typename T>
-struct AddPadding2Functor {
-  void operator()(sycl::nd_item<2> item) const {
-    const int batch_id = item.get_group(1);
-    const int grid_id = item.get_group(0);
-    const int actual_wg_size = item.get_local_range(1);
-    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
-    const int grainsize = item.get_group_range(0) * actual_wg_size;
-    const int* sizes_i = input_sizes_ + batch_id * input_dim_;
-    const int output_offset = batch_id * output_sizes_1_ * output_sizes_2_;
-    const int output_numel = output_sizes_1_ * output_sizes_2_;
-    for (int ii = 0; ii < (output_numel / grainsize); ii++) {
-      const int i = ii * grainsize + tid;
-      const int i0 = i / (output_sizes_2_);
-      const int i1 = i - i0 * output_sizes_2_;
-      if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1]) {
-        const int offset = offsets_[batch_id];
-        const int input_offset = offset + i0 * sizes_i[1] + i1;
-        output_[output_offset + i] = input_[input_offset];
-      } else {
-        output_[output_offset + i] = padding_value_;
-      }
-    }
-    const int i = (output_numel / grainsize) * grainsize + tid;
-    if (i < output_numel) {
-      const int i0 = i / (output_sizes_2_);
-      const int i1 = i - i0 * output_sizes_2_;
-      if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1]) {
-        const int offset = offsets_[batch_id];
-        const int input_offset = offset + i0 * sizes_i[1] + i1;
-        output_[output_offset + i] = input_[input_offset];
-      } else {
-        output_[output_offset + i] = padding_value_;
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void add_padding2_fn(
+    const T* input,
+    T* output,
+    T padding_value,
+    const int* offsets,
+    const int* input_sizes,
+    int input_dim,
+    int output_sizes_1,
+    int output_sizes_2,
+    const int batch_size) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int batch_id = item.get_group(1);
+  const int grid_id = item.get_group(0);
+  const int actual_wg_size = item.get_local_range(1);
+  const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+  const int grainsize = item.get_group_range(0) * actual_wg_size;
+  const int* sizes_i = input_sizes + batch_id * input_dim;
+  const int output_offset = batch_id * output_sizes_1 * output_sizes_2;
+  const int output_numel = output_sizes_1 * output_sizes_2;
+  for (int ii = 0; ii < (output_numel / grainsize); ii++) {
+    const int i = ii * grainsize + tid;
+    const int i0 = i / (output_sizes_2);
+    const int i1 = i - i0 * output_sizes_2;
+    if (batch_id < batch_size && i0 < sizes_i[0] && i1 < sizes_i[1]) {
+      const int offset = offsets[batch_id];
+      const int input_offset = offset + i0 * sizes_i[1] + i1;
+      output[output_offset + i] = input[input_offset];
+    } else {
+      output[output_offset + i] = padding_value;
     }
   }
-  AddPadding2Functor(
-      const T* input,
-      T* output,
-      T padding_value,
-      const int* offsets,
-      const int* input_sizes,
-      int input_dim,
-      int output_sizes_1,
-      int output_sizes_2,
-      const int batch_size)
-      : input_(input),
-        output_(output),
-        padding_value_(padding_value),
-        offsets_(offsets),
-        input_sizes_(input_sizes),
-        input_dim_(input_dim),
-        output_sizes_1_(output_sizes_1),
-        output_sizes_2_(output_sizes_2),
-        batch_size_(batch_size) {}
-
- private:
-  const T* input_;
-  T* output_;
-  T padding_value_;
-  const int* offsets_;
-  const int* input_sizes_;
-  int input_dim_;
-  int output_sizes_1_;
-  int output_sizes_2_;
-  const int batch_size_;
-};
+  const int i = (output_numel / grainsize) * grainsize + tid;
+  if (i < output_numel) {
+    const int i0 = i / (output_sizes_2);
+    const int i1 = i - i0 * output_sizes_2;
+    if (batch_id < batch_size && i0 < sizes_i[0] && i1 < sizes_i[1]) {
+      const int offset = offsets[batch_id];
+      const int input_offset = offset + i0 * sizes_i[1] + i1;
+      output[output_offset + i] = input[input_offset];
+    } else {
+      output[output_offset + i] = padding_value;
+    }
+  }
+}
 
 template <typename T>
-struct AddPadding3Functor {
-  void operator()(sycl::nd_item<2> item) const {
-    const int batch_id = item.get_group(1);
-    const int grid_id = item.get_group(0);
-    const int actual_wg_size = item.get_local_range(1);
-    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
-    const int grainsize = item.get_group_range(0) * actual_wg_size;
-    const int* sizes_i = input_sizes_ + batch_id * input_dim_;
-    const int output_offset =
-        batch_id * output_sizes_1_ * output_sizes_2_ * output_sizes_3_;
-    const int output_numel =
-        output_sizes_1_ * output_sizes_2_ * output_sizes_3_;
-    for (int ii = 0; ii < (output_numel / grainsize); ii++) {
-      const int i = ii * grainsize + tid;
-      const int i0 = i / (output_sizes_2_ * output_sizes_3_);
-      const int i1 =
-          (i % (output_sizes_2_ * output_sizes_3_)) / output_sizes_3_;
-      const int i2 = i % output_sizes_3_;
-      if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1] &&
-          i2 < sizes_i[2]) {
-        const int offset = offsets_[batch_id];
-        const int input_offset =
-            offset + i0 * (sizes_i[1] * sizes_i[2]) + i1 * sizes_i[2] + i2;
-        output_[output_offset + i] = input_[input_offset];
-      } else {
-        output_[output_offset + i] = padding_value_;
-      }
-    }
-    const int i = (output_numel / grainsize) * grainsize + tid;
-    if (i < output_numel) {
-      const int i0 = i / (output_sizes_2_ * output_sizes_3_);
-      const int i1 =
-          (i % (output_sizes_2_ * output_sizes_3_)) / output_sizes_3_;
-      const int i2 = i % output_sizes_3_;
-      if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1] &&
-          i2 < sizes_i[2]) {
-        const int offset = offsets_[batch_id];
-        const int input_offset =
-            offset + i0 * (sizes_i[1] * sizes_i[2]) + i1 * sizes_i[2] + i2;
-        output_[output_offset + i] = input_[input_offset];
-      } else {
-        output_[output_offset + i] = padding_value_;
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void add_padding3_fn(
+    const T* input,
+    T* output,
+    T padding_value,
+    const int* offsets,
+    const int* input_sizes,
+    int input_dim,
+    int output_sizes_1,
+    int output_sizes_2,
+    int output_sizes_3,
+    const int batch_size) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int batch_id = item.get_group(1);
+  const int grid_id = item.get_group(0);
+  const int actual_wg_size = item.get_local_range(1);
+  const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+  const int grainsize = item.get_group_range(0) * actual_wg_size;
+  const int* sizes_i = input_sizes + batch_id * input_dim;
+  const int output_offset =
+      batch_id * output_sizes_1 * output_sizes_2 * output_sizes_3;
+  const int output_numel = output_sizes_1 * output_sizes_2 * output_sizes_3;
+  for (int ii = 0; ii < (output_numel / grainsize); ii++) {
+    const int i = ii * grainsize + tid;
+    const int i0 = i / (output_sizes_2 * output_sizes_3);
+    const int i1 = (i % (output_sizes_2 * output_sizes_3)) / output_sizes_3;
+    const int i2 = i % output_sizes_3;
+    if (batch_id < batch_size && i0 < sizes_i[0] && i1 < sizes_i[1] &&
+        i2 < sizes_i[2]) {
+      const int offset = offsets[batch_id];
+      const int input_offset =
+          offset + i0 * (sizes_i[1] * sizes_i[2]) + i1 * sizes_i[2] + i2;
+      output[output_offset + i] = input[input_offset];
+    } else {
+      output[output_offset + i] = padding_value;
     }
   }
-  AddPadding3Functor(
-      const T* input,
-      T* output,
-      T padding_value,
-      const int* offsets,
-      const int* input_sizes,
-      int input_dim,
-      int output_sizes_1,
-      int output_sizes_2,
-      int output_sizes_3,
-      const int batch_size)
-      : input_(input),
-        output_(output),
-        padding_value_(padding_value),
-        offsets_(offsets),
-        input_sizes_(input_sizes),
-        input_dim_(input_dim),
-        output_sizes_1_(output_sizes_1),
-        output_sizes_2_(output_sizes_2),
-        output_sizes_3_(output_sizes_3),
-        batch_size_(batch_size) {}
-
- private:
-  const T* input_;
-  T* output_;
-  T padding_value_;
-  const int* offsets_;
-  const int* input_sizes_;
-  int input_dim_;
-  int output_sizes_1_;
-  int output_sizes_2_;
-  int output_sizes_3_;
-  const int batch_size_;
-};
+  const int i = (output_numel / grainsize) * grainsize + tid;
+  if (i < output_numel) {
+    const int i0 = i / (output_sizes_2 * output_sizes_3);
+    const int i1 = (i % (output_sizes_2 * output_sizes_3)) / output_sizes_3;
+    const int i2 = i % output_sizes_3;
+    if (batch_id < batch_size && i0 < sizes_i[0] && i1 < sizes_i[1] &&
+        i2 < sizes_i[2]) {
+      const int offset = offsets[batch_id];
+      const int input_offset =
+          offset + i0 * (sizes_i[1] * sizes_i[2]) + i1 * sizes_i[2] + i2;
+      output[output_offset + i] = input[input_offset];
+    } else {
+      output[output_offset + i] = padding_value;
+    }
+  }
+}
 
 template <typename T>
 void add_padding_kernel_impl(
@@ -558,52 +452,64 @@ void add_padding_kernel_impl(
     const int output_batch_size) {
   auto queue = getCurrentSYCLQueue();
   if (input_dim == 1) {
-    auto kfn = AddPadding1Functor<T>(
+    constexpr auto kptr = add_padding1_fn<T>;
+    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
+    sycl::range<2> local_range(1, max_wg_size);
+    sycl_kernel_submit<kptr>(
+        global_range,
+        local_range,
+        queue,
+        0,
         input,
         output,
         padding_value,
         offsets,
         input_sizes,
         input_dim,
-        output_sizes[1],
+        (int)output_sizes[1],
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
-    sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
-    sycl::range<2> local_range(1, max_wg_size);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
   if (input_dim == 2) {
-    auto kfn = AddPadding2Functor<T>(
+    constexpr auto kptr = add_padding2_fn<T>;
+    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
+    sycl::range<2> local_range(1, max_wg_size);
+    sycl_kernel_submit<kptr>(
+        global_range,
+        local_range,
+        queue,
+        0,
         input,
         output,
         padding_value,
         offsets,
         input_sizes,
         input_dim,
-        output_sizes[1],
-        output_sizes[2],
+        (int)output_sizes[1],
+        (int)output_sizes[2],
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
-    sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
-    sycl::range<2> local_range(1, max_wg_size);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
   if (input_dim == 3) {
-    auto kfn = AddPadding3Functor<T>(
+    constexpr auto kptr = add_padding3_fn<T>;
+    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
+    sycl::range<2> local_range(1, max_wg_size);
+    sycl_kernel_submit<kptr>(
+        global_range,
+        local_range,
+        queue,
+        0,
         input,
         output,
         padding_value,
         offsets,
         input_sizes,
         input_dim,
-        output_sizes[1],
-        output_sizes[2],
-        output_sizes[3],
+        (int)output_sizes[1],
+        (int)output_sizes[2],
+        (int)output_sizes[3],
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
-    sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
-    sycl::range<2> local_range(1, max_wg_size);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
 }
 
@@ -792,78 +698,61 @@ inline bool walk_down_tensor_storage_tree_(
 }
 
 template <int NUM_JAGGED_DIM, typename index_t, typename scalar_t, typename F>
-struct JaggedDenseElementwiseDenseFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    const int outer_dense_size = y_.size(0);
-    const int jagged_folded_size = y_.size(1);
-    const int inner_dense_size = y_.size(2);
-    auto output = output_;
-    const int outer_begin =
-        item.get_group(0) * item.get_local_range(1) + item.get_local_id(1);
-    const int outer_stride = item.get_group_range(0) * item.get_local_range(1);
-    for (int outer = outer_begin; outer < outer_dense_size * jagged_folded_size;
-         outer += outer_stride) {
-      const int oidx = outer / jagged_folded_size;
-      const int jidx = outer % jagged_folded_size;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void jagged_dense_elementwise_dense_fn(
+    const at::PackedTensorAccessor32<scalar_t, 2, RestrictPtrTraits> x_values,
+    StackArray<index_t*> x_offsets,
+    const at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> y,
+    at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> output_acc,
+    StackArray<int64_t> jagged_dims,
+    F f,
+    const scalar_t padding_value) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int outer_dense_size = y.size(0);
+  const int jagged_folded_size = y.size(1);
+  const int inner_dense_size = y.size(2);
+  auto output = output_acc;
+  const int outer_begin =
+      item.get_group(0) * item.get_local_range(1) + item.get_local_id(1);
+  const int outer_stride = item.get_group_range(0) * item.get_local_range(1);
+  for (int outer = outer_begin; outer < outer_dense_size * jagged_folded_size;
+       outer += outer_stride) {
+    const int oidx = outer / jagged_folded_size;
+    const int jidx = outer % jagged_folded_size;
 
-      int offset = oidx;
-      const bool is_zero = walk_down_tensor_storage_tree_<NUM_JAGGED_DIM>(
-          offset, jidx, jagged_dims_, x_offsets_);
+    int offset = oidx;
+    const bool is_zero = walk_down_tensor_storage_tree_<NUM_JAGGED_DIM>(
+        offset, jidx, jagged_dims, x_offsets);
 
-      if (is_zero) {
-        int iidx;
-        for (iidx = item.get_local_id(0); iidx * 2 + 1 < inner_dense_size;
-             iidx += item.get_local_range(0)) {
-          output[oidx][jidx][2 * iidx] =
-              f_(padding_value_, y_[oidx][jidx][2 * iidx]);
-          output[oidx][jidx][2 * iidx + 1] =
-              f_(padding_value_, y_[oidx][jidx][2 * iidx + 1]);
-        }
-        if (iidx * 2 + 1 == inner_dense_size) {
-          output[oidx][jidx][2 * iidx] =
-              f_(padding_value_, y_[oidx][jidx][2 * iidx]);
-        }
-      } else {
-        int iidx;
-        for (iidx = item.get_local_id(0); iidx * 2 + 1 < inner_dense_size;
-             iidx += item.get_local_range(0)) {
-          output[oidx][jidx][2 * iidx] =
-              f_(x_values_[offset][2 * iidx], y_[oidx][jidx][2 * iidx]);
-          output[oidx][jidx][2 * iidx + 1] =
-              f_(x_values_[offset][2 * iidx + 1], y_[oidx][jidx][2 * iidx + 1]);
-        }
-        if (iidx * 2 + 1 == inner_dense_size) {
-          output[oidx][jidx][2 * iidx] =
-              f_(x_values_[offset][2 * iidx], y_[oidx][jidx][2 * iidx]);
-        }
+    if (is_zero) {
+      int iidx;
+      for (iidx = item.get_local_id(0); iidx * 2 + 1 < inner_dense_size;
+           iidx += item.get_local_range(0)) {
+        output[oidx][jidx][2 * iidx] =
+            f(padding_value, y[oidx][jidx][2 * iidx]);
+        output[oidx][jidx][2 * iidx + 1] =
+            f(padding_value, y[oidx][jidx][2 * iidx + 1]);
+      }
+      if (iidx * 2 + 1 == inner_dense_size) {
+        output[oidx][jidx][2 * iidx] =
+            f(padding_value, y[oidx][jidx][2 * iidx]);
+      }
+    } else {
+      int iidx;
+      for (iidx = item.get_local_id(0); iidx * 2 + 1 < inner_dense_size;
+           iidx += item.get_local_range(0)) {
+        output[oidx][jidx][2 * iidx] =
+            f(x_values[offset][2 * iidx], y[oidx][jidx][2 * iidx]);
+        output[oidx][jidx][2 * iidx + 1] =
+            f(x_values[offset][2 * iidx + 1], y[oidx][jidx][2 * iidx + 1]);
+      }
+      if (iidx * 2 + 1 == inner_dense_size) {
+        output[oidx][jidx][2 * iidx] =
+            f(x_values[offset][2 * iidx], y[oidx][jidx][2 * iidx]);
       }
     }
   }
-  JaggedDenseElementwiseDenseFunctor(
-      const at::PackedTensorAccessor32<scalar_t, 2, RestrictPtrTraits> x_values,
-      StackArray<index_t*> x_offsets,
-      const at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> y,
-      at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> output,
-      StackArray<int64_t> jagged_dims,
-      F f,
-      const scalar_t padding_value)
-      : x_values_(x_values),
-        x_offsets_(x_offsets),
-        y_(y),
-        output_(output),
-        jagged_dims_(jagged_dims),
-        f_(f),
-        padding_value_(padding_value) {}
-
- private:
-  const at::PackedTensorAccessor32<scalar_t, 2, RestrictPtrTraits> x_values_;
-  StackArray<index_t*> x_offsets_;
-  const at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> y_;
-  at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> output_;
-  StackArray<int64_t> jagged_dims_;
-  F f_;
-  const scalar_t padding_value_;
-};
+}
 
 template <typename scalar_t, typename F>
 void jagged_dense_elementwise_dense_template(
@@ -899,30 +788,34 @@ void jagged_dense_elementwise_dense_template(
   const Tensor y_reshaped = y.view({y.size(0), -1, y.size(-1)});
   Tensor output_reshaped = output.view(y_reshaped.sizes());
 
-#define INVOKE_KERNEL_WITH_DIM(NUM_JAGGED_DIM)                                 \
-  {                                                                            \
-    std::vector<Tensor> x_offsets_contig;                                      \
-    x_offsets_contig.resize(num_jagged_dim);                                   \
-    StackArray<index_t*> x_offset_ptrs;                                        \
-    x_offset_ptrs.ndim = num_jagged_dim;                                       \
-    for (int d = 0; d < num_jagged_dim; ++d) {                                 \
-      x_offsets_contig[d] = x_offsets[d].contiguous();                         \
-      x_offset_ptrs.vals[d] =                                                  \
-          x_offsets_contig[d].template data_ptr<index_t>();                    \
-    }                                                                          \
-    auto kfn = JaggedDenseElementwiseDenseFunctor<                             \
-        NUM_JAGGED_DIM,                                                        \
-        index_t,                                                               \
-        scalar_t,                                                              \
-        F>(                                                                    \
-        x_values.packed_accessor32<scalar_t, 2, RestrictPtrTraits>(),          \
-        x_offset_ptrs,                                                         \
-        y_reshaped.packed_accessor32<scalar_t, 3, RestrictPtrTraits>(),        \
-        output_reshaped.packed_accessor32<scalar_t, 3, RestrictPtrTraits>(),   \
-        jagged_dims_tensor,                                                    \
-        f,                                                                     \
-        padding_value);                                                        \
-    sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn); \
+#define INVOKE_KERNEL_WITH_DIM(NUM_JAGGED_DIM)                               \
+  {                                                                          \
+    std::vector<Tensor> x_offsets_contig;                                    \
+    x_offsets_contig.resize(num_jagged_dim);                                 \
+    StackArray<index_t*> x_offset_ptrs;                                      \
+    x_offset_ptrs.ndim = num_jagged_dim;                                     \
+    for (int d = 0; d < num_jagged_dim; ++d) {                               \
+      x_offsets_contig[d] = x_offsets[d].contiguous();                       \
+      x_offset_ptrs.vals[d] =                                                \
+          x_offsets_contig[d].template data_ptr<index_t>();                  \
+    }                                                                        \
+    constexpr auto kptr = jagged_dense_elementwise_dense_fn<                 \
+        NUM_JAGGED_DIM,                                                      \
+        index_t,                                                             \
+        scalar_t,                                                            \
+        F>;                                                                  \
+    sycl_kernel_submit<kptr>(                                                \
+        global_range,                                                        \
+        local_range,                                                         \
+        getCurrentSYCLQueue(),                                               \
+        0,                                                                   \
+        x_values.packed_accessor32<scalar_t, 2, RestrictPtrTraits>(),        \
+        x_offset_ptrs,                                                       \
+        y_reshaped.packed_accessor32<scalar_t, 3, RestrictPtrTraits>(),      \
+        output_reshaped.packed_accessor32<scalar_t, 3, RestrictPtrTraits>(), \
+        jagged_dims_tensor,                                                  \
+        f,                                                                   \
+        padding_value);                                                      \
   }
 
   JAGGED_TENSOR_DISPATCH_DIMS();
