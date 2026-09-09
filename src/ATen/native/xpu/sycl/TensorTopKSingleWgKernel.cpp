@@ -44,7 +44,6 @@
 
 namespace at::native::xpu {
 
-namespace syclex = sycl::ext::oneapi::experimental;
 namespace intelex = sycl::ext::intel::experimental;
 
 // Uses RADIX_BITS=4 (16 digits per pass), halving radix passes for fp32.
@@ -67,513 +66,491 @@ constexpr int SMEM_FOUND_FLAG = 64;
 constexpr int SMEM_FOUND_IDX = 65;
 constexpr int SMEM_ELEMS = 68;
 
-template <
-    typename scalar_t,
-    int VEC_SIZE = 4,
-    int ELEMS_PER_THREAD = 32,
-    int SIMD = 32,
-    typename IndexT = int>
-struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+// ================================================================
+// countRadixUsingMask — per-thread counting + sub-group/work-group reduce
+//
+// Replaces ballot-based counting. Each thread:
+//   1. Loads VEC_SIZE elements per iteration (vectorized)
+//   2. Locally increments counts[digit] (pure ALU, no cross-lane)
+//   3. After loop: sub-group reduce + lane0 atomicAdd to smem + broadcast
+//
+// Eliminates all group_ballot calls in counting.
+// Result: all threads have identical counts[0..RADIX_SIZE-1].
+// ================================================================
+template <typename scalar_t, int VEC_SIZE, typename IndexT>
+C10_NOINLINE void count_radix_using_mask(
+    sycl::nd_item<1> item,
+    sycl::sub_group sg,
+    IndexT* smem,
+    IndexT counts[SBTOPK_RADIX_SIZE],
+    typename TopKTypeConfig<scalar_t>::RadixType desired,
+    typename TopKTypeConfig<scalar_t>::RadixType desiredMask,
+    int digitPos,
+    const scalar_t* data,
+    IndexT sliceSize) {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
-  // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
-  // For fp16: sizeof(Half)=2 -> 16 bits, but sizeof(uint32_t)=4 -> 32 bits.
-  // Using RadixT would scan garbage upper bits and break Half/BFloat16.
-  static constexpr int NUM_BITS = sizeof(scalar_t) * 8;
-
-  // ================================================================
-  // countRadixUsingMask — per-thread counting + sub-group/work-group reduce
-  //
-  // Replaces ballot-based counting. Each thread:
-  //   1. Loads VEC_SIZE elements per iteration (vectorized)
-  //   2. Locally increments counts[digit] (pure ALU, no cross-lane)
-  //   3. After loop: sub-group reduce + lane0 atomicAdd to smem + broadcast
-  //
-  // Eliminates all group_ballot calls in counting.
-  // Result: all threads have identical counts[0..RADIX_SIZE-1].
-  // ================================================================
-  C10_NOINLINE void countRadixUsingMask(
-      sycl::nd_item<1> item,
-      sycl::sub_group sg,
-      IndexT* smem,
-      IndexT counts[SBTOPK_RADIX_SIZE],
-      RadixT desired,
-      RadixT desiredMask,
-      int digitPos,
-      const scalar_t* data,
-      IndexT sliceSize) const {
-    int lid = item.get_local_id(0);
-    int block_size = item.get_local_range(0);
-    int sg_lid = sg.get_local_linear_id();
+  int lid = item.get_local_id(0);
+  int block_size = item.get_local_range(0);
+  int sg_lid = sg.get_local_linear_id();
 
 #pragma unroll
-    for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
-      counts[i] = 0;
-    }
-    if (lid < SBTOPK_RADIX_SIZE) {
-      smem[lid] = 0;
-    }
-    sycl::group_barrier(item.get_group());
+  for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
+    counts[i] = 0;
+  }
+  if (lid < SBTOPK_RADIX_SIZE) {
+    smem[lid] = 0;
+  }
+  sycl::group_barrier(item.get_group());
 
-    // Each thread processes VEC_SIZE consecutive elements per iteration.
-    // Stride = block_size * VEC_SIZE for coalesced access across threads.
-    using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
-    IndexT stride = static_cast<IndexT>(block_size) * VEC_SIZE;
+  // Each thread processes VEC_SIZE consecutive elements per iteration.
+  // Stride = block_size * VEC_SIZE for coalesced access across threads.
+  using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
+  IndexT stride = static_cast<IndexT>(block_size) * VEC_SIZE;
 
-    // Vectorized main loop — full VEC_SIZE loads
-    IndexT base = static_cast<IndexT>(lid) * VEC_SIZE;
-    for (; base + VEC_SIZE <= sliceSize; base += stride) {
-      alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
-      *reinterpret_cast<LoadT*>(&src) =
-          *reinterpret_cast<const LoadT*>(&data[base]);
+  // Vectorized main loop — full VEC_SIZE loads
+  IndexT base = static_cast<IndexT>(lid) * VEC_SIZE;
+  for (; base + VEC_SIZE <= sliceSize; base += stride) {
+    alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
+    *reinterpret_cast<LoadT*>(&src) =
+        *reinterpret_cast<const LoadT*>(&data[base]);
 #pragma unroll
-      for (int v = 0; v < VEC_SIZE; ++v) {
-        RadixT val = TopKTypeConfig<scalar_t>::convert(src[v]);
-        if ((val & desiredMask) == desired) {
-          RadixT digit =
-              Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
-          counts[digit]++;
-        }
-      }
-    }
-    // Scalar tail — remaining elements
-    for (IndexT idx = base; idx < sliceSize && idx < base + VEC_SIZE; ++idx) {
-      RadixT val = TopKTypeConfig<scalar_t>::convert(data[idx]);
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      RadixT val = TopKTypeConfig<scalar_t>::convert(src[v]);
       if ((val & desiredMask) == desired) {
         RadixT digit =
             Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
         counts[digit]++;
       }
     }
+  }
+  // Scalar tail — remaining elements
+  for (IndexT idx = base; idx < sliceSize && idx < base + VEC_SIZE; ++idx) {
+    RadixT val = TopKTypeConfig<scalar_t>::convert(data[idx]);
+    if ((val & desiredMask) == desired) {
+      RadixT digit =
+          Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
+      counts[digit]++;
+    }
+  }
 
-    // Sub-group reduce + lane0 atomicAdd to smem.
+  // Sub-group reduce + lane0 atomicAdd to smem.
 #pragma unroll
-    for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
-      IndexT total =
-          sycl::reduce_over_group(sg, counts[j], sycl::plus<IndexT>());
-      if (sg_lid == 0) {
-        sycl::atomic_ref<
-            IndexT,
-            sycl::memory_order::relaxed,
-            sycl::memory_scope::work_group,
-            sycl::access::address_space::local_space>
-            ref(smem[j]);
-        ref.fetch_add(total);
-      }
+  for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
+    IndexT total = sycl::reduce_over_group(sg, counts[j], sycl::plus<IndexT>());
+    if (sg_lid == 0) {
+      sycl::atomic_ref<
+          IndexT,
+          sycl::memory_order::relaxed,
+          sycl::memory_scope::work_group,
+          sycl::access::address_space::local_space>
+          ref(smem[j]);
+      ref.fetch_add(total);
     }
-    sycl::group_barrier(item.get_group());
+  }
+  sycl::group_barrier(item.get_group());
 
-    // All threads read workgroup-level totals
+  // All threads read workgroup-level totals
 #pragma unroll
-    for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
-      counts[j] = smem[j];
+  for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
+    counts[j] = smem[j];
+  }
+  // WAR barrier: next radix pass re-zeros smem.
+  sycl::group_barrier(item.get_group());
+}
+
+// ================================================================
+// findPattern (SortingRadixSelect.cuh:239)
+//
+// Finds the unique value whose convert() matches desired.
+// Returns RadixT (converted form) directly — no deconvert needed.
+// SYCL uses smem[SMEM_FOUND_FLAG]=flag, smem[SMEM_FOUND_IDX]=index,
+// then convert(data[index]).
+// ================================================================
+template <typename scalar_t, typename IndexT>
+C10_NOINLINE typename TopKTypeConfig<scalar_t>::RadixType find_pattern(
+    sycl::nd_item<1> item,
+    IndexT* smem,
+    const scalar_t* data,
+    IndexT sliceSize,
+    typename TopKTypeConfig<scalar_t>::RadixType desired,
+    typename TopKTypeConfig<scalar_t>::RadixType desiredMask) {
+  int lid = item.get_local_id(0);
+  int block_size = item.get_local_range(0);
+
+  if (lid == 0) {
+    smem[SMEM_FOUND_FLAG] = 0;
+    smem[SMEM_FOUND_IDX] = static_cast<IndexT>(-1);
+  }
+  // Barrier required: init must be visible before any thread enters the loop
+  sycl::group_barrier(item.get_group());
+
+  IndexT numIterations =
+      at::ceil_div(sliceSize, static_cast<IndexT>(block_size)) * block_size;
+
+  for (IndexT i = lid; i < numIterations; i += block_size) {
+    bool inRange = (i < sliceSize);
+    scalar_t v = inRange ? data[i] : static_cast<scalar_t>(0);
+
+    if (inRange &&
+        ((TopKTypeConfig<scalar_t>::convert(v) & desiredMask) == desired)) {
+      smem[SMEM_FOUND_FLAG] = 1;
+      smem[SMEM_FOUND_IDX] = i;
     }
-    // WAR barrier: next radix pass re-zeros smem.
+    sycl::group_barrier(item.get_group());
+
+    IndexT found = smem[SMEM_FOUND_FLAG];
+    IndexT foundIdx = smem[SMEM_FOUND_IDX];
+
+    if (found != 0) {
+      return TopKTypeConfig<scalar_t>::convert(data[foundIdx]);
+    }
+
+    // WAR barrier: protect smem writes in next iteration from current reads
     sycl::group_barrier(item.get_group());
   }
+  return static_cast<typename TopKTypeConfig<scalar_t>::RadixType>(0);
+}
 
-  // ================================================================
-  // findPattern (SortingRadixSelect.cuh:239)
-  //
-  // Finds the unique value whose convert() matches desired.
-  // Returns RadixT (converted form) directly — no deconvert needed.
-  // SYCL uses smem[SMEM_FOUND_FLAG]=flag, smem[SMEM_FOUND_IDX]=index,
-  // then convert(data[index]).
-  // ================================================================
-  C10_NOINLINE RadixT findPattern(
-      sycl::nd_item<1> item,
-      IndexT* smem,
-      const scalar_t* data,
-      IndexT sliceSize,
-      RadixT desired,
-      RadixT desiredMask) const {
-    int lid = item.get_local_id(0);
-    int block_size = item.get_local_range(0);
+// ================================================================
+// exclusiveIntPrefixScan — integer exclusive prefix scan
+//
+// Each thread provides an integer count (0..ELEMS_PER_THREAD). Returns:
+//   out: exclusive prefix sum (write offset for this thread)
+//   carry: total sum across all threads in the work-group
+//
+// Values are bounded by SBTOPK_BLOCK * ELEMS_PER_THREAD (always fits int),
+// but smem is IndexT* so we cast at the interface.
+//
+// Sub-group level: inclusive_scan_over_group + group_broadcast
+// Cross sub-group: smem serial scan (same pattern as binary version)
+// ================================================================
+template <int SIMD, typename IndexT>
+C10_NOINLINE void exclusive_int_prefix_scan(
+    sycl::nd_item<1> item,
+    sycl::sub_group sg,
+    IndexT* smem,
+    int local_count,
+    int& out,
+    int& carry) {
+  int sg_lid = sg.get_local_linear_id();
+  int sg_id = sg.get_group_linear_id();
+  constexpr int num_sgs = SBTOPK_BLOCK / SIMD;
+  static_assert(
+      num_sgs <= SMEM_FOUND_FLAG,
+      "num_sgs exceeds SMEM_FOUND_FLAG; SLM layout collision");
 
-    if (lid == 0) {
-      smem[SMEM_FOUND_FLAG] = 0;
-      smem[SMEM_FOUND_IDX] = static_cast<IndexT>(-1);
-    }
-    // Barrier required: init must be visible before any thread enters the loop
-    sycl::group_barrier(item.get_group());
+  int sg_inclusive =
+      sycl::inclusive_scan_over_group(sg, local_count, sycl::plus<int>());
+  int sg_exclusive = sg_inclusive - local_count;
 
-    IndexT numIterations =
-        at::ceil_div(sliceSize, static_cast<IndexT>(block_size)) * block_size;
-
-    for (IndexT i = lid; i < numIterations; i += block_size) {
-      bool inRange = (i < sliceSize);
-      scalar_t v = inRange ? data[i] : static_cast<scalar_t>(0);
-
-      if (inRange &&
-          ((TopKTypeConfig<scalar_t>::convert(v) & desiredMask) == desired)) {
-        smem[SMEM_FOUND_FLAG] = 1;
-        smem[SMEM_FOUND_IDX] = i;
-      }
-      sycl::group_barrier(item.get_group());
-
-      IndexT found = smem[SMEM_FOUND_FLAG];
-      IndexT foundIdx = smem[SMEM_FOUND_IDX];
-
-      if (found != 0) {
-        return TopKTypeConfig<scalar_t>::convert(data[foundIdx]);
-      }
-
-      // WAR barrier: protect smem writes in next iteration from current reads
-      sycl::group_barrier(item.get_group());
-    }
-    return static_cast<RadixT>(0);
+  // group_broadcast to get sub-group total (last lane's inclusive value)
+  int sg_total = sycl::group_broadcast(sg, sg_inclusive, SIMD - 1);
+  if (sg_lid == SIMD - 1) {
+    smem[sg_id] = static_cast<IndexT>(sg_total);
   }
+  sycl::group_barrier(item.get_group());
 
-  // ================================================================
-  // exclusiveIntPrefixScan — integer exclusive prefix scan
-  //
-  // Each thread provides an integer count (0..ELEMS_PER_THREAD). Returns:
-  //   out: exclusive prefix sum (write offset for this thread)
-  //   carry: total sum across all threads in the work-group
-  //
-  // Values are bounded by SBTOPK_BLOCK * ELEMS_PER_THREAD (always fits int),
-  // but smem is IndexT* so we cast at the interface.
-  //
-  // Sub-group level: inclusive_scan_over_group + group_broadcast
-  // Cross sub-group: smem serial scan (same pattern as binary version)
-  // ================================================================
-  C10_NOINLINE void exclusiveIntPrefixScan(
-      sycl::nd_item<1> item,
-      sycl::sub_group sg,
-      IndexT* smem,
-      int local_count,
-      int& out,
-      int& carry) const {
-    int sg_lid = sg.get_local_linear_id();
-    int sg_id = sg.get_group_linear_id();
-    constexpr int num_sgs = SBTOPK_BLOCK / SIMD;
-    static_assert(
-        num_sgs <= SMEM_FOUND_FLAG,
-        "num_sgs exceeds SMEM_FOUND_FLAG; SLM layout collision");
-
-    int sg_inclusive =
-        sycl::inclusive_scan_over_group(sg, local_count, sycl::plus<int>());
-    int sg_exclusive = sg_inclusive - local_count;
-
-    // group_broadcast to get sub-group total (last lane's inclusive value)
-    int sg_total = sycl::group_broadcast(sg, sg_inclusive, SIMD - 1);
-    if (sg_lid == SIMD - 1) {
-      smem[sg_id] = static_cast<IndexT>(sg_total);
+  // Thread 0: serial inclusive prefix sum over sub-group totals
+  if (item.get_local_id(0) == 0) {
+    IndexT current = 0;
+    for (int i = 0; i < num_sgs; ++i) {
+      IndexT v = smem[i];
+      smem[i] = v + current;
+      current += v;
     }
-    sycl::group_barrier(item.get_group());
-
-    // Thread 0: serial inclusive prefix sum over sub-group totals
-    if (item.get_local_id(0) == 0) {
-      IndexT current = 0;
-      for (int i = 0; i < num_sgs; ++i) {
-        IndexT v = smem[i];
-        smem[i] = v + current;
-        current += v;
-      }
-    }
-    sycl::group_barrier(item.get_group());
-
-    int cross_sg_prefix = (sg_id >= 1) ? static_cast<int>(smem[sg_id - 1]) : 0;
-    out = sg_exclusive + cross_sg_prefix;
-    carry = static_cast<int>(smem[num_sgs - 1]);
-    // WAR barrier: caller reuses smem next iteration.
-    sycl::group_barrier(item.get_group());
   }
+  sycl::group_barrier(item.get_group());
 
-  // ================================================================
-  // radixSelect (SortingRadixSelect.cuh:860, non-ROCm path)
-  //
-  // Iterates MSB to LSB in RADIX_BITS steps.
-  // At each step: count digits, scan to find which digit contains k-th.
-  // found_unique (count==1, kToFind==1): findPattern + return RadixT
-  // found_non_unique (count>=kToFind): narrow desired/desiredMask, continue
-  // End: return desired (RadixT, fully determined)
-  // ================================================================
-  C10_NOINLINE RadixT radixSelect(
-      sycl::nd_item<1> item,
-      sycl::sub_group sg,
-      IndexT* smem,
-      const scalar_t* data,
-      int k,
-      bool largest,
-      IndexT sliceSize) const {
-    IndexT counts[SBTOPK_RADIX_SIZE];
-    RadixT desired = 0;
-    RadixT desiredMask = 0;
-    int kToFind = k;
+  int cross_sg_prefix = (sg_id >= 1) ? static_cast<int>(smem[sg_id - 1]) : 0;
+  out = sg_exclusive + cross_sg_prefix;
+  carry = static_cast<int>(smem[num_sgs - 1]);
+  // WAR barrier: caller reuses smem next iteration.
+  sycl::group_barrier(item.get_group());
+}
 
-    for (int digitPos = NUM_BITS - SBTOPK_RADIX_BITS; digitPos >= 0;
-         digitPos -= SBTOPK_RADIX_BITS) {
-      countRadixUsingMask(
-          item,
-          sg,
-          smem,
-          counts,
-          desired,
-          desiredMask,
-          digitPos,
-          data,
-          sliceSize);
+// ================================================================
+// radixSelect (SortingRadixSelect.cuh:860, non-ROCm path)
+//
+// Iterates MSB to LSB in RADIX_BITS steps.
+// At each step: count digits, scan to find which digit contains k-th.
+// found_unique (count==1, kToFind==1): findPattern + return RadixT
+// found_non_unique (count>=kToFind): narrow desired/desiredMask, continue
+// End: return desired (RadixT, fully determined)
+// ================================================================
+template <typename scalar_t, int VEC_SIZE, typename IndexT>
+C10_NOINLINE typename TopKTypeConfig<scalar_t>::RadixType radix_select(
+    sycl::nd_item<1> item,
+    sycl::sub_group sg,
+    IndexT* smem,
+    const scalar_t* data,
+    int k,
+    bool largest,
+    IndexT sliceSize) {
+  using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
+  // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
+  // For fp16: sizeof(Half)=2 -> 16 bits, but sizeof(uint32_t)=4 -> 32 bits.
+  // Using RadixT would scan garbage upper bits and break Half/BFloat16.
+  constexpr int NUM_BITS = sizeof(scalar_t) * 8;
 
-      // All threads execute the same scan logic (counts are identical).
-      // Replicates CUDA found_unique / found_non_unique lambdas exactly.
-      if (largest) {
-        for (int i = SBTOPK_RADIX_SIZE - 1; i >= 0; --i) {
-          IndexT count = counts[i];
+  IndexT counts[SBTOPK_RADIX_SIZE];
+  RadixT desired = 0;
+  RadixT desiredMask = 0;
+  int kToFind = k;
 
-          // found_unique: return from radixSelect
-          if (count == 1 && kToFind == 1) {
-            desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, SBTOPK_RADIX_BITS);
-            desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
-            return findPattern(
-                item, smem, data, sliceSize, desired, desiredMask);
-          }
+  for (int digitPos = NUM_BITS - SBTOPK_RADIX_BITS; digitPos >= 0;
+       digitPos -= SBTOPK_RADIX_BITS) {
+    count_radix_using_mask<scalar_t, VEC_SIZE>(
+        item,
+        sg,
+        smem,
+        counts,
+        desired,
+        desiredMask,
+        digitPos,
+        data,
+        sliceSize);
 
-          // found_non_unique: break inner loop, continue outer
-          if (count >= kToFind) {
-            desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, SBTOPK_RADIX_BITS);
-            desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
-            break;
-          }
+    // All threads execute the same scan logic (counts are identical).
+    // Replicates CUDA found_unique / found_non_unique lambdas exactly.
+    if (largest) {
+      for (int i = SBTOPK_RADIX_SIZE - 1; i >= 0; --i) {
+        IndexT count = counts[i];
 
-          // count < kToFind here, so count fits in int
-          kToFind -= static_cast<int>(count);
+        // found_unique: return from radixSelect
+        if (count == 1 && kToFind == 1) {
+          desired = Bitfield<RadixT>::setBitfield(
+              desired, i, digitPos, SBTOPK_RADIX_BITS);
+          desiredMask = Bitfield<RadixT>::setBitfield(
+              desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+          return find_pattern(
+              item, smem, data, sliceSize, desired, desiredMask);
         }
-      } else {
-        for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
-          IndexT count = counts[i];
 
-          if (count == 1 && kToFind == 1) {
-            desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, SBTOPK_RADIX_BITS);
-            desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
-            return findPattern(
-                item, smem, data, sliceSize, desired, desiredMask);
+        // found_non_unique: break inner loop, continue outer
+        if (count >= kToFind) {
+          desired = Bitfield<RadixT>::setBitfield(
+              desired, i, digitPos, SBTOPK_RADIX_BITS);
+          desiredMask = Bitfield<RadixT>::setBitfield(
+              desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+          break;
+        }
+
+        // count < kToFind here, so count fits in int
+        kToFind -= static_cast<int>(count);
+      }
+    } else {
+      for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
+        IndexT count = counts[i];
+
+        if (count == 1 && kToFind == 1) {
+          desired = Bitfield<RadixT>::setBitfield(
+              desired, i, digitPos, SBTOPK_RADIX_BITS);
+          desiredMask = Bitfield<RadixT>::setBitfield(
+              desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+          return find_pattern(
+              item, smem, data, sliceSize, desired, desiredMask);
+        }
+
+        if (count >= kToFind) {
+          desired = Bitfield<RadixT>::setBitfield(
+              desired, i, digitPos, SBTOPK_RADIX_BITS);
+          desiredMask = Bitfield<RadixT>::setBitfield(
+              desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+          break;
+        }
+
+        kToFind -= static_cast<int>(count);
+      }
+    }
+  }
+
+  // No unique result; desired fully determined
+  return desired;
+}
+
+// ================================================================
+// gatherTopK (TensorTopK.cu:40-182)
+//
+// 1. radixSelect to find k-th value
+// 2. Gather values strictly > topK (largest) or < topK (!largest)
+// 3. Fill remaining with values == topK
+//
+// Each thread processes ELEMS_PER_THREAD elements per iteration
+// (LOADS_PER_ITER × vec loads), then ONE prefix scan per iteration.
+// With ELEMS_PER_THREAD=32 and 1024 threads, each iteration covers
+// 32K elements, so dim=131072 needs only 4 iterations.
+// ================================================================
+template <
+    typename scalar_t,
+    int VEC_SIZE,
+    int ELEMS_PER_THREAD,
+    int SIMD,
+    typename IndexT>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((intelex::grf_size<128>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void sbtopk_gather_kernel(
+    const scalar_t* inputData,
+    scalar_t* topKData,
+    int64_t* indicesData,
+    IndexT numSlices,
+    IndexT sliceSize,
+    int k,
+    bool largest) {
+  using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
+
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  IndexT* smem = static_cast<IndexT*>(syclexp::get_work_group_scratch_memory());
+
+  IndexT slice = static_cast<IndexT>(item.get_group_linear_id());
+  if (slice >= numSlices)
+    return;
+
+  sycl::sub_group sg = item.get_sub_group();
+
+  const scalar_t* inputSlice =
+      inputData + static_cast<int64_t>(slice) * sliceSize;
+  scalar_t* topKSlice = topKData + static_cast<int64_t>(slice) * k;
+  int64_t* indicesSlice = indicesData + static_cast<int64_t>(slice) * k;
+
+  // Step 1: radixSelect — returns RadixT directly (no deconvert/convert
+  // round-trip)
+  RadixT topKConverted = radix_select<scalar_t, VEC_SIZE>(
+      item, sg, smem, inputSlice, k, largest, sliceSize);
+
+  // Vectorized gather setup
+  // ELEMS_PER_THREAD: each thread processes this many elements per iteration.
+  // Multiple vec loads per iteration, then ONE prefix scan.
+  // With ELEMS_PER_THREAD=32: 4 iterations for dim=131072.
+  constexpr int LOADS_PER_ITER = ELEMS_PER_THREAD / VEC_SIZE;
+  using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
+  int lid = item.get_local_id(0);
+
+  // Each iteration covers SBTOPK_BLOCK * ELEMS_PER_THREAD elements.
+  IndexT iter_stride = static_cast<IndexT>(SBTOPK_BLOCK) * ELEMS_PER_THREAD;
+  int numIters = static_cast<int>((sliceSize + iter_stride - 1) / iter_stride);
+
+  // Step 2: Gather values strictly greater/less than topKValue
+  int writeIndexStart = 0;
+
+  for (int iter = 0; iter < numIters; ++iter) {
+    // Each thread loads ELEMS_PER_THREAD elements from LOADS_PER_ITER vec4
+    // chunks. Thread layout: consecutive threads handle consecutive VEC_SIZE
+    // chunks. Thread t handles chunks at offsets: t*VEC_SIZE,
+    // (t+SBTOPK_BLOCK)*VEC_SIZE, ...
+    scalar_t vals[ELEMS_PER_THREAD];
+    IndexT match_indices[ELEMS_PER_THREAD];
+    int local_count = 0;
+
+    IndexT iter_base = static_cast<IndexT>(iter) * iter_stride;
+
+#pragma unroll
+    for (int L = 0; L < LOADS_PER_ITER; ++L) {
+      IndexT base = iter_base +
+          static_cast<IndexT>(L) * SBTOPK_BLOCK * VEC_SIZE +
+          static_cast<IndexT>(lid) * VEC_SIZE;
+
+      if (base + VEC_SIZE <= sliceSize) {
+        alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
+        *reinterpret_cast<LoadT*>(&src) =
+            *reinterpret_cast<const LoadT*>(&inputSlice[base]);
+#pragma unroll
+        for (int v = 0; v < VEC_SIZE; ++v) {
+          RadixT cv = TopKTypeConfig<scalar_t>::convert(src[v]);
+          bool match = largest ? (cv > topKConverted) : (cv < topKConverted);
+          if (match) {
+            vals[local_count] = src[v];
+            match_indices[local_count] = base + v;
+            local_count++;
           }
-
-          if (count >= kToFind) {
-            desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, SBTOPK_RADIX_BITS);
-            desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
-            break;
+        }
+      } else if (base < sliceSize) {
+        for (int v = 0; v < VEC_SIZE && base + v < sliceSize; ++v) {
+          scalar_t sv = inputSlice[base + v];
+          RadixT cv = TopKTypeConfig<scalar_t>::convert(sv);
+          bool match = largest ? (cv > topKConverted) : (cv < topKConverted);
+          if (match) {
+            vals[local_count] = sv;
+            match_indices[local_count] = base + v;
+            local_count++;
           }
-
-          kToFind -= static_cast<int>(count);
         }
       }
     }
 
-    // No unique result; desired fully determined
-    return desired;
+    int offset, carry;
+    exclusive_int_prefix_scan<SIMD>(item, sg, smem, local_count, offset, carry);
+
+    for (int j = 0; j < local_count; ++j) {
+      int writeIndex = writeIndexStart + offset + j;
+      if (writeIndex < k) {
+        topKSlice[writeIndex] = vals[j];
+        indicesSlice[writeIndex] = match_indices[j];
+      }
+    }
+    writeIndexStart += carry;
   }
 
-  // ================================================================
-  // operator() — gatherTopK (TensorTopK.cu:40-182)
-  //
-  // 1. radixSelect to find k-th value
-  // 2. Gather values strictly > topK (largest) or < topK (!largest)
-  // 3. Fill remaining with values == topK
-  //
-  // Each thread processes ELEMS_PER_THREAD elements per iteration
-  // (LOADS_PER_ITER × vec loads), then ONE prefix scan per iteration.
-  // With ELEMS_PER_THREAD=32 and 1024 threads, each iteration covers
-  // 32K elements, so dim=131072 needs only 4 iterations.
-  // ================================================================
-  void operator()(sycl::nd_item<1> item) const {
-    IndexT slice = static_cast<IndexT>(item.get_group_linear_id());
-    if (slice >= numSlices_)
-      return;
+  // Step 3: Fill remaining with values == topKValue
+  int topKRemaining = k - writeIndexStart;
 
-    sycl::sub_group sg = item.get_sub_group();
+  for (int iter = 0; iter < numIters; ++iter) {
+    scalar_t vals[ELEMS_PER_THREAD];
+    IndexT match_indices[ELEMS_PER_THREAD];
+    int local_count = 0;
 
-    // Get raw IndexT* pointer from local accessor
-    IndexT* smem =
-        local_mem_.template get_multi_ptr<sycl::access::decorated::no>().get();
-
-    const scalar_t* inputSlice =
-        inputData_ + static_cast<int64_t>(slice) * sliceSize_;
-    scalar_t* topKSlice = topKData_ + static_cast<int64_t>(slice) * k_;
-    int64_t* indicesSlice = indicesData_ + static_cast<int64_t>(slice) * k_;
-
-    // Step 1: radixSelect — returns RadixT directly (no deconvert/convert
-    // round-trip)
-    RadixT topKConverted =
-        radixSelect(item, sg, smem, inputSlice, k_, largest_, sliceSize_);
-
-    // Vectorized gather setup
-    // ELEMS_PER_THREAD: each thread processes this many elements per iteration.
-    // Multiple vec loads per iteration, then ONE prefix scan.
-    // With ELEMS_PER_THREAD=32: 4 iterations for dim=131072.
-    static constexpr int LOADS_PER_ITER = ELEMS_PER_THREAD / VEC_SIZE;
-    using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
-    int lid = item.get_local_id(0);
-
-    // Each iteration covers SBTOPK_BLOCK * ELEMS_PER_THREAD elements.
-    IndexT iter_stride = static_cast<IndexT>(SBTOPK_BLOCK) * ELEMS_PER_THREAD;
-    int numIters =
-        static_cast<int>((sliceSize_ + iter_stride - 1) / iter_stride);
-
-    // Step 2: Gather values strictly greater/less than topKValue
-    int writeIndexStart = 0;
-
-    for (int iter = 0; iter < numIters; ++iter) {
-      // Each thread loads ELEMS_PER_THREAD elements from LOADS_PER_ITER vec4
-      // chunks. Thread layout: consecutive threads handle consecutive VEC_SIZE
-      // chunks. Thread t handles chunks at offsets: t*VEC_SIZE,
-      // (t+SBTOPK_BLOCK)*VEC_SIZE, ...
-      scalar_t vals[ELEMS_PER_THREAD];
-      IndexT match_indices[ELEMS_PER_THREAD];
-      int local_count = 0;
-
-      IndexT iter_base = static_cast<IndexT>(iter) * iter_stride;
+    IndexT iter_base = static_cast<IndexT>(iter) * iter_stride;
 
 #pragma unroll
-      for (int L = 0; L < LOADS_PER_ITER; ++L) {
-        IndexT base = iter_base +
-            static_cast<IndexT>(L) * SBTOPK_BLOCK * VEC_SIZE +
-            static_cast<IndexT>(lid) * VEC_SIZE;
+    for (int L = 0; L < LOADS_PER_ITER; ++L) {
+      IndexT base = iter_base +
+          static_cast<IndexT>(L) * SBTOPK_BLOCK * VEC_SIZE +
+          static_cast<IndexT>(lid) * VEC_SIZE;
 
-        if (base + VEC_SIZE <= sliceSize_) {
-          alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
-          *reinterpret_cast<LoadT*>(&src) =
-              *reinterpret_cast<const LoadT*>(&inputSlice[base]);
+      if (base + VEC_SIZE <= sliceSize) {
+        alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
+        *reinterpret_cast<LoadT*>(&src) =
+            *reinterpret_cast<const LoadT*>(&inputSlice[base]);
 #pragma unroll
-          for (int v = 0; v < VEC_SIZE; ++v) {
-            RadixT cv = TopKTypeConfig<scalar_t>::convert(src[v]);
-            bool match = largest_ ? (cv > topKConverted) : (cv < topKConverted);
-            if (match) {
-              vals[local_count] = src[v];
-              match_indices[local_count] = base + v;
-              local_count++;
-            }
+        for (int v = 0; v < VEC_SIZE; ++v) {
+          RadixT cv = TopKTypeConfig<scalar_t>::convert(src[v]);
+          if (cv == topKConverted) {
+            vals[local_count] = src[v];
+            match_indices[local_count] = base + v;
+            local_count++;
           }
-        } else if (base < sliceSize_) {
-          for (int v = 0; v < VEC_SIZE && base + v < sliceSize_; ++v) {
-            scalar_t sv = inputSlice[base + v];
-            RadixT cv = TopKTypeConfig<scalar_t>::convert(sv);
-            bool match = largest_ ? (cv > topKConverted) : (cv < topKConverted);
-            if (match) {
-              vals[local_count] = sv;
-              match_indices[local_count] = base + v;
-              local_count++;
-            }
+        }
+      } else if (base < sliceSize) {
+        for (int v = 0; v < VEC_SIZE && base + v < sliceSize; ++v) {
+          scalar_t sv = inputSlice[base + v];
+          RadixT cv = TopKTypeConfig<scalar_t>::convert(sv);
+          if (cv == topKConverted) {
+            vals[local_count] = sv;
+            match_indices[local_count] = base + v;
+            local_count++;
           }
         }
       }
+    }
 
-      int offset, carry;
-      exclusiveIntPrefixScan(item, sg, smem, local_count, offset, carry);
+    int offset, carry;
+    exclusive_int_prefix_scan<SIMD>(item, sg, smem, local_count, offset, carry);
 
-      for (int j = 0; j < local_count; ++j) {
+    for (int j = 0; j < local_count; ++j) {
+      if (offset + j < topKRemaining) {
         int writeIndex = writeIndexStart + offset + j;
-        if (writeIndex < k_) {
-          topKSlice[writeIndex] = vals[j];
-          indicesSlice[writeIndex] = match_indices[j];
-        }
+        topKSlice[writeIndex] = vals[j];
+        indicesSlice[writeIndex] = match_indices[j];
       }
-      writeIndexStart += carry;
     }
 
-    // Step 3: Fill remaining with values == topKValue
-    int topKRemaining = k_ - writeIndexStart;
-
-    for (int iter = 0; iter < numIters; ++iter) {
-      scalar_t vals[ELEMS_PER_THREAD];
-      IndexT match_indices[ELEMS_PER_THREAD];
-      int local_count = 0;
-
-      IndexT iter_base = static_cast<IndexT>(iter) * iter_stride;
-
-#pragma unroll
-      for (int L = 0; L < LOADS_PER_ITER; ++L) {
-        IndexT base = iter_base +
-            static_cast<IndexT>(L) * SBTOPK_BLOCK * VEC_SIZE +
-            static_cast<IndexT>(lid) * VEC_SIZE;
-
-        if (base + VEC_SIZE <= sliceSize_) {
-          alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
-          *reinterpret_cast<LoadT*>(&src) =
-              *reinterpret_cast<const LoadT*>(&inputSlice[base]);
-#pragma unroll
-          for (int v = 0; v < VEC_SIZE; ++v) {
-            RadixT cv = TopKTypeConfig<scalar_t>::convert(src[v]);
-            if (cv == topKConverted) {
-              vals[local_count] = src[v];
-              match_indices[local_count] = base + v;
-              local_count++;
-            }
-          }
-        } else if (base < sliceSize_) {
-          for (int v = 0; v < VEC_SIZE && base + v < sliceSize_; ++v) {
-            scalar_t sv = inputSlice[base + v];
-            RadixT cv = TopKTypeConfig<scalar_t>::convert(sv);
-            if (cv == topKConverted) {
-              vals[local_count] = sv;
-              match_indices[local_count] = base + v;
-              local_count++;
-            }
-          }
-        }
-      }
-
-      int offset, carry;
-      exclusiveIntPrefixScan(item, sg, smem, local_count, offset, carry);
-
-      for (int j = 0; j < local_count; ++j) {
-        if (offset + j < topKRemaining) {
-          int writeIndex = writeIndexStart + offset + j;
-          topKSlice[writeIndex] = vals[j];
-          indicesSlice[writeIndex] = match_indices[j];
-        }
-      }
-
-      if (carry >= topKRemaining) {
-        break;
-      }
-      topKRemaining -= carry;
-      writeIndexStart += carry;
+    if (carry >= topKRemaining) {
+      break;
     }
+    topKRemaining -= carry;
+    writeIndexStart += carry;
   }
-
-  auto get(syclex::properties_tag) const {
-    return syclex::properties{
-        syclex::sub_group_size<SIMD>, intelex::grf_size<128>};
-  }
-
-  SbtopkGatherFunctor(
-      const scalar_t* inputData,
-      scalar_t* topKData,
-      int64_t* indicesData,
-      IndexT numSlices,
-      IndexT sliceSize,
-      int k,
-      bool largest)
-      : inputData_(inputData),
-        topKData_(topKData),
-        indicesData_(indicesData),
-        numSlices_(numSlices),
-        sliceSize_(sliceSize),
-        k_(k),
-        largest_(largest) {}
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_mem_ = sycl::local_accessor<IndexT, 1>(SMEM_ELEMS, cgh);
-  }
-
-  const scalar_t* inputData_;
-  scalar_t* topKData_;
-  int64_t* indicesData_;
-  IndexT numSlices_;
-  IndexT sliceSize_;
-  int k_;
-  bool largest_;
-  sycl::local_accessor<IndexT, 1> local_mem_;
-};
+}
 
 // ================================================================
 // Launch function
@@ -592,16 +569,22 @@ static void single_wg_launch_impl(
     int k,
     bool largest) {
   constexpr int SIMD = 32;
-  using Functor =
-      SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD, IndexT>;
+  constexpr auto kernel =
+      sbtopk_gather_kernel<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD, IndexT>;
+  int slm_sz = SMEM_ELEMS * sizeof(IndexT);
 
-  Functor functor(input, topK, indices, numSlices, sliceSize, k, largest);
-
-  sycl_kernel_submit(
+  sycl_kernel_submit<kernel>(
       static_cast<int64_t>(numSlices) * SBTOPK_BLOCK,
       static_cast<int64_t>(SBTOPK_BLOCK),
       at::xpu::getCurrentSYCLQueue(),
-      functor);
+      slm_sz,
+      input,
+      topK,
+      indices,
+      numSlices,
+      sliceSize,
+      k,
+      largest);
 }
 
 // Dispatch macro to reduce boilerplate
