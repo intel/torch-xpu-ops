@@ -40,99 +40,93 @@ namespace at::native::xpu {
 
 static constexpr int TILE_DIM = 32;
 
-template <typename scalar_t, typename index_t, int VEC_SIZE, bool FULL_TILE>
-struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+template <typename scalar_t, int VEC_SIZE>
+struct BatchTransposeConfig {
   static constexpr int WG_SIZE = 256;
   static constexpr int SLM_PAD = (sizeof(scalar_t) <= 2) ? 2 : 1;
   static constexpr int SLM_STRIDE = TILE_DIM + SLM_PAD;
   static constexpr int ROWS_PER_ITER = WG_SIZE * VEC_SIZE / TILE_DIM;
   using vec_t = at::native::memory::aligned_vector<scalar_t, VEC_SIZE>;
-
-  void operator()(sycl::nd_item<3> item) const {
-    int tx = item.get_local_id(2);
-    int ty = item.get_local_id(1);
-    index_t batch = static_cast<index_t>(item.get_group(0));
-    int tile_y = item.get_group(1);
-    int tile_x = item.get_group(2);
-
-    index_t batch_off = batch * rows_ * cols_;
-
-#pragma unroll
-    for (int i = 0; i < TILE_DIM; i += ROWS_PER_ITER) {
-      index_t src_row = static_cast<index_t>(tile_y * TILE_DIM + ty + i);
-      index_t src_col = static_cast<index_t>(tile_x * TILE_DIM + tx * VEC_SIZE);
-
-      if constexpr (FULL_TILE) {
-        vec_t v = *reinterpret_cast<const vec_t*>(
-            src_ + batch_off + src_row * cols_ + src_col);
-#pragma unroll
-        for (int k = 0; k < VEC_SIZE; k++) {
-          slm_[(ty + i) * SLM_STRIDE + tx * VEC_SIZE + k] = v.val[k];
-        }
-      } else {
-        if (src_row < rows_) {
-#pragma unroll
-          for (int k = 0; k < VEC_SIZE; k++) {
-            if (src_col + static_cast<index_t>(k) < cols_) {
-              slm_[(ty + i) * SLM_STRIDE + tx * VEC_SIZE + k] = src_
-                  [batch_off + src_row * cols_ + src_col +
-                   static_cast<index_t>(k)];
-            }
-          }
-        }
-      }
-    }
-
-    sycl::group_barrier(item.get_group());
-
-#pragma unroll
-    for (int i = 0; i < TILE_DIM; i += ROWS_PER_ITER) {
-      index_t dst_row = static_cast<index_t>(tile_x * TILE_DIM + ty + i);
-      index_t dst_col = static_cast<index_t>(tile_y * TILE_DIM + tx * VEC_SIZE);
-
-      if constexpr (FULL_TILE) {
-        vec_t v;
-#pragma unroll
-        for (int k = 0; k < VEC_SIZE; k++) {
-          v.val[k] = slm_[(tx * VEC_SIZE + k) * SLM_STRIDE + (ty + i)];
-        }
-        *reinterpret_cast<vec_t*>(
-            dst_ + batch_off + dst_row * rows_ + dst_col) = v;
-      } else {
-        if (dst_row < cols_) {
-#pragma unroll
-          for (int k = 0; k < VEC_SIZE; k++) {
-            if (dst_col + static_cast<index_t>(k) < rows_) {
-              dst_
-                  [batch_off + dst_row * rows_ + dst_col +
-                   static_cast<index_t>(k)] =
-                      slm_[(tx * VEC_SIZE + k) * SLM_STRIDE + (ty + i)];
-            }
-          }
-        }
-      }
-    }
-  }
-
-  BatchTransposeFunctor(
-      const scalar_t* src,
-      scalar_t* dst,
-      index_t rows,
-      index_t cols)
-      : src_(src), dst_(dst), rows_(rows), cols_(cols), slm_() {}
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm_ = sycl::local_accessor<scalar_t, 1>(
-        sycl::range<1>(TILE_DIM * SLM_STRIDE), cgh);
-  }
-
- private:
-  const scalar_t* src_;
-  scalar_t* dst_;
-  index_t rows_;
-  index_t cols_;
-  sycl::local_accessor<scalar_t, 1> slm_;
 };
+
+template <typename scalar_t, typename index_t, int VEC_SIZE, bool FULL_TILE>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void batch_transpose_kernel(
+    const scalar_t* src,
+    scalar_t* dst,
+    index_t rows,
+    index_t cols) {
+  using config_t = BatchTransposeConfig<scalar_t, VEC_SIZE>;
+  using vec_t = typename config_t::vec_t;
+  constexpr int SLM_STRIDE = config_t::SLM_STRIDE;
+  constexpr int ROWS_PER_ITER = config_t::ROWS_PER_ITER;
+
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  scalar_t* slm =
+      static_cast<scalar_t*>(syclexp::get_work_group_scratch_memory());
+
+  int tx = item.get_local_id(2);
+  int ty = item.get_local_id(1);
+  index_t batch = static_cast<index_t>(item.get_group(0));
+  int tile_y = item.get_group(1);
+  int tile_x = item.get_group(2);
+
+  index_t batch_off = batch * rows * cols;
+
+#pragma unroll
+  for (int i = 0; i < TILE_DIM; i += ROWS_PER_ITER) {
+    index_t src_row = static_cast<index_t>(tile_y * TILE_DIM + ty + i);
+    index_t src_col = static_cast<index_t>(tile_x * TILE_DIM + tx * VEC_SIZE);
+
+    if constexpr (FULL_TILE) {
+      vec_t v = *reinterpret_cast<const vec_t*>(
+          src + batch_off + src_row * cols + src_col);
+#pragma unroll
+      for (int k = 0; k < VEC_SIZE; k++) {
+        slm[(ty + i) * SLM_STRIDE + tx * VEC_SIZE + k] = v.val[k];
+      }
+    } else {
+      if (src_row < rows) {
+#pragma unroll
+        for (int k = 0; k < VEC_SIZE; k++) {
+          if (src_col + static_cast<index_t>(k) < cols) {
+            slm[(ty + i) * SLM_STRIDE + tx * VEC_SIZE + k] =
+                src[batch_off + src_row * cols + src_col +
+                    static_cast<index_t>(k)];
+          }
+        }
+      }
+    }
+  }
+
+  sycl::group_barrier(item.get_group());
+
+#pragma unroll
+  for (int i = 0; i < TILE_DIM; i += ROWS_PER_ITER) {
+    index_t dst_row = static_cast<index_t>(tile_x * TILE_DIM + ty + i);
+    index_t dst_col = static_cast<index_t>(tile_y * TILE_DIM + tx * VEC_SIZE);
+
+    if constexpr (FULL_TILE) {
+      vec_t v;
+#pragma unroll
+      for (int k = 0; k < VEC_SIZE; k++) {
+        v.val[k] = slm[(tx * VEC_SIZE + k) * SLM_STRIDE + (ty + i)];
+      }
+      *reinterpret_cast<vec_t*>(dst + batch_off + dst_row * rows + dst_col) = v;
+    } else {
+      if (dst_row < cols) {
+#pragma unroll
+        for (int k = 0; k < VEC_SIZE; k++) {
+          if (dst_col + static_cast<index_t>(k) < rows) {
+            dst[batch_off + dst_row * rows + dst_col +
+                static_cast<index_t>(k)] =
+                slm[(tx * VEC_SIZE + k) * SLM_STRIDE + (ty + i)];
+          }
+        }
+      }
+    }
+  }
+}
 
 template <typename scalar_t, typename index_t, int VEC_SIZE, bool FULL_TILE>
 static void launch_transpose_kernel(
@@ -141,9 +135,8 @@ static void launch_transpose_kernel(
     index_t batch_size,
     index_t rows,
     index_t cols) {
-  constexpr int kROWS_PER_ITER =
-      BatchTransposeFunctor<scalar_t, index_t, VEC_SIZE, FULL_TILE>::
-          ROWS_PER_ITER;
+  using config_t = BatchTransposeConfig<scalar_t, VEC_SIZE>;
+  constexpr int kROWS_PER_ITER = config_t::ROWS_PER_ITER;
   int num_tiles_x = static_cast<int>((cols + TILE_DIM - 1) / TILE_DIM);
   int num_tiles_y = static_cast<int>((rows + TILE_DIM - 1) / TILE_DIM);
 
@@ -153,10 +146,18 @@ static void launch_transpose_kernel(
       static_cast<size_t>(num_tiles_y) * kROWS_PER_ITER,
       static_cast<size_t>(num_tiles_x) * (TILE_DIM / VEC_SIZE));
 
-  auto ker = BatchTransposeFunctor<scalar_t, index_t, VEC_SIZE, FULL_TILE>(
-      src, dst, rows, cols);
-
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), ker);
+  int slm_sz = TILE_DIM * config_t::SLM_STRIDE * sizeof(scalar_t);
+  constexpr auto kernel =
+      batch_transpose_kernel<scalar_t, index_t, VEC_SIZE, FULL_TILE>;
+  sycl_kernel_submit<kernel>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      slm_sz,
+      src,
+      dst,
+      rows,
+      cols);
 }
 
 template <typename scalar_t, typename index_t>
