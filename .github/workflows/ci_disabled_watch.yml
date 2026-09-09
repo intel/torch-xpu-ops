@@ -1,0 +1,41 @@
+name: ci-disabled-watch
+
+# Copy new DISABLED-test announcements from chuanqi129/pytorch-xpu-ci#364 into
+# the tracking issue, with `@torchxpubot fix` on the first line so bot.yml picks
+# the work up. Polls on a schedule: #364 is in another repository, and a comment
+# there cannot trigger a workflow here.
+
+on:
+  schedule:
+    # After the nightly xpu.yml run and #364's auto-skip pass have settled.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max announcements to copy in one run'
+        default: '1'
+      dry_run:
+        description: 'Print what would be posted, post nothing'
+        type: boolean
+        default: true
+
+concurrency:
+  group: ci-disabled-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # MERGE_TOKEN, not GITHUB_TOKEN: a comment posted with GITHUB_TOKEN does
+      # not trigger `issue_comment`, so the fix would never start, and `fix` is
+      # authorized on OWNER/MEMBER, which torchxpubot is.
+      - name: Copy new disables and ask for a fix
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          python3 .github/scripts/bot_nightly_watch.py \
+            --limit "${{ inputs.limit || '1' }}" \
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
