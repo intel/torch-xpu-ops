@@ -9,7 +9,7 @@
  */
 
 #include <ATen/ATen.h>
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/StridedRandomAccessor.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
@@ -617,8 +617,10 @@ void add_padding_kernel(
     const std::vector<int64_t>& new_size,
     const int batch_size,
     const int output_batch_size) {
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(
-      input.scalar_type(), "NestedTensor_to_padded_tensor_xpu", [&]() {
+  AT_DISPATCH_V2(
+      input.scalar_type(),
+      "NestedTensor_to_padded_tensor_xpu",
+      AT_WRAP([&]() {
         add_padding_kernel_impl<scalar_t>(
             input.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
@@ -629,7 +631,9 @@ void add_padding_kernel(
             new_size,
             batch_size,
             output_batch_size);
-      });
+      }),
+      AT_EXPAND(AT_FLOATING_TYPES),
+      kHalf);
 }
 
 #define JAGGED_TENSOR_DISPATCH_DIMS()                                         \
@@ -1143,20 +1147,21 @@ at::Tensor dense_to_jagged_forward_kernel(
   auto values = at::empty_symint({total_L_computed, D}, dense.options());
   auto output = at::empty_like(values);
 
-  AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      at::ScalarType::Bool,
+  AT_DISPATCH_V2(
       values.scalar_type(),
       "dense_to_jagged_xpu",
-      [&] {
+      AT_WRAP([&] {
         jagged_dense_elementwise_jagged_output_template<scalar_t>(
             values,
             offsets.vec(),
             dense,
             output,
             DenseToJaggedFunctor<scalar_t>());
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kHalf,
+      kBFloat16,
+      kBool);
 
   return output;
 }
@@ -1188,13 +1193,10 @@ at::Tensor jagged_to_padded_dense_forward_xpu_kernel(
   Tensor padded_values_view =
       D_folded ? padded_values.unsqueeze(-1) : padded_values;
 
-  AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      at::ScalarType::Bool,
+  AT_DISPATCH_V2(
       values.scalar_type(),
       "jagged_to_padded_dense_xpu",
-      [&] {
+      AT_WRAP([&] {
         scalar_t fill_value = at::native::_get_padding_value<scalar_t>(
             padding_value, values.is_floating_point());
         jagged_dense_elementwise_dense_template<scalar_t>(
@@ -1204,7 +1206,11 @@ at::Tensor jagged_to_padded_dense_forward_xpu_kernel(
             padded_values_view,
             PaddingValueFuncutor<scalar_t>(),
             fill_value);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kHalf,
+      kBFloat16,
+      kBool);
 
   return padded_values;
 }

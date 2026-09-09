@@ -444,8 +444,8 @@ void nll_loss_forward_kernel(
                         n_classes,
                         ignore_index);
                 sycl_kernel_submit(
-                    GET_GROUPS(batch_size) * SYCL_NUM_THREADS,
-                    SYCL_NUM_THREADS,
+                    xpuKernelLoopGroupRange(batch_size, 1024) * 1024,
+                    1024,
                     getCurrentSYCLQueue(),
                     kfn);
               });
@@ -580,8 +580,8 @@ void nll_loss_backward_kernel(
                         n_classes,
                         ignore_index);
                 sycl_kernel_submit(
-                    GET_GROUPS(batch_size) * SYCL_NUM_THREADS,
-                    SYCL_NUM_THREADS,
+                    xpuKernelLoopGroupRange(batch_size, 1024) * 1024,
+                    1024,
                     getCurrentSYCLQueue(),
                     kfn);
               });

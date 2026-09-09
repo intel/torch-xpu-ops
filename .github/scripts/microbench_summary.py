@@ -44,7 +44,7 @@ def parse_logs(log_dir: str, get_backward: bool = False) -> pd.DataFrame:
         "case_name", "datatype", "op_name", "shape", "channels_last", "dim",
         "output_size", "P", "reduce", "kernel_size", "stride", "replacement",
         "num_samples", "scale_factor", "mode", "padding_mode", "align_corners",
-        "shifts", "affine", "backward", "time(us)"
+        "shifts", "affine", "distinct_indices", "backward", "time(us)"
     ]
 
     for log_file in glob.glob(os.path.join(log_dir, "*.log")):

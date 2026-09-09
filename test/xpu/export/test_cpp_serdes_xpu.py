@@ -10,9 +10,15 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import inspect
+
 # Owner(s): ["module: intel"]
 import torch
-from torch._export.serde.serialize import deserialize, serialize
+from torch._export.serde.serialize import (
+    _reconstruct_fake_tensor,
+    deserialize,
+    serialize,
+)
 
 try:
     from . import test_export_xpu, testing_xpu
@@ -21,8 +27,37 @@ except ImportError:
     import testing_xpu  # @manual=fbcode//caffe2/test:test_export-library
 
 from torch.export import export
+from torch.testing._internal import custom_tensor, two_tensor
 
 test_classes = {}
+
+
+def _module_safe_globals():
+    test_classes = [
+        obj
+        for _, obj in inspect.getmembers(test_export_xpu, inspect.isclass)
+        if obj.__module__ == test_export_xpu.__name__
+    ]
+    nn_classes = [obj for _, obj in inspect.getmembers(torch.nn, inspect.isclass)]
+    two_tensor_classes = [
+        obj for _, obj in inspect.getmembers(two_tensor, inspect.isclass)
+    ]
+    custom_tensor_classes = [
+        obj for _, obj in inspect.getmembers(custom_tensor, inspect.isclass)
+    ]
+    serde_helpers = [_reconstruct_fake_tensor, torch.ScriptObject]
+    return (
+        test_classes
+        + nn_classes
+        + two_tensor_classes
+        + custom_tensor_classes
+        + serde_helpers
+    )
+
+
+def _deserialize_with_safe_globals(payload):
+    with torch.serialization.safe_globals(_module_safe_globals()):
+        return deserialize(payload)
 
 
 def mocked_cpp_serdes_export(*args, **kwargs):
@@ -34,7 +69,7 @@ def mocked_cpp_serdes_export(*args, **kwargs):
     cpp_ep = torch._C._export.deserialize_exported_program(payload.exported_program)
     loaded_json = torch._C._export.serialize_exported_program(cpp_ep)
     payload.exported_program = loaded_json.encode()
-    loaded_ep = deserialize(payload)
+    loaded_ep = _deserialize_with_safe_globals(payload)
     return loaded_ep
 
 

@@ -89,9 +89,9 @@ struct CoalesceValuesKernelFunctor {
     }
   }
   CoalesceValuesKernelFunctor(
-      int64_t* segment_offsets,
-      int64_t* value_indices,
-      Dtype* values,
+      const int64_t* segment_offsets,
+      const int64_t* value_indices,
+      const Dtype* values,
       Dtype* newValues,
       int64_t nnz,
       int64_t newNnz,
@@ -105,9 +105,9 @@ struct CoalesceValuesKernelFunctor {
         stride_(stride) {}
 
  private:
-  int64_t* segment_offsets_;
-  int64_t* value_indices_;
-  Dtype* values_;
+  const int64_t* segment_offsets_;
+  const int64_t* value_indices_;
+  const Dtype* values_;
   Dtype* newValues_;
   int64_t nnz_;
   int64_t newNnz_;
@@ -175,9 +175,9 @@ SparseTensor coalesce_sparse_kernel(const SparseTensor& self) {
         [&] {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
           auto caller = CoalesceValuesKernelFunctor<scalar_t, accscalar_t>(
-              uniqueOffsets.data_ptr<int64_t>(),
-              origIndices.data_ptr<int64_t>(),
-              values.data_ptr<scalar_t>(),
+              uniqueOffsets.const_data_ptr<int64_t>(),
+              origIndices.const_data_ptr<int64_t>(),
+              values.const_data_ptr<scalar_t>(),
               newValues.data_ptr<scalar_t>(),
               nnz,
               newNnz,

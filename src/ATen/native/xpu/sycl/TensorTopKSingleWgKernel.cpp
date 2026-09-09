@@ -44,6 +44,9 @@
 
 namespace at::native::xpu {
 
+namespace syclex = sycl::ext::oneapi::experimental;
+namespace intelex = sycl::ext::intel::experimental;
+
 // Uses RADIX_BITS=4 (16 digits per pass), halving radix passes for fp32.
 // Cannot reuse RADIX_BITS/SIZE/MASK from SortingRadixSelect.h (constexpr int,
 // can't #undef).
@@ -164,6 +167,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
       counts[j] = smem[j];
     }
+    // WAR barrier: next radix pass re-zeros smem.
+    sycl::group_barrier(item.get_group());
   }
 
   // ================================================================
@@ -270,6 +275,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int cross_sg_prefix = (sg_id >= 1) ? static_cast<int>(smem[sg_id - 1]) : 0;
     out = sg_exclusive + cross_sg_prefix;
     carry = static_cast<int>(smem[num_sgs - 1]);
+    // WAR barrier: caller reuses smem next iteration.
+    sycl::group_barrier(item.get_group());
   }
 
   // ================================================================
@@ -533,6 +540,11 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
   }
 
+  auto get(syclex::properties_tag) const {
+    return syclex::properties{
+        syclex::sub_group_size<SIMD>, intelex::grf_size<128>};
+  }
+
   SbtopkGatherFunctor(
       const scalar_t* inputData,
       scalar_t* topKData,
@@ -579,9 +591,6 @@ static void single_wg_launch_impl(
     IndexT sliceSize,
     int k,
     bool largest) {
-  namespace syclex = sycl::ext::oneapi::experimental;
-  namespace intelex = sycl::ext::intel::experimental;
-
   constexpr int SIMD = 32;
   using Functor =
       SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD, IndexT>;
@@ -592,7 +601,6 @@ static void single_wg_launch_impl(
       static_cast<int64_t>(numSlices) * SBTOPK_BLOCK,
       static_cast<int64_t>(SBTOPK_BLOCK),
       at::xpu::getCurrentSYCLQueue(),
-      syclex::properties{syclex::sub_group_size<SIMD>, intelex::grf_size<128>},
       functor);
 }
 

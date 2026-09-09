@@ -23,7 +23,7 @@ add_subdirectory(ATen)
 if(USE_C10D_XCCL)
   add_subdirectory(xccl)
 endif()
-# With the increasement of bin size, we have to split libtorch_xpu.so into
+# With the increasement of bin size, we have to split libtorch_xpu into
 # multiple libraries. Because of strict linkage requirements on Windows,
 # we add extra logics to resolve, 1) Cyclic dependence, 2) Make symbols visible.
 # To isolate impact and keep both maintainable, there are separate code pieces

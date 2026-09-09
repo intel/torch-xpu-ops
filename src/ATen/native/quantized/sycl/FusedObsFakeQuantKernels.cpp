@@ -123,8 +123,23 @@ void _calculate_moving_average(
   } else {
     std::tie(x_min, x_max) = at::aminmax(x);
   }
+
+  TORCH_CHECK(
+      running_min.scalar_type() == running_max.scalar_type(),
+      "running_min and running_max must have the same dtype");
+  const auto running_state_dtype = running_min.scalar_type();
+
+  if (x_min.scalar_type() != running_state_dtype) {
+    x_min = x_min.to(running_state_dtype);
+    x_max = x_max.to(running_state_dtype);
+  }
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::kBFloat16, at::kHalf, x.scalar_type(), "MovingAverageMinMax", [&] {
+      at::kBFloat16,
+      at::kHalf,
+      running_state_dtype,
+      "MovingAverageMinMax",
+      [&] {
         scalar_t* x_min_data = x_min.data_ptr<scalar_t>();
         scalar_t* x_max_data = x_max.data_ptr<scalar_t>();
         scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
@@ -167,8 +182,8 @@ void ChooseQuantizationParamsKernelImpl(
       int symmetric_qmax = (qmax - qmin) / 2;
 
       float max_scale = std::max(
-          std::fabs(min_val / symmetric_qmin),
-          std::fabs(max_val / symmetric_qmax));
+          sycl::fabs(min_val / symmetric_qmin),
+          sycl::fabs(max_val / symmetric_qmax));
       min_val = max_scale * symmetric_qmin;
       max_val = max_scale * symmetric_qmax;
     }
@@ -189,9 +204,9 @@ void ChooseQuantizationParamsKernelImpl(
     double zero_point_from_min = qmin - min_val / static_cast<double>(scale[i]);
     double zero_point_from_max = qmax - max_val / static_cast<double>(scale[i]);
     double zero_point_from_min_error =
-        std::abs(qmin) + std::abs(min_val / static_cast<double>(scale[i]));
+        sycl::abs(qmin) + sycl::fabs(min_val / static_cast<double>(scale[i]));
     double zero_point_from_max_error =
-        std::abs(qmax) + std::abs(max_val / static_cast<double>(scale[i]));
+        sycl::abs(qmax) + sycl::fabs(max_val / static_cast<double>(scale[i]));
     double initial_zero_point =
         zero_point_from_min_error < zero_point_from_max_error
         ? zero_point_from_min
@@ -269,8 +284,7 @@ struct CalcMovingAvgQparamsHelperKernelFunctor {
 };
 
 void _calc_moving_avg_qparams_helper(
-    const at::Tensor& x,
-    const at::Tensor fake_quant_on,
+    const at::Tensor& fake_quant_on,
     at::Tensor& running_min,
     at::Tensor& running_max,
     float* scale_ptr,
@@ -290,7 +304,7 @@ void _calc_moving_avg_qparams_helper(
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::kBFloat16,
       at::kHalf,
-      x.scalar_type(),
+      running_min.scalar_type(),
       "ChooseQuantizationParams",
       [&] {
         const scalar_t* running_min_data =

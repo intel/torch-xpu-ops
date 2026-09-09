@@ -33,7 +33,7 @@ runs:
       shell: bash -xe {0}
       run: |
         which python && python -V
-        which pip && pip list
+        uv pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
@@ -126,7 +126,7 @@ runs:
         cp ${{ github.workspace }}/.github/scripts/inductor_summary.py ./
         csv_file="$(find inductor_log/ -name "inductor_*_xpu_*.csv" |tail -n 1)"
         if [ -f "${csv_file}" ];then
-          pip install styleFrame scipy pandas
+          uv pip install styleFrame scipy pandas
           dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
           mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
           suite=$(echo ${{ inputs.suite }} |sed 's/,/ /g')

@@ -33,11 +33,9 @@ MegatronBertForCausalLM,16
 MegatronBertForQuestionAnswering,16
 meta-llama/Llama-3.2-1B,8
 mistralai/Mistral-7B-Instruct-v0.3,8
-mistralai/Mistral-7B-Instruct-v0.3,8
 MobileBertForMaskedLM,256
 MobileBertForQuestionAnswering,256
 MT5ForConditionalGeneration,32
-openai/gpt-oss-20b,8
 openai/gpt-oss-20b,8
 openai/whisper-tiny,8
 OPTForCausalLM,4

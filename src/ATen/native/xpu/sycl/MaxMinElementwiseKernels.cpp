@@ -9,7 +9,7 @@
  */
 
 #include <ATen/AccumulateType.h>
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/TensorIterator.h>
 
@@ -52,20 +52,25 @@ void maximum_kernel(TensorIteratorBase& iter) {
     opmath_symmetric_gpu_kernel_with_scalars<bool>(
         iter, MaximumIntFunctor<bool>());
   } else if (isIntegralType(iter.dtype(), /*includeBool=*/false)) {
-    AT_DISPATCH_INTEGRAL_TYPES(iter.dtype(), "max_elementwise_xpu", [&]() {
-      opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
-          iter, MaximumIntFunctor<scalar_t>());
-    });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         iter.dtype(),
         "max_elementwise_xpu",
-        [&]() {
+        AT_WRAP([&]() {
+          opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
+              iter, MaximumIntFunctor<scalar_t>());
+        }),
+        AT_EXPAND(AT_INTEGRAL_TYPES_V2));
+  } else {
+    AT_DISPATCH_V2(
+        iter.dtype(),
+        "max_elementwise_xpu",
+        AT_WRAP([&]() {
           opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
               iter, MaximumFunctor<scalar_t>());
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16);
   }
 }
 
@@ -102,20 +107,25 @@ void minimum_kernel(TensorIteratorBase& iter) {
     opmath_symmetric_gpu_kernel_with_scalars<bool>(
         iter, MinimumIntFunctor<bool>());
   } else if (isIntegralType(iter.dtype(), /*includeBool=*/false)) {
-    AT_DISPATCH_INTEGRAL_TYPES(iter.dtype(), "min_elementwise_xpu", [&]() {
-      opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
-          iter, MinimumIntFunctor<scalar_t>());
-    });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         iter.dtype(),
         "min_elementwise_xpu",
-        [&]() {
+        AT_WRAP([&]() {
+          opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
+              iter, MinimumIntFunctor<scalar_t>());
+        }),
+        AT_EXPAND(AT_INTEGRAL_TYPES_V2));
+  } else {
+    AT_DISPATCH_V2(
+        iter.dtype(),
+        "min_elementwise_xpu",
+        AT_WRAP([&]() {
           opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
               iter, MinimumFunctor<scalar_t>());
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16);
   }
 }
 
@@ -128,15 +138,16 @@ struct FmaxFunctor {
 
 void fmax_kernel(TensorIteratorBase& iter) {
   if (isFloatingType(iter.common_dtype())) {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         iter.common_dtype(),
         "fmax_xpu",
-        [&]() {
+        AT_WRAP([&]() {
           FmaxFunctor<scalar_t> f;
           opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, f);
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16);
   } else {
     maximum_kernel(iter);
   }
@@ -151,15 +162,16 @@ struct FminFunctor {
 
 void fmin_kernel(TensorIteratorBase& iter) {
   if (isFloatingType(iter.common_dtype())) {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         iter.common_dtype(),
         "fmin_xpu",
-        [&]() {
+        AT_WRAP([&]() {
           FminFunctor<scalar_t> f;
           opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, f);
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16);
   } else {
     minimum_kernel(iter);
   }

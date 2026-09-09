@@ -17,11 +17,11 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <ATen/native/xpu/sycl/MathExtensions.h>
 #include <c10/core/Scalar.h>
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
 #include <comm/xpu_aten.h>
+#include <numbers>
 
 #include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
 
@@ -102,7 +102,8 @@ void erfc_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct ErfinvFunctor {
   scalar_t operator()(scalar_t in) const {
-    return calc_erfinv(in);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return calc_erfinv(static_cast<opmath_t>(in));
   }
 };
 
@@ -128,8 +129,7 @@ struct Exp2Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
     // There is no std::exp2 overload for complex, so instead
     // use the identity 2^x = e^(ln(2) * x)
-    const auto ln_2 = static_cast<T>(0.693147180559945309417232121458176);
-    return std::exp(ln_2 * x);
+    return std::exp(std::numbers::ln2_v<T> * x);
   }
 };
 
