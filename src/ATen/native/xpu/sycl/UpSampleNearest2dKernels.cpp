@@ -12,6 +12,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/LaunchUtils.h>
 #include <ATen/native/xpu/sycl/UpSampleNearest2dKernels.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
@@ -469,7 +470,7 @@ void upsample_nearest2d_channels_last_frame(
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t global_range =
       (out_numel + work_group_size - 1) / work_group_size * work_group_size;
-  int64_t max_groups = syclMaxWorkItemsPerTile() / work_group_size;
+  int64_t max_groups = at::xpu::getDeviceMaxWorkItems() / work_group_size;
   max_groups = std::max<int64_t>(1, max_groups);
   global_range = std::min<int64_t>(global_range, max_groups * work_group_size);
 

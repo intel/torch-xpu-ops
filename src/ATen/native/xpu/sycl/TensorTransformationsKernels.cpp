@@ -13,6 +13,7 @@
 #include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
@@ -59,8 +60,8 @@ void elementwise_kernel(int total_n_elems, func_t f) {
   using KernelClass = ElementwiseKernelFunctor<func_t>;
 
   auto& queue = getCurrentSYCLQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize<KernelClass>();
-  const auto target_global_size = syclMaxWorkItemsPerTile();
+  int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
+  const int64_t target_global_size = at::xpu::getDeviceMaxWorkItems();
   int work_group_size =
       total_n_elems > max_wg_size ? max_wg_size : total_n_elems;
   const int max_work_group_num = target_global_size / work_group_size;
@@ -226,9 +227,9 @@ void roll_template(
   auto start_offset = start * stride;
   auto total_offset = size * stride;
 
-  auto local_range = syclMaxWorkGroupSize<KernelClass>();
-  const auto target_global_range =
-      syclMaxWorkItemsPerTile() / local_range * local_range;
+  int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
+  const int64_t target_global_range =
+      at::xpu::getDeviceMaxWorkItems() / local_range * local_range;
   int global_range = (N + local_range - 1) / local_range * local_range;
   auto val_of_work_item =
       (global_range + target_global_range - 1) / target_global_range;

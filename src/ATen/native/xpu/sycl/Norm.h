@@ -14,6 +14,7 @@
 #include <ATen/core/Array.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
@@ -283,7 +284,7 @@ class NormConfig {
   }
 
   void get_max_vec_size() {
-    int64_t total_resource = syclMaxWorkItemsPerTile();
+    int64_t total_resource = at::xpu::getDeviceMaxWorkItems();
 
     constexpr int float4_size = sizeof(float) * 4;
     max_vec_size = float4_size / element_size_bytes;
@@ -297,8 +298,8 @@ class NormConfig {
   // get resource size for Reduce problem [batch_size, problem_size]
   // the reduce is performed on problem_size dimension
   void get_workgroup_size() {
-    int max_workgroup_size = syclDeviceMaxWorkGroupSize();
-    int total_resource = syclMaxWorkItemsPerTile();
+    int max_workgroup_size = at::xpu::getDeviceMaxWorkGroupSize();
+    int total_resource = at::xpu::getDeviceMaxWorkItems();
     workgroup_num = total_resource / max_workgroup_size;
     int max_workgroup_num_foreach = 1;
     workgroup_size = max_workgroup_size;
@@ -330,8 +331,8 @@ class NormConfig {
 
   void get_workgroup_size_row() {
     // enlarge the occupancy, compute the least workgroup_num
-    int max_workgroup_size = syclDeviceMaxWorkGroupSize();
-    int total_resource = syclMaxWorkItemsPerTile();
+    int max_workgroup_size = at::xpu::getDeviceMaxWorkGroupSize();
+    int total_resource = at::xpu::getDeviceMaxWorkItems();
     workgroup_num = total_resource / max_workgroup_size;
 
     int max_block_row = max_workgroup_size / SIMD;

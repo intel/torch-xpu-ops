@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -228,8 +229,8 @@ void grid_sampler_2d_forward_template(
   index_t out_sH = output.strides[2];
   index_t out_sW = output.strides[3];
 
-  const auto wgroup_size =
-      syclMaxWorkGroupSize<grid_sampler_2d_kernel_func<scalar_t, index_t>>();
+  const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+      grid_sampler_2d_kernel_func<scalar_t, index_t>>();
   const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
   auto& queue = getCurrentSYCLQueue();
 
@@ -627,7 +628,7 @@ void grid_sampler_2d_backward_template(
   }
   index_t gGrid_sW = grad_grid.strides[2];
 
-  const auto wgroup_size = syclMaxWorkGroupSize<
+  const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
       grid_sampler_2d_backward_kernel_func<scalar_t, index_t>>();
   const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
   auto& queue = getCurrentSYCLQueue();
@@ -942,8 +943,8 @@ void grid_sampler_3d_forward_template(
   index_t out_sH = output.strides[3];
   index_t out_sW = output.strides[4];
 
-  const auto wgroup_size =
-      syclMaxWorkGroupSize<grid_sampler_3d_kernel_func<scalar_t, index_t>>();
+  const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+      grid_sampler_3d_kernel_func<scalar_t, index_t>>();
   const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
   auto& queue = getCurrentSYCLQueue();
 
@@ -1428,7 +1429,7 @@ void grid_sampler_3d_backward_template(
   }
   index_t gGrid_sW = grad_grid.strides[3];
 
-  const auto wgroup_size = syclMaxWorkGroupSize<
+  const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
       grid_sampler_3d_backward_kernel_func<scalar_t, index_t>>();
   const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
   auto& queue = getCurrentSYCLQueue();

@@ -14,6 +14,7 @@
 #include <ATen/native/LossMulti.h>
 #include <ATen/native/Resize.h>
 #include <ATen/ops/sum.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/MultiMarginLossKernels.h>
@@ -245,7 +246,8 @@ Tensor& multi_margin_loss_kernel(
           if (p == 1) {
             using KernelClass =
                 MultiMarginLossForwardKernelFunctor<1, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
             auto kfn = KernelClass(
                 out.mutable_data_ptr<scalar_t>(),
                 input.const_data_ptr<scalar_t>(),
@@ -262,7 +264,8 @@ Tensor& multi_margin_loss_kernel(
           } else if (p == 2) {
             using KernelClass =
                 MultiMarginLossForwardKernelFunctor<2, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
             auto kfn = KernelClass(
                 out.mutable_data_ptr<scalar_t>(),
                 input.const_data_ptr<scalar_t>(),
@@ -289,7 +292,8 @@ Tensor& multi_margin_loss_kernel(
             if (p == 1) {
               using KernelClass =
                   MultiMarginLossForwardKernelFunctor<1, scalar_t, accscalar_t>;
-              int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+              int64_t local_size =
+                  at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
               auto kfn = KernelClass(
                   out.mutable_data_ptr<scalar_t>(),
                   input.const_data_ptr<scalar_t>(),
@@ -306,7 +310,8 @@ Tensor& multi_margin_loss_kernel(
             } else if (p == 2) {
               using KernelClass =
                   MultiMarginLossForwardKernelFunctor<2, scalar_t, accscalar_t>;
-              int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+              int64_t local_size =
+                  at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
               auto kfn = KernelClass(
                   out.mutable_data_ptr<scalar_t>(),
                   input.const_data_ptr<scalar_t>(),
@@ -326,7 +331,8 @@ Tensor& multi_margin_loss_kernel(
             if (p == 1) {
               using KernelClass =
                   MultiMarginLossForwardKernelFunctor<1, scalar_t, accscalar_t>;
-              int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+              int64_t local_size =
+                  at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
               auto kfn = KernelClass(
                   tmp_output.mutable_data_ptr<scalar_t>(),
                   input.const_data_ptr<scalar_t>(),
@@ -344,7 +350,8 @@ Tensor& multi_margin_loss_kernel(
             } else if (p == 2) {
               using KernelClass =
                   MultiMarginLossForwardKernelFunctor<2, scalar_t, accscalar_t>;
-              int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+              int64_t local_size =
+                  at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
               auto kfn = KernelClass(
                   tmp_output.mutable_data_ptr<scalar_t>(),
                   input.const_data_ptr<scalar_t>(),
@@ -419,7 +426,8 @@ Tensor& multi_margin_loss_backward_kernel(
           if (p == 1) {
             using KernelClass =
                 MultiMarginLossBackwardKernelFunctor<1, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
             auto kfn = KernelClass(
                 grad_input.mutable_data_ptr<scalar_t>(),
                 grad_output.const_data_ptr<scalar_t>(),
@@ -439,7 +447,8 @@ Tensor& multi_margin_loss_backward_kernel(
           } else if (p == 2) {
             using KernelClass =
                 MultiMarginLossBackwardKernelFunctor<2, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
             auto kfn = KernelClass(
                 grad_input.mutable_data_ptr<scalar_t>(),
                 grad_output.const_data_ptr<scalar_t>(),
@@ -467,7 +476,8 @@ Tensor& multi_margin_loss_backward_kernel(
           if (p == 1) {
             using KernelClass =
                 MultiMarginLossBackwardKernelFunctor<1, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
             auto kfn = KernelClass(
                 grad_input.mutable_data_ptr<scalar_t>(),
                 grad_output.const_data_ptr<scalar_t>(),
@@ -490,7 +500,8 @@ Tensor& multi_margin_loss_backward_kernel(
           } else if (p == 2) {
             using KernelClass =
                 MultiMarginLossBackwardKernelFunctor<2, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
             auto kfn = KernelClass(
                 grad_input.mutable_data_ptr<scalar_t>(),
                 grad_output.const_data_ptr<scalar_t>(),

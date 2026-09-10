@@ -14,6 +14,7 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -614,7 +615,7 @@ int64_t layer_norm_wg_size_select(
     return wg_size;
 
   // (XeCore count * EUs per XeCore) * HW threads per EU
-  int64_t total_hw_threads = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int64_t total_hw_threads = at::xpu::getDeviceHWThreads();
   // Only use preferred_wg_size when less than 50% HW threads would be left idle
   if (M * threads_per_wg > total_hw_threads / 2)
     return preferred_wg_size;
@@ -635,7 +636,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
   auto wg_size = layer_norm_wg_size_select(
-      syclMaxWorkGroupSize<KernelClass>(), M, N / vec_size);
+      at::xpu::getKernelMaxWorkGroupSize<KernelClass>(), M, N / vec_size);
   KernelClass kfn(
       N,
       eps,
@@ -1203,16 +1204,17 @@ void layer_norm_backward_kernel_impl(
   auto config_w = NormConfig(M, N, 0, sizeof(scalar_t));
   auto norm_config_global_size =
       config_w.workgroup_num * config_w.block_row * config_w.workgroup_size;
-  int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int thread_slots = at::xpu::getDeviceHWThreads();
   // use two stage col reduction if norm config occupancy < 50%
   // TODO: we can relax this restriction in future for better perf
   bool use_two_stage_col_reduction =
       (dY.dtype() == kFloat || dY.dtype() == kBFloat16 ||
        dY.dtype() == kHalf) &&
-      norm_config_global_size / syclMaxSubGroupSize() * 2 <= thread_slots;
+      norm_config_global_size / at::xpu::getDeviceMaxSubGroupSize() * 2 <=
+          thread_slots;
   // cuda uses condition M > 64 * 1024 && N / 32 < sm_count / 2 to parallelize
   // in the M dimension
-  int xe_core_count = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+  int xe_core_count = at::xpu::getDeviceXeCoreCount();
   int tile_n = N / 32;
   if (use_two_stage_col_reduction && M > xe_core_count * 1024 &&
       tile_n < xe_core_count * 2) {
@@ -1233,7 +1235,7 @@ void layer_norm_backward_kernel_impl(
     for (auto i = 0; i < 3; i++) {
       // occupancy <= 50%
       if (num_tile_m * num_tile_n * local_size_x * SIMD /
-              syclMaxSubGroupSize() * 2 <=
+              at::xpu::getDeviceMaxSubGroupSize() * 2 <=
           thread_slots) {
         if (adjust_m) {
           tile_size_m /= 2;

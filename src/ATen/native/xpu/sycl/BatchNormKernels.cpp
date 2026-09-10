@@ -155,7 +155,7 @@ template <class KernelClass>
 int get_max_group_size(int simd = SIMD32) {
   // The max work group size required by batch_norm needs to ensure that the two
   // subgroup reduces can obtain correct results.
-  int max_size = syclMaxWorkGroupSize<KernelClass>();
+  int max_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   int shfl2_restricted_size = simd * simd;
   return max_size > shfl2_restricted_size ? shfl2_restricted_size : max_size;
 }
@@ -175,7 +175,7 @@ int get_num_threads(int nelem, int restricted_simd = SIMD32) {
 int get_dev_max_group_size(int simd = SIMD32) {
   // The max work group size required by batch_norm needs to ensure that the two
   // subgroup reduces can obtain correct results.
-  int max_size = syclDeviceMaxWorkGroupSize();
+  int max_size = at::xpu::getDeviceMaxWorkGroupSize();
   int shfl2_restricted_size = simd * simd;
   return max_size > shfl2_restricted_size ? shfl2_restricted_size : max_size;
 }
@@ -209,7 +209,7 @@ int get_prefer_simd(int numPlane, int nHw) {
   if (simd >= SIMD32 && nHw <= SIMD32)
     return SIMD32;
 
-  int64_t target_tile_size = syclMaxWorkItemsPerTile(dev_id);
+  int64_t target_tile_size = at::xpu::getDeviceMaxWorkItems(dev_id);
   // for work group barrier perf
   int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
   if (simd == SIMD32) {
@@ -389,7 +389,7 @@ std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
   int nwg_x = at::ceil_div(stride, group_x);
   int nwg_y = std::min(
       at::ceil_div(reduction, group_y * loops_per_item),
-      int(syclMaxWorkItemsPerTile()) / (nwg_x * group_x) / (group_y));
+      int(at::xpu::getDeviceMaxWorkItems()) / (nwg_x * group_x) / (group_y));
   nwg_y = std::max(nwg_y, 1);
 
   if (coop_flag) {
@@ -952,7 +952,7 @@ void batch_norm_stats_channels_last_template(
         ELEMENTS_PER_ITER>;
 
     auto config = get_adaptive_launch_config(
-        syclMaxWorkGroupSize<KernelT>(),
+        at::xpu::getKernelMaxWorkGroupSize<KernelT>(),
         reduction_size,
         stride,
         true,
@@ -1322,7 +1322,7 @@ void batch_norm_elemt_template(
       1,
       std::min<int>(
           (256 * 1024) / input.size(1), (input.size(0) + tb - 1) / tb));
-  nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
+  nwg_y = std::min<int>(nwg_y, at::xpu::getDeviceMaxWorkItems() / (tf * tb));
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
   auto input_ptr = (char*)input_reshaped.const_data_ptr();
@@ -1632,7 +1632,7 @@ void batch_norm_elemt_channels_last_template(
                     stride,
                     fuse_relu);
             auto config_vec = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 false,
@@ -1657,7 +1657,7 @@ void batch_norm_elemt_channels_last_template(
                 stride,
                 fuse_relu);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 false,
@@ -1714,7 +1714,7 @@ void batch_norm_elemt_channels_last_template(
                     stride,
                     fuse_relu);
             auto config_vec = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 false,
@@ -1739,7 +1739,7 @@ void batch_norm_elemt_channels_last_template(
                 stride,
                 fuse_relu);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 false,
@@ -2937,7 +2937,7 @@ Tensor batch_norm_backward_elemt_template(
       1,
       std::min<int>(
           (256 * 1024) / input.size(1), (input.size(0) + tb - 1) / tb));
-  nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
+  nwg_y = std::min<int>(nwg_y, at::xpu::getDeviceMaxWorkItems() / (tf * tb));
   auto reduction_size = input_.numel() / n_input;
   auto norm_fct = static_cast<stat_accscalar_t>(1.0 / reduction_size);
 
@@ -3047,7 +3047,7 @@ Tensor batch_norm_backward_elemt_template(
       1,
       std::min<int>(
           (256 * 1024) / input.size(1), (input.size(0) + tb - 1) / tb));
-  nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
+  nwg_y = std::min<int>(nwg_y, at::xpu::getDeviceMaxWorkItems() / (tf * tb));
 
   sycl::range<2> local_range(tb, tf);
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
@@ -3401,7 +3401,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     reduction_size,
                     stride);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 true,
@@ -3430,7 +3430,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     reduction_size,
                     stride);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 true,
@@ -3458,7 +3458,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 reduction_size,
                 stride);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 true,
@@ -3484,7 +3484,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 reduction_size,
                 stride);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 true,
@@ -3549,7 +3549,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 count.const_data_ptr<int>(),
                 count.numel());
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 false,
@@ -3580,7 +3580,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     count.const_data_ptr<int>(),
                     count.numel());
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 false,
@@ -3632,7 +3632,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 count.const_data_ptr<int>(),
                 count.numel());
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 false,
@@ -3664,7 +3664,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     count.const_data_ptr<int>(),
                     count.numel());
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 false,
