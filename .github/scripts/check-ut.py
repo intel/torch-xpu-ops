@@ -37,6 +37,8 @@ error_types = [
     "Failed",
     "TimeoutError",
     "asyncio.TimeoutError",
+    "Timeout",
+    "Hang",
     "FileNotFoundError",
     "PermissionError",
     "NotImplementedError",
