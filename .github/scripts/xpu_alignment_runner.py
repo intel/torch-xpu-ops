@@ -121,7 +121,10 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         if not isinstance(unit_id, str) or not UNIT_ID_RE.fullmatch(unit_id) or unit_id in seen:
             raise PlanError(f"invalid or duplicate unit id: {unit_id!r}")
         seen.add(unit_id)
-        if entry.get("verification") == "static":
+        verification = entry.get("verification", "runtime")
+        if verification not in {"runtime", "static"}:
+            raise PlanError(f"{unit_id}: invalid verification")
+        if verification == "static":
             continue
         script = _inside(root, entry.get("script"), existing=True)
         expected_digest = entry.get("script_sha256")
