@@ -117,8 +117,8 @@ page, or digest mismatch is not a valid partial collection.
 
 Read the immutable collection artifact and use read-only GitHub access only for
 the source details needed to judge each observed object. Write `prepare.json`
-and `scripts/` only; do not execute a reproducer or write results. This role does
-not require an XPU runtime.
+and its `scripts/` and `evidence/` directories only; do not execute a reproducer
+or write results. This role does not require an XPU runtime.
 
 ```json
 {
@@ -135,15 +135,24 @@ not require an XPU runtime.
     "triage": "validate",
     "reason": "shared operator path"
   }],
-  "executions": [{
-    "id": "issue-123",
-    "verification": "runtime",
-    "script": "scripts/repro_issue-123.py",
-    "script_sha256": "...",
-    "timeout_seconds": 120,
-    "oracle": "...",
-    "target_path": "..."
-  }],
+  "executions": [
+    {
+      "id": "issue-123",
+      "verification": "static",
+      "oracle": "...",
+      "target_path": "src/ATen/native/xpu/Example.cpp",
+      "upstream_source": {
+        "path": "aten/src/ATen/native/Example.cpp",
+        "snapshot": "evidence/issue-123-upstream.txt",
+        "sha256": "..."
+      },
+      "xpu_source": {
+        "path": "src/ATen/native/xpu/Example.cpp",
+        "snapshot": "evidence/issue-123-xpu.txt",
+        "sha256": "..."
+      }
+    }
+  ],
   "blockers": []
 }
 ```
@@ -171,8 +180,10 @@ no `script`, `script_sha256`, or `timeout_seconds`; its `oracle` is the upstream
 text XPU must match and its `target_path` is the diverging XPU file. It instead
 carries `upstream_source` and `xpu_source` objects with exactly `path`,
 `snapshot`, and `sha256`. Snapshot paths are under `evidence/`, the XPU source
-path matches `target_path`, and both digests cover the exact snapshot bytes.
-The runner never executes a static entry, so a stale build cannot block it.
+path matches `target_path`, and both digests cover the exact snapshot bytes. The
+XPU snapshot is a nonempty exact excerpt of `target_path` in the workflow
+checkout. The two snapshots must have different digests. The runner never
+executes a static entry, so a stale build cannot block it.
 Any missing detail or coverage makes preparation
 incomplete. A structurally valid partial collection may still have a complete
 preparation relative to its observed inventory; that does not make the collection
@@ -231,9 +242,10 @@ writes one result for every runtime execution-plan entry:
 ```
 
 `status: complete` means the runner produced a structurally valid result for
-every planned runtime execution, not that every reproducer succeeded. A
-static-only plan skips runtime provisioning and probing and records
-`"environment": null` with an empty `results` list. The collection
+every planned runtime execution, not that every reproducer succeeded. A plan
+with no runtime entries skips runtime provisioning and probing and records an
+explicit `"environment": null` with an empty `results` list. This includes
+static-only plans and plans that reject their entire observed inventory. The collection
 digest must match the prepare artifact and original collector manifest. A digest
 mismatch or missing result blocks finalization. A valid partial collection does
 not prevent execution or publication of fully covered, independently reviewed
@@ -279,8 +291,8 @@ A `"verification": "static"` unit has no runner record: its `evidence` cites the
 validated snapshots exactly as
 `{"upstream_source": "evidence/...", "xpu_source": "evidence/..."}`. It still
 needs `target_path_verified`, and it cannot be `blocked-*` because reading the
-frozen head cannot fail on the runner. For a static-only plan, `environment` is
-null and must exactly match the runner artifact.
+frozen head cannot fail on the runner. When the runner environment is null,
+`scan.json` explicitly records `"environment": null` to match it.
 Timeouts, launch errors, environment failures, or inconclusive evidence use a
 `blocked-*` result and make the scan incomplete. Rejected inventory items remain
 in the collection and prepare artifacts and are not copied into `scan.json`.
@@ -332,10 +344,10 @@ covers the same work, record its URL as `canonical_tracker` and its `open` or
 are null. An open `intel/torch-xpu-ops` tracker replaces the payload and is not
 commented on. An open tracker in another repository remains recorded but does
 not replace the XPU payload. Record a tracker in any repository rather than
-dropping it, so a
-later run does not re-investigate the same ground. A tracker that is `closed`
-cannot receive the work, so a `needs-xpu-fix` unit still carries a payload that
-cites it.
+dropping it, so a later run does not re-investigate the same ground. Whenever a
+tracker is recorded and a payload is emitted, the payload body cites that exact
+tracker URL. A tracker that is `closed` cannot receive the work, so a
+`needs-xpu-fix` unit still carries a payload.
 
 This role requires read-only GitHub access to refresh source and tracker state,
 but it does not require an XPU runtime.

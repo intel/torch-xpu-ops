@@ -144,7 +144,9 @@ jobs:
             `"verification": "static"` and write no script for it. Instead,
             save both source excerpts under evidence/ and record each source
             path, snapshot path, and SHA-256 as `upstream_source` and
-            `xpu_source` in the execution.
+            `xpu_source` in the execution. The XPU snapshot must be a nonempty
+            exact excerpt of `target_path` in this checkout, and the two
+            snapshots must differ.
 
             Write only prepare.json, scripts/, evidence/, and an optional prepare report.
             Do not execute any reproducer, write scan/review artifacts, or modify
@@ -554,13 +556,13 @@ jobs:
             If an existing tracker covers the same work, record it as
             `canonical_tracker` with its `canonical_tracker_state`. An open
             intel/torch-xpu-ops tracker replaces the payload and is not commented
-            on; a closed one still needs a payload that cites it.
+            on. Whenever a tracker is recorded and a payload is emitted, cite
+            that exact tracker URL in the payload body.
 
             Write only alignment-run/review/review.json and optional
             review_report.md. Include a payload only for reviewed `needs-xpu-fix`
-            without an open intel/torch-xpu-ops canonical tracker. Any payload
-            paired with a closed tracker must cite that exact tracker URL. Do not
-            execute code or modify GitHub.
+            without an open intel/torch-xpu-ops canonical tracker. Do not execute
+            code or modify GitHub.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
