@@ -79,45 +79,27 @@ template <
     typename index_t,
     typename ReductionOp,
     typename acc_t>
-struct ReduceSparseCsrDim0KernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int64_t tid = item.get_global_linear_id();
-    if (tid < new_nnz) {
-      index_t col = new_col_indices[tid];
-      acc_t v = rop.identity();
-      for (int64_t j = 0; j < nnz; j++) {
-        if (col == col_indices[j])
-          v = rop(v, acc_t(values[j]));
-      }
-      new_values[tid] = v;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void reduce_sparse_csr_dim0_kernel(
+    acc_t* new_values,
+    const index_t* new_col_indices,
+    const int64_t new_nnz,
+    const scalar_t* values,
+    const index_t* col_indices,
+    const int64_t nnz,
+    ReductionOp rop) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t tid = item.get_global_linear_id();
+  if (tid < new_nnz) {
+    index_t col = new_col_indices[tid];
+    acc_t v = rop.identity();
+    for (int64_t j = 0; j < nnz; j++) {
+      if (col == col_indices[j])
+        v = rop(v, acc_t(values[j]));
     }
+    new_values[tid] = v;
   }
-
-  ReduceSparseCsrDim0KernelFunctor(
-      acc_t* new_values,
-      const index_t* new_col_indices,
-      const int64_t new_nnz,
-      const scalar_t* values,
-      const index_t* col_indices,
-      const int64_t nnz,
-      ReductionOp rop)
-      : new_values(new_values),
-        new_col_indices(new_col_indices),
-        new_nnz(new_nnz),
-        values(values),
-        col_indices(col_indices),
-        nnz(nnz),
-        rop(rop) {}
-
- private:
-  acc_t* new_values;
-  const index_t* new_col_indices;
-  const int64_t new_nnz;
-  const scalar_t* values;
-  const index_t* col_indices;
-  const int64_t nnz;
-  ReductionOp rop;
-};
+}
 
 template <typename scalar_t, typename ReductionOp>
 Tensor reduce_sparse_csr_dim0_xpu_template(
@@ -138,24 +120,27 @@ Tensor reduce_sparse_csr_dim0_xpu_template(
       values.options(), values.scalar_type(), new_nnz);
   Tensor new_values = std::get<0>(acc_buffer);
   Tensor new_values_acc = std::get<1>(acc_buffer);
-  const scalar_t* values_ptr = values.const_data_ptr<scalar_t>();
+  scalar_t* values_ptr = values.data_ptr<scalar_t>();
   acc_t* new_values_acc_ptr = new_values_acc.data_ptr<acc_t>();
   auto queue = getCurrentSYCLQueue();
 
   AT_DISPATCH_INDEX_TYPES(
       col_indices.scalar_type(), "reduce_sparse_csr_dim0_xpu_indices", [&]() {
         const index_t* col_indices_ptr = col_indices.const_data_ptr<index_t>();
-        const index_t* new_col_indices_ptr =
-            new_col_indices.const_data_ptr<index_t>();
-        using KernelFn = ReduceSparseCsrDim0KernelFunctor<
+        index_t* new_col_indices_ptr = new_col_indices.data_ptr<index_t>();
+        constexpr auto kernel_func = reduce_sparse_csr_dim0_kernel<
             scalar_t,
             index_t,
             ReductionOp,
             acc_t>;
-        int64_t work_group_size = syclMaxWorkGroupSize<KernelFn>();
+        int64_t work_group_size = syclMaxWorkGroupSize<kernel_func>();
         int64_t work_group_num =
             (new_nnz + work_group_size - 1) / work_group_size;
-        auto kfn = KernelFn(
+        sycl_kernel_submit<kernel_func>(
+            sycl::range<1>(work_group_num * work_group_size),
+            sycl::range<1>(work_group_size),
+            queue,
+            0,
             new_values_acc_ptr,
             new_col_indices_ptr,
             new_nnz,
@@ -163,11 +148,6 @@ Tensor reduce_sparse_csr_dim0_xpu_template(
             col_indices_ptr,
             nnz,
             rop);
-        sycl_kernel_submit(
-            sycl::range<1>(work_group_num * work_group_size),
-            sycl::range<1>(work_group_size),
-            queue,
-            kfn);
       });
   copy_from_acc_buffer(new_values, new_values_acc);
   return at::native::_sparse_csr_tensor_unsafe(
@@ -181,79 +161,50 @@ Tensor reduce_sparse_csr_dim0_xpu_template(
 }
 
 template <typename index_t>
-struct ReduceCrowIndicesDim1KernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int64_t nnz = 0;
-    new_crow_indices[0] = 0;
-    for (int64_t i = 0; i < nrows; i++) {
-      if (crow_indices[i] != crow_indices[i + 1]) {
-        row_map[i] = nnz;
-        nnz++;
-      }
-      new_crow_indices[i + 1] = nnz;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void reduce_crow_indices_dim1_kernel(
+    index_t* new_crow_indices,
+    index_t* row_map,
+    const index_t* crow_indices,
+    const int64_t nrows) {
+  int64_t nnz = 0;
+  new_crow_indices[0] = 0;
+  for (int64_t i = 0; i < nrows; i++) {
+    if (crow_indices[i] != crow_indices[i + 1]) {
+      row_map[i] = nnz;
+      nnz++;
     }
+    new_crow_indices[i + 1] = nnz;
   }
-
-  ReduceCrowIndicesDim1KernelFunctor(
-      index_t* new_crow_indices,
-      index_t* row_map,
-      const index_t* crow_indices,
-      const int64_t nrows)
-      : new_crow_indices(new_crow_indices),
-        row_map(row_map),
-        crow_indices(crow_indices),
-        nrows(nrows) {}
-
- private:
-  index_t* new_crow_indices;
-  index_t* row_map;
-  const index_t* crow_indices;
-  const int64_t nrows;
-};
+}
 
 template <
     typename scalar_t,
     typename index_t,
     typename ReductionOp,
     typename acc_t>
-struct ReduceSparseCsrDim1KernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int64_t tid = item.get_global_linear_id();
-    if (tid < nrows) {
-      index_t i_start = crow_indices[tid];
-      index_t i_end = crow_indices[tid + 1];
-      if (i_start != i_end) {
-        acc_t acc = rop.identity();
-        for (index_t i = i_start; i < i_end; i++) {
-          acc = rop(acc, acc_t(values[i]));
-        }
-        new_values[row_map[tid]] = acc;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void reduce_sparse_csr_dim1_kernel(
+    acc_t* new_values,
+    const scalar_t* values,
+    const index_t* crow_indices,
+    const index_t* row_map,
+    const int64_t nrows,
+    ReductionOp rop) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t tid = item.get_global_linear_id();
+  if (tid < nrows) {
+    index_t i_start = crow_indices[tid];
+    index_t i_end = crow_indices[tid + 1];
+    if (i_start != i_end) {
+      acc_t acc = rop.identity();
+      for (index_t i = i_start; i < i_end; i++) {
+        acc = rop(acc, acc_t(values[i]));
       }
+      new_values[row_map[tid]] = acc;
     }
   }
-
-  ReduceSparseCsrDim1KernelFunctor(
-      acc_t* new_values,
-      const scalar_t* values,
-      const index_t* crow_indices,
-      const index_t* row_map,
-      const int64_t nrows,
-      ReductionOp rop)
-      : new_values(new_values),
-        values(values),
-        crow_indices(crow_indices),
-        row_map(row_map),
-        nrows(nrows),
-        rop(rop) {}
-
- private:
-  acc_t* new_values;
-  const scalar_t* values;
-  const index_t* crow_indices;
-  const index_t* row_map;
-  const int64_t nrows;
-  ReductionOp rop;
-};
+}
 
 template <typename scalar_t, typename ReductionOp>
 Tensor reduce_sparse_csr_dim1_xpu_template(
@@ -277,12 +228,12 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
 
   AT_DISPATCH_INDEX_TYPES(
       crow_indices.scalar_type(), "reduce_sparse_csr_dim1_xpu_indices", [&]() {
-        using KernelFn = ReduceSparseCsrDim1KernelFunctor<
+        constexpr auto kernel_func = reduce_sparse_csr_dim1_kernel<
             scalar_t,
             index_t,
             ReductionOp,
             acc_t>;
-        int64_t work_group_size = syclMaxWorkGroupSize<KernelFn>();
+        int64_t work_group_size = syclMaxWorkGroupSize<kernel_func>();
         int64_t work_group_num =
             (nrows + work_group_size - 1) / work_group_size;
 
@@ -290,10 +241,17 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
             crow_indices.const_data_ptr<index_t>();
         index_t* new_crow_indices_ptr = new_crow_indices.data_ptr<index_t>();
         index_t* row_map_ptr = row_map.data_ptr<index_t>();
-        ReduceCrowIndicesDim1KernelFunctor<index_t> kfn_crow(
-            new_crow_indices_ptr, row_map_ptr, crow_indices_ptr, nrows);
-        sycl_kernel_submit(
-            sycl::range<1>(1), sycl::range<1>(1), queue, kfn_crow);
+        constexpr auto crow_kernel_func =
+            reduce_crow_indices_dim1_kernel<index_t>;
+        sycl_kernel_submit<crow_kernel_func>(
+            sycl::range<1>(1),
+            sycl::range<1>(1),
+            queue,
+            0,
+            new_crow_indices_ptr,
+            row_map_ptr,
+            crow_indices_ptr,
+            nrows);
 
         index_t new_nnz = new_crow_indices[-1].item<index_t>();
         new_col_indices.resize_(new_nnz);
@@ -301,20 +259,19 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
         new_values.resize_(new_nnz);
         new_values_acc.resize_(new_nnz);
 
-        const scalar_t* values_ptr = values.const_data_ptr<scalar_t>();
+        scalar_t* values_ptr = values.data_ptr<scalar_t>();
         acc_t* new_values_acc_ptr = new_values_acc.data_ptr<acc_t>();
-        auto kfn = KernelFn(
+        sycl_kernel_submit<kernel_func>(
+            sycl::range<1>(work_group_num * work_group_size),
+            sycl::range<1>(work_group_size),
+            queue,
+            0,
             new_values_acc_ptr,
             values_ptr,
             crow_indices_ptr,
             row_map_ptr,
             nrows,
             rop);
-        sycl_kernel_submit(
-            sycl::range<1>(work_group_num * work_group_size),
-            sycl::range<1>(work_group_size),
-            queue,
-            kfn);
       });
   copy_from_acc_buffer(new_values, new_values_acc);
   return at::native::_sparse_csr_tensor_unsafe(
@@ -380,7 +337,7 @@ Tensor reduce_sparse_csr_xpu_template(
         ((dims[0] == 0 && dims[1] == 1) || (dims[0] == 1 && dims[1] == 0)));
     return reduce_sparse_csr_dim01_xpu_template<scalar_t>(sparse, rop);
   }
-  TORCH_INTERNAL_ASSERT(dims.empty());
+  TORCH_INTERNAL_ASSERT(dims.size() == 0);
   return sparse.clone();
 }
 
@@ -400,7 +357,7 @@ Tensor reduce_sparse_csr_xpu_template(
   TORCH_INTERNAL_ASSERT(input_dim == 2);
   auto dims = dims_to_sum.vec();
   maybe_wrap_dims(dims, input_dim);
-  if (dims.empty()) {
+  if (dims.size() == 0) {
     dims.emplace_back(0);
     dims.emplace_back(1);
   }
@@ -441,65 +398,44 @@ Tensor _sparse_csr_prod_xpu_kernel(
 }
 
 template <typename input_t, typename output_t>
-struct ConvertIndicesFromCooToCsrXPUFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto linear_id = item.get_global_linear_id();
-    if (linear_id == 0) {
-      for (int64_t i = 0; i <= data_in_[0]; i++)
-        data_out_[i] = static_cast<output_t>(0);
-    } else if (linear_id < numel_) {
-      for (int64_t i = data_in_[linear_id - 1]; i < data_in_[linear_id]; i++)
-        data_out_[i + 1] = static_cast<output_t>(linear_id);
-    } else if (linear_id == numel_) {
-      for (int64_t i = data_in_[numel_ - 1] + 1; i < size_ + 1; i++)
-        data_out_[i] = static_cast<output_t>(numel_);
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void convert_indices_from_coo_to_csr_xpu_kernel(
+    int64_t numel,
+    const input_t* data_in,
+    output_t* data_out,
+    const int64_t size) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto linear_id = item.get_global_linear_id();
+  if (linear_id == 0) {
+    for (int64_t i = 0; i <= data_in[0]; i++)
+      data_out[i] = static_cast<output_t>(0);
+  } else if (linear_id < numel) {
+    for (int64_t i = data_in[linear_id - 1]; i < data_in[linear_id]; i++)
+      data_out[i + 1] = static_cast<output_t>(linear_id);
+  } else if (linear_id == numel) {
+    for (int64_t i = data_in[numel - 1] + 1; i < size + 1; i++)
+      data_out[i] = static_cast<output_t>(numel);
   }
-  ConvertIndicesFromCooToCsrXPUFunctor(
-      int64_t numel,
-      const input_t* data_in,
-      output_t* data_out,
-      const int64_t size)
-      : numel_(numel), data_in_(data_in), data_out_(data_out), size_(size) {}
-
- private:
-  int64_t numel_;
-  const input_t* data_in_;
-  output_t* data_out_;
-  const int64_t size_;
-};
+}
 
 template <typename input_t, typename output_t>
-struct ConvertIndicesFromCsrToCooXPUFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int64_t tid = item.get_global_linear_id();
-    if (tid < nrows_ * nbatches_) {
-      int64_t b = tid / nrows_;
-      int64_t i_ = b * (nrows_ + 1) + tid % nrows_;
-      for (int64_t i = data_in_[i_]; i < data_in_[i_ + 1]; i++) {
-        data_out_[b * nnz_ + i] = static_cast<output_t>(tid % nrows_);
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void convert_indices_from_csr_to_coo_xpu_kernel(
+    output_t* data_out,
+    const input_t* data_in,
+    const int64_t nrows,
+    const int64_t nnz,
+    const int64_t nbatches) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t tid = item.get_global_linear_id();
+  if (tid < nrows * nbatches) {
+    int64_t b = tid / nrows;
+    int64_t i_ = b * (nrows + 1) + tid % nrows;
+    for (int64_t i = data_in[i_]; i < data_in[i_ + 1]; i++) {
+      data_out[b * nnz + i] = static_cast<output_t>(tid % nrows);
     }
   }
-  ConvertIndicesFromCsrToCooXPUFunctor(
-      output_t* data_out,
-      const input_t* data_in,
-      const int64_t nrows,
-      const int64_t nnz,
-      const int64_t nbatches)
-      : data_out_(data_out),
-        data_in_(data_in),
-        nrows_(nrows),
-        nnz_(nnz),
-        nbatches_(nbatches) {}
-
- private:
-  output_t* data_out_;
-  const input_t* data_in_;
-  const int64_t nrows_;
-  const int64_t nnz_;
-  const int64_t nbatches_;
-};
+}
 
 template <typename input_t, typename output_t>
 void launch_convert_indices_from_coo_to_csr_xpu_kernel(
@@ -515,15 +451,22 @@ void launch_convert_indices_from_coo_to_csr_xpu_kernel(
   const input_t* data_in = input.const_data_ptr<input_t>();
   output_t* data_out = result.data_ptr<output_t>();
 
-  auto functor = ConvertIndicesFromCooToCsrXPUFunctor<input_t, output_t>(
-      numel, data_in, data_out, size);
-
-  int64_t wgroup_size = syclMaxWorkGroupSize(functor);
+  constexpr auto kernel_func =
+      convert_indices_from_coo_to_csr_xpu_kernel<input_t, output_t>;
+  int64_t wgroup_size = syclMaxWorkGroupSize<kernel_func>();
   int64_t ngroups = (numel + wgroup_size - 1) / wgroup_size;
   sycl::range<1> global_range(ngroups * wgroup_size);
   sycl::range<1> local_range(wgroup_size);
 
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), functor);
+  sycl_kernel_submit<kernel_func>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
+      numel,
+      data_in,
+      data_out,
+      size);
 }
 
 template <typename input_t, typename output_t>
@@ -560,16 +503,25 @@ void launch_convert_indices_from_csr_to_coo_xpu_kernel(
 
   // Run nrows * nbatches threads...
   int64_t nbatches = total_nnz / nnz;
-  auto functor = ConvertIndicesFromCsrToCooXPUFunctor<input_t, output_t>(
-      data_out, crow_indices_data_in, nrows, nnz, nbatches);
 
-  int64_t THREADS = syclMaxWorkGroupSize(functor);
+  constexpr auto kernel_func =
+      convert_indices_from_csr_to_coo_xpu_kernel<input_t, output_t>;
+  int64_t THREADS = syclMaxWorkGroupSize<kernel_func>();
   int64_t GROUPS = (nrows * nbatches + THREADS) / THREADS;
 
   sycl::range<1> global_range(GROUPS * THREADS);
   sycl::range<1> local_range(THREADS);
 
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), functor);
+  sycl_kernel_submit<kernel_func>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
+      data_out,
+      crow_indices_data_in,
+      nrows,
+      nnz,
+      nbatches);
 }
 
 void convert_indices_from_coo_to_csr_structured_kernel(
