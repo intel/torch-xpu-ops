@@ -129,7 +129,12 @@ struct LpNormFunctor {
   }
 };
 
-template <typename out_t, int norm_type, typename opmath_t, int SIMD, bool apply_root = true>
+template <
+    typename out_t,
+    int norm_type,
+    typename opmath_t,
+    int SIMD,
+    bool apply_root = true>
 struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
   void operator()(sycl::nd_item<1> item_id) const {
@@ -157,7 +162,7 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (lid == 0) {
       // L2 norm applies the final sqrt; powsum (apply_root == false) keeps the
       // raw sum of squares. L1 and LInf never apply a root.
-      if constexpr (norm_type == NormType::L2 && apply_root) {
+      if constexpr (norm_type == NormType_L2 && apply_root) {
         *(ret_per_tensor_[group_id]) = sycl::sqrt((opmath_t)sum_val);
       } else {
         *(ret_per_tensor_[group_id]) = sum_val;
@@ -165,25 +170,35 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
   }
 
-lpnormChunkReduceKernelFunctor(
-    const opmath_t* output_per_tensor,
-    out_t** ret_per_tensor,
-    int max_chunks_per_tensor,
-    int wg_size)
-    : output_per_tensor_(output_per_tensor),
-      ret_per_tensor_(ret_per_tensor),
-      max_chunks_per_tensor_(max_chunks_per_tensor),
-      wg_size_(wg_size) {}
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    shared_ =
+        sycl_local_acc_t<opmath_t>(get_group_reduce_group_size(SIMD), cgh);
+  }
 
-private:
-const opmath_t* output_per_tensor_;
-out_t** ret_per_tensor_;
-int max_chunks_per_tensor_;
-int wg_size_;
-sycl_local_acc_t<opmath_t> shared_;
+  lpnormChunkReduceKernelFunctor(
+      const opmath_t* output_per_tensor,
+      out_t** ret_per_tensor,
+      int max_chunks_per_tensor,
+      int wg_size)
+      : output_per_tensor_(output_per_tensor),
+        ret_per_tensor_(ret_per_tensor),
+        max_chunks_per_tensor_(max_chunks_per_tensor),
+        wg_size_(wg_size) {}
+
+ private:
+  const opmath_t* output_per_tensor_;
+  out_t** ret_per_tensor_;
+  int max_chunks_per_tensor_;
+  int wg_size_;
+  sycl_local_acc_t<opmath_t> shared_;
 };
 
-template <typename out_t, int norm_type, typename out_opmath_t, int SIMD, bool apply_root = true>
+template <
+    typename out_t,
+    int norm_type,
+    typename out_opmath_t,
+    int SIMD,
+    bool apply_root = true>
 void launch_lpnorm_chunk_reduce_kernel(
     const out_opmath_t* output_per_tensor,
     out_t** ret_per_tensor,
