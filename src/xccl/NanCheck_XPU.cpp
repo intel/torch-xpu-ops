@@ -180,7 +180,8 @@ template <typename T>
 void checkfornan_impl_xpu(
     const at::Tensor& tensor,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<check_for_nan_kernel<T>>();
+  int64_t maxNumThreadsPerBlock =
+      syclMaxWorkGroupSize<check_for_nan_kernel<T>>();
 
   constexpr int64_t maxNumBlocks = 24;
 
