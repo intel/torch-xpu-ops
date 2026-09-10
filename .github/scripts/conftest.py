@@ -116,7 +116,7 @@ def _timeout_reason(crashitem):
     if not _sentinel_dir:
         return None
     try:
-        with open(_reason_file(crashitem), 'r', encoding='utf-8') as handle:
+        with open(_reason_file(crashitem), encoding='utf-8') as handle:
             return handle.read()
     except OSError:
         return None
