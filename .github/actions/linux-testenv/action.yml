@@ -97,7 +97,7 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
-          pip install torch==2.15.0.dev20260830+xpu torchvision==0.30.0.dev20260831+xpu torchaudio==2.11.0.dev20260901+xpu triton-xpu==3.8.0+git1e2d42a0 --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install torch torchvision torchaudio triton-xpu==3.8.0+git1e2d42a0 --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
@@ -264,10 +264,10 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v4
       with:
-        name: Torch-XPU-Wheel-4f082c2fec7057ba15fb7c46d7d56ef1e07c87a2-33595795984-2
+        name: manywheel-py3_10-xpu
         github-token: ${{ github.token }}
-        repository: mengfei25/torch-xpu-ops
-        run-id: 33595795984
+        repository: pytorch/pytorch
+        run-id: 34419841414
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
