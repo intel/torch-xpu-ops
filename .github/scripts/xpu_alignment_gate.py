@@ -140,27 +140,41 @@ def _validate_environment(
 
 
 def _validate_static_source(
-    root: Path, value: object, label: str, errors: list[str], *, path: str | None = None
+    root: Path,
+    value: object,
+    side: str,
+    unit_id: str,
+    errors: list[str],
+    *,
+    path: str | None = None,
+    source_root: Path | None = None,
 ) -> dict[str, object]:
+    label = f"execution-{side}-source"
     if not isinstance(value, dict) or set(value) != {"path", "snapshot", "sha256"}:
-        errors.append(f"execution-invalid-{label}-fields")
+        errors.append(f"{label}-invalid-fields:{unit_id}")
         return {}
     source_path = value.get("path")
     if not isinstance(source_path, str) or not source_path:
-        errors.append(f"execution-invalid-{label}-path")
+        errors.append(f"{label}-invalid-path:{unit_id}")
     elif path is not None and source_path != path:
-        errors.append(f"execution-{label}-path-mismatch")
+        errors.append(f"{label}-path-mismatch:{unit_id}")
     snapshot_value = value.get("snapshot")
     if not isinstance(snapshot_value, str) or Path(snapshot_value).parts[:1] != ("evidence",):
-        errors.append(f"execution-invalid-{label}-snapshot")
+        errors.append(f"{label}-invalid-snapshot:{unit_id}")
         snapshot = None
     else:
-        snapshot = _inside_file(root, snapshot_value, f"{label}-snapshot", errors)
+        snapshot = _inside_file(root, snapshot_value, f"{label}-snapshot:{unit_id}", errors)
     digest = value.get("sha256")
     if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
-        errors.append(f"execution-invalid-{label}-digest")
+        errors.append(f"{label}-invalid-digest:{unit_id}")
     elif snapshot is not None and _sha256(snapshot) != digest:
-        errors.append(f"execution-{label}-digest-mismatch")
+        errors.append(f"{label}-digest-mismatch:{unit_id}")
+    if source_root is not None and isinstance(source_path, str):
+        source = _inside_file(source_root, source_path, f"{label}-path:{unit_id}", errors)
+        if source is not None and snapshot is not None:
+            excerpt = snapshot.read_bytes()
+            if not excerpt or excerpt not in source.read_bytes():
+                errors.append(f"{label}-content-mismatch:{unit_id}")
     return value
 
 
@@ -208,6 +222,7 @@ def _validate_prepare(
     collection_path: Path | None,
     collection: dict[str, object],
     inventory: dict[str, dict[str, object]],
+    source_root: Path | None = None,
 ) -> tuple[Path | None, dict[str, dict[str, object]], dict[str, dict[str, object]], list[str]]:
     errors: list[str] = []
     path = _one(root, "prepare.json", "prepare", errors)
@@ -279,17 +294,28 @@ def _validate_prepare(
                 if {"script", "script_sha256", "timeout_seconds"} & set(entry):
                     errors.append(f"execution-static-carries-script:{unit_id}")
                 upstream_source = _validate_static_source(
-                    root, entry.get("upstream_source"), f"upstream-source:{unit_id}", errors
+                    root, entry.get("upstream_source"), "upstream", unit_id, errors
                 )
                 xpu_source = _validate_static_source(
                     root,
                     entry.get("xpu_source"),
-                    f"xpu-source:{unit_id}",
+                    "xpu",
+                    unit_id,
                     errors,
                     path=str(entry.get("target_path", "")),
+                    source_root=source_root,
                 )
-                if upstream_source.get("snapshot") == xpu_source.get("snapshot"):
-                    errors.append(f"execution-static-snapshots-identical:{unit_id}")
+                if (
+                    upstream_source
+                    and xpu_source
+                    and upstream_source.get("sha256") == xpu_source.get("sha256")
+                ):
+                    errors.append(f"execution-static-sources-identical:{unit_id}")
+                entry = {
+                    **entry,
+                    "upstream_source": upstream_source,
+                    "xpu_source": xpu_source,
+                }
             else:
                 script = _inside_file(root, entry.get("script"), f"script:{unit_id}", errors)
                 script_digest = entry.get("script_sha256")
@@ -343,6 +369,8 @@ def _validate_runner(
         for unit_id, entry in executions.items()
         if entry.get("verification") != "static"
     }
+    if "environment" not in runner:
+        errors.append("runner-environment-missing")
     environment = _validate_environment(
         runner.get("environment"), errors, required=bool(runtime)
     )
@@ -412,7 +440,9 @@ def _validate_scan(
         errors.append("scan-prepare-digest-mismatch")
     if runner_path is not None and scan.get("runner_sha256") != _sha256(runner_path):
         errors.append("scan-runner-digest-mismatch")
-    if scan.get("environment") != runner_environment:
+    if "environment" not in scan:
+        errors.append("scan-environment-missing")
+    elif scan.get("environment") != runner_environment:
         errors.append("scan-environment-mismatch")
     if scan.get("status") not in {"complete", "incomplete"}:
         errors.append(f"scan-invalid-status:{scan.get('status', 'missing')}")
@@ -448,13 +478,15 @@ def _validate_scan(
                 # Source read at the frozen head cannot be blocked by the runtime environment.
                 if result in BLOCKED_RESULTS:
                     errors.append(f"scan-static-blocked:{unit_id}")
+                upstream_source = executions[unit_id].get("upstream_source")
+                xpu_source = executions[unit_id].get("xpu_source")
                 expected_evidence = {
-                    "upstream_source": executions[unit_id]
-                    .get("upstream_source", {})
-                    .get("snapshot"),
-                    "xpu_source": executions[unit_id]
-                    .get("xpu_source", {})
-                    .get("snapshot"),
+                    "upstream_source": upstream_source.get("snapshot")
+                    if isinstance(upstream_source, dict)
+                    else None,
+                    "xpu_source": xpu_source.get("snapshot")
+                    if isinstance(xpu_source, dict)
+                    else None,
                 }
                 if candidate.get("evidence") != expected_evidence:
                     errors.append(f"scan-static-evidence-mismatch:{unit_id}")
@@ -603,7 +635,9 @@ def _validate_review(
             errors.append(f"payload-multiline-title:{unit_id}")
         if not isinstance(body, str) or not body.strip():
             errors.append(f"payload-empty-body:{unit_id}")
-        elif tracker_state == "closed" and tracker not in body:
+        elif isinstance(tracker, str) and not re.search(
+            rf"{re.escape(tracker)}(?![0-9])", body
+        ):
             errors.append(f"payload-missing-canonical-tracker:{unit_id}")
         if payload.get("labels") != ISSUE_LABELS:
             errors.append(f"payload-invalid-labels:{unit_id}")
@@ -624,6 +658,7 @@ def build_decision(
     producers_clean: bool,
     run_id: str,
     scan_date: str,
+    source_root: Path | None = None,
 ) -> dict[str, object]:
     if mode not in {"schedule", "dry-run"}:
         raise ValueError(f"unsupported mode: {mode}")
@@ -631,7 +666,12 @@ def build_decision(
         collection_root, scan_date
     )
     prepare_path, _, executions, prepare_errors = _validate_prepare(
-        prepare_root, scan_date, collection_path, collection, inventory
+        prepare_root,
+        scan_date,
+        collection_path,
+        collection,
+        inventory,
+        source_root,
     )
     runner_path, runner_environment, results, runner_errors = _validate_runner(
         runner_root, collection_path, prepare_path, executions
@@ -733,6 +773,7 @@ def main() -> int:
         producers_clean=args.producers_clean,
         run_id=args.run_id,
         scan_date=args.scan_date,
+        source_root=Path.cwd().resolve(strict=True),
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(decision, indent=2) + "\n", encoding="utf-8")

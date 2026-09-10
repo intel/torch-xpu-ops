@@ -100,9 +100,11 @@ decides the divergence -- a moved upstream helper, a changed signature or error
 string, a check XPU keeps a private copy of -- mark the entry
 `"verification": "static"` and write no script for it. Instead, save exact
 upstream and XPU source snapshots under `evidence/` and record each snapshot's
-original path, artifact path, and SHA-256. In automation,
-stop after writing `prepare.json`, source evidence, and the reproducer scripts;
-do not execute them or write final scan results. A
+original path, artifact path, and SHA-256. The XPU snapshot must be a nonempty
+exact excerpt of `target_path` in the checked-out torch-xpu-ops revision, and the
+two snapshots must differ. In automation, stop after writing `prepare.json`,
+source evidence, and the reproducer scripts; do not execute them or write final
+scan results. A
 structurally valid partial collection may still be prepared and validated. Its
 partial scope remains attached to every downstream artifact so the gate can
 publish only fully covered, independently reviewed units while reporting the
@@ -131,7 +133,8 @@ Only `needs-xpu-fix` without an open `intel/torch-xpu-ops` canonical tracker may
 carry a new issue payload. When an existing issue covers the work, record it as
 `canonical_tracker` with its open/closed state. An open `intel/torch-xpu-ops`
 tracker replaces the payload and is not commented on; a closed one still needs a
-payload that cites it. In
+payload. Whenever a tracker is recorded and a payload is emitted, cite the exact
+tracker URL in the payload body. In
 automation, write only under `review/` and follow the minimal review contract. A
 blocked review produces no publishable payloads.
 
