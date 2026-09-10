@@ -173,7 +173,12 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void lpnorm_c
   }
 }
 
-template <typename out_t, NormType norm_type, typename out_opmath_t, int SIMD>
+template <
+    typename out_t,
+    NormType norm_type,
+    typename out_opmath_t,
+    int SIMD,
+    bool apply_root = true>
 void launch_lpnorm_chunk_reduce_kernel(
     const out_opmath_t* output_per_tensor,
     out_t** ret_per_tensor,
@@ -231,7 +236,11 @@ void foreach_norn_kernel_config(
       output_per_tensor_option);
 }
 
-std::vector<Tensor> foreach_norm_kernel(
+// apply_root controls the final reduction: when true (foreach_norm) the L2
+// case applies sqrt; when false (foreach_powsum) it keeps the raw sum of
+// squares. L1 and LInf are unaffected.
+template <bool apply_root>
+std::vector<Tensor> foreach_norm_kernel_impl(
     TensorList tensors,
     const Scalar& ord,
     double p,
@@ -320,7 +329,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::L1,
                       out_opmath_t,
-                      SIMD32>(
+                      SIMD32,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -331,7 +341,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::L1,
                       out_opmath_t,
-                      SIMD16>(
+                      SIMD16,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -389,7 +400,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::L2,
                       out_opmath_t,
-                      SIMD32>(
+                      SIMD32,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -400,7 +412,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::L2,
                       out_opmath_t,
-                      SIMD16>(
+                      SIMD16,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -458,7 +471,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::LInf,
                       out_opmath_t,
-                      SIMD32>(
+                      SIMD32,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -469,7 +483,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::LInf,
                       out_opmath_t,
-                      SIMD16>(
+                      SIMD16,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -488,6 +503,24 @@ std::vector<Tensor> foreach_norm_kernel(
     result.emplace_back(ret_per_tensor[i]);
   }
   return result;
+}
+
+std::vector<Tensor> foreach_norm_kernel(
+    TensorList tensors,
+    const Scalar& ord,
+    double p,
+    std::optional<ScalarType> dtype) {
+  return foreach_norm_kernel_impl</*apply_root=*/true>(tensors, ord, p, dtype);
+}
+
+// _foreach_powsum: like foreach_norm but returns sum(|x|^p) without the final
+// root. Fast path only supports p == 1 and p == 2.
+std::vector<Tensor> foreach_powsum_kernel(
+    TensorList tensors,
+    const Scalar& ord,
+    double p,
+    std::optional<ScalarType> dtype) {
+  return foreach_norm_kernel_impl</*apply_root=*/false>(tensors, ord, p, dtype);
 }
 
 template <typename T, int SIMD>
