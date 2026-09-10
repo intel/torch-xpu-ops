@@ -22,7 +22,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1,xpu_distributed,upstream_distributed,upstream_ut`
+        description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1,xpu_distributed,upstream_distributed,upstream_inductor,upstream_default`
       category:
         type: string
         default: ''

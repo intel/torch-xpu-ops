@@ -175,53 +175,42 @@ runs:
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log"
 
-    - name: upstream_distributed
-      shell: timeout 72000 bash -eu -o pipefail {0}
-      if: ${{ inputs.ut_name == 'upstream_distributed' }}
-      run: |
-        xpu-smi topology -m
-        log_dir="${{ github.workspace }}/ut_log/upstream_distributed"
-        mkdir -p ${log_dir}
-        export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
-        XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
-        if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
-          echo -e "[ERROR] XCCL is not enabled"
-          exit 1
-        fi
-        python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
-          --category distributed --distributed-output ${log_dir}/upstream_distributed_files.txt > /dev/null
-        cd pytorch
-        while IFS= read -r test_file; do
-          [ -z "${test_file}" ] && continue
-          log_name="${test_file//\//_}"
-          echo "::group::${test_file}"
-          python -m pytest -v "${test_file}" \
-            --junit-xml="${{ github.workspace }}/ut_log/upstream_distributed_${log_name}.xml" \
-            2>&1 | tee "${log_dir}/${log_name}.log" \
-            || echo -e "${test_file}" >> "${log_dir}/upstream_distributed_failed.log"
-          echo "::endgroup::"
-        done < ${log_dir}/upstream_distributed_files.txt
     - name: upstream_ut
       shell: timeout 72000 bash -eu -o pipefail {0}
-      if: ${{ inputs.ut_name == 'upstream_ut' }}
+      if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        log_dir="${{ github.workspace }}/ut_log/upstream_ut"
+        ut_name="${{ inputs.ut_name }}"
+        log_dir="${{ github.workspace }}/ut_log/${ut_name}"
         mkdir -p ${log_dir}
+        case "${ut_name}" in
+          upstream_distributed) category="distributed" ;;
+          upstream_inductor) category="inductor" ;;
+          *) category="default" ;;
+        esac
+        if [[ "${category}" == 'distributed' ]]; then
+          xpu-smi topology -m
+          export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
+          XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+          if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
+            echo -e "[ERROR] XCCL is not enabled"
+            exit 1
+          fi
+        fi
         python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
-          --category others --others-output ${log_dir}/upstream_ut_files.txt > /dev/null
+          --category ${category} --${category}-output ${log_dir}/${ut_name}_files.txt > /dev/null
         cd pytorch
         while IFS= read -r test_file; do
           [ -z "${test_file}" ] && continue
           log_name="${test_file//\//_}"
           echo "::group::${test_file}"
           python -m pytest -v "${test_file}" \
-            --junit-xml="${{ github.workspace }}/ut_log/upstream_ut_${log_name}.xml" \
+            --junit-xml="${{ github.workspace }}/ut_log/${ut_name}_${log_name}.xml" \
             2>&1 | tee "${log_dir}/${log_name}.log" \
-            || echo -e "${test_file}" >> "${log_dir}/upstream_ut_failed.log"
+            || echo -e "${test_file}" >> "${log_dir}/${ut_name}_failed.log"
           echo "::endgroup::"
-        done < ${log_dir}/upstream_ut_files.txt
+        done < ${log_dir}/${ut_name}_files.txt
 
     # Summary
     - name: UT Test Results Summary

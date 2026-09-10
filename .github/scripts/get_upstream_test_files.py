@@ -5,8 +5,8 @@ The tracking issue (default: intel/torch-xpu-ops#5205) keeps an
 auto-generated list of upstream test files between the
 ``<!-- auto-file-lists:begin -->`` / ``<!-- auto-file-lists:end -->`` markers.
 This script fetches the issue body, extracts the files under the
-"Done test files" section and splits them into distributed and
-non-distributed buckets.
+"Done test files" section and splits them into distributed, inductor
+and default buckets.
 """
 
 import argparse
@@ -18,9 +18,10 @@ import urllib.request
 
 API_URL = "https://api.github.com/repos/{owner}/{repo}/issues/{number}"
 
-# A file path is considered a distributed test when it lives under
-# test/distributed/.
+# Test files are bucketed by their path prefix; anything that does not
+# match a specific prefix falls into the default bucket.
 DISTRIBUTED_PREFIX = "test/distributed/"
+INDUCTOR_PREFIX = "test/inductor/"
 
 
 def fetch_issue_body(owner, repo, number):
@@ -71,8 +72,10 @@ def parse_files(section):
 
 def split_files(files):
     distributed = [f for f in files if f.startswith(DISTRIBUTED_PREFIX)]
-    others = [f for f in files if not f.startswith(DISTRIBUTED_PREFIX)]
-    return distributed, others
+    inductor = [f for f in files if f.startswith(INDUCTOR_PREFIX)]
+    default = [f for f in files
+               if not f.startswith((DISTRIBUTED_PREFIX, INDUCTOR_PREFIX))]
+    return distributed, inductor, default
 
 
 def main():
@@ -81,12 +84,15 @@ def main():
                         help="owner/repo of the tracking issue")
     parser.add_argument("--issue", type=int, default=5205,
                         help="tracking issue number")
-    parser.add_argument("--category", choices=["distributed", "others", "all"],
+    parser.add_argument("--category",
+                        choices=["distributed", "inductor", "default", "all"],
                         default="all", help="which bucket of files to print")
     parser.add_argument("--distributed-output",
                         help="write distributed file list to this path")
-    parser.add_argument("--others-output",
-                        help="write non-distributed file list to this path")
+    parser.add_argument("--inductor-output",
+                        help="write inductor file list to this path")
+    parser.add_argument("--default-output",
+                        help="write default file list to this path")
     args = parser.parse_args()
 
     owner, _, repo = args.repo.partition("/")
@@ -103,24 +109,30 @@ def main():
     not_applicable = set(parse_files(extract_not_applicable_section(body)))
     files = [f for f in done_files if f not in not_applicable]
 
-    distributed, others = split_files(files)
+    distributed, inductor, default = split_files(files)
 
     if args.distributed_output:
         with open(args.distributed_output, "w") as fh:
             fh.write("\n".join(distributed) + "\n" if distributed else "")
-    if args.others_output:
-        with open(args.others_output, "w") as fh:
-            fh.write("\n".join(others) + "\n" if others else "")
+    if args.inductor_output:
+        with open(args.inductor_output, "w") as fh:
+            fh.write("\n".join(inductor) + "\n" if inductor else "")
+    if args.default_output:
+        with open(args.default_output, "w") as fh:
+            fh.write("\n".join(default) + "\n" if default else "")
 
     print(f"Done test files: {len(files)} "
-          f"(distributed: {len(distributed)}, others: {len(others)}; "
+          f"(distributed: {len(distributed)}, inductor: {len(inductor)}, "
+          f"default: {len(default)}; "
           f"excluded {len(done_files) - len(files)} Not Applicable)",
           file=sys.stderr)
 
     if args.category == "distributed":
         selected = distributed
-    elif args.category == "others":
-        selected = others
+    elif args.category == "inductor":
+        selected = inductor
+    elif args.category == "default":
+        selected = default
     else:
         selected = files
     print("\n".join(selected))
