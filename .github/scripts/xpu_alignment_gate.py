@@ -21,6 +21,7 @@ from xpu_alignment_collect import CollectionError, validate_collection
 SCHEMA_VERSION = 1
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
+COMMIT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
@@ -146,13 +147,22 @@ def _validate_static_source(
     unit_id: str,
     errors: list[str],
     *,
+    repository: str,
+    commit: str,
     path: str | None = None,
-    source_root: Path | None = None,
 ) -> dict[str, object]:
     label = f"execution-{side}-source"
-    if not isinstance(value, dict) or set(value) != {"path", "snapshot", "sha256"}:
+    fields = {"repository", "commit", "path", "snapshot", "sha256"}
+    if not isinstance(value, dict) or set(value) != fields:
         errors.append(f"{label}-invalid-fields:{unit_id}")
         return {}
+    if value.get("repository") != repository:
+        errors.append(f"{label}-repository-mismatch:{unit_id}")
+    source_commit = value.get("commit")
+    if not isinstance(source_commit, str) or not COMMIT_RE.fullmatch(source_commit):
+        errors.append(f"{label}-invalid-commit:{unit_id}")
+    elif source_commit != commit:
+        errors.append(f"{label}-commit-mismatch:{unit_id}")
     source_path = value.get("path")
     if not isinstance(source_path, str) or not source_path:
         errors.append(f"{label}-invalid-path:{unit_id}")
@@ -169,12 +179,6 @@ def _validate_static_source(
         errors.append(f"{label}-invalid-digest:{unit_id}")
     elif snapshot is not None and _sha256(snapshot) != digest:
         errors.append(f"{label}-digest-mismatch:{unit_id}")
-    if source_root is not None and isinstance(source_path, str):
-        source = _inside_file(source_root, source_path, f"{label}-path:{unit_id}", errors)
-        if source is not None and snapshot is not None:
-            excerpt = snapshot.read_bytes()
-            if not excerpt or excerpt not in source.read_bytes():
-                errors.append(f"{label}-content-mismatch:{unit_id}")
     return value
 
 
@@ -222,7 +226,7 @@ def _validate_prepare(
     collection_path: Path | None,
     collection: dict[str, object],
     inventory: dict[str, dict[str, object]],
-    source_root: Path | None = None,
+    xpu_commit: str,
 ) -> tuple[Path | None, dict[str, dict[str, object]], dict[str, dict[str, object]], list[str]]:
     errors: list[str] = []
     path = _one(root, "prepare.json", "prepare", errors)
@@ -293,8 +297,20 @@ def _validate_prepare(
                 # A source-only divergence has nothing to execute, so it carries no script.
                 if {"script", "script_sha256", "timeout_seconds"} & set(entry):
                     errors.append(f"execution-static-carries-script:{unit_id}")
+                snapshot = collection.get("snapshot")
+                upstream_commit = (
+                    snapshot.get("default_branch_head")
+                    if isinstance(snapshot, dict)
+                    else None
+                )
                 upstream_source = _validate_static_source(
-                    root, entry.get("upstream_source"), "upstream", unit_id, errors
+                    root,
+                    entry.get("upstream_source"),
+                    "upstream",
+                    unit_id,
+                    errors,
+                    repository=str(collection.get("repository", "")),
+                    commit=str(upstream_commit or ""),
                 )
                 xpu_source = _validate_static_source(
                     root,
@@ -302,8 +318,9 @@ def _validate_prepare(
                     "xpu",
                     unit_id,
                     errors,
+                    repository="intel/torch-xpu-ops",
+                    commit=xpu_commit,
                     path=str(entry.get("target_path", "")),
-                    source_root=source_root,
                 )
                 if (
                     upstream_source
@@ -658,7 +675,7 @@ def build_decision(
     producers_clean: bool,
     run_id: str,
     scan_date: str,
-    source_root: Path | None = None,
+    xpu_commit: str,
 ) -> dict[str, object]:
     if mode not in {"schedule", "dry-run"}:
         raise ValueError(f"unsupported mode: {mode}")
@@ -671,7 +688,7 @@ def build_decision(
         collection_path,
         collection,
         inventory,
-        source_root,
+        xpu_commit,
     )
     runner_path, runner_environment, results, runner_errors = _validate_runner(
         runner_root, collection_path, prepare_path, executions
@@ -760,6 +777,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--run-id", default="")
     parser.add_argument("--scan-date", required=True)
+    parser.add_argument("--xpu-commit", required=True)
     parser.add_argument("--mode", choices=("schedule", "dry-run"), required=True)
     parser.add_argument("--producers-clean", action="store_true")
     args = parser.parse_args()
@@ -773,7 +791,7 @@ def main() -> int:
         producers_clean=args.producers_clean,
         run_id=args.run_id,
         scan_date=args.scan_date,
-        source_root=Path.cwd().resolve(strict=True),
+        xpu_commit=args.xpu_commit,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(decision, indent=2) + "\n", encoding="utf-8")
