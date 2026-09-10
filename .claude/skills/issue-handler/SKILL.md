@@ -608,8 +608,10 @@ When the job ends, the `fix` workflow appends a template to the session
 comment for a human to review the fix. Do not write it yourself:
 
 ```
-<!-- review: accepted -->
-<!-- review: rejected -->
+<!-- review: strong-accepted -->
+<!-- review: weak-accepted -->
+<!-- review: weak-rejected -->
+<!-- review: strong-rejected -->
 notes:
 ```
 

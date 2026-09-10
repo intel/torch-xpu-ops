@@ -1396,6 +1396,7 @@ jobs:
         env:
           ID: ${{ steps.start-comment.outputs.comment_id }}
         run: |
+          [ -n "$ID" ] || exit 0
           C="/repos/${{ github.repository }}/issues/comments/$ID"
           gh api "$C" --jq .body > body.md
           grep -q '<!-- agent:review -->' body.md && exit 0
@@ -1408,8 +1409,10 @@ jobs:
           Copy into a new comment, keep one line, say why.
 
           ```
-          <!-- review: accepted -->
-          <!-- review: rejected -->
+          <!-- review: strong-accepted -->
+          <!-- review: weak-accepted -->
+          <!-- review: weak-rejected -->
+          <!-- review: strong-rejected -->
           notes:
           ```
           EOF
