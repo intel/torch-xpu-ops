@@ -21,9 +21,9 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/ScatterGatherChecks.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
-#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <comm/SYCLContext.h>
 #include <bit>
 

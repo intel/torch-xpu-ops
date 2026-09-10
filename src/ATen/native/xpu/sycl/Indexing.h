@@ -11,9 +11,9 @@
 #pragma once
 
 #include <ATen/native/xpu/sycl/BatchKernel.h>
-#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <comm/TensorInfo.h>
 
 using namespace at::xpu::detail;
