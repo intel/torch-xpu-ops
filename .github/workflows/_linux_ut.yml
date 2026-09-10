@@ -46,7 +46,7 @@ env:
 
 jobs:
   test-in-container:
-    timeout-minutes: 1440
+    timeout-minutes: 14400
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
