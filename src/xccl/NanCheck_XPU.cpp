@@ -137,7 +137,7 @@ void checkChunk(BytePack* ptr, int nWorkers) {
 
 template <typename T>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void checkForNaNKernel(T* data, size_t size) {
+void check_for_nan_kernel(T* data, size_t size) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   constexpr int EltPerPack = sizeof(BytePack) / sizeof(T);
 
@@ -180,7 +180,7 @@ template <typename T>
 void checkfornan_impl_xpu(
     const at::Tensor& tensor,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<checkForNaNKernel<T>>();
+  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<check_for_nan_kernel<T>>();
 
   constexpr int64_t maxNumBlocks = 24;
 
@@ -197,7 +197,7 @@ void checkfornan_impl_xpu(
   auto global_range{numBlocks * numThreadsPerBlock};
   auto local_range{numThreadsPerBlock};
 
-  sycl_kernel_submit<checkForNaNKernel<T>>(
+  sycl_kernel_submit<check_for_nan_kernel<T>>(
       global_range,
       local_range,
       stream.queue(),
