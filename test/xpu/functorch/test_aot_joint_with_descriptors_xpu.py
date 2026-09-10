@@ -13,17 +13,25 @@
 # Owner(s): ["module: intel"]
 # ruff: noqa: F401
 
+import sys
 import unittest
+from pathlib import Path
 
 import torch
 import torch.fx.traceback as fx_traceback
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 from torch.testing._internal.common_utils import run_tests, TEST_CUDA, TEST_XPU
 
-try:
-    from .xpu_test_utils import XPUImportCtx
-except Exception:
-    from ..xpu_test_utils import XPUImportCtx
+# Do NOT add a test/xpu/functorch/__init__.py to use a relative import here.
+# op_ut runs pytest with cwd=test/xpu, so a regular package named `functorch` in
+# that directory shadows the installed one in every `python -c` subprocess an
+# upstream test spawns, breaking `from functorch.compile import ...` inside
+# torch/_dynamo/backends/debugging.py (#4831, #4728).
+xpu_test_dir = Path(__file__).resolve().parents[1]
+if str(xpu_test_dir) not in sys.path:
+    sys.path.insert(0, str(xpu_test_dir))
+
+from xpu_test_utils import XPUImportCtx
 
 with XPUImportCtx(False):
     from test_aot_joint_with_descriptors import (
