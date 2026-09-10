@@ -21,6 +21,7 @@ from xpu_alignment_collect import CollectionError, validate_collection
 SCHEMA_VERSION = 1
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
+COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
@@ -113,7 +114,13 @@ def _expected_window(scan_date: str, errors: list[str]) -> dict[str, str] | None
     }
 
 
-def _validate_environment(value: object, errors: list[str]) -> dict[str, object]:
+def _validate_environment(
+    value: object, errors: list[str], *, required: bool
+) -> dict[str, object] | None:
+    if not required:
+        if value is not None:
+            errors.append("runner-environment-unexpected")
+        return None
     if not isinstance(value, dict) or set(value) != ENVIRONMENT_FIELDS:
         errors.append("runner-environment-invalid-fields")
         return {}
@@ -130,6 +137,52 @@ def _validate_environment(value: object, errors: list[str]) -> dict[str, object]
         errors.append("runner-environment-invalid:environment_warnings")
     if value.get("xpu_available") is not True:
         errors.append("runner-environment-xpu-unavailable")
+    return value
+
+
+def _validate_static_source(
+    root: Path,
+    value: object,
+    label: str,
+    errors: list[str],
+    *,
+    repository: str,
+    commit: str | None = None,
+    path: str | None = None,
+) -> dict[str, object]:
+    fields = {"repository", "commit", "path", "snapshot", "sha256"}
+    if not isinstance(value, dict) or set(value) != fields:
+        errors.append(f"execution-invalid-{label}-fields")
+        return {}
+    if value.get("repository") != repository:
+        errors.append(f"execution-invalid-{label}-repository")
+    source_commit = value.get("commit")
+    if not isinstance(source_commit, str) or not COMMIT_RE.fullmatch(source_commit):
+        errors.append(f"execution-invalid-{label}-commit")
+    elif commit is not None and source_commit != commit:
+        errors.append(f"execution-{label}-commit-mismatch")
+    source_path = value.get("path")
+    if (
+        not isinstance(source_path, str)
+        or not source_path
+        or Path(source_path).is_absolute()
+        or ".." in Path(source_path).parts
+    ):
+        errors.append(f"execution-invalid-{label}-path")
+    elif path is not None and source_path != path:
+        errors.append(f"execution-{label}-path-mismatch")
+    snapshot_value = value.get("snapshot")
+    snapshot_relative = Path(snapshot_value) if isinstance(snapshot_value, str) else None
+    if snapshot_relative is None or not snapshot_relative.parts or snapshot_relative.parts[0] != "evidence":
+        errors.append(f"execution-invalid-{label}-snapshot")
+        snapshot = None
+    else:
+        snapshot = _inside_file(root, snapshot_value, f"{label}-snapshot", errors)
+    digest = value.get("sha256")
+    if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
+        errors.append(f"execution-invalid-{label}-digest")
+    elif snapshot is not None and _sha256(snapshot) != digest:
+        errors.append(f"execution-{label}-digest-mismatch")
     return value
 
 
@@ -247,6 +300,30 @@ def _validate_prepare(
                 # A source-only divergence has nothing to execute, so it carries no script.
                 if {"script", "script_sha256", "timeout_seconds"} & set(entry):
                     errors.append(f"execution-static-carries-script:{unit_id}")
+                snapshot = collection.get("snapshot")
+                upstream_commit = (
+                    snapshot.get("default_branch_head")
+                    if isinstance(snapshot, dict)
+                    else None
+                )
+                upstream_source = _validate_static_source(
+                    root,
+                    entry.get("upstream_source"),
+                    f"upstream-source:{unit_id}",
+                    errors,
+                    repository=str(collection.get("repository", "")),
+                    commit=upstream_commit if isinstance(upstream_commit, str) else None,
+                )
+                xpu_source = _validate_static_source(
+                    root,
+                    entry.get("xpu_source"),
+                    f"xpu-source:{unit_id}",
+                    errors,
+                    repository="intel/torch-xpu-ops",
+                    path=str(entry.get("target_path", "")),
+                )
+                if upstream_source.get("snapshot") == xpu_source.get("snapshot"):
+                    errors.append(f"execution-static-snapshots-identical:{unit_id}")
             else:
                 script = _inside_file(root, entry.get("script"), f"script:{unit_id}", errors)
                 script_digest = entry.get("script_sha256")
@@ -295,12 +372,14 @@ def _validate_runner(
         errors.append("runner-collection-digest-mismatch")
     if prepare_path is not None and runner.get("prepare_sha256") != _sha256(prepare_path):
         errors.append("runner-prepare-digest-mismatch")
-    environment = _validate_environment(runner.get("environment"), errors)
     runtime = {
         unit_id
         for unit_id, entry in executions.items()
         if entry.get("verification") != "static"
     }
+    environment = _validate_environment(
+        runner.get("environment"), errors, required=bool(runtime)
+    )
     results: dict[str, dict[str, object]] = {}
     raw_results = runner.get("results")
     if not isinstance(raw_results, list):
@@ -348,7 +427,7 @@ def _validate_scan(
     collection: dict[str, object],
     prepare_path: Path | None,
     runner_path: Path | None,
-    runner_environment: dict[str, object],
+    runner_environment: dict[str, object] | None,
     executions: dict[str, dict[str, object]],
     results: dict[str, dict[str, object]],
 ) -> tuple[Path | None, list[str], list[dict[str, str]], list[str]]:
@@ -403,8 +482,16 @@ def _validate_scan(
                 # Source read at the frozen head cannot be blocked by the runtime environment.
                 if result in BLOCKED_RESULTS:
                     errors.append(f"scan-static-blocked:{unit_id}")
-                if not str(candidate.get("evidence", "")).strip():
-                    errors.append(f"scan-evidence-missing:{unit_id}")
+                expected_evidence = {
+                    "upstream_source": executions[unit_id]
+                    .get("upstream_source", {})
+                    .get("snapshot"),
+                    "xpu_source": executions[unit_id]
+                    .get("xpu_source", {})
+                    .get("snapshot"),
+                }
+                if candidate.get("evidence") != expected_evidence:
+                    errors.append(f"scan-static-evidence-mismatch:{unit_id}")
                 candidates[unit_id] = candidate
                 continue
             evidence = _inside_file(
@@ -515,10 +602,15 @@ def _validate_review(
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
         tracker_state = entry.get("canonical_tracker_state")
+        tracker_repository = None
         if tracker is not None and (
             not isinstance(tracker, str) or not TRACKER_RE.fullmatch(tracker)
         ):
             errors.append(f"review-invalid-tracker:{unit_id}")
+        elif isinstance(tracker, str):
+            tracker_repository = "/".join(
+                tracker.removeprefix("https://github.com/").split("/")[:2]
+            ).lower()
         if (tracker is None) != (tracker_state is None) or tracker_state not in {
             None,
             "open",
@@ -527,7 +619,10 @@ def _validate_review(
             errors.append(f"review-invalid-tracker-state:{unit_id}")
         payload = entry.get("payload")
         # A closed tracker cannot receive the work, so the finding still needs its own issue.
-        expects_payload = verdict == "needs-xpu-fix" and tracker_state != "open"
+        open_xpu_tracker = (
+            tracker_state == "open" and tracker_repository == "intel/torch-xpu-ops"
+        )
+        expects_payload = verdict == "needs-xpu-fix" and not open_xpu_tracker
         if not expects_payload:
             if payload is not None:
                 errors.append(f"review-unexpected-payload:{unit_id}")
@@ -542,6 +637,8 @@ def _validate_review(
             errors.append(f"payload-multiline-title:{unit_id}")
         if not isinstance(body, str) or not body.strip():
             errors.append(f"payload-empty-body:{unit_id}")
+        elif tracker_state == "closed" and tracker not in body:
+            errors.append(f"payload-missing-canonical-tracker:{unit_id}")
         if payload.get("labels") != ISSUE_LABELS:
             errors.append(f"payload-invalid-labels:{unit_id}")
         payloads.append({"unit_id": unit_id, "title": title, "body": body, "labels": ISSUE_LABELS})
