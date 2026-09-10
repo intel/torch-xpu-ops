@@ -23,6 +23,8 @@ from xpu_alignment_collect import CollectionError, sha256, validate_collection
 
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
+COMMIT_RE = re.compile(r"[0-9a-f]{40}")
+REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 MAX_TIMEOUT_SECONDS = 120
 PR_SET_CHILD_SUBREAPER = 36
 ENVIRONMENT_FIELDS = {
@@ -53,6 +55,31 @@ def _inside(root: Path, value: object, *, existing: bool) -> Path:
     except ValueError as error:
         raise PlanError(f"path escapes run root: {relative}") from error
     return resolved
+
+
+def _validate_static_source(root: Path, value: object, label: str) -> None:
+    fields = {"repository", "commit", "path", "snapshot", "sha256"}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise PlanError(f"{label}: invalid source fields")
+    if not isinstance(value.get("repository"), str) or not REPOSITORY_RE.fullmatch(
+        value["repository"]
+    ):
+        raise PlanError(f"{label}: invalid source repository")
+    if not isinstance(value.get("commit"), str) or not COMMIT_RE.fullmatch(value["commit"]):
+        raise PlanError(f"{label}: invalid source commit")
+    source_path = Path(str(value.get("path") or ""))
+    if not str(value.get("path") or "") or source_path.is_absolute() or ".." in source_path.parts:
+        raise PlanError(f"{label}: invalid source path")
+    snapshot_value = value.get("snapshot")
+    snapshot_path = Path(str(snapshot_value or ""))
+    if not snapshot_path.parts or snapshot_path.parts[0] != "evidence":
+        raise PlanError(f"{label}: source snapshot must be under evidence/")
+    snapshot = _inside(root, snapshot_value, existing=True)
+    digest = value.get("sha256")
+    if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
+        raise PlanError(f"{label}: invalid source digest")
+    if sha256(snapshot) != digest:
+        raise PlanError(f"{label}: source digest does not match")
 
 
 def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
@@ -121,7 +148,12 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         if not isinstance(unit_id, str) or not UNIT_ID_RE.fullmatch(unit_id) or unit_id in seen:
             raise PlanError(f"invalid or duplicate unit id: {unit_id!r}")
         seen.add(unit_id)
+        for field in ("oracle", "target_path"):
+            if not str(entry.get(field, "")).strip():
+                raise PlanError(f"{unit_id}: missing {field}")
         if entry.get("verification") == "static":
+            _validate_static_source(root, entry.get("upstream_source"), f"{unit_id}: upstream")
+            _validate_static_source(root, entry.get("xpu_source"), f"{unit_id}: XPU")
             continue
         script = _inside(root, entry.get("script"), existing=True)
         expected_digest = entry.get("script_sha256")
@@ -136,9 +168,6 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
             or not 1 <= timeout <= MAX_TIMEOUT_SECONDS
         ):
             raise PlanError(f"{unit_id}: invalid timeout")
-        for field in ("oracle", "target_path"):
-            if not str(entry.get(field, "")).strip():
-                raise PlanError(f"{unit_id}: missing {field}")
         normalized.append(
             {
                 "id": unit_id,
@@ -362,10 +391,12 @@ def run_plan(
 ) -> dict[str, object]:
     if not python.is_file():
         raise PlanError(f"python executable does not exist: {python}")
-    _become_child_subreaper()
-    recorded_environment = _validated_environment(
-        environment if environment is not None else probe_environment(python, identity)
-    )
+    recorded_environment = None
+    if entries:
+        _become_child_subreaper()
+        recorded_environment = _validated_environment(
+            environment if environment is not None else probe_environment(python, identity)
+        )
     logs = root / "runner/logs"
     logs.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, object]] = []
@@ -451,7 +482,8 @@ def main() -> int:
         results = results.resolve()
         results.relative_to(root)
         entries = load_prepare(root, prepare)
-        payload = run_plan(root, args.python.resolve(), prepare, entries, _identity(args.user))
+        identity = _identity(args.user) if entries else None
+        payload = run_plan(root, args.python.resolve(), prepare, entries, identity)
     except (OSError, PlanError, ValueError) as error:
         print(f"prepare artifact rejected: {error}")
         return 2

@@ -98,9 +98,11 @@ an execution-plan entry. Record the upstream oracle, expected target path, exact
 script digest, and bounded timeout. When source at the frozen head already
 decides the divergence -- a moved upstream helper, a changed signature or error
 string, a check XPU keeps a private copy of -- mark the entry
-`"verification": "static"` and write no script for it. In automation, stop after
-writing `prepare.json`
-and the reproducer scripts; do not execute them or write final scan results. A
+`"verification": "static"` and write no script for it. Instead, save exact
+upstream and XPU source snapshots under `evidence/` and record each snapshot's
+repository, commit, original path, artifact path, and SHA-256. In automation,
+stop after writing `prepare.json`, source evidence, and the reproducer scripts;
+do not execute them or write final scan results. A
 structurally valid partial collection may still be prepared and validated. Its
 partial scope remains attached to every downstream artifact so the gate can
 publish only fully covered, independently reviewed units while reporting the
@@ -109,8 +111,10 @@ incomplete collection.
 ## Scan finalization
 
 Read the immutable preparation artifact and deterministic runner results. Verify
-their digests and coverage before interpreting the raw logs. Classify from
-observed evidence, including proof that the intended XPU path reached the oracle.
+their digests and coverage before interpreting the raw logs or static source
+snapshots. Classify from observed evidence, including proof that the intended
+XPU path reached the oracle or that both static snapshots establish the claimed
+source divergence.
 Leave unresolved work explicit; never convert a runner or evidence failure into a
 rejection merely to make the run complete. Write only canonical `scan.json` and
 an optional scan report; do not modify preparation or runner-owned files.
@@ -123,8 +127,8 @@ local result is `confirmed` or `related-failure`; do not silently omit a difficu
 case. Decide whether the behavior needs independent XPU work, is owned upstream,
 is already fixed or tracked, is not a defect, or lacks sufficient evidence.
 
-Only `needs-xpu-fix` without an open canonical tracker may carry a new issue
-payload. When an existing issue covers the work, record it as
+Only `needs-xpu-fix` without an open `intel/torch-xpu-ops` canonical tracker may
+carry a new issue payload. When an existing issue covers the work, record it as
 `canonical_tracker` with its open/closed state. An open `intel/torch-xpu-ops`
 tracker replaces the payload and is not commented on; a closed one still needs a
 payload that cites it. In
@@ -137,7 +141,8 @@ A collection is complete only when every required source reaches its time
 boundary or connection end. A preparation is complete relative to its collection
 only when every observed inventory item has exactly one triage decision. A scan
 is complete relative to that same scope only when every selected validation has a
-defensible terminal runner-backed result. A review is complete relative to that
+defensible terminal result: runner-backed for runtime verification and
+snapshot-backed for static verification. A review is complete relative to that
 scope only when it covers the entire provisional actionable set exactly once and
 has no blocker. Collection scope remains independently `complete` or `partial`;
 preserve partial evidence and name missing work even when fully covered,

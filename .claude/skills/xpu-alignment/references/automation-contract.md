@@ -12,6 +12,8 @@ collection/collection.json   # collector-owned manifest and inventory
 collection/pages/<source>/   # collector-owned raw GraphQL responses
 prepare.json                 # scan-prepare-owned decisions and execution plan
 scripts/repro_<id>.py        # scan-prepare-owned exact reproducer bytes
+evidence/<id>-upstream.txt   # scan-prepare-owned immutable upstream source
+evidence/<id>-xpu.txt        # scan-prepare-owned immutable XPU source
 runner/results.json          # runner-owned execution metadata
 runner/logs/<id>.log         # runner-owned raw stdout/stderr
 scan.json                    # scan-finalize-owned canonical scan state
@@ -166,8 +168,12 @@ An execution is `"verification": "runtime"` by default. Set
 the frozen head alone -- an upstream helper that moved, a signature or error
 string that changed, a check XPU keeps a private copy of. A static entry carries
 no `script`, `script_sha256`, or `timeout_seconds`; its `oracle` is the upstream
-text XPU must match and its `target_path` is the diverging XPU file. The runner
-never executes it, so a stale build cannot block it.
+text XPU must match and its `target_path` is the diverging XPU file. It instead
+carries `upstream_source` and `xpu_source` objects with exactly `repository`,
+`commit`, `path`, `snapshot`, and `sha256`. Snapshot paths are under `evidence/`;
+the upstream commit matches the collector's frozen head, the XPU source path
+matches `target_path`, and both digests cover the exact snapshot bytes. The runner
+never executes a static entry, so a stale build cannot block it.
 Any missing detail or coverage makes preparation
 incomplete. A structurally valid partial collection may still have a complete
 preparation relative to its observed inventory; that does not make the collection
@@ -194,7 +200,7 @@ warning. Each reproducer receives a separate writable scratch directory for
 read-only.
 
 The runner continues after a timeout, nonzero exit, signal, or launch error and
-writes one result for every execution-plan entry:
+writes one result for every runtime execution-plan entry:
 
 ```json
 {
@@ -226,7 +232,9 @@ writes one result for every execution-plan entry:
 ```
 
 `status: complete` means the runner produced a structurally valid result for
-every planned execution, not that every reproducer succeeded. The collection
+every planned runtime execution, not that every reproducer succeeded. A
+static-only plan skips runtime provisioning and probing and records
+`"environment": null` with an empty `results` list. The collection
 digest must match the prepare artifact and original collector manifest. A digest
 mismatch or missing result blocks finalization. A valid partial collection does
 not prevent execution or publication of fully covered, independently reviewed
@@ -269,9 +277,11 @@ validated set exactly once and use a result from `evidence.md`. `confirmed`,
 `related-failure`, and `not-reproduced` require a successful runner record,
 matching script and log digests, target-path proof, and a defensible oracle.
 A `"verification": "static"` unit has no runner record: its `evidence` cites the
-upstream and XPU source it was decided from, it still needs `target_path_verified`,
-and it cannot be `blocked-*` because reading the frozen head cannot fail on the
-runner.
+validated snapshots exactly as
+`{"upstream_source": "evidence/...", "xpu_source": "evidence/..."}`. It still
+needs `target_path_verified`, and it cannot be `blocked-*` because reading the
+frozen head cannot fail on the runner. For a static-only plan, `environment` is
+null and must exactly match the runner artifact.
 Timeouts, launch errors, environment failures, or inconclusive evidence use a
 `blocked-*` result and make the scan incomplete. Rejected inventory items remain
 in the collection and prepare artifacts and are not copied into `scan.json`.
@@ -312,15 +322,17 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 ```
 
 `units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without an open canonical tracker has a payload, and every payload
-targets `intel/torch-xpu-ops`. `implementation_repository` is required for
+`needs-xpu-fix` without an open `intel/torch-xpu-ops` canonical tracker has a
+payload, and every payload targets `intel/torch-xpu-ops`.
+`implementation_repository` is required for
 `needs-xpu-fix` and `track-upstream` and unused otherwise; the
 [evidence reference](evidence.md) defines which repository to name.
 `status: blocked` lists blockers and contains no payloads. When an existing issue
 covers the same work, record its URL as `canonical_tracker` and its `open` or
 `closed` state as `canonical_tracker_state`; both fields are set together or both
 are null. An open `intel/torch-xpu-ops` tracker replaces the payload and is not
-commented on. Record a tracker in any repository rather than dropping it, so a
+commented on. An open tracker in another repository remains recorded but does
+not replace the XPU payload. Record a tracker in any repository rather than dropping it, so a
 later run does not re-investigate the same ground. A tracker that is `closed`
 cannot receive the work, so a `needs-xpu-fix` unit still carries a payload that
 cites it.
