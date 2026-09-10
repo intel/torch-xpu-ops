@@ -655,10 +655,11 @@ When the job ends, the `fix` workflow appends a template to the session
 comment for a human to review the fix. Do not write it yourself:
 
 ```
-<!-- review: strong-accepted -->
-<!-- review: weak-accepted -->
-<!-- review: weak-rejected -->
-<!-- review: strong-rejected -->
+**strong-accepted** <!-- review: strong-accepted -->
+**weak-accepted** <!-- review: weak-accepted -->
+**weak-rejected** <!-- review: weak-rejected -->
+**strong-rejected** <!-- review: strong-rejected -->
+
 notes:
 ```
 
