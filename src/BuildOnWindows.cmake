@@ -20,6 +20,17 @@ target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
 
 if(BUILD_SEPARATE_OPS)
   target_link_libraries(torch_xpu_ops PUBLIC torch_xpu torch_cpu c10)
+  setup_common_libraries()
+  # torch-xpu-ops-sycl-Comm-kernels includes SYCL kernels shared in different other SYCL kernels.
+  # SYCL free func: These SYCL kernels are moved from headers into torch-xpu-ops-sycl-Comm-kernels to resolve 'redefinition issue'.
+  sycl_add_library(
+      torch-xpu-ops-sycl-Comm-kernels
+      SHARED
+      SYCL_SOURCES ${ATen_XPU_SYCL_COMM_SRCS})
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch-xpu-ops-sycl-Comm-kernels)
+  # Decouple with PyTorch cmake definition.
+  install(TARGETS torch-xpu-ops-sycl-Comm-kernels DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     cmake_path(GET sycl_src STEM LAST_ONLY name)
     set(sycl_lib torch-xpu-ops-sycl-${name})
@@ -27,13 +38,15 @@ if(BUILD_SEPARATE_OPS)
       ${sycl_lib}
       SHARED
       SYCL_SOURCES ${sycl_src})
-    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_lib})
+    target_link_libraries(${sycl_lib} PUBLIC torch-xpu-ops-sycl-Comm-kernels)
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
+
 else()
   # On Windows, it is not possible to combine all obj files into one library
   # because the obj files of kernels compiled on Windows are much larger than
@@ -51,7 +64,7 @@ else()
   sycl_add_library(
     ${sycl_common_lib}
     STATIC
-    SYCL_SOURCES ${ATen_XPU_SYCL_COMMON_SRCS})
+    SYCL_SOURCES ${ATen_XPU_SYCL_COMMON_SRCS} ${ATen_XPU_SYCL_COMM_SRCS})
   target_compile_definitions(${sycl_common_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
   list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_common_lib})
 
