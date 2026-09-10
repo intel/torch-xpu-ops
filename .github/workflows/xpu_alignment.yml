@@ -142,9 +142,9 @@ jobs:
             upstream oracle, and expected target path. When the divergence is
             decided by reading source at the frozen head alone, mark the entry
             `"verification": "static"` and write no script for it. Instead,
-            save the exact upstream and XPU source excerpts under evidence/ and
-            record each repository, commit, source path, snapshot path, and
-            SHA-256 as `upstream_source` and `xpu_source` in the execution.
+            save both source excerpts under evidence/ and record each source
+            path, snapshot path, and SHA-256 as `upstream_source` and
+            `xpu_source` in the execution.
 
             Write only prepare.json, scripts/, evidence/, and an optional prepare report.
             Do not execute any reproducer, write scan/review artifacts, or modify
@@ -158,26 +158,8 @@ jobs:
         id: plan
         run: |
           set -euo pipefail
-          python3 - \
-            "${{ env.ALIGNMENT_RUN_ROOT }}/${{ needs.collect.outputs.scan_date }}/prepare.json" \
-            "$GITHUB_OUTPUT" <<'PY'
-          import json
-          import sys
-
-          source, output = sys.argv[1:]
-          prepare = json.load(open(source, encoding="utf-8"))
-          executions = prepare.get("executions")
-          if not isinstance(executions, list) or not all(
-              isinstance(entry, dict) for entry in executions
-          ):
-              raise SystemExit("prepare executions must be a list of objects")
-          has_runtime = any(
-              entry.get("verification", "runtime") != "static"
-              for entry in executions
-          )
-          with open(output, "a", encoding="utf-8") as handle:
-              handle.write(f"has_runtime={str(has_runtime).lower()}\n")
-          PY
+          python3 -c 'import json,sys;e=json.load(open(sys.argv[1],encoding="utf-8"))["executions"];print("has_runtime=%s"%str(any(u.get("verification","runtime")!="static" for u in e)).lower())' \
+            "${{ env.ALIGNMENT_RUN_ROOT }}/${{ needs.collect.outputs.scan_date }}/prepare.json" >> "$GITHUB_OUTPUT"
 
       - name: Capture Claude usage
         id: usage
@@ -294,15 +276,10 @@ jobs:
             exit 1
           fi
           if [[ "$HAS_RUNTIME" != 'true' ]]; then
-            mkdir -p alignment-run/scripts alignment-run/evidence alignment-run/runner
-            chmod -R a-w,a+rX alignment-run/prepare.json alignment-run/scripts alignment-run/evidence alignment-run/collection
-            chmod -R u+rwX alignment-run/runner
+            mkdir -p alignment-run/runner
             python3 .github/scripts/xpu_alignment_runner.py \
-              --root alignment-run \
-              --prepare prepare.json \
-              --results runner/results.json \
-              --python "$(command -v python3)" \
-              --user xpu-repro
+              --root alignment-run --prepare prepare.json \
+              --results runner/results.json --python "$(command -v python3)" --user xpu-repro
             exit
           fi
           if ! id -u xpu-repro >/dev/null 2>&1; then
@@ -337,7 +314,7 @@ jobs:
             echo 'Outbound network remains available to xpu-repro' >&2
             exit 1
           fi
-          mkdir -p alignment-run/scripts alignment-run/evidence
+          mkdir -p alignment-run/evidence
           chmod -R a-w,a+rX alignment-run/prepare.json alignment-run/scripts alignment-run/evidence alignment-run/collection
           mkdir -p alignment-run/runner
           chmod -R u+rwX alignment-run/runner
