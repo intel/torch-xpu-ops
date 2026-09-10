@@ -90,3 +90,24 @@ review comments across the studied PRs.
 | A PR titled "refactor" that also adds `allow_xpu=True` or a new `instantiate_device_type_tests` device, or swaps `@requires_cuda` for `@onlyAccelerator` | A refactor must have no functional change; `@onlyAccelerator` is NOT equivalent to `@requires_cuda` (it changes which devices run). Move enablement to a follow-up PR. | Major |
 | Split-class name/classification/instantiation that disagree | CPU-only -> `TestXxxCPU` (`CPU`), device-generic -> `TestXxxDevice` (`ACCELERATOR`) / `TestXxxGeneric` (`GENERIC`), CUDA-only -> `TestXxxCUDA` (`CUDA`). Name, classification, and instantiation must agree; reviewers frequently request these renames. | Minor |
 | `@decorateIf(..., lambda params: params["device"] == torch.device("cpu"))` after moving to `instantiate_device_type_tests` | The harness passes `device` as a string, so the predicate must compare `== "cpu"` or it silently never matches. | Major |
+
+## 9. Decorator parity (CUDA -> XPU mirroring)
+
+When a CUDA test is ported to XPU, device-conditional decorators keyed to
+`device_type="cuda"` only affect the CUDA instantiation, so XPU needs its own
+decorator keyed to `"xpu"` **with the same scope** (same dtypes/size/condition),
+or a deliberate, documented decision not to mirror it. Parity is not "copy every
+CUDA decorator"; it is "for each CUDA-conditional behavior, decide whether XPU
+needs it and, if so, express it with the same scope." (Instantiation for XPU is
+covered by section 3.)
+
+| Code Pattern | What It Means | Severity |
+| --- | --- | --- |
+| `@largeTensorTest("20GB", "cuda")` with no `@largeTensorTest("20GB", "xpu")` | The memory guard checks free memory on the named device. Without the XPU copy the port checks the wrong device or runs an OOM-prone test unguarded. Mirror it with the exact same size string. | Blocker |
+| `@onlyCUDA` left on a test meant to also cover XPU | The test never instantiates for XPU. Decide intent: add a parallel `@onlyXPU` test or broaden to run on both. | Blocker |
+| `@dtypesIfCUDA(...)` (or old `@dtypeIfCuda`) with no `@dtypesIfXPU(...)` | XPU silently falls back to the base `@dtypes` set. Mirror with the same dtype set; narrow it only for dtypes XPU genuinely lacks, and note why. | Major |
+| `@skipCUDAIf(...)` / `@skipCUDAIfNoMagma` / `NoCusolver` / `NoCudnn` / ROCm / MIOpen mirrored blindly to XPU | Feature-gated CUDA-stack skips (Magma, cuSOLVER, cuDNN, ROCm) usually have no XPU meaning. Mirror to `@skipXPUIf` only if the same underlying limitation applies to XPU; otherwise drop it or replace it with the matching XPU capability check. | Major |
+| `@expectedFailureXPU` added without confirming the failure reproduces on XPU | A spurious expected-failure hides a real regression (the test would silently pass-as-xfail). Verify the failure actually occurs on XPU before mirroring an `expectedFailure`. | Major |
+| `@precisionOverride`/`@toleranceOverride` inherited unchanged on the XPU run | These are not device-keyed. Confirm XPU is not stuck with a CPU-strict tolerance its hardware can't meet, nor an over-loose CUDA-tuned one; re-tune per device as needed. | Minor |
+| Multiple CUDA-conditional decorators stacked on one method (`@dtypesIfCUDA` + `@precisionOverride` + `@skipCUDAIf`) | Each decorator is an independent parity obligation. Check every decorator in the stack; a common miss is mirroring the dtype override but forgetting the skip. | Minor |
+| `@tf32_on_and_off` / `@with_tf32_off` mechanically mirrored to XPU | TF32 is a CUDA (Ampere+) concept with no direct XPU equivalent. Do not mirror; instead confirm the XPU port runs in a well-defined numeric mode and has appropriate tolerance handling. | Info |
