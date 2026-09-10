@@ -98,14 +98,14 @@ an execution-plan entry. Record the upstream oracle, expected target path, exact
 script digest, and bounded timeout. When source at the frozen head already
 decides the divergence -- a moved upstream helper, a changed signature or error
 string, a check XPU keeps a private copy of -- mark the entry
-`"verification": "static"` and write no script for it. Instead, save exact
-upstream and XPU source snapshots under `evidence/` and record each snapshot's
-original path, artifact path, and SHA-256. The XPU snapshot must be a nonempty
-exact excerpt of `target_path` in the checked-out torch-xpu-ops revision, and the
-two snapshots must differ. In automation, stop after writing `prepare.json`,
-source evidence, and the reproducer scripts; do not execute them or write final
-scan results. A
-structurally valid partial collection may still be prepared and validated. Its
+`"verification": "static"` and omit `script`, `script_sha256`, and
+`timeout_seconds`. Instead, save exact upstream and XPU source snapshots under
+`evidence/` and record each repository, commit, original path, artifact path,
+and SHA-256. Use the collector's frozen upstream head and the current XPU
+checkout. Static verification is not available for performance claims. In
+automation, stop after writing `prepare.json`, source evidence, and reproducer
+scripts; do not execute them or write final scan results. A structurally valid
+partial collection may still be prepared and validated. Its
 partial scope remains attached to every downstream artifact so the gate can
 publish only fully covered, independently reviewed units while reporting the
 incomplete collection.
@@ -128,14 +128,17 @@ source and tracker state with read-only GitHub access. Cover every candidate who
 local result is `confirmed` or `related-failure`; do not silently omit a difficult
 case. Decide whether the behavior needs independent XPU work, is owned upstream,
 is already fixed or tracked, is not a defect, or lacks sufficient evidence.
+For a static unit, independently fetch both files at the recorded repositories,
+commits, and paths, confirm the snapshots are faithful, and verify that the real
+source difference supports the oracle. Use `verification-gap` otherwise.
 
 Only `needs-xpu-fix` without an open `intel/torch-xpu-ops` canonical tracker may
 carry a new issue payload. When an existing issue covers the work, record it as
 `canonical_tracker` with its open/closed state. An open `intel/torch-xpu-ops`
 tracker replaces the payload and is not commented on; a closed one still needs a
 payload. Whenever a tracker is recorded and a payload is emitted, cite the exact
-tracker URL in the payload body. In
-automation, write only under `review/` and follow the minimal review contract. A
+tracker URL in the payload body. In automation, write only under `review/` and
+follow the minimal review contract. A
 blocked review produces no publishable payloads.
 
 ## Completion
@@ -145,8 +148,9 @@ boundary or connection end. A preparation is complete relative to its collection
 only when every observed inventory item has exactly one triage decision. A scan
 is complete relative to that same scope only when every selected validation has a
 defensible terminal result: runner-backed for runtime verification and
-snapshot-backed for static verification. A review is complete relative to that
-scope only when it covers the entire provisional actionable set exactly once and
-has no blocker. Collection scope remains independently `complete` or `partial`;
+independently source-reviewed for static verification. A review is complete
+relative to that scope only when it covers the entire provisional actionable set
+exactly once and has no blocker. Collection scope remains independently
+`complete` or `partial`;
 preserve partial evidence and name missing work even when fully covered,
 independently reviewed units from the observed inventory are publishable.

@@ -141,12 +141,13 @@ jobs:
             and execution entry with its exact SHA-256, 120-second timeout,
             upstream oracle, and expected target path. When the divergence is
             decided by reading source at the frozen head alone, mark the entry
-            `"verification": "static"` and write no script for it. Instead,
-            save both source excerpts under evidence/ and record each source
-            path, snapshot path, and SHA-256 as `upstream_source` and
-            `xpu_source` in the execution. The XPU snapshot must be a nonempty
-            exact excerpt of `target_path` in this checkout, and the two
-            snapshots must differ.
+            `"verification": "static"`; omit `script`, `script_sha256`, and
+            `timeout_seconds`. Instead, save both source excerpts under evidence/
+            and record each repository, exact commit, source path, snapshot path,
+            and SHA-256 as `upstream_source` and `xpu_source`. Use the collector's
+            frozen upstream head and `git show -s --format=%H HEAD` for this
+            checkout's commit. Static verification is for functional or API
+            source differences, not performance claims.
 
             Write only prepare.json, scripts/, evidence/, and an optional prepare report.
             Do not execute any reproducer, write scan/review artifacts, or modify
@@ -553,6 +554,11 @@ jobs:
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
             existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
+            For a static unit, there is no reproducer or runner log: independently
+            fetch both source files at the exact repository, commit, and path in
+            `upstream_source` and `xpu_source`; confirm that each immutable snapshot
+            is faithful and that the actual source difference supports the oracle.
+            Otherwise use `verification-gap` and emit no payload.
             If an existing tracker covers the same work, record it as
             `canonical_tracker` with its `canonical_tracker_state`. An open
             intel/torch-xpu-ops tracker replaces the payload and is not commented
@@ -698,6 +704,7 @@ jobs:
                 --output gate/filing_decision.json
                 --run-id "$GITHUB_RUN_ID"
                 --scan-date "$SCAN_DATE"
+                --xpu-commit "$GITHUB_SHA"
                 --mode "$MODE")
           if [[ "$PRODUCERS_CLEAN" == true ]]; then
             args+=(--producers-clean)

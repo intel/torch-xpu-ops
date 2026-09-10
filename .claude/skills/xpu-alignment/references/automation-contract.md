@@ -130,25 +130,45 @@ or write results. This role does not require an XPU runtime.
   },
   "collection_sha256": "...",
   "collection_status": "partial",
-  "decisions": [{
-    "id": "issue-123",
-    "triage": "validate",
-    "reason": "shared operator path"
-  }],
+  "decisions": [
+    {
+      "id": "issue-123",
+      "triage": "validate",
+      "reason": "shared operator path"
+    },
+    {
+      "id": "issue-124",
+      "triage": "validate",
+      "reason": "source-only divergence"
+    }
+  ],
   "executions": [
     {
       "id": "issue-123",
+      "verification": "runtime",
+      "script": "scripts/repro_issue-123.py",
+      "script_sha256": "...",
+      "timeout_seconds": 120,
+      "oracle": "...",
+      "target_path": "src/ATen/native/xpu/Example.cpp"
+    },
+    {
+      "id": "issue-124",
       "verification": "static",
       "oracle": "...",
       "target_path": "src/ATen/native/xpu/Example.cpp",
       "upstream_source": {
+        "repository": "pytorch/pytorch",
+        "commit": "...",
         "path": "aten/src/ATen/native/Example.cpp",
-        "snapshot": "evidence/issue-123-upstream.txt",
+        "snapshot": "evidence/issue-124-upstream.txt",
         "sha256": "..."
       },
       "xpu_source": {
+        "repository": "intel/torch-xpu-ops",
+        "commit": "...",
         "path": "src/ATen/native/xpu/Example.cpp",
-        "snapshot": "evidence/issue-123-xpu.txt",
+        "snapshot": "evidence/issue-124-xpu.txt",
         "sha256": "..."
       }
     }
@@ -178,14 +198,17 @@ the frozen head alone -- an upstream helper that moved, a signature or error
 string that changed, a check XPU keeps a private copy of. A static entry carries
 no `script`, `script_sha256`, or `timeout_seconds`; its `oracle` is the upstream
 text XPU must match and its `target_path` is the diverging XPU file. It instead
-carries `upstream_source` and `xpu_source` objects with exactly `path`,
-`snapshot`, and `sha256`. Snapshot paths are under `evidence/`, the XPU source
-path matches `target_path`, and both digests cover the exact snapshot bytes. The
-XPU snapshot is a nonempty exact excerpt of `target_path` in the workflow
-checkout. The two snapshots must have different digests. The runner never
-executes a static entry, so a stale build cannot block it.
-Any missing detail or coverage makes preparation
-incomplete. A structurally valid partial collection may still have a complete
+carries `upstream_source` and `xpu_source` objects with exactly `repository`,
+`commit`, `path`, `snapshot`, and `sha256`. The upstream repository and commit
+match the collector's frozen head; the XPU repository and commit match the
+workflow checkout; the XPU path matches `target_path`. Snapshot paths are under
+`evidence/`, both digests cover the exact snapshot bytes, and the two digests
+differ. These checks preserve provenance and artifact integrity; semantic source
+authenticity is established by the independent review agent re-fetching both
+files at the recorded coordinates. Static verification is not used for
+performance claims. The runner never executes a static entry, so a stale build
+cannot block it. Any missing detail or coverage makes preparation incomplete. A
+structurally valid partial collection may still have a complete
 preparation relative to its observed inventory; that does not make the collection
 complete. The deterministic inventory does not prove that each semantic rejection
 is correct, and automation deliberately uses no negative-sample review.
@@ -288,7 +311,7 @@ validated set exactly once and use a result from `evidence.md`. `confirmed`,
 `related-failure`, and `not-reproduced` require a successful runner record,
 matching script and log digests, target-path proof, and a defensible oracle.
 A `"verification": "static"` unit has no runner record: its `evidence` cites the
-validated snapshots exactly as
+immutable audit snapshots exactly as
 `{"upstream_source": "evidence/...", "xpu_source": "evidence/..."}`. It still
 needs `target_path_verified`, and it cannot be `blocked-*` because reading the
 frozen head cannot fail on the runner. When the runner environment is null,
@@ -348,6 +371,12 @@ dropping it, so a later run does not re-investigate the same ground. Whenever a
 tracker is recorded and a payload is emitted, the payload body cites that exact
 tracker URL. A tracker that is `closed` cannot receive the work, so a
 `needs-xpu-fix` unit still carries a payload.
+
+For every static candidate, the independent reviewer re-fetches both source
+files at the exact recorded repositories, commits, and paths, confirms each
+snapshot is faithful, and verifies that the real source difference supports the
+oracle. A failed or inconclusive check uses `verification-gap` and emits no
+payload.
 
 This role requires read-only GitHub access to refresh source and tracker state,
 but it does not require an XPU runtime.
