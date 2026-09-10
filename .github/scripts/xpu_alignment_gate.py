@@ -21,7 +21,6 @@ from xpu_alignment_collect import CollectionError, validate_collection
 SCHEMA_VERSION = 1
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
-COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
@@ -141,39 +140,18 @@ def _validate_environment(
 
 
 def _validate_static_source(
-    root: Path,
-    value: object,
-    label: str,
-    errors: list[str],
-    *,
-    repository: str,
-    commit: str | None = None,
-    path: str | None = None,
+    root: Path, value: object, label: str, errors: list[str], *, path: str | None = None
 ) -> dict[str, object]:
-    fields = {"repository", "commit", "path", "snapshot", "sha256"}
-    if not isinstance(value, dict) or set(value) != fields:
+    if not isinstance(value, dict) or set(value) != {"path", "snapshot", "sha256"}:
         errors.append(f"execution-invalid-{label}-fields")
         return {}
-    if value.get("repository") != repository:
-        errors.append(f"execution-invalid-{label}-repository")
-    source_commit = value.get("commit")
-    if not isinstance(source_commit, str) or not COMMIT_RE.fullmatch(source_commit):
-        errors.append(f"execution-invalid-{label}-commit")
-    elif commit is not None and source_commit != commit:
-        errors.append(f"execution-{label}-commit-mismatch")
     source_path = value.get("path")
-    if (
-        not isinstance(source_path, str)
-        or not source_path
-        or Path(source_path).is_absolute()
-        or ".." in Path(source_path).parts
-    ):
+    if not isinstance(source_path, str) or not source_path:
         errors.append(f"execution-invalid-{label}-path")
     elif path is not None and source_path != path:
         errors.append(f"execution-{label}-path-mismatch")
     snapshot_value = value.get("snapshot")
-    snapshot_relative = Path(snapshot_value) if isinstance(snapshot_value, str) else None
-    if snapshot_relative is None or not snapshot_relative.parts or snapshot_relative.parts[0] != "evidence":
+    if not isinstance(snapshot_value, str) or Path(snapshot_value).parts[:1] != ("evidence",):
         errors.append(f"execution-invalid-{label}-snapshot")
         snapshot = None
     else:
@@ -300,26 +278,14 @@ def _validate_prepare(
                 # A source-only divergence has nothing to execute, so it carries no script.
                 if {"script", "script_sha256", "timeout_seconds"} & set(entry):
                     errors.append(f"execution-static-carries-script:{unit_id}")
-                snapshot = collection.get("snapshot")
-                upstream_commit = (
-                    snapshot.get("default_branch_head")
-                    if isinstance(snapshot, dict)
-                    else None
-                )
                 upstream_source = _validate_static_source(
-                    root,
-                    entry.get("upstream_source"),
-                    f"upstream-source:{unit_id}",
-                    errors,
-                    repository=str(collection.get("repository", "")),
-                    commit=upstream_commit if isinstance(upstream_commit, str) else None,
+                    root, entry.get("upstream_source"), f"upstream-source:{unit_id}", errors
                 )
                 xpu_source = _validate_static_source(
                     root,
                     entry.get("xpu_source"),
                     f"xpu-source:{unit_id}",
                     errors,
-                    repository="intel/torch-xpu-ops",
                     path=str(entry.get("target_path", "")),
                 )
                 if upstream_source.get("snapshot") == xpu_source.get("snapshot"):

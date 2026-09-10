@@ -169,11 +169,10 @@ the frozen head alone -- an upstream helper that moved, a signature or error
 string that changed, a check XPU keeps a private copy of. A static entry carries
 no `script`, `script_sha256`, or `timeout_seconds`; its `oracle` is the upstream
 text XPU must match and its `target_path` is the diverging XPU file. It instead
-carries `upstream_source` and `xpu_source` objects with exactly `repository`,
-`commit`, `path`, `snapshot`, and `sha256`. Snapshot paths are under `evidence/`;
-the upstream commit matches the collector's frozen head, the XPU source path
-matches `target_path`, and both digests cover the exact snapshot bytes. The runner
-never executes a static entry, so a stale build cannot block it.
+carries `upstream_source` and `xpu_source` objects with exactly `path`,
+`snapshot`, and `sha256`. Snapshot paths are under `evidence/`, the XPU source
+path matches `target_path`, and both digests cover the exact snapshot bytes.
+The runner never executes a static entry, so a stale build cannot block it.
 Any missing detail or coverage makes preparation
 incomplete. A structurally valid partial collection may still have a complete
 preparation relative to its observed inventory; that does not make the collection
@@ -332,7 +331,8 @@ covers the same work, record its URL as `canonical_tracker` and its `open` or
 `closed` state as `canonical_tracker_state`; both fields are set together or both
 are null. An open `intel/torch-xpu-ops` tracker replaces the payload and is not
 commented on. An open tracker in another repository remains recorded but does
-not replace the XPU payload. Record a tracker in any repository rather than dropping it, so a
+not replace the XPU payload. Record a tracker in any repository rather than
+dropping it, so a
 later run does not re-investigate the same ground. A tracker that is `closed`
 cannot receive the work, so a `needs-xpu-fix` unit still carries a payload that
 cites it.

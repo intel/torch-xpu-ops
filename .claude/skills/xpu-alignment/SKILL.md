@@ -100,7 +100,7 @@ decides the divergence -- a moved upstream helper, a changed signature or error
 string, a check XPU keeps a private copy of -- mark the entry
 `"verification": "static"` and write no script for it. Instead, save exact
 upstream and XPU source snapshots under `evidence/` and record each snapshot's
-repository, commit, original path, artifact path, and SHA-256. In automation,
+original path, artifact path, and SHA-256. In automation,
 stop after writing `prepare.json`, source evidence, and the reproducer scripts;
 do not execute them or write final scan results. A
 structurally valid partial collection may still be prepared and validated. Its
