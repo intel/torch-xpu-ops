@@ -260,6 +260,12 @@ def determine_category(ut):
         return 'test_xpu'
     elif 'op_ut' in ut:
         return 'op_ut'
+    elif 'upstream_distributed' in ut:
+        return 'upstream_distributed'
+    elif 'upstream_inductor' in ut:
+        return 'upstream_inductor'
+    elif 'upstream' in ut:
+        return 'upstream_ut'
     else:
         return 'unknown'
 
