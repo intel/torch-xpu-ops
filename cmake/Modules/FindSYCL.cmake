@@ -317,14 +317,37 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       set(verbose_output OFF)
     endif()
 
+    set(SYCL_device_link_inputs ${object_files})
+    set(SYCL_device_link_extra_depends)
+    if(WIN32)
+      # On Windows the device objects should be passed through a response file instead
+      # of the command line, due to line length limitations when parsing a batch file.
+      # A batch line longer than 8191 characters is out of contract for cmd.exe
+      # and might cause silent parameter passing errors, depending on quotes' and operators'
+      # positioning inside the line.
+      # https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
+      set(SYCL_device_link_rsp "${output_file}.rsp")
+      set(SYCL_device_link_rsp_content "")
+      foreach(object_file IN LISTS object_files)
+        string(APPEND SYCL_device_link_rsp_content "\"${object_file}\"\n")
+      endforeach()
+      file(GENERATE
+        OUTPUT "${SYCL_device_link_rsp}"
+        CONTENT "${SYCL_device_link_rsp_content}")
+      set_source_files_properties("${SYCL_device_link_rsp}"
+        PROPERTIES GENERATED TRUE)
+      set(SYCL_device_link_inputs "@${SYCL_device_link_rsp}")
+      set(SYCL_device_link_extra_depends "${SYCL_device_link_rsp}")
+    endif()
+
     # Build the generated file and dependency file ##########################
     add_custom_command(
       OUTPUT ${output_file}
-      DEPENDS ${object_files}
+      DEPENDS ${object_files} ${SYCL_device_link_extra_depends}
       COMMAND ${CMAKE_COMMAND} -E make_directory "$<PATH:REMOVE_FILENAME,${output_file}>"
       COMMAND ${CMAKE_SYCL_COMPILER_LAUNCHER} ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
-      -fsycl-link ${object_files}
+      -fsycl-link ${SYCL_device_link_inputs}
       -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
       -o ${output_file}
       COMMENT "Building SYCL device link file ${output_file_relative_path}"
