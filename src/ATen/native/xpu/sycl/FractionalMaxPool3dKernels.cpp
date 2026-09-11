@@ -46,100 +46,83 @@ inline int64_t get_intervals(
 }
 
 template <typename scalar_t>
-struct FractionalMaxPool3dOutFrameFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-    // Output (t, h, w) point that this thread is responsible for
-    int64_t ourOutputPoint =
-        item.get_local_id(2) + item.get_group(2) * item.get_local_range(2);
-    int64_t plane = item.get_group(1);
-    int64_t batch = item.get_group(0);
-    // Each thread generates a specific output point
-    if (ourOutputPoint < output_.size(2) * output_.size(3) * output_.size(4)) {
-      int64_t outputT = ourOutputPoint / (output_.size(3) * output_.size(4));
-      int64_t outputH = (ourOutputPoint / output_.size(4)) % output_.size(3);
-      int64_t outputW = ourOutputPoint % output_.size(4);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void fractional_max_pool3d_out_frame_kernel_impl(
+    PackedTensorAccessor64<const scalar_t, 5> input,
+    PackedTensorAccessor64<scalar_t, 5> output,
+    PackedTensorAccessor64<int64_t, 5> indices,
+    PackedTensorAccessor64<const scalar_t, 3> samples,
+    int64_t poolSizeT,
+    int64_t poolSizeH,
+    int64_t poolSizeW) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+  // Output (t, h, w) point that this thread is responsible for
+  int64_t ourOutputPoint =
+      item.get_local_id(2) + item.get_group(2) * item.get_local_range(2);
+  int64_t plane = item.get_group(1);
+  int64_t batch = item.get_group(0);
+  // Each thread generates a specific output point
+  if (ourOutputPoint < output.size(2) * output.size(3) * output.size(4)) {
+    int64_t outputT = ourOutputPoint / (output.size(3) * output.size(4));
+    int64_t outputH = (ourOutputPoint / output.size(4)) % output.size(3);
+    int64_t outputW = ourOutputPoint % output.size(4);
 
-      int64_t poolT = get_intervals<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(samples_[batch][plane][0]),
-          outputT,
-          input_.size(2),
-          output_.size(2),
-          poolSizeT_);
-      int64_t poolH = get_intervals<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(samples_[batch][plane][1]),
-          outputH,
-          input_.size(3),
-          output_.size(3),
-          poolSizeH_);
-      int64_t poolW = get_intervals<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(samples_[batch][plane][2]),
-          outputW,
-          input_.size(4),
-          output_.size(4),
-          poolSizeW_);
+    int64_t poolT = get_intervals<scalar_t, accscalar_t>(
+        static_cast<accscalar_t>(samples[batch][plane][0]),
+        outputT,
+        input.size(2),
+        output.size(2),
+        poolSizeT);
+    int64_t poolH = get_intervals<scalar_t, accscalar_t>(
+        static_cast<accscalar_t>(samples[batch][plane][1]),
+        outputH,
+        input.size(3),
+        output.size(3),
+        poolSizeH);
+    int64_t poolW = get_intervals<scalar_t, accscalar_t>(
+        static_cast<accscalar_t>(samples[batch][plane][2]),
+        outputW,
+        input.size(4),
+        output.size(4),
+        poolSizeW);
 
-      scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
-      int64_t maxIndex = poolT * input_.size(3) * input_.size(4) +
-          poolH * input_.size(4) + poolW;
+    scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
+    int64_t maxIndex =
+        poolT * input.size(3) * input.size(4) + poolH * input.size(4) + poolW;
 
-      for (int64_t t = poolT; t < poolT + poolSizeT_; ++t) {
-        for (int64_t h = poolH; h < poolH + poolSizeH_; ++h) {
-          if (poolSizeW_ < 2 || poolSizeW_ > 7) {
-            for (int64_t w = poolW; w < poolW + poolSizeW_; ++w) {
-              scalar_t val = input_[batch][plane][t][h][w];
-              // for consistency with THNN, favor the first max
-              if (val > maxVal || at::_isnan(val)) {
-                maxIndex = t * input_.size(3) * input_.size(4) +
-                    h * input_.size(4) + w;
-                maxVal = val;
-              }
+    for (int64_t t = poolT; t < poolT + poolSizeT; ++t) {
+      for (int64_t h = poolH; h < poolH + poolSizeH; ++h) {
+        if (poolSizeW < 2 || poolSizeW > 7) {
+          for (int64_t w = poolW; w < poolW + poolSizeW; ++w) {
+            scalar_t val = input[batch][plane][t][h][w];
+            // for consistency with THNN, favor the first max
+            if (val > maxVal || at::_isnan(val)) {
+              maxIndex =
+                  t * input.size(3) * input.size(4) + h * input.size(4) + w;
+              maxVal = val;
             }
-          } else {
-            for (int64_t i = 0; i < poolSizeW_; ++i) {
-              int64_t w = i + poolW;
-              scalar_t val = input_[batch][plane][t][h][w];
-              // for consistency with THNN, favor the first max
-              if (val > maxVal || at::_isnan(val)) {
-                maxIndex = t * input_.size(3) * input_.size(4) +
-                    h * input_.size(4) + w;
-                maxVal = val;
-              }
+          }
+        } else {
+          for (int64_t i = 0; i < poolSizeW; ++i) {
+            int64_t w = i + poolW;
+            scalar_t val = input[batch][plane][t][h][w];
+            // for consistency with THNN, favor the first max
+            if (val > maxVal || at::_isnan(val)) {
+              maxIndex =
+                  t * input.size(3) * input.size(4) + h * input.size(4) + w;
+              maxVal = val;
             }
           }
         }
       }
-      auto indices_acc = indices_;
-      auto output_acc = output_;
-      indices_acc[batch][plane][outputT][outputH][outputW] = maxIndex;
-      output_acc[batch][plane][outputT][outputH][outputW] = maxVal;
     }
+    auto indices_acc = indices;
+    auto output_acc = output;
+    indices_acc[batch][plane][outputT][outputH][outputW] = maxIndex;
+    output_acc[batch][plane][outputT][outputH][outputW] = maxVal;
   }
-  FractionalMaxPool3dOutFrameFunctor(
-      PackedTensorAccessor64<const scalar_t, 5> input,
-      PackedTensorAccessor64<scalar_t, 5> output,
-      PackedTensorAccessor64<int64_t, 5> indices,
-      PackedTensorAccessor64<const scalar_t, 3> samples,
-      int64_t poolSizeT,
-      int64_t poolSizeH,
-      int64_t poolSizeW)
-      : input_(input),
-        output_(output),
-        indices_(indices),
-        samples_(samples),
-        poolSizeT_(poolSizeT),
-        poolSizeH_(poolSizeH),
-        poolSizeW_(poolSizeW) {}
-
- private:
-  PackedTensorAccessor64<const scalar_t, 5> input_;
-  PackedTensorAccessor64<scalar_t, 5> output_;
-  PackedTensorAccessor64<int64_t, 5> indices_;
-  PackedTensorAccessor64<const scalar_t, 3> samples_;
-  int64_t poolSizeT_;
-  int64_t poolSizeH_;
-  int64_t poolSizeW_;
-};
+}
 
 void fractional_max_pool3d_kernel(
     const Tensor& input,
@@ -183,7 +166,15 @@ void fractional_max_pool3d_kernel(
       input.scalar_type(),
       "fractional_max_pool3d_out_frame_xpu",
       [&] {
-        auto kfn = FractionalMaxPool3dOutFrameFunctor<scalar_t>(
+        sycl::range<3> local_range(1, 1, group_x);
+        sycl::range<3> global_range(
+            input_.size(0), input_.size(1), group_x * nwg_x);
+        sycl_kernel_submit<
+            fractional_max_pool3d_out_frame_kernel_impl<scalar_t>>(
+            global_range,
+            local_range,
+            getCurrentSYCLQueue(),
+            0,
             input_.packed_accessor64<const scalar_t, 5>(),
             output_.packed_accessor64<scalar_t, 5>(),
             indices_.packed_accessor64<int64_t, 5>(),
@@ -191,58 +182,46 @@ void fractional_max_pool3d_kernel(
             poolSizeT,
             poolSizeH,
             poolSizeW);
-        sycl::range<3> local_range(1, 1, group_x);
-        sycl::range<3> global_range(
-            input_.size(0), input_.size(1), group_x * nwg_x);
-        sycl_kernel_submit(
-            global_range, local_range, getCurrentSYCLQueue(), kfn);
       });
 }
 
 template <typename scalar_t>
-struct FractionalMaxPool3dBackwardOutFrameKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    // Output (h, w) point that this thread is responsible for
-    int64_t ourOutputPoint =
-        item.get_local_id(2) + item.get_group(2) * item.get_local_range(2);
-    int64_t plane = item.get_group(1);
-    int64_t batch = item.get_group(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void fractional_max_pool3d_backward_out_frame_kernel_impl(
+    PackedTensorAccessor64<scalar_t, 5> gradInput,
+    PackedTensorAccessor64<const scalar_t, 5> gradOutput,
+    PackedTensorAccessor64<const int64_t, 5> indices) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  // Output (h, w) point that this thread is responsible for
+  int64_t ourOutputPoint =
+      item.get_local_id(2) + item.get_group(2) * item.get_local_range(2);
+  int64_t plane = item.get_group(1);
+  int64_t batch = item.get_group(0);
 
-    // Each thread generates a specific output point
-    if (ourOutputPoint <
-        gradOutput_.size(2) * gradOutput_.size(3) * gradOutput_.size(4)) {
-      int64_t outputW = ourOutputPoint % gradOutput_.size(4);
-      int64_t outputH =
-          (ourOutputPoint / gradOutput_.size(4)) % gradOutput_.size(3);
-      int64_t outputT =
-          ourOutputPoint / (gradOutput_.size(3) * gradOutput_.size(4));
+  // Each thread generates a specific output point
+  if (ourOutputPoint <
+      gradOutput.size(2) * gradOutput.size(3) * gradOutput.size(4)) {
+    int64_t outputW = ourOutputPoint % gradOutput.size(4);
+    int64_t outputH =
+        (ourOutputPoint / gradOutput.size(4)) % gradOutput.size(3);
+    int64_t outputT =
+        ourOutputPoint / (gradOutput.size(3) * gradOutput.size(4));
 
-      int64_t index = indices_[batch][plane][outputT][outputH][outputW];
-      SYCL_KERNEL_ASSERT(index >= 0);
-      int64_t inputW = index % gradInput_.size(4);
-      int64_t inputH = (index / gradInput_.size(4)) % gradInput_.size(3);
-      int64_t inputT = index / (gradInput_.size(3) * gradInput_.size(4));
-      SYCL_KERNEL_ASSERT(inputT < gradInput_.size(2));
+    int64_t index = indices[batch][plane][outputT][outputH][outputW];
+    SYCL_KERNEL_ASSERT(index >= 0);
+    int64_t inputW = index % gradInput.size(4);
+    int64_t inputH = (index / gradInput.size(4)) % gradInput.size(3);
+    int64_t inputT = index / (gradInput.size(3) * gradInput.size(4));
+    SYCL_KERNEL_ASSERT(inputT < gradInput.size(2));
 
-      auto gradInput_acc = gradInput_;
+    auto gradInput_acc = gradInput;
 
-      atomicAdd(
-          (sycl_global_ptr<scalar_t>)&gradInput_acc[batch][plane][inputT]
-                                                   [inputH][inputW],
-          gradOutput_[batch][plane][outputT][outputH][outputW]);
-    }
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)&gradInput_acc[batch][plane][inputT][inputH]
+                                                 [inputW],
+        gradOutput[batch][plane][outputT][outputH][outputW]);
   }
-  FractionalMaxPool3dBackwardOutFrameKernelFunctor(
-      PackedTensorAccessor64<scalar_t, 5> gradInput,
-      PackedTensorAccessor64<const scalar_t, 5> gradOutput,
-      PackedTensorAccessor64<const int64_t, 5> indices)
-      : gradInput_(gradInput), gradOutput_(gradOutput), indices_(indices) {}
-
- private:
-  PackedTensorAccessor64<scalar_t, 5> gradInput_;
-  PackedTensorAccessor64<const scalar_t, 5> gradOutput_;
-  PackedTensorAccessor64<const int64_t, 5> indices_;
-};
+}
 
 void fractional_max_pool3d_backward_kernel(
     Tensor& gradInput,
@@ -315,15 +294,18 @@ void fractional_max_pool3d_backward_kernel(
       gradOutput.scalar_type(),
       "fractional_max_pool3d_backward_xpu",
       [&] {
-        auto kfn = FractionalMaxPool3dBackwardOutFrameKernelFunctor<scalar_t>(
-            gradInput_.packed_accessor64<scalar_t, 5>(),
-            gradOutput_.packed_accessor64<const scalar_t, 5>(),
-            indices_.packed_accessor64<const int64_t, 5>());
         sycl::range<3> local_range(1, 1, group_x);
         sycl::range<3> global_range(
             gradInput_.size(0), gradInput_.size(1), group_x * nwg_x);
-        sycl_kernel_submit(
-            global_range, local_range, getCurrentSYCLQueue(), kfn);
+        sycl_kernel_submit<
+            fractional_max_pool3d_backward_out_frame_kernel_impl<scalar_t>>(
+            global_range,
+            local_range,
+            getCurrentSYCLQueue(),
+            0,
+            gradInput_.packed_accessor64<scalar_t, 5>(),
+            gradOutput_.packed_accessor64<const scalar_t, 5>(),
+            indices_.packed_accessor64<const int64_t, 5>());
       });
 }
 
