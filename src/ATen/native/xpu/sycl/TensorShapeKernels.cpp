@@ -361,56 +361,39 @@ bool all_contiguous(TensorList tensors) {
   return true;
 }
 
-struct SplitWithSizesCopyOutContiguousNoCastFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    const int64_t split_idx = group_idx_to_split_idx[item.get_group(2)];
-    const int64_t split_groups =
-        groups_cumsums[split_idx + 1] - groups_cumsums[split_idx];
-    const int64_t split_threads = split_groups * item.get_local_range(2);
-    const int64_t split_thread_idx =
-        (item.get_group(2) - groups_cumsums[split_idx]) *
-            item.get_local_range(2) +
-        item.get_local_id(2);
-    const int64_t split_chunk_size = split_chunk_sizes[split_idx];
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void split_with_sizes_copyout_contiguous_nocast(
+    char** dst_base_addrs,
+    char** src_base_addrs,
+    int64_t* split_chunk_sizes,
+    int64_t* group_idx_to_split_idx,
+    int64_t* groups_cumsums,
+    int64_t src_stride,
+    int64_t num_chunks) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  const int64_t split_idx = group_idx_to_split_idx[item.get_group(2)];
+  const int64_t split_groups =
+      groups_cumsums[split_idx + 1] - groups_cumsums[split_idx];
+  const int64_t split_threads = split_groups * item.get_local_range(2);
+  const int64_t split_thread_idx =
+      (item.get_group(2) - groups_cumsums[split_idx]) *
+          item.get_local_range(2) +
+      item.get_local_id(2);
+  const int64_t split_chunk_size = split_chunk_sizes[split_idx];
 
-    char* dst_base_addr = dst_base_addrs[split_idx];
-    char* src_base_addr = src_base_addrs[split_idx];
+  char* dst_base_addr = dst_base_addrs[split_idx];
+  char* src_base_addr = src_base_addrs[split_idx];
 
-    for (int64_t i = item.get_group(1); i < num_chunks;
-         i += item.get_group_range(1)) {
-      copy_chunk(
-          dst_base_addr + i * split_chunk_size,
-          src_base_addr + i * src_stride,
-          split_chunk_size,
-          split_thread_idx,
-          split_threads);
-    }
+  for (int64_t i = item.get_group(1); i < num_chunks;
+       i += item.get_group_range(1)) {
+    copy_chunk(
+        dst_base_addr + i * split_chunk_size,
+        src_base_addr + i * src_stride,
+        split_chunk_size,
+        split_thread_idx,
+        split_threads);
   }
-  SplitWithSizesCopyOutContiguousNoCastFunctor(
-      char** dst_base_addrs,
-      char** src_base_addrs,
-      int64_t* split_chunk_sizes,
-      int64_t* group_idx_to_split_idx,
-      int64_t* groups_cumsums,
-      int64_t src_stride,
-      int64_t num_chunks)
-      : dst_base_addrs(dst_base_addrs),
-        src_base_addrs(src_base_addrs),
-        split_chunk_sizes(split_chunk_sizes),
-        group_idx_to_split_idx(group_idx_to_split_idx),
-        groups_cumsums(groups_cumsums),
-        src_stride(src_stride),
-        num_chunks(num_chunks) {}
-
- private:
-  char** dst_base_addrs;
-  char** src_base_addrs;
-  int64_t* split_chunk_sizes;
-  int64_t* group_idx_to_split_idx;
-  int64_t* groups_cumsums;
-  int64_t src_stride;
-  int64_t num_chunks;
-};
+}
 
 // Pack multiple std::vector<int64_t> into a single tensor.
 std::pair<at::Tensor, std::vector<int64_t*>> pack_vecs(
@@ -514,6 +497,52 @@ struct ChunkCatFunctor {
   int64_t chunk_size;
   int64_t dst_to_src_ratio;
 };
+
+template <typename dst_t, typename src_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void chunk_cat_kernel(
+    src_t** src,
+    dst_t* dst,
+    int64_t* group_idx_to_tensor_idx,
+    int64_t* tensor_idx_to_start_tensor_bytes,
+    int64_t* start_group_idx_per_tensor_chunk,
+    int64_t* actual_tensor_sizes,
+    int64_t* pad_tensor_chunk_sizes,
+    int64_t* num_groups_per_tensor_chunk,
+    int64_t slice_size,
+    int64_t chunk_size,
+    int64_t dst_to_src_ratio) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  const int64_t slice_idx = item.get_group(0);
+  const int64_t chunk_idx = item.get_group(1);
+  const int64_t tensor_idx = group_idx_to_tensor_idx[item.get_group(2)];
+  const int64_t tile_idx =
+      item.get_group(2) - start_group_idx_per_tensor_chunk[tensor_idx];
+  // Number of threads for the `tensor_idx`-th tensor chunk.
+  const int64_t num_threads =
+      num_groups_per_tensor_chunk[tensor_idx] * GROUP_SIZE;
+  const int64_t thread_idx = tile_idx * GROUP_SIZE + item.get_local_id(2);
+  char* src_addr = reinterpret_cast<char**>(src)[tensor_idx] +
+      slice_idx * actual_tensor_sizes[tensor_idx] +
+      chunk_idx * pad_tensor_chunk_sizes[tensor_idx] / dst_to_src_ratio;
+  char* dst_addr = reinterpret_cast<char*>(dst) + slice_idx * slice_size +
+      chunk_idx * chunk_size + tensor_idx_to_start_tensor_bytes[tensor_idx];
+  // Compute the actual number of bytes to copy from src.
+  const int64_t actual_copy_size = std::min(
+      pad_tensor_chunk_sizes[tensor_idx] / dst_to_src_ratio,
+      std::max(
+          (int64_t)0,
+          actual_tensor_sizes[tensor_idx] -
+              chunk_idx * pad_tensor_chunk_sizes[tensor_idx] /
+                  dst_to_src_ratio));
+  copy_chunk_with_pad<dst_t, src_t>(
+      reinterpret_cast<dst_t*>(dst_addr),
+      reinterpret_cast<src_t*>(src_addr),
+      pad_tensor_chunk_sizes[tensor_idx],
+      actual_copy_size,
+      thread_idx,
+      num_threads);
+}
 
 // Get metadata for chunk_cat.
 std::tuple<
@@ -643,7 +672,12 @@ void _chunk_cat_out_xpu_contiguous(
       (size_t)(num_groups_per_chunk * GROUP_SIZE)};
   sycl::range<3> local_range{(size_t)1, (size_t)1, (size_t)GROUP_SIZE};
 
-  ChunkCatFunctor<dst_t, src_t> kfn(
+  constexpr auto kfn = chunk_cat_kernel<dst_t, src_t>;
+  sycl_kernel_submit<kfn>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
       /*srcs=*/reinterpret_cast<src_t**>(packed.second[0]),
       reinterpret_cast<dst_t*>(out.data_ptr()),
       /*group_idx_to_tensor_idx=*/packed.second[1],
@@ -655,8 +689,6 @@ void _chunk_cat_out_xpu_contiguous(
       slice_size,
       chunk_size,
       dst_elem_size / src_elem_size);
-
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 void split_with_sizes_copy_out_xpu_contiguous_no_cast(
@@ -720,7 +752,12 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
        &groups_cumsums},
       device);
 
-  SplitWithSizesCopyOutContiguousNoCastFunctor kfn(
+  constexpr auto kfn = split_with_sizes_copyout_contiguous_nocast;
+  sycl_kernel_submit<kfn>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
       /*dst_base_addrs=*/reinterpret_cast<char**>(ptrs[0]),
       /*src_base_addrs=*/reinterpret_cast<char**>(ptrs[1]),
       /*split_chunk_sizes=*/ptrs[2],
@@ -728,8 +765,6 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
       /*groups_cumsums=*/ptrs[4],
       src_stride,
       num_chunks);
-
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 void split_with_sizes_copy_out_xpu_kernel(
