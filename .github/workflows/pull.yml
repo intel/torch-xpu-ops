@@ -282,9 +282,10 @@ jobs:
       fail-fast: false
       matrix:
         ut_name: [xpu_distributed]
+        runner: [distributed, bmg-test]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
+      runner: ${{ matrix.runner }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
