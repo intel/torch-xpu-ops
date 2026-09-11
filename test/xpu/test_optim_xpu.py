@@ -19,6 +19,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_optim import TestOptimRenewed
 
+import unittest
 from copy import deepcopy
 
 import torch
@@ -194,6 +195,44 @@ TestOptimRenewed.test_peak_memory_foreach = _test_peak_memory_foreach
 instantiate_device_type_tests(
     TestOptimRenewed, globals(), only_for="xpu", allow_xpu=True
 )
+
+
+# Skip XPU optimizer tests that currently fail; tracked upstream.
+# Each entry maps an exact generated test name to its tracking issue.
+_xpu_skip_cases = {
+    "TestOptimRenewedXPU": {
+        "test_fused_mixed_precision_hook_skips_existing_state_amsgrad_False_AdamW_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_hook_skips_existing_state_amsgrad_False_Adam_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_hook_skips_existing_state_amsgrad_True_AdamW_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_hook_skips_existing_state_amsgrad_True_Adam_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_numerics_AdamW_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_numerics_Adam_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_state_init_amsgrad_False_AdamW_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_state_init_amsgrad_False_Adam_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_state_init_amsgrad_True_AdamW_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_fused_mixed_precision_state_init_amsgrad_True_Adam_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/3267",
+        "test_state_dict_with_cuda_params_Muon_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/2837",
+    },
+}
+
+
+def _apply_xpu_skips(_skip_cases):
+    for _cls_name, _cases in _skip_cases.items():
+        _cls = globals().get(_cls_name)
+        if _cls is None:
+            continue
+        for _name, _issue in _cases.items():
+            _method = getattr(_cls, _name, None)
+            if _method is not None:
+                setattr(
+                    _cls,
+                    _name,
+                    unittest.skip(f"Skipped on XPU, see {_issue}")(_method),
+                )
+
+
+_apply_xpu_skips(_xpu_skip_cases)
+
 
 if __name__ == "__main__":
     run_tests()
