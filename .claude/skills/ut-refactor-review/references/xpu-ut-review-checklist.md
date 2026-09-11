@@ -29,4 +29,4 @@ of scope here.
 | Code Pattern | What It Means | Severity |
 | --- | --- | --- |
 | `if device_type == "xpu": self.skipTest(...)` inside a test the PR enables on XPU | May be an over-skip: disables the whole XPU test to dodge one CUDA-specific check, hiding the real predicate. Human review required. | Info |
-| `@unittest.skipIf(not SM70OrLater, ...)` (device-agnostic arch gate) | A CUDA arch check left device-agnostic wrongly skips XPU and every non-CUDA device. Scope it: `@skipCUDAIf(not SM70OrLater, ...)`. Gate the XPU side on its own capability constant (`PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU`, an `Xe*OrLater`-style flag), not the CUDA `SM*` predicate. | Blocker |
+| `@unittest.skipIf(not SM70OrLater, ...)` | A CUDA arch check left device-agnostic wrongly skips XPU and every non-CUDA device. Scope: `@skipCUDAIf(not SM70OrLater, ...)`. Gate the XPU side on its own capability constant (`PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU`, an `Xe*OrLater`-style flag), not the CUDA `SM*` predicate. Only applied to non CUDA specific test cases. | Blocker |
