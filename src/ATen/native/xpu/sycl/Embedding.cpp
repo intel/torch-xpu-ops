@@ -234,7 +234,9 @@ Tensor& embedding_renorm_kernel(
                 f) -
             unique_indices.data_ptr<index_t>();
 
-        int dim = self.stride(0);
+        // Row width must come from size(1); stride(0) differs from it for a
+        // zero-width or otherwise non-contiguous weight.
+        int dim = self.size(1);
 
         AT_DISPATCH_V2(
             self.scalar_type(),
