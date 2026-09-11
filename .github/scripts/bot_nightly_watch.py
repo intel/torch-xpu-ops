@@ -106,6 +106,10 @@ def main():
                          "fix job that holds a GPU runner")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
+    # `0` reads like "no cap" in the dispatch form but slices to nothing, and a
+    # negative one silently drops the newest announcement.
+    if a.limit < 1:
+        ap.error("--limit must be at least 1")
 
     body = json.loads(gh(TRACKING))["body"] or ""
     m = MARKER_RE.search(body)

@@ -12,6 +12,7 @@ one leaves a test disabled forever.
 import importlib.util
 import json
 import os
+import sys
 import unittest
 
 _spec = importlib.util.spec_from_file_location(
@@ -34,8 +35,9 @@ class TestAnnouncements(unittest.TestCase):
     carry `Disable issues:`."""
 
     def feed(self, *comments):
+        original = w.gh
+        self.addCleanup(lambda: setattr(w, "gh", original))
         w.gh = lambda *a: "\n".join(json.dumps(c) for c in comments)
-        self.addCleanup(setattr, w, "gh", w.gh)
 
     def test_only_disable_comments_are_copied(self):
         self.feed(comment(1, RERUN), comment(2, DISABLE))
@@ -133,6 +135,36 @@ class TestCursor(unittest.TestCase):
         out = f"{w.MARKER_RE.sub('', body).rstrip()}\n\n<!-- last-364-comment: 2 -->\n"
         self.assertEqual(w.MARKER_RE.findall(out), ["2"])
         self.assertIn("text", out)
+
+
+class TestLimit(unittest.TestCase):
+    """The dispatch form takes `limit` as free text. Rejecting it before the
+    first API call is what makes this testable without touching `gh`."""
+
+    def run_main(self, *argv):
+        """`gh` is replaced, not merely expected to go unreached. A bad limit
+        must be refused before any request, and a regression here would
+        otherwise post real `@torchxpubot fix` comments from whatever token is
+        in the environment."""
+        original = w.gh
+        w.gh = lambda *a: self.fail("gh was called for a rejected --limit")
+        self.addCleanup(lambda: setattr(w, "gh", original))
+        old = sys.argv
+        sys.argv = ["bot_nightly_watch.py", *argv]
+        self.addCleanup(lambda: setattr(sys, "argv", old))
+        return w.main()
+
+    def test_zero_is_rejected(self):
+        """`0` reads like "no cap" but slices to nothing, and the cursor then
+        indexes an empty list."""
+        with self.assertRaises(SystemExit):
+            self.run_main("--limit", "0")
+
+    def test_a_negative_limit_is_rejected(self):
+        """Worse than a crash: `-1` copies every announcement but the newest
+        and writes a plausible-looking cursor."""
+        with self.assertRaises(SystemExit):
+            self.run_main("--limit", "-1")
 
 
 if __name__ == "__main__":
