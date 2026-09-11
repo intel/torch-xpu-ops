@@ -129,6 +129,24 @@ check_passed_known_issues() {
     rm -f "$output_file"  # Clean up temporary file
 }
 
+# Append this category's count verdict to $UT_RUN_HEALTH_FILE as JSON Lines.
+# ut_auto_issue.py reads it to tell a truncated run from a healthy one, and to
+# health-check baseline candidates. A category that never ran gets no line,
+# which is how "absent" is distinguished from "truncated".
+# Writes only to the file: check_test_cases' stdout is captured by its caller.
+record_run_health() {
+    if [[ -z "${UT_RUN_HEALTH_FILE:-}" ]]; then
+        return 0
+    fi
+    local category="$1" expected="$2" actual="$3" healthy="$4" reason="$5"
+    local ratio
+    ratio=$(awk -v a="$actual" -v e="$expected" 'BEGIN{printf "%.4f", (e > 0 ? a/e : 0)}')
+    mkdir -p "$(dirname "${UT_RUN_HEALTH_FILE}")"
+    printf '{"category":"%s","expected":%s,"actual":%s,"ratio":%s,"healthy":%s,"reason":"%s"}\n' \
+        "$category" "$expected" "$actual" "$ratio" "$healthy" "$reason" \
+        >> "${UT_RUN_HEALTH_FILE}"
+}
+
 # Verify test case counts haven't dropped significantly (>5% reduction)
 # Args: category_log_file
 check_test_cases() {
@@ -159,8 +177,10 @@ check_test_cases() {
                 if [[ "$actual" -lt "$threshold" ]]; then
                     echo "   Status: ❌ Abnormal (>5% reduction)"
                     all_pass="false"
+                    record_run_health "$current_category" "$expected" "$actual" "false" "below 95% threshold"
                 else
                     echo "   Status: ✅ Normal"
+                    record_run_health "$current_category" "$expected" "$actual" "true" ""
                 fi
                 echo "----------------------------------------"
             fi
