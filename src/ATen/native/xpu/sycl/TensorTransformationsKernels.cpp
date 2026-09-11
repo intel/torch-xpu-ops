@@ -26,40 +26,29 @@ struct alignas(N) OpaqueType {
 };
 
 template <typename func_t>
-struct ElementwiseKernelFunctor {
-  void operator()(sycl::nd_item<1> itemId) const {
-    int idx = itemId.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void elementwise_sub_kernel(
+    int loops,
+    int total_n_elems,
+    func_t f,
+    int total_work_items) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int idx = item.get_global_linear_id();
 
-    for (int i = 0; i < loops; ++i) {
-      if (idx < total_n_elems) {
-        f(idx);
-        idx += total_work_items;
-      }
+  for (int i = 0; i < loops; ++i) {
+    if (idx < total_n_elems) {
+      f(idx);
+      idx += total_work_items;
     }
   }
-  ElementwiseKernelFunctor(
-      int loops_,
-      int total_n_elems_,
-      func_t f_,
-      int total_work_items_)
-      : loops(loops_),
-        total_n_elems(total_n_elems_),
-        f(f_),
-        total_work_items(total_work_items_) {}
-
- private:
-  int loops;
-  int total_n_elems;
-  func_t f;
-  int total_work_items;
-};
+}
 
 template <typename func_t>
 void elementwise_kernel(int total_n_elems, func_t f) {
-  using KernelClass = ElementwiseKernelFunctor<func_t>;
+  constexpr auto kfn = elementwise_sub_kernel<func_t>;
 
   auto& queue = getCurrentSYCLQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize<KernelClass>();
+  int64_t max_wg_size = syclMaxWorkGroupSize<kfn>();
   const auto target_global_size = syclMaxWorkItemsPerTile();
   int work_group_size =
       total_n_elems > max_wg_size ? max_wg_size : total_n_elems;
@@ -73,13 +62,15 @@ void elementwise_kernel(int total_n_elems, func_t f) {
 
   int total_work_items = work_group_size * work_group_num;
 
-  KernelClass kfn(loops, total_n_elems, f, total_work_items);
-
-  sycl_kernel_submit(
+  sycl_kernel_submit<kfn>(
       sycl::range<1>(total_work_items),
       sycl::range<1>(work_group_size),
       queue,
-      kfn);
+      0,
+      loops,
+      total_n_elems,
+      f,
+      total_work_items);
 }
 
 template <typename func_t>
@@ -107,6 +98,9 @@ struct FlipKernelImplLoopFunctor {
       const char* const RESTRICT in_ptr,
       const offset_calc_t offset_calc)
       : out_ptr(out_ptr), in_ptr(in_ptr), offset_calc(offset_calc) {}
+
+  FlipKernelImplLoopFunctor& operator=(const FlipKernelImplLoopFunctor&) =
+      delete;
 
  private:
   char* const RESTRICT out_ptr;
@@ -157,57 +151,34 @@ void flip_kernel(TensorIterator& iter, bool quantized) {
 }
 
 template <typename scalar_t>
-struct RollKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int64_t linear_index = item.get_global_id(0);
-    for (int i = 0; i < val_of_work_item_; i++) {
-      if (linear_index < N_) {
-        // roll dim idx is the index of linear_index along the rolling
-        // dimension.
-        int64_t roll_dim_idx = linear_index % (total_offset_) / stride_;
-        // index into the source data to find appropriate value.
-        int64_t source_idx = 0;
-        source_idx = roll_dim_idx >= shift_ ? linear_index - offset_
-                                            : linear_index + start_offset_;
-        out_data_[linear_index] = in_data_[source_idx];
-        linear_index += global_range_;
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void roll_kernel(
+    const scalar_t* in_data,
+    scalar_t* out_data,
+    int val_of_work_item,
+    int64_t N,
+    int64_t total_offset,
+    int64_t stride,
+    int64_t shift,
+    int64_t offset,
+    int64_t start_offset,
+    int global_range) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t linear_index = item.get_global_id(0);
+  for (int i = 0; i < val_of_work_item; i++) {
+    if (linear_index < N) {
+      // roll dim idx is the index of linear_index along the rolling
+      // dimension.
+      int64_t roll_dim_idx = linear_index % (total_offset) / stride;
+      // index into the source data to find appropriate value.
+      int64_t source_idx = 0;
+      source_idx = roll_dim_idx >= shift ? linear_index - offset
+                                         : linear_index + start_offset;
+      out_data[linear_index] = in_data[source_idx];
+      linear_index += global_range;
     }
   }
-  RollKernelFunctor(
-      const scalar_t* in_data,
-      scalar_t* out_data,
-      int val_of_work_item,
-      int64_t N,
-      int64_t total_offset,
-      int64_t stride,
-      int64_t shift,
-      int64_t offset,
-      int64_t start_offset,
-      int global_range)
-      : in_data_(in_data),
-        out_data_(out_data),
-        val_of_work_item_(val_of_work_item),
-        N_(N),
-        total_offset_(total_offset),
-        stride_(stride),
-        shift_(shift),
-        offset_(offset),
-        start_offset_(start_offset),
-        global_range_(global_range) {}
-
- private:
-  const scalar_t* in_data_;
-  scalar_t* out_data_;
-  int val_of_work_item_;
-  int64_t N_;
-  int64_t total_offset_;
-  int64_t stride_;
-  int64_t shift_;
-  int64_t offset_;
-  int64_t start_offset_;
-  int global_range_;
-};
+}
 
 template <typename scalar_t>
 void roll_template(
@@ -219,14 +190,14 @@ void roll_template(
     int64_t size,
     int64_t stride,
     int64_t total_dims) {
-  using KernelClass = RollKernelFunctor<scalar_t>;
+  constexpr auto kfn = roll_kernel<scalar_t>;
 
   auto shift = size - start;
   auto offset = shift * stride;
   auto start_offset = start * stride;
   auto total_offset = size * stride;
 
-  auto local_range = syclMaxWorkGroupSize<KernelClass>();
+  auto local_range = syclMaxWorkGroupSize<kfn>();
   const auto target_global_range =
       syclMaxWorkItemsPerTile() / local_range * local_range;
   int global_range = (N + local_range - 1) / local_range * local_range;
@@ -237,7 +208,12 @@ void roll_template(
 
   auto in_data = in_tensor.const_data_ptr<scalar_t>();
   auto out_data = out_tensor.data_ptr<scalar_t>();
-  KernelClass kfn(
+
+  sycl_kernel_submit<kfn>(
+      sycl::range<1>(global_range),
+      sycl::range<1>(local_range),
+      getCurrentSYCLQueue(),
+      0,
       in_data,
       out_data,
       val_of_work_item,
@@ -248,12 +224,6 @@ void roll_template(
       offset,
       start_offset,
       global_range);
-
-  sycl_kernel_submit(
-      sycl::range<1>(global_range),
-      sycl::range<1>(local_range),
-      getCurrentSYCLQueue(),
-      kfn);
 }
 
 void roll_kernel(
