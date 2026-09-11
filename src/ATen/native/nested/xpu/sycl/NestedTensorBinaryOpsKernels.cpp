@@ -42,97 +42,80 @@ struct MulFunctor {
 };
 
 template <typename scalar_t, typename VEC_T, int vec_size, typename func_t>
-struct OpDenseVectorizedFunctor {
-  OpDenseVectorizedFunctor(
-      const VEC_T* input_vec,
-      const VEC_T* dense_vec,
-      VEC_T* output_vec,
-      int64_t batch_size,
-      int64_t embedding_dim,
-      const int64_t* offsets,
-      int64_t chunks_per_batch,
-      const func_t func)
-      : input_vec_(input_vec),
-        dense_vec_(dense_vec),
-        output_vec_(output_vec),
-        batch_size_(batch_size),
-        embedding_dim_(embedding_dim),
-        offsets_(offsets),
-        chunks_per_batch_(chunks_per_batch),
-        func_(func) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void op_dense_vectorized_kernel(
+    const VEC_T* input_vec,
+    const VEC_T* dense_vec,
+    VEC_T* output_vec,
+    int64_t batch_size,
+    int64_t embedding_dim,
+    const int64_t* offsets,
+    int64_t chunks_per_batch,
+    func_t func) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-  void operator()(sycl::nd_item<1> item) const {
-    const int64_t item_id = item.get_local_id(0);
-    const int64_t group_id = item.get_group(0);
-    const int64_t group_size = item.get_local_range(0);
+  const int64_t item_id = item.get_local_id(0);
+  const int64_t group_id = item.get_group(0);
+  const int64_t group_size = item.get_local_range(0);
 
-    const int64_t batch_idx = group_id / chunks_per_batch_;
-    const int64_t chunk_idx = group_id % chunks_per_batch_;
-    if (batch_idx >= batch_size_) {
-      return;
-    }
+  const int64_t batch_idx = group_id / chunks_per_batch;
+  const int64_t chunk_idx = group_id % chunks_per_batch;
+  if (batch_idx >= batch_size) {
+    return;
+  }
 
-    const int64_t vecs_per_embedding_dim = embedding_dim_ / vec_size;
-    const int64_t vecs_per_chunk =
-        ceil_div(vecs_per_embedding_dim, chunks_per_batch_);
-    const int64_t vec_start = chunk_idx * vecs_per_chunk;
-    const int64_t chunk_end_vec = vec_start + vecs_per_chunk;
-    const int64_t vec_end = std::min(chunk_end_vec, vecs_per_embedding_dim);
-    const int64_t chunk_vec_count = vec_end - vec_start;
-    const int64_t batch_start_elem = offsets_[batch_idx];
-    const int64_t batch_end_elem = offsets_[batch_idx + 1];
-    const int64_t batch_elem_count = batch_end_elem - batch_start_elem;
+  const int64_t vecs_per_embedding_dim = embedding_dim / vec_size;
+  const int64_t vecs_per_chunk =
+      ceil_div(vecs_per_embedding_dim, chunks_per_batch);
+  const int64_t vec_start = chunk_idx * vecs_per_chunk;
+  const int64_t chunk_end_vec = vec_start + vecs_per_chunk;
+  const int64_t vec_end = std::min(chunk_end_vec, vecs_per_embedding_dim);
+  const int64_t chunk_vec_count = vec_end - vec_start;
+  const int64_t batch_start_elem = offsets[batch_idx];
+  const int64_t batch_end_elem = offsets[batch_idx + 1];
+  const int64_t batch_elem_count = batch_end_elem - batch_start_elem;
 
-    if (chunk_vec_count > 0) {
-      const int64_t chunk_vec_base =
-          batch_idx * vecs_per_embedding_dim + vec_start;
+  if (chunk_vec_count > 0) {
+    const int64_t chunk_vec_base =
+        batch_idx * vecs_per_embedding_dim + vec_start;
 
-      for (int64_t i = item_id; i < chunk_vec_count; i += group_size) {
-        VEC_T vec_dense_val = dense_vec_[chunk_vec_base + i];
-        for (int64_t elem_offset_in_batch = (vec_start + i) * vec_size;
-             elem_offset_in_batch < batch_elem_count;
-             elem_offset_in_batch += embedding_dim_) {
-          const int64_t global_vec_idx =
-              (batch_start_elem + elem_offset_in_batch) / vec_size;
-          VEC_T vec_input_val = input_vec_[global_vec_idx];
-          VEC_T vec_result;
+    for (int64_t i = item_id; i < chunk_vec_count; i += group_size) {
+      VEC_T vec_dense_val = dense_vec[chunk_vec_base + i];
+      for (int64_t elem_offset_in_batch = (vec_start + i) * vec_size;
+           elem_offset_in_batch < batch_elem_count;
+           elem_offset_in_batch += embedding_dim) {
+        const int64_t global_vec_idx =
+            (batch_start_elem + elem_offset_in_batch) / vec_size;
+        VEC_T vec_input_val = input_vec[global_vec_idx];
+        VEC_T vec_result;
 #pragma unroll
-          for (int v = 0; v < vec_size; ++v) {
-            vec_result[v] = func_(vec_input_val[v], vec_dense_val[v]);
-          }
-          output_vec_[global_vec_idx] = vec_result;
+        for (int v = 0; v < vec_size; ++v) {
+          vec_result[v] = func(vec_input_val[v], vec_dense_val[v]);
         }
+        output_vec[global_vec_idx] = vec_result;
       }
     }
   }
+}
 
-  const VEC_T* input_vec_;
-  const VEC_T* dense_vec_;
-  VEC_T* output_vec_;
-  int64_t batch_size_;
-  int64_t embedding_dim_;
-  const int64_t* offsets_;
-  int64_t chunks_per_batch_;
-  const func_t func_;
-};
-
-#define LAUNCH_VEC_CASE(SIZE)                                           \
-  case SIZE: {                                                          \
-    using VEC_T = vec_t<scalar_t, SIZE>;                                \
-    auto kfn = OpDenseVectorizedFunctor<scalar_t, VEC_T, SIZE, func_t>( \
-        reinterpret_cast<const VEC_T*>(input),                          \
-        reinterpret_cast<const VEC_T*>(dense),                          \
-        reinterpret_cast<VEC_T*>(output),                               \
-        batch_size,                                                     \
-        embedding_dim,                                                  \
-        input_offsets,                                                  \
-        chunks_per_batch,                                               \
-        func);                                                          \
-    sycl_kernel_submit(                                                 \
-        total_groups* GROUP_DIM,                                        \
-        GROUP_DIM,                                                      \
-        at::xpu::getCurrentSYCLQueue(),                                 \
-        kfn);                                                           \
+#define LAUNCH_VEC_CASE(SIZE)                                      \
+  case SIZE: {                                                     \
+    using VEC_T = vec_t<scalar_t, SIZE>;                           \
+    constexpr auto kernel =                                        \
+        op_dense_vectorized_kernel<scalar_t, VEC_T, SIZE, func_t>; \
+    sycl_kernel_submit<kernel>(                                    \
+        total_groups * GROUP_DIM,                                  \
+        GROUP_DIM,                                                 \
+        at::xpu::getCurrentSYCLQueue(),                            \
+        0,                                                         \
+        reinterpret_cast<const VEC_T*>(input),                     \
+        reinterpret_cast<const VEC_T*>(dense),                     \
+        reinterpret_cast<VEC_T*>(output),                          \
+        batch_size,                                                \
+        embedding_dim,                                             \
+        input_offsets,                                             \
+        chunks_per_batch,                                          \
+        func);                                                     \
   } break;
 
 template <typename scalar_t, typename func_t>
