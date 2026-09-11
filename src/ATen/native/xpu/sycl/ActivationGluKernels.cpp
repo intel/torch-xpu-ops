@@ -11,6 +11,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
 #include <ATen/TensorIterator.h>
+#include <ATen/xpu/XPUContext.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
@@ -114,8 +115,8 @@ void launch_glu_backward_kernel(
     OffsetCalc offset_calculator,
     int64_t gI_byte_offset,
     int64_t I_byte_offset) {
-  const int64_t local_size =
-      syclMaxWorkGroupSize<glu_backward_kernel<scalar_t, OffsetCalc>>();
+  const int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<
+      glu_backward_kernel<scalar_t, OffsetCalc>>();
   const int64_t num_wg = (numel + local_size - 1) / local_size;
   const int64_t global_size = num_wg * local_size;
 

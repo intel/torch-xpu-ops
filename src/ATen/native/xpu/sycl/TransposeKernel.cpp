@@ -11,6 +11,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
@@ -322,12 +323,12 @@ static bool detect_batch_transpose(
       int64_t num_tiles_y = (r + TILE_DIM - 1) / TILE_DIM;
       int64_t total_wgs = b * num_tiles_y * num_tiles_x;
 
-      int64_t simd = syclMaxSubGroupSize();
+      int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
       int64_t sgs_per_wg = WG_SIZE / simd;
       int64_t total_sgs = total_wgs * sgs_per_wg;
 
       // 1) Total subgroups must fill all GPU thread slots
-      int64_t thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+      int64_t thread_slots = at::xpu::getDeviceHWThreads();
       if (total_sgs < thread_slots)
         return false;
 
@@ -337,11 +338,12 @@ static bool detect_batch_transpose(
       int64_t slm_pad = (elem_size <= 2) ? 2 : 1;
       int64_t slm_per_wg = TILE_DIM * (TILE_DIM + slm_pad) * elem_size;
 
-      int64_t eu_per_xc = syclGpuEUCountPerSubslice();
+      int64_t eu_per_xc = at::xpu::getDeviceEUCountPerXeCore();
       int64_t hw_thr = syclGpuHWThreadsPerEU();
       int64_t slots_per_xc = eu_per_xc * hw_thr;
       int64_t concurrent_wgs = slots_per_xc / sgs_per_wg;
-      int64_t slm_per_wg_upbound = syclLocalMemSize() / concurrent_wgs;
+      int64_t slm_per_wg_upbound =
+          at::xpu::getDeviceLocalMemSize() / concurrent_wgs;
       if (slm_per_wg > slm_per_wg_upbound)
         return false;
 

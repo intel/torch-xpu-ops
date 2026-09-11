@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -127,8 +128,8 @@ static void launch_upsample_bicubic2d_out_kernel(
     bool align_corners,
     const accscalar_t height_scale,
     const accscalar_t width_scale) {
-  int64_t wg_size =
-      syclMaxWorkGroupSize<upsample_bicubic2d_kernel<scalar_t, accscalar_t>>();
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      upsample_bicubic2d_kernel<scalar_t, accscalar_t>>();
   int64_t num_wg = at::ceil_div(onum, wg_size);
   auto queue = getCurrentSYCLQueue();
 
@@ -264,7 +265,7 @@ static void launch_upsample_bicubic2d_backward_out_kernel(
     const bool align_corners,
     PackedTensorAccessor64<scalar_t, 4> idata,
     const PackedTensorAccessor64<const scalar_t, 4> odata) {
-  int64_t wg_size = syclMaxWorkGroupSize<
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
       upsample_bicubic2d_backward_kernel<scalar_t, accscalar_t>>();
   int64_t num_wg = at::ceil_div(num_elements, wg_size);
   auto queue = getCurrentSYCLQueue();

@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -411,7 +412,7 @@ void gatherMedian(
       in_data,
       values_data,
       indices_data);
-  int64_t local_size = syclMaxWorkGroupSize(kfn);
+  int64_t local_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   sycl_kernel_submit(
       numInputSlices * local_size, local_size, getCurrentSYCLQueue(), kfn);
 }
@@ -444,7 +445,7 @@ void gatherKthValue(
       in_data,
       values_data,
       indices_data);
-  int64_t local_size = syclMaxWorkGroupSize(kfn);
+  int64_t local_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   sycl_kernel_submit(
       numInputSlices * local_size, local_size, getCurrentSYCLQueue(), kfn);
 }

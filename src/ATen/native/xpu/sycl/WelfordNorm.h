@@ -13,6 +13,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 
@@ -37,7 +38,8 @@ std::tuple<int, int, int, int> get_adaptive_config(
   int nwg_x = at::ceil_div(n_channels, group_size_x * vec_size);
   int nwg_y = std::min(
       at::ceil_div(reduction, group_size_y * loops_per_item),
-      int(syclMaxWorkItemsPerTile()) / (nwg_x * group_size_x) / (group_size_y));
+      int(at::xpu::getDeviceMaxWorkItems()) / (nwg_x * group_size_x) /
+          (group_size_y));
   nwg_y = std::max(nwg_y, 1);
 
   // it's not worth having reduction between work groups if the reduction
@@ -255,7 +257,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
         scalar_t,
         acc_t,
         VEC_SIZE>;
-    auto max_group_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_group_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_) =
         get_adaptive_config(
             reduction_size_, n_channels_, VEC_SIZE, max_group_size);

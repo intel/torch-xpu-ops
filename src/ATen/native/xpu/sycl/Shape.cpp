@@ -18,6 +18,7 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/core/MemoryFormat.h>
 #include <c10/util/SmallVector.h>
 #include <comm/SYCLContext.h>
@@ -63,8 +64,8 @@ inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRange(
   // One wave is enough to saturate the tile. The kernel is grid-strided, so
   // additional groups do not increase parallelism and can increase idle work
   // for smaller tensors in the batch.
-  const unsigned int max_item_groups =
-      static_cast<unsigned int>(syclMaxWorkItemsPerTile() / items_per_group);
+  const unsigned int max_item_groups = static_cast<unsigned int>(
+      at::xpu::getDeviceMaxWorkItems() / items_per_group);
   item_groups = std::min(max_item_groups, item_groups);
 
   sycl::range<2> global_range(
@@ -85,8 +86,8 @@ inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRangeContig(
   unsigned int max_items = ceil_div(max_elements_per_tensor, elements_per_item);
   unsigned int item_groups = ceil_div(max_items, items_per_group);
 
-  const unsigned int max_item_groups =
-      static_cast<unsigned int>(syclMaxWorkItemsPerTile() / items_per_group);
+  const unsigned int max_item_groups = static_cast<unsigned int>(
+      at::xpu::getDeviceMaxWorkItems() / items_per_group);
   item_groups = std::min(max_item_groups, item_groups);
 
   sycl::range<2> global_range(

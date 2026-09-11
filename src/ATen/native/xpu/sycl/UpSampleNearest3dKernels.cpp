@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -89,7 +90,7 @@ void upsample_nearest3d_out_template(
     float width_scale,
     index_op_t index_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  auto work_group_size = syclMaxWorkGroupSize<
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
       upsample_nearest3d_kernel<scalar_t, index_t, index_op_t>>();
   int64_t work_group_num =
       at::ceil_div((unsigned int)n, (unsigned int)work_group_size);
@@ -289,8 +290,8 @@ void upsample_nearest3d_backward_template(
     float width_scale,
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  auto work_group_size =
-      syclMaxWorkGroupSize<upsample_nearest3d_backward_kernel<
+  int64_t work_group_size =
+      at::xpu::getKernelMaxWorkGroupSize<upsample_nearest3d_backward_kernel<
           scalar_t,
           accscalar_t,
           index_t,

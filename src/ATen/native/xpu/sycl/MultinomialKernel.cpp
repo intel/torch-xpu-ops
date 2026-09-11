@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -99,11 +100,11 @@ inline void renormRows(Tensor& t) {
   TORCH_CHECK(t.dim() == 2);
   int64_t rows = t.size(0);
   int64_t cols = t.size(1);
-  int subgroup_size = syclMaxSubGroupSize();
+  int subgroup_size = at::xpu::getDeviceMaxSubGroupSize();
   int group_size = std::min(
       int(syclMaxWorkItemsPerSubSlice()), subgroup_size * subgroup_size);
   int num_groups = (rows + group_size - 1) / group_size;
-  int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
+  int hw_max_groups = at::xpu::getDeviceMaxWorkItems() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
 
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
@@ -451,10 +452,10 @@ void multinomial_kernel(
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         using KernelClass = SampleMultinomialOnceFunctor<scalar_t, accscalar_t>;
-        int maxThreads = syclMaxWorkGroupSize<KernelClass>();
-        int maxShared = syclLocalMemSize();
+        int maxThreads = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
+        int maxShared = at::xpu::getDeviceLocalMemSize();
 
-        int SubGroupSize = syclMinSubGroupSize();
+        int SubGroupSize = at::xpu::getDeviceMinSubGroupSize();
         int requiredSubGroups = at::ceil_div(numCategories, SubGroupSize);
         int requiredThreads =
             std::min(maxThreads, requiredSubGroups * SubGroupSize);

@@ -11,6 +11,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
+#include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
@@ -89,8 +90,9 @@ void randperm_handle_duplicate_keys(
 
   T mask = static_cast<T>((1UL << bits) - 1);
 
-  auto local_range =
-      syclMaxWorkGroupSize<handle_duplicate_keys_kernel<T, scalar_t>>() / 2;
+  int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<
+                            handle_duplicate_keys_kernel<T, scalar_t>>() /
+      2;
   auto num_wg = (n + local_range - 1) / local_range;
   auto global_range = num_wg * local_range;
 

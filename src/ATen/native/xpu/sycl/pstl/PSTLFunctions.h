@@ -21,6 +21,7 @@
 #include <ATen/ops/zeros.h>
 #include <ATen/ops/zeros_like.h>
 #include <ATen/record_function.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorOptions.h>
@@ -277,7 +278,8 @@ static inline OutputIt _scan_kernel(
 
   const auto N = std::distance(first, last);
   auto& q = getCurrentSYCLQueue();
-  const auto kss_wgroup_size = syclMaxWorkGroupSize<KSScanKernel>();
+  const int64_t kss_wgroup_size =
+      at::xpu::getKernelMaxWorkGroupSize<KSScanKernel>();
 
   auto options = map_options<T>();
 
@@ -289,7 +291,8 @@ static inline OutputIt _scan_kernel(
     return d_first + N;
   }
 
-  const auto kssc_wgroup_size = syclMaxWorkGroupSize<KSScanWithCarrierKernel>();
+  const int64_t kssc_wgroup_size =
+      at::xpu::getKernelMaxWorkGroupSize<KSScanWithCarrierKernel>();
   const auto ngroups = (N + kssc_wgroup_size - 1) / kssc_wgroup_size;
   Tensor carry = at::empty({ngroups}, options);
   T* carry_ptr = carry.data_ptr<T>();
@@ -310,7 +313,7 @@ static inline OutputIt _scan_kernel(
   // Same work-group size as step 1: each item finds its carry by group id.
   ScanAccumulateKernelFunctor<OutputIt, T> kfn3(d_first, carry_ptr, N);
 
-  const auto sa_wgroup_size = syclMaxWorkGroupSize(kfn3);
+  const int64_t sa_wgroup_size = at::xpu::getKernelMaxWorkGroupSize(kfn3);
   TORCH_INTERNAL_ASSERT(
       kssc_wgroup_size <= sa_wgroup_size,
       "_scan_kernel: work group size doesn't match!");

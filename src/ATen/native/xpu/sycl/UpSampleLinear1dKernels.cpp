@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -101,7 +102,7 @@ void upsample_linear1d_kernel(
             input_width, output_width, align_corners, scales);
         const int num_kernels = output_width;
         constexpr auto kfn = upsample_linear1d_kernel<scalar_t, accscalar_t>;
-        const auto local_range = syclMaxWorkGroupSize<kfn>();
+        const int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<kfn>();
         auto global_range =
             (num_kernels + local_range - 1) / local_range * local_range;
         sycl_kernel_submit<kfn>(
@@ -197,7 +198,7 @@ void upsample_linear1d_backward_kernel(
             input_width, output_width, align_corners, scales);
         constexpr auto kfn =
             upsample_linear1d_backward_kernel<scalar_t, accscalar_t>;
-        const auto local_range = syclMaxWorkGroupSize<kfn>();
+        const int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<kfn>();
         auto global_range =
             (num_kernels + local_range - 1) / local_range * local_range;
         sycl_kernel_submit<kfn>(
