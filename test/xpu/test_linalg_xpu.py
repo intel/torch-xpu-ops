@@ -842,10 +842,11 @@ def linalg_lu_family(self, device, dtype):
 
         self.assertEqual(P @ L @ U if pivot else L @ U, A)
 
-        PLU = torch.linalg.lu(A, pivot=pivot)
-        self.assertEqual(P, PLU.P)
-        self.assertEqual(L, PLU.L)
-        self.assertEqual(U, PLU.U)
+        if pivot:
+            PLU = torch.linalg.lu(A, pivot=pivot)
+            self.assertEqual(P, PLU.P)
+            self.assertEqual(L, PLU.L)
+            self.assertEqual(U, PLU.U)
 
         if not singular and A.size(-2) == A.size(-1):
             nrhs = ((), (1,), (3,))
@@ -925,9 +926,35 @@ def linalg_lu_family(self, device, dtype):
                 f(torch.empty(1, 2, 2), pivot=False)
 
 
+@skipIfTorchDynamo("Runtime error with torch._C._linalg.linalg_lu_factor")
+@dtypes(torch.float)
+def linalg_lu_factor_no_pivot_nan_parity(self, device, dtype):
+    # Singular matrix with zero leading pivot; no-pivot LU may generate NaNs
+    # in backend internals for some implementations.
+    A = torch.tensor(
+        [[[0.0, 0.0], [0.0, 1.0]], [[0.0, 2.0], [0.0, 3.0]]],
+        device=device,
+        dtype=dtype,
+    )
+
+    LU, pivots, info = torch.linalg.lu_factor_ex(A, pivot=False)
+
+    self.assertFalse(torch.isnan(LU).any())
+    self.assertTrue((info >= 0).all())
+
+    k = min(A.shape[-2], A.shape[-1])
+    expected_pivots = torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(
+        A.shape[:-2] + (k,)
+    )
+    self.assertEqual(pivots, expected_pivots)
+
+
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_linalg_lu_family = linalg_lu_family
+TestLinalg.test_linalg_lu_factor_no_pivot_nan_parity = (
+    linalg_lu_factor_no_pivot_nan_parity
+)
 TestLinalg.test_preferred_blas_library = preferred_blas_library
 TestLinalg.test_eigh_svd_illcondition_matrix_input_should_not_crash = (
     eigh_svd_illcondition_matrix_input_should_not_crash
