@@ -132,6 +132,28 @@ class TestRMSNorm(TestCase):
         self.assertEqual(grad_input.shape, x.shape)
         self.assertTrue(torch.isfinite(grad_input).all())
 
+    def test_rms_norm_backward_multidim_normalized_shape_large_rows(self):
+        """The weight gradient keeps normalized_shape above the threshold.
+
+        The two-stage accumulator is `{num_tile_m, N}` with N the flattened
+        normalized size, so `sum(0)` is a flat `{N}` and assigning it replaced
+        the gradient allocated from the parameter. Autograd then saw `[8]` where
+        it expected `[2, 4]`.
+        """
+        torch.manual_seed(42)
+        dim = [2, 4]
+        rows = _over_threshold_rows()
+
+        layer = nn.RMSNorm(dim, eps=1e-6, dtype=torch.float32).to(xpu_device)
+        x = torch.randn(
+            rows, *dim, device=xpu_device, dtype=torch.float32, requires_grad=True
+        )
+        layer(x).sum().backward()
+
+        self.assertEqual(layer.weight.grad.shape, torch.Size(dim))
+        self.assertTrue(torch.isfinite(layer.weight.grad).all())
+        self.assertEqual(x.grad.shape, x.shape)
+
     def test_layer_norm_backward_unaffected(self):
         """LayerNorm shares the impl and must keep producing a real dbeta.
 
