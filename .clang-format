@@ -112,6 +112,7 @@ StatementMacros:
   - PyObject_HEAD
   - PyObject_VAR_HEAD
   - PyException_HEAD
+  - SYCL_EXT_ONEAPI_FUNCTION_PROPERTY
   - TORCH_DECLARE_bool
 
 TabWidth:        8
