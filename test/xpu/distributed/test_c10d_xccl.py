@@ -559,6 +559,50 @@ class CommTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_xccl_window_registration(self):
+        store = c10d.FileStore(self.file_name, self.world_size)
+        device = torch.device(f"xpu:{self.rank}")
+        torch.xpu.set_device(device)
+        c10d.init_process_group(
+            backend="xccl",
+            rank=self.rank,
+            world_size=self.world_size,
+            store=store,
+            device_id=device,
+        )
+        pg = c10d.distributed_c10d._get_default_group()
+        backend = pg._get_backend(device)
+
+        pool = torch.xpu.MemPool()
+        with torch.xpu.use_mem_pool(pool):
+            tensor = torch.full((1024 * 1024,), self.rank + 1, device=device)
+
+        backend.register_mem_pool(pool)
+
+        # A registered pool must not change the result of a collective, whether
+        # or not oneCCL actually took the window fast path.
+        pg.allreduce(tensor).wait()
+        torch.xpu.synchronize(device=device)
+        expected = sum(range(1, self.world_size + 1))
+        self.assertEqual(tensor, torch.full_like(tensor, expected))
+
+        # A segment allocated after registration is registered by the hook.
+        with torch.xpu.use_mem_pool(pool):
+            late = torch.full((1024 * 1024,), self.rank + 1, device=device)
+        pg.allreduce(late).wait()
+        torch.xpu.synchronize(device=device)
+        self.assertEqual(late, torch.full_like(late, expected))
+
+        backend.deregister_mem_pool(pool)
+
+        pg.allreduce(tensor).wait()
+        torch.xpu.synchronize(device=device)
+
+        del tensor, late, pool
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_broadcast_coalesced_xccl(self):
         store = c10d.FileStore(self.file_name, self.world_size)
         c10d.init_process_group(
