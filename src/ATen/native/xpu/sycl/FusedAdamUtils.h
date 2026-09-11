@@ -13,6 +13,9 @@
 #include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 
+#include <c10/core/ScalarType.h>
+#include <c10/util/Exception.h>
+
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
@@ -21,6 +24,50 @@
 namespace at::native::xpu {
 
 enum class ADAM_MODE : uint8_t { ORIGINAL = 0, ADAMW = 1 };
+
+inline void validate_fused_mixed_precision_dtypes(
+    at::TensorList params,
+    at::TensorList grads,
+    at::TensorList exp_avgs,
+    at::TensorList exp_avg_sqs,
+    const char* op_name) {
+  TORCH_CHECK(
+      params[0].scalar_type() == at::kFloat,
+      op_name,
+      " with mixed dtypes requires float32 params, got ",
+      params[0].scalar_type());
+  TORCH_CHECK(
+      grads[0].scalar_type() == at::kFloat,
+      op_name,
+      " with mixed dtypes requires float32 grads, got ",
+      grads[0].scalar_type());
+  TORCH_CHECK(
+      exp_avgs[0].scalar_type() == at::kBFloat16,
+      op_name,
+      " with mixed dtypes requires bfloat16 optimizer states, got ",
+      exp_avgs[0].scalar_type());
+  TORCH_CHECK(
+      exp_avg_sqs[0].scalar_type() == at::kBFloat16,
+      op_name,
+      " with mixed dtypes requires bfloat16 optimizer states, got ",
+      exp_avg_sqs[0].scalar_type());
+}
+
+inline void validate_fused_mixed_precision_dtypes(
+    at::TensorList params,
+    at::TensorList grads,
+    at::TensorList exp_avgs,
+    at::TensorList exp_avg_sqs,
+    at::TensorList max_exp_avg_sqs,
+    const char* op_name) {
+  validate_fused_mixed_precision_dtypes(
+      params, grads, exp_avgs, exp_avg_sqs, op_name);
+  TORCH_CHECK(
+      max_exp_avg_sqs[0].scalar_type() == at::kBFloat16,
+      op_name,
+      " with mixed dtypes requires bfloat16 max_exp_avg_sqs, got ",
+      max_exp_avg_sqs[0].scalar_type());
+}
 
 // index in TensorList for params
 constexpr uint8_t kParamIdx = 0;
@@ -202,6 +249,212 @@ struct FusedAdamMathFunctor {
                 item_id,
                 local_range);
           }
+        }
+      }
+    }
+  }
+};
+
+template <
+    typename scalar_type,
+    typename param_type,
+    typename grad_type,
+    typename exp_avg_type,
+    typename exp_avg_sq_type,
+    typename max_exp_avg_sq_type,
+    int depth,
+    ADAM_MODE adam_mode,
+    bool amsgrad>
+struct FusedAdamMathFunctorMP {
+  static_assert(
+      depth == 4 || depth == 5,
+      "depth of 4 for Adam, depth of 5 for Adam with AMSGrad.");
+  using opmath_t = at::opmath_type<scalar_type>;
+
+  template <typename TLA, typename TLW>
+  inline void operator()(
+      int64_t chunk_size,
+      TLA tlAddress,
+      TLW tlWGMeta,
+      sycl::nd_item<1> item,
+      const float* lr_ptr,
+      const double& lr,
+      const double& beta1,
+      const double& beta2,
+      const double& weight_decay,
+      const double& eps,
+      const bool& maximize,
+      const float* grad_scale_ptr,
+      const float* found_inf_ptr) const {
+    auto group_id = item.get_group(0);
+    auto item_id = item.get_local_id(0);
+    auto local_range = item.get_local_range(0);
+
+    const auto tensor_loc = tlWGMeta[group_id].wg_to_tensor;
+    const auto chunk_idx = tlWGMeta[group_id].wg_to_chunk;
+    const double lr_double = lr_ptr ? *lr_ptr : lr;
+
+    if (found_inf_ptr && *found_inf_ptr == 1) {
+      return;
+    }
+    const auto [bias_correction1, bias_correction2_sqrt] =
+        [&]() -> std::pair<double, double> {
+      auto* step_count = reinterpret_cast<const float*>(
+          tlAddress[tensor_loc].state_steps_addresses);
+      const auto bias_correction1 =
+          1 - sycl::pow(beta1, static_cast<double>(*step_count));
+      const auto bias_correction2 =
+          1 - sycl::pow(beta2, static_cast<double>(*step_count));
+      const auto bias_correction2_sqrt = sycl::sqrt(bias_correction2);
+      return {bias_correction1, bias_correction2_sqrt};
+    }();
+
+    scalar_type r_args[depth][kILP];
+    const auto n =
+        tlAddress[tensor_loc].numel_to_tensor - chunk_idx * chunk_size;
+
+    param_type* param_args;
+    grad_type* grad_args;
+    exp_avg_type* exp_avg_args;
+    exp_avg_sq_type* exp_avg_sq_args;
+    [[maybe_unused]] max_exp_avg_sq_type* max_exp_avg_sq_args;
+
+    bool all_aligned = init_args_mixed_prec<depth>(
+        &param_args,
+        &grad_args,
+        &exp_avg_args,
+        &exp_avg_sq_args,
+        tlAddress,
+        chunk_idx,
+        chunk_size,
+        tensor_loc);
+    if constexpr (amsgrad) {
+      max_exp_avg_sq_args =
+          reinterpret_cast<max_exp_avg_sq_type*>(
+              tlAddress[tensor_loc].addresses[kMaxExpAvgSqIdx]) +
+          chunk_idx * chunk_size;
+      all_aligned = all_aligned && is_aligned(max_exp_avg_sq_args);
+    }
+
+    if ((n % kILP == 0) && (chunk_size % kILP == 0) && all_aligned) {
+      for (int64_t i_start = item_id;
+           i_start * kILP < n && i_start * kILP < chunk_size;
+           i_start += local_range) {
+        load_store_cast<scalar_type>(r_args[kParamIdx], param_args, 0, i_start);
+        load_store_cast<scalar_type>(r_args[kGradIdx], grad_args, 0, i_start);
+        load_store_cast<scalar_type>(
+            r_args[kExpAvgIdx], exp_avg_args, 0, i_start);
+        load_store_cast<scalar_type>(
+            r_args[kExpAvgSqIdx], exp_avg_sq_args, 0, i_start);
+        if constexpr (amsgrad) {
+          load_store_cast<scalar_type>(
+              r_args[kMaxExpAvgSqIdx], max_exp_avg_sq_args, 0, i_start);
+        }
+        adam_math<scalar_type, opmath_t, depth, adam_mode, amsgrad>(
+            r_args,
+            lr_double,
+            beta1,
+            beta2,
+            weight_decay,
+            eps,
+            maximize,
+            grad_scale_ptr,
+            found_inf_ptr,
+            bias_correction1,
+            bias_correction2_sqrt);
+        load_store_cast<param_type>(param_args, r_args[kParamIdx], i_start, 0);
+        load_store_cast<exp_avg_type>(
+            exp_avg_args, r_args[kExpAvgIdx], i_start, 0);
+        load_store_cast<exp_avg_sq_type>(
+            exp_avg_sq_args, r_args[kExpAvgSqIdx], i_start, 0);
+        if constexpr (amsgrad) {
+          load_store_cast<max_exp_avg_sq_type>(
+              max_exp_avg_sq_args, r_args[kMaxExpAvgSqIdx], i_start, 0);
+        }
+        if (grad_scale_ptr) {
+          load_store_cast<grad_type>(grad_args, r_args[kGradIdx], i_start, 0);
+        }
+      }
+    } else {
+      for (int64_t i_start = 0; i_start < n && i_start < chunk_size;
+           i_start += local_range * kILP) {
+        load_args_mixed_prec<scalar_type>(
+            r_args,
+            param_args,
+            grad_args,
+            exp_avg_args,
+            exp_avg_sq_args,
+            i_start,
+            chunk_size,
+            n,
+            item_id,
+            local_range);
+        if constexpr (amsgrad) {
+#pragma unroll
+          for (int ii = 0; ii < kILP; ii++) {
+            const auto i = i_start + item_id + ii * local_range;
+            r_args[kMaxExpAvgSqIdx][ii] = 0;
+            if (i < n && i < chunk_size) {
+              r_args[kMaxExpAvgSqIdx][ii] =
+                  static_cast<scalar_type>(max_exp_avg_sq_args[i]);
+            }
+          }
+        }
+        adam_math<scalar_type, opmath_t, depth, adam_mode, amsgrad>(
+            r_args,
+            lr_double,
+            beta1,
+            beta2,
+            weight_decay,
+            eps,
+            maximize,
+            grad_scale_ptr,
+            found_inf_ptr,
+            bias_correction1,
+            bias_correction2_sqrt);
+        store_args_cast(
+            param_args,
+            r_args[kParamIdx],
+            i_start,
+            chunk_size,
+            n,
+            item_id,
+            local_range);
+        store_args_cast(
+            exp_avg_args,
+            r_args[kExpAvgIdx],
+            i_start,
+            chunk_size,
+            n,
+            item_id,
+            local_range);
+        store_args_cast(
+            exp_avg_sq_args,
+            r_args[kExpAvgSqIdx],
+            i_start,
+            chunk_size,
+            n,
+            item_id,
+            local_range);
+        if constexpr (amsgrad) {
+          store_args_cast(
+              max_exp_avg_sq_args,
+              r_args[kMaxExpAvgSqIdx],
+              i_start,
+              chunk_size,
+              n,
+              item_id,
+              local_range);
+        }
+        if (grad_scale_ptr) {
+          store_args_cast(
+              grad_args,
+              r_args[kGradIdx],
+              i_start,
+              chunk_size,
+              n,
+              item_id,
+              local_range);
         }
       }
     }

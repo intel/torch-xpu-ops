@@ -83,6 +83,97 @@ void store_args(
     }
   }
 }
+
+template <typename DstT, typename SrcT>
+void load_store_cast(
+    DstT* dst,
+    SrcT* src,
+    int64_t dst_offset,
+    int64_t src_offset) {
+#pragma unroll
+  for (int ii = 0; ii < kILP; ++ii) {
+    dst[dst_offset * kILP + ii] =
+        static_cast<DstT>(src[src_offset * kILP + ii]);
+  }
+}
+
+template <
+    int depth,
+    typename param_type,
+    typename grad_type,
+    typename exp_avg_type,
+    typename exp_avg_sq_type,
+    typename TL>
+bool init_args_mixed_prec(
+    param_type** param_args,
+    grad_type** grad_args,
+    exp_avg_type** exp_avg_args,
+    exp_avg_sq_type** exp_avg_sq_args,
+    TL tl,
+    int64_t chunk_idx,
+    int64_t chunk_size,
+    int tensor_loc) {
+  *param_args =
+      (param_type*)tl[tensor_loc].addresses[0] + chunk_idx * chunk_size;
+  *grad_args = (grad_type*)tl[tensor_loc].addresses[1] + chunk_idx * chunk_size;
+  *exp_avg_args =
+      (exp_avg_type*)tl[tensor_loc].addresses[2] + chunk_idx * chunk_size;
+  *exp_avg_sq_args =
+      (exp_avg_sq_type*)tl[tensor_loc].addresses[3] + chunk_idx * chunk_size;
+  return is_aligned(*param_args) && is_aligned(*grad_args) &&
+      is_aligned(*exp_avg_args) && is_aligned(*exp_avg_sq_args);
+}
+
+template <
+    typename T,
+    typename param_type,
+    typename grad_type,
+    typename exp_avg_type,
+    typename exp_avg_sq_type>
+void load_args_mixed_prec(
+    T r_args[][kILP],
+    const param_type* param_args,
+    const grad_type* grad_args,
+    const exp_avg_type* exp_avg_args,
+    const exp_avg_sq_type* exp_avg_sq_args,
+    int64_t i_start,
+    int64_t chunk_size,
+    int64_t n,
+    int64_t item_idx,
+    int64_t item_range) {
+#pragma unroll
+  for (int ii = 0; ii < kILP; ++ii) {
+    int64_t i = i_start + item_idx + ii * item_range;
+    r_args[0][ii] = 0;
+    r_args[1][ii] = 0;
+    r_args[2][ii] = 0;
+    r_args[3][ii] = 0;
+    if (i < n && i < chunk_size) {
+      r_args[0][ii] = static_cast<T>(param_args[i]);
+      r_args[1][ii] = static_cast<T>(grad_args[i]);
+      r_args[2][ii] = static_cast<T>(exp_avg_args[i]);
+      r_args[3][ii] = static_cast<T>(exp_avg_sq_args[i]);
+    }
+  }
+}
+
+template <typename dT, typename sT>
+void store_args_cast(
+    dT* dst,
+    sT* src,
+    int64_t i_start,
+    int64_t chunk_size,
+    int64_t n,
+    int64_t item_idx,
+    int64_t group_range) {
+#pragma unroll
+  for (int ii = 0; ii < kILP; ++ii) {
+    int64_t i = i_start + item_idx + group_range * ii;
+    if (i < n && i < chunk_size) {
+      dst[i] = static_cast<dT>(src[ii]);
+    }
+  }
+}
 } // namespace
 
 namespace foreach_internal {
