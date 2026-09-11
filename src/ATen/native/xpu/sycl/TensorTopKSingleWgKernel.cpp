@@ -75,6 +75,7 @@ template <
     typename IndexT = int>
 struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
+  using Digit = Bitfield<RadixT, SBTOPK_RADIX_BITS>;
   // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
   // For fp16: sizeof(Half)=2 -> 16 bits, but sizeof(uint32_t)=4 -> 32 bits.
   // Using RadixT would scan garbage upper bits and break Half/BFloat16.
@@ -129,8 +130,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       for (int v = 0; v < VEC_SIZE; ++v) {
         RadixT val = TopKTypeConfig<scalar_t>::convert(src[v]);
         if ((val & desiredMask) == desired) {
-          RadixT digit =
-              Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
+          RadixT digit = Digit::getBitfield(val, digitPos);
           counts[digit]++;
         }
       }
@@ -139,8 +139,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (IndexT idx = base; idx < sliceSize && idx < base + VEC_SIZE; ++idx) {
       RadixT val = TopKTypeConfig<scalar_t>::convert(data[idx]);
       if ((val & desiredMask) == desired) {
-        RadixT digit =
-            Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
+        RadixT digit = Digit::getBitfield(val, digitPos);
         counts[digit]++;
       }
     }
@@ -322,20 +321,18 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
           // found_unique: return from radixSelect
           if (count == 1 && kToFind == 1) {
-            desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, SBTOPK_RADIX_BITS);
-            desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+            desired = Digit::setBitfield(desired, i, digitPos);
+            desiredMask =
+                Digit::setBitfield(desiredMask, SBTOPK_RADIX_MASK, digitPos);
             return findPattern(
                 item, smem, data, sliceSize, desired, desiredMask);
           }
 
           // found_non_unique: break inner loop, continue outer
           if (count >= kToFind) {
-            desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, SBTOPK_RADIX_BITS);
-            desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+            desired = Digit::setBitfield(desired, i, digitPos);
+            desiredMask =
+                Digit::setBitfield(desiredMask, SBTOPK_RADIX_MASK, digitPos);
             break;
           }
 
@@ -347,19 +344,17 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           IndexT count = counts[i];
 
           if (count == 1 && kToFind == 1) {
-            desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, SBTOPK_RADIX_BITS);
-            desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+            desired = Digit::setBitfield(desired, i, digitPos);
+            desiredMask =
+                Digit::setBitfield(desiredMask, SBTOPK_RADIX_MASK, digitPos);
             return findPattern(
                 item, smem, data, sliceSize, desired, desiredMask);
           }
 
           if (count >= kToFind) {
-            desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, SBTOPK_RADIX_BITS);
-            desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+            desired = Digit::setBitfield(desired, i, digitPos);
+            desiredMask =
+                Digit::setBitfield(desiredMask, SBTOPK_RADIX_MASK, digitPos);
             break;
           }
 

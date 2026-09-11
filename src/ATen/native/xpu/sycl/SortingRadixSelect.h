@@ -65,6 +65,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <bit>
+#include <type_traits>
 
 namespace at::native::xpu {
 
@@ -212,57 +213,28 @@ struct TopKTypeConfig<at::BFloat16> {
   }
 };
 
-template <typename T>
-struct Bitfield {};
+// The field width is a class template parameter so an over-wide field is a
+// compile error rather than a shift past the width of T. A full-width field is
+// rejected too: the mask expression cannot express it, and no radix needs it.
+template <typename T, int len>
+struct Bitfield {
+  static_assert(std::is_unsigned_v<T>);
+  static_assert(len > 0 && len < static_cast<int>(sizeof(T) * 8));
 
-template <>
-struct Bitfield<unsigned int> {
-  static inline unsigned int getBitfield(unsigned int val, int pos, int len) {
-    pos &= 0xff;
-    len &= 0xff;
-    unsigned int m = (1u << len) - 1u;
-    return (val >> pos) & m;
+  static inline T getBitfield(T val, int pos) {
+    return (val >> pos) & kMask;
   }
 
-  static inline unsigned int setBitfield(
-      unsigned int val,
-      unsigned int toInsert,
-      int pos,
-      int len) {
-    pos &= 0xff;
-    len &= 0xff;
-    unsigned int m = (1u << len) - 1u;
+  static inline T setBitfield(T val, T toInsert, int pos) {
+    T m = kMask;
     toInsert &= m;
     toInsert <<= pos;
     m <<= pos;
     return (val & ~m) | toInsert;
   }
-};
 
-template <>
-struct Bitfield<uint64_t> {
-  static inline uint64_t getBitfield(uint64_t val, int pos, int len) {
-    pos &= 0xff;
-    len &= 0xff;
-
-    uint64_t m = (1u << len) - 1u;
-    return (val >> pos) & m;
-  }
-
-  static inline uint64_t setBitfield(
-      uint64_t val,
-      uint64_t toInsert,
-      int pos,
-      int len) {
-    pos &= 0xff;
-    len &= 0xff;
-
-    uint64_t m = (1u << len) - 1u;
-    toInsert &= m;
-    toInsert <<= pos;
-    m <<= pos;
-    return (val & ~m) | toInsert;
-  }
+ private:
+  static constexpr T kMask = (T{1} << len) - 1;
 };
 
 // This function counts the distribution of all input values in a
@@ -306,7 +278,7 @@ void countRadixUsingMask(
 
     bool hasVal = ((val & desiredMask) == desired);
     bitwise_t digitInRadix =
-        Bitfield<bitwise_t>::getBitfield(val, radixDigitPos, RadixBits);
+        Bitfield<bitwise_t, RadixBits>::getBitfield(val, radixDigitPos);
     if (hasVal)
       counts[digitInRadix]++;
   }
@@ -399,6 +371,8 @@ void radixSelect(
     const sycl_local_acc_t<int>& smem,
     scalar_t* topK,
     sycl::nd_item<1>& item_id) {
+  using Digit = Bitfield<bitwise_t, RADIX_BITS>;
+
   // Per-thread buckets into which we accumulate digit counts in our
   // radix
   int counts[RADIX_SIZE];
@@ -442,10 +416,8 @@ void radixSelect(
       /* threads will return from the function. */
       if (count == 1 && kToFind == 1) {
         /* There is a unique answer. */
-        desired =
-            Bitfield<bitwise_t>::setBitfield(desired, i, digitPos, RADIX_BITS);
-        desiredMask = Bitfield<bitwise_t>::setBitfield(
-            desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
+        desired = Digit::setBitfield(desired, i, digitPos);
+        desiredMask = Digit::setBitfield(desiredMask, RADIX_MASK, digitPos);
 
         /* The answer is now the unique element v such that: */
         /* (v & desiredMask) == desired */
@@ -466,10 +438,8 @@ void radixSelect(
     };
     auto found_non_unique = [&](int i, int count) -> bool {
       if (count >= kToFind) {
-        desired =
-            Bitfield<bitwise_t>::setBitfield(desired, i, digitPos, RADIX_BITS);
-        desiredMask = Bitfield<bitwise_t>::setBitfield(
-            desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
+        desired = Digit::setBitfield(desired, i, digitPos);
+        desiredMask = Digit::setBitfield(desiredMask, RADIX_MASK, digitPos);
 
         /* The top-Kth element v must now be one such that: */
         /* (v & desiredMask == desired) */
