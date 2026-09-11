@@ -263,6 +263,15 @@ Parse the parent body into a list of sub-items. Each is either:
   `intel/torch-xpu-ops` and `pytorch/pytorch` references; ignore any
   other repo (untrusted, per `fix-root-cause`).
 
+A sub-item may also arrive as a plain node id from the caller (a nightly
+report, an email, a log excerpt): normalize `Class::method` to a node id,
+drop blank lines, headers and comments, and collapse exact duplicates.
+
+**Split infra failures out before the loop.** A runner crash, a docker
+pull timeout, a full disk or a missing device is not a test failure and
+will not reproduce. Record these as `NEEDS_HUMAN(infra)` and report
+them; they never enter the loop.
+
 Give each sub-item two identifiers used for branch naming:
 
 - **`seq`** — 1-based position in the body checklist order. Readable and
@@ -296,6 +305,26 @@ pip3 install --pre --upgrade torch torchvision torchaudio \
 python -c "import torch; print('nightly:', torch.__version__)"
 ```
 
+### One fix may cover several sub-items
+
+Entries in a batch are often the same bug in the same class. Fixing each
+one separately runs root-cause and a source build (1-3 h) per entry and
+produces the same patch several times.
+
+Do not guess which entries share a fix:
+
+1. Order the `REPRODUCED` entries so likely relatives sit together (same
+   test class or file, same error). Ordering only; it decides nothing.
+2. Fix the first entry.
+3. Re-run the other entries in that group against the staged fix. The
+   build is already done, so this costs one test run each. `fix-verify`
+   already produces a before/after table; extend it to the group.
+4. Entries that now pass go in the fix's `covers` list and are not fixed
+   again. Entries that still fail take their own turn from step 2.
+
+One fix gets one branch and one `fix_result.json`, naming in `covers`
+every entry it also fixed.
+
 ### Per-sub-item loop
 
 Capture the two base SHAs once, then for each sub-item reset both
@@ -306,10 +335,20 @@ checkouts per the shared
 For each sub-item:
 
 1. **Reset** both checkouts to the base SHAs (shared recipe).
-2. **Reproduce** (`fix-reproduce`, `stage=nightly`). It detaches the
-   pytorch tree to its base (`origin/main` or the `ci_commit`
-   fallback) and returns that `base` plus a `refined_command`. Branch
-   on the verdict:
+2. **Reproduce** (`fix-reproduce`). It detaches the pytorch tree to its
+   base (`origin/main` or the `ci_commit` fallback) and returns that
+   `base` plus a `refined_command`.
+
+   `stage` follows the issue, like `allow_skip`:
+
+   - **CI break** (`pytorch-ci-failure`, or a mirrored DISABLED test) →
+     `stage=auto`. Many CI failures only reproduce on a source build.
+     `stage=nightly` returns `NOT_REPRODUCED` as soon as the nightly
+     wheel passes and does not fall through, which records unfixed work
+     as already fixed.
+   - **Everything else** → `stage=nightly`.
+
+   Branch on the verdict:
    - `REPRODUCED` → continue to step 3; keep its `base` and
      `refined_command`.
    - `NOT_REPRODUCED` → nothing to fix; record it and go to the next
@@ -390,6 +429,8 @@ Base: <torch nightly version or base sha>
 | test_qux | NEEDS_HUMAN | attempts_exhausted |
 | test_new | ALREADY_FIXED | no longer reproduces on latest nightly |
 | test_old | STALE_SKIP | follow-up: remove skip decorator |
+| test_dup | COVERED | by test_bar's fix, agent/fix-issue-4321-1-test_bar |
+| test_hard | SKIPPED | skip added, tracking issue intel/torch-xpu-ops#1234 |
 | test_gone | INVALID_ENTRY | does not collect |
 
 - **FIXED:** N sub-items — one branch each, ready for a human to open
@@ -510,10 +551,16 @@ Branch on its `verdict`:
 Call `fix-implement` with `triage_result`, `pytorch_dir`,
 `target_repo_dir` (derived from `target_repo`), and `allow_skip`:
 
-- `allow_skip=false` for the standard issue-handler pipeline —
-  never add skip decorators, must actually fix.
-- `allow_skip=true` only when the caller explicitly opts in
-  (e.g. `xpu-nightly-ci-fix` orchestrator with a nightly-CI issue).
+`allow_skip` follows the issue:
+
+- **CI break** — the issue carries the `pytorch-ci-failure` label, or
+  mirrors a DISABLED test from pytorch/pytorch. `allow_skip=true`. Fix
+  it in place where you can, in pytorch or here. Skip only when the fix
+  needs a dependency, information you do not have, or feature-sized
+  work; `fix-implement` then files a tracking issue for the real fix.
+- **Everything else** — `allow_skip=false`. Never add a skip decorator.
+
+If the caller states the flag, the caller wins.
 
 Branch on the verdict:
 

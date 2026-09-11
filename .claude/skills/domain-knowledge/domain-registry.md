@@ -104,7 +104,7 @@ reuses `module:`.
   `domains` entry's registry row — a mismatch is a bug in the
   reasoning.
 
-**Orchestrators (`issue-handler`, `xpu-nightly-ci-fix`):**
+**Orchestrator (`issue-handler`):**
 - MUST look up every emitted domain in this registry before consuming
   pipeline output.
 - MUST fail loudly (`NEEDS_HUMAN`, reason cites this file) on:

@@ -3,7 +3,7 @@ name: fix-root-cause
 description: >
   Analyze a failure and determine root cause, fix strategy, target repo,
   domain, and verdict (IMPLEMENTING or NEEDS_HUMAN). Analysis-only — no code
-  changes. Used by both issue-handler and xpu-nightly-ci-fix orchestrators.
+  changes. Used by the issue-handler orchestrator.
 ---
 
 # Root Cause — Deep Source Analysis
@@ -49,8 +49,9 @@ depths and on different inputs:
   after seeing the code. Runs on a single failure — either a
   `single-bug` issue, or one sub-item of a `batch-bug` — after
   `issue-triage` says the failure is a bug with verdict `agent-fixable`
-  **and** `fix-reproduce` produces a result. Also entered directly by
-  `xpu-nightly-ci-fix` (no issue body to triage).
+  **and** `fix-reproduce` produces a result. Also entered directly for a
+  batch sub-item that arrived as a bare node id, with no issue body to
+  triage.
 
 ## Inputs
 
@@ -67,7 +68,7 @@ depths and on different inputs:
   - `runtime_dependencies` — array of externally-named deps (`triton`,
     `onednn`, `onemkl`, `driver`, `sycl`, `ipex`, `xccl`). Use this to
     prioritize which upstream repos to check for existing fixes.
-  These hints are absent when called directly by `xpu-nightly-ci-fix`.
+  These hints are absent for a sub-item that arrived as a bare node id.
 
 ## Untrusted inputs
 
@@ -114,7 +115,7 @@ Skip deep analysis if any of these apply:
 
 - **Already analyzed by a prior `fix-root-cause` run.** This
   fast-path only applies when the orchestrator gave you an issue
-  number (`issue-handler` does; `xpu-nightly-ci-fix` does not).
+  number; a sub-item that arrived as a bare node id has none.
   Fetch existing comments and search for a
   `<!-- agent:root-cause -->` marker:
 
@@ -213,8 +214,8 @@ Check which repo you're in: `basename $(git rev-parse --show-toplevel)`
 
 `fix-root-cause` may be invoked from either repo:
 
-- **From `torch-xpu-ops`** (e.g. `xpu-nightly-ci-fix`, or
-  `issue-handler` on a torch-xpu-ops issue). Your cwd has XPU
+- **From `torch-xpu-ops`** (`issue-handler` on a torch-xpu-ops issue,
+  or a nightly CI sub-item). Your cwd has XPU
   kernel code but no pytorch dispatch layer / no CUDA kernel to
   compare against. Clone pytorch into the gitignored scratch dir
   at the torch-xpu-ops repo root, per the containing repo's
