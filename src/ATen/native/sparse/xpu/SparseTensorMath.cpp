@@ -24,12 +24,15 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
+#include <ATen/ops/_convert_indices_from_coo_to_csr.h>
 #include <ATen/ops/_sparse_addmm.h>
 #include <ATen/ops/addmm.h>
 #include <ATen/ops/arange.h>
 #include <ATen/ops/bmm.h>
 #include <ATen/ops/hspmm_native.h>
 #include <ATen/ops/matmul.h>
+#include <ATen/ops/mm.h>
+#include <ATen/ops/sspaddmm_native.h>
 #include <ATen/ops/zeros.h>
 #endif
 
@@ -326,6 +329,181 @@ Tensor bmm_sparse_xpu(const SparseTensor& self, const Tensor& mat2) {
       mat2.options(),
       at::MemoryFormat::Contiguous);
   return bmm_out_sparse_xpu(self, mat2, result);
+}
+
+Tensor& _sspaddmm_out_only_sparse_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  TORCH_CHECK(
+      false, "tensor.sspaddmm(...) can only be called on sparse tensors");
+}
+
+Tensor& _sspaddmm_out_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  // Validate all inputs are on XPU
+  TORCH_CHECK(
+      self.is_xpu(), "sspaddmm: expected 'self' to be XPU tensor, but got CPU");
+  TORCH_CHECK(
+      mat1.is_xpu(), "sspaddmm: expected 'mat1' to be XPU tensor, but got CPU");
+  TORCH_CHECK(
+      mat2.is_xpu(), "sspaddmm: expected 'mat2' to be XPU tensor, but got CPU");
+  TORCH_CHECK(
+      result.is_xpu(),
+      "sspaddmm: expected 'result' to be XPU tensor, but got CPU");
+
+  TORCH_CHECK(
+      at::xpu::check_device({self, mat1, mat2, result}),
+      "sspaddmm: all tensors must be on the same XPU device");
+
+  // Validate input types and dimensions
+  TORCH_CHECK(
+      self.layout() == kSparse,
+      "sspaddmm: expected 'self' to have sparse layout, got 'self' with layout ",
+      self.layout());
+  TORCH_CHECK(
+      mat1.layout() == kSparse,
+      "sspaddmm: expected 'mat1' to have sparse layout, got 'mat1' with layout ",
+      mat1.layout());
+  TORCH_CHECK(
+      mat2.layout() == kStrided,
+      "sspaddmm: expected 'mat2' to have strided layout, got 'mat2' with layout ",
+      mat2.layout());
+
+  TORCH_CHECK(
+      self.sparse_dim() == 2,
+      "sspaddmm: expected 'self' to be 2D sparse, got ",
+      self.sparse_dim(),
+      "D");
+  TORCH_CHECK(
+      self.dense_dim() == 0,
+      "sspaddmm: Argument #1: scalar values expected, got ",
+      self.dense_dim(),
+      "D values");
+  TORCH_CHECK(
+      mat1.sparse_dim() == 2,
+      "sspaddmm: expected 'mat1' to be 2D sparse, got ",
+      mat1.sparse_dim(),
+      "D");
+  TORCH_CHECK(
+      mat1.dense_dim() == 0,
+      "sspaddmm: Argument #2: scalar values expected, got ",
+      mat1.dense_dim(),
+      "D values");
+  TORCH_CHECK(
+      mat2.dim() == 2,
+      "sspaddmm: expected 'mat2' to be 2D dense, got ",
+      mat2.dim(),
+      "D");
+
+  // Validate dimensions match
+  int64_t dim_i = mat1.size(0);
+  int64_t dim_j = mat1.size(1);
+  int64_t dim_k = mat2.size(1);
+
+  TORCH_CHECK(
+      mat2.size(0) == dim_j,
+      "sspaddmm: mat2 dimension 0 should be ",
+      dim_j,
+      ", got ",
+      mat2.size(0));
+  TORCH_CHECK(
+      self.size(0) == dim_i,
+      "sspaddmm: self dimension 0 should be ",
+      dim_i,
+      ", got ",
+      self.size(0));
+  TORCH_CHECK(
+      self.size(1) == dim_k,
+      "sspaddmm: self dimension 1 should be ",
+      dim_k,
+      ", got ",
+      self.size(1));
+
+  bool mat1_is_coalesced = mat1.is_coalesced();
+  bool mat1_is_double = mat1.scalar_type() == at::kDouble;
+  int64_t nnz1 = mat1._nnz();
+  int64_t mat1_numel = dim_i * dim_j;
+  int64_t sparse_threshold_divisor =
+      at::isReducedFloatingType(mat1.scalar_type()) ? 128 : 8;
+  // Uncoalesced input is penalized only for the atomic accumulation path; the
+  // double path reduces per output row and pays just the coalesce.
+  if (!mat1_is_coalesced && !mat1_is_double && sparse_threshold_divisor < 128) {
+    sparse_threshold_divisor = 128;
+  }
+  bool use_sparse_path =
+      mat1_numel >= 4096 && nnz1 * sparse_threshold_divisor < mat1_numel;
+
+  Tensor dense_result;
+  if (nnz1 == 0) {
+    if (beta.to<double>() == 0.0 || self._nnz() == 0) {
+      dense_result = at::zeros({dim_i, dim_k}, mat2.options());
+    } else {
+      dense_result = self.to_dense() * beta;
+    }
+  } else if (use_sparse_path) {
+    SparseTensor mat1_coalesced = mat1_is_coalesced ? mat1 : mat1.coalesce();
+    Tensor row_indices = mat1_coalesced._indices()[0];
+    Tensor col_indices = mat1_coalesced._indices()[1];
+    Tensor values1 = mat1_coalesced._values();
+
+    if (mat1_is_double) {
+      Tensor self_dense = (beta.to<double>() != 0.0 && self._nnz() > 0)
+          ? self.to_dense()
+          : at::zeros({dim_i, dim_k}, mat2.options());
+      dense_result = at::empty({dim_i, dim_k}, mat2.options());
+      Tensor crow_indices =
+          at::_convert_indices_from_coo_to_csr(row_indices, dim_i, false);
+      xpu::sspaddmm_csr_dense_kernel(
+          dense_result,
+          crow_indices,
+          col_indices,
+          values1,
+          self_dense,
+          mat2,
+          beta,
+          alpha);
+    } else {
+      Tensor gathered = mat2.index_select(0, col_indices);
+      Tensor prod = gathered * values1.unsqueeze(1);
+
+      dense_result = at::zeros({dim_i, dim_k}, mat2.options());
+      dense_result.index_add_(0, row_indices, prod);
+
+      if (alpha.to<double>() != 1.0) {
+        dense_result.mul_(alpha);
+      }
+      if (beta.to<double>() != 0.0 && self._nnz() > 0) {
+        dense_result.add_(self.to_dense(), beta);
+      }
+    }
+  } else {
+    Tensor mat1_dense = mat1.to_dense();
+    Tensor self_dense = (beta.to<double>() != 0.0 && self._nnz() > 0)
+        ? self.to_dense()
+        : at::zeros({dim_i, dim_k}, mat2.options());
+    Tensor mm_result = at::mm(mat1_dense, mat2);
+    dense_result = self_dense * beta + mm_result * alpha;
+  }
+
+  Tensor sparse_result = dense_result.to_sparse();
+
+  get_sparse_impl(result)->raw_resize_(
+      2, 0, {sparse_result.size(0), sparse_result.size(1)});
+  get_sparse_impl(result)->set_indices_and_values_unsafe(
+      sparse_result._indices(), sparse_result._values());
+  get_sparse_impl(result)->set_nnz_and_narrow(sparse_result._nnz());
+  get_sparse_impl(result)->set_coalesced(sparse_result.is_coalesced());
+
+  return result;
 }
 
 } // namespace at::native

@@ -33,4 +33,14 @@ TORCH_XPU_API Tensor _sparse_sum_backward_kernel(
     const SparseTensor& input_,
     IntArrayRef dims_to_sum);
 
+TORCH_XPU_API void sspaddmm_csr_dense_kernel(
+    Tensor& result,
+    const Tensor& crow_indices,
+    const Tensor& col_indices,
+    const Tensor& values,
+    const Tensor& self_dense,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha);
+
 } // namespace at::native::xpu
