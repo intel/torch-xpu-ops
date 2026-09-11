@@ -6,6 +6,7 @@
 namespace c10d::symmetric_memory {
 
 struct barrierKernel {
+  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
@@ -73,6 +74,7 @@ void barrier_impl_xpu(
 }
 
 struct putSignalKernel {
+  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
@@ -135,6 +137,7 @@ void put_signal_impl_xpu(
 }
 
 struct waitSignalKernel {
+  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
