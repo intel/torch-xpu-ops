@@ -62,43 +62,26 @@ void MovingAverageMinMax(
 }
 
 template <typename scalar_t>
-struct CalculateMovingAverageKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    MovingAverageMinMax<scalar_t>(
-        observer_on_data_,
-        x_min_data_,
-        x_max_data_,
-        running_min_data_,
-        running_max_data_,
-        averaging_const_,
-        size_,
-        item);
-  }
-  CalculateMovingAverageKernelFunctor(
-      const int64_t* observer_on_data,
-      const scalar_t* x_min_data,
-      const scalar_t* x_max_data,
-      scalar_t* running_min_data,
-      scalar_t* running_max_data,
-      const float averaging_const,
-      const int64_t size)
-      : observer_on_data_(observer_on_data),
-        x_min_data_(x_min_data),
-        x_max_data_(x_max_data),
-        running_min_data_(running_min_data),
-        running_max_data_(running_max_data),
-        averaging_const_(averaging_const),
-        size_(size) {}
-
- private:
-  const int64_t* observer_on_data_;
-  const scalar_t* x_min_data_;
-  const scalar_t* x_max_data_;
-  scalar_t* running_min_data_;
-  scalar_t* running_max_data_;
-  const float averaging_const_;
-  const int64_t size_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void calculate_moving_average_kernel_impl(
+    const int64_t* observer_on_data,
+    const scalar_t* x_min_data,
+    const scalar_t* x_max_data,
+    scalar_t* running_min_data,
+    scalar_t* running_max_data,
+    const float averaging_const,
+    const int64_t size) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  MovingAverageMinMax(
+      observer_on_data,
+      x_min_data,
+      x_max_data,
+      running_min_data,
+      running_max_data,
+      averaging_const,
+      size,
+      item);
+}
 
 void _calculate_moving_average(
     const at::Tensor& x,
@@ -146,7 +129,11 @@ void _calculate_moving_average(
         scalar_t* running_max_data = running_max.data_ptr<scalar_t>();
 
         // Moving Average Min/Max observer for activations
-        CalculateMovingAverageKernelFunctor<scalar_t> kfn(
+        sycl_kernel_submit<calculate_moving_average_kernel_impl<scalar_t>>(
+            num_groups * group_size,
+            local_range,
+            getCurrentSYCLQueue(),
+            0,
             observer_on_data,
             x_min_data,
             x_max_data,
@@ -154,8 +141,6 @@ void _calculate_moving_average(
             running_max_data,
             averaging_const,
             size);
-        sycl_kernel_submit(
-            num_groups * group_size, local_range, getCurrentSYCLQueue(), kfn);
       });
 }
 
@@ -237,51 +222,30 @@ void ChooseQuantizationParamsKernelImpl(
 }
 
 template <typename scalar_t>
-struct CalcMovingAvgQparamsHelperKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    ChooseQuantizationParamsKernelImpl<scalar_t>(
-        fake_quant_on_data_,
-        running_min_data_,
-        running_max_data_,
-        qmin_,
-        qmax_,
-        size_,
-        symmetric_quant_, // preserve_sparsity
-        scale_ptr_,
-        zp_ptr_,
-        item);
-  }
-  CalcMovingAvgQparamsHelperKernelFunctor(
-      const int64_t* fake_quant_on_data,
-      const scalar_t* running_min_data,
-      const scalar_t* running_max_data,
-      int32_t qmin,
-      int32_t qmax,
-      int size,
-      bool symmetric_quant,
-      float* scale_ptr,
-      int32_t* zp_ptr)
-      : fake_quant_on_data_(fake_quant_on_data),
-        running_min_data_(running_min_data),
-        running_max_data_(running_max_data),
-        qmin_(qmin),
-        qmax_(qmax),
-        size_(size),
-        symmetric_quant_(symmetric_quant),
-        scale_ptr_(scale_ptr),
-        zp_ptr_(zp_ptr) {}
-
- private:
-  const int64_t* fake_quant_on_data_;
-  const scalar_t* running_min_data_;
-  const scalar_t* running_max_data_;
-  int32_t qmin_;
-  int32_t qmax_;
-  int size_;
-  bool symmetric_quant_;
-  float* scale_ptr_;
-  int32_t* zp_ptr_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void calc_moving_avg_qparams_helper_kernel_impl(
+    const int64_t* fake_quant_on_data,
+    const scalar_t* running_min_data,
+    const scalar_t* running_max_data,
+    int32_t qmin,
+    int32_t qmax,
+    int size,
+    bool symmetric_quant,
+    float* scale_ptr,
+    int32_t* zp_ptr) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  ChooseQuantizationParamsKernelImpl(
+      fake_quant_on_data,
+      running_min_data,
+      running_max_data,
+      qmin,
+      qmax,
+      size,
+      symmetric_quant, // preserve_sparsity
+      scale_ptr,
+      zp_ptr,
+      item);
+}
 
 void _calc_moving_avg_qparams_helper(
     const at::Tensor& fake_quant_on,
@@ -312,7 +276,12 @@ void _calc_moving_avg_qparams_helper(
         const scalar_t* running_max_data =
             running_max.const_data_ptr<scalar_t>();
 
-        CalcMovingAvgQparamsHelperKernelFunctor<scalar_t> kfn(
+        sycl_kernel_submit<
+            calc_moving_avg_qparams_helper_kernel_impl<scalar_t>>(
+            num_groups * group_size,
+            local_range,
+            getCurrentSYCLQueue(),
+            0,
             fake_quant_on_data,
             running_min_data,
             running_max_data,
@@ -322,8 +291,6 @@ void _calc_moving_avg_qparams_helper(
             symmetric_quant,
             scale_ptr,
             zp_ptr);
-        sycl_kernel_submit(
-            num_groups * group_size, local_range, getCurrentSYCLQueue(), kfn);
       });
 }
 
