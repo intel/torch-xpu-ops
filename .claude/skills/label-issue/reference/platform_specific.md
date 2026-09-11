@@ -7,7 +7,7 @@ incidentally (a `collect_env` dump, a log path, a hostname) is NOT
 platform-specific and yields no OS/hardware label.
 
 All labels, codes, and keywords live in `categories.os` and `categories.hw` of
-`label_def.json`. Always read the label spellings, codes,
+`labels.json`. Always read the label spellings, codes,
 and keywords from there — never hard-code an OS or hardware name, code, or label
 in this file.
 
@@ -41,8 +41,8 @@ dimension. Determine it only from the text that made the issue OS-specific
    `OS:`; else classify the platform-specifying phrase.
 2. Match each entry's `keywords` in `categories.os` file order; first hit wins.
 
-Entries are ordered so the more specific OS is checked first, so file order is
-authoritative.
+Entries are ordered so the more specific OS is checked first (`WSL` precedes both
+`Windows` and `Linux`), so file order is authoritative.
 
 ## Step 3 — `hw` (only when platform-specific)
 
