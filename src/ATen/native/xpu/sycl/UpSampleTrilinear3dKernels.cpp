@@ -27,106 +27,88 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>
-struct UpsampleTrilinear3dKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto odata = odata_;
-    int index = item.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void upsample_trilinear3d_kernel_fn(
+    const int n,
+    const accscalar_t rdepth,
+    const accscalar_t rheight,
+    const accscalar_t rwidth,
+    const bool align_corners,
+    const PackedTensorAccessor64<const scalar_t, 5> idata,
+    PackedTensorAccessor64<scalar_t, 5> odata) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int index = item.get_global_linear_id();
 
-    const int batchsize = idata_.size(0);
-    const int channels = idata_.size(1);
-    const int depth1 = idata_.size(2);
-    const int height1 = idata_.size(3);
-    const int width1 = idata_.size(4);
-    const int depth2 = odata_.size(2);
-    const int height2 = odata_.size(3);
-    const int width2 = odata_.size(4);
+  const int batchsize = idata.size(0);
+  const int channels = idata.size(1);
+  const int depth1 = idata.size(2);
+  const int height1 = idata.size(3);
+  const int width1 = idata.size(4);
+  const int depth2 = odata.size(2);
+  const int height2 = odata.size(3);
+  const int width2 = odata.size(4);
 
-    if (index < n_) {
-      const int w2 = (index % (height2 * width2)) % width2; // 0:width2-1
-      const int h2 = (index % (height2 * width2)) / width2; // 0:height2-1
-      const int t2 = index / (height2 * width2); // 0:depth2-1
+  if (index < n) {
+    const int w2 = (index % (height2 * width2)) % width2; // 0:width2-1
+    const int h2 = (index % (height2 * width2)) / width2; // 0:height2-1
+    const int t2 = index / (height2 * width2); // 0:depth2-1
 
-      if (depth1 == depth2 && height1 == height2 && width1 == width2) {
-        const int t1 = t2;
-        const int h1 = h2;
-        const int w1 = w2;
+    if (depth1 == depth2 && height1 == height2 && width1 == width2) {
+      const int t1 = t2;
+      const int h1 = h2;
+      const int w1 = w2;
 
-        for (int n = 0; n < batchsize; n++) {
-          for (int c = 0; c < channels; ++c) {
-            const scalar_t val = idata_[n][c][t1][h1][w1];
-            odata[n][c][t2][h2][w2] = val;
-          }
-        }
-        return;
-      }
-      //
-      const accscalar_t t1r = area_pixel_compute_source_index<accscalar_t>(
-          rdepth_, t2, align_corners_, /*cubic=*/false);
-      const int t1 = t1r;
-      const int t1p = (t1 < depth1 - 1) ? 1 : 0;
-      const accscalar_t t1lambda = t1r - t1;
-      const accscalar_t t0lambda = static_cast<accscalar_t>(1) - t1lambda;
-      //
-      const accscalar_t h1r = area_pixel_compute_source_index<accscalar_t>(
-          rheight_, h2, align_corners_, /*cubic=*/false);
-      const int h1 = h1r;
-      const int h1p = (h1 < height1 - 1) ? 1 : 0;
-      const accscalar_t h1lambda = h1r - h1;
-      const accscalar_t h0lambda = static_cast<accscalar_t>(1) - h1lambda;
-      //
-      const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
-          rwidth_, w2, align_corners_, /*cubic=*/false);
-      const int w1 = w1r;
-      const int w1p = (w1 < width1 - 1) ? 1 : 0;
-      const accscalar_t w1lambda = w1r - w1;
-      const accscalar_t w0lambda = static_cast<accscalar_t>(1) - w1lambda;
-      //
-      for (int n = 0; n < batchsize; n++) {
+      for (int nn = 0; nn < batchsize; nn++) {
         for (int c = 0; c < channels; ++c) {
-          const accscalar_t val = t0lambda *
-                  (h0lambda *
-                       (w0lambda * idata_[n][c][t1][h1][w1] +
-                        w1lambda * idata_[n][c][t1][h1][w1 + w1p]) +
-                   h1lambda *
-                       (w0lambda * idata_[n][c][t1][h1 + h1p][w1] +
-                        w1lambda * idata_[n][c][t1][h1 + h1p][w1 + w1p])) +
-              t1lambda *
-                  (h0lambda *
-                       (w0lambda * idata_[n][c][t1 + t1p][h1][w1] +
-                        w1lambda * idata_[n][c][t1 + t1p][h1][w1 + w1p]) +
-                   h1lambda *
-                       (w0lambda * idata_[n][c][t1 + t1p][h1 + h1p][w1] +
-                        w1lambda * idata_[n][c][t1 + t1p][h1 + h1p][w1 + w1p]));
-          odata[n][c][t2][h2][w2] = static_cast<scalar_t>(val);
+          const scalar_t val = idata[nn][c][t1][h1][w1];
+          odata[nn][c][t2][h2][w2] = val;
         }
+      }
+      return;
+    }
+    //
+    const accscalar_t t1r = area_pixel_compute_source_index<accscalar_t>(
+        rdepth, t2, align_corners, /*cubic=*/false);
+    const int t1 = t1r;
+    const int t1p = (t1 < depth1 - 1) ? 1 : 0;
+    const accscalar_t t1lambda = t1r - t1;
+    const accscalar_t t0lambda = static_cast<accscalar_t>(1) - t1lambda;
+    //
+    const accscalar_t h1r = area_pixel_compute_source_index<accscalar_t>(
+        rheight, h2, align_corners, /*cubic=*/false);
+    const int h1 = h1r;
+    const int h1p = (h1 < height1 - 1) ? 1 : 0;
+    const accscalar_t h1lambda = h1r - h1;
+    const accscalar_t h0lambda = static_cast<accscalar_t>(1) - h1lambda;
+    //
+    const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
+        rwidth, w2, align_corners, /*cubic=*/false);
+    const int w1 = w1r;
+    const int w1p = (w1 < width1 - 1) ? 1 : 0;
+    const accscalar_t w1lambda = w1r - w1;
+    const accscalar_t w0lambda = static_cast<accscalar_t>(1) - w1lambda;
+    //
+    for (int nn = 0; nn < batchsize; nn++) {
+      for (int c = 0; c < channels; ++c) {
+        const accscalar_t val = t0lambda *
+                (h0lambda *
+                     (w0lambda * idata[nn][c][t1][h1][w1] +
+                      w1lambda * idata[nn][c][t1][h1][w1 + w1p]) +
+                 h1lambda *
+                     (w0lambda * idata[nn][c][t1][h1 + h1p][w1] +
+                      w1lambda * idata[nn][c][t1][h1 + h1p][w1 + w1p])) +
+            t1lambda *
+                (h0lambda *
+                     (w0lambda * idata[nn][c][t1 + t1p][h1][w1] +
+                      w1lambda * idata[nn][c][t1 + t1p][h1][w1 + w1p]) +
+                 h1lambda *
+                     (w0lambda * idata[nn][c][t1 + t1p][h1 + h1p][w1] +
+                      w1lambda * idata[nn][c][t1 + t1p][h1 + h1p][w1 + w1p]));
+        odata[nn][c][t2][h2][w2] = static_cast<scalar_t>(val);
       }
     }
   }
-  UpsampleTrilinear3dKernelFunctor(
-      const int n,
-      const accscalar_t rdepth,
-      const accscalar_t rheight,
-      const accscalar_t rwidth,
-      const bool align_corners,
-      const PackedTensorAccessor64<const scalar_t, 5> idata,
-      PackedTensorAccessor64<scalar_t, 5> odata)
-      : n_(n),
-        rdepth_(rdepth),
-        rheight_(rheight),
-        rwidth_(rwidth),
-        align_corners_(align_corners),
-        idata_(idata),
-        odata_(odata) {}
-
- private:
-  const int n_;
-  const accscalar_t rdepth_;
-  const accscalar_t rheight_;
-  const accscalar_t rwidth_;
-  const bool align_corners_;
-  const PackedTensorAccessor64<const scalar_t, 5> idata_;
-  PackedTensorAccessor64<scalar_t, 5> odata_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t>
 void launch_upsample_trilinear3d_kernel(
@@ -137,15 +119,24 @@ void launch_upsample_trilinear3d_kernel(
     const bool align_corners,
     const PackedTensorAccessor64<const scalar_t, 5> idata_acc,
     PackedTensorAccessor64<scalar_t, 5> odata_acc) {
-  UpsampleTrilinear3dKernelFunctor<scalar_t, accscalar_t> kfn(
-      n, rdepth, rheight, rwidth, align_corners, idata_acc, odata_acc);
+  constexpr auto kptr = upsample_trilinear3d_kernel_fn<scalar_t, accscalar_t>;
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t wg_size = syclMaxWorkGroupSize<kptr>();
   int num_group = at::ceil_div(n, (int)wg_size);
   auto queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit(
-      sycl::range<1>(num_group * wg_size), sycl::range<1>(wg_size), queue, kfn);
+  sycl_kernel_submit<kptr>(
+      sycl::range<1>(num_group * wg_size),
+      sycl::range<1>(wg_size),
+      queue,
+      0,
+      n,
+      rdepth,
+      rheight,
+      rwidth,
+      align_corners,
+      idata_acc,
+      odata_acc);
 }
 
 inline size_t idx_3d(
@@ -160,190 +151,154 @@ inline size_t idx_3d(
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct UpsampleTrilinear3dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int index = item.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void upsample_trilinear3d_backward_kernel_fn(
+    const size_t n,
+    const accscalar_t rdepth,
+    const accscalar_t rheight,
+    const accscalar_t rwidth,
+    const bool align_corners,
+    PackedTensorAccessor64<scalar_t, 5> idata,
+    const PackedTensorAccessor64<const scalar_t, 5> odata,
+    scalar_t* idata_ptr) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int index = item.get_global_linear_id();
 
-    const int batchsize = idata_.size(0);
-    const int channels = idata_.size(1);
-    const int depth1 = idata_.size(2);
-    const int height1 = idata_.size(3);
-    const int width1 = idata_.size(4);
-    const int depth2 = odata_.size(2);
-    const int height2 = odata_.size(3);
-    const int width2 = odata_.size(4);
+  const int batchsize = idata.size(0);
+  const int channels = idata.size(1);
+  const int depth1 = idata.size(2);
+  const int height1 = idata.size(3);
+  const int width1 = idata.size(4);
+  const int depth2 = odata.size(2);
+  const int height2 = odata.size(3);
+  const int width2 = odata.size(4);
 
-    if (index < n_) {
-      const int w2 = (index % (height2 * width2)) % width2; // 0:width2-1
-      const int h2 = (index % (height2 * width2)) / width2; // 0:height2-1
-      const int t2 = index / (height2 * width2); // 0:depth2-1
-      // special case: just copy
-      auto idata = idata_;
-      if (depth1 == depth2 && height1 == height2 && width1 == width2) {
-        const int t1 = t2;
-        const int h1 = h2;
-        const int w1 = w2;
+  if (index < n) {
+    const int w2 = (index % (height2 * width2)) % width2; // 0:width2-1
+    const int h2 = (index % (height2 * width2)) / width2; // 0:height2-1
+    const int t2 = index / (height2 * width2); // 0:depth2-1
+    // special case: just copy
+    if (depth1 == depth2 && height1 == height2 && width1 == width2) {
+      const int t1 = t2;
+      const int h1 = h2;
+      const int w1 = w2;
 
-        for (int n = 0; n < batchsize; n++) {
-          for (int c = 0; c < channels; ++c) {
-            const scalar_t val = odata_[n][c][t1][h1][w1];
-            idata[n][c][t2][h2][w2] = val;
-          }
-        }
-        return;
-      }
-
-      //
-      const accscalar_t t1r = area_pixel_compute_source_index<accscalar_t>(
-          rdepth_, t2, align_corners_, /*cubic=*/false);
-      const int t1 = t1r;
-      const int t1p = (t1 < depth1 - 1) ? 1 : 0;
-      const accscalar_t t1lambda = t1r - t1;
-      const accscalar_t t0lambda = static_cast<accscalar_t>(1) - t1lambda;
-      //
-      const accscalar_t h1r = area_pixel_compute_source_index<accscalar_t>(
-          rheight_, h2, align_corners_, /*cubic=*/false);
-      const int h1 = h1r;
-      const int h1p = (h1 < height1 - 1) ? 1 : 0;
-      const accscalar_t h1lambda = h1r - h1;
-      const accscalar_t h0lambda = static_cast<accscalar_t>(1) - h1lambda;
-      //
-      const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
-          rwidth_, w2, align_corners_, /*cubic=*/false);
-      const int w1 = w1r;
-      const int w1p = (w1 < width1 - 1) ? 1 : 0;
-      const accscalar_t w1lambda = w1r - w1;
-      const accscalar_t w0lambda = static_cast<accscalar_t>(1) - w1lambda;
-      //
-      for (int n = 0; n < batchsize; n++) {
+      for (int nn = 0; nn < batchsize; nn++) {
         for (int c = 0; c < channels; ++c) {
-          const scalar_t d2val = odata_[n][c][t2][h2][w2];
-          const size_t nc = n * channels + c;
-
-          atomicAdd(
-              (sycl_global_ptr<
-                  scalar_t>)(idata_ptr_ +
-                             idx_3d(nc, depth1, height1, width1, t1, h1, w1)),
-              static_cast<scalar_t>(t0lambda * h0lambda * w0lambda * d2val));
-
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
-                                          idx_3d(
-                                              nc,
-                                              depth1,
-                                              height1,
-                                              width1,
-                                              t1,
-                                              h1,
-                                              w1 + w1p)),
-
-              static_cast<scalar_t>(t0lambda * h0lambda * w1lambda * d2val));
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
-                                          idx_3d(
-                                              nc,
-                                              depth1,
-                                              height1,
-                                              width1,
-                                              t1,
-                                              h1 + h1p,
-                                              w1)),
-
-              static_cast<scalar_t>(t0lambda * h1lambda * w0lambda * d2val));
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(sycl_global_ptr<
-                                          scalar_t>)(idata_ptr_ +
-                                                     idx_3d(
-                                                         nc,
-                                                         depth1,
-                                                         height1,
-                                                         width1,
-                                                         t1,
-                                                         h1 + h1p,
-                                                         w1 + w1p)),
-
-              static_cast<scalar_t>(t0lambda * h1lambda * w1lambda * d2val));
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
-                                          idx_3d(
-                                              nc,
-                                              depth1,
-                                              height1,
-                                              width1,
-                                              t1 + t1p,
-                                              h1,
-                                              w1)),
-
-              static_cast<scalar_t>(t1lambda * h0lambda * w0lambda * d2val));
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
-                                          idx_3d(
-                                              nc,
-                                              depth1,
-                                              height1,
-                                              width1,
-                                              t1 + t1p,
-                                              h1,
-                                              w1 + w1p)),
-
-              static_cast<scalar_t>(t1lambda * h0lambda * w1lambda * d2val));
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
-                                          idx_3d(
-                                              nc,
-                                              depth1,
-                                              height1,
-                                              width1,
-                                              t1 + t1p,
-                                              h1 + h1p,
-                                              w1)),
-
-              static_cast<scalar_t>(t1lambda * h1lambda * w0lambda * d2val));
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
-                                          idx_3d(
-                                              nc,
-                                              depth1,
-                                              height1,
-                                              width1,
-                                              t1 + t1p,
-                                              h1 + h1p,
-                                              w1 + w1p)),
-
-              static_cast<scalar_t>(t1lambda * h1lambda * w1lambda * d2val));
+          const scalar_t val = odata[nn][c][t1][h1][w1];
+          idata[nn][c][t2][h2][w2] = val;
         }
+      }
+      return;
+    }
+
+    //
+    const accscalar_t t1r = area_pixel_compute_source_index<accscalar_t>(
+        rdepth, t2, align_corners, /*cubic=*/false);
+    const int t1 = t1r;
+    const int t1p = (t1 < depth1 - 1) ? 1 : 0;
+    const accscalar_t t1lambda = t1r - t1;
+    const accscalar_t t0lambda = static_cast<accscalar_t>(1) - t1lambda;
+    //
+    const accscalar_t h1r = area_pixel_compute_source_index<accscalar_t>(
+        rheight, h2, align_corners, /*cubic=*/false);
+    const int h1 = h1r;
+    const int h1p = (h1 < height1 - 1) ? 1 : 0;
+    const accscalar_t h1lambda = h1r - h1;
+    const accscalar_t h0lambda = static_cast<accscalar_t>(1) - h1lambda;
+    //
+    const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
+        rwidth, w2, align_corners, /*cubic=*/false);
+    const int w1 = w1r;
+    const int w1p = (w1 < width1 - 1) ? 1 : 0;
+    const accscalar_t w1lambda = w1r - w1;
+    const accscalar_t w0lambda = static_cast<accscalar_t>(1) - w1lambda;
+    //
+    for (int nn = 0; nn < batchsize; nn++) {
+      for (int c = 0; c < channels; ++c) {
+        const scalar_t d2val = odata[nn][c][t2][h2][w2];
+        const size_t nc = nn * channels + c;
+
+        atomicAdd(
+            (sycl_global_ptr<
+                scalar_t>)(idata_ptr +
+                           idx_3d(nc, depth1, height1, width1, t1, h1, w1)),
+            static_cast<scalar_t>(t0lambda * h0lambda * w0lambda * d2val));
+
+        atomicAdd(
+            (sycl_global_ptr<
+                scalar_t>)(idata_ptr +
+                           idx_3d(
+                               nc, depth1, height1, width1, t1, h1, w1 + w1p)),
+
+            static_cast<scalar_t>(t0lambda * h0lambda * w1lambda * d2val));
+        atomicAdd(
+            (sycl_global_ptr<
+                scalar_t>)(idata_ptr +
+                           idx_3d(
+                               nc, depth1, height1, width1, t1, h1 + h1p, w1)),
+
+            static_cast<scalar_t>(t0lambda * h1lambda * w0lambda * d2val));
+        atomicAdd(
+            (sycl_global_ptr<scalar_t>)(sycl_global_ptr<
+                                        scalar_t>)(idata_ptr +
+                                                   idx_3d(
+                                                       nc,
+                                                       depth1,
+                                                       height1,
+                                                       width1,
+                                                       t1,
+                                                       h1 + h1p,
+                                                       w1 + w1p)),
+
+            static_cast<scalar_t>(t0lambda * h1lambda * w1lambda * d2val));
+        atomicAdd(
+            (sycl_global_ptr<
+                scalar_t>)(idata_ptr +
+                           idx_3d(
+                               nc, depth1, height1, width1, t1 + t1p, h1, w1)),
+
+            static_cast<scalar_t>(t1lambda * h0lambda * w0lambda * d2val));
+        atomicAdd(
+            (sycl_global_ptr<scalar_t>)(idata_ptr +
+                                        idx_3d(
+                                            nc,
+                                            depth1,
+                                            height1,
+                                            width1,
+                                            t1 + t1p,
+                                            h1,
+                                            w1 + w1p)),
+
+            static_cast<scalar_t>(t1lambda * h0lambda * w1lambda * d2val));
+        atomicAdd(
+            (sycl_global_ptr<scalar_t>)(idata_ptr +
+                                        idx_3d(
+                                            nc,
+                                            depth1,
+                                            height1,
+                                            width1,
+                                            t1 + t1p,
+                                            h1 + h1p,
+                                            w1)),
+
+            static_cast<scalar_t>(t1lambda * h1lambda * w0lambda * d2val));
+        atomicAdd(
+            (sycl_global_ptr<scalar_t>)(idata_ptr +
+                                        idx_3d(
+                                            nc,
+                                            depth1,
+                                            height1,
+                                            width1,
+                                            t1 + t1p,
+                                            h1 + h1p,
+                                            w1 + w1p)),
+
+            static_cast<scalar_t>(t1lambda * h1lambda * w1lambda * d2val));
       }
     }
   }
-
-  UpsampleTrilinear3dBackwardKernelFunctor(
-      const size_t n,
-      const accscalar_t rdepth,
-      const accscalar_t rheight,
-      const accscalar_t rwidth,
-      const bool align_corners,
-      PackedTensorAccessor64<scalar_t, 5> idata,
-      const PackedTensorAccessor64<const scalar_t, 5> odata,
-      scalar_t* idata_ptr)
-      : n_(n),
-        rdepth_(rdepth),
-        rheight_(rheight),
-        rwidth_(rwidth),
-        align_corners_(align_corners),
-        idata_(idata),
-        odata_(odata),
-        idata_ptr_(idata_ptr) {}
-
- private:
-  const size_t n_;
-  const accscalar_t rdepth_;
-  const accscalar_t rheight_;
-  const accscalar_t rwidth_;
-  const bool align_corners_;
-  PackedTensorAccessor64<scalar_t, 5> idata_;
-  const PackedTensorAccessor64<const scalar_t, 5> odata_;
-  scalar_t* idata_ptr_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t>
 void launch_upsample_trilinear3d_backward_kernel(
@@ -355,7 +310,18 @@ void launch_upsample_trilinear3d_backward_kernel(
     PackedTensorAccessor64<scalar_t, 5> idata,
     const PackedTensorAccessor64<const scalar_t, 5> odata,
     scalar_t* idata_ptr) {
-  UpsampleTrilinear3dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
+  constexpr auto kptr =
+      upsample_trilinear3d_backward_kernel_fn<scalar_t, accscalar_t>;
+
+  int64_t wg_size = syclMaxWorkGroupSize<kptr>();
+  int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
+  auto queue = getCurrentSYCLQueue();
+
+  sycl_kernel_submit<kptr>(
+      sycl::range<1>(num_group * wg_size),
+      sycl::range<1>(wg_size),
+      queue,
+      0,
       num_kernels,
       rdepth,
       rheight,
@@ -364,13 +330,6 @@ void launch_upsample_trilinear3d_backward_kernel(
       idata,
       odata,
       idata_ptr);
-
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
-  int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
-  auto queue = getCurrentSYCLQueue();
-
-  sycl_kernel_submit(
-      sycl::range<1>(num_group * wg_size), sycl::range<1>(wg_size), queue, kfn);
 }
 
 void upsample_trilinear3d_out_kernel(
