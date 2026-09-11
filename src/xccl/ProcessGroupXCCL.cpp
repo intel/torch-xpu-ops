@@ -1417,6 +1417,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
 c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
     std::vector<at::Tensor>& tensors,
     const BroadcastOptions& opts) {
+  static auto invalidArgument = [](const std::string& msg) {
+    C10_THROW_ERROR(ValueError, "ProcessGroupXCCL::broadcast: " + msg);
+  };
+  assertRootRank(invalidArgument, opts.rootRank, size_);
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   auto tensor = tensors.back();
   if (tensor.is_complex()) {
