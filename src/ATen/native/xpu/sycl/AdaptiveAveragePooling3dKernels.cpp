@@ -34,117 +34,82 @@ inline int64_t end_index(int64_t a, int64_t b, int64_t c) {
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct AdaptiveAvgPool3dKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    // iterators on output pixels
-    int ot, oh, ow;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void adaptive_avg_pool3d_kernel_impl(
+    const scalar_t* input_data,
+    scalar_t* output_data,
+    int isizeT,
+    int isizeH,
+    int isizeW,
+    int osizeT,
+    int osizeH,
+    int osizeW,
+    int64_t sizeD,
+    int64_t istrideB,
+    int64_t istrideD,
+    int64_t istrideT,
+    int64_t istrideH,
+    int64_t istrideW,
+    int64_t offsetZ) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  // iterators on output pixels
+  int ot, oh, ow;
 
-    int ostartH =
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-    int oendH = osizeH_;
-    int ostepH = item.get_group_range(0) * item.get_local_range(0);
-    int ostartW = item.get_local_id(1);
-    int oendW = osizeW_;
-    int ostepW = item.get_local_range(1);
+  int ostartH =
+      item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+  int oendH = osizeH;
+  int ostepH = item.get_group_range(0) * item.get_local_range(0);
+  int ostartW = item.get_local_id(1);
+  int oendW = osizeW;
+  int ostepW = item.get_local_range(1);
 
-    // select output plane
-    int64_t o_plane = item.get_group(1) + offsetZ_;
-    ot = o_plane % osizeT_;
-    int d = o_plane / osizeT_;
+  // select output plane
+  int64_t o_plane = item.get_group(1) + offsetZ;
+  ot = o_plane % osizeT;
+  int d = o_plane / osizeT;
 
-    // Decompose d into batch and channel indices
-    int batch_idx = d / sizeD_;
-    int channel_idx = d % sizeD_;
+  // Decompose d into batch and channel indices
+  int batch_idx = d / sizeD;
+  int channel_idx = d % sizeD;
 
-    int istartT = start_index(ot, osizeT_, isizeT_);
-    int iendT = end_index(ot, osizeT_, isizeT_);
-    int kT = iendT - istartT;
+  int istartT = start_index(ot, osizeT, isizeT);
+  int iendT = end_index(ot, osizeT, isizeT);
+  int kT = iendT - istartT;
 
-    scalar_t* output_dt = output_data_ + o_plane * osizeH_ * osizeW_;
+  scalar_t* output_dt = output_data + o_plane * osizeH * osizeW;
 
-    // For all output pixels...
-    for (oh = ostartH; oh < oendH; oh += ostepH) {
-      int istartH = start_index(oh, osizeH_, isizeH_);
-      int iendH = end_index(oh, osizeH_, isizeH_);
-      int kH = iendH - istartH;
+  // For all output pixels...
+  for (oh = ostartH; oh < oendH; oh += ostepH) {
+    int istartH = start_index(oh, osizeH, isizeH);
+    int iendH = end_index(oh, osizeH, isizeH);
+    int kH = iendH - istartH;
 
-      for (ow = ostartW; ow < oendW; ow += ostepW) {
-        int istartW = start_index(ow, osizeW_, isizeW_);
-        int iendW = end_index(ow, osizeW_, isizeW_);
-        int kW = iendW - istartW;
+    for (ow = ostartW; ow < oendW; ow += ostepW) {
+      int istartW = start_index(ow, osizeW, isizeW);
+      int iendW = end_index(ow, osizeW, isizeW);
+      int kW = iendW - istartW;
 
-        scalar_t* ptr_output = output_dt + oh * osizeW_ + ow;
-        accscalar_t sum = static_cast<accscalar_t>(0);
+      scalar_t* ptr_output = output_dt + oh * osizeW + ow;
+      accscalar_t sum = static_cast<accscalar_t>(0);
 
-        int it, ih, iw;
-        for (it = 0; it < kT; ++it) {
-          for (ih = 0; ih < kH; ++ih) {
-            for (iw = 0; iw < kW; ++iw) {
-              int64_t input_offset = batch_idx * istrideB_ +
-                  channel_idx * istrideD_ + (istartT + it) * istrideT_ +
-                  (istartH + ih) * istrideH_ + (istartW + iw) * istrideW_;
-              scalar_t val = input_data_[input_offset];
-              sum += static_cast<accscalar_t>(val);
-            }
+      int it, ih, iw;
+      for (it = 0; it < kT; ++it) {
+        for (ih = 0; ih < kH; ++ih) {
+          for (iw = 0; iw < kW; ++iw) {
+            int64_t input_offset = batch_idx * istrideB +
+                channel_idx * istrideD + (istartT + it) * istrideT +
+                (istartH + ih) * istrideH + (istartW + iw) * istrideW;
+            scalar_t val = input_data[input_offset];
+            sum += static_cast<accscalar_t>(val);
           }
         }
-        // Update output
-        const accscalar_t divide_factor =
-            static_cast<accscalar_t>(kT * kH * kW);
-        *ptr_output = static_cast<scalar_t>(sum / divide_factor);
       }
+      // Update output
+      const accscalar_t divide_factor = static_cast<accscalar_t>(kT * kH * kW);
+      *ptr_output = static_cast<scalar_t>(sum / divide_factor);
     }
   }
-
-  AdaptiveAvgPool3dKernelFunctor(
-      const scalar_t* input_data,
-      scalar_t* output_data,
-      int isizeT,
-      int isizeH,
-      int isizeW,
-      int osizeT,
-      int osizeH,
-      int osizeW,
-      int64_t sizeD,
-      int64_t istrideB,
-      int64_t istrideD,
-      int64_t istrideT,
-      int64_t istrideH,
-      int64_t istrideW,
-      int64_t offsetZ)
-      : input_data_(input_data),
-        output_data_(output_data),
-        isizeT_(isizeT),
-        isizeH_(isizeH),
-        isizeW_(isizeW),
-        osizeT_(osizeT),
-        osizeH_(osizeH),
-        osizeW_(osizeW),
-        sizeD_(sizeD),
-        istrideB_(istrideB),
-        istrideD_(istrideD),
-        istrideT_(istrideT),
-        istrideH_(istrideH),
-        istrideW_(istrideW),
-        offsetZ_(offsetZ) {}
-
- private:
-  const scalar_t* input_data_;
-  scalar_t* output_data_;
-  int isizeT_;
-  int isizeH_;
-  int isizeW_;
-  int osizeT_;
-  int osizeH_;
-  int osizeW_;
-  int64_t sizeD_;
-  int64_t istrideB_;
-  int64_t istrideD_;
-  int64_t istrideT_;
-  int64_t istrideH_;
-  int64_t istrideW_;
-  int64_t offsetZ_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t>
 void adaptive_avg_pool3d_template(
@@ -169,7 +134,15 @@ void adaptive_avg_pool3d_template(
   int height_group_range = std::max((int)(16L / totalZ), 1);
   while (totalZ > 0) {
     int width_group_range = totalZ > 65535 ? 65535 : totalZ;
-    AdaptiveAvgPool3dKernelFunctor<scalar_t, accscalar_t> kfn(
+    auto& queue = getCurrentSYCLQueue();
+    sycl_kernel_submit<adaptive_avg_pool3d_kernel_impl<scalar_t, accscalar_t>>(
+        sycl::range<2>{
+            size_t(height_group_range * height_group_size),
+            size_t(width_group_range * width_group_size),
+        },
+        sycl::range<2>{size_t(height_group_size), size_t(width_group_size)},
+        queue,
+        0,
         input_data,
         output_data,
         isizeT,
@@ -185,19 +158,11 @@ void adaptive_avg_pool3d_template(
         istrideH,
         istrideW,
         offsetZ);
-    auto& queue = getCurrentSYCLQueue();
-    sycl_kernel_submit(
-        sycl::range<2>{
-            size_t(height_group_range * height_group_size),
-            size_t(width_group_range * width_group_size),
-        },
-        sycl::range<2>{size_t(height_group_size), size_t(width_group_size)},
-        queue,
-        kfn);
     totalZ -= 65535;
     offsetZ += 65535;
   }
 }
+
 void adaptive_avg_pool3d_kernel(
     Tensor& output,
     const Tensor& input_,
@@ -300,200 +265,146 @@ void adaptive_avg_pool3d_kernel(
 }
 
 template <typename scalar_t>
-struct AdaptiveAvgPool3dBackwardAtomicKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    // iterators on output pixels
-    int ot, oh, ow;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void adaptive_avg_pool3d_backward_atomic_kernel_impl(
+    scalar_t* gradInput,
+    const scalar_t* gradOutput,
+    int isizeT,
+    int isizeH,
+    int isizeW,
+    int osizeT,
+    int osizeH,
+    int osizeW,
+    int64_t offsetZ) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  // iterators on output pixels
+  int ot, oh, ow;
 
-    int ostartH =
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-    int oendH = osizeH_;
-    int ostepH = item.get_group_range(0) * item.get_local_range(0);
-    int ostartW = item.get_local_id(1);
-    int oendW = osizeW_;
-    int ostepW = item.get_local_range(1);
+  int ostartH =
+      item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+  int oendH = osizeH;
+  int ostepH = item.get_group_range(0) * item.get_local_range(0);
+  int ostartW = item.get_local_id(1);
+  int oendW = osizeW;
+  int ostepW = item.get_local_range(1);
 
-    // select output plane
-    int64_t o_plane = item.get_group(1) + offsetZ_;
-    ot = o_plane % osizeT_; // output frame/time
-    int d = o_plane / osizeT_;
+  // select output plane
+  int64_t o_plane = item.get_group(1) + offsetZ;
+  ot = o_plane % osizeT; // output frame/time
+  int d = o_plane / osizeT;
 
-    int istartT = start_index(ot, osizeT_, isizeT_);
-    int iendT = end_index(ot, osizeT_, isizeT_);
-    int kT = iendT - istartT;
+  int istartT = start_index(ot, osizeT, isizeT);
+  int iendT = end_index(ot, osizeT, isizeT);
+  int kT = iendT - istartT;
 
-    // gradInput offset by slice/feature and earliest relevant frame/time
-    scalar_t* gradInput_nt =
-        gradInput_ + (d * isizeT_ + istartT) * isizeH_ * isizeW_;
-    // gradOutput offset by slice/feature and frame/time
-    const scalar_t* gradOutput_nt = gradOutput_ + o_plane * osizeH_ * osizeW_;
+  // gradInput offset by slice/feature and earliest relevant frame/time
+  scalar_t* gradInput_nt = gradInput + (d * isizeT + istartT) * isizeH * isizeW;
+  // gradOutput offset by slice/feature and frame/time
+  const scalar_t* gradOutput_nt = gradOutput + o_plane * osizeH * osizeW;
 
-    // For all output pixels...
-    for (oh = ostartH; oh < oendH; oh += ostepH) {
-      int istartH = start_index(oh, osizeH_, isizeH_);
-      int iendH = end_index(oh, osizeH_, isizeH_);
-      int kH = iendH - istartH;
+  // For all output pixels...
+  for (oh = ostartH; oh < oendH; oh += ostepH) {
+    int istartH = start_index(oh, osizeH, isizeH);
+    int iendH = end_index(oh, osizeH, isizeH);
+    int kH = iendH - istartH;
 
-      for (ow = ostartW; ow < oendW; ow += ostepW) {
-        int istartW = start_index(ow, osizeW_, isizeW_);
-        int iendW = end_index(ow, osizeW_, isizeW_);
-        int kW = iendW - istartW;
+    for (ow = ostartW; ow < oendW; ow += ostepW) {
+      int istartW = start_index(ow, osizeW, isizeW);
+      int iendW = end_index(ow, osizeW, isizeW);
+      int kW = iendW - istartW;
 
-        // Compute the gradients from corresponding input pixels
-        scalar_t* ptr_gradInput = gradInput_nt + istartH * isizeW_ + istartW;
-        const scalar_t* ptr_gradOutput = gradOutput_nt + oh * osizeW_ + ow;
-        scalar_t grad_delta = *ptr_gradOutput / kT / kH / kW;
+      // Compute the gradients from corresponding input pixels
+      scalar_t* ptr_gradInput = gradInput_nt + istartH * isizeW + istartW;
+      const scalar_t* ptr_gradOutput = gradOutput_nt + oh * osizeW + ow;
+      scalar_t grad_delta = *ptr_gradOutput / kT / kH / kW;
 
-        int it, ih, iw;
-        for (it = 0; it < kT; ++it) {
-          for (ih = 0; ih < kH; ++ih) {
-            for (iw = 0; iw < kW; ++iw) {
-              atomicAdd(
-                  (sycl_global_ptr<scalar_t>)&(
-                      ptr_gradInput[ih * isizeW_ + iw]),
-                  grad_delta);
-            }
+      int it, ih, iw;
+      for (it = 0; it < kT; ++it) {
+        for (ih = 0; ih < kH; ++ih) {
+          for (iw = 0; iw < kW; ++iw) {
+            atomicAdd(
+                (sycl_global_ptr<scalar_t>)&(ptr_gradInput[ih * isizeW + iw]),
+                grad_delta);
           }
-          ptr_gradInput += isizeH_ * isizeW_; // next input frame
         }
+        ptr_gradInput += isizeH * isizeW; // next input frame
       }
     }
   }
-
-  AdaptiveAvgPool3dBackwardAtomicKernelFunctor(
-      scalar_t* gradInput,
-      const scalar_t* gradOutput,
-      int isizeT,
-      int isizeH,
-      int isizeW,
-      int osizeT,
-      int osizeH,
-      int osizeW,
-      int64_t offsetZ)
-      : gradInput_(gradInput),
-        gradOutput_(gradOutput),
-        isizeT_(isizeT),
-        isizeH_(isizeH),
-        isizeW_(isizeW),
-        osizeT_(osizeT),
-        osizeH_(osizeH),
-        osizeW_(osizeW),
-        offsetZ_(offsetZ) {}
-
- private:
-  scalar_t* gradInput_;
-  const scalar_t* gradOutput_;
-  int isizeT_;
-  int isizeH_;
-  int isizeW_;
-  int osizeT_;
-  int osizeH_;
-  int osizeW_;
-  int64_t istrideD_;
-  int64_t istrideT_;
-  int64_t istrideH_;
-  int64_t istrideW_;
-  int64_t offsetZ_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t>
-struct AdaptiveAvgPool3dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    // iterators on output pixels
-    int it, ih, iw;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void adaptive_avg_pool3d_backward_kernel_impl(
+    scalar_t* gradInput,
+    const scalar_t* gradOutput,
+    int isizeT,
+    int isizeH,
+    int isizeW,
+    int osizeT,
+    int osizeH,
+    int osizeW,
+    int64_t offsetZ) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  // iterators on output pixels
+  int it, ih, iw;
 
-    int istartH =
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-    int iendH = isizeH_;
-    int istepH = item.get_group_range(0) * item.get_local_range(0);
-    int istartW = item.get_local_id(1);
-    int iendW = isizeW_;
-    int istepW = item.get_local_range(1);
+  int istartH =
+      item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+  int iendH = isizeH;
+  int istepH = item.get_group_range(0) * item.get_local_range(0);
+  int istartW = item.get_local_id(1);
+  int iendW = isizeW;
+  int istepW = item.get_local_range(1);
 
-    // select output plane
-    int64_t i_plane = item.get_group(1) + offsetZ_;
-    it = i_plane % isizeT_; // output frame/time
-    int d = i_plane / isizeT_;
+  // select output plane
+  int64_t i_plane = item.get_group(1) + offsetZ;
+  it = i_plane % isizeT; // output frame/time
+  int d = i_plane / isizeT;
 
-    int ostartT = start_index(it, isizeT_, osizeT_);
-    int oendT = end_index(it, isizeT_, osizeT_);
+  int ostartT = start_index(it, isizeT, osizeT);
+  int oendT = end_index(it, isizeT, osizeT);
 
-    // gradInput offset by slice/feature and frame/time.
-    scalar_t* gradInput_dt = gradInput_ + i_plane * isizeH_ * isizeW_;
-    // gradOutput offset by slice/feature and earliest relevant frame/time
-    const scalar_t* gradOutput_dt =
-        gradOutput_ + (d * osizeT_ + ostartT) * osizeH_ * osizeW_;
-    // For all input pixels...
-    for (ih = istartH; ih < iendH; ih += istepH) {
-      int ostartH = start_index(ih, isizeH_, osizeH_);
-      int oendH = end_index(ih, isizeH_, osizeH_);
+  // gradInput offset by slice/feature and frame/time.
+  scalar_t* gradInput_dt = gradInput + i_plane * isizeH * isizeW;
+  // gradOutput offset by slice/feature and earliest relevant frame/time
+  const scalar_t* gradOutput_dt =
+      gradOutput + (d * osizeT + ostartT) * osizeH * osizeW;
+  // For all input pixels...
+  for (ih = istartH; ih < iendH; ih += istepH) {
+    int ostartH = start_index(ih, isizeH, osizeH);
+    int oendH = end_index(ih, isizeH, osizeH);
 
-      for (iw = istartW; iw < iendW; iw += istepW) {
-        int ostartW = start_index(iw, isizeW_, osizeW_);
-        int oendW = end_index(iw, isizeW_, osizeW_);
+    for (iw = istartW; iw < iendW; iw += istepW) {
+      int ostartW = start_index(iw, isizeW, osizeW);
+      int oendW = end_index(iw, isizeW, osizeW);
 
-        // Compute the gradients from corresponding output pixels
-        scalar_t* ptr_gradInput = gradInput_dt + ih * isizeW_ + iw;
-        const scalar_t* ptr_gradOutput = gradOutput_dt;
+      // Compute the gradients from corresponding output pixels
+      scalar_t* ptr_gradInput = gradInput_dt + ih * isizeW + iw;
+      const scalar_t* ptr_gradOutput = gradOutput_dt;
 
-        // for all relevant output pixels
-        int ot, oh, ow;
-        for (ot = ostartT; ot < oendT; ++ot) {
-          int kT = end_index(ot, osizeT_, isizeT_) -
-              start_index(ot, osizeT_, isizeT_);
-          for (oh = ostartH; oh < oendH; ++oh) {
-            int kH = end_index(oh, osizeH_, isizeH_) -
-                start_index(oh, osizeH_, isizeH_);
-            for (ow = ostartW; ow < oendW; ++ow) {
-              int kW = end_index(ow, osizeW_, isizeW_) -
-                  start_index(ow, osizeW_, isizeW_);
-              const accscalar_t divide_factor = kW * kH * kT;
-              accscalar_t grad_delta = static_cast<accscalar_t>(
-                  ptr_gradOutput[oh * osizeW_ + ow] / divide_factor);
-              *ptr_gradInput += static_cast<scalar_t>(grad_delta);
-            }
+      // for all relevant output pixels
+      int ot, oh, ow;
+      for (ot = ostartT; ot < oendT; ++ot) {
+        int kT =
+            end_index(ot, osizeT, isizeT) - start_index(ot, osizeT, isizeT);
+        for (oh = ostartH; oh < oendH; ++oh) {
+          int kH =
+              end_index(oh, osizeH, isizeH) - start_index(oh, osizeH, isizeH);
+          for (ow = ostartW; ow < oendW; ++ow) {
+            int kW =
+                end_index(ow, osizeW, isizeW) - start_index(ow, osizeW, isizeW);
+            const accscalar_t divide_factor = kW * kH * kT;
+            accscalar_t grad_delta = static_cast<accscalar_t>(
+                ptr_gradOutput[oh * osizeW + ow] / divide_factor);
+            *ptr_gradInput += static_cast<scalar_t>(grad_delta);
           }
-          ptr_gradOutput += osizeH_ * osizeW_; // next output frame
         }
+        ptr_gradOutput += osizeH * osizeW; // next output frame
       }
     }
   }
-
-  AdaptiveAvgPool3dBackwardKernelFunctor(
-      scalar_t* gradInput,
-      const scalar_t* gradOutput,
-      int isizeT,
-      int isizeH,
-      int isizeW,
-      int osizeT,
-      int osizeH,
-      int osizeW,
-      int64_t offsetZ)
-      : gradInput_(gradInput),
-        gradOutput_(gradOutput),
-        isizeT_(isizeT),
-        isizeH_(isizeH),
-        isizeW_(isizeW),
-        osizeT_(osizeT),
-        osizeH_(osizeH),
-        osizeW_(osizeW),
-        offsetZ_(offsetZ) {}
-
- private:
-  scalar_t* gradInput_;
-  const scalar_t* gradOutput_;
-  int isizeT_;
-  int isizeH_;
-  int isizeW_;
-  int osizeT_;
-  int osizeH_;
-  int osizeW_;
-  int64_t istrideD_;
-  int64_t istrideT_;
-  int64_t istrideH_;
-  int64_t istrideW_;
-  int64_t offsetZ_;
-};
+}
 
 template <typename scalar_t>
 void adaptive_avg_pool3d_backward_atomic_template(
@@ -512,7 +423,16 @@ void adaptive_avg_pool3d_backward_atomic_template(
   int height_group_range = std::max((int)(16L / totalZ), 1);
   while (totalZ > 0) {
     int width_group_range = totalZ > 65535 ? 65535 : totalZ;
-    AdaptiveAvgPool3dBackwardAtomicKernelFunctor<scalar_t> kfn(
+    auto& queue = getCurrentSYCLQueue();
+    sycl_kernel_submit<
+        adaptive_avg_pool3d_backward_atomic_kernel_impl<scalar_t>>(
+        sycl::range<2>{
+            size_t(height_group_range * height_group_size),
+            size_t(width_group_range * width_group_size),
+        },
+        sycl::range<2>{size_t(height_group_size), size_t(width_group_size)},
+        queue,
+        0,
         gradInput_data,
         gradOutput_data,
         isizeT,
@@ -522,15 +442,6 @@ void adaptive_avg_pool3d_backward_atomic_template(
         osizeH,
         osizeW,
         offsetZ);
-    auto& queue = getCurrentSYCLQueue();
-    sycl_kernel_submit(
-        sycl::range<2>{
-            size_t(height_group_range * height_group_size),
-            size_t(width_group_range * width_group_size),
-        },
-        sycl::range<2>{size_t(height_group_size), size_t(width_group_size)},
-        queue,
-        kfn);
     totalZ -= 65535;
     offsetZ += 65535;
   }
@@ -553,7 +464,16 @@ void adaptive_avg_pool3d_backward_template(
   int height_group_range = std::max((int)(16L / totalZ), 1);
   while (totalZ > 0) {
     int width_group_range = totalZ > 65535 ? 65535 : totalZ;
-    AdaptiveAvgPool3dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
+    auto& queue = getCurrentSYCLQueue();
+    sycl_kernel_submit<
+        adaptive_avg_pool3d_backward_kernel_impl<scalar_t, accscalar_t>>(
+        sycl::range<2>{
+            size_t(height_group_range * height_group_size),
+            size_t(width_group_range * width_group_size),
+        },
+        sycl::range<2>{size_t(height_group_size), size_t(width_group_size)},
+        queue,
+        0,
         gradInput_data,
         gradOutput_data,
         isizeT,
@@ -563,15 +483,6 @@ void adaptive_avg_pool3d_backward_template(
         osizeH,
         osizeW,
         offsetZ);
-    auto& queue = getCurrentSYCLQueue();
-    sycl_kernel_submit(
-        sycl::range<2>{
-            size_t(height_group_range * height_group_size),
-            size_t(width_group_range * width_group_size),
-        },
-        sycl::range<2>{size_t(height_group_size), size_t(width_group_size)},
-        queue,
-        kfn);
     totalZ -= 65535;
     offsetZ += 65535;
   }
