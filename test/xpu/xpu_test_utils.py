@@ -1071,6 +1071,23 @@ class XPUPatchForImport(XPUImportCtx):
                             wrapper.device_type = "xpu"
                             replaced = True
                     elif (
+                        isinstance(wrapper.device_type, (list, tuple))
+                        and "xpu" in wrapper.device_type
+                        and unittest.expectedFailure in wrapper.decorators
+                        and (op_name, wrapper.test_name) in _cuda_xfail_xpu_pass
+                    ):
+                        # Upstream may scope one xfail to several devices at
+                        # once (device_type=("cuda", "xpu")). The "cuda" branch
+                        # above only matches the plain string, so drop XPU from
+                        # the scope here.
+                        replaced = True
+                        new_wrapper = copy.copy(wrapper)
+                        new_wrapper.device_type = tuple(
+                            d for d in wrapper.device_type if d != "xpu"
+                        )
+                        wrapper_xpu.append(new_wrapper)
+                        continue
+                    elif (
                         wrapper.device_type is None
                         and unittest.expectedFailure in wrapper.decorators
                         and (op_name, wrapper.test_name) in _none_device_xfail_xpu_pass
