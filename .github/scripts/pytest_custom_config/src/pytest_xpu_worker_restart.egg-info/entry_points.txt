@@ -1,2 +1,0 @@
-[pytest11]
-xpu_worker_restart = pytest_xpu_worker_restart.plugin
