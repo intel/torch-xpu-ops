@@ -65,6 +65,42 @@ class TestAnnouncements(unittest.TestCase):
         self.assertEqual(w.announcements(42), ([], 42))
 
 
+class TestUnseen(unittest.TestCase):
+    """#364 re-announces a test every night it stays disabled: 16 of the first
+    36 announcements were pure repeats, and each one would start another fix
+    job for an issue already being worked."""
+
+    def disable(self, cid, *issues):
+        links = "".join(
+            f"- https://github.com/pytorch/pytorch/issues/{i}\n" for i in issues)
+        return comment(cid, f"Commit `abc123`\nDisable issues:\n{links}")
+
+    def test_a_repeat_is_dropped(self):
+        found = [self.disable(1, "111")]
+        self.assertEqual(w.unseen(found, {"111"}), [])
+
+    def test_a_new_issue_is_kept(self):
+        found = [self.disable(1, "222")]
+        self.assertEqual([c["id"] for c in w.unseen(found, {"111"})], [1])
+
+    def test_a_repeat_within_one_run_is_dropped(self):
+        """`done` has to grow as we go, or a burst copies the same issue
+        twice in a single run."""
+        found = [self.disable(1, "111"), self.disable(2, "111")]
+        self.assertEqual([c["id"] for c in w.unseen(found, set())], [1])
+
+    def test_partly_new_is_copied_whole(self):
+        """Rare (3 of 36) and deliberately not split: the old issue gets
+        re-fixed."""
+        found = [self.disable(1, "111", "222")]
+        self.assertEqual([c["id"] for c in w.unseen(found, {"111"})], [1])
+
+    def test_the_caller_set_is_left_alone(self):
+        done = {"111"}
+        w.unseen([self.disable(1, "222")], done)
+        self.assertEqual(done, {"111"})
+
+
 class TestCommandComment(unittest.TestCase):
     def test_the_command_is_the_first_line(self):
         """bot.yml anchors on `^@torchxpubot <cmd>`. Anything above it -- even

@@ -28,6 +28,7 @@ CI_REPO = "chuanqi129/pytorch-xpu-ci"
 CI_ISSUE = 364
 TRACKING = "repos/intel/torch-xpu-ops/issues/5272"
 MARKER_RE = re.compile(r"<!--\s*last-364-comment:\s*(\d+)\s*-->")
+ISSUE_RE = re.compile(r"pytorch/pytorch/issues/(\d+)")
 
 
 def gh(path, *args):
@@ -52,6 +53,37 @@ def announcements(since_id):
     return ([c for c in seen
              if c["id"] > since_id and "Disable issues:" in (c["body"] or "")],
             seen[-1]["id"] if seen else since_id)
+
+
+def copied_issues():
+    """Issues already copied here. The tracking issue's own comments are the
+    record -- `command_comment` quotes the announcement verbatim, links and
+    all -- so there is no second copy of this state to keep in sync."""
+    raw = gh(f"{TRACKING}/comments?per_page=100", "--paginate", "-q", ".[]")
+    return set(ISSUE_RE.findall(raw))
+
+
+def unseen(found, done):
+    """Announcements carrying at least one issue not already copied.
+
+    #364 re-announces a test every night it stays disabled: over the first 24
+    days, 36 announcements carried 46 links but only 24 distinct issues, and 16
+    of the 36 were pure repeats. Without this each repeat starts another fix
+    job for an issue already being worked.
+
+    `done` grows as we go, so a repeat inside one run is caught too.
+    """
+    out = []
+    done = set(done)
+    for c in found:
+        ids = set(ISSUE_RE.findall(c["body"] or ""))
+        # ponytail: an announcement mixing new and already-copied issues is
+        # copied whole, re-fixing the old ones (3 of 36). Split it only if that
+        # gets common.
+        if ids - done:
+            out.append(c)
+            done |= ids
+    return out
 
 
 def command_comment(c):
@@ -80,9 +112,10 @@ def main():
     since = int(m.group(1)) if m else 0
 
     found, newest = announcements(since)
-    todo = found[:a.limit]
+    seen = unseen(found, copied_issues())
+    todo = seen[:a.limit]
     print(f"{len(found)} new announcement(s) since comment {since}, "
-          f"copying {len(todo)}")
+          f"{len(found) - len(seen)} already copied, copying {len(todo)}")
     if a.dry_run:
         for c in todo:
             print("--- would post:\n" + command_comment(c) + "\n")
@@ -94,7 +127,7 @@ def main():
         print(f"copied #364 comment {c['id']} and asked for a fix")
 
     # A capped run advances only past what it copied; the rest waits.
-    cursor = todo[-1]["id"] if len(todo) < len(found) else newest
+    cursor = todo[-1]["id"] if len(todo) < len(seen) else newest
     gh(TRACKING, "--method", "PATCH", "-f",
        f"body={MARKER_RE.sub('', body).rstrip()}"
        f"\n\n<!-- last-364-comment: {cursor} -->\n")
