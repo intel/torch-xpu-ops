@@ -80,6 +80,10 @@ macro(set_build_flags)
       -Wno-stringop-overflow
       -Wno-dangling-reference
       -Wno-error=dangling-reference)
+    CHECK_SYCL_FLAG("-Wno-maybe-uninitialized;-Werror=unknown-warning-option" SUPPORTS_NO_MAYBE_UNINITIALIZED)
+    if(NOT SUPPORTS_NO_MAYBE_UNINITIALIZED)
+      list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL -Wno-maybe-uninitialized)
+    endif()
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
