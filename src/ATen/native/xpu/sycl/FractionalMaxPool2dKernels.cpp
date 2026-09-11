@@ -45,88 +45,73 @@ inline int get_interval(
 }
 
 template <typename scalar_t>
-struct FractionalMaxPool2dOutFrameKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void fractional_max_pool2d_out_frame_kernel_impl(
+    GenericPackedTensorAccessor<scalar_t, 4> output,
+    GenericPackedTensorAccessor<int64_t, 4> indices,
+    GenericPackedTensorAccessor<const scalar_t, 4> input,
+    GenericPackedTensorAccessor<const scalar_t, 3> samples,
+    int poolSizeH,
+    int poolSizeW) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
 
-    int ourOutputPoint =
-        item.get_local_id(2) + item.get_group(2) * item.get_local_range(2);
-    int plane = item.get_group(1);
-    int batch = item.get_group(0);
+  int ourOutputPoint =
+      item.get_local_id(2) + item.get_group(2) * item.get_local_range(2);
+  int plane = item.get_group(1);
+  int batch = item.get_group(0);
 
-    // Each thread generates a specific output point
-    if (ourOutputPoint < output_.size(2) * output_.size(3)) {
-      int outputW = ourOutputPoint % output_.size(3);
-      int outputH = ourOutputPoint / output_.size(3);
+  // Each thread generates a specific output point
+  if (ourOutputPoint < output.size(2) * output.size(3)) {
+    int outputW = ourOutputPoint % output.size(3);
+    int outputH = ourOutputPoint / output.size(3);
 
-      int poolW = get_interval<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(samples_[batch][plane][0]),
-          outputW,
-          input_.size(3),
-          output_.size(3),
-          poolSizeW_);
-      int poolH = get_interval<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(samples_[batch][plane][1]),
-          outputH,
-          input_.size(2),
-          output_.size(2),
-          poolSizeH_);
+    int poolW = get_interval<scalar_t, accscalar_t>(
+        static_cast<accscalar_t>(samples[batch][plane][0]),
+        outputW,
+        input.size(3),
+        output.size(3),
+        poolSizeW);
+    int poolH = get_interval<scalar_t, accscalar_t>(
+        static_cast<accscalar_t>(samples[batch][plane][1]),
+        outputH,
+        input.size(2),
+        output.size(2),
+        poolSizeH);
 
-      scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
-      int maxIndex = poolH * input_.size(3) + poolW;
+    scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
+    int maxIndex = poolH * input.size(3) + poolW;
 
-      for (int h = poolH; h < poolH + poolSizeH_; ++h) {
-        if (poolSizeW_ < 2 || poolSizeW_ > 7) {
-          for (int w = poolW; w < poolW + poolSizeW_; ++w) {
-            scalar_t val = input_[batch][plane][h][w];
-            // for consistency with THNN, favor the first max
-            if (val > maxVal || at::_isnan(val)) {
-              maxIndex = h * input_.size(3) + w;
-              maxVal = val;
-            }
+    for (int h = poolH; h < poolH + poolSizeH; ++h) {
+      if (poolSizeW < 2 || poolSizeW > 7) {
+        for (int w = poolW; w < poolW + poolSizeW; ++w) {
+          scalar_t val = input[batch][plane][h][w];
+          // for consistency with THNN, favor the first max
+          if (val > maxVal || at::_isnan(val)) {
+            maxIndex = h * input.size(3) + w;
+            maxVal = val;
           }
-        } else {
-          for (int i = 0; i < poolSizeW_; ++i) {
-            int w = i + poolW;
-            scalar_t val = input_[batch][plane][h][w];
-            // for consistency with THNN, favor the first max
-            if (val > maxVal || at::_isnan(val)) {
-              maxIndex = h * input_.size(3) + w;
-              maxVal = val;
-            }
+        }
+      } else {
+        for (int i = 0; i < poolSizeW; ++i) {
+          int w = i + poolW;
+          scalar_t val = input[batch][plane][h][w];
+          // for consistency with THNN, favor the first max
+          if (val > maxVal || at::_isnan(val)) {
+            maxIndex = h * input.size(3) + w;
+            maxVal = val;
           }
         }
       }
-
-      auto indices_acc = indices_;
-      auto output_acc = output_;
-
-      indices_acc[batch][plane][outputH][outputW] = maxIndex;
-      output_acc[batch][plane][outputH][outputW] = maxVal;
     }
-  }
-  FractionalMaxPool2dOutFrameKernelFunctor(
-      GenericPackedTensorAccessor<scalar_t, 4> output,
-      GenericPackedTensorAccessor<int64_t, 4> indices,
-      GenericPackedTensorAccessor<const scalar_t, 4> input,
-      GenericPackedTensorAccessor<const scalar_t, 3> samples,
-      int poolSizeH,
-      int poolSizeW)
-      : output_(output),
-        indices_(indices),
-        input_(input),
-        samples_(samples),
-        poolSizeH_(poolSizeH),
-        poolSizeW_(poolSizeW) {}
 
- private:
-  GenericPackedTensorAccessor<scalar_t, 4> output_;
-  GenericPackedTensorAccessor<int64_t, 4> indices_;
-  GenericPackedTensorAccessor<const scalar_t, 4> input_;
-  GenericPackedTensorAccessor<const scalar_t, 3> samples_;
-  int poolSizeH_;
-  int poolSizeW_;
-};
+    auto indices_acc = indices;
+    auto output_acc = output;
+
+    indices_acc[batch][plane][outputH][outputW] = maxIndex;
+    output_acc[batch][plane][outputH][outputW] = maxVal;
+  }
+}
 
 void fractional_max_pool2d_kernel(
     const Tensor& input,
@@ -177,57 +162,57 @@ void fractional_max_pool2d_kernel(
         auto devOutput = output_.packed_accessor64<scalar_t, 4>();
         auto devIndices = indices_.packed_accessor64<int64_t, 4>();
         auto devSamples = randomSamples.packed_accessor64<const scalar_t, 3>();
-        auto kfn = FractionalMaxPool2dOutFrameKernelFunctor<scalar_t>(
-            devOutput, devIndices, devInput, devSamples, poolSizeH, poolSizeW);
         size_t group_x = outputPlaneSize > 128 ? 128 : outputPlaneSize;
         size_t nwg_x = (outputPlaneSize + 127) / 128;
         sycl::range<3> local_range(1, 1, group_x);
         sycl::range<3> global_range(
             input_.size(0), input_.size(1), nwg_x * group_x);
-        sycl_kernel_submit(
-            global_range, local_range, getCurrentSYCLQueue(), kfn);
+        sycl_kernel_submit<
+            fractional_max_pool2d_out_frame_kernel_impl<scalar_t>>(
+            global_range,
+            local_range,
+            getCurrentSYCLQueue(),
+            0,
+            devOutput,
+            devIndices,
+            devInput,
+            devSamples,
+            poolSizeH,
+            poolSizeW);
       });
 }
 
 template <typename scalar_t>
-struct FractionalMaxPool2dBackwardOutFrameKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    // Output (h, w) point that this thread is responsible for
-    int ourOutputPoint =
-        item.get_local_id(2) + item.get_group(2) * item.get_local_range(2);
-    int plane = item.get_group(1);
-    int batch = item.get_group(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void fractional_max_pool2d_backward_out_frame_kernel_impl(
+    GenericPackedTensorAccessor<scalar_t, 4> gradInput,
+    GenericPackedTensorAccessor<const scalar_t, 4> gradOutput,
+    GenericPackedTensorAccessor<const int64_t, 4> indices) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  // Output (h, w) point that this thread is responsible for
+  int ourOutputPoint =
+      item.get_local_id(2) + item.get_group(2) * item.get_local_range(2);
+  int plane = item.get_group(1);
+  int batch = item.get_group(0);
 
-    // Each thread generates a specific output point
-    if (ourOutputPoint < gradOutput_.size(2) * gradOutput_.size(3)) {
-      int outputW = ourOutputPoint % gradOutput_.size(3);
-      int outputH = ourOutputPoint / gradOutput_.size(3);
+  // Each thread generates a specific output point
+  if (ourOutputPoint < gradOutput.size(2) * gradOutput.size(3)) {
+    int outputW = ourOutputPoint % gradOutput.size(3);
+    int outputH = ourOutputPoint / gradOutput.size(3);
 
-      int index = indices_[batch][plane][outputH][outputW];
-      SYCL_KERNEL_ASSERT(index >= 0);
-      int inputW = index % gradInput_.size(3);
-      int inputH = index / gradInput_.size(3);
-      SYCL_KERNEL_ASSERT(inputH < gradInput_.size(2));
+    int index = indices[batch][plane][outputH][outputW];
+    SYCL_KERNEL_ASSERT(index >= 0);
+    int inputW = index % gradInput.size(3);
+    int inputH = index / gradInput.size(3);
+    SYCL_KERNEL_ASSERT(inputH < gradInput.size(2));
 
-      auto gradInput_acc = gradInput_;
+    auto gradInput_acc = gradInput;
 
-      atomicAdd(
-          (sycl_global_ptr<scalar_t>)&gradInput_acc[batch][plane][inputH]
-                                                   [inputW],
-          gradOutput_[batch][plane][outputH][outputW]);
-    }
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)&gradInput_acc[batch][plane][inputH][inputW],
+        gradOutput[batch][plane][outputH][outputW]);
   }
-  FractionalMaxPool2dBackwardOutFrameKernelFunctor(
-      GenericPackedTensorAccessor<scalar_t, 4> gradInput,
-      GenericPackedTensorAccessor<const scalar_t, 4> gradOutput,
-      GenericPackedTensorAccessor<const int64_t, 4> indices)
-      : gradInput_(gradInput), gradOutput_(gradOutput), indices_(indices) {}
-
- private:
-  GenericPackedTensorAccessor<scalar_t, 4> gradInput_;
-  GenericPackedTensorAccessor<const scalar_t, 4> gradOutput_;
-  GenericPackedTensorAccessor<const int64_t, 4> indices_;
-};
+}
 
 void fractional_max_pool2d_backward_kernel(
     const Tensor& gradOutput,
@@ -282,15 +267,20 @@ void fractional_max_pool2d_backward_kernel(
       [&] {
         auto devGradInput = gradInput_.packed_accessor64<scalar_t, 4>();
         auto devGradOutput = gradOutput_.packed_accessor64<const scalar_t, 4>();
-        auto kfn = FractionalMaxPool2dBackwardOutFrameKernelFunctor<scalar_t>(
-            devGradInput, devGradOutput, devIndices);
         size_t group_x = outputPlaneSize > 128 ? 128 : outputPlaneSize;
         size_t nwg_x = (outputPlaneSize + 127) / 128;
         sycl::range<3> local_range(1, 1, group_x);
         sycl::range<3> global_range(
             gradInput_.size(0), gradInput_.size(1), nwg_x * group_x);
-        sycl_kernel_submit(
-            global_range, local_range, getCurrentSYCLQueue(), kfn);
+        sycl_kernel_submit<
+            fractional_max_pool2d_backward_out_frame_kernel_impl<scalar_t>>(
+            global_range,
+            local_range,
+            getCurrentSYCLQueue(),
+            0,
+            devGradInput,
+            devGradOutput,
+            devIndices);
       });
 }
 
