@@ -31,111 +31,80 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    index_t oCol = item.get_global_id()[2];
-    index_t oRow = item.get_global_id()[1];
-    index_t oFrame = (item.get_group(0) + offsetZ_) % output_.size(1);
-    index_t slice = (item.get_group(0) + offsetZ_) / output_.size(1);
-    auto out_data = output_;
-    if (oRow < out_data.size(2) && oCol < out_data.size(3)) {
-      accscalar_t sum = 0.0;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void avg_pool3d_kernel_impl(
+    int kT,
+    int kH,
+    int kW,
+    int dT,
+    int dH,
+    int dW,
+    int padT,
+    int padH,
+    int padW,
+    bool count_include_pad,
+    int offsetZ,
+    int divisor_override,
+    PackedTensorAccessor64<const scalar_t, 4> input,
+    PackedTensorAccessor64<scalar_t, 4> output) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  index_t oCol = item.get_global_id()[2];
+  index_t oRow = item.get_global_id()[1];
+  index_t oFrame = (item.get_group(0) + offsetZ) % output.size(1);
+  index_t slice = (item.get_group(0) + offsetZ) / output.size(1);
+  auto out_data = output;
+  if (oRow < out_data.size(2) && oCol < out_data.size(3)) {
+    accscalar_t sum = 0.0;
 
-      index_t tstart = oFrame * dT_ - padT_;
-      index_t hstart = oRow * dH_ - padH_;
-      index_t wstart = oCol * dW_ - padW_;
-      index_t tend =
-          sycl::min(tstart + kT_, static_cast<index_t>(input_.size(1) + padT_));
-      index_t hend =
-          sycl::min(hstart + kH_, static_cast<index_t>(input_.size(2) + padH_));
-      index_t wend =
-          sycl::min(wstart + kW_, static_cast<index_t>(input_.size(3) + padW_));
-      index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
+    index_t tstart = oFrame * dT - padT;
+    index_t hstart = oRow * dH - padH;
+    index_t wstart = oCol * dW - padW;
+    index_t tend =
+        sycl::min(tstart + kT, static_cast<index_t>(input.size(1) + padT));
+    index_t hend =
+        sycl::min(hstart + kH, static_cast<index_t>(input.size(2) + padH));
+    index_t wend =
+        sycl::min(wstart + kW, static_cast<index_t>(input.size(3) + padW));
+    index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
 
-      tstart = sycl::max(tstart, index_t(0));
-      hstart = sycl::max(hstart, index_t(0));
-      wstart = sycl::max(wstart, index_t(0));
-      tend = sycl::min(tend, static_cast<index_t>(input_.size(1)));
-      hend = sycl::min(hend, static_cast<index_t>(input_.size(2)));
-      wend = sycl::min(wend, static_cast<index_t>(input_.size(3)));
+    tstart = sycl::max(tstart, index_t(0));
+    hstart = sycl::max(hstart, index_t(0));
+    wstart = sycl::max(wstart, index_t(0));
+    tend = sycl::min(tend, static_cast<index_t>(input.size(1)));
+    hend = sycl::min(hend, static_cast<index_t>(input.size(2)));
+    wend = sycl::min(wend, static_cast<index_t>(input.size(3)));
 
-      if (tstart >= tend || hstart >= hend || wstart >= wend) {
-        out_data[slice][oFrame][oRow][oCol] = static_cast<scalar_t>(0.0);
-        return;
-      }
-
-      accscalar_t divide_factor;
-      if (divisor_override_) {
-        divide_factor = static_cast<accscalar_t>(divisor_override_);
-      } else {
-        if (count_include_pad_) {
-          divide_factor = static_cast<accscalar_t>(pool_size);
-        } else {
-          divide_factor = static_cast<accscalar_t>(
-              (tend - tstart) * (hend - hstart) * (wend - wstart));
-        }
-      }
-
-      index_t ti, hi, wi;
-      for (ti = tstart; ti < tend; ++ti) {
-        for (hi = hstart; hi < hend; ++hi) {
-          for (wi = wstart; wi < wend; ++wi) {
-            const scalar_t val = input_[slice][ti][hi][wi];
-            sum += val;
-          }
-        }
-      }
-
-      out_data[slice][oFrame][oRow][oCol] =
-          static_cast<scalar_t>(sum / divide_factor);
+    if (tstart >= tend || hstart >= hend || wstart >= wend) {
+      out_data[slice][oFrame][oRow][oCol] = static_cast<scalar_t>(0.0);
+      return;
     }
-  }
-  AvgPool3dKernelFunctor(
-      int kT,
-      int kH,
-      int kW,
-      int dT,
-      int dH,
-      int dW,
-      int padT,
-      int padH,
-      int padW,
-      bool count_include_pad,
-      int offsetZ,
-      int divisor_override,
-      PackedTensorAccessor64<const scalar_t, 4> input_acc,
-      PackedTensorAccessor64<scalar_t, 4> output_acc)
-      : kT_(kT),
-        kH_(kH),
-        kW_(kW),
-        dT_(dT),
-        dH_(dH),
-        dW_(dW),
-        padT_(padT),
-        padH_(padH),
-        padW_(padW),
-        count_include_pad_(count_include_pad),
-        offsetZ_(offsetZ),
-        divisor_override_(divisor_override),
-        input_(input_acc),
-        output_(output_acc) {}
 
- private:
-  int kT_;
-  int kH_;
-  int kW_;
-  int dT_;
-  int dH_;
-  int dW_;
-  int padT_;
-  int padH_;
-  int padW_;
-  bool count_include_pad_;
-  int offsetZ_;
-  int divisor_override_;
-  PackedTensorAccessor64<const scalar_t, 4> input_;
-  PackedTensorAccessor64<scalar_t, 4> output_;
-};
+    accscalar_t divide_factor;
+    if (divisor_override) {
+      divide_factor = static_cast<accscalar_t>(divisor_override);
+    } else {
+      if (count_include_pad) {
+        divide_factor = static_cast<accscalar_t>(pool_size);
+      } else {
+        divide_factor = static_cast<accscalar_t>(
+            (tend - tstart) * (hend - hstart) * (wend - wstart));
+      }
+    }
+
+    index_t ti, hi, wi;
+    for (ti = tstart; ti < tend; ++ti) {
+      for (hi = hstart; hi < hend; ++hi) {
+        for (wi = wstart; wi < wend; ++wi) {
+          const scalar_t val = input[slice][ti][hi][wi];
+          sum += val;
+        }
+      }
+    }
+
+    out_data[slice][oFrame][oRow][oCol] =
+        static_cast<scalar_t>(sum / divide_factor);
+  }
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
 void avg_pool3d_out_template(
@@ -156,7 +125,29 @@ void avg_pool3d_out_template(
     const int divisor_override) {
   auto input_acc = work_input.packed_accessor64<const scalar_t, 4>();
   auto output_acc = work_output.packed_accessor64<scalar_t, 4>();
-  AvgPool3dKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
+
+  index_t width_group_size = 32;
+  index_t height_group_size =
+      syclMaxWorkGroupSize<
+          avg_pool3d_kernel_impl<scalar_t, accscalar_t, index_t>>() /
+      width_group_size;
+  index_t width_group_range =
+      ceil_div<index_t>(work_output.size(-1), width_group_size);
+  index_t height_group_range =
+      ceil_div<index_t>(work_output.size(-2), height_group_size);
+
+  index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<
+      avg_pool3d_kernel_impl<scalar_t, accscalar_t, index_t>>(
+      sycl::range<3>{
+          size_t(z_group_range),
+          size_t(height_group_range * height_group_size),
+          size_t(width_group_range * width_group_size),
+      },
+      sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
+      queue,
+      0,
       kT,
       kH,
       kW,
@@ -171,27 +162,6 @@ void avg_pool3d_out_template(
       divisor_override,
       input_acc,
       output_acc);
-
-  // width size is fixed size = 32, height dim equals =
-  // syclMaxWorkGroupSize(kfn) / width_size
-  index_t width_group_size = 32;
-  index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
-  index_t width_group_range =
-      ceil_div<index_t>(work_output.size(-1), width_group_size);
-  index_t height_group_range =
-      ceil_div<index_t>(work_output.size(-2), height_group_size);
-
-  index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(
-      sycl::range<3>{
-          size_t(z_group_range),
-          size_t(height_group_range * height_group_size),
-          size_t(width_group_range * width_group_size),
-      },
-      sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
-      queue,
-      kfn);
 }
 
 void avg_pool3d_kernel(
@@ -306,68 +276,50 @@ void avg_pool3d_kernel(
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dBackwardStride1KernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    index_t iCol = item.get_global_id()[2];
-    index_t iRow = item.get_global_id()[1];
-    index_t iFrame = (item.get_group(0) + offsetZ_) % grad_input_.size(1);
-    index_t slice = (item.get_group(0) + offsetZ_) / grad_input_.size(1);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void avg_pool3d_backward_stride1_kernel_impl(
+    int kT,
+    int kH,
+    int kW,
+    accscalar_t normFactor,
+    int offsetZ,
+    PackedTensorAccessor64<const scalar_t, 4> grad_output,
+    PackedTensorAccessor64<scalar_t, 4> grad_input) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  index_t iCol = item.get_global_id()[2];
+  index_t iRow = item.get_global_id()[1];
+  index_t iFrame = (item.get_group(0) + offsetZ) % grad_input.size(1);
+  index_t slice = (item.get_group(0) + offsetZ) / grad_input.size(1);
 
-    auto grad_input_data = grad_input_;
-    if (iRow < grad_input_.size(2) && iCol < grad_input_.size(3)) {
-      accscalar_t sum = 0.0;
-      const scalar_t* gOut =
-          &grad_output_[slice][sycl::max(index_t(0), iFrame - kT_ + 1)]
-                       [sycl::max(index_t(0), iRow - kH_ + 1)]
-                       [sycl::max(index_t(0), iCol - kW_ + 1)];
-      index_t frameOffset = 0;
-      for (index_t oFrame = sycl::max(index_t(0), iFrame - kT_ + 1); oFrame <
-           sycl::min(iFrame + 1, static_cast<index_t>(grad_output_.size(1)));
-           ++oFrame) {
-        index_t rowOffset = frameOffset;
-        for (index_t oRow = sycl::max(index_t(0), iRow - kH_ + 1); oRow <
-             sycl::min(iRow + 1, static_cast<index_t>(grad_output_.size(2)));
-             ++oRow) {
-          index_t colOffset = rowOffset;
-          for (index_t oCol = sycl::max(index_t(0), iCol - kW_ + 1); oCol <
-               sycl::min(iCol + 1, static_cast<index_t>(grad_output_.size(3)));
-               ++oCol) {
-            sum += gOut[colOffset];
-            ++colOffset;
-          }
-          rowOffset += grad_output_.size(3);
+  auto grad_input_data = grad_input;
+  if (iRow < grad_input.size(2) && iCol < grad_input.size(3)) {
+    accscalar_t sum = 0.0;
+    const scalar_t* gOut =
+        &grad_output[slice][sycl::max(index_t(0), iFrame - kT + 1)][sycl::max(
+            index_t(0), iRow - kH + 1)][sycl::max(index_t(0), iCol - kW + 1)];
+    index_t frameOffset = 0;
+    for (index_t oFrame = sycl::max(index_t(0), iFrame - kT + 1); oFrame <
+         sycl::min(iFrame + 1, static_cast<index_t>(grad_output.size(1)));
+         ++oFrame) {
+      index_t rowOffset = frameOffset;
+      for (index_t oRow = sycl::max(index_t(0), iRow - kH + 1); oRow <
+           sycl::min(iRow + 1, static_cast<index_t>(grad_output.size(2)));
+           ++oRow) {
+        index_t colOffset = rowOffset;
+        for (index_t oCol = sycl::max(index_t(0), iCol - kW + 1); oCol <
+             sycl::min(iCol + 1, static_cast<index_t>(grad_output.size(3)));
+             ++oCol) {
+          sum += gOut[colOffset];
+          ++colOffset;
         }
-        frameOffset += grad_output_.size(2) * grad_output_.size(3);
+        rowOffset += grad_output.size(3);
       }
-      grad_input_data[slice][iFrame][iRow][iCol] =
-          static_cast<scalar_t>(sum * normFactor_);
+      frameOffset += grad_output.size(2) * grad_output.size(3);
     }
+    grad_input_data[slice][iFrame][iRow][iCol] =
+        static_cast<scalar_t>(sum * normFactor);
   }
-  AvgPool3dBackwardStride1KernelFunctor(
-      int kT,
-      int kH,
-      int kW,
-      accscalar_t normFactor,
-      int offsetZ,
-      PackedTensorAccessor64<const scalar_t, 4> grad_output,
-      PackedTensorAccessor64<scalar_t, 4> grad_input)
-      : kT_(kT),
-        kH_(kH),
-        kW_(kW),
-        normFactor_(normFactor),
-        offsetZ_(offsetZ),
-        grad_output_(grad_output),
-        grad_input_(grad_input) {}
-
- private:
-  int kT_;
-  int kH_;
-  int kW_;
-  accscalar_t normFactor_;
-  int offsetZ_;
-  PackedTensorAccessor64<const scalar_t, 4> grad_output_;
-  PackedTensorAccessor64<scalar_t, 4> grad_input_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
 void avg_pool3d_backward_stride1_template(
@@ -381,12 +333,14 @@ void avg_pool3d_backward_stride1_template(
     int totalZ) {
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
-  AvgPool3dBackwardStride1KernelFunctor<scalar_t, accscalar_t, index_t> kfn(
-      kT, kH, kW, normFactor, offsetZ, grad_output_acc, grad_input_acc);
-  // width size is fixed size = 32, height dim equals =
-  // syclMaxWorkGroupSize(kfn) / width_size
+
   index_t width_group_size = 32;
-  index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
+  index_t height_group_size =
+      syclMaxWorkGroupSize<avg_pool3d_backward_stride1_kernel_impl<
+          scalar_t,
+          accscalar_t,
+          index_t>>() /
+      width_group_size;
   index_t width_group_range =
       ceil_div<index_t>(grad_input.size(-1), width_group_size);
   index_t height_group_range =
@@ -395,7 +349,10 @@ void avg_pool3d_backward_stride1_template(
   index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
 
   auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(
+  sycl_kernel_submit<avg_pool3d_backward_stride1_kernel_impl<
+      scalar_t,
+      accscalar_t,
+      index_t>>(
       sycl::range<3>{
           size_t(z_group_range),
           size_t(height_group_range * height_group_size),
@@ -403,111 +360,87 @@ void avg_pool3d_backward_stride1_template(
       },
       sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
       queue,
-      kfn);
+      0,
+      kT,
+      kH,
+      kW,
+      normFactor,
+      offsetZ,
+      grad_output_acc,
+      grad_input_acc);
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dBackwardAtomicKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    index_t oCol = item.get_global_id()[2];
-    index_t oRow = item.get_global_id()[1];
-    index_t oFrame = (item.get_group(0) + offsetZ_) % grad_output_.size(1);
-    index_t slice = (item.get_group(0) + offsetZ_) / grad_output_.size(1);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void avg_pool3d_backward_atomic_kernel_impl(
+    int kT,
+    int kH,
+    int kW,
+    int dT,
+    int dH,
+    int dW,
+    int padT,
+    int padH,
+    int padW,
+    bool count_include_pad,
+    int offsetZ,
+    int divisor_override,
+    PackedTensorAccessor64<const scalar_t, 4> grad_output,
+    PackedTensorAccessor64<scalar_t, 4> grad_input) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  index_t oCol = item.get_global_id()[2];
+  index_t oRow = item.get_global_id()[1];
+  index_t oFrame = (item.get_group(0) + offsetZ) % grad_output.size(1);
+  index_t slice = (item.get_group(0) + offsetZ) / grad_output.size(1);
 
-    auto grad_input_data = grad_input_;
-    if (oRow < grad_output_.size(2) && oCol < grad_output_.size(3)) {
-      index_t tstart = oFrame * dT_ - padT_;
-      index_t hstart = oRow * dH_ - padH_;
-      index_t wstart = oCol * dW_ - padW_;
-      index_t tend = sycl::min(
-          tstart + kT_, static_cast<index_t>(grad_input_.size(1) + padT_));
-      index_t hend = sycl::min(
-          hstart + kH_, static_cast<index_t>(grad_input_.size(2) + padH_));
-      index_t wend = sycl::min(
-          wstart + kW_, static_cast<index_t>(grad_input_.size(3) + padW_));
-      index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
-      tstart = sycl::max(tstart, index_t(0));
-      hstart = sycl::max(hstart, index_t(0));
-      wstart = sycl::max(wstart, index_t(0));
-      tend = sycl::min(tend, static_cast<index_t>(grad_input_.size(1)));
-      hend = sycl::min(hend, static_cast<index_t>(grad_input_.size(2)));
-      wend = sycl::min(wend, static_cast<index_t>(grad_input_.size(3)));
+  auto grad_input_data = grad_input;
+  if (oRow < grad_output.size(2) && oCol < grad_output.size(3)) {
+    index_t tstart = oFrame * dT - padT;
+    index_t hstart = oRow * dH - padH;
+    index_t wstart = oCol * dW - padW;
+    index_t tend =
+        sycl::min(tstart + kT, static_cast<index_t>(grad_input.size(1) + padT));
+    index_t hend =
+        sycl::min(hstart + kH, static_cast<index_t>(grad_input.size(2) + padH));
+    index_t wend =
+        sycl::min(wstart + kW, static_cast<index_t>(grad_input.size(3) + padW));
+    index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
+    tstart = sycl::max(tstart, index_t(0));
+    hstart = sycl::max(hstart, index_t(0));
+    wstart = sycl::max(wstart, index_t(0));
+    tend = sycl::min(tend, static_cast<index_t>(grad_input.size(1)));
+    hend = sycl::min(hend, static_cast<index_t>(grad_input.size(2)));
+    wend = sycl::min(wend, static_cast<index_t>(grad_input.size(3)));
 
-      accscalar_t divide_factor;
-      if (divisor_override_) {
-        divide_factor = static_cast<accscalar_t>(divisor_override_);
+    accscalar_t divide_factor;
+    if (divisor_override) {
+      divide_factor = static_cast<accscalar_t>(divisor_override);
+    } else {
+      if (count_include_pad) {
+        divide_factor = static_cast<accscalar_t>(pool_size);
       } else {
-        if (count_include_pad_) {
-          divide_factor = static_cast<accscalar_t>(pool_size);
-        } else {
-          divide_factor = static_cast<accscalar_t>(
-              (tend - tstart) * (hend - hstart) * (wend - wstart));
-        }
+        divide_factor = static_cast<accscalar_t>(
+            (tend - tstart) * (hend - hstart) * (wend - wstart));
       }
+    }
 
-      scalar_t val = static_cast<scalar_t>(
-          static_cast<accscalar_t>(grad_output_[slice][oFrame][oRow][oCol]) /
-          divide_factor);
+    scalar_t val = static_cast<scalar_t>(
+        static_cast<accscalar_t>(grad_output[slice][oFrame][oRow][oCol]) /
+        divide_factor);
 
-      for (index_t iFrame = tstart; iFrame < tend; ++iFrame) {
-        for (index_t iRow = hstart; iRow < hend; ++iRow) {
-          for (index_t iCol = wstart; iCol < wend; ++iCol) {
-            const index_t index = slice * grad_input_.stride(0) +
-                iFrame * grad_input_.stride(1) + iRow * grad_input_.stride(2) +
-                iCol * grad_input_.stride(3);
-            atomicAdd(
-                (sycl_global_ptr<scalar_t>)&grad_input_data.data()[index], val);
-          }
+    for (index_t iFrame = tstart; iFrame < tend; ++iFrame) {
+      for (index_t iRow = hstart; iRow < hend; ++iRow) {
+        for (index_t iCol = wstart; iCol < wend; ++iCol) {
+          const index_t index = slice * grad_input.stride(0) +
+              iFrame * grad_input.stride(1) + iRow * grad_input.stride(2) +
+              iCol * grad_input.stride(3);
+          atomicAdd(
+              (sycl_global_ptr<scalar_t>)&grad_input_data.data()[index], val);
         }
       }
     }
   }
-  AvgPool3dBackwardAtomicKernelFunctor(
-      int kT,
-      int kH,
-      int kW,
-      int dT,
-      int dH,
-      int dW,
-      int padT,
-      int padH,
-      int padW,
-      bool count_include_pad,
-      int offsetZ,
-      int divisor_override,
-      PackedTensorAccessor64<const scalar_t, 4> grad_output,
-      PackedTensorAccessor64<scalar_t, 4> grad_input)
-      : kT_(kT),
-        kH_(kH),
-        kW_(kW),
-        dT_(dT),
-        dH_(dH),
-        dW_(dW),
-        padT_(padT),
-        padH_(padH),
-        padW_(padW),
-        count_include_pad_(count_include_pad),
-        offsetZ_(offsetZ),
-        divisor_override_(divisor_override),
-        grad_output_(grad_output),
-        grad_input_(grad_input) {}
-
- private:
-  int kT_;
-  int kH_;
-  int kW_;
-  int dT_;
-  int dH_;
-  int dW_;
-  int padT_;
-  int padH_;
-  int padW_;
-  bool count_include_pad_;
-  int offsetZ_;
-  int divisor_override_;
-  PackedTensorAccessor64<const scalar_t, 4> grad_output_;
-  PackedTensorAccessor64<scalar_t, 4> grad_input_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
 void avg_pool3d_backward_atomic_template(
@@ -529,7 +462,33 @@ void avg_pool3d_backward_atomic_template(
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
 
-  AvgPool3dBackwardAtomicKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
+  index_t width_group_size = 32;
+  index_t height_group_size =
+      syclMaxWorkGroupSize<avg_pool3d_backward_atomic_kernel_impl<
+          scalar_t,
+          accscalar_t,
+          index_t>>() /
+      width_group_size;
+  index_t width_group_range =
+      ceil_div<index_t>(grad_output.size(-1), width_group_size);
+  index_t height_group_range =
+      ceil_div<index_t>(grad_output.size(-2), height_group_size);
+
+  index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<avg_pool3d_backward_atomic_kernel_impl<
+      scalar_t,
+      accscalar_t,
+      index_t>>(
+      sycl::range<3>{
+          size_t(z_group_range),
+          size_t(height_group_range * height_group_size),
+          size_t(width_group_range * width_group_size),
+      },
+      sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
+      queue,
+      0,
       kT,
       kH,
       kW,
@@ -544,128 +503,75 @@ void avg_pool3d_backward_atomic_template(
       divisor_override,
       grad_output_acc,
       grad_input_acc);
-
-  // width size is fixed size = 32, height dim equals =
-  // syclMaxWorkGroupSize(kfn) / width_size
-  index_t width_group_size = 32;
-  index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
-  index_t width_group_range =
-      ceil_div<index_t>(grad_output.size(-1), width_group_size);
-  index_t height_group_range =
-      ceil_div<index_t>(grad_output.size(-2), height_group_size);
-
-  index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
-
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(
-      sycl::range<3>{
-          size_t(z_group_range),
-          size_t(height_group_range * height_group_size),
-          size_t(width_group_range * width_group_size),
-      },
-      sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
-      queue,
-      kfn);
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    index_t oCol = item.get_global_id()[2];
-    index_t oRow = item.get_global_id()[1];
-    index_t oFrame = (item.get_group(0) + offsetZ_) % grad_output_.size(1);
-    index_t slice = (item.get_group(0) + offsetZ_) / grad_output_.size(1);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void avg_pool3d_backward_kernel_impl(
+    int kT,
+    int kH,
+    int kW,
+    int dT,
+    int dH,
+    int dW,
+    int padT,
+    int padH,
+    int padW,
+    bool count_include_pad,
+    int offsetZ,
+    int divisor_override,
+    PackedTensorAccessor64<const scalar_t, 4> grad_output,
+    PackedTensorAccessor64<scalar_t, 4> grad_input) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  index_t oCol = item.get_global_id()[2];
+  index_t oRow = item.get_global_id()[1];
+  index_t oFrame = (item.get_group(0) + offsetZ) % grad_output.size(1);
+  index_t slice = (item.get_group(0) + offsetZ) / grad_output.size(1);
 
-    auto grad_input_data = grad_input_;
-    if (oRow < grad_output_.size(2) && oCol < grad_output_.size(3)) {
-      index_t tstart = oFrame * dT_ - padT_;
-      index_t hstart = oRow * dH_ - padH_;
-      index_t wstart = oCol * dW_ - padW_;
-      index_t tend = sycl::min(
-          tstart + kT_, static_cast<index_t>(grad_input_.size(1) + padT_));
-      index_t hend = sycl::min(
-          hstart + kH_, static_cast<index_t>(grad_input_.size(2) + padH_));
-      index_t wend = sycl::min(
-          wstart + kW_, static_cast<index_t>(grad_input_.size(3) + padW_));
-      index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
-      tstart = sycl::max(tstart, index_t(0));
-      hstart = sycl::max(hstart, index_t(0));
-      wstart = sycl::max(wstart, index_t(0));
-      tend = sycl::min(tend, static_cast<index_t>(grad_input_.size(1)));
-      hend = sycl::min(hend, static_cast<index_t>(grad_input_.size(2)));
-      wend = sycl::min(wend, static_cast<index_t>(grad_input_.size(3)));
+  auto grad_input_data = grad_input;
+  if (oRow < grad_output.size(2) && oCol < grad_output.size(3)) {
+    index_t tstart = oFrame * dT - padT;
+    index_t hstart = oRow * dH - padH;
+    index_t wstart = oCol * dW - padW;
+    index_t tend =
+        sycl::min(tstart + kT, static_cast<index_t>(grad_input.size(1) + padT));
+    index_t hend =
+        sycl::min(hstart + kH, static_cast<index_t>(grad_input.size(2) + padH));
+    index_t wend =
+        sycl::min(wstart + kW, static_cast<index_t>(grad_input.size(3) + padW));
+    index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
+    tstart = sycl::max(tstart, index_t(0));
+    hstart = sycl::max(hstart, index_t(0));
+    wstart = sycl::max(wstart, index_t(0));
+    tend = sycl::min(tend, static_cast<index_t>(grad_input.size(1)));
+    hend = sycl::min(hend, static_cast<index_t>(grad_input.size(2)));
+    wend = sycl::min(wend, static_cast<index_t>(grad_input.size(3)));
 
-      accscalar_t divide_factor;
-      if (divisor_override_) {
-        divide_factor = static_cast<accscalar_t>(divisor_override_);
+    accscalar_t divide_factor;
+    if (divisor_override) {
+      divide_factor = static_cast<accscalar_t>(divisor_override);
+    } else {
+      if (count_include_pad) {
+        divide_factor = static_cast<accscalar_t>(pool_size);
       } else {
-        if (count_include_pad_) {
-          divide_factor = static_cast<accscalar_t>(pool_size);
-        } else {
-          divide_factor = static_cast<accscalar_t>(
-              (tend - tstart) * (hend - hstart) * (wend - wstart));
-        }
+        divide_factor = static_cast<accscalar_t>(
+            (tend - tstart) * (hend - hstart) * (wend - wstart));
       }
+    }
 
-      scalar_t val = static_cast<scalar_t>(
-          static_cast<accscalar_t>(grad_output_[slice][oFrame][oRow][oCol]) /
-          divide_factor);
+    scalar_t val = static_cast<scalar_t>(
+        static_cast<accscalar_t>(grad_output[slice][oFrame][oRow][oCol]) /
+        divide_factor);
 
-      for (index_t iFrame = tstart; iFrame < tend; ++iFrame) {
-        for (index_t iRow = hstart; iRow < hend; ++iRow) {
-          for (index_t iCol = wstart; iCol < wend; ++iCol) {
-            grad_input_data[slice][iFrame][iRow][iCol] = val;
-          }
+    for (index_t iFrame = tstart; iFrame < tend; ++iFrame) {
+      for (index_t iRow = hstart; iRow < hend; ++iRow) {
+        for (index_t iCol = wstart; iCol < wend; ++iCol) {
+          grad_input_data[slice][iFrame][iRow][iCol] = val;
         }
       }
     }
   }
-  AvgPool3dBackwardKernelFunctor(
-      int kT,
-      int kH,
-      int kW,
-      int dT,
-      int dH,
-      int dW,
-      int padT,
-      int padH,
-      int padW,
-      bool count_include_pad,
-      int offsetZ,
-      int divisor_override,
-      PackedTensorAccessor64<const scalar_t, 4> grad_output,
-      PackedTensorAccessor64<scalar_t, 4> grad_input)
-      : kT_(kT),
-        kH_(kH),
-        kW_(kW),
-        dT_(dT),
-        dH_(dH),
-        dW_(dW),
-        padT_(padT),
-        padH_(padH),
-        padW_(padW),
-        count_include_pad_(count_include_pad),
-        offsetZ_(offsetZ),
-        divisor_override_(divisor_override),
-        grad_output_(grad_output),
-        grad_input_(grad_input) {}
-
- private:
-  int kT_;
-  int kH_;
-  int kW_;
-  int dT_;
-  int dH_;
-  int dW_;
-  int padT_;
-  int padH_;
-  int padW_;
-  bool count_include_pad_;
-  int offsetZ_;
-  int divisor_override_;
-  PackedTensorAccessor64<const scalar_t, 4> grad_output_;
-  PackedTensorAccessor64<scalar_t, 4> grad_input_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
 void avg_pool3d_backward_template(
@@ -687,7 +593,31 @@ void avg_pool3d_backward_template(
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
 
-  AvgPool3dBackwardKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
+  index_t width_group_size = 32;
+  index_t height_group_size =
+      syclMaxWorkGroupSize<avg_pool3d_backward_kernel_impl<
+          scalar_t,
+          accscalar_t,
+          index_t>>() /
+      width_group_size;
+  index_t width_group_range =
+      ceil_div<index_t>(grad_output.size(-1), width_group_size);
+  index_t height_group_range =
+      ceil_div<index_t>(grad_output.size(-2), height_group_size);
+
+  index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<
+      avg_pool3d_backward_kernel_impl<scalar_t, accscalar_t, index_t>>(
+      sycl::range<3>{
+          size_t(z_group_range),
+          size_t(height_group_range * height_group_size),
+          size_t(width_group_range * width_group_size),
+      },
+      sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
+      queue,
+      0,
       kT,
       kH,
       kW,
@@ -702,28 +632,6 @@ void avg_pool3d_backward_template(
       divisor_override,
       grad_output_acc,
       grad_input_acc);
-
-  // width size is fixed size = 32, height dim equals =
-  // syclMaxWorkGroupSize(kfn) / width_size
-  index_t width_group_size = 32;
-  index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
-  index_t width_group_range =
-      ceil_div<index_t>(grad_output.size(-1), width_group_size);
-  index_t height_group_range =
-      ceil_div<index_t>(grad_output.size(-2), height_group_size);
-
-  index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
-
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(
-      sycl::range<3>{
-          size_t(z_group_range),
-          size_t(height_group_range * height_group_size),
-          size_t(width_group_range * width_group_size),
-      },
-      sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
-      queue,
-      kfn);
 }
 
 void avg_pool3d_backward_kernel(
