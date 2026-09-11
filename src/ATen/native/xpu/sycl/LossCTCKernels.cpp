@@ -55,222 +55,182 @@ static inline int64_t get_target_prime(
 }
 
 template <typename scalar_t, typename target_t>
-struct CTCLossLogAlphaKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    constexpr scalar_t neginf = -INFINITY;
-    using opmath_t = at::opmath_type<scalar_t>;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void ctc_loss_log_alpha_kernel(
+    scalar_t* RESTRICT log_alpha_data,
+    const scalar_t* log_probs_data,
+    const int64_t* RESTRICT input_lengths,
+    int64_t max_input_length,
+    const target_t* RESTRICT targets_data,
+    const int64_t* RESTRICT target_lengths,
+    int64_t max_target_length,
+    scalar_t* RESTRICT neg_log_likelihood_data,
+    int64_t lp_input_stride,
+    int64_t lp_batch_stride,
+    int64_t lp_char_stride,
+    int64_t la_batch_stride,
+    int64_t la_input_stride,
+    int64_t la_target_stride,
+    const int64_t* RESTRICT tg_batch_offsets,
+    int64_t tg_target_stride,
+    int64_t batch_size,
+    int64_t BLANK) {
+  constexpr scalar_t neginf = -INFINITY;
+  using opmath_t = at::opmath_type<scalar_t>;
+  auto item = syclext::this_work_item::get_nd_item<2>();
 
-    auto tid_x = item.get_local_id(1);
-    auto tid_y = item.get_local_id(0);
+  auto tid_x = item.get_local_id(1);
+  auto tid_y = item.get_local_id(0);
 
-    // bookkeeping
-    int64_t b = tid_y + item.get_group(0) * item.get_local_range(0);
-    int64_t input_length = input_lengths_[b];
-    int64_t target_length = target_lengths_[b];
-    int64_t lp_batch_offset = b * lp_batch_stride_;
-    int64_t la_batch_offset = b * la_batch_stride_;
-    int64_t tg_batch_offset = tg_batch_offsets_[b];
+  // bookkeeping
+  int64_t b = tid_y + item.get_group(0) * item.get_local_range(0);
+  int64_t input_length = input_lengths[b];
+  int64_t target_length = target_lengths[b];
+  int64_t lp_batch_offset = b * lp_batch_stride;
+  int64_t la_batch_offset = b * la_batch_stride;
+  int64_t tg_batch_offset = tg_batch_offsets[b];
 
-    bool valid = true;
-    if (b >= batch_size_)
-      valid = false;
+  bool valid = true;
+  if (b >= batch_size)
+    valid = false;
 
-    // Waiting for support for activeThreadsOnlyBarrier
-    if (input_length == 0) {
-      if (tid_x == 0) {
-        scalar_t log_likelihood = target_length == 0 ? 0 : neginf;
-        neg_log_likelihood_data_[b] = -log_likelihood;
-      }
-      valid = false;
+  // Waiting for support for activeThreadsOnlyBarrier
+  if (input_length == 0) {
+    if (tid_x == 0) {
+      scalar_t log_likelihood = target_length == 0 ? 0 : neginf;
+      neg_log_likelihood_data[b] = -log_likelihood;
     }
+    valid = false;
+  }
 
-    if (valid) {
-      // first row (t=0), the three equations for alpha_1 above eq (6)
-      for (int64_t block_s = 0; block_s < 2 * max_target_length_ + 1;
-           block_s += item.get_local_range(1)) {
-        int64_t s = tid_x + block_s;
-        scalar_t la;
-        switch (s) {
-          case 0:
-            la = log_probs_data_[lp_batch_offset + lp_char_stride_ * BLANK_];
-            break;
-          case 1:
-            la = target_length == 0 ? neginf
-                                    : log_probs_data_
-                                          [lp_batch_offset +
-                                           lp_char_stride_ *
-                                               get_target_prime(
-                                                   targets_data_,
-                                                   tg_batch_offset,
-                                                   tg_target_stride_,
-                                                   1,
-                                                   BLANK_)];
-            break;
-          default:
-            la = neginf;
-        }
-        if (s < 2 * max_target_length_ + 1)
-          log_alpha_data_
-              [la_batch_offset +
-               /* la_input_stride_ * 0 */ +la_target_stride_ * s] = la;
-      }
-    }
-
-    for (int64_t block_s = 0; block_s < 2 * max_target_length_ + 1;
+  if (valid) {
+    // first row (t=0), the three equations for alpha_1 above eq (6)
+    for (int64_t block_s = 0; block_s < 2 * max_target_length + 1;
          block_s += item.get_local_range(1)) {
       int64_t s = tid_x + block_s;
-
-      // These two only depend on s, so we can cache them.
-      int64_t current_char; // l_s in eq (6)
-      bool have_three; // flag which of the two cases in eq (6) we have
-      if (valid && s < 2 * target_length + 1 && target_length > 0) {
-        current_char = get_target_prime(
-            targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
-        have_three =
-            ((s > 1) &&
-             (get_target_prime(
-                  targets_data_,
-                  tg_batch_offset,
-                  tg_target_stride_,
-                  s - 2,
-                  BLANK_) != current_char));
-      } else {
-        current_char = BLANK_;
-        have_three = false;
+      scalar_t la;
+      switch (s) {
+        case 0:
+          la = log_probs_data[lp_batch_offset + lp_char_stride * BLANK];
+          break;
+        case 1:
+          la = target_length == 0 ? neginf
+                                  : log_probs_data
+                                        [lp_batch_offset +
+                                         lp_char_stride *
+                                             get_target_prime(
+                                                 targets_data,
+                                                 tg_batch_offset,
+                                                 tg_target_stride,
+                                                 1,
+                                                 BLANK)];
+          break;
+        default:
+          la = neginf;
       }
-      for (int64_t t = 1; t < max_input_length_; t++) {
-        sycl::group_barrier(item.get_group());
-        if (valid && (t < input_length) && (s < 2 * target_length + 1)) {
-          // only for valid t, s. This is equation (6) and (7), la1, la2, la3
-          // are the three summands, lamax is the maximum for the logsumexp
-          // trick.
-          scalar_t la1 = log_alpha_data_
-              [la_batch_offset + la_input_stride_ * (t - 1) +
-               la_target_stride_ * s];
-          scalar_t lamax = la1;
-          scalar_t la2, la3;
-          if (s > 0) {
-            la2 = log_alpha_data_
-                [la_batch_offset + la_input_stride_ * (t - 1) +
-                 la_target_stride_ * (s - 1)];
-            if (la2 > lamax)
-              lamax = la2;
-          } else {
-            la2 = neginf;
-          }
-          if (have_three) {
-            la3 = log_alpha_data_
-                [la_batch_offset + la_input_stride_ * (t - 1) +
-                 la_target_stride_ * (s - 2)];
-            if (la3 > lamax)
-              lamax = la3;
-          } else {
-            la3 = neginf;
-          }
-          if (lamax == neginf) // when all are neginf. (then the whole thing is
-                               // neginf, but we can pretend)
-            lamax = 0;
-
-          opmath_t exp_la1 = sycl::exp(static_cast<opmath_t>(la1 - lamax));
-          opmath_t exp_la2 = sycl::exp(static_cast<opmath_t>(la2 - lamax));
-          opmath_t exp_la3 = sycl::exp(static_cast<opmath_t>(la3 - lamax));
-          log_alpha_data_
-              [la_batch_offset + la_input_stride_ * t +
-               la_target_stride_ * s] = sycl::log(exp_la1 + exp_la2 + exp_la3) +
-              lamax +
-              log_probs_data_[lp_batch_offset + t * lp_input_stride_ +
-                              lp_char_stride_ * current_char];
-        } else {
-          // otherwise we just set to neginf
-          if (valid && s < 2 * max_target_length_ + 1)
-            log_alpha_data_
-                [la_batch_offset + la_input_stride_ * t +
-                 la_target_stride_ * s] = neginf;
-        }
-      }
-    }
-    sycl::group_barrier(item.get_group());
-
-    if (!valid)
-      return;
-
-    // compute the loss (eq (8))
-    if (tid_x == 0) {
-      scalar_t l1 = log_alpha_data_
-          [la_batch_offset + la_input_stride_ * (input_length - 1) +
-           la_target_stride_ * (target_length * 2)];
-      scalar_t l2 = target_length > 0
-          ? log_alpha_data_
-                [la_batch_offset + la_input_stride_ * (input_length - 1) +
-                 la_target_stride_ * (target_length * 2 - 1)]
-          : neginf;
-      scalar_t m = ((l1 > l2) ? l1 : l2);
-      m = ((m == neginf) ? 0 : m);
-      opmath_t exp_l1 = sycl::exp(static_cast<opmath_t>(l1 - m));
-      opmath_t exp_l2 = sycl::exp(static_cast<opmath_t>(l2 - m));
-      scalar_t log_likelihood = sycl::log(exp_l1 + exp_l2) + m;
-      neg_log_likelihood_data_[b] = -log_likelihood;
+      if (s < 2 * max_target_length + 1)
+        log_alpha_data
+            [la_batch_offset +
+             /* la_input_stride * 0 */ +la_target_stride * s] = la;
     }
   }
 
-  CTCLossLogAlphaKernelFunctor(
-      scalar_t* RESTRICT log_alpha_data,
-      const scalar_t* log_probs_data,
-      const int64_t* RESTRICT input_lengths,
-      int64_t max_input_length,
-      const target_t* RESTRICT targets_data,
-      const int64_t* RESTRICT target_lengths,
-      int64_t max_target_length,
-      scalar_t* RESTRICT neg_log_likelihood_data,
-      int64_t lp_input_stride,
-      int64_t lp_batch_stride,
-      int64_t lp_char_stride,
-      int64_t la_batch_stride,
-      int64_t la_input_stride,
-      int64_t la_target_stride,
-      const int64_t* RESTRICT tg_batch_offsets,
-      int64_t tg_target_stride,
-      int64_t batch_size,
-      int64_t BLANK)
-      : log_alpha_data_(log_alpha_data),
-        log_probs_data_(log_probs_data),
-        input_lengths_(input_lengths),
-        max_input_length_(max_input_length),
-        targets_data_(targets_data),
-        target_lengths_(target_lengths),
-        max_target_length_(max_target_length),
-        neg_log_likelihood_data_(neg_log_likelihood_data),
-        lp_input_stride_(lp_input_stride),
-        lp_batch_stride_(lp_batch_stride),
-        lp_char_stride_(lp_char_stride),
-        la_batch_stride_(la_batch_stride),
-        la_input_stride_(la_input_stride),
-        la_target_stride_(la_target_stride),
-        tg_batch_offsets_(tg_batch_offsets),
-        tg_target_stride_(tg_target_stride),
-        batch_size_(batch_size),
-        BLANK_(BLANK) {}
+  for (int64_t block_s = 0; block_s < 2 * max_target_length + 1;
+       block_s += item.get_local_range(1)) {
+    int64_t s = tid_x + block_s;
 
- private:
-  scalar_t* RESTRICT log_alpha_data_;
-  const scalar_t* log_probs_data_;
-  const int64_t* RESTRICT input_lengths_;
-  int64_t max_input_length_;
-  const target_t* RESTRICT targets_data_;
-  const int64_t* RESTRICT target_lengths_;
-  int64_t max_target_length_;
-  scalar_t* RESTRICT neg_log_likelihood_data_;
-  int64_t lp_input_stride_;
-  int64_t lp_batch_stride_;
-  int64_t lp_char_stride_;
-  int64_t la_batch_stride_;
-  int64_t la_input_stride_;
-  int64_t la_target_stride_;
-  const int64_t* RESTRICT tg_batch_offsets_;
-  int64_t tg_target_stride_;
-  int64_t batch_size_;
-  int64_t BLANK_;
-};
+    // These two only depend on s, so we can cache them.
+    int64_t current_char; // l_s in eq (6)
+    bool have_three; // flag which of the two cases in eq (6) we have
+    if (valid && s < 2 * target_length + 1 && target_length > 0) {
+      current_char = get_target_prime(
+          targets_data, tg_batch_offset, tg_target_stride, s, BLANK);
+      have_three =
+          ((s > 1) &&
+           (get_target_prime(
+                targets_data,
+                tg_batch_offset,
+                tg_target_stride,
+                s - 2,
+                BLANK) != current_char));
+    } else {
+      current_char = BLANK;
+      have_three = false;
+    }
+    for (int64_t t = 1; t < max_input_length; t++) {
+      sycl::group_barrier(item.get_group());
+      if (valid && (t < input_length) && (s < 2 * target_length + 1)) {
+        // only for valid t, s. This is equation (6) and (7), la1, la2, la3
+        // are the three summands, lamax is the maximum for the logsumexp
+        // trick.
+        scalar_t la1 = log_alpha_data
+            [la_batch_offset + la_input_stride * (t - 1) +
+             la_target_stride * s];
+        scalar_t lamax = la1;
+        scalar_t la2, la3;
+        if (s > 0) {
+          la2 = log_alpha_data
+              [la_batch_offset + la_input_stride * (t - 1) +
+               la_target_stride * (s - 1)];
+          if (la2 > lamax)
+            lamax = la2;
+        } else {
+          la2 = neginf;
+        }
+        if (have_three) {
+          la3 = log_alpha_data
+              [la_batch_offset + la_input_stride * (t - 1) +
+               la_target_stride * (s - 2)];
+          if (la3 > lamax)
+            lamax = la3;
+        } else {
+          la3 = neginf;
+        }
+        if (lamax == neginf) // when all are neginf. (then the whole thing is
+                             // neginf, but we can pretend)
+          lamax = 0;
+
+        opmath_t exp_la1 = sycl::exp(static_cast<opmath_t>(la1 - lamax));
+        opmath_t exp_la2 = sycl::exp(static_cast<opmath_t>(la2 - lamax));
+        opmath_t exp_la3 = sycl::exp(static_cast<opmath_t>(la3 - lamax));
+        log_alpha_data
+            [la_batch_offset + la_input_stride * t +
+             la_target_stride * s] = sycl::log(exp_la1 + exp_la2 + exp_la3) +
+            lamax +
+            log_probs_data[lp_batch_offset + t * lp_input_stride +
+                           lp_char_stride * current_char];
+      } else {
+        // otherwise we just set to neginf
+        if (valid && s < 2 * max_target_length + 1)
+          log_alpha_data
+              [la_batch_offset + la_input_stride * t + la_target_stride * s] =
+                  neginf;
+      }
+    }
+  }
+  sycl::group_barrier(item.get_group());
+
+  if (!valid)
+    return;
+
+  // compute the loss (eq (8))
+  if (tid_x == 0) {
+    scalar_t l1 = log_alpha_data
+        [la_batch_offset + la_input_stride * (input_length - 1) +
+         la_target_stride * (target_length * 2)];
+    scalar_t l2 = target_length > 0
+        ? log_alpha_data
+              [la_batch_offset + la_input_stride * (input_length - 1) +
+               la_target_stride * (target_length * 2 - 1)]
+        : neginf;
+    scalar_t m = ((l1 > l2) ? l1 : l2);
+    m = ((m == neginf) ? 0 : m);
+    opmath_t exp_l1 = sycl::exp(static_cast<opmath_t>(l1 - m));
+    opmath_t exp_l2 = sycl::exp(static_cast<opmath_t>(l2 - m));
+    scalar_t log_likelihood = sycl::log(exp_l1 + exp_l2) + m;
+    neg_log_likelihood_data[b] = -log_likelihood;
+  }
+}
 
 // The forward computation. Lot's of admin and a call to the alpha kernel.
 // Note: we do not check that the labels are in the valid range. As we use
@@ -401,9 +361,8 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
       log_probs.options());
   Tensor neg_log_likelihood = at::empty({batch_size}, log_probs.options());
 
-  using CTCLossLogAlphaKernel =
-      CTCLossLogAlphaKernelFunctor<scalar_t, target_t>;
-  int max_threads = syclMaxWorkGroupSize<CTCLossLogAlphaKernel>();
+  constexpr auto kfn = ctc_loss_log_alpha_kernel<scalar_t, target_t>;
+  int max_threads = syclMaxWorkGroupSize<kfn>();
 
   int threads_target = max_threads;
   while (threads_target / 2 >= 2 * max_target_length + 1) {
@@ -419,7 +378,11 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
   sycl::range<2> global_range{
       ngroups_y * group_size_y, ngroups_x * group_size_x};
 
-  auto caller = CTCLossLogAlphaKernel(
+  sycl_kernel_submit<kfn>(
+      global_range,
+      local_range,
+      at::xpu::getCurrentSYCLQueue(),
+      0,
       log_alpha.mutable_data_ptr<scalar_t>(),
       log_probs.const_data_ptr<scalar_t>(),
       input_lengths_t.const_data_ptr<int64_t>(),
@@ -438,554 +401,369 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
       tg_target_stride,
       batch_size,
       BLANK);
-  sycl_kernel_submit(
-      global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
 
   return std::make_tuple(neg_log_likelihood, log_alpha);
 }
 
 template <typename scalar_t, typename target_t>
-struct CTCLossBackwardLogBetaKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    constexpr scalar_t neginf = -INFINITY;
-    using opmath_t = at::opmath_type<scalar_t>;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void ctc_loss_backward_log_beta_kernel(
+    scalar_t* RESTRICT log_beta_data,
+    const scalar_t* log_probs_data,
+    const int64_t* RESTRICT input_lengths,
+    int64_t max_input_length,
+    const target_t* RESTRICT targets_data,
+    const int64_t* RESTRICT target_lengths,
+    int64_t max_target_length,
+    int64_t lp_input_stride,
+    int64_t lp_batch_stride,
+    int64_t lp_char_stride,
+    int64_t lb_batch_stride,
+    int64_t lb_input_stride,
+    int64_t lb_target_stride,
+    const int64_t* RESTRICT tg_batch_offsets,
+    int64_t tg_target_stride,
+    int64_t batch_size,
+    int64_t BLANK) {
+  constexpr scalar_t neginf = -INFINITY;
+  using opmath_t = at::opmath_type<scalar_t>;
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  auto tid_x = item.get_local_id(1);
+  auto tid_y = item.get_local_id(0);
+  auto group_size_x = item.get_local_range(1);
+  auto group_size_y = item.get_local_range(0);
 
-    auto tid_x = item.get_local_id(1);
-    auto tid_y = item.get_local_id(0);
-    auto group_size_x = item.get_local_range(1);
-    auto group_size_y = item.get_local_range(0);
+  int64_t b = tid_y + item.get_group(0) * group_size_y;
 
-    int64_t b = tid_y + item.get_group(0) * group_size_y;
+  int64_t input_length = input_lengths[b];
+  int64_t target_length = target_lengths[b];
+  int64_t lp_batch_offset = b * lp_batch_stride;
+  int64_t lb_batch_offset = b * lb_batch_stride;
+  int64_t tg_batch_offset = tg_batch_offsets[b];
 
-    int64_t input_length = input_lengths_[b];
-    int64_t target_length = target_lengths_[b];
-    int64_t lp_batch_offset = b * lp_batch_stride_;
-    int64_t lb_batch_offset = b * lb_batch_stride_;
-    int64_t tg_batch_offset = tg_batch_offsets_[b];
+  bool valid = true;
 
-    bool valid = true;
+  if (b >= batch_size)
+    valid = false;
 
-    if (b >= batch_size_)
-      valid = false;
+  if (input_length == 0)
+    valid = false;
 
-    if (input_length == 0)
-      valid = false;
-
-    if (valid) {
-      // "first" row, the beta initialization before eq (10) (t=target_length -
-      // differes per batch)
-      for (int64_t block_s =
-               2 * max_target_length_ - (2 * max_target_length_ % group_size_x);
-           block_s >= 0;
-           block_s -= group_size_x) {
-        int64_t s = tid_x + block_s;
-        scalar_t lb;
-        if (s == 2 * target_length) {
-          lb = log_probs_data_
-              [lp_batch_offset + (input_length - 1) * lp_input_stride_ +
-               lp_char_stride_ * BLANK_];
-        } else if (s == 2 * target_length - 1) { // false for target_length == 0
-          int64_t current_target_prime = get_target_prime(
-              targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
-          lb = log_probs_data_
-              [lp_batch_offset + (input_length - 1) * lp_input_stride_ +
-               lp_char_stride_ * current_target_prime];
-        } else {
-          lb = neginf;
-        }
-        if (s < 2 * max_target_length_ + 1) {
-          log_beta_data_
-              [lb_batch_offset + (input_length - 1) * lb_input_stride_ +
-               lb_target_stride_ * s] = lb;
-        }
-      }
-    }
-
-    // go backward in s
+  if (valid) {
+    // "first" row, the beta initialization before eq (10) (t=target_length -
+    // differes per batch)
     for (int64_t block_s =
-             2 * max_target_length_ - (2 * max_target_length_ % group_size_x);
+             2 * max_target_length - (2 * max_target_length % group_size_x);
          block_s >= 0;
          block_s -= group_size_x) {
       int64_t s = tid_x + block_s;
-      int64_t current_target_prime;
-      bool have_three;
-      if (valid && s < 2 * target_length + 1 && target_length > 0) {
-        current_target_prime = get_target_prime(
-            targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
-        have_three =
-            ((s < 2 * target_length - 1) &&
-             (get_target_prime(
-                  targets_data_,
-                  tg_batch_offset,
-                  tg_target_stride_,
-                  s + 2,
-                  BLANK_) != current_target_prime));
+      scalar_t lb;
+      if (s == 2 * target_length) {
+        lb = log_probs_data
+            [lp_batch_offset + (input_length - 1) * lp_input_stride +
+             lp_char_stride * BLANK];
+      } else if (s == 2 * target_length - 1) { // false for target_length == 0
+        int64_t current_target_prime = get_target_prime(
+            targets_data, tg_batch_offset, tg_target_stride, s, BLANK);
+        lb = log_probs_data
+            [lp_batch_offset + (input_length - 1) * lp_input_stride +
+             lp_char_stride * current_target_prime];
       } else {
-        current_target_prime = BLANK_;
-        have_three = false;
+        lb = neginf;
       }
-      // now go backward in t. Note that we need to skip the last timestep that
-      // we did above.
-      for (int64_t t = max_input_length_ - 2; t >= 0; t--) {
-        sycl::group_barrier(item.get_group());
-        if (valid && (t < input_length - 1) && (s < 2 * target_length + 1)) {
-          scalar_t lb1 = log_beta_data_
-              [lb_batch_offset + lb_input_stride_ * (t + 1) +
-               lb_target_stride_ * s];
-          scalar_t lbmax = lb1;
-          scalar_t lb2, lb3;
-
-          if (s < 2 * target_length) {
-            lb2 = log_beta_data_
-                [lb_batch_offset + lb_input_stride_ * (t + 1) +
-                 lb_target_stride_ * (s + 1)];
-            if (lb2 > lbmax)
-              lbmax = lb2;
-          } else {
-            lb2 = neginf;
-          }
-          if (have_three) {
-            lb3 = log_beta_data_
-                [lb_batch_offset + lb_input_stride_ * (t + 1) +
-                 lb_target_stride_ * (s + 2)];
-            if (lb3 > lbmax)
-              lbmax = lb3;
-          } else {
-            lb3 = neginf;
-          }
-          if (lbmax == neginf)
-            lbmax = 0;
-
-          opmath_t exp_lb1 = sycl::exp(static_cast<opmath_t>(lb1 - lbmax));
-          opmath_t exp_lb2 = sycl::exp(static_cast<opmath_t>(lb2 - lbmax));
-          opmath_t exp_lb3 = sycl::exp(static_cast<opmath_t>(lb3 - lbmax));
-          scalar_t lb = sycl::log(exp_lb1 + exp_lb2 + exp_lb3) + lbmax +
-              log_probs_data_
-                  [lp_batch_offset + t * lp_input_stride_ +
-                   lp_char_stride_ * current_target_prime];
-
-          log_beta_data_
-              [lb_batch_offset + lb_input_stride_ * t + lb_target_stride_ * s] =
-                  lb;
-        } else if (
-            (b < batch_size_) && (s < 2 * max_target_length_ + 1) &&
-            (((target_length == 0) && (s > 0)) ||
-             (s >= 2 * target_length + 1) || (t >= input_length))) {
-          log_beta_data_
-              [lb_batch_offset + lb_input_stride_ * t + lb_target_stride_ * s] =
-                  neginf;
-        }
+      if (s < 2 * max_target_length + 1) {
+        log_beta_data
+            [lb_batch_offset + (input_length - 1) * lb_input_stride +
+             lb_target_stride * s] = lb;
       }
     }
   }
 
-  CTCLossBackwardLogBetaKernelFunctor(
-      scalar_t* RESTRICT log_beta_data,
-      const scalar_t* log_probs_data,
-      const int64_t* RESTRICT input_lengths,
-      int64_t max_input_length,
-      const target_t* RESTRICT targets_data,
-      const int64_t* RESTRICT target_lengths,
-      int64_t max_target_length,
-      int64_t lp_input_stride,
-      int64_t lp_batch_stride,
-      int64_t lp_char_stride,
-      int64_t lb_batch_stride,
-      int64_t lb_input_stride,
-      int64_t lb_target_stride,
-      const int64_t* RESTRICT tg_batch_offsets,
-      int64_t tg_target_stride,
-      int64_t batch_size,
-      int64_t BLANK)
-      : log_beta_data_(log_beta_data),
-        log_probs_data_(log_probs_data),
-        input_lengths_(input_lengths),
-        max_input_length_(max_input_length),
-        targets_data_(targets_data),
-        target_lengths_(target_lengths),
-        max_target_length_(max_target_length),
-        lp_input_stride_(lp_input_stride),
-        lp_batch_stride_(lp_batch_stride),
-        lp_char_stride_(lp_char_stride),
-        lb_batch_stride_(lb_batch_stride),
-        lb_input_stride_(lb_input_stride),
-        lb_target_stride_(lb_target_stride),
-        tg_batch_offsets_(tg_batch_offsets),
-        tg_target_stride_(tg_target_stride),
-        batch_size_(batch_size),
-        BLANK_(BLANK) {}
+  // go backward in s
+  for (int64_t block_s =
+           2 * max_target_length - (2 * max_target_length % group_size_x);
+       block_s >= 0;
+       block_s -= group_size_x) {
+    int64_t s = tid_x + block_s;
+    int64_t current_target_prime;
+    bool have_three;
+    if (valid && s < 2 * target_length + 1 && target_length > 0) {
+      current_target_prime = get_target_prime(
+          targets_data, tg_batch_offset, tg_target_stride, s, BLANK);
+      have_three =
+          ((s < 2 * target_length - 1) &&
+           (get_target_prime(
+                targets_data,
+                tg_batch_offset,
+                tg_target_stride,
+                s + 2,
+                BLANK) != current_target_prime));
+    } else {
+      current_target_prime = BLANK;
+      have_three = false;
+    }
+    // now go backward in t. Note that we need to skip the last timestep that
+    // we did above.
+    for (int64_t t = max_input_length - 2; t >= 0; t--) {
+      sycl::group_barrier(item.get_group());
+      if (valid && (t < input_length - 1) && (s < 2 * target_length + 1)) {
+        scalar_t lb1 = log_beta_data
+            [lb_batch_offset + lb_input_stride * (t + 1) +
+             lb_target_stride * s];
+        scalar_t lbmax = lb1;
+        scalar_t lb2, lb3;
 
- private:
-  scalar_t* RESTRICT log_beta_data_;
-  const scalar_t* log_probs_data_;
-  const int64_t* RESTRICT input_lengths_;
-  int64_t max_input_length_;
-  const target_t* RESTRICT targets_data_;
-  const int64_t* RESTRICT target_lengths_;
-  int64_t max_target_length_;
-  int64_t lp_input_stride_;
-  int64_t lp_batch_stride_;
-  int64_t lp_char_stride_;
-  int64_t lb_batch_stride_;
-  int64_t lb_input_stride_;
-  int64_t lb_target_stride_;
-  const int64_t* RESTRICT tg_batch_offsets_;
-  int64_t tg_target_stride_;
-  int64_t batch_size_;
-  int64_t BLANK_;
-};
+        if (s < 2 * target_length) {
+          lb2 = log_beta_data
+              [lb_batch_offset + lb_input_stride * (t + 1) +
+               lb_target_stride * (s + 1)];
+          if (lb2 > lbmax)
+            lbmax = lb2;
+        } else {
+          lb2 = neginf;
+        }
+        if (have_three) {
+          lb3 = log_beta_data
+              [lb_batch_offset + lb_input_stride * (t + 1) +
+               lb_target_stride * (s + 2)];
+          if (lb3 > lbmax)
+            lbmax = lb3;
+        } else {
+          lb3 = neginf;
+        }
+        if (lbmax == neginf)
+          lbmax = 0;
+
+        opmath_t exp_lb1 = sycl::exp(static_cast<opmath_t>(lb1 - lbmax));
+        opmath_t exp_lb2 = sycl::exp(static_cast<opmath_t>(lb2 - lbmax));
+        opmath_t exp_lb3 = sycl::exp(static_cast<opmath_t>(lb3 - lbmax));
+        scalar_t lb = sycl::log(exp_lb1 + exp_lb2 + exp_lb3) + lbmax +
+            log_probs_data
+                [lp_batch_offset + t * lp_input_stride +
+                 lp_char_stride * current_target_prime];
+
+        log_beta_data
+            [lb_batch_offset + lb_input_stride * t + lb_target_stride * s] = lb;
+      } else if (
+          (b < batch_size) && (s < 2 * max_target_length + 1) &&
+          (((target_length == 0) && (s > 0)) || (s >= 2 * target_length + 1) ||
+           (t >= input_length))) {
+        log_beta_data
+            [lb_batch_offset + lb_input_stride * t + lb_target_stride * s] =
+                neginf;
+      }
+    }
+  }
+}
 
 template <typename scalar_t, typename target_t>
-struct CTCLossBackwardCollectNonblankKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    using opmath_t = at::opmath_type<scalar_t>;
-    int64_t b =
-        item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
-    int64_t s = item.get_local_id(1) +
-        item.get_group(1) *
-            item.get_local_range(1); // note, this directly indexes into
-                                     // targets, not targets prime!
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void ctc_loss_backward_collect_nonblank_kernel(
+    scalar_t* RESTRICT gradient_data,
+    const scalar_t* RESTRICT grad_out_data,
+    int64_t grad_out_batch_stride,
+    const scalar_t* RESTRICT log_alpha_data,
+    const scalar_t* RESTRICT log_beta_data,
+    const scalar_t* log_probs_data,
+    const int64_t* RESTRICT input_lengths,
+    const target_t* RESTRICT targets_data,
+    const int64_t* RESTRICT target_lengths,
+    const scalar_t* RESTRICT neg_log_likelihood_data,
+    int64_t gr_input_stride,
+    int64_t gr_batch_stride,
+    int64_t gr_char_stride,
+    int64_t lp_input_stride,
+    int64_t lp_batch_stride,
+    int64_t lp_char_stride,
+    int64_t la_batch_stride,
+    int64_t la_input_stride,
+    int64_t la_target_stride,
+    int64_t lb_batch_stride,
+    int64_t lb_input_stride,
+    int64_t lb_target_stride,
+    const int64_t* RESTRICT tg_batch_offsets,
+    int64_t tg_target_stride,
+    int64_t batch_size,
+    bool zero_infinity) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  using opmath_t = at::opmath_type<scalar_t>;
+  int64_t b =
+      item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
+  int64_t s = item.get_local_id(1) +
+      item.get_group(1) *
+          item.get_local_range(1); // note, this directly indexes into
+                                   // targets, not targets prime!
 
-    if (b >= batch_size_)
-      return;
+  if (b >= batch_size)
+    return;
 
-    int64_t input_length = input_lengths_[b];
-    int64_t target_length = target_lengths_[b];
-    int64_t gr_batch_offset = b * gr_batch_stride_;
-    int64_t lp_batch_offset = b * lp_batch_stride_;
-    int64_t la_batch_offset = b * la_batch_stride_;
-    int64_t lb_batch_offset = b * lb_batch_stride_;
-    int64_t tg_batch_offset = tg_batch_offsets_[b];
+  int64_t input_length = input_lengths[b];
+  int64_t target_length = target_lengths[b];
+  int64_t gr_batch_offset = b * gr_batch_stride;
+  int64_t lp_batch_offset = b * lp_batch_stride;
+  int64_t la_batch_offset = b * la_batch_stride;
+  int64_t lb_batch_offset = b * lb_batch_stride;
+  int64_t tg_batch_offset = tg_batch_offsets[b];
 
-    if (s >= target_length)
-      return;
+  if (s >= target_length)
+    return;
 
-    int64_t target = targets_data_[tg_batch_offset + s * tg_target_stride_];
-    scalar_t nll = neg_log_likelihood_data_[b];
-    scalar_t gr = grad_out_data_[b * grad_out_batch_stride_];
+  int64_t target = targets_data[tg_batch_offset + s * tg_target_stride];
+  scalar_t nll = neg_log_likelihood_data[b];
+  scalar_t gr = grad_out_data[b * grad_out_batch_stride];
 
-    if (zero_infinity_ && nll == INFINITY)
-      return;
+  if (zero_infinity && nll == INFINITY)
+    return;
 
-    for (int64_t t = 0; t < input_length; t++) {
-      scalar_t lp = log_probs_data_
-          [lp_batch_offset + t * lp_input_stride_ + lp_char_stride_ * target];
-      opmath_t exp_val = sycl::exp(static_cast<opmath_t>(
-          log_alpha_data_
-              [la_batch_offset + la_input_stride_ * t +
-               la_target_stride_ * (s * 2 + 1)] +
-          log_beta_data_
-              [lb_batch_offset + lb_input_stride_ * t +
-               lb_target_stride_ * (s * 2 + 1)] +
-          nll - lp));
-      atomicAdd(
-          sycl_global_ptr<scalar_t>(
-              &gradient_data_
-                  [gr_batch_offset + t * gr_input_stride_ +
-                   gr_char_stride_ * target]),
-          -exp_val * gr);
-    }
+  for (int64_t t = 0; t < input_length; t++) {
+    scalar_t lp = log_probs_data
+        [lp_batch_offset + t * lp_input_stride + lp_char_stride * target];
+    opmath_t exp_val = sycl::exp(static_cast<opmath_t>(
+        log_alpha_data
+            [la_batch_offset + la_input_stride * t +
+             la_target_stride * (s * 2 + 1)] +
+        log_beta_data
+            [lb_batch_offset + lb_input_stride * t +
+             lb_target_stride * (s * 2 + 1)] +
+        nll - lp));
+    atomicAdd(
+        sycl_global_ptr<scalar_t>(&gradient_data
+                                      [gr_batch_offset + t * gr_input_stride +
+                                       gr_char_stride * target]),
+        -exp_val * gr);
   }
-  CTCLossBackwardCollectNonblankKernelFunctor(
-      scalar_t* RESTRICT gradient_data,
-      const scalar_t* RESTRICT grad_out_data,
-      int64_t grad_out_batch_stride,
-      const scalar_t* RESTRICT log_alpha_data,
-      const scalar_t* RESTRICT log_beta_data,
-      const scalar_t* log_probs_data,
-      const int64_t* RESTRICT input_lengths,
-      const target_t* RESTRICT targets_data,
-      const int64_t* RESTRICT target_lengths,
-      const scalar_t* RESTRICT neg_log_likelihood_data,
-      int64_t gr_input_stride,
-      int64_t gr_batch_stride,
-      int64_t gr_char_stride,
-      int64_t lp_input_stride,
-      int64_t lp_batch_stride,
-      int64_t lp_char_stride,
-      int64_t la_batch_stride,
-      int64_t la_input_stride,
-      int64_t la_target_stride,
-      int64_t lb_batch_stride,
-      int64_t lb_input_stride,
-      int64_t lb_target_stride,
-      const int64_t* RESTRICT tg_batch_offsets,
-      int64_t tg_target_stride,
-      int64_t batch_size,
-      bool zero_infinity)
-      : gradient_data_(gradient_data),
-        grad_out_data_(grad_out_data),
-        grad_out_batch_stride_(grad_out_batch_stride),
-        log_alpha_data_(log_alpha_data),
-        log_beta_data_(log_beta_data),
-        log_probs_data_(log_probs_data),
-        input_lengths_(input_lengths),
-        targets_data_(targets_data),
-        target_lengths_(target_lengths),
-        neg_log_likelihood_data_(neg_log_likelihood_data),
-        gr_input_stride_(gr_input_stride),
-        gr_batch_stride_(gr_batch_stride),
-        gr_char_stride_(gr_char_stride),
-        lp_input_stride_(lp_input_stride),
-        lp_batch_stride_(lp_batch_stride),
-        lp_char_stride_(lp_char_stride),
-        la_batch_stride_(la_batch_stride),
-        la_input_stride_(la_input_stride),
-        la_target_stride_(la_target_stride),
-        lb_batch_stride_(lb_batch_stride),
-        lb_input_stride_(lb_input_stride),
-        lb_target_stride_(lb_target_stride),
-        tg_batch_offsets_(tg_batch_offsets),
-        tg_target_stride_(tg_target_stride),
-        batch_size_(batch_size),
-        zero_infinity_(zero_infinity) {}
-
- private:
-  scalar_t* RESTRICT gradient_data_;
-  const scalar_t* RESTRICT grad_out_data_;
-  int64_t grad_out_batch_stride_;
-  const scalar_t* RESTRICT log_alpha_data_;
-  const scalar_t* RESTRICT log_beta_data_;
-  const scalar_t* log_probs_data_;
-  const int64_t* RESTRICT input_lengths_;
-  const target_t* RESTRICT targets_data_;
-  const int64_t* RESTRICT target_lengths_;
-  const scalar_t* RESTRICT neg_log_likelihood_data_;
-  int64_t gr_input_stride_;
-  int64_t gr_batch_stride_;
-  int64_t gr_char_stride_;
-  int64_t lp_input_stride_;
-  int64_t lp_batch_stride_;
-  int64_t lp_char_stride_;
-  int64_t la_batch_stride_;
-  int64_t la_input_stride_;
-  int64_t la_target_stride_;
-  int64_t lb_batch_stride_;
-  int64_t lb_input_stride_;
-  int64_t lb_target_stride_;
-  const int64_t* RESTRICT tg_batch_offsets_;
-  int64_t tg_target_stride_;
-  int64_t batch_size_;
-  bool zero_infinity_;
-};
+}
 
 // This is the naive implementation of equation (16). It is parallelised in
 // batch and input timestep. It appears to be faster than the above method for
 // small batch sizes.
 template <typename scalar_t, typename target_t>
-struct CTCLossBackwardCollectKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    constexpr scalar_t neginf = -INFINITY;
-    using opmath_t = at::opmath_type<scalar_t>;
-    int64_t b =
-        item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
-    int64_t t =
-        item.get_local_id(1) + item.get_group(1) * item.get_local_range(1);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void ctc_loss_backward_collect_kernel(
+    scalar_t* RESTRICT gradient_data,
+    const scalar_t* RESTRICT grad_out_data,
+    int64_t grad_out_batch_stride,
+    const scalar_t* RESTRICT log_alpha_data,
+    const scalar_t* RESTRICT log_beta_data,
+    const scalar_t* log_probs_data,
+    const int64_t* RESTRICT input_lengths,
+    int64_t max_input_length,
+    const target_t* RESTRICT targets_data,
+    const int64_t* RESTRICT target_lengths,
+    int64_t max_target_length,
+    const scalar_t* RESTRICT neg_log_likelihood_data,
+    int64_t gr_input_stride,
+    int64_t gr_batch_stride,
+    int64_t gr_char_stride,
+    int64_t lp_input_stride,
+    int64_t lp_batch_stride,
+    int64_t lp_char_stride,
+    int64_t la_batch_stride,
+    int64_t la_input_stride,
+    int64_t la_target_stride,
+    int64_t lb_batch_stride,
+    int64_t lb_input_stride,
+    int64_t lb_target_stride,
+    const int64_t* RESTRICT tg_batch_offsets,
+    int64_t tg_target_stride,
+    int64_t batch_size,
+    int64_t num_labels,
+    int64_t BLANK,
+    bool zero_infinity) {
+  constexpr scalar_t neginf = -INFINITY;
+  using opmath_t = at::opmath_type<scalar_t>;
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  int64_t b =
+      item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
+  int64_t t =
+      item.get_local_id(1) + item.get_group(1) * item.get_local_range(1);
 
-    if ((t >= max_input_length_) || (b >= batch_size_))
-      return;
+  if ((t >= max_input_length) || (b >= batch_size))
+    return;
 
-    int64_t input_length = input_lengths_[b];
-    int64_t target_length = target_lengths_[b];
-    int64_t gr_batch_offset = b * gr_batch_stride_;
-    int64_t lp_batch_offset = b * lp_batch_stride_;
-    int64_t la_batch_offset = b * la_batch_stride_;
-    int64_t lb_batch_offset = b * lb_batch_stride_;
-    int64_t tg_batch_offset = tg_batch_offsets_[b];
+  int64_t input_length = input_lengths[b];
+  int64_t target_length = target_lengths[b];
+  int64_t gr_batch_offset = b * gr_batch_stride;
+  int64_t lp_batch_offset = b * lp_batch_stride;
+  int64_t la_batch_offset = b * la_batch_stride;
+  int64_t lb_batch_offset = b * lb_batch_stride;
+  int64_t tg_batch_offset = tg_batch_offsets[b];
 
-    // collected[b, t, target'[s]] "log+=" log_alpha[t, s]+log_beta[t, s]
-    for (int s = 0; s < 2 * max_target_length_ + 1; s++) {
-      if (s < 2 * target_length + 1) { // if target_length == 0, s == 0
-        int64_t current_target_prime = get_target_prime(
-            targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
-        scalar_t log_alpha_beta =
-            (log_alpha_data_
-                 [la_batch_offset + la_input_stride_ * t +
-                  la_target_stride_ * s] +
-             log_beta_data_
-                 [lb_batch_offset + lb_input_stride_ * t +
-                  lb_target_stride_ * s]);
-        scalar_t& lcab = gradient_data_
-            [gr_batch_offset + t * gr_input_stride_ +
-             gr_char_stride_ * current_target_prime];
-        if (lcab == neginf) {
-          lcab = log_alpha_beta;
-        } else {
-          scalar_t max = ((lcab > log_alpha_beta) ? lcab : log_alpha_beta);
-          opmath_t exp_lcab = sycl::exp(static_cast<opmath_t>(lcab - max));
-          opmath_t exp_lab =
-              sycl::exp(static_cast<opmath_t>(log_alpha_beta - max));
-          lcab = sycl::log(exp_lcab + exp_lab) + max;
-        }
-      }
-    }
-
-    scalar_t nll = neg_log_likelihood_data_[b];
-    scalar_t gr = grad_out_data_[b * grad_out_batch_stride_];
-
-    for (int64_t c = 0; c < num_labels_; c++) {
-      scalar_t& res = gradient_data_
-          [gr_batch_offset + t * gr_input_stride_ + gr_char_stride_ * c];
-      if (t < input_length && (!zero_infinity_ || nll != INFINITY)) {
-        scalar_t lp = log_probs_data_
-            [lp_batch_offset + t * lp_input_stride_ + lp_char_stride_ * c];
-        opmath_t exp_lp = sycl::exp(static_cast<opmath_t>(lp));
-        opmath_t exp_res = sycl::exp(static_cast<opmath_t>(res + nll - lp));
-        res = (exp_lp - exp_res) * gr;
+  // collected[b, t, target'[s]] "log+=" log_alpha[t, s]+log_beta[t, s]
+  for (int s = 0; s < 2 * max_target_length + 1; s++) {
+    if (s < 2 * target_length + 1) { // if target_length == 0, s == 0
+      int64_t current_target_prime = get_target_prime(
+          targets_data, tg_batch_offset, tg_target_stride, s, BLANK);
+      scalar_t log_alpha_beta =
+          (log_alpha_data
+               [la_batch_offset + la_input_stride * t + la_target_stride * s] +
+           log_beta_data
+               [lb_batch_offset + lb_input_stride * t + lb_target_stride * s]);
+      scalar_t& lcab = gradient_data
+          [gr_batch_offset + t * gr_input_stride +
+           gr_char_stride * current_target_prime];
+      if (lcab == neginf) {
+        lcab = log_alpha_beta;
       } else {
-        res = 0.;
+        scalar_t max = ((lcab > log_alpha_beta) ? lcab : log_alpha_beta);
+        opmath_t exp_lcab = sycl::exp(static_cast<opmath_t>(lcab - max));
+        opmath_t exp_lab =
+            sycl::exp(static_cast<opmath_t>(log_alpha_beta - max));
+        lcab = sycl::log(exp_lcab + exp_lab) + max;
       }
     }
   }
 
-  CTCLossBackwardCollectKernelFunctor(
-      scalar_t* RESTRICT gradient_data,
-      const scalar_t* RESTRICT grad_out_data,
-      int64_t grad_out_batch_stride,
-      const scalar_t* RESTRICT log_alpha_data,
-      const scalar_t* RESTRICT log_beta_data,
-      const scalar_t* log_probs_data,
-      const int64_t* RESTRICT input_lengths,
-      int64_t max_input_length,
-      const target_t* RESTRICT targets_data,
-      const int64_t* RESTRICT target_lengths,
-      int64_t max_target_length,
-      const scalar_t* RESTRICT neg_log_likelihood_data,
-      int64_t gr_input_stride,
-      int64_t gr_batch_stride,
-      int64_t gr_char_stride,
-      int64_t lp_input_stride,
-      int64_t lp_batch_stride,
-      int64_t lp_char_stride,
-      int64_t la_batch_stride,
-      int64_t la_input_stride,
-      int64_t la_target_stride,
-      int64_t lb_batch_stride,
-      int64_t lb_input_stride,
-      int64_t lb_target_stride,
-      const int64_t* RESTRICT tg_batch_offsets,
-      int64_t tg_target_stride,
-      int64_t batch_size,
-      int64_t num_labels,
-      int64_t BLANK,
-      bool zero_infinity)
-      : gradient_data_(gradient_data),
-        grad_out_data_(grad_out_data),
-        grad_out_batch_stride_(grad_out_batch_stride),
-        log_alpha_data_(log_alpha_data),
-        log_beta_data_(log_beta_data),
-        log_probs_data_(log_probs_data),
-        input_lengths_(input_lengths),
-        max_input_length_(max_input_length),
-        targets_data_(targets_data),
-        target_lengths_(target_lengths),
-        max_target_length_(max_target_length),
-        neg_log_likelihood_data_(neg_log_likelihood_data),
-        gr_input_stride_(gr_input_stride),
-        gr_batch_stride_(gr_batch_stride),
-        gr_char_stride_(gr_char_stride),
-        lp_input_stride_(lp_input_stride),
-        lp_batch_stride_(lp_batch_stride),
-        lp_char_stride_(lp_char_stride),
-        la_batch_stride_(la_batch_stride),
-        la_input_stride_(la_input_stride),
-        la_target_stride_(la_target_stride),
-        lb_batch_stride_(lb_batch_stride),
-        lb_input_stride_(lb_input_stride),
-        lb_target_stride_(lb_target_stride),
-        tg_batch_offsets_(tg_batch_offsets),
-        tg_target_stride_(tg_target_stride),
-        batch_size_(batch_size),
-        num_labels_(num_labels),
-        BLANK_(BLANK),
-        zero_infinity_(zero_infinity) {}
+  scalar_t nll = neg_log_likelihood_data[b];
+  scalar_t gr = grad_out_data[b * grad_out_batch_stride];
 
- private:
-  scalar_t* RESTRICT gradient_data_;
-  const scalar_t* RESTRICT grad_out_data_;
-  int64_t grad_out_batch_stride_;
-  const scalar_t* RESTRICT log_alpha_data_;
-  const scalar_t* RESTRICT log_beta_data_;
-  const scalar_t* log_probs_data_;
-  const int64_t* RESTRICT input_lengths_;
-  int64_t max_input_length_;
-  const target_t* RESTRICT targets_data_;
-  const int64_t* RESTRICT target_lengths_;
-  int64_t max_target_length_;
-  const scalar_t* RESTRICT neg_log_likelihood_data_;
-  int64_t gr_input_stride_;
-  int64_t gr_batch_stride_;
-  int64_t gr_char_stride_;
-  int64_t lp_input_stride_;
-  int64_t lp_batch_stride_;
-  int64_t lp_char_stride_;
-  int64_t la_batch_stride_;
-  int64_t la_input_stride_;
-  int64_t la_target_stride_;
-  int64_t lb_batch_stride_;
-  int64_t lb_input_stride_;
-  int64_t lb_target_stride_;
-  const int64_t* RESTRICT tg_batch_offsets_;
-  int64_t tg_target_stride_;
-  int64_t batch_size_;
-  int64_t num_labels_;
-  int64_t BLANK_;
-  bool zero_infinity_;
-};
+  for (int64_t c = 0; c < num_labels; c++) {
+    scalar_t& res = gradient_data
+        [gr_batch_offset + t * gr_input_stride + gr_char_stride * c];
+    if (t < input_length && (!zero_infinity || nll != INFINITY)) {
+      scalar_t lp = log_probs_data
+          [lp_batch_offset + t * lp_input_stride + lp_char_stride * c];
+      opmath_t exp_lp = sycl::exp(static_cast<opmath_t>(lp));
+      opmath_t exp_res = sycl::exp(static_cast<opmath_t>(res + nll - lp));
+      res = (exp_lp - exp_res) * gr;
+    } else {
+      res = 0.;
+    }
+  }
+}
 
 // This is to zero gradients which corresponding to the out-of-sequence position
 // Those gradients should not be used in any model update since the input
 // elements are padded
 template <typename scalar_t>
-struct CTCLossZeroPaddedGradients {
-  void operator()(sycl::nd_item<2> item) const {
-    int64_t b =
-        item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
-    int64_t t =
-        item.get_local_id(1) + item.get_group(1) * item.get_local_range(1);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void ctc_loss_zero_padded_gradients_kernel(
+    scalar_t* RESTRICT gradient_data, /* (T, B, D) layout */
+    const int64_t* RESTRICT input_lengths, /* (B, ) layout */
+    int64_t gr_timestep_stride,
+    int64_t gr_batch_stride,
+    int64_t gr_label_stride,
+    int64_t max_input_length, /* T */
+    int64_t batch_size, /* B */
+    int64_t num_labels /* D */) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  int64_t b =
+      item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
+  int64_t t =
+      item.get_local_id(1) + item.get_group(1) * item.get_local_range(1);
 
-    if (b >= batch_size_ || t >= max_input_length_) {
-      return;
-    }
-
-    scalar_t input_length = input_lengths_[b];
-    if (t >= input_length) {
-      for (int l = 0; l < num_labels_; l++)
-        gradient_data_
-            [t * gr_timestep_stride_ + b * gr_batch_stride_ +
-             l * gr_label_stride_] = 0.0f;
-    }
+  if (b >= batch_size || t >= max_input_length) {
+    return;
   }
 
-  CTCLossZeroPaddedGradients(
-      scalar_t* RESTRICT gradient_data, /* (T, B, D) layout */
-      const int64_t* RESTRICT input_lengths, /* (B, ) layout */
-      int64_t gr_timestep_stride,
-      int64_t gr_batch_stride,
-      int64_t gr_label_stride,
-      int64_t max_input_length, /* T */
-      int64_t batch_size, /* B */
-      int64_t num_labels /* D */
-      )
-      : gradient_data_(gradient_data),
-        input_lengths_(input_lengths),
-        gr_timestep_stride_(gr_timestep_stride),
-        gr_batch_stride_(gr_batch_stride),
-        gr_label_stride_(gr_label_stride),
-        max_input_length_(max_input_length),
-        batch_size_(batch_size),
-        num_labels_(num_labels) {}
-
- private:
-  scalar_t* RESTRICT gradient_data_; /* (T, B, D) layout */
-  const int64_t* RESTRICT input_lengths_; /* (B, ) layout */
-  int64_t gr_timestep_stride_;
-  int64_t gr_batch_stride_;
-  int64_t gr_label_stride_;
-  int64_t max_input_length_; /* T */
-  int64_t batch_size_; /* B */
-  int64_t num_labels_; /* D */
-};
+  scalar_t input_length = input_lengths[b];
+  if (t >= input_length) {
+    for (int l = 0; l < num_labels; l++)
+      gradient_data
+          [t * gr_timestep_stride + b * gr_batch_stride + l * gr_label_stride] =
+              0.0f;
+  }
+}
 
 // The backward. It essentially computes eq 16 by using the above kernels.
 // We don't do a lot of checking as we envision this to be called only when
@@ -1046,9 +824,8 @@ Tensor ctc_loss_backward_kernel_template(
       LEGACY_CONTIGUOUS_MEMORY_FORMAT); // initialization for log(sum (alpha
                                         // beta))
 
-  using CTCLossBackwardLogBetaKernel =
-      CTCLossBackwardLogBetaKernelFunctor<scalar_t, target_t>;
-  int max_threads = syclMaxWorkGroupSize<CTCLossBackwardLogBetaKernel>();
+  constexpr auto kfn = ctc_loss_backward_log_beta_kernel<scalar_t, target_t>;
+  int max_threads = syclMaxWorkGroupSize<kfn>();
   int threads_target = max_threads;
   while (threads_target / 2 >= 2 * max_target_length + 1) {
     threads_target /= 2;
@@ -1063,7 +840,11 @@ Tensor ctc_loss_backward_kernel_template(
     sycl::range<2> global_range(
         group_size_y * ((batch_size + threads_batch - 1) / threads_batch),
         group_size_x);
-    auto caller = CTCLossBackwardLogBetaKernel(
+    sycl_kernel_submit<kfn>(
+        global_range,
+        local_range,
+        queue,
+        0,
         log_beta.mutable_data_ptr<scalar_t>(),
         log_probs.const_data_ptr<scalar_t>(),
         input_lengths_t.const_data_ptr<int64_t>(),
@@ -1081,7 +862,6 @@ Tensor ctc_loss_backward_kernel_template(
         tg_target_stride,
         batch_size,
         BLANK);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
   }
 
   // Very crude heuristic for what is a small problem., based on linearly
@@ -1124,9 +904,9 @@ Tensor ctc_loss_backward_kernel_template(
           grad);
     }
 
-    using CTCLossBackwardCollectNonblankKernel =
-        CTCLossBackwardCollectNonblankKernelFunctor<scalar_t, target_t>;
-    max_threads = syclMaxWorkGroupSize<CTCLossBackwardCollectNonblankKernel>();
+    constexpr auto kfn =
+        ctc_loss_backward_collect_nonblank_kernel<scalar_t, target_t>;
+    max_threads = syclMaxWorkGroupSize<kfn>();
     int threads_target = max_threads;
     while (threads_target / 2 >= max_target_length && threads_target > 1) {
       threads_target /= 2;
@@ -1139,7 +919,11 @@ Tensor ctc_loss_backward_kernel_template(
     auto nwg_y = (batch_size + threads_batch - 1) / threads_batch;
     sycl::range<2> local_range(group_size_y, group_size_x);
     sycl::range<2> global_range(nwg_y * group_size_y, nwg_x * group_size_x);
-    auto caller = CTCLossBackwardCollectNonblankKernel(
+    sycl_kernel_submit<kfn>(
+        global_range,
+        local_range,
+        queue,
+        0,
         grad.mutable_data_ptr<scalar_t>(),
         grad_out.const_data_ptr<scalar_t>(),
         grad_out.stride(0),
@@ -1166,11 +950,9 @@ Tensor ctc_loss_backward_kernel_template(
         tg_target_stride,
         batch_size,
         zero_infinity);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
   } else { // small problem, use naive algorithm
-    using CTCLossBackwardCollectKernel =
-        CTCLossBackwardCollectKernelFunctor<scalar_t, target_t>;
-    max_threads = syclMaxWorkGroupSize<CTCLossBackwardCollectKernel>();
+    constexpr auto kfn = ctc_loss_backward_collect_kernel<scalar_t, target_t>;
+    max_threads = syclMaxWorkGroupSize<kfn>();
     int threads_input = max_threads;
     while (threads_input / 2 >= log_probs.size(0) && threads_input > 1) {
       threads_input /= 2;
@@ -1182,7 +964,11 @@ Tensor ctc_loss_backward_kernel_template(
     auto nwg_y = (batch_size + threads_batch - 1) / threads_batch;
     sycl::range<2> local_range(group_size_y, group_size_x);
     sycl::range<2> global_range(nwg_y * group_size_y, nwg_x * group_size_x);
-    auto caller = CTCLossBackwardCollectKernel(
+    sycl_kernel_submit<kfn>(
+        global_range,
+        local_range,
+        queue,
+        0,
         grad.mutable_data_ptr<scalar_t>(),
         grad_out.const_data_ptr<scalar_t>(),
         grad_out.stride(0),
@@ -1213,14 +999,12 @@ Tensor ctc_loss_backward_kernel_template(
         num_labels,
         BLANK,
         zero_infinity);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
   }
 
   // zero those invalid graident elements due to padding
   {
-    using CTCLossZeroPaddedGradientsKernel =
-        CTCLossZeroPaddedGradients<scalar_t>;
-    max_threads = syclMaxWorkGroupSize<CTCLossZeroPaddedGradientsKernel>();
+    constexpr auto kfn = ctc_loss_zero_padded_gradients_kernel<scalar_t>;
+    max_threads = syclMaxWorkGroupSize<kfn>();
     int threads_input = max_threads;
     while (threads_input / 2 >= log_probs.size(0)) {
       threads_input /= 2;
@@ -1232,7 +1016,11 @@ Tensor ctc_loss_backward_kernel_template(
     auto nwg_y = (batch_size + threads_batch - 1) / threads_batch;
     sycl::range<2> local_range(group_size_y, group_size_x);
     sycl::range<2> global_range(nwg_y * group_size_y, nwg_x * group_size_x);
-    auto caller = CTCLossZeroPaddedGradientsKernel(
+    sycl_kernel_submit<kfn>(
+        global_range,
+        local_range,
+        queue,
+        0,
         grad.mutable_data_ptr<scalar_t>(),
         input_lengths_t.const_data_ptr<int64_t>(),
         grad.stride(0),
@@ -1241,7 +1029,6 @@ Tensor ctc_loss_backward_kernel_template(
         grad.size(0),
         grad.size(1),
         grad.size(2));
-    sycl_kernel_submit(global_range, local_range, queue, caller);
   }
 
   return grad;
