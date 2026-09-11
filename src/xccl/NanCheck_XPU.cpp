@@ -136,56 +136,52 @@ void checkChunk(BytePack* ptr, int nWorkers) {
   (((uintptr_t)ptr + sizeof(T) - 1) / sizeof(T) * sizeof(T))
 
 template <typename T>
-struct checkForNaN {
-  void operator()(sycl::nd_item<1> item) const {
-    constexpr int EltPerPack = sizeof(BytePack) / sizeof(T);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void check_for_nan_kernel(T* data, size_t size) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  constexpr int EltPerPack = sizeof(BytePack) / sizeof(T);
 
-    size_t offset = item.get_global_id(0);
+  size_t offset = item.get_global_id(0);
 
-    // Align input address up to BytePack in case it is not
-    T* ptrAlign = (T*)ALIGN_UP(data, BytePack);
-    size_t preProcElts =
-        std::min<size_t>(static_cast<size_t>(ptrAlign - data), size);
+  // Align input address up to BytePack in case it is not
+  T* ptrAlign = (T*)ALIGN_UP(data, BytePack);
+  size_t preProcElts =
+      std::min<size_t>(static_cast<size_t>(ptrAlign - data), size);
 
-    size_t size_left = size;
+  size_t size_left = size;
 
-    if (offset < preProcElts) {
-      if (at::_isnan(data[offset]))
-        SYCL_KERNEL_ASSERT(0);
-    }
-    size_left -= preProcElts;
-
-    BytePack* ptr = (BytePack*)ptrAlign;
-    size_t sizeInBP = size_left * sizeof(T) / sizeof(BytePack);
-    size_t loopSize = item.get_global_range(0) * UNROLL;
-
-    for (; offset + loopSize <= sizeInBP; offset += loopSize) {
-      checkChunk<T>(ptr + offset, item.get_global_range(0));
-    }
-
-    for (; offset < sizeInBP; offset += item.get_global_range(0)) {
-      BytePack tmp = ptr[offset];
-      CheckBytePack<T, EltPerPack>::check(&tmp);
-    }
-
-    if (item.get_local_id(0) < size_left % EltPerPack) {
-      T* tailPtr = (T*)(ptr + sizeInBP);
-      if (at::_isnan(tailPtr[item.get_local_id(0)]))
-        SYCL_KERNEL_ASSERT(0);
-    }
+  if (offset < preProcElts) {
+    if (at::_isnan(data[offset]))
+      SYCL_KERNEL_ASSERT(0);
   }
-  checkForNaN(T* data, size_t size) : data(data), size(size) {}
+  size_left -= preProcElts;
 
- private:
-  T* data;
-  size_t size;
-};
+  BytePack* ptr = (BytePack*)ptrAlign;
+  size_t sizeInBP = size_left * sizeof(T) / sizeof(BytePack);
+  size_t loopSize = item.get_global_range(0) * UNROLL;
+
+  for (; offset + loopSize <= sizeInBP; offset += loopSize) {
+    checkChunk<T>(ptr + offset, item.get_global_range(0));
+  }
+
+  for (; offset < sizeInBP; offset += item.get_global_range(0)) {
+    BytePack tmp = ptr[offset];
+    CheckBytePack<T, EltPerPack>::check(&tmp);
+  }
+
+  if (item.get_local_id(0) < size_left % EltPerPack) {
+    T* tailPtr = (T*)(ptr + sizeInBP);
+    if (at::_isnan(tailPtr[item.get_local_id(0)]))
+      SYCL_KERNEL_ASSERT(0);
+  }
+}
 
 template <typename T>
 void checkfornan_impl_xpu(
     const at::Tensor& tensor,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<checkForNaN<T>>();
+  int64_t maxNumThreadsPerBlock =
+      syclMaxWorkGroupSize<check_for_nan_kernel<T>>();
 
   constexpr int64_t maxNumBlocks = 24;
 
@@ -202,10 +198,13 @@ void checkfornan_impl_xpu(
   auto global_range{numBlocks * numThreadsPerBlock};
   auto local_range{numThreadsPerBlock};
 
-  using Kernel = checkForNaN<T>;
-  auto kfn = Kernel(tensor.data_ptr<T>(), tensor.numel());
-
-  sycl_kernel_submit(global_range, local_range, stream.queue(), kfn);
+  sycl_kernel_submit<check_for_nan_kernel<T>>(
+      global_range,
+      local_range,
+      stream.queue(),
+      0,
+      tensor.data_ptr<T>(),
+      static_cast<size_t>(tensor.numel()));
 }
 
 // CHECK if a Tensor contains NAN in any of its element
