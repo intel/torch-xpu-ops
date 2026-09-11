@@ -39,4 +39,6 @@ TORCH_XPU_API Tensor& orgqr_mkl(Tensor& result, const Tensor& tau);
 
 TORCH_XPU_API Tensor& ungqr_mkl(Tensor& result, const Tensor& tau);
 
+TORCH_XPU_API void potrf_mkl(const Tensor& result, const Tensor& info, bool upper);
+
 } // namespace at::native::xpu
