@@ -30,12 +30,30 @@ using at::native::memory::get_alignment;
 // A default store leaves the flag in L1 write-back where the peer GPU never
 // sees it, and a default load in a spin loop keeps hitting the stale L1 copy.
 // Both accesses therefore use LSC messages with L1 bypassed (`.uc`).
+//
+// Note on execution size:
+// The `(M1, 16)` in the asm is that instruction's execution size, the number of
+// lanes it touches, and it is fixed at compile time. The SIMD width of the
+// kernel is a separate thing that IGC picks on its own unless the kernel pins
+// its sub-group size. The asm operands are ordinary variables of the
+// surrounding code, so they hold exactly as many lanes as that width: a larger
+// exec size reads and writes past their end, a smaller one silently leaves the
+// upper lanes untouched. The two must therefore agree, so every kernel calling
+// these helpers declares SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE),
+// and the literal in the asm below has to be kept in sync with that constant.
+//
+// 16 is the only width every current target accepts. dg2 hits an IGC internal
+// error at 32 (GSD-13398): its LSC message is natively 16 lanes wide, and while
+// the compiler splits an ordinary 32-lane access into two 16-lane ones, an asm
+// block is opaque to it and cannot be split. pvc and bmg in turn reject 8.
+// Verified at 16 on dg2, pvc, bmg, lnl, ptl and xe3.
+#define XCCL_SIGNAL_SUB_GROUP_SIZE 16
 
 // L1-uncached / L3-cached load, so a spin loop observes remote updates.
 inline uint32_t ld_flag_sys(const uint32_t* addr) {
 #ifdef __SYCL_DEVICE_ONLY__
   uint32_t val;
-  asm volatile("lsc_load.ugm.uc.ca (M1, 32) %0:d32 flat[%1]:a64"
+  asm volatile("lsc_load.ugm.uc.ca (M1, 16) %0:d32 flat[%1]:a64"
                : "=rw"(val)
                : "rw"(addr));
   return val;
@@ -47,7 +65,7 @@ inline uint32_t ld_flag_sys(const uint32_t* addr) {
 // L1-uncached / L3-write-back store, so the flag reaches the peer.
 inline void st_flag_sys(uint32_t* addr, uint32_t val) {
 #ifdef __SYCL_DEVICE_ONLY__
-  asm volatile("lsc_store.ugm.uc.wb (M1, 32) flat[%0]:a64 %1:d32"
+  asm volatile("lsc_store.ugm.uc.wb (M1, 16) flat[%0]:a64 %1:d32"
                :
                : "rw"(addr), "rw"(val)
                : "memory");
