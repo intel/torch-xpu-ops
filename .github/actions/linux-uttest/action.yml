@@ -204,9 +204,11 @@ runs:
         # do eager to inductor cases
         if [[ "${category}" == 'inductor' ]]; then
           # test_torch not in the done list
+          echo "::group::eager to inductor cases (pytorch/test/run_test.py --inductor xxx)"
           python pytorch/test/run_test.py --inductor \
             --include test_modules test_ops test_ops_gradients \
             --junit-xml="${{ github.workspace }}/ut_log/upstream_inductor_eager_to_inductor.xml"
+          echo "::endgroup::"
         fi
         # loop files
         while IFS= read -r test_file; do
