@@ -7,8 +7,10 @@ name: ci-disabled-watch
 
 on:
   schedule:
-    # After the nightly xpu.yml run and #364's auto-skip pass have settled.
-    - cron: '0 4 * * *'
+    # Twice a day: #364 announces 1.0 new disabled issue per day on average but
+    # bursts to 4, and one run copies one announcement, so a daily poll never
+    # drains a burst. 19:00 and 04:00 Beijing, when the GPU runners are idle.
+    - cron: '0 11,20 * * *'
   workflow_dispatch:
     inputs:
       limit:
