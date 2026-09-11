@@ -91,3 +91,10 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # $GITHUB_STEP_SUMMARY renders in the web UI only -- it is not in the run
+      # log and has no REST endpoint. Echo it so the result is readable with
+      # `gh run view --log`.
+      - name: Echo the report into the log
+        if: always()
+        run: cat "$GITHUB_STEP_SUMMARY"
