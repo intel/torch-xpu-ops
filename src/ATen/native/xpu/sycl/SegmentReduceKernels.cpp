@@ -269,7 +269,7 @@ Tensor _segment_reduce_lengths_offsets_xpu_kernel(
               auto* output_data_ptr = output.mutable_data_ptr<scalar_t>();
 
               // initialize starting value
-              scalar_t initial_value;
+              scalar_t initial_value = 0;
               if (initial.has_value()) {
                 initial_value = initial.value().to<scalar_t>();
               } else if (reduction == native::ReductionType::MAX) {
