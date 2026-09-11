@@ -48,7 +48,7 @@ def get_device_capability(device=None):
 torch.cuda.get_device_capability = get_device_capability
 
 with XPUPatchForImport(False):
-    from test_foreach import TestForeach
+    from test_foreach import TestForeachDevice
 
 
 @ops(
@@ -165,7 +165,7 @@ def _test_binary_op_list_slow_path(self, device, dtype, op):
     )
 
 
-TestForeach.test_binary_op_list_slow_path = _test_binary_op_list_slow_path
+TestForeachDevice.test_binary_op_list_slow_path = _test_binary_op_list_slow_path
 
 
 def _test_0dim_tensor_overload_cpu_ok(self):
@@ -180,7 +180,7 @@ def _test_0dim_tensor_overload_cpu_ok(self):
     self.assertEqual(actual, [t.div(scalar_cpu_tensor) for t in tensors])
 
 
-TestForeach.test_0dim_tensor_overload_cpu_ok = _test_0dim_tensor_overload_cpu_ok
+TestForeachDevice.test_0dim_tensor_overload_cpu_ok = _test_0dim_tensor_overload_cpu_ok
 
 
 def _test_div_reciprocal(self):
@@ -192,7 +192,7 @@ def _test_div_reciprocal(self):
     self.assertEqual(expect_e, actual_e)
 
 
-TestForeach.test_div_reciprocal = _test_div_reciprocal
+TestForeachDevice.test_div_reciprocal = _test_div_reciprocal
 
 
 def _test_0dim_tensor_overload_exception(self):
@@ -208,7 +208,9 @@ def _test_0dim_tensor_overload_exception(self):
         torch._foreach_add(tensors, torch.tensor([1.0, 1.0], device="xpu"))
 
 
-TestForeach.test_0dim_tensor_overload_exception = _test_0dim_tensor_overload_exception
+TestForeachDevice.test_0dim_tensor_overload_exception = (
+    _test_0dim_tensor_overload_exception
+)
 
 
 @serialTest()
@@ -223,7 +225,7 @@ def _test_foreach_copy_with_multi_dtypes_large_input(self):
     self.assertEqual(self_tensor, ref_out)
 
 
-TestForeach.test_foreach_copy_with_multi_dtypes_large_input = (
+TestForeachDevice.test_foreach_copy_with_multi_dtypes_large_input = (
     _test_foreach_copy_with_multi_dtypes_large_input
 )
 
@@ -239,7 +241,7 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
     copy_ = op.ref_inplace
 
     def fn(self_tensor, src_tensor, non_blocking):
-        return foreach_copy(self_tensor, src_tensor, non_blocking)
+        return foreach_copy(self_tensor, src_tensor, non_blocking=non_blocking)
 
     fn = torch.compile(fn)
     for non_blocking in (False,):
@@ -263,7 +265,7 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
             self.assertEqual(output2, ref_input_cpu)
 
 
-TestForeach.test_foreach_copy_with_different_device_inputs = (
+TestForeachDevice.test_foreach_copy_with_different_device_inputs = (
     _test_foreach_copy_with_different_device_inputs
 )
 
@@ -317,9 +319,11 @@ def _test_big_num_tensors(self, device, dtype, op, use_xpu_graph, w_empty):
         self.assertEqual(expect, actual, equal_nan=True)
 
 
-TestForeach.test_big_num_tensors = _test_big_num_tensors
+TestForeachDevice.test_big_num_tensors = _test_big_num_tensors
 
-instantiate_device_type_tests(TestForeach, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestForeachDevice, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":
