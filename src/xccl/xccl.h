@@ -108,6 +108,10 @@ inline const std::map<at::ScalarType, onecclDataType_t> xcclDatatypes = {
     {at::kFloat8_e4m3fn, onecclDataType_t::onecclUint8},
     {at::kFloat8_e4m3fnuz, onecclDataType_t::onecclUint8},
     {at::kFloat8_e5m2fnuz, onecclDataType_t::onecclUint8},
+    // MX formats: fp4 is already x2-packed into a byte and e8m0 is the shared
+    // scale that comes with it, so both are one byte per element here.
+    {at::kFloat8_e8m0fnu, onecclDataType_t::onecclUint8},
+    {at::kFloat4_e2m1fn_x2, onecclDataType_t::onecclUint8},
 };
 
 namespace {
@@ -180,6 +184,11 @@ inline onecclDataType_t getXcclDataType(
     TORCH_CHECK(
         !isFloat8Type(type),
         "Float8 dtypes are not currently supported for XCCL reductions");
+    // Not covered by isFloat8Type. Reducing it as uint8 would let one element
+    // carry into the neighbour packed in the same byte.
+    TORCH_CHECK(
+        type != at::kFloat4_e2m1fn_x2,
+        "Float4 is not currently supported for XCCL reductions");
   }
   auto it = xcclDatatypes.find(type);
   TORCH_CHECK_WITH(
