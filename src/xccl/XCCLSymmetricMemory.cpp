@@ -7,6 +7,7 @@
 #include <ATen/xpu/XPUContext.h>
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
+#include <c10/xpu/XPUFunctions.h>
 #include <comm/SYCLContext.h>
 
 // The oneCCL v2 C API (oneapi/ccl.h, incl. the device/LSA entry points) is
@@ -312,6 +313,11 @@ class XCCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
         !group_name.has_value(),
         "XCCLSymmetricMemoryAllocator::alloc must not be called with a "
         "group_name");
+    // A tensor created on a plain "xpu" device carries no index; onecclSetDevice
+    // and the per-device communicator lookup both need a real one.
+    if (device_idx < 0) {
+      device_idx = static_cast<int>(c10::xpu::current_device());
+    }
     c10::OptionalDeviceGuard guard;
     guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
 

@@ -1430,10 +1430,10 @@ class XCCLTraceTest(XCCLTraceTestBase):
 
 
 # ------------------------------------------------------------------
-# XPU SymmetricMemory tests (SYCL IPC backend)
+# SymmetricMemory tests
 # ------------------------------------------------------------------
 
-# XPU does not support multicast.
+# Neither backend supports multicast.
 os.environ["TORCH_SYMM_MEM_DISABLE_MULTICAST"] = "1"
 
 device_type = "xpu"
@@ -1446,9 +1446,21 @@ except ImportError:
     _HAS_XPU_AND_TRITON = False
 
 
-@instantiate_parametrized_tests
-class SymmetricMemoryTest(MultiProcContinuousTest):
-    """XPU SymmetricMemory tests (SYCL IPC backend)."""
+class _SymmetricMemoryTestMixin:
+    """Cases shared by the XPU symmetric-memory backends.
+
+    "XPU" maps peer buffers with level-zero IPC handles, "XCCL" takes them out
+    of a registered oneCCL window; above the allocator the two are the same, so
+    the same cases cover both.
+
+    The backend is fixed per class rather than parametrized: set_backend() is
+    process-wide and refuses to change once an allocation has happened, and
+    MultiProcContinuousTest runs a whole class on one set of workers. A
+    subclass does get its own workers, since _processes_spawned is deliberately
+    not inherited.
+    """
+
+    symm_mem_backend = "XPU"
 
     @classmethod
     def backend_str(cls) -> str:
@@ -1467,24 +1479,57 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
     def _init_process(self):
         torch.xpu.set_device(self.device)
         torch.manual_seed(42 + self.rank)
+        # Setting the same backend again is a no-op, so this is safe to repeat.
+        symm_mem.set_backend(self.symm_mem_backend)
+        self._warmup()
+
+    def _warmup(self, group=None):
+        # XCCLSymmetricMemory borrows the process group's communicator instead
+        # of bootstrapping its own, so one has to exist before the rendezvous.
+        if self.symm_mem_backend != "XCCL":
+            return
+        dist.all_reduce(torch.ones(1, device=self.device), group=group)
+        torch.xpu.synchronize()
+
+    def _skip_unless_signalling(self):
+        if self.symm_mem_backend == "XCCL":
+            self.skipTest("XCCL has no device-side barrier or signalling yet")
+
+    def _rendezvous(self, t, group):
+        try:
+            return symm_mem.rendezvous(t, group=group)
+        except RuntimeError as e:
+            if "requires a oneCCL build" in str(e):
+                self.skipTest("oneCCL predates the LSA device API")
+            raise
+
+    def _sync(self, hdl, channel: int = 0):
+        # XCCL has no device-side barrier yet: it would need the oneCCL LSA
+        # barrier, which is a C++ template and so out of reach of the C API this
+        # backend is limited to. Order through the process group instead.
+        if self.symm_mem_backend == "XCCL":
+            torch.xpu.synchronize()
+            dist.barrier()
+        else:
+            hdl.barrier(channel=channel)
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_rendezvous_basic(self) -> None:
-        """Smoke-test the SYCL IPC rendezvous path: allocate → rendezvous →
-        write → barrier → read peer buffer."""
+        """Smoke-test the rendezvous path: allocate → rendezvous → write →
+        sync → read peer buffer."""
         self._init_process()
 
         numel = 1024
         t = symm_mem.empty(numel, dtype=torch.float32, device=self.device)
-        hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
+        hdl = self._rendezvous(t, dist.group.WORLD)
 
         self.assertEqual(hdl.rank, self.rank)
         self.assertEqual(hdl.world_size, self.world_size)
         self.assertEqual(len(hdl.buffer_ptrs), self.world_size)
 
         t.fill_(float(self.rank))
-        hdl.barrier()
+        self._sync(hdl)
 
         for r in range(self.world_size):
             buf = hdl.get_buffer(r, (numel,), torch.float32)
@@ -1501,7 +1546,7 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
         self._init_process()
 
         t = symm_mem.empty(1, device="xpu")
-        hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
+        hdl = self._rendezvous(t, dist.group.WORLD)
         peer = (self.rank + 1) % self.world_size
 
         # Local pad pointer must match what the handle advertises.
@@ -1530,7 +1575,7 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
 
         # Writes to buffer must not corrupt the signal pad.
         t2 = symm_mem.empty(1, device="xpu")
-        hdl2 = symm_mem.rendezvous(t2, group=dist.group.WORLD)
+        hdl2 = self._rendezvous(t2, dist.group.WORLD)
         local_pad2 = hdl2.get_signal_pad(self.rank)
         local_pad2.fill_(42)
         t2.fill_(0)
@@ -1540,7 +1585,7 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
     @skip_if_lt_x_gpu(4)
     def test_subgroup(self) -> None:
         """Two disjoint subgroups rendezvous on the same tensor; each can
-        observe its peers correctly via the SYCL IPC mapping."""
+        observe its peers correctly."""
         self._init_process()
 
         ranks = list(range(self.world_size))
@@ -1549,10 +1594,11 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
 
         world = dist.group.WORLD
         subgroup = subgroup_0 if world.rank() < world.size() // 2 else subgroup_1
+        self._warmup(subgroup)
 
         t = symm_mem.empty(64, device="xpu")
-        sm_world = symm_mem.rendezvous(t, group=world)
-        sm_sub = symm_mem.rendezvous(t, group=subgroup)
+        sm_world = self._rendezvous(t, world)
+        sm_sub = self._rendezvous(t, subgroup)
 
         self.assertEqual(sm_world.world_size, world.size())
         self.assertEqual(sm_world.rank, world.rank())
@@ -1560,7 +1606,7 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
         self.assertEqual(sm_sub.rank, world.rank() % subgroup.size())
 
         t.fill_(world.rank())
-        sm_world.barrier()
+        self._sync(sm_world)
 
         peer = (world.rank() + 1) % world.size()
         buf = sm_world.get_buffer(peer, (64,), torch.float32)
@@ -1576,13 +1622,14 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_put_wait_signal(self) -> None:
-        """Verify put_signal / wait_signal over the SYCL IPC peer mapping.
+        """Verify put_signal / wait_signal over the peer mapping.
 
         The handshake is repeated so that a signal flag which is not visible
         across ranks (e.g. one left behind in L1) surfaces as a hang, and each
         round asserts that data written before put_signal is readable by the
         peer once wait_signal returns.
         """
+        self._skip_unless_signalling()
         self._init_process()
 
         numel = 1024
@@ -1609,6 +1656,19 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
             # The ring handshake is one-way, so without this the left peer can
             # start writing iteration i + 1 while we are still reading i.
             hdl.barrier(channel=1)
+
+
+@instantiate_parametrized_tests
+class SymmetricMemoryTest(_SymmetricMemoryTestMixin, MultiProcContinuousTest):
+    """SymmetricMemory over the XPU backend (level-zero IPC handles).
+
+    The fused-op smoke tests sit here rather than in the mixin: they allocate
+    through get_symm_mem_workspace(), which passes a group_name, while the XCCL
+    backend takes its peer pointers from a window registered at rendezvous
+    time and rejects that call.
+    """
+
+    symm_mem_backend = "XPU"
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
@@ -1678,6 +1738,13 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
 
         torch.testing.assert_close(output_0, output_1)
         self.assertEqual(output_0.stride(), output_1.stride())
+
+
+@instantiate_parametrized_tests
+class XCCLSymmetricMemoryTest(_SymmetricMemoryTestMixin, MultiProcContinuousTest):
+    """SymmetricMemory over the XCCL backend (oneCCL windows)."""
+
+    symm_mem_backend = "XCCL"
 
 
 # ------------------------------------------------------------------
