@@ -184,7 +184,6 @@ struct FlattenIdxtoRealIdxKernelFunctor {
       int64_t* divisor,
       int64_t* sizes)
       : N_(N),
-        num_dim_(num_dim),
         num_nonzeros_(num_nonzeros),
         out_begin_(out_begin),
         idx_flat_begin_(idx_flat_begin) {
@@ -196,7 +195,6 @@ struct FlattenIdxtoRealIdxKernelFunctor {
 
  private:
   int64_t N_;
-  const int64_t num_dim_;
   const int64_t num_nonzeros_;
   int64_t* out_begin_;
   int64_t* idx_flat_begin_;
