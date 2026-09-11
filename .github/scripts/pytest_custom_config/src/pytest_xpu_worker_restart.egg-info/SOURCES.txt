@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+src/pytest_xpu_worker_restart/__init__.py
+src/pytest_xpu_worker_restart/plugin.py
+src/pytest_xpu_worker_restart.egg-info/PKG-INFO
+src/pytest_xpu_worker_restart.egg-info/SOURCES.txt
+src/pytest_xpu_worker_restart.egg-info/dependency_links.txt
+src/pytest_xpu_worker_restart.egg-info/entry_points.txt
+src/pytest_xpu_worker_restart.egg-info/requires.txt
+src/pytest_xpu_worker_restart.egg-info/top_level.txt
