@@ -23,179 +23,125 @@ namespace at::native::xpu {
 using namespace at::xpu;
 
 template <int P, typename scalar_t, typename accscalar_t>
-struct MultiMarginLossForwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item) const {
-    int k = item.get_group(0);
-    const scalar_t* input_k = input_ + k * dim_;
-    scalar_t* output_k = output_ + k;
-    int target_k = static_cast<int>(target_[k]);
-    SYCL_KERNEL_ASSERT(
-        target_k >= 0 && target_k < dim_ && "target index is out of bounds");
-    scalar_t input_target_k = input_k[target_k];
-    int i_start = item.get_local_linear_id();
-    int i_end = dim_;
-    int i_step = item.get_local_range(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void multi_margin_loss_forward_kernel(
+    scalar_t* output,
+    const scalar_t* input,
+    const int64_t* target,
+    const scalar_t* weights,
+    int nframe,
+    int dim,
+    bool sizeAverage,
+    scalar_t margin) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int k = item.get_group(0);
+  const scalar_t* input_k = input + k * dim;
+  scalar_t* output_k = output + k;
+  int target_k = static_cast<int>(target[k]);
+  SYCL_KERNEL_ASSERT(
+      target_k >= 0 && target_k < dim && "target index is out of bounds");
+  scalar_t input_target_k = input_k[target_k];
+  int i_start = item.get_local_linear_id();
+  int i_end = dim;
+  int i_step = item.get_local_range(0);
 
-    smem_[item.get_local_linear_id()] = 0;
-    for (int i = i_start; i < i_end; i += i_step) {
-      scalar_t z = margin_ - input_target_k + input_k[i];
-      if (i == target_k) {
-        continue;
-      }
-
-      if (z > 0) {
-        scalar_t h = (P == 1) ? z : z * z;
-        if (weights_) {
-          h *= weights_[target_k];
-        }
-        smem_[item.get_local_linear_id()] += h;
-      }
+  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  auto smem = reinterpret_cast<accscalar_t*>(slm);
+  smem[item.get_local_linear_id()] = 0;
+  for (int i = i_start; i < i_end; i += i_step) {
+    scalar_t z = margin - input_target_k + input_k[i];
+    if (i == target_k) {
+      continue;
     }
-    sycl::group_barrier(item.get_group());
 
-    // reduce
-    if (item.get_local_linear_id() == 0) {
-      accscalar_t sum = 0;
-      for (int i = 0; i < item.get_local_range(0); i++)
-        sum += smem_[i];
-
-      const int denom = sizeAverage_ ? nframe_ * dim_ : dim_;
-      *output_k = static_cast<scalar_t>(sum / denom);
+    if (z > 0) {
+      scalar_t h = (P == 1) ? z : z * z;
+      if (weights) {
+        h *= weights[target_k];
+      }
+      smem[item.get_local_linear_id()] += h;
     }
   }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_ = sycl_local_acc_t<accscalar_t>(smem_size_, cgh);
-  }
-  MultiMarginLossForwardKernelFunctor(
-      scalar_t* output,
-      const scalar_t* input,
-      const int64_t* target,
-      const scalar_t* weights,
-      int nframe,
-      int dim,
-      bool sizeAverage,
-      scalar_t margin,
-      int64_t smem_size)
-      : output_(output),
-        input_(input),
-        target_(target),
-        weights_(weights),
-        nframe_(nframe),
-        dim_(dim),
-        sizeAverage_(sizeAverage),
-        margin_(margin),
-        smem_size_(smem_size) {}
+  sycl::group_barrier(item.get_group());
 
- private:
-  scalar_t* output_;
-  const scalar_t* input_;
-  const int64_t* target_;
-  const scalar_t* weights_;
-  int nframe_;
-  int dim_;
-  bool sizeAverage_;
-  scalar_t margin_;
-  int64_t smem_size_;
-  sycl_local_acc_t<accscalar_t> smem_;
-};
+  // reduce
+  if (item.get_local_linear_id() == 0) {
+    accscalar_t sum = 0;
+    for (int i = 0; i < item.get_local_range(0); i++)
+      sum += smem[i];
+
+    const int denom = sizeAverage ? nframe * dim : dim;
+    *output_k = static_cast<scalar_t>(sum / denom);
+  }
+}
 
 template <int P, typename scalar_t, typename accscalar_t>
-struct MultiMarginLossBackwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item) const {
-    int k = item.get_group(0);
-    const scalar_t* input_k = input_ + k * dim_;
-    scalar_t* gradInput_k = gradInput_ + k * dim_;
-    int target_k = static_cast<int>(target_[k]);
-    scalar_t input_target_k = input_k[target_k];
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void multi_margin_loss_backward_kernel(
+    scalar_t* gradInput,
+    const scalar_t* gradOutput,
+    const scalar_t* input,
+    const int64_t* target,
+    const scalar_t* weights,
+    int nframe,
+    int dim,
+    bool sizeAverage,
+    scalar_t margin,
+    bool reduce) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int k = item.get_group(0);
+  const scalar_t* input_k = input + k * dim;
+  scalar_t* gradInput_k = gradInput + k * dim;
+  int target_k = static_cast<int>(target[k]);
+  scalar_t input_target_k = input_k[target_k];
 
-    const scalar_t* gradOutput_k = gradOutput_;
-    if (!reduce_) {
-      gradOutput_k += k;
+  const scalar_t* gradOutput_k = gradOutput;
+  if (!reduce) {
+    gradOutput_k += k;
+  }
+  const int denom = sizeAverage && reduce ? nframe * dim : dim;
+  const accscalar_t g = accscalar_t(1) / static_cast<accscalar_t>(denom);
+  int i_start = item.get_local_linear_id();
+  int i_end = dim;
+  int i_step = item.get_local_range(0);
+
+  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  auto smem = reinterpret_cast<accscalar_t*>(slm);
+  smem[item.get_local_linear_id()] = 0;
+  for (int i = i_start; i < i_end; i += i_step) {
+    scalar_t z = margin - input_target_k + input_k[i];
+    if (i == target_k) {
+      continue;
     }
-    const int denom = sizeAverage_ && reduce_ ? nframe_ * dim_ : dim_;
-    const accscalar_t g = accscalar_t(1) / static_cast<accscalar_t>(denom);
-    int i_start = item.get_local_linear_id();
-    int i_end = dim_;
-    int i_step = item.get_local_range(0);
 
-    smem_[item.get_local_linear_id()] = 0;
-    for (int i = i_start; i < i_end; i += i_step) {
-      scalar_t z = margin_ - input_target_k + input_k[i];
-      if (i == target_k) {
-        continue;
+    if (z > 0) {
+      accscalar_t h = (P == 1) ? g : 2 * g * z;
+      if (weights) {
+        h *= weights[target_k];
       }
 
-      if (z > 0) {
-        accscalar_t h = (P == 1) ? g : 2 * g * z;
-        if (weights_) {
-          h *= weights_[target_k];
-        }
-
-        smem_[item.get_local_linear_id()] -= static_cast<scalar_t>(h);
-        gradInput_k[i] = static_cast<scalar_t>(h);
-      } else {
-        gradInput_k[i] = static_cast<scalar_t>(0);
-      }
-    }
-    sycl::group_barrier(item.get_group());
-
-    // reduce
-    if (item.get_local_linear_id() == 0) {
-      accscalar_t gradInput_target_k = 0;
-
-      for (int i = 0; i < item.get_local_range(0); i++) {
-        gradInput_target_k += smem_[i];
-      }
-
-      gradInput_k[target_k] = static_cast<scalar_t>(gradInput_target_k);
-    }
-    for (int i = i_start; i < i_end; i += i_step) {
-      gradInput_k[i] *= *gradOutput_k;
+      smem[item.get_local_linear_id()] -= static_cast<scalar_t>(h);
+      gradInput_k[i] = static_cast<scalar_t>(h);
+    } else {
+      gradInput_k[i] = static_cast<scalar_t>(0);
     }
   }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_ = sycl_local_acc_t<accscalar_t>(smem_size_, cgh);
-  }
-  MultiMarginLossBackwardKernelFunctor(
-      scalar_t* gradInput,
-      const scalar_t* gradOutput,
-      const scalar_t* input,
-      const int64_t* target,
-      const scalar_t* weights,
-      int nframe,
-      int dim,
-      bool sizeAverage,
-      scalar_t margin,
-      bool reduce,
-      int64_t smem_size)
-      : gradInput_(gradInput),
-        gradOutput_(gradOutput),
-        input_(input),
-        target_(target),
-        weights_(weights),
-        nframe_(nframe),
-        dim_(dim),
-        sizeAverage_(sizeAverage),
-        margin_(margin),
-        reduce_(reduce),
-        smem_size_(smem_size) {}
+  sycl::group_barrier(item.get_group());
 
- private:
-  scalar_t* gradInput_;
-  const scalar_t* gradOutput_;
-  const scalar_t* input_;
-  const int64_t* target_;
-  const scalar_t* weights_;
-  int nframe_;
-  int dim_;
-  bool sizeAverage_;
-  scalar_t margin_;
-  bool reduce_;
-  int64_t smem_size_;
-  sycl_local_acc_t<accscalar_t> smem_;
-};
+  // reduce
+  if (item.get_local_linear_id() == 0) {
+    accscalar_t gradInput_target_k = 0;
+
+    for (int i = 0; i < item.get_local_range(0); i++) {
+      gradInput_target_k += smem[i];
+    }
+
+    gradInput_k[target_k] = static_cast<scalar_t>(gradInput_target_k);
+  }
+  for (int i = i_start; i < i_end; i += i_step) {
+    gradInput_k[i] *= *gradOutput_k;
+  }
+}
 
 Tensor& multi_margin_loss_kernel(
     const Tensor& input_,
@@ -243,10 +189,14 @@ Tensor& multi_margin_loss_kernel(
               "inconsistent target size");
 
           if (p == 1) {
-            using KernelClass =
-                MultiMarginLossForwardKernelFunctor<1, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-            auto kfn = KernelClass(
+            constexpr auto kernelFunc =
+                multi_margin_loss_forward_kernel<1, scalar_t, accscalar_t>;
+            int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+            sycl_kernel_submit<kernelFunc>(
+                local_size,
+                local_size,
+                getCurrentSYCLQueue(),
+                local_size * sizeof(accscalar_t),
                 out.mutable_data_ptr<scalar_t>(),
                 input.const_data_ptr<scalar_t>(),
                 target.const_data_ptr<int64_t>(),
@@ -255,15 +205,16 @@ Tensor& multi_margin_loss_kernel(
                 1,
                 input.dim() < 1 ? input.numel() : input.sizes()[0],
                 reduction == at::Reduction::Mean,
-                margin,
-                local_size);
-            sycl_kernel_submit(
-                local_size, local_size, getCurrentSYCLQueue(), kfn);
+                margin);
           } else if (p == 2) {
-            using KernelClass =
-                MultiMarginLossForwardKernelFunctor<2, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-            auto kfn = KernelClass(
+            constexpr auto kernelFunc =
+                multi_margin_loss_forward_kernel<2, scalar_t, accscalar_t>;
+            int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+            sycl_kernel_submit<kernelFunc>(
+                local_size,
+                local_size,
+                getCurrentSYCLQueue(),
+                local_size * sizeof(accscalar_t),
                 out.mutable_data_ptr<scalar_t>(),
                 input.const_data_ptr<scalar_t>(),
                 target.const_data_ptr<int64_t>(),
@@ -272,10 +223,7 @@ Tensor& multi_margin_loss_kernel(
                 1,
                 input.dim() < 1 ? input.numel() : input.sizes()[0],
                 reduction == at::Reduction::Mean,
-                margin,
-                local_size);
-            sycl_kernel_submit(
-                local_size, local_size, getCurrentSYCLQueue(), kfn);
+                margin);
           }
         } else {
           auto in_sizes = input.sizes();
@@ -287,10 +235,14 @@ Tensor& multi_margin_loss_kernel(
 
           if (reduction == at::Reduction::None) {
             if (p == 1) {
-              using KernelClass =
-                  MultiMarginLossForwardKernelFunctor<1, scalar_t, accscalar_t>;
-              int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-              auto kfn = KernelClass(
+              constexpr auto kernelFunc =
+                  multi_margin_loss_forward_kernel<1, scalar_t, accscalar_t>;
+              int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+              sycl_kernel_submit<kernelFunc>(
+                  nframe * local_size,
+                  local_size,
+                  getCurrentSYCLQueue(),
+                  local_size * sizeof(accscalar_t),
                   out.mutable_data_ptr<scalar_t>(),
                   input.const_data_ptr<scalar_t>(),
                   target.const_data_ptr<int64_t>(),
@@ -299,15 +251,16 @@ Tensor& multi_margin_loss_kernel(
                   nframe,
                   in_sizes[1],
                   false,
-                  margin,
-                  local_size);
-              sycl_kernel_submit(
-                  nframe * local_size, local_size, getCurrentSYCLQueue(), kfn);
+                  margin);
             } else if (p == 2) {
-              using KernelClass =
-                  MultiMarginLossForwardKernelFunctor<2, scalar_t, accscalar_t>;
-              int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-              auto kfn = KernelClass(
+              constexpr auto kernelFunc =
+                  multi_margin_loss_forward_kernel<2, scalar_t, accscalar_t>;
+              int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+              sycl_kernel_submit<kernelFunc>(
+                  nframe * local_size,
+                  local_size,
+                  getCurrentSYCLQueue(),
+                  local_size * sizeof(accscalar_t),
                   out.mutable_data_ptr<scalar_t>(),
                   input.const_data_ptr<scalar_t>(),
                   target.const_data_ptr<int64_t>(),
@@ -316,18 +269,19 @@ Tensor& multi_margin_loss_kernel(
                   nframe,
                   in_sizes[1],
                   false,
-                  margin,
-                  local_size);
-              sycl_kernel_submit(
-                  nframe * local_size, local_size, getCurrentSYCLQueue(), kfn);
+                  margin);
             }
           } else {
             auto tmp_output = at::empty({nframe}, input.options());
             if (p == 1) {
-              using KernelClass =
-                  MultiMarginLossForwardKernelFunctor<1, scalar_t, accscalar_t>;
-              int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-              auto kfn = KernelClass(
+              constexpr auto kernelFunc =
+                  multi_margin_loss_forward_kernel<1, scalar_t, accscalar_t>;
+              int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+              sycl_kernel_submit<kernelFunc>(
+                  nframe * local_size,
+                  local_size,
+                  getCurrentSYCLQueue(),
+                  local_size * sizeof(accscalar_t),
                   tmp_output.mutable_data_ptr<scalar_t>(),
                   input.const_data_ptr<scalar_t>(),
                   target.const_data_ptr<int64_t>(),
@@ -336,16 +290,16 @@ Tensor& multi_margin_loss_kernel(
                   nframe,
                   in_sizes[1],
                   reduction == Reduction::Mean,
-                  margin,
-                  local_size);
-              sycl_kernel_submit(
-                  nframe * local_size, local_size, getCurrentSYCLQueue(), kfn);
-
+                  margin);
             } else if (p == 2) {
-              using KernelClass =
-                  MultiMarginLossForwardKernelFunctor<2, scalar_t, accscalar_t>;
-              int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-              auto kfn = KernelClass(
+              constexpr auto kernelFunc =
+                  multi_margin_loss_forward_kernel<2, scalar_t, accscalar_t>;
+              int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+              sycl_kernel_submit<kernelFunc>(
+                  nframe * local_size,
+                  local_size,
+                  getCurrentSYCLQueue(),
+                  local_size * sizeof(accscalar_t),
                   tmp_output.mutable_data_ptr<scalar_t>(),
                   input.const_data_ptr<scalar_t>(),
                   target.const_data_ptr<int64_t>(),
@@ -354,10 +308,7 @@ Tensor& multi_margin_loss_kernel(
                   nframe,
                   in_sizes[1],
                   reduction == Reduction::Mean,
-                  margin,
-                  local_size);
-              sycl_kernel_submit(
-                  nframe * local_size, local_size, getCurrentSYCLQueue(), kfn);
+                  margin);
             }
             at::sum_out(out, tmp_output, IntArrayRef{});
           }
@@ -417,10 +368,14 @@ Tensor& multi_margin_loss_backward_kernel(
 
         if (input.dim() <= 1) {
           if (p == 1) {
-            using KernelClass =
-                MultiMarginLossBackwardKernelFunctor<1, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-            auto kfn = KernelClass(
+            constexpr auto kernelFunc =
+                multi_margin_loss_backward_kernel<1, scalar_t, accscalar_t>;
+            int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+            sycl_kernel_submit<kernelFunc>(
+                local_size,
+                local_size,
+                getCurrentSYCLQueue(),
+                local_size * sizeof(accscalar_t),
                 grad_input.mutable_data_ptr<scalar_t>(),
                 grad_output.const_data_ptr<scalar_t>(),
                 input.const_data_ptr<scalar_t>(),
@@ -431,16 +386,16 @@ Tensor& multi_margin_loss_backward_kernel(
                 input.dim() == 0 ? 1 : input.sizes()[0],
                 reduction == at::Reduction::Mean,
                 margin,
-                reduction != at::Reduction::None,
-                local_size);
-            sycl_kernel_submit(
-                local_size, local_size, getCurrentSYCLQueue(), kfn);
-
+                reduction != at::Reduction::None);
           } else if (p == 2) {
-            using KernelClass =
-                MultiMarginLossBackwardKernelFunctor<2, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-            auto kfn = KernelClass(
+            constexpr auto kernelFunc =
+                multi_margin_loss_backward_kernel<2, scalar_t, accscalar_t>;
+            int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+            sycl_kernel_submit<kernelFunc>(
+                local_size,
+                local_size,
+                getCurrentSYCLQueue(),
+                local_size * sizeof(accscalar_t),
                 grad_input.mutable_data_ptr<scalar_t>(),
                 grad_output.const_data_ptr<scalar_t>(),
                 input.const_data_ptr<scalar_t>(),
@@ -451,10 +406,7 @@ Tensor& multi_margin_loss_backward_kernel(
                 input.dim() == 0 ? 1 : input.sizes()[0],
                 reduction == at::Reduction::Mean,
                 margin,
-                reduction != at::Reduction::None,
-                local_size);
-            sycl_kernel_submit(
-                local_size, local_size, getCurrentSYCLQueue(), kfn);
+                reduction != at::Reduction::None);
           }
         } else {
           auto in_sizes = input.sizes();
@@ -465,10 +417,14 @@ Tensor& multi_margin_loss_backward_kernel(
               "inconsistent target size");
 
           if (p == 1) {
-            using KernelClass =
-                MultiMarginLossBackwardKernelFunctor<1, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-            auto kfn = KernelClass(
+            constexpr auto kernelFunc =
+                multi_margin_loss_backward_kernel<1, scalar_t, accscalar_t>;
+            int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+            sycl_kernel_submit<kernelFunc>(
+                in_sizes[0] * local_size,
+                local_size,
+                getCurrentSYCLQueue(),
+                local_size * sizeof(accscalar_t),
                 grad_input.mutable_data_ptr<scalar_t>(),
                 grad_output.const_data_ptr<scalar_t>(),
                 input.const_data_ptr<scalar_t>(),
@@ -479,19 +435,16 @@ Tensor& multi_margin_loss_backward_kernel(
                 in_sizes[1],
                 reduction == at::Reduction::Mean,
                 margin,
-                reduction != at::Reduction::None,
-                local_size);
-            sycl_kernel_submit(
-                in_sizes[0] * local_size,
-                local_size,
-                getCurrentSYCLQueue(),
-                kfn);
-
+                reduction != at::Reduction::None);
           } else if (p == 2) {
-            using KernelClass =
-                MultiMarginLossBackwardKernelFunctor<2, scalar_t, accscalar_t>;
-            int64_t local_size = syclMaxWorkGroupSize<KernelClass>();
-            auto kfn = KernelClass(
+            constexpr auto kernelFunc =
+                multi_margin_loss_backward_kernel<2, scalar_t, accscalar_t>;
+            int64_t local_size = syclMaxWorkGroupSize<kernelFunc>();
+            sycl_kernel_submit<kernelFunc>(
+                in_sizes[0] * local_size,
+                local_size,
+                getCurrentSYCLQueue(),
+                local_size * sizeof(accscalar_t),
                 grad_input.mutable_data_ptr<scalar_t>(),
                 grad_output.const_data_ptr<scalar_t>(),
                 input.const_data_ptr<scalar_t>(),
@@ -502,13 +455,7 @@ Tensor& multi_margin_loss_backward_kernel(
                 in_sizes[1],
                 reduction == at::Reduction::Mean,
                 margin,
-                reduction != at::Reduction::None,
-                local_size);
-            sycl_kernel_submit(
-                in_sizes[0] * local_size,
-                local_size,
-                getCurrentSYCLQueue(),
-                kfn);
+                reduction != at::Reduction::None);
           }
         }
       });
