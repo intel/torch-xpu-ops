@@ -8,6 +8,10 @@ from collections import defaultdict
 parser = argparse.ArgumentParser(description='Test results analyzer')
 parser.add_argument('-n', '--ut-name', type=str, default='', help='UT name')
 parser.add_argument('-i', '--input-files', nargs='+', help='JUnit XML files or log files')
+parser.add_argument('--new-failures', nargs='*', default=None,
+                    help='Files listing new failures as "category,classname,testname". '
+                         'When given, only matching failures are shown; the rest are '
+                         'collapsed under a hidden "Known Failures" section.')
 args = parser.parse_args()
 
 failures = []
@@ -37,6 +41,8 @@ error_types = [
     "Failed",
     "TimeoutError",
     "asyncio.TimeoutError",
+    "Timeout",
+    "Hang",
     "FileNotFoundError",
     "PermissionError",
     "NotImplementedError",
@@ -133,22 +139,74 @@ def print_md_row(row, print_header=False, failure_list=None):
         failure_list.write(f"| {row_values} |\n")
 
 
-def print_failures(failure_list=None):
+def _failure_row(case):
+    return {
+        'Category': get_category_from_case(case),
+        'Class name': get_classname(case),
+        'Test name': get_name(case),
+        'Status': get_result(case),
+        'Message': get_message(case),
+        'Source': case['source'] if isinstance(case, dict) else 'XML'
+    }
+
+def _failure_key(case):
+    # Same identity as generate_failures_log()/ut_result_check.sh: category,classname,testname
+    return f"{get_category_from_case(case)},{get_classname(case)},{get_name(case)}"
+
+def load_new_failure_keys(files):
+    keys = set()
+    for path in files or []:
+        try:
+            with open(path, encoding='utf-8') as handle:
+                for line in handle:
+                    line = line.strip()
+                    if line:
+                        keys.add(line)
+        except OSError:
+            continue
+    return keys
+
+def write_failure_csv(failure_list):
+    # Headerless, all failures - downstream steps grep this for new failures.
+    for case in failures:
+        row_values = " | ".join(str(value) for value in _failure_row(case).values())
+        failure_list.write(f"| {row_values} |\n")
+
+def _print_failure_table(cases):
+    print_header = True
+    for case in cases:
+        print_md_row(_failure_row(case), print_header)
+        print_header = False
+
+def print_failures(new_keys=None):
     if not failures:
         return
 
-    print("### Test Failures")
-    print_header = True
-    for case in failures:
-        print_md_row({
-            'Category': get_category_from_case(case),
-            'Class name': get_classname(case),
-            'Test name': get_name(case),
-            'Status': get_result(case),
-            'Message': get_message(case),
-            'Source': case['source'] if isinstance(case, dict) else 'XML'
-        }, print_header, failure_list=failure_list)
-        print_header = False
+    if new_keys is None:
+        # Legacy behavior: show every failure in one table.
+        print("### Test Failures")
+        _print_failure_table(failures)
+        return
+
+    new_cases = [case for case in failures if _failure_key(case) in new_keys]
+    known_cases = [case for case in failures if _failure_key(case) not in new_keys]
+
+    print(f"### Test Failures (New: {len(new_cases)}, Known: {len(known_cases)})")
+    if new_cases:
+        _print_failure_table(new_cases)
+    else:
+        print()
+        print("_No new failures - all failures match known issues._")
+
+    if known_cases:
+        # Known failures are hidden by default inside a collapsible section.
+        print()
+        print("<details>")
+        print(f"<summary>Known Failures ({len(known_cases)}) - hidden by default</summary>")
+        print()
+        _print_failure_table(known_cases)
+        print()
+        print("</details>")
 
 def generate_failures_log():
     if not failures:
@@ -384,14 +442,17 @@ def main():
             process_xml_file(input_file)
         else:
             print(f"Skipping unknown file type: {input_file}", file=sys.stderr)
-    if args.ut_name != "skipped_ut":
-        with open("ut_failure_list.csv", "w") as failure_list:
-            print_failures(failure_list=failure_list)
-
     generate_failures_log()
     generate_passed_log()
     generate_category_totals_log()
+
+    # Order matters for the Step Summary: Results Summary first, then Test Failures.
     print_summary()
+    if args.ut_name != "skipped_ut":
+        new_keys = load_new_failure_keys(args.new_failures) if args.new_failures is not None else None
+        with open("ut_failure_list.csv", "w") as failure_list:
+            write_failure_csv(failure_list)
+        print_failures(new_keys)
 
 
 if __name__ == "__main__":

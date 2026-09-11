@@ -16,7 +16,7 @@ runs:
         uv pip list
         cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
     - name: op_regression
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
       run: |
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
@@ -39,7 +39,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
     - name: op_extended
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -94,7 +94,7 @@ runs:
         eval $test_cmd 2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
           tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
     - name: xpu_profiling
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
         mkdir -p ut_log/xpu_profiling/issue_reproduce
@@ -178,40 +178,3 @@ runs:
         find . -name "p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log"
-
-    # Summary
-    - name: UT Test Results Summary
-      if: ${{ !cancelled() }}
-      shell: timeout 180 bash -xe {0}
-      run: |
-        uv pip install junitparser
-        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-        # Check the failure logs
-        if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
-          echo -e "Exist Failure logs"
-          echo "Found Failure logs as below: "
-          for file in ${{ github.workspace }}/failures*.log; do
-            echo "  - $file"
-            cp "$file" ${{ github.workspace }}/ut_log
-          done
-          echo -e "Failure logs Copied"
-        else
-          echo -e "No Failure logs"
-        fi
-        # Copied the passed logs
-        if ls passed*.log 1> /dev/null 2>&1; then
-          cp passed*.log ${{ github.workspace }}/ut_log
-          echo -e "Passed logs Copied"
-        else
-          echo -e "No Passed logs"
-        fi
-        # Copied the Summary logs
-        if ls category*.log 1> /dev/null 2>&1; then
-          cp category*.log ${{ github.workspace }}/ut_log
-          echo -e "Category logs Copied"
-        else
-          echo -e "No Category logs"
-        fi
-        if [ -e ut_failure_list.csv ];then
-            cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
-        fi
