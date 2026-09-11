@@ -19,7 +19,7 @@ runs:
       run: |
         # Global pytest plugin: auto-registered via pytest11 entry point,
         # restarts an xdist worker on fatal XPU failures (crash/OOM/segfault).
-        uv pip install ${{ github.workspace }}/pytorch/third_party/torch-xpu-ops/.github/scripts/pytest_custom_config
+        uv pip install ${{ github.workspace }}/.github/scripts/pytest_custom_config
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
