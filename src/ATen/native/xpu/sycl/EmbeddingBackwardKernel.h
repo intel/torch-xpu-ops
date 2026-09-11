@@ -22,36 +22,26 @@ using namespace at::xpu;
 constexpr int64_t NROWS_PER_THREAD = 64;
 
 template <typename index_t>
-struct KrnPartialsPerSegmentKernelFunctor {
-  void operator()(sycl::item<1> item) const {
-    auto ret_ptr = ret_data_;
-    auto offsets_ptr = offsets_data_;
-    auto id = item.get_linear_id();
-    if (id < num_of_segments_) {
-      const index_t idx_start = offsets_ptr[id];
-      const index_t idx_end = (id == num_of_segments_ - 1)
-          ? static_cast<index_t>(numel_)
-          : offsets_ptr[id + 1];
-      const index_t size = idx_end - idx_start;
-      ret_ptr[id] = at::ceil_div(size, static_cast<index_t>(NROWS_PER_THREAD));
-    }
-  }
-  KrnPartialsPerSegmentKernelFunctor(
-      index_t* ret_data,
-      const index_t* offsets_data,
-      index_t num_of_segments,
-      int64_t numel)
-      : ret_data_(ret_data),
-        offsets_data_(offsets_data),
-        num_of_segments_(num_of_segments),
-        numel_(numel) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void krn_partials_per_segment_kernel(
+    index_t* ret_data,
+    const index_t* offsets_data,
+    index_t num_of_segments,
+    int64_t numel) {
+  auto ret_ptr = ret_data;
+  auto offsets_ptr = offsets_data;
 
- private:
-  index_t* ret_data_;
-  const index_t* offsets_data_;
-  index_t num_of_segments_;
-  int64_t numel_;
-};
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto id = item.get_local_linear_id();
+  if (id < num_of_segments) {
+    const index_t idx_start = offsets_ptr[id];
+    const index_t idx_end = (id == num_of_segments - 1)
+        ? static_cast<index_t>(numel)
+        : offsets_ptr[id + 1];
+    const index_t size = idx_end - idx_start;
+    ret_ptr[id] = at::ceil_div(size, static_cast<index_t>(NROWS_PER_THREAD));
+  }
+}
 
 template <typename index_t>
 void krn_partials_per_segment(
@@ -59,49 +49,44 @@ void krn_partials_per_segment(
     const index_t* segment_offsets,
     index_t num_of_segments,
     int64_t numel) {
-  auto caller = KrnPartialsPerSegmentKernelFunctor<index_t>(
-      ret, segment_offsets, num_of_segments, numel);
-  auto range = sycl::range<1>((size_t)num_of_segments);
-  sycl_kernel_submit(range, getCurrentSYCLQueue(), caller);
+  constexpr auto caller = krn_partials_per_segment_kernel<index_t>;
+  auto global_range = sycl::range<1>((size_t)num_of_segments);
+  auto local_range = sycl::range<1>((size_t)num_of_segments);
+  sycl_kernel_submit<caller>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
+      ret,
+      segment_offsets,
+      num_of_segments,
+      numel);
 }
 
 template <typename index_t>
-struct KrnPartialSegmentOffsetKernelFunctor {
-  void operator()(sycl::item<1> item) const {
-    auto ret_ptr = ret_data_;
-    auto partials_per_segment_ptr = partials_per_segment_data_;
-    auto partials_per_segment_offset_ptr = partials_per_segment_offset_data_;
-    auto segment_offsets_ptr = segment_offsets_data_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void krn_partial_segment_offset_kernel(
+    index_t* ret_data,
+    const index_t* partials_per_segment_data,
+    const index_t* partials_per_segment_offset_data,
+    const index_t* segment_offsets_data,
+    index_t num_of_segments) {
+  auto ret_ptr = ret_data;
+  auto partials_per_segment_ptr = partials_per_segment_data;
+  auto partials_per_segment_offset_ptr = partials_per_segment_offset_data;
+  auto segment_offsets_ptr = segment_offsets_data;
 
-    auto id = item.get_linear_id();
-    if (id < num_of_segments_) {
-      index_t idx = partials_per_segment_offset_ptr[id];
-      const index_t num_partials = partials_per_segment_ptr[id];
-      const index_t segment_offset = segment_offsets_ptr[id];
-      for (index_t i = 0; i < num_partials; ++i) {
-        ret_ptr[idx++] = segment_offset + i * NROWS_PER_THREAD;
-      }
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto id = item.get_local_linear_id();
+  if (id < num_of_segments) {
+    index_t idx = partials_per_segment_offset_ptr[id];
+    const index_t num_partials = partials_per_segment_ptr[id];
+    const index_t segment_offset = segment_offsets_ptr[id];
+    for (index_t i = 0; i < num_partials; ++i) {
+      ret_ptr[idx++] = segment_offset + i * NROWS_PER_THREAD;
     }
   }
-  KrnPartialSegmentOffsetKernelFunctor(
-      index_t* ret_data,
-      const index_t* partials_per_segment_data,
-      const index_t* partials_per_segment_offset_data,
-      const index_t* segment_offsets_data,
-      index_t num_of_segments)
-      : ret_data_(ret_data),
-        partials_per_segment_data_(partials_per_segment_data),
-        partials_per_segment_offset_data_(partials_per_segment_offset_data),
-        segment_offsets_data_(segment_offsets_data),
-        num_of_segments_(num_of_segments) {}
-
- private:
-  index_t* ret_data_;
-  const index_t* partials_per_segment_data_;
-  const index_t* partials_per_segment_offset_data_;
-  const index_t* segment_offsets_data_;
-  index_t num_of_segments_;
-};
+}
 
 template <typename index_t>
 void krn_partial_segment_offset(
@@ -110,116 +95,87 @@ void krn_partial_segment_offset(
     const index_t* partials_per_segment_offset,
     const index_t* segment_offsets,
     index_t num_of_segments) {
-  auto caller = KrnPartialSegmentOffsetKernelFunctor<index_t>(
+  constexpr auto caller = krn_partial_segment_offset_kernel<index_t>;
+  auto global_range = sycl::range<1>((size_t)num_of_segments);
+  auto local_range = sycl::range<1>((size_t)num_of_segments);
+  sycl_kernel_submit<caller>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
       ret,
       partials_per_segment,
       partials_per_segment_offset,
       segment_offsets,
       num_of_segments);
-  auto range = sycl::range<1>((size_t)num_of_segments);
-  sycl_kernel_submit(range, getCurrentSYCLQueue(), caller);
 }
 
-template <typename scalar_t, typename index_t>
-struct ComputeGradWeightBagsKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto grad_weight_per_segment_ptr = grad_weight_per_segment_data_;
-    auto indices_ptr = indices_data_;
-    auto gradoutput_ptr = gradoutput_data_;
-    auto offset2bag_ptr = offset2bag_data_;
-    auto count_ptr = count_defined_ ? count_data_ : NULL;
-    auto bag_size_ptr = bag_size_data_;
-    auto per_sample_weights_ptr =
-        per_sample_weight_defined_ ? per_sample_weights_data_ : NULL;
-    auto segment_offsets_ptr = segment_offsets_data_;
+template <typename scalar_t, typename index_t, typename acc_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void compute_grad_weight_bags_kernel(
+    int64_t numel,
+    int64_t stride,
+    int mode_mean,
+    int64_t num_of_segments,
+    int64_t stride_warped,
+    bool per_sample_weight_defined,
+    bool count_defined,
+    int64_t per_sample_weights_stride,
+    acc_t* grad_weight_per_segment_data,
+    const index_t* indices_data,
+    const scalar_t* gradoutput_data,
+    const index_t* offset2bag_data,
+    const index_t* count_data,
+    const index_t* bag_size_data,
+    const scalar_t* per_sample_weights_data,
+    const index_t* segment_offsets_data) {
+  auto grad_weight_per_segment_ptr = grad_weight_per_segment_data;
+  auto indices_ptr = indices_data;
+  auto gradoutput_ptr = gradoutput_data;
+  auto offset2bag_ptr = offset2bag_data;
+  auto count_ptr = count_defined ? count_data : NULL;
+  auto bag_size_ptr = bag_size_data;
+  auto per_sample_weights_ptr =
+      per_sample_weight_defined ? per_sample_weights_data : NULL;
+  auto segment_offsets_ptr = segment_offsets_data;
 
-    const int gid = item.get_global_linear_id();
-    const int id = gid / stride_warped_;
-    const int startFeature = gid % stride_warped_;
-    if (startFeature >= stride_) {
-      return;
-    }
-    if (id >= num_of_segments_) {
-      return;
-    }
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    const int idx_begin = segment_offsets_ptr[id];
-    const int idx_end =
-        (id == num_of_segments_ - 1) ? numel_ : segment_offsets_ptr[id + 1];
-
-    acc_type_device<scalar_t, kXPU> weight = 0.f;
-    for (int idx = idx_begin; idx < idx_end; ++idx) {
-      const int orig_row = indices_ptr[idx];
-      const int seq_number = offset2bag_ptr[orig_row];
-      const int grad_output_row = seq_number * stride_;
-
-      acc_type_device<scalar_t, kXPU> scale =
-          count_ptr ? 1.f / count_ptr[idx] : 1.f;
-      if (per_sample_weight_defined_) {
-        scale *= per_sample_weights_ptr[orig_row * per_sample_weights_stride_];
-      }
-
-      acc_type_device<scalar_t, kXPU> gradient =
-          gradoutput_ptr[grad_output_row + startFeature];
-      if (mode_mean_) {
-        gradient /= bag_size_ptr[seq_number];
-      }
-      weight += gradient * scale;
-    }
-    grad_weight_per_segment_ptr[id * stride_ + startFeature] = weight;
+  const int gid = item.get_global_linear_id();
+  const int id = gid / stride_warped;
+  const int startFeature = gid % stride_warped;
+  if (startFeature >= stride) {
+    return;
   }
-  ComputeGradWeightBagsKernelFunctor(
-      int64_t numel,
-      int64_t stride,
-      int mode_mean,
-      int64_t num_of_segments,
-      int64_t stride_warped,
-      bool per_sample_weight_defined,
-      bool count_defined,
-      int64_t per_sample_weights_stride,
-      acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
-      const index_t* indices_data,
-      const scalar_t* gradoutput_data,
-      const index_t* offset2bag_data,
-      const index_t* count_data,
-      const index_t* bag_size_data,
-      const scalar_t* per_sample_weights_data,
-      const index_t* segment_offsets_data)
-      : numel_(numel),
-        stride_(stride),
-        mode_mean_(mode_mean),
-        num_of_segments_(num_of_segments),
-        stride_warped_(stride_warped),
-        per_sample_weight_defined_(per_sample_weight_defined),
-        count_defined_(count_defined),
-        per_sample_weights_stride_(per_sample_weights_stride),
-        grad_weight_per_segment_data_(grad_weight_per_segment_data),
-        indices_data_(indices_data),
-        gradoutput_data_(gradoutput_data),
-        offset2bag_data_(offset2bag_data),
-        count_data_(count_data),
-        bag_size_data_(bag_size_data),
-        per_sample_weights_data_(per_sample_weights_data),
-        segment_offsets_data_(segment_offsets_data) {}
+  if (id >= num_of_segments) {
+    return;
+  }
 
- private:
-  int64_t numel_;
-  int64_t stride_;
-  int mode_mean_;
-  int64_t num_of_segments_;
-  int64_t stride_warped_;
-  bool per_sample_weight_defined_;
-  bool count_defined_;
-  int64_t per_sample_weights_stride_;
-  acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
-  const index_t* indices_data_;
-  const scalar_t* gradoutput_data_;
-  const index_t* offset2bag_data_;
-  const index_t* count_data_;
-  const index_t* bag_size_data_;
-  const scalar_t* per_sample_weights_data_;
-  const index_t* segment_offsets_data_;
-};
+  const int idx_begin = segment_offsets_ptr[id];
+  const int idx_end =
+      (id == num_of_segments - 1) ? numel : segment_offsets_ptr[id + 1];
+
+  acc_type_device<scalar_t, kXPU> weight = 0.f;
+  for (int idx = idx_begin; idx < idx_end; ++idx) {
+    const int orig_row = indices_ptr[idx];
+    const int seq_number = offset2bag_ptr[orig_row];
+    const int grad_output_row = seq_number * stride;
+
+    acc_type_device<scalar_t, kXPU> scale =
+        count_ptr ? 1.f / count_ptr[idx] : 1.f;
+    if (per_sample_weight_defined) {
+      scale *= per_sample_weights_ptr[orig_row * per_sample_weights_stride];
+    }
+
+    acc_type_device<scalar_t, kXPU> gradient =
+        gradoutput_ptr[grad_output_row + startFeature];
+    if (mode_mean) {
+      gradient /= bag_size_ptr[seq_number];
+    }
+    weight += gradient * scale;
+  }
+  grad_weight_per_segment_ptr[id * stride + startFeature] = weight;
+}
 
 template <typename scalar_t, typename index_t>
 void compute_grad_weight_bags(
@@ -260,8 +216,23 @@ void compute_grad_weight_bags(
   int64_t max_sub_group_size = syclMaxSubGroupSize();
   int64_t stride_warped =
       at::ceil_div(stride, max_sub_group_size) * max_sub_group_size;
+  using acc_t = acc_type_device<scalar_t, kXPU>;
 
-  auto kfn = ComputeGradWeightBagsKernelFunctor<scalar_t, index_t>(
+  constexpr auto kfn =
+      compute_grad_weight_bags_kernel<scalar_t, index_t, acc_t>;
+
+  int64_t work_group_size = syclMaxWorkGroupSize<kfn>();
+  int64_t group_size = std::min(stride_warped, work_group_size);
+  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
+  auto total_items = num_groups * group_size;
+  auto global_range = sycl::range<1>((size_t)total_items);
+  auto local_range = sycl::range<1>((size_t)group_size);
+
+  sycl_kernel_submit<kfn>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
       numel,
       stride,
       mode_mean,
@@ -278,83 +249,51 @@ void compute_grad_weight_bags(
       bag_size_data,
       per_sample_weights_data,
       segment_offsets_data);
-
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
-  auto total_items = num_groups * group_size;
-  auto global_range = sycl::range<1>((size_t)total_items);
-  auto local_range = sycl::range<1>((size_t)group_size);
-
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
-template <typename scalar_t, typename index_t>
-struct ComputeGradWeightKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto grad_weight_per_segment_ptr = grad_weight_per_segment_data_;
-    auto indices_ptr = indices_data_;
-    auto grad_output_ptr = grad_output_data_;
-    auto count_ptr = count_defined_ ? count_data_ : NULL;
-    auto segment_offsets_ptr = segment_offsets_data_;
+template <typename scalar_t, typename index_t, typename acc_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void compute_grad_weight_kernel(
+    ptrdiff_t numel,
+    int64_t stride,
+    int64_t num_of_segments,
+    int64_t stride_warped,
+    bool count_defined,
+    acc_t* grad_weight_per_segment_data,
+    const index_t* indices_data,
+    const scalar_t* grad_output_data,
+    const index_t* count_data,
+    const index_t* segment_offsets_data) {
+  auto grad_weight_per_segment_ptr = grad_weight_per_segment_data;
+  auto indices_ptr = indices_data;
+  auto grad_output_ptr = grad_output_data;
+  auto count_ptr = count_defined ? count_data : NULL;
+  auto segment_offsets_ptr = segment_offsets_data;
 
-    const int gid = item.get_global_linear_id();
-    const int id = gid / stride_warped_;
-    const int startFeature = gid % stride_warped_;
-    if (startFeature >= stride_) {
-      return;
-    }
-    if (id >= num_of_segments_) {
-      return;
-    }
-    const int idx_begin = segment_offsets_ptr[id];
-    const int idx_end =
-        (id == num_of_segments_ - 1) ? numel_ : segment_offsets_ptr[id + 1];
-
-    acc_type_device<scalar_t, kXPU> weight = 0.f;
-    for (int idx = idx_begin; idx < idx_end; idx++) {
-      const index_t target_row = indices_ptr[idx];
-
-      const acc_type_device<scalar_t, kXPU> scale =
-          count_ptr ? 1.f / count_ptr[idx] : 1.f;
-      weight += grad_output_ptr[target_row * stride_ + startFeature] * scale;
-    }
-    grad_weight_per_segment_ptr[id * stride_ + startFeature] = weight;
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const int gid = item.get_global_linear_id();
+  const int id = gid / stride_warped;
+  const int startFeature = gid % stride_warped;
+  if (startFeature >= stride) {
+    return;
   }
-  ComputeGradWeightKernelFunctor(
-      ptrdiff_t numel,
-      int64_t stride,
-      int64_t num_of_segments,
-      int64_t stride_warped,
-      bool count_defined,
-      acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
-      const index_t* indices_data,
-      const scalar_t* grad_output_data,
-      const index_t* count_data,
-      const index_t* segment_offsets_data)
-      : numel_(numel),
-        stride_(stride),
-        num_of_segments_(num_of_segments),
-        stride_warped_(stride_warped),
-        count_defined_(count_defined),
-        grad_weight_per_segment_data_(grad_weight_per_segment_data),
-        indices_data_(indices_data),
-        grad_output_data_(grad_output_data),
-        count_data_(count_data),
-        segment_offsets_data_(segment_offsets_data) {}
+  if (id >= num_of_segments) {
+    return;
+  }
+  const int idx_begin = segment_offsets_ptr[id];
+  const int idx_end =
+      (id == num_of_segments - 1) ? numel : segment_offsets_ptr[id + 1];
 
- private:
-  ptrdiff_t numel_;
-  int64_t stride_;
-  int64_t num_of_segments_;
-  int64_t stride_warped_;
-  bool count_defined_;
-  acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
-  const index_t* indices_data_;
-  const scalar_t* grad_output_data_;
-  const index_t* count_data_;
-  const index_t* segment_offsets_data_;
-};
+  acc_type_device<scalar_t, kXPU> weight = 0.f;
+  for (int idx = idx_begin; idx < idx_end; idx++) {
+    const index_t target_row = indices_ptr[idx];
+
+    const acc_type_device<scalar_t, kXPU> scale =
+        count_ptr ? 1.f / count_ptr[idx] : 1.f;
+    weight += grad_output_ptr[target_row * stride + startFeature] * scale;
+  }
+  grad_weight_per_segment_ptr[id * stride + startFeature] = weight;
+}
 
 template <typename scalar_t, typename index_t>
 void compute_grad_weight(
@@ -380,8 +319,22 @@ void compute_grad_weight(
   int64_t max_sub_group_size = syclMaxSubGroupSize();
   int64_t stride_warped =
       at::ceil_div(stride, max_sub_group_size) * max_sub_group_size;
+  using acc_t = acc_type_device<scalar_t, kXPU>;
 
-  auto kfn = ComputeGradWeightKernelFunctor<scalar_t, index_t>(
+  constexpr auto kfn = compute_grad_weight_kernel<scalar_t, index_t, acc_t>;
+
+  int64_t work_group_size = syclMaxWorkGroupSize<kfn>();
+  int64_t group_size = std::min(stride_warped, work_group_size);
+  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
+  auto total_items = num_groups * group_size;
+  auto global_range = sycl::range<1>((size_t)total_items);
+  auto local_range = sycl::range<1>((size_t)group_size);
+
+  sycl_kernel_submit<kfn>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
       numel,
       stride,
       num_of_segments,
@@ -392,88 +345,52 @@ void compute_grad_weight(
       grad_output_data,
       count_data,
       segment_offsets_data);
-
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
-  auto total_items = num_groups * group_size;
-  auto global_range = sycl::range<1>((size_t)total_items);
-  auto local_range = sycl::range<1>((size_t)group_size);
-
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
-template <typename scalar_t, typename index_t>
-struct SumAndScatterKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto grad_weight_ptr = grad_weight_data_;
-    auto input_ptr = input_data_;
-    auto segment_offsets_ptr = segment_offsets_data_;
-    auto grad_weight_per_segment_ptr = grad_weight_per_segment_data_;
-    auto segment_sizes_offsets_ptr = segment_sizes_offsets_data_;
+template <typename scalar_t, typename index_t, typename acc_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void sum_and_scatter_kernel(
+    int64_t stride,
+    int64_t num_of_segments,
+    int64_t num_of_partial_segments,
+    const int64_t padding_idx,
+    int64_t stride_warped,
+    scalar_t* grad_weight_data,
+    const index_t* input_data,
+    const index_t* segment_offsets_data,
+    const acc_t* grad_weight_per_segment_data,
+    const index_t* segment_sizes_offsets_data) {
+  auto grad_weight_ptr = grad_weight_data;
+  auto input_ptr = input_data;
+  auto segment_offsets_ptr = segment_offsets_data;
+  auto grad_weight_per_segment_ptr = grad_weight_per_segment_data;
+  auto segment_sizes_offsets_ptr = segment_sizes_offsets_data;
 
-    const int gid = item.get_global_linear_id();
-    const int id = gid / stride_warped_;
-    const int startFeature = gid % stride_warped_;
-    if (startFeature >= stride_) {
-      return;
-    }
-    if (id >= num_of_segments_) {
-      return;
-    }
-
-    const int idx_begin = segment_sizes_offsets_ptr[id];
-    const int idx_end = (id == num_of_segments_ - 1)
-        ? num_of_partial_segments_
-        : segment_sizes_offsets_ptr[id + 1];
-    acc_type_device<scalar_t, kXPU> weight = 0.f;
-    for (int idx = idx_begin; idx < idx_end; idx++) {
-      weight += grad_weight_per_segment_ptr[idx * stride_ + startFeature];
-    }
-
-    int64_t target_row = input_ptr[segment_offsets_ptr[id]];
-    if (target_row != padding_idx_) {
-      grad_weight_ptr[target_row * stride_ + startFeature] = weight;
-    }
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const int gid = item.get_global_linear_id();
+  const int id = gid / stride_warped;
+  const int startFeature = gid % stride_warped;
+  if (startFeature >= stride) {
+    return;
   }
-  SumAndScatterKernelFunctor(
-      int64_t stride,
-      int64_t num_of_segments,
-      int64_t num_of_partial_segments,
-      const int64_t padding_idx,
-      int64_t stride_warped,
-      scalar_t* grad_weight_data,
-      const index_t* input_data,
-      const index_t* segment_offsets_data,
-      const acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
-      const index_t* segment_sizes_offsets_data)
-      : stride_(stride),
-        num_of_segments_(num_of_segments),
-        num_of_partial_segments_(num_of_partial_segments),
-        padding_idx_(padding_idx),
-        stride_warped_(stride_warped),
-        grad_weight_data_(grad_weight_data),
-        input_data_(input_data),
-        segment_offsets_data_(segment_offsets_data),
-        grad_weight_per_segment_data_(grad_weight_per_segment_data),
-        segment_sizes_offsets_data_(segment_sizes_offsets_data) {}
-
-  void set_stride_warped(int64_t stride_warped) {
-    stride_warped_ = stride_warped;
+  if (id >= num_of_segments) {
+    return;
   }
 
- private:
-  int64_t stride_;
-  int64_t num_of_segments_;
-  int64_t num_of_partial_segments_;
-  const int64_t padding_idx_;
-  int64_t stride_warped_;
-  scalar_t* grad_weight_data_;
-  const index_t* input_data_;
-  const index_t* segment_offsets_data_;
-  const acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
-  const index_t* segment_sizes_offsets_data_;
-};
+  const int idx_begin = segment_sizes_offsets_ptr[id];
+  const int idx_end = (id == num_of_segments - 1)
+      ? num_of_partial_segments
+      : segment_sizes_offsets_ptr[id + 1];
+  acc_type_device<scalar_t, kXPU> weight = 0.f;
+  for (int idx = idx_begin; idx < idx_end; idx++) {
+    weight += grad_weight_per_segment_ptr[idx * stride + startFeature];
+  }
+
+  int64_t target_row = input_ptr[segment_offsets_ptr[id]];
+  if (target_row != padding_idx) {
+    grad_weight_ptr[target_row * stride + startFeature] = weight;
+  }
+}
 
 template <typename scalar_t, typename index_t>
 void sum_and_scatter(
@@ -493,23 +410,13 @@ void sum_and_scatter(
       grad_weight_per_segment.const_data_ptr<acc_type_device<scalar_t, kXPU>>();
   auto segment_sizes_offsets_data =
       segment_sizes_offsets.const_data_ptr<index_t>();
+  using acc_t = acc_type_device<scalar_t, kXPU>;
 
-  auto kfn = SumAndScatterKernelFunctor<scalar_t, index_t>(
-      stride,
-      num_of_segments,
-      num_of_partial_segments,
-      padding_idx,
-      /* stride_warped */ 0,
-      grad_weight_data,
-      input_data,
-      segment_offsets_data,
-      grad_weight_per_segment_data,
-      segment_sizes_offsets_data);
+  constexpr auto kfn = sum_and_scatter_kernel<scalar_t, index_t, acc_t>;
 
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size = syclMaxWorkGroupSize<kfn>();
   int64_t stride_warped =
       at::ceil_div(stride, work_group_size) * work_group_size;
-  kfn.set_stride_warped(stride_warped);
 
   int64_t group_size = std::min(stride_warped, work_group_size);
   auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
@@ -517,7 +424,21 @@ void sum_and_scatter(
   auto global_range = sycl::range<1>((size_t)total_items);
   auto local_range = sycl::range<1>((size_t)group_size);
 
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit<kfn>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
+      stride,
+      num_of_segments,
+      num_of_partial_segments,
+      padding_idx,
+      stride_warped,
+      grad_weight_data,
+      input_data,
+      segment_offsets_data,
+      grad_weight_per_segment_data,
+      segment_sizes_offsets_data);
 }
 
 struct EmbeddingBackwardDeterministicKernelCopyIfFunctor {

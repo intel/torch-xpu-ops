@@ -96,85 +96,57 @@ Tensor embedding_dense_backward_kernel(
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct RenormKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int tid = item.get_local_linear_id();
-    int sgSize = item.get_local_range(0);
-    auto group_idx = item.get_group(0);
-    if (group_idx >= num_unique_indices_) {
-      return;
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void renorm_kernel(
+    scalar_t* weights,
+    index_t* indices,
+    accscalar_t max_norm,
+    accscalar_t norm_type,
+    int64_t dim,
+    int64_t weights_stride0,
+    int64_t weights_stride1,
+    int64_t num_unique_indices) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int tid = item.get_local_linear_id();
+  int sgSize = item.get_local_range(0);
+  auto group_idx = item.get_group(0);
+  if (group_idx >= num_unique_indices) {
+    return;
+  }
 
-    int base_index = indices_[group_idx] * weights_stride0_;
+  int base_index = indices[group_idx] * weights_stride0;
 
-    accscalar_t v = static_cast<accscalar_t>(0);
-    for (int i = tid; i < dim_; i += sgSize) {
-      auto x =
-          static_cast<accscalar_t>(weights_[base_index + i * weights_stride1_]);
-      if (norm_type_ == 1) {
-        v += sycl::fabs(x);
-      } else if (norm_type_ == 2) {
-        v += x * x;
-      } else {
-        v += sycl::pow(x, norm_type_);
-      }
-    }
-
-    v = GroupReduceSumSGSizeEqualstoNumSG(
-        item,
-        v,
-        static_cast<accscalar_t*>(
-            smem_.template get_multi_ptr<sycl::access::decorated::no>().get()));
-
-    if (tid == 0) {
-      smem_[0] = sycl::pow(v, static_cast<accscalar_t>(1.0 / norm_type_));
-    }
-    sycl::group_barrier(item.get_group());
-
-    if (smem_[0] > max_norm_) {
-      auto factor = static_cast<scalar_t>(
-          max_norm_ / (smem_[0] + std::numeric_limits<accscalar_t>::epsilon()));
-      for (int i = tid; i < dim_; i += sgSize) {
-        weights_[base_index + i * weights_stride1_] *= factor;
-      }
+  accscalar_t v = static_cast<accscalar_t>(0);
+  for (int i = tid; i < dim; i += sgSize) {
+    auto x =
+        static_cast<accscalar_t>(weights[base_index + i * weights_stride1]);
+    if (norm_type == 1) {
+      v += std::abs(x);
+    } else if (norm_type == 2) {
+      v += x * x;
+    } else {
+      v += std::pow(x, norm_type);
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_ = sycl_local_acc_t<scalar_t>(smem_size_, cgh);
-  }
-  RenormKernelFunctor(
-      scalar_t* weights,
-      index_t* indices,
-      accscalar_t max_norm,
-      accscalar_t norm_type,
-      int64_t dim,
-      int64_t weights_stride0,
-      int64_t weights_stride1,
-      int64_t num_unique_indices,
-      int64_t smem_size)
-      : weights_(weights),
-        indices_(indices),
-        max_norm_(max_norm),
-        norm_type_(norm_type),
-        dim_(dim),
-        weights_stride0_(weights_stride0),
-        weights_stride1_(weights_stride1),
-        num_unique_indices_(num_unique_indices),
-        smem_size_(smem_size) {}
+  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  auto smem_ = reinterpret_cast<accscalar_t*>(slm);
 
- private:
-  scalar_t* weights_;
-  index_t* indices_;
-  accscalar_t max_norm_;
-  accscalar_t norm_type_;
-  int64_t dim_;
-  int64_t weights_stride0_;
-  int64_t weights_stride1_;
-  int64_t num_unique_indices_;
-  sycl_local_acc_t<accscalar_t> smem_;
-  int64_t smem_size_;
-};
+  v = GroupReduceSumSGSizeEqualstoNumSG(item, v, smem_);
+
+  if (tid == 0) {
+    smem_[0] = std::pow(v, static_cast<accscalar_t>(1.0 / norm_type));
+  }
+  sycl::group_barrier(item.get_group());
+
+  if (smem_[0] > max_norm) {
+    auto factor = static_cast<scalar_t>(
+        max_norm / (smem_[0] + std::numeric_limits<accscalar_t>::epsilon()));
+    for (int i = tid; i < dim; i += sgSize) {
+      weights[base_index + i * weights_stride1] *= factor;
+    }
+  }
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
 void embedding_renorm_template(
@@ -187,7 +159,13 @@ void embedding_renorm_template(
     int64_t weights_stride1,
     int64_t num_unique_indices) {
   const int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
-  auto kfn = RenormKernelFunctor<scalar_t, accscalar_t, index_t>(
+  constexpr auto kfn = renorm_kernel<scalar_t, accscalar_t, index_t>;
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  sycl_kernel_submit<kfn>(
+      work_group_size * num_unique_indices,
+      work_group_size,
+      queue,
+      (work_group_size / 8) * sizeof(accscalar_t),
       weights,
       indices,
       max_norm,
@@ -195,11 +173,7 @@ void embedding_renorm_template(
       dim,
       weights_stride0,
       weights_stride1,
-      num_unique_indices,
-      work_group_size / 8);
-  auto& queue = at::xpu::getCurrentSYCLQueue();
-  sycl_kernel_submit(
-      work_group_size * num_unique_indices, work_group_size, queue, kfn);
+      num_unique_indices);
 }
 struct EmbeddingRenormCmpFunctor {
   template <typename T>
