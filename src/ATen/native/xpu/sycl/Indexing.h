@@ -11,9 +11,9 @@
 #pragma once
 
 #include <ATen/native/xpu/sycl/BatchKernel.h>
-#include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <comm/TensorInfo.h>
 
 using namespace at::xpu::detail;
@@ -290,6 +290,70 @@ class IndexKernel {
     }
   }
 
+  void run() const {
+    auto item = syclext::this_work_item::get_nd_item<2>();
+    auto id = cfg_.get_item_desc(item);
+
+    if (id.glb_problem >= cfg_.problem_ ||
+        id.glb_batch >= cfg_.problem_batch_) {
+      return;
+    }
+
+    // Indexing kernels have three operands,
+    // 1. index operand
+    // 2. operand indexing on
+    // 3. operand has fixing size as index (optional)
+    int64_t idx_logical_off, glb_batch_group, glb_batch_group_loc_off;
+    int64_t glb_indexing_logical_off, glb_fixing_logical_off;
+    int64_t dst_off, src_off;
+
+    init_global_batch_info(
+        id, idx_logical_off, glb_batch_group, glb_batch_group_loc_off);
+
+    glb_indexing_logical_off =
+        indexing_logical_off(id, glb_batch_group, glb_batch_group_loc_off);
+
+    if (cfg_.sinfo_.data != nullptr && cfg_.dinfo_.data != nullptr) {
+      glb_fixing_logical_off =
+          fixing_logical_off(id, glb_batch_group, idx_logical_off);
+    }
+
+    if constexpr (TrivialOffCal) {
+      if (cfg_.indexing_dst_) {
+        dst_off = glb_indexing_logical_off;
+        if (cfg_.sinfo_.data != nullptr) {
+          src_off = glb_fixing_logical_off;
+        }
+      } else {
+        src_off = glb_indexing_logical_off;
+        dst_off = glb_fixing_logical_off;
+      }
+    } else {
+      if (cfg_.indexing_dst_) {
+        // index_copy, index_add, index_fill
+        dst_off = IndexToOffset<ValType, int64_t, -1>::get(
+            glb_indexing_logical_off, cfg_.dinfo_);
+        if (cfg_.sinfo_.data != nullptr) {
+          src_off = IndexToOffset<const ValType, int64_t, -1>::get(
+              glb_fixing_logical_off, cfg_.sinfo_);
+        }
+      } else {
+        // index_select
+        src_off = IndexToOffset<const ValType, int64_t, -1>::get(
+            glb_indexing_logical_off, cfg_.sinfo_);
+        dst_off = IndexToOffset<ValType, int64_t, -1>::get(
+            glb_fixing_logical_off, cfg_.dinfo_);
+      }
+    }
+    cfg_.func_(
+        cfg_.dinfo_.data,
+        cfg_.sinfo_.data,
+        dst_off,
+        src_off,
+        glb_batch_group_loc_off,
+        cfg_.alpha_);
+  }
+
   void operator()(sycl::nd_item<2> item) const {
     auto id = cfg_.get_item_desc(item);
 
@@ -357,154 +421,111 @@ class IndexKernel {
   IdxConfig cfg_;
 };
 
+template <typename func_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void index_kernel_impl(func_t i) {
+  i.run();
+}
+
 template <
     class IdxConfig,
     bool TrivialOffCal = false,
     bool KnownProblemInner = false>
 static inline void launch_index_kernel(IdxConfig& cfg) {
   auto& queue = getCurrentSYCLQueue();
-  IndexKernel<IdxConfig, TrivialOffCal, KnownProblemInner> idx_ker(cfg);
-  sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, idx_ker);
+  using Index = IndexKernel<IdxConfig, TrivialOffCal, KnownProblemInner>;
+  auto i = Index(cfg);
+  sycl_kernel_submit<index_kernel_impl<Index>>(
+      cfg.global_size(), cfg.group_size(), queue, 0, i);
 }
 
 template <typename func_t, typename index_buf_type>
-struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto local_id = item_id.get_local_id(0);
-    auto group_id = item_id.get_group(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void small_index_kernel_impl(
+    const func_t f,
+    int64_t indices_size,
+    int64_t group_num_tail,
+    int64_t group_num,
+    int64_t group_numel,
+    int64_t group_numel_tail,
+    int64_t wgroup_size,
+    size_t num_non_indices,
+    at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes,
+    at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides,
+    int64_t src_strides0,
+    size_t num_indices,
+    at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes,
+    at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides,
+    int64_t element_size_bytes,
+    int64_t indice_size_bytes,
+    char* out_data,
+    char* in_data,
+    at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto local_id = item_id.get_local_id(0);
+  auto group_id = item_id.get_group(0);
+  int64_t* local_offset_ = (int64_t*)syclexp::get_work_group_scratch_memory();
 
-    // construct a indices_size table on SLM
-    for (int64_t local_index = local_id; local_index < indices_size_;
-         local_index += wgroup_size_) {
-      int64_t offset = 0;
-      for (size_t i = 0; i < num_indices_; i++) {
-        // handle int32 index tensor according to the indice_size_bytes.
-        // we didn't use template parametor to avoid too many kernels' creation
-        // with numbers of input datatypes.
-        if (indice_size_bytes_ == 4) {
-          int32_t index =
-              *(int32_t*)(index_ptrs_[i] + local_index * indice_size_bytes_);
-          SYCL_KERNEL_ASSERT(
-              index >= -sizes_[i] && index < sizes_[i] &&
-              "index out of bounds");
-          if (index < 0) {
-            index += sizes_[i];
-          }
-          offset += index * strides_[i];
-        } else {
-          int64_t index =
-              *(int64_t*)(index_ptrs_[i] + local_index * indice_size_bytes_);
-          SYCL_KERNEL_ASSERT(
-              index >= -sizes_[i] && index < sizes_[i] &&
-              "index out of bounds");
-          if (index < 0) {
-            index += sizes_[i];
-          }
-          offset += index * strides_[i];
+  // construct a indices_size table on SLM
+  for (int64_t local_index = local_id; local_index < indices_size;
+       local_index += wgroup_size) {
+    int64_t offset = 0;
+    for (size_t i = 0; i < num_indices; i++) {
+      // handle int32 index tensor according to the indice_size_bytes.
+      // we didn't use template parametor to avoid too many kernels' creation
+      // with numbers of input datatypes.
+      if (indice_size_bytes == 4) {
+        int32_t index =
+            *(int32_t*)(index_ptrs[i] + local_index * indice_size_bytes);
+        SYCL_KERNEL_ASSERT(
+            index >= -sizes[i] && index < sizes[i] && "index out of bounds");
+        if (index < 0) {
+          index += sizes[i];
         }
+        offset += index * strides[i];
+      } else {
+        int64_t index =
+            *(int64_t*)(index_ptrs[i] + local_index * indice_size_bytes);
+        SYCL_KERNEL_ASSERT(
+            index >= -sizes[i] && index < sizes[i] && "index out of bounds");
+        if (index < 0) {
+          index += sizes[i];
+        }
+        offset += index * strides[i];
       }
-      local_offset_[local_index] = offset;
     }
-
-    // calculate the number of workloads on each group
-    auto group_linear_id = group_id * group_numel_;
-    auto group_numel_range = group_numel_;
-    if (group_num_tail_ && group_id >= group_num_) {
-      group_linear_id = group_num_ * group_numel_ +
-          (group_id - group_num_) * group_numel_tail_;
-      group_numel_range = group_numel_tail_;
-    }
-    auto out_ptr = out_data_;
-    auto in_ptr = in_data_;
-    sycl::group_barrier(item_id.get_group());
-
-    // compute the in/out/indices offsets and perform memory copy
-    for (int64_t local_index = local_id; local_index < group_numel_range;
-         local_index += wgroup_size_) {
-      auto linear_id = group_linear_id + local_index;
-      auto out_offset = linear_id * element_size_bytes_;
-      auto src_linear_id = linear_id / indices_size_;
-      int64_t in_offset = 0;
-      for (int i = num_non_indices_ - 1; i > 0; --i) {
-        in_offset += (src_linear_id % src_sizes_[i]) * src_strides_[i];
-        src_linear_id /= src_sizes_[i];
-      }
-      in_offset += src_linear_id * src_strides0_;
-
-      auto offset = local_offset_[local_index % indices_size_];
-      f_(out_ptr + out_offset, in_ptr + in_offset, offset);
-    }
+    local_offset_[local_index] = offset;
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_offset_ = sycl_local_acc_t<int64_t, 1>(indices_size_, cgh);
+  // calculate the number of workloads on each group
+  auto group_linear_id = group_id * group_numel;
+  auto group_numel_range = group_numel;
+  if (group_num_tail && group_id >= group_num) {
+    group_linear_id =
+        group_num * group_numel + (group_id - group_num) * group_numel_tail;
+    group_numel_range = group_numel_tail;
   }
+  auto out_ptr = out_data;
+  auto in_ptr = in_data;
+  sycl::group_barrier(item_id.get_group());
 
-  SmallIndexKernelFunctor() = default;
+  // compute the in/out/indices offsets and perform memory copy
+  for (int64_t local_index = local_id; local_index < group_numel_range;
+       local_index += wgroup_size) {
+    auto linear_id = group_linear_id + local_index;
+    auto out_offset = linear_id * element_size_bytes;
+    auto src_linear_id = linear_id / indices_size;
+    int64_t in_offset = 0;
+    for (int i = num_non_indices - 1; i > 0; --i) {
+      in_offset += (src_linear_id % src_sizes[i]) * src_strides[i];
+      src_linear_id /= src_sizes[i];
+    }
+    in_offset += src_linear_id * src_strides0;
 
-  SmallIndexKernelFunctor(
-      const func_t f,
-      int64_t indices_size,
-      int64_t group_num_tail,
-      int64_t group_num,
-      int64_t group_numel,
-      int64_t group_numel_tail,
-      int64_t wgroup_size,
-      size_t num_non_indices,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides,
-      int64_t src_strides0,
-      size_t num_indices,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides,
-      int64_t element_size_bytes,
-      int64_t indice_size_bytes,
-      char* out_data,
-      char* in_data,
-      at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs)
-      : f_(f),
-        indices_size_(indices_size),
-        group_num_tail_(group_num_tail),
-        group_num_(group_num),
-        group_numel_(group_numel),
-        group_numel_tail_(group_numel_tail),
-        wgroup_size_(wgroup_size),
-        num_non_indices_(num_non_indices),
-        src_sizes_(src_sizes),
-        src_strides_(src_strides),
-        src_strides0_(src_strides0),
-        num_indices_(num_indices),
-        sizes_(sizes),
-        strides_(strides),
-        element_size_bytes_(element_size_bytes),
-        indice_size_bytes_(indice_size_bytes),
-        out_data_(out_data),
-        in_data_(in_data),
-        index_ptrs_(index_ptrs),
-        local_offset_() {}
-
- private:
-  const func_t f_;
-  int64_t indices_size_;
-  int64_t group_num_tail_;
-  int64_t group_num_;
-  int64_t group_numel_;
-  int64_t group_numel_tail_;
-  int64_t wgroup_size_;
-  size_t num_non_indices_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides_;
-  int64_t src_strides0_;
-  size_t num_indices_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides_;
-  int64_t element_size_bytes_;
-  int64_t indice_size_bytes_;
-  char* out_data_;
-  char* in_data_;
-  at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs_;
-  sycl_local_acc_t<int64_t, 1> local_offset_;
-};
+    auto offset = local_offset_[local_index % indices_size];
+    f(out_ptr + out_offset, in_ptr + in_offset, offset);
+  }
+}
 
 // SYCL suggests: it’s possible (and even desirable) to oversubscribe tasks to
 // device;
@@ -519,7 +540,6 @@ void small_index_kernel(
     IntArrayRef non_index_stride,
     const func_t f) {
   using index_buf_type = char*;
-  using KernelClass = SmallIndexKernelFunctor<func_t, index_buf_type>;
 
   auto numel = iter.numel();
   auto indices_size = iter.tensor(2).size(-1);
@@ -537,7 +557,8 @@ void small_index_kernel(
   auto group_numel = group_index_iter * indices_size;
   auto group_numel_tail = (group_index_iter - 1) * indices_size;
 
-  auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+  auto wgroup_size =
+      syclMaxWorkGroupSize<small_index_kernel_impl<func_t, index_buf_type>>();
   wgroup_size = std::min(decltype(wgroup_size)(group_numel), wgroup_size);
   auto global_size = max_group_num * wgroup_size;
 
@@ -568,7 +589,11 @@ void small_index_kernel(
     index_ptrs[i] = (char*)iter.data_ptr(i + 2);
   }
 
-  KernelClass kfn(
+  sycl_kernel_submit<small_index_kernel_impl<func_t, index_buf_type>, 1>(
+      sycl::range<1>(global_size),
+      sycl::range<1>(wgroup_size),
+      queue,
+      indices_size,
       f,
       indices_size,
       group_num_tail,
@@ -588,77 +613,54 @@ void small_index_kernel(
       out_data,
       in_data,
       index_ptrs);
-  sycl_kernel_submit(
-      sycl::range<1>(global_size), sycl::range<1>(wgroup_size), queue, kfn);
 }
 
 template <
     typename func_t,
     typename index_buf_type,
     typename OffsetCalculatorType>
-struct IndexKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto linear_idx = item_id.get_linear_id();
-    auto offsets = offset_calc_.get(linear_idx);
-    auto out_ptr = out_data_ + offsets[0];
-    auto in_ptr = in_data_ + offsets[1];
-    int64_t offset = 0;
-    // #pragma unroll
-    for (size_t i = 0; i < num_indices_; i++) {
-      // handle int32 index tensor according to the indice_size_bytes.
-      // we didn't use template parametor to avoid too many kernels' creation
-      // with numbers of input datatypes.
-      if (indice_size_bytes_ == 4) {
-        int32_t index = *(int32_t*)(index_ptrs_[i] + offsets[2]);
-        SYCL_KERNEL_ASSERT(
-            index >= -sizes_[i] && index < sizes_[i] && "index out of bounds");
-        if (index < 0) {
-          index += sizes_[i];
-        }
-        offset += index * strides_[i];
-      } else {
-        int64_t index = *(int64_t*)(index_ptrs_[i] + offsets[2]);
-        SYCL_KERNEL_ASSERT(
-            index >= -sizes_[i] && index < sizes_[i] && "index out of bounds");
-        if (index < 0) {
-          index += sizes_[i];
-        }
-        offset += index * strides_[i];
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void index_functor_kernel_impl(
+    const func_t f,
+    OffsetCalculatorType offset_calc,
+    int64_t indice_size_bytes,
+    char* out_data,
+    char* in_data,
+    size_t num_indices,
+    at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs,
+    at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes,
+    at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto linear_idx = item_id.get_global_linear_id();
+  auto offsets = offset_calc.get(linear_idx);
+  auto out_ptr = out_data + offsets[0];
+  auto in_ptr = in_data + offsets[1];
+  int64_t offset = 0;
+  // #pragma unroll
+  for (size_t i = 0; i < num_indices; i++) {
+    // handle int32 index tensor according to the indice_size_bytes.
+    // we didn't use template parametor to avoid too many kernels' creation
+    // with numbers of input datatypes.
+    if (indice_size_bytes == 4) {
+      int32_t index = *(int32_t*)(index_ptrs[i] + offsets[2]);
+      SYCL_KERNEL_ASSERT(
+          index >= -sizes[i] && index < sizes[i] && "index out of bounds");
+      if (index < 0) {
+        index += sizes[i];
       }
+      offset += index * strides[i];
+    } else {
+      int64_t index = *(int64_t*)(index_ptrs[i] + offsets[2]);
+      SYCL_KERNEL_ASSERT(
+          index >= -sizes[i] && index < sizes[i] && "index out of bounds");
+      if (index < 0) {
+        index += sizes[i];
+      }
+      offset += index * strides[i];
     }
-    f_(out_ptr, in_ptr, offset);
   }
-  IndexKernelFunctor(
-      const func_t f,
-      OffsetCalculatorType offset_calc,
-      int64_t indice_size_bytes,
-      char* out_data,
-      char* in_data,
-      size_t num_indices,
-      at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides)
-      : f_(f),
-        offset_calc_(offset_calc),
-        indice_size_bytes_(indice_size_bytes),
-        out_data_(out_data),
-        in_data_(in_data),
-        num_indices_(num_indices),
-        index_ptrs_(index_ptrs),
-        sizes_(sizes),
-        strides_(strides) {}
-
- private:
-  const func_t f_;
-  OffsetCalculatorType offset_calc_;
-  int64_t indice_size_bytes_;
-  char* out_data_;
-  char* in_data_;
-  size_t num_indices_;
-  at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides_;
-};
+  f(out_ptr, in_ptr, offset);
+}
 
 template <typename func_t>
 void index_kernel_impl(
@@ -687,7 +689,14 @@ void index_kernel_impl(
   }
 
   auto offset_calc = make_offset_calculator<3>(iter);
-  IndexKernelFunctor<func_t, index_buf_type, decltype(offset_calc)> kfn(
+  using offset_calc_type = decltype(offset_calc);
+  sycl_kernel_submit<
+      index_functor_kernel_impl<func_t, index_buf_type, offset_calc_type>,
+      1>(
+      sycl::range<1>(numel),
+      sycl::range<1>(1),
+      queue,
+      0,
       f,
       offset_calc,
       indice_size_bytes,
@@ -697,7 +706,6 @@ void index_kernel_impl(
       index_ptrs,
       sizes,
       strides);
-  sycl_kernel_submit(sycl::range<1>(numel), queue, kfn);
 }
 
 template <typename func_t>
@@ -750,10 +758,10 @@ void _index_kernel(
   }
   if (small_index) {
     using index_buf_type = char*;
-    using KernelClass = SmallIndexKernelFunctor<func_t, index_buf_type>;
 
     int64_t max_group_num = syclMaxDSSNum();
-    auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+    auto wgroup_size =
+        syclMaxWorkGroupSize<small_index_kernel_impl<func_t, index_buf_type>>();
     auto indices_size = iter.tensor(2).size(-1);
     auto total_index_iter = numel / indices_size;
     auto local_index = numel / max_group_num;
@@ -768,7 +776,7 @@ void _index_kernel(
         (total_index_iter > 2 * max_group_num && local_index > wgroup_size &&
          indice_table_size < max_local_mem_size * 0.5);
     if (small_index) {
-      small_index_kernel<func_t>(
+      small_index_kernel_impl<func_t>(
           iter, index_size, index_stride, non_index_size, non_index_stride, f);
       return;
     }
@@ -819,118 +827,77 @@ void _index_kernel(
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct IndexPutDeterministicAccumulateKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto id = cfg_.get_item_desc(item);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void index_put_deterministic_kernel_impl(
+    int64_t* sorted_indices,
+    int64_t* indices,
+    const scalar_t* value,
+    scalar_t* self,
+    int64_t stride,
+    int64_t stride_before,
+    int64_t v_stride_before,
+    BatchKernelConfig cfg) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  auto id = cfg.get_item_desc(item);
 
-    if (id.glb_batch >= cfg_.problem_batch_ || id.glb_problem >= cfg_.problem_)
-      return;
+  if (id.glb_batch >= cfg.problem_batch_ || id.glb_problem >= cfg.problem_)
+    return;
 
-    int64_t idx = sorted_indices_[id.glb_batch];
-    if (id.glb_batch != 0 && idx == sorted_indices_[id.glb_batch - 1])
-      return;
+  int64_t idx = sorted_indices[id.glb_batch];
+  if (id.glb_batch != cfg.problem_batch_ - 1 &&
+      idx == sorted_indices[id.glb_batch + 1])
+    return;
 
-    int64_t pi_ = id.glb_problem;
-    int64_t si_ = pi_ % stride_;
-    int64_t bi_ = pi_ / stride_;
-    int64_t s_gid = si_ + idx * stride_ + bi_ * stride_before_;
-    int64_t v_stride = si_ + bi_ * v_stride_before_;
+  int64_t pi_ = id.glb_problem;
+  int64_t si_ = pi_ % stride;
+  int64_t bi_ = pi_ / stride;
+  int64_t s_gid = si_ + idx * stride + bi_ * stride_before;
+  int64_t v_stride = si_ + bi_ * v_stride_before;
+  // For non-accumulate just write the last value to ensure deterministic
+  // output.
+  self[s_gid] = c10::load(&value[indices[id.glb_batch] * stride + v_stride]);
+}
 
-    accscalar_t acc;
-    acc = c10::load(&self_[s_gid]);
+template <typename scalar_t, typename accscalar_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void index_put_deterministic_accumulate_kernel_impl(
+    int64_t* sorted_indices,
+    int64_t* indices,
+    const scalar_t* value,
+    scalar_t* self,
+    int64_t stride,
+    int64_t stride_before,
+    int64_t v_stride_before,
+    BatchKernelConfig cfg) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  auto id = cfg.get_item_desc(item);
 
-    for (int64_t inner_idx = id.glb_batch;
-         inner_idx < cfg_.problem_batch_ && sorted_indices_[inner_idx] == idx;
-         inner_idx++) {
-      int64_t idx_orig = indices_[inner_idx];
-      int64_t v_gid = idx_orig * stride_ + v_stride;
-      acc += (accscalar_t)c10::load(&value_[v_gid]);
-    }
+  if (id.glb_batch >= cfg.problem_batch_ || id.glb_problem >= cfg.problem_)
+    return;
 
-    self_[s_gid] = acc;
+  int64_t idx = sorted_indices[id.glb_batch];
+  if (id.glb_batch != 0 && idx == sorted_indices[id.glb_batch - 1])
+    return;
+
+  int64_t pi_ = id.glb_problem;
+  int64_t si_ = pi_ % stride;
+  int64_t bi_ = pi_ / stride;
+  int64_t s_gid = si_ + idx * stride + bi_ * stride_before;
+  int64_t v_stride = si_ + bi_ * v_stride_before;
+
+  accscalar_t acc;
+  acc = c10::load(&self[s_gid]);
+
+  for (int64_t inner_idx = id.glb_batch;
+       inner_idx < cfg.problem_batch_ && sorted_indices[inner_idx] == idx;
+       inner_idx++) {
+    int64_t idx_orig = indices[inner_idx];
+    int64_t v_gid = idx_orig * stride + v_stride;
+    acc += (accscalar_t)c10::load(&value[v_gid]);
   }
 
-  IndexPutDeterministicAccumulateKernelFunctor(
-      int64_t* sorted_indices,
-      int64_t* indices,
-      const scalar_t* value,
-      scalar_t* self,
-      int64_t stride,
-      int64_t stride_before,
-      int64_t v_stride_before,
-      BatchKernelConfig cfg)
-      : sorted_indices_(sorted_indices),
-        indices_(indices),
-        value_(value),
-        self_(self),
-        stride_(stride),
-        stride_before_(stride_before),
-        v_stride_before_(v_stride_before),
-        cfg_(cfg) {}
-
- private:
-  int64_t* sorted_indices_;
-  int64_t* indices_;
-  const scalar_t* value_;
-  scalar_t* self_;
-  int64_t stride_;
-  int64_t stride_before_;
-  int64_t v_stride_before_;
-  BatchKernelConfig cfg_;
-};
-
-template <typename scalar_t>
-struct IndexPutDeterministicKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto id = cfg_.get_item_desc(item);
-
-    if (id.glb_batch >= cfg_.problem_batch_ || id.glb_problem >= cfg_.problem_)
-      return;
-
-    int64_t idx = sorted_indices_[id.glb_batch];
-    if (id.glb_batch != cfg_.problem_batch_ - 1 &&
-        idx == sorted_indices_[id.glb_batch + 1])
-      return;
-
-    int64_t pi_ = id.glb_problem;
-    int64_t si_ = pi_ % stride_;
-    int64_t bi_ = pi_ / stride_;
-    int64_t s_gid = si_ + idx * stride_ + bi_ * stride_before_;
-    int64_t v_stride = si_ + bi_ * v_stride_before_;
-    // For non-accumulate just write the last value to ensure deterministic
-    // output.
-    self_[s_gid] =
-        c10::load(&value_[indices_[id.glb_batch] * stride_ + v_stride]);
-  }
-
-  IndexPutDeterministicKernelFunctor(
-      int64_t* sorted_indices,
-      int64_t* indices,
-      const scalar_t* value,
-      scalar_t* self,
-      int64_t stride,
-      int64_t stride_before,
-      int64_t v_stride_before,
-      BatchKernelConfig cfg)
-      : sorted_indices_(sorted_indices),
-        indices_(indices),
-        value_(value),
-        self_(self),
-        stride_(stride),
-        stride_before_(stride_before),
-        v_stride_before_(v_stride_before),
-        cfg_(cfg) {}
-
- private:
-  int64_t* sorted_indices_;
-  int64_t* indices_;
-  const scalar_t* value_;
-  scalar_t* self_;
-  int64_t stride_;
-  int64_t stride_before_;
-  int64_t v_stride_before_;
-  BatchKernelConfig cfg_;
-};
+  self[s_gid] = acc;
+}
 
 template <typename scalar_t, typename accscalar_t>
 void launch_index_put_deterministic_kernel(
@@ -948,9 +915,8 @@ void launch_index_put_deterministic_kernel(
   }
   int64_t v_stride_before = numel * stride;
   if (accumulate) {
-    using KernelClass =
-        IndexPutDeterministicAccumulateKernelFunctor<scalar_t, accscalar_t>;
-    BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+    auto cfg = BatchKernelConfig::make_config<
+        index_put_deterministic_accumulate_kernel_impl<scalar_t, accscalar_t>>(
         /* num of indices */ numel,
         /* num of elements to put per indices */ outer_dim * stride,
         1,
@@ -958,7 +924,13 @@ void launch_index_put_deterministic_kernel(
         true,
         {BatchKernelConfig::Policy::pSegment,
          BatchKernelConfig::Policy::pAggressiveSplit});
-    KernelClass kfn(
+
+    sycl_kernel_submit<
+        index_put_deterministic_accumulate_kernel_impl<scalar_t, accscalar_t>>(
+        cfg.global_size(),
+        cfg.group_size(),
+        getCurrentSYCLQueue(),
+        0,
         sorted_indices,
         indices,
         value,
@@ -967,11 +939,9 @@ void launch_index_put_deterministic_kernel(
         stride_before,
         v_stride_before,
         cfg);
-    sycl_kernel_submit(
-        cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
   } else {
-    using KernelClass = IndexPutDeterministicKernelFunctor<scalar_t>;
-    BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+    auto cfg = BatchKernelConfig::make_config<
+        index_put_deterministic_kernel_impl<scalar_t, accscalar_t>>(
         /* num of indices */ numel,
         /* num of elements to put per indices */ outer_dim * stride,
         1,
@@ -979,7 +949,13 @@ void launch_index_put_deterministic_kernel(
         true,
         {BatchKernelConfig::Policy::pSegment,
          BatchKernelConfig::Policy::pAggressiveSplit});
-    KernelClass kfn(
+
+    sycl_kernel_submit<
+        index_put_deterministic_kernel_impl<scalar_t, accscalar_t>>(
+        cfg.global_size(),
+        cfg.group_size(),
+        getCurrentSYCLQueue(),
+        0,
         sorted_indices,
         indices,
         value,
@@ -988,34 +964,25 @@ void launch_index_put_deterministic_kernel(
         stride_before,
         v_stride_before,
         cfg);
-    sycl_kernel_submit(
-        cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
   }
 }
 
 template <int vt, typename func_t>
-struct IndexElementwiseKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int wg_sz = item.get_local_range(0);
-    auto tid = item.get_local_id(0);
-    auto nv = wg_sz * vt;
-    auto idx = nv * item.get_group(0) + tid;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void index_elemnent_wise_kernel_impl(const int64_t N, const func_t f) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int wg_sz = item.get_local_range(0);
+  auto tid = item.get_local_id(0);
+  auto nv = wg_sz * vt;
+  auto idx = nv * item.get_group(0) + tid;
 #pragma unroll
-    for (int i = 0; i < vt; i++) {
-      if (idx < N_) {
-        f_(idx);
-        idx += wg_sz;
-      }
+  for (int i = 0; i < vt; i++) {
+    if (idx < N) {
+      f(idx);
+      idx += wg_sz;
     }
   }
-
-  IndexElementwiseKernelFunctor(const int64_t N, const func_t f)
-      : N_(N), f_(f) {}
-
- private:
-  const int64_t N_;
-  const func_t f_;
-};
+}
 
 template <int vt, typename func_t>
 static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
@@ -1025,33 +992,26 @@ static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
   }
   int wg_sz = syclMaxWorkItemsPerSubSlice();
   int num_wg = (N + wg_sz * vt - 1) / (wg_sz * vt);
-  auto ker = IndexElementwiseKernelFunctor<vt, func_t>(N, f);
-  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  sycl_kernel_submit<index_elemnent_wise_kernel_impl<vt, func_t>, 1>(
+      wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, f);
 }
 
 #define TAKE_PUT_UNROLL_SZIE 4
 
 template <int vt, typename func_t>
-struct TakePutKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    const auto tid = item.get_local_id(0);
-    const auto nt = item.get_local_range(0);
-    const auto nv = nt * vt;
-    auto idx = nv * item.get_group(0) + tid;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void take_put_kernel_impl(const int64_t N, const func_t f) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const auto tid = item.get_local_id(0);
+  const auto nt = item.get_local_range(0);
+  const auto nv = nt * vt;
+  auto idx = nv * item.get_group(0) + tid;
 #pragma unroll
-    for (int i = 0; i < vt; i++) {
-      if (idx < N_) {
-        f_(idx);
-        idx += nt;
-      }
+  for (int i = 0; i < vt; i++) {
+    if (idx < N) {
+      f(idx);
+      idx += nt;
     }
   }
-
-  TakePutKernelFunctor(const int64_t N, const func_t f) : N_(N), f_(f) {}
-
- private:
-  const int64_t N_;
-  const func_t f_;
-};
-
+}
 } // namespace at::native::xpu
