@@ -7,6 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 # Owner(s): ["module: intel"]
+import numpy as np
 import torch
 from torch.testing._internal.common_utils import TestCase
 
@@ -94,6 +95,41 @@ class TestSimpleUnary(TestCase):
         torch.tanh(z_cpu).backward(torch.ones_like(z_cpu))
         torch.tanh(z_xpu).backward(torch.ones_like(z_xpu))
         self.assertEqual(z_cpu.grad, z_xpu.grad.cpu())
+
+    def test_sigmoid_special_value_complex(self):
+        # (xpu_dtype, compare_dtype, numpy_dtype, z)
+        cases = [
+            (
+                torch.complex32,
+                torch.complex64,
+                np.complex64,
+                complex(501, float("-inf")),
+            ),
+            (
+                torch.complex64,
+                torch.complex64,
+                np.complex64,
+                complex(501, float("-inf")),
+            ),
+            (
+                torch.complex128,
+                torch.complex128,
+                np.complex128,
+                complex(3000, float("-inf")),
+            ),
+        ]
+        for xpu_dtype, compare_dtype, numpy_dtype, z in cases:
+            with self.subTest(dtype=xpu_dtype):
+                x_xpu = torch.tensor(z, dtype=xpu_dtype, device="xpu")
+                out_xpu = torch.sigmoid(x_xpu)
+                self.assertEqual(out_xpu.dtype, xpu_dtype)
+
+                znp = numpy_dtype(z)
+                ref = (1.0 / (1.0 + np.exp(-znp))).astype(numpy_dtype)
+                expected = torch.tensor(ref, dtype=compare_dtype)
+                self.assertEqual(
+                    out_xpu.to(compare_dtype).cpu(), expected, equal_nan=True
+                )
 
     @Dtypes(all_basic_and_complex_types, [torch.bool])
     def test_neg_out(self, dtype):
