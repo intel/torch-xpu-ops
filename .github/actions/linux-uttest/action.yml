@@ -200,12 +200,11 @@ runs:
         fi
         python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
           --category ${category} --${category}-output ${log_dir}/${ut_name}_files.txt > /dev/null
-        cd pytorch
         while IFS= read -r test_file; do
           [ -z "${test_file}" ] && continue
           log_name="${test_file//\//_}"
           echo "::group::${test_file}"
-          python -m pytest -v "${test_file}" \
+          python -m pytest -v "pytorch/${test_file}" \
             --junit-xml="${{ github.workspace }}/ut_log/${ut_name}_${log_name}.xml" \
             2>&1 | tee "${log_dir}/${log_name}.log" \
             || echo -e "${test_file}" >> "${log_dir}/${ut_name}_failed.log"
