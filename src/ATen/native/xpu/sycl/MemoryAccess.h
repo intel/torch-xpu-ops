@@ -340,14 +340,9 @@ inline int can_vectorize_up_to(array_t pointers) {
 
 template <typename T>
 struct alignas(sizeof(T) * 4) m_vec4 {
-  union {
-    T val[4];
-    struct {
-      T x, y, z, w;
-    };
-  };
+  T val[4];
   m_vec4() = default;
-  m_vec4(T x_, T y_, T z_, T w_) : x(x_), y(y_), z(z_), w(w_) {}
+  m_vec4(T x, T y, T z, T w) : val{x, y, z, w} {}
 };
 using uint4 = m_vec4<uint32_t>;
 
