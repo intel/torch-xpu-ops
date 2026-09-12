@@ -21,6 +21,7 @@ from xpu_alignment_collect import CollectionError, validate_collection
 SCHEMA_VERSION = 1
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
+COMMIT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
@@ -36,6 +37,8 @@ LOCAL_RESULTS = {
 }
 ACTIONABLE_RESULTS = {"confirmed", "related-failure"}
 BLOCKED_RESULTS = LOCAL_RESULTS - ACTIONABLE_RESULTS - {"not-reproduced"}
+VERIFICATIONS = {"runtime", "static"}
+TRACKER_RE = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+")
 VERDICTS = {
     "needs-xpu-fix",
     "track-upstream",
@@ -111,7 +114,13 @@ def _expected_window(scan_date: str, errors: list[str]) -> dict[str, str] | None
     }
 
 
-def _validate_environment(value: object, errors: list[str]) -> dict[str, object]:
+def _validate_environment(
+    value: object, errors: list[str], *, required: bool
+) -> dict[str, object] | None:
+    if not required:
+        if value is not None:
+            errors.append("runner-environment-unexpected")
+        return None
     if not isinstance(value, dict) or set(value) != ENVIRONMENT_FIELDS:
         errors.append("runner-environment-invalid-fields")
         return {}
@@ -128,6 +137,48 @@ def _validate_environment(value: object, errors: list[str]) -> dict[str, object]
         errors.append("runner-environment-invalid:environment_warnings")
     if value.get("xpu_available") is not True:
         errors.append("runner-environment-xpu-unavailable")
+    return value
+
+
+def _validate_static_source(
+    root: Path,
+    value: object,
+    side: str,
+    unit_id: str,
+    errors: list[str],
+    *,
+    repository: str,
+    commit: str,
+    path: str | None = None,
+) -> dict[str, object]:
+    label = f"execution-{side}-source"
+    fields = {"repository", "commit", "path", "snapshot", "sha256"}
+    if not isinstance(value, dict) or set(value) != fields:
+        errors.append(f"{label}-invalid-fields:{unit_id}")
+        return {}
+    if value.get("repository") != repository:
+        errors.append(f"{label}-repository-mismatch:{unit_id}")
+    source_commit = value.get("commit")
+    if not isinstance(source_commit, str) or not COMMIT_RE.fullmatch(source_commit):
+        errors.append(f"{label}-invalid-commit:{unit_id}")
+    elif source_commit != commit:
+        errors.append(f"{label}-commit-mismatch:{unit_id}")
+    source_path = value.get("path")
+    if not isinstance(source_path, str) or not source_path:
+        errors.append(f"{label}-invalid-path:{unit_id}")
+    elif path is not None and source_path != path:
+        errors.append(f"{label}-path-mismatch:{unit_id}")
+    snapshot_value = value.get("snapshot")
+    if not isinstance(snapshot_value, str) or Path(snapshot_value).parts[:1] != ("evidence",):
+        errors.append(f"{label}-invalid-snapshot:{unit_id}")
+        snapshot = None
+    else:
+        snapshot = _inside_file(root, snapshot_value, f"{label}-snapshot:{unit_id}", errors)
+    digest = value.get("sha256")
+    if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
+        errors.append(f"{label}-invalid-digest:{unit_id}")
+    elif snapshot is not None and _sha256(snapshot) != digest:
+        errors.append(f"{label}-digest-mismatch:{unit_id}")
     return value
 
 
@@ -175,6 +226,7 @@ def _validate_prepare(
     collection_path: Path | None,
     collection: dict[str, object],
     inventory: dict[str, dict[str, object]],
+    xpu_commit: str,
 ) -> tuple[Path | None, dict[str, dict[str, object]], dict[str, dict[str, object]], list[str]]:
     errors: list[str] = []
     path = _one(root, "prepare.json", "prepare", errors)
@@ -238,15 +290,63 @@ def _validate_prepare(
                 continue
             if unit_id not in decisions or decisions[unit_id].get("triage") != "validate":
                 errors.append(f"execution-not-validated:{unit_id}")
-            script = _inside_file(root, entry.get("script"), f"script:{unit_id}", errors)
-            script_digest = entry.get("script_sha256")
-            if not isinstance(script_digest, str) or not SHA256_RE.fullmatch(script_digest):
-                errors.append(f"execution-invalid-digest:{unit_id}")
-            elif script is not None and _sha256(script) != script_digest:
-                errors.append(f"execution-digest-mismatch:{unit_id}")
-            timeout = entry.get("timeout_seconds")
-            if not isinstance(timeout, int) or isinstance(timeout, bool) or not 1 <= timeout <= 120:
-                errors.append(f"execution-invalid-timeout:{unit_id}")
+            verification = entry.get("verification", "runtime")
+            if verification not in VERIFICATIONS:
+                errors.append(f"execution-invalid-verification:{unit_id}")
+            if verification == "static":
+                # A source-only divergence has nothing to execute, so it carries no script.
+                if {"script", "script_sha256", "timeout_seconds"} & set(entry):
+                    errors.append(f"execution-static-carries-script:{unit_id}")
+                snapshot = collection.get("snapshot")
+                upstream_commit = (
+                    snapshot.get("default_branch_head")
+                    if isinstance(snapshot, dict)
+                    else None
+                )
+                upstream_source = _validate_static_source(
+                    root,
+                    entry.get("upstream_source"),
+                    "upstream",
+                    unit_id,
+                    errors,
+                    repository=str(collection.get("repository", "")),
+                    commit=str(upstream_commit or ""),
+                )
+                xpu_source = _validate_static_source(
+                    root,
+                    entry.get("xpu_source"),
+                    "xpu",
+                    unit_id,
+                    errors,
+                    repository="intel/torch-xpu-ops",
+                    commit=xpu_commit,
+                    path=str(entry.get("target_path", "")),
+                )
+                if (
+                    upstream_source
+                    and xpu_source
+                    and upstream_source.get("sha256") == xpu_source.get("sha256")
+                ):
+                    errors.append(f"execution-static-sources-identical:{unit_id}")
+                entry = {
+                    **entry,
+                    "upstream_source": upstream_source,
+                    "xpu_source": xpu_source,
+                }
+            else:
+                script = _inside_file(root, entry.get("script"), f"script:{unit_id}", errors)
+                script_digest = entry.get("script_sha256")
+                if not isinstance(script_digest, str) or not SHA256_RE.fullmatch(script_digest):
+                    errors.append(f"execution-invalid-digest:{unit_id}")
+                elif script is not None and _sha256(script) != script_digest:
+                    errors.append(f"execution-digest-mismatch:{unit_id}")
+                timeout = entry.get("timeout_seconds")
+                if (
+                    not isinstance(timeout, int)
+                    or isinstance(timeout, bool)
+                    or not 1 <= timeout <= 120
+                ):
+                    errors.append(f"execution-invalid-timeout:{unit_id}")
             for field in ("oracle", "target_path"):
                 if not str(entry.get(field, "")).strip():
                     errors.append(f"execution-missing-{field}:{unit_id}")
@@ -281,7 +381,16 @@ def _validate_runner(
         errors.append("runner-collection-digest-mismatch")
     if prepare_path is not None and runner.get("prepare_sha256") != _sha256(prepare_path):
         errors.append("runner-prepare-digest-mismatch")
-    environment = _validate_environment(runner.get("environment"), errors)
+    runtime = {
+        unit_id
+        for unit_id, entry in executions.items()
+        if entry.get("verification") != "static"
+    }
+    if "environment" not in runner:
+        errors.append("runner-environment-missing")
+    environment = _validate_environment(
+        runner.get("environment"), errors, required=bool(runtime)
+    )
     results: dict[str, dict[str, object]] = {}
     raw_results = runner.get("results")
     if not isinstance(raw_results, list):
@@ -292,7 +401,7 @@ def _validate_runner(
                 errors.append("runner-result-not-object")
                 continue
             unit_id = result.get("id")
-            if not isinstance(unit_id, str) or unit_id in results or unit_id not in executions:
+            if not isinstance(unit_id, str) or unit_id in results or unit_id not in runtime:
                 errors.append(f"runner-invalid-unit:{unit_id}")
                 continue
             execution = executions[unit_id]
@@ -317,7 +426,7 @@ def _validate_runner(
             if error is not None and not isinstance(error, str):
                 errors.append(f"runner-invalid-error:{unit_id}")
             results[unit_id] = result
-    if set(results) != set(executions):
+    if set(results) != runtime:
         errors.append("runner-coverage-mismatch")
     return path, environment, results, errors
 
@@ -329,7 +438,7 @@ def _validate_scan(
     collection: dict[str, object],
     prepare_path: Path | None,
     runner_path: Path | None,
-    runner_environment: dict[str, object],
+    runner_environment: dict[str, object] | None,
     executions: dict[str, dict[str, object]],
     results: dict[str, dict[str, object]],
 ) -> tuple[Path | None, list[str], list[dict[str, str]], list[str]]:
@@ -348,7 +457,9 @@ def _validate_scan(
         errors.append("scan-prepare-digest-mismatch")
     if runner_path is not None and scan.get("runner_sha256") != _sha256(runner_path):
         errors.append("scan-runner-digest-mismatch")
-    if scan.get("environment") != runner_environment:
+    if "environment" not in scan:
+        errors.append("scan-environment-missing")
+    elif scan.get("environment") != runner_environment:
         errors.append("scan-environment-mismatch")
     if scan.get("status") not in {"complete", "incomplete"}:
         errors.append(f"scan-invalid-status:{scan.get('status', 'missing')}")
@@ -371,12 +482,33 @@ def _validate_scan(
             result = candidate.get("local_result")
             if result not in LOCAL_RESULTS:
                 errors.append(f"scan-invalid-result:{unit_id}")
+            static = executions[unit_id].get("verification") == "static"
             runner_result = results.get(unit_id, {})
             if result in ACTIONABLE_RESULTS | {"not-reproduced"}:
-                if runner_result.get("timed_out") or runner_result.get("error") is not None:
+                if not static and (
+                    runner_result.get("timed_out") or runner_result.get("error") is not None
+                ):
                     errors.append(f"scan-result-contradicts-runner:{unit_id}")
                 if candidate.get("target_path_verified") is not True:
                     errors.append(f"scan-target-unverified:{unit_id}")
+            if static:
+                # Source read at the frozen head cannot be blocked by the runtime environment.
+                if result in BLOCKED_RESULTS:
+                    errors.append(f"scan-static-blocked:{unit_id}")
+                upstream_source = executions[unit_id].get("upstream_source")
+                xpu_source = executions[unit_id].get("xpu_source")
+                expected_evidence = {
+                    "upstream_source": upstream_source.get("snapshot")
+                    if isinstance(upstream_source, dict)
+                    else None,
+                    "xpu_source": xpu_source.get("snapshot")
+                    if isinstance(xpu_source, dict)
+                    else None,
+                }
+                if candidate.get("evidence") != expected_evidence:
+                    errors.append(f"scan-static-evidence-mismatch:{unit_id}")
+                candidates[unit_id] = candidate
+                continue
             evidence = _inside_file(
                 runner_root,
                 candidate.get("evidence"),
@@ -484,13 +616,28 @@ def _validate_review(
         ):
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
+        tracker_state = entry.get("canonical_tracker_state")
+        tracker_repository = None
         if tracker is not None and (
-            not isinstance(tracker, str)
-            or not tracker.startswith("https://github.com/intel/torch-xpu-ops/issues/")
+            not isinstance(tracker, str) or not TRACKER_RE.fullmatch(tracker)
         ):
             errors.append(f"review-invalid-tracker:{unit_id}")
+        elif isinstance(tracker, str):
+            tracker_repository = "/".join(
+                tracker.removeprefix("https://github.com/").split("/")[:2]
+            ).lower()
+        if (tracker is None) != (tracker_state is None) or tracker_state not in {
+            None,
+            "open",
+            "closed",
+        }:
+            errors.append(f"review-invalid-tracker-state:{unit_id}")
         payload = entry.get("payload")
-        expects_payload = verdict == "needs-xpu-fix" and tracker is None
+        # A closed tracker cannot receive the work, so the finding still needs its own issue.
+        open_xpu_tracker = (
+            tracker_state == "open" and tracker_repository == "intel/torch-xpu-ops"
+        )
+        expects_payload = verdict == "needs-xpu-fix" and not open_xpu_tracker
         if not expects_payload:
             if payload is not None:
                 errors.append(f"review-unexpected-payload:{unit_id}")
@@ -505,6 +652,10 @@ def _validate_review(
             errors.append(f"payload-multiline-title:{unit_id}")
         if not isinstance(body, str) or not body.strip():
             errors.append(f"payload-empty-body:{unit_id}")
+        elif isinstance(tracker, str) and not re.search(
+            rf"{re.escape(tracker)}(?![0-9])", body
+        ):
+            errors.append(f"payload-missing-canonical-tracker:{unit_id}")
         if payload.get("labels") != ISSUE_LABELS:
             errors.append(f"payload-invalid-labels:{unit_id}")
         payloads.append({"unit_id": unit_id, "title": title, "body": body, "labels": ISSUE_LABELS})
@@ -524,6 +675,7 @@ def build_decision(
     producers_clean: bool,
     run_id: str,
     scan_date: str,
+    xpu_commit: str,
 ) -> dict[str, object]:
     if mode not in {"schedule", "dry-run"}:
         raise ValueError(f"unsupported mode: {mode}")
@@ -531,7 +683,12 @@ def build_decision(
         collection_root, scan_date
     )
     prepare_path, _, executions, prepare_errors = _validate_prepare(
-        prepare_root, scan_date, collection_path, collection, inventory
+        prepare_root,
+        scan_date,
+        collection_path,
+        collection,
+        inventory,
+        xpu_commit,
     )
     runner_path, runner_environment, results, runner_errors = _validate_runner(
         runner_root, collection_path, prepare_path, executions
@@ -620,6 +777,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--run-id", default="")
     parser.add_argument("--scan-date", required=True)
+    parser.add_argument("--xpu-commit", required=True)
     parser.add_argument("--mode", choices=("schedule", "dry-run"), required=True)
     parser.add_argument("--producers-clean", action="store_true")
     args = parser.parse_args()
@@ -633,6 +791,7 @@ def main() -> int:
         producers_clean=args.producers_clean,
         run_id=args.run_id,
         scan_date=args.scan_date,
+        xpu_commit=args.xpu_commit,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(decision, indent=2) + "\n", encoding="utf-8")

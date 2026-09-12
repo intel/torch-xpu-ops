@@ -120,6 +120,12 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         unit_id = entry.get("id")
         if not isinstance(unit_id, str) or not UNIT_ID_RE.fullmatch(unit_id) or unit_id in seen:
             raise PlanError(f"invalid or duplicate unit id: {unit_id!r}")
+        seen.add(unit_id)
+        verification = entry.get("verification", "runtime")
+        if verification not in {"runtime", "static"}:
+            raise PlanError(f"{unit_id}: invalid verification")
+        if verification == "static":
+            continue
         script = _inside(root, entry.get("script"), existing=True)
         expected_digest = entry.get("script_sha256")
         if not isinstance(expected_digest, str) or not SHA256_RE.fullmatch(expected_digest):
@@ -136,7 +142,6 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         for field in ("oracle", "target_path"):
             if not str(entry.get(field, "")).strip():
                 raise PlanError(f"{unit_id}: missing {field}")
-        seen.add(unit_id)
         normalized.append(
             {
                 "id": unit_id,
@@ -360,10 +365,12 @@ def run_plan(
 ) -> dict[str, object]:
     if not python.is_file():
         raise PlanError(f"python executable does not exist: {python}")
-    _become_child_subreaper()
-    recorded_environment = _validated_environment(
-        environment if environment is not None else probe_environment(python, identity)
-    )
+    recorded_environment = None
+    if entries:
+        _become_child_subreaper()
+        recorded_environment = _validated_environment(
+            environment if environment is not None else probe_environment(python, identity)
+        )
     logs = root / "runner/logs"
     logs.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, object]] = []
@@ -449,7 +456,8 @@ def main() -> int:
         results = results.resolve()
         results.relative_to(root)
         entries = load_prepare(root, prepare)
-        payload = run_plan(root, args.python.resolve(), prepare, entries, _identity(args.user))
+        identity = _identity(args.user) if entries else None
+        payload = run_plan(root, args.python.resolve(), prepare, entries, identity)
     except (OSError, PlanError, ValueError) as error:
         print(f"prepare artifact rejected: {error}")
         return 2
