@@ -135,6 +135,11 @@ void syncStream(
     at::Device& device,
     at::xpu::XPUEvent& xcclEvent,
     at::xpu::XPUStream& xcclStream) {
+  // If a SYCL graph is currently being captured, XCCL's internal stream
+  // needs to be part of that same recording session for the cross-queue
+  // waits below (and the join-back wait in WorkXCCL::synchronizeStream())
+  // to be valid inside the graph. See XPUGraphCaptureRegistry.
+  c10::xpu::addStreamToCurrentCaptureIfCapturing(xcclStream);
   xcclEvent.record(at::xpu::getCurrentXPUStream(device.index()));
   xcclEvent.block(xcclStream);
 }
