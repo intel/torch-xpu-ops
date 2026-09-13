@@ -53,3 +53,26 @@ of scope here.
 | --- | --- | --- |
 | Reordered `skips=`/`decorators=` tuples or changed `active_if` | Can silently alter another backend (MPS/HPU); a real reviewer concern. | Blocker |
 | An iterable feeding `@parametrize` converted `tuple -> set` (or `set -> tuple`) | Introduces nondeterministic ordering; has caused real breakage needing a follow-up fix. Flag any such conversion of a parametrization source. | Blocker |
+
+## 5. Device-agnostic backend selection (multi-backend tests)
+
+| Code Pattern | What It Means | Severity |
+| --- | --- | --- |
+| `requires_nccl()` / `init_process_group(backend="nccl")` | Hardcoded backend requirements block XPU (zero execution on XPU). Use `requires_accelerator_dist_backend([...])` and resolve the backend from the device. | Blocker |
+| Literal `"cpu:gloo,cuda:nccl"` backend string | Build it from the device (`get_default_backend_for_device(device_type)`). It returns a *single* backend, so a combined `"cpu:gloo,<device>:<backend>"` string must be assembled explicitly, not collapsed to one backend. | Major |
+
+## 6. Decorator parity (CUDA -> XPU mirroring)
+
+Mirror CUDA decorators to XPU only when needed, keeping the same scope; don’t copy them mechanically.
+
+| Code Pattern | What It Means | Severity |
+| --- | --- | --- |
+| `@onlyCUDA` (or a CUDA-only test class) left on a case whose computation is device-generic and could run on other accelerators | A reusable CUDA case should not stay CUDA-only; it must be enabled for XPU. Broaden it to run on XPU (e.g. `@onlyOn(["cuda", "xpu"])` or a device-agnostic class instantiated with `allow_xpu=True`), or add a parallel `@onlyXPU` case. Keep `@onlyCUDA` only when the case genuinely exercises a CUDA-specific feature. | Blocker |
+| `@largeTensorTest("20GB", "cuda")` (or `device="cuda"`, or bare on a device-generic test whose primary device is CUDA) with no XPU counterpart | The memory guard checks free memory on the named device. XPU also needs a memory guard, using the same size as CUDA or a human-decided different size if needed. | Blocker |
+| `@dtypesIfCUDA(...)` (or old `@dtypeIfCuda`) with no `@dtypesIfXPU(...)` | XPU silently falls back to the base `@dtypes` set. Mirror with the same dtype set; narrow it only for dtypes XPU genuinely lacks, and note why. | Major |
+| `@skipCUDAIf(...)` / `@skipCUDAIfNoMagma` / `NoCusolver` / `NoCudnn` / ROCm / MIOpen mirrored blindly to XPU | Feature-gated CUDA-stack skips (Magma, cuSOLVER, cuDNN, ROCm) usually have no XPU meaning. Mirror to `@skipXPUIf` only if the same underlying limitation applies to XPU; otherwise drop mirroring or use the matching XPU capability check. | Major |
+| `@expectedFailureXPU` added without confirming the failure reproduces on XPU | Please verify the failure actually occurs on XPU before mirroring an `expectedFailure`. | Info |
+| `@precisionOverride`/`@toleranceOverride` inherited unchanged on the XPU run | Tolerance should be re-calibrated based on actual XPU behavior to avoid being too strict or too loose, rather than copied directly. | Minor |
+| Multiple CUDA-conditional decorators stacked on one method (`@dtypesIfCUDA` + `@precisionOverride` + `@skipCUDAIf`) | Each decorator is an independent parity obligation. Check every decorator in the stack, not just the first; a common miss is mirroring the dtype override but forgetting the skip. | Info |
+| `@tf32_on_and_off` / `@with_tf32_off` reused on an XPU test | These decorators are CUDA-keyed (`torch.cuda.is_tf32_supported()` and `device.type == "cuda"`). Currently, XPU controls TF32 with use `torch.backends.mkldnn.flags(allow_tf32=...)` / `torch.backends.mkldnn.fp32_precision` (see the local `tf32_on_and_off` in `test/xpu/test_gemm.py`). | Major |
+| Decorators mirrored to XPU but `instantiate_device_type_tests(...)` does not include XPU (no `allow_xpu=True`, or `only_for`/`except_for` excludes `"xpu"`) | The mirrored decorators only take effect if the class is actually instantiated for XPU. If XPU is not in the instantiated device list, none of the parity below runs no matter how carefully it was mirrored. | Blocker |
