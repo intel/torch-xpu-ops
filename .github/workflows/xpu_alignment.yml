@@ -562,15 +562,15 @@ jobs:
             `upstream_source` and `xpu_source`; confirm that each immutable snapshot
             is faithful and that the actual source difference supports the oracle.
             Otherwise use `verification-gap` and emit no payload.
-            If an existing issue covers the same work, record its exact URL as
-            `canonical_tracker` with its `canonical_tracker_state`. An open
-            intel/torch-xpu-ops tracker replaces the payload and is not commented
-            on. Whenever a tracker is recorded and a payload is emitted, cite
-            that exact tracker URL in the payload body. Cite related upstream or
-            XPU issue, PR, and commit URLs in the payload or review report. For a
-            runtime payload, include the reproducer and runner evidence; for a
-            static payload, include the source coordinates, snapshot references,
-            oracle, and observed source difference instead.
+            If an existing GitHub issue covers the same work, record its exact URL
+            as `canonical_tracker` with its `canonical_tracker_state`, regardless
+            of repository. Only an open intel/torch-xpu-ops tracker replaces the
+            payload and is not commented on. Whenever a tracker is recorded and
+            a payload is emitted, cite that exact tracker URL in the payload body.
+            Cite related upstream or XPU issue, PR, and commit URLs in the payload
+            or review report. For a runtime payload, include the reproducer and
+            runner evidence; for a static payload, include the source coordinates,
+            snapshot references, oracle, and observed source difference instead.
 
             Write only alignment-run/review/review.json and optional
             review_report.md. Include a payload only for reviewed `needs-xpu-fix`
