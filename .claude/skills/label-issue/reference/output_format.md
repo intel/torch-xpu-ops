@@ -139,7 +139,8 @@ umbrella. Never union a single-label axis — an umbrella issue must not carry b
 `os: Linux` and `os: Windows`. Each group's own table still shows its own value.
 
 **A consumer applying the artifact** (e.g. `apply_labels.py`) writes additively
-and never clobbers human triage:
+and never clobbers human triage. The first rule below is `need_split`-only; the
+other two hold for every issue:
 
 - Only the issue-wide axes (`need_split`, `type`, `test`, `os`, `hw`) go on the
   umbrella issue; `module`, `dtype`, `dependency component`, `symptom`,
@@ -147,7 +148,8 @@ and never clobbers human triage:
   sub-issues after the split.
 - Labels are add-only and allowlisted against `labels.json`; a name absent from
   the JSON is dropped, not created.
-- `type` and `priority` are written only when the issue has no value set. An
+- `type` and `priority` are written only when the issue has no value set (on an
+  umbrella issue `priority` is not written at all, per the first rule). An
   existing native field is left unchanged even when it disagrees; the
   disagreement is surfaced for a human (`apply_labels.py` appends a
   `> [!WARNING]` block to its comment, or prints it under `--no-comment`).
