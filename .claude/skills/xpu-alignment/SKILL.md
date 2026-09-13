@@ -130,15 +130,20 @@ case. Decide whether the behavior needs independent XPU work, is owned upstream,
 is already fixed or tracked, is not a defect, or lacks sufficient evidence.
 For a static unit, independently fetch both files at the recorded repositories,
 commits, and paths, confirm the snapshots are faithful, and verify that the real
-source difference supports the oracle. Use `verification-gap` otherwise.
+source difference supports the oracle. A static unit may be `confirmed` only;
+use `verification-gap` when the source evidence is insufficient.
 
 Only `needs-xpu-fix` without an open `intel/torch-xpu-ops` canonical tracker may
 carry a new issue payload. When an existing issue covers the work, record it as
 `canonical_tracker` with its open/closed state. An open `intel/torch-xpu-ops`
 tracker replaces the payload and is not commented on; a closed one still needs a
 payload. Whenever a tracker is recorded and a payload is emitted, cite the exact
-tracker URL in the payload body. In automation, write only under `review/` and
-follow the minimal review contract. A
+tracker URL in the payload body. Cite any related upstream or XPU issue, PR, or
+commit in the payload or review report as context; these links do not suppress a
+payload. Runtime payloads contain reproducer and runner evidence. Static payloads
+contain source coordinates, snapshot references, the oracle, and the observed
+source difference instead. In automation, write only under `review/` and follow
+the minimal review contract. A
 blocked review produces no publishable payloads.
 
 ## Completion

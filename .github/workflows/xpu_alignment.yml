@@ -551,19 +551,26 @@ jobs:
             collection digest and complete/partial status in review.json.
 
             Independently cover every scan candidate whose local result is
-            `confirmed` or `related-failure`. Re-read its source, exact reproducer,
-            runner log, target-path evidence, current upstream fix state, and
-            existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
+            `confirmed` or `related-failure`. Re-read its source, target-path
+            evidence, current upstream fix state, and existing trackers in
+            `intel/torch-xpu-ops`. Search `pytorch/pytorch` for an issue or PR
+            that explicitly owns the XPU work; a merely related upstream object
+            does not suppress a local payload. Do not sample rejected inventory.
+            For runtime units, also re-read the exact reproducer and runner log.
             For a static unit, there is no reproducer or runner log: independently
             fetch both source files at the exact repository, commit, and path in
             `upstream_source` and `xpu_source`; confirm that each immutable snapshot
             is faithful and that the actual source difference supports the oracle.
             Otherwise use `verification-gap` and emit no payload.
-            If an existing tracker covers the same work, record it as
+            If an existing issue covers the same work, record its exact URL as
             `canonical_tracker` with its `canonical_tracker_state`. An open
             intel/torch-xpu-ops tracker replaces the payload and is not commented
             on. Whenever a tracker is recorded and a payload is emitted, cite
-            that exact tracker URL in the payload body.
+            that exact tracker URL in the payload body. Cite related upstream or
+            XPU issue, PR, and commit URLs in the payload or review report. For a
+            runtime payload, include the reproducer and runner evidence; for a
+            static payload, include the source coordinates, snapshot references,
+            oracle, and observed source difference instead.
 
             Write only alignment-run/review/review.json and optional
             review_report.md. Include a payload only for reviewed `needs-xpu-fix`

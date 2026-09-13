@@ -37,6 +37,7 @@ LOCAL_RESULTS = {
 }
 ACTIONABLE_RESULTS = {"confirmed", "related-failure"}
 BLOCKED_RESULTS = LOCAL_RESULTS - ACTIONABLE_RESULTS - {"not-reproduced"}
+STATIC_RESULTS = {"confirmed"}
 VERIFICATIONS = {"runtime", "static"}
 TRACKER_RE = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+")
 VERDICTS = {
@@ -484,6 +485,8 @@ def _validate_scan(
                 errors.append(f"scan-invalid-result:{unit_id}")
             static = executions[unit_id].get("verification") == "static"
             runner_result = results.get(unit_id, {})
+            if static and result not in STATIC_RESULTS:
+                errors.append(f"scan-static-invalid-result:{unit_id}")
             if result in ACTIONABLE_RESULTS | {"not-reproduced"}:
                 if not static and (
                     runner_result.get("timed_out") or runner_result.get("error") is not None

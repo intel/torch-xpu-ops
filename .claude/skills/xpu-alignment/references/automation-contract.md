@@ -313,7 +313,8 @@ matching script and log digests, target-path proof, and a defensible oracle.
 A `"verification": "static"` unit has no runner record: its `evidence` cites the
 immutable audit snapshots exactly as
 `{"upstream_source": "evidence/...", "xpu_source": "evidence/..."}`. It still
-needs `target_path_verified`, and it cannot be `blocked-*` because reading the
+needs `target_path_verified`, is limited to `local_result: "confirmed"`, and
+cannot be `related-failure`, `not-reproduced`, or `blocked-*` because reading the
 frozen head cannot fail on the runner. When the runner environment is null,
 `scan.json` explicitly records `"environment": null` to match it.
 Timeouts, launch errors, environment failures, or inconclusive evidence use a
@@ -369,8 +370,14 @@ commented on. An open tracker in another repository remains recorded but does
 not replace the XPU payload. Record a tracker in any repository rather than
 dropping it, so a later run does not re-investigate the same ground. Whenever a
 tracker is recorded and a payload is emitted, the payload body cites that exact
-tracker URL. A tracker that is `closed` cannot receive the work, so a
-`needs-xpu-fix` unit still carries a payload.
+tracker URL. Cite related upstream or XPU issue, PR, and commit URLs in the
+payload or review report as context; those links do not suppress a payload. A
+tracker that is `closed` cannot receive the work, so a `needs-xpu-fix` unit still
+carries a payload.
+
+Runtime payloads contain a reproducer and runner evidence. Static payloads have
+no reproducer or runner log; they contain source coordinates, snapshot
+references, the oracle, and the observed source difference instead.
 
 For every static candidate, the independent reviewer re-fetches both source
 files at the exact recorded repositories, commits, and paths, confirms each
