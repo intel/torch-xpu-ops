@@ -10,6 +10,9 @@
 
 #pragma once
 #include <comm/SYCLContext.h>
+
+// Keep XPUContext after the existing host-only SYCL warning suppression.
+#include <ATen/xpu/XPUContext.h>
 #include <algorithm>
 #include <bit>
 
@@ -149,7 +152,7 @@ class BatchKernelConfig {
       int64_t stride,
       bool problem_along_x,
       bool bypass_adaptive_policy = true) {
-    auto target_wi_num = syclMaxWorkItemsPerTile();
+    int64_t target_wi_num = at::xpu::getDeviceMaxWorkItems();
 
     if (!bypass_adaptive_policy && batch * problem * stride >= target_wi_num) {
       return Policy::pAdaptive;
@@ -163,7 +166,7 @@ class BatchKernelConfig {
         batch * stride,
         problem_along_x,
         Policy::pLoop,
-        syclDeviceMaxWorkGroupSize());
+        at::xpu::getDeviceMaxWorkGroupSize());
     size_t wg_num = (cfg_.glb_range_x_ / cfg_.wg_range_x_) *
         (cfg_.glb_range_y_ / cfg_.wg_range_y_);
     size_t wg_size = cfg_.wg_range_x_ * cfg_.wg_range_y_;
@@ -202,13 +205,13 @@ class BatchKernelConfig {
   template <class KernelClass>
   void build() {
     size_t wg_size;
-    size_t sg_size = syclMaxSubGroupSize();
+    size_t sg_size = at::xpu::getDeviceMaxSubGroupSize();
     // Caller takes responsibility of if work group size is valid or compatible.
     if (prefer_wg_size_ != 0 && prefer_wg_size_ % sg_size == 0 &&
-        prefer_wg_size_ <= syclDeviceMaxWorkGroupSize()) {
+        prefer_wg_size_ <= at::xpu::getDeviceMaxWorkGroupSize()) {
       wg_size = prefer_wg_size_;
     } else {
-      wg_size = syclMaxWorkGroupSize<KernelClass>();
+      wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     }
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;
@@ -240,7 +243,7 @@ class BatchKernelConfig {
         wg_size / wg_range_x_, std::bit_ceil((uint64_t)range_bound_y));
 
     if ((uint8_t)policy_ & (uint8_t)Policy::pAdaptive) {
-      size_t target_glb_range = syclMaxWorkItemsPerTile() /
+      size_t target_glb_range = at::xpu::getDeviceMaxWorkItems() /
           (wg_range_x_ * wg_range_y_) * (wg_range_x_ * wg_range_y_);
       if (problem_along_x_) {
         glb_range_y_ = wg_range_y_;
