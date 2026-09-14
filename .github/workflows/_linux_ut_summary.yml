@@ -1,0 +1,279 @@
+name: Linux UT Summary
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+        description: Runner label used by the UT job (selects known-failure label scope)
+      ut:
+        required: true
+        type: string
+        description: UT scope to summarize, e.g. `op_ut`, `basic`, `xpu_distributed`
+      category:
+        type: string
+        default: ''
+        description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
+      pytorch:
+        type: string
+        default: 'main'
+        description: Pytorch version tag forwarded to ut_result_check.sh
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  summary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          path: ${{ github.workspace }}/ut_log
+      - name: Download known-failure issues snapshot
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
+          path: ${{ github.workspace }}/issues_snapshot
+      - name: Check UT Results
+        id: ut-check
+        continue-on-error: true
+        run: |
+          ls -al ${{ github.workspace }}/ut_log
+          cd ${{ github.workspace }}/ut_log/
+          # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
+          cd "${latest_dir}/${{ inputs.ut }}"
+          # Reproduce hints are produced by the test job.
+          find "${{ github.workspace }}/ut_log" -type f -name "reproduce_*.log" -exec mv {} ./ \; || true
+          # Generate the failure/summary logs (failures_*.log, passed_*.log,
+          # category_*.log, ut_failure_list.csv) from the test XMLs.
+          python3 -m pip install --quiet junitparser || pip3 install --quiet junitparser || true
+          mapfile -t gen_xml_files < <(find "${{ github.workspace }}/ut_log" -name "*.xml" 2>/dev/null)
+          if [ "${#gen_xml_files[@]}" -gt 0 ]; then
+            python3 "${{ github.workspace }}/.github/scripts/check-ut.py" -n "${{ inputs.ut }}" -i "${gen_xml_files[@]}" > ut_summary.md 2>&1 || true
+          fi
+          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
+          # Build the known-issues list by merging two sources:
+          #   1. Snapshot captured at build start (covers issues closed mid-run)
+          #   2. Current live state (covers new issues opened after build start)
+          snapshot_dir="${{ github.workspace }}/issues_snapshot"
+          touch issues.log Known_issue.log.tmp
+          echo "Restoring snapshotted skipped issues if available."
+          cp "${snapshot_dir}/known_issue_static.log" Known_issue.log.tmp || true
+          cp "${snapshot_dir}/issues_snapshot.log" issues.log || true
+          if [[ "${{ inputs.runner }}" == *"bmg"* ]]; then
+            cat "${snapshot_dir}/issues_snapshot_bmg.log" >> issues.log || true
+          fi
+          if [[ "${{ inputs.category }}" == "dpclang" ]]; then
+            cat "${snapshot_dir}/issues_snapshot_dpclang.log" >> issues.log || true
+          fi
+          echo "Fetching current known-failure issues from GitHub."
+          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh static >> Known_issue.log.tmp
+          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open "${{ inputs.category }}" "${{ inputs.runner }}" >> issues.log
+          if [ "${{ inputs.ut }}" == "basic" ];then
+            ut_list="op_regression op_extended op_regression_dev1"
+          else
+            ut_list="${{ inputs.ut }}"
+          fi
+          # Check every ut in the list; do not stop at the first failure.
+          check_ret=0
+          for ut_name in ${ut_list}
+          do
+            cp Known_issue.log.tmp Known_issue.log
+            awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
+              if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
+              if ( print_row == 1 && $1 ~ r ) { print $0 };
+              if ( $0 ~ /Cases:/ ) { print_row = 1 };
+            }' issues.log >> Known_issue.log
+            sed -i 's/[[:space:]]*$//g' Known_issue.log
+            TEST_PLATFORM=linux TEST_RUNNER="${{ inputs.runner }}" bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}" || check_ret=1
+          done
+          # Render the UT failures to the step summary: show only the new failures,
+          # collapse known issues under a hidden section (reuses ut_result_check.sh's
+          # failures_<ut>_filtered.log as the "new" set).
+          mapfile -t xml_files < <(find "${{ github.workspace }}/ut_log" -name "*.xml" 2>/dev/null)
+          if [ "${#xml_files[@]}" -gt 0 ]; then
+            python3 -m pip install --quiet junitparser || pip3 install --quiet junitparser || true
+            mapfile -t filtered_files < <(ls failures_*_filtered.log 2>/dev/null)
+            filtered_abs=()
+            for f in "${filtered_files[@]}"; do
+              [ -e "$f" ] && filtered_abs+=("$(readlink -f "$f")")
+            done
+            summary_dir="$(mktemp -d)"
+            ( cd "$summary_dir" && \
+              python3 "${{ github.workspace }}/.github/scripts/check-ut.py" \
+                -n "${{ inputs.ut }}" \
+                -i "${xml_files[@]}" \
+                --new-failures "${filtered_abs[@]}" ) >> "$GITHUB_STEP_SUMMARY" || true
+            rm -rf "$summary_dir"
+          fi
+          exit $check_ret
+      - name: Collect new failures with error messages
+        if: ${{ ! cancelled() && steps.ut-check.outcome == 'failure' }}
+        id: new-failures
+        run: |
+          cd ${{ github.workspace }}/ut_log/
+          # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
+          ut_dir="${latest_dir}/${{ inputs.ut }}"
+          if [ "${{ inputs.ut }}" == "basic" ]; then
+            ut_list="op_regression op_extended op_regression_dev1"
+          else
+            ut_list="${{ inputs.ut }}"
+          fi
+          # Collect new failure case names from filtered logs produced by ut_result_check.sh
+          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          : > "$new_failure_list"
+          for ut_name in ${ut_list}; do
+            filtered_file="${ut_dir}/failures_${ut_name}_filtered.log"
+            if [ -s "$filtered_file" ]; then
+              cat "$filtered_file" >> "$new_failure_list"
+            fi
+          done
+          # Filter ut_failure_list.csv to keep only new failures (with error messages)
+          ut_failure_csv=$(find "${{ github.workspace }}/ut_log" -name "ut_failure_list.csv" -type f | head -1)
+          new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
+          if [ -s "$new_failure_list" ] && [ -n "$ut_failure_csv" ] && [ -f "$ut_failure_csv" ]; then
+            # ut_failure_list.csv is headerless (see check-ut.py print_md_row);
+            # build the report from matched rows only.
+            : > "$new_failure_csv"
+            # Match rows by class_name AND test_name to avoid substring false positives
+            # filtered log format: category,class_name,test_name
+            while IFS=',' read -r category class_name test_name; do
+              [ -z "$test_name" ] && continue
+              # Use both class_name and test_name for precise matching in pipe-delimited CSV
+              grep -F "| $class_name | $test_name |" "$ut_failure_csv" >> "$new_failure_csv" || true
+            done < "$new_failure_list"
+            # Verify count matches filtered log
+            expected_count=$(grep -c . "$new_failure_list")
+            actual_count=$(grep -c . "$new_failure_csv")
+            if [ "$actual_count" -ne "$expected_count" ]; then
+              echo "::warning::New failure count mismatch: filtered=$expected_count, csv=$actual_count"
+            fi
+            echo "has_new_failures=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_new_failures=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload new failure report
+        if: ${{ ! cancelled() && steps.new-failures.outputs.has_new_failures == 'true' }}
+        id: upload-new-failures
+        uses: actions/upload-artifact@v7
+        with:
+          name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/ut_log/new_ut_failure_list.csv
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          path: ${{ github.workspace }}/ut_log
+          overwrite: true
+      - name: Comment on PR for new failures
+        if: >-
+          ${{ ! cancelled() && github.event_name == 'pull_request'
+          && steps.new-failures.outputs.has_new_failures == 'true'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
+              || github.event.pull_request.user.login == 'copilot[bot]') }}
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.COPILOT_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const prNumber = context.issue.number;
+            const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const ut = '${{ inputs.ut }}';
+            const artifactUrl = '${{ steps.upload-new-failures.outputs.artifact-url }}';
+
+            // Read and parse new failure list csv (markdown table format)
+            const csvFile = '${{ github.workspace }}/ut_log/new_ut_failure_list.csv';
+            let failureTable = '';
+            let totalCount = 0;
+            if (fs.existsSync(csvFile)) {
+              const lines = fs.readFileSync(csvFile, 'utf8').trim().split('\n');
+              // Parse markdown table: remove last column (Source) and format as table
+              // Header is first line, separator is second line, data starts at third
+              if (lines.length > 2) {
+                const dataLines = lines.slice(2);
+                totalCount = dataLines.length;
+                const displayLines = dataLines.slice(0, 5);
+
+                // Build table without last column (Source)
+                const header = '| Category | Class name | Test name | Status | Message |';
+                const separator = '| --- | --- | --- | --- | --- |';
+                const rows = displayLines.map(line => {
+                  const cols = line.split(' | ');
+                  // Remove last column and rejoin
+                  return cols.slice(0, -1).join(' | ');
+                });
+
+                failureTable = [header, separator, ...rows].join('\n');
+                if (totalCount > 5) {
+                  failureTable += `\n\n... and ${totalCount - 5} more failures. See full list in artifact.`;
+                }
+              }
+            }
+
+            const body = [
+              `@copilot New UT failures detected in **${ut}** tests (${totalCount} total). Please check these new failures and analyze whether they are caused by the PR changes.`,
+              '',
+              '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
+              '',
+              `Job log: ${jobUrl}`,
+              `Full new failure report: ${artifactUrl}`,
+              '',
+              '**New failures:**',
+              '',
+              failureTable,
+              '',
+              'Instructions:',
+              '1. Download the full new failure report artifact for complete error messages',
+              '2. Analyze whether the failures are caused by PR changes',
+              '3. If caused by PR changes, fix those failures on this PR branch directly',
+              '4. Add failing test cases with pytest commands in the PR description for the reproducer job to use',
+              '5. Use reply comments to report analysis status - do NOT modify the PR description plan directly'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });
+      - name: Fail if UT check failed
+        if: ${{ steps.ut-check.outcome == 'failure' }}
+        shell: bash {0}
+        run: |
+          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          if [ -s "$new_failure_list" ]; then
+            new_failure_count=$(grep -c . "$new_failure_list")
+            echo "::error::UT check failed with ${new_failure_count} new failures:"
+            cat "$new_failure_list"
+          else
+            echo "::error::UT check failed"
+          fi
+          exit 1
