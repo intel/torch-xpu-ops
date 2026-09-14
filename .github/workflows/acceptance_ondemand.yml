@@ -54,7 +54,16 @@ on:
         required: true
         description: 'Baseline ref for the selected test_component.'
 
+      caller:
+        type: string
+        default: ''
+        description: 'Caller id (e.g. onednn-pr-2) for concurrency grouping; a new run cancels the previous one with the same caller.'
+
 permissions: read-all
+
+concurrency:
+  group: acceptance-${{ github.event.inputs.caller || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
+  cancel-in-progress: true
 
 run-name: >-
   Acceptance / ${{ inputs.test_component }} [${{ inputs.test_pattern }}] ${{ inputs.target_version }} vs ${{ inputs.baseline_version }}
