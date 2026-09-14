@@ -101,10 +101,7 @@ skip_dict = {
     ),
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
-    "test_foreach_xpu.py": (
-        # RuntimeError: Tried to instantiate dummy base class CUDAGraph
-        "use_cuda_graph_True",
-    ),
+    f"{PYTORCH_TEST_DIR}/test_foreach.py": None,
     f"{PYTORCH_TEST_DIR}/test_indexing.py": (
         # BMG hang (>10 min) taking down the xdist worker
         # https://github.com/intel/torch-xpu-ops/issues/4947

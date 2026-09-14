@@ -8,6 +8,8 @@ from skip_list_win_lnl import skip_dict as skip_dict_win_lnl
 res = 0
 IS_WINDOWS = sys.platform == "win32"
 
+PYTORCH_TEST_DIR = "../../../../test"
+
 
 def launch_test(test_case, skip_list=None, exe_list=None):
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
@@ -62,7 +64,7 @@ skip_files_list = [
     "test_decomp_xpu.py",
     "test_distributions_xpu.py",
     "test_dynamic_shapes_xpu.py",
-    "test_foreach_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_foreach.py",
     "test_linalg_xpu.py",
     "test_maskedtensor_xpu.py",
     # "test_masked_xpu.py",
