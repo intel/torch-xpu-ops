@@ -13,6 +13,7 @@
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/sum.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/DistanceKernels.h>
@@ -508,7 +509,8 @@ static void cdist_backward_kernel_impl(
     const int64_t r_size,
     const int64_t l1_size,
     const int64_t l2_size) {
-  auto wgroup_size = syclGpuHWThreadsPerEU() * syclMaxSubGroupSize();
+  int64_t wgroup_size =
+      syclGpuHWThreadsPerEU() * at::xpu::getDeviceMaxSubGroupSize();
   const int group_size_x = 256 > wgroup_size ? wgroup_size : 256;
   const int group_size_y = wgroup_size / group_size_x;
   const int group_num_x = (m + group_size_x * 32 - 1) / (group_size_x * 32);
@@ -731,9 +733,9 @@ static void pdist_kernel_impl(
     const double n2_squared_minus_1) {
   const auto ngroups = result.numel();
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  auto min_sg_size = syclMinSubGroupSize();
-  auto wgroup_size =
-      syclMaxWorkGroupSize<pdist_kernel<scalar_t, F, accscalar_t>>();
+  int64_t min_sg_size = at::xpu::getDeviceMinSubGroupSize();
+  int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+      pdist_kernel<scalar_t, F, accscalar_t>>();
   while (wgroup_size >> 1 >= m && wgroup_size >> 1 >= 32 /* sg_size */) {
     wgroup_size >>= 1;
   }
