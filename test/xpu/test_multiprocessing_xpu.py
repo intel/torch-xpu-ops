@@ -89,22 +89,28 @@ TestMultiprocessing.test_cuda_bad_call = _test_cuda_bad_call
 TestMultiprocessing.test_wrong_cuda_fork = _test_wrong_cuda_fork
 
 TestMultiprocessingDeviceType.test_integer_parameter_serialization = skipXPUIf(
-    True, "XPU storage serialization is not supported"
+    True,
+    "XPU storage serialization is not supported: https://github.com/intel/torch-xpu-ops/issues/5219",
 )(TestMultiprocessingDeviceType.test_integer_parameter_serialization)
 TestMultiprocessingDeviceType.test_leaf_variable_sharing = skipXPUIf(
-    True, "XPU storage sharing is not supported"
+    True,
+    "XPU storage sharing is not supported: https://github.com/intel/torch-xpu-ops/issues/5219",
 )(TestMultiprocessingDeviceType.test_leaf_variable_sharing)
 TestMultiprocessingDeviceType.test_parameter_sharing = skipXPUIf(
-    True, "XPU storage sharing is not supported"
+    True,
+    "XPU storage sharing is not supported: https://github.com/intel/torch-xpu-ops/issues/4000",
 )(TestMultiprocessingDeviceType.test_parameter_sharing)
 TestMultiprocessingDeviceType.test_variable_sharing = skipXPUIf(
-    True, "XPU storage sharing is not supported"
+    True,
+    "XPU storage sharing is not supported: https://github.com/intel/torch-xpu-ops/issues/4000",
 )(TestMultiprocessingDeviceType.test_variable_sharing)
 TestMultiprocessingDeviceType.test_simple_sharing = skipXPUIf(
-    True, "XPU storage sharing is not supported"
+    True,
+    "XPU storage sharing is not supported: https://github.com/intel/torch-xpu-ops/issues/4000",
 )(TestMultiprocessingDeviceType.test_simple_sharing)
 TestMultiprocessingDeviceType.test_empty_tensor_sharing = skipXPUIf(
-    IS_WINDOWS, "XPU empty tensor sharing is not supported on Windows"
+    IS_WINDOWS,
+    "XPU empty tensor sharing is not supported on Windows: https://github.com/intel/torch-xpu-ops/issues/4068",
 )(TestMultiprocessingDeviceType.test_empty_tensor_sharing)
 
 instantiate_device_type_tests(
