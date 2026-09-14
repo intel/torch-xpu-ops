@@ -26,126 +26,92 @@ namespace at::native::xpu {
 // 0/1 int64 mask: global_mask[i] = 1 iff data[i] != 0.
 // For bool, use volatile int to prevent the compiler from eliminating the load.
 template <typename scalar_t>
-struct IsNonzeroKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if constexpr (std::is_same_v<scalar_t, bool>) {
-      volatile int in = static_cast<int>(data_ptr_[item_id]);
-      global_mask_ptr_[item_id] = static_cast<int64_t>(in != 0);
-    } else {
-      global_mask_ptr_[item_id] =
-          static_cast<int64_t>(data_ptr_[item_id] != scalar_t(0));
-    }
-  }
-  IsNonzeroKernelFunctor(const scalar_t* data_ptr, int64_t* global_mask_ptr)
-      : data_ptr_(data_ptr), global_mask_ptr_(global_mask_ptr) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void is_nonzero_kernel_implement(
+    const scalar_t* data_ptr,
+    int64_t* global_mask_ptr) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const auto item_id = item.get_global_linear_id();
 
- private:
-  const scalar_t* data_ptr_;
-  int64_t* global_mask_ptr_;
-};
+  if constexpr (std::is_same_v<scalar_t, bool>) {
+    volatile int in = static_cast<int>(data_ptr[item_id]);
+    global_mask_ptr[item_id] = static_cast<int64_t>(in != 0);
+  } else {
+    global_mask_ptr[item_id] =
+        static_cast<int64_t>(data_ptr[item_id] != scalar_t(0));
+  }
+}
 
 // Work-group-level reduction: counts nonzeros in [data_, data_+N_).
 // Each work-group writes its partial count to partial_sums_[group_id].
 template <typename scalar_t>
-struct CountNonzerosKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item) const {
-    const auto local_id = item.get_local_linear_id();
-    const auto global_id = item.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void count_nonzeros_kernel_implement(
+    const scalar_t* data,
+    int64_t N,
+    int64_t* partial_sums,
+    int64_t wg_size) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const auto local_id = item.get_local_linear_id();
+  const auto global_id = item.get_global_linear_id();
 
-    if constexpr (std::is_same_v<scalar_t, bool>) {
-      int64_t val = 0;
-      if (global_id < static_cast<size_t>(N_)) {
-        volatile int in = static_cast<int>(data_[global_id]);
-        val = static_cast<int64_t>(in != 0);
-      }
-      local_buf_[local_id] = val;
-    } else {
-      local_buf_[local_id] = static_cast<int64_t>(
-          global_id < static_cast<size_t>(N_) &&
-          data_[global_id] != scalar_t(0));
+  int64_t* local_buf = (int64_t*)syclexp::get_work_group_scratch_memory();
+
+  if constexpr (std::is_same_v<scalar_t, bool>) {
+    int64_t val = 0;
+    if (global_id < static_cast<size_t>(N)) {
+      volatile int in = static_cast<int>(data[global_id]);
+      val = static_cast<int64_t>(in != 0);
     }
+    local_buf[local_id] = val;
+  } else {
+    local_buf[local_id] = static_cast<int64_t>(
+        global_id < static_cast<size_t>(N) && data[global_id] != scalar_t(0));
+  }
+  sycl::group_barrier(item.get_group());
+
+  for (int64_t stride = wg_size / 2; stride > 0; stride >>= 1) {
+    if (local_id < static_cast<size_t>(stride))
+      local_buf[local_id] += local_buf[local_id + stride];
     sycl::group_barrier(item.get_group());
-
-    for (int64_t stride = wg_size_ / 2; stride > 0; stride >>= 1) {
-      if (local_id < static_cast<size_t>(stride))
-        local_buf_[local_id] += local_buf_[local_id + stride];
-      sycl::group_barrier(item.get_group());
-    }
-
-    if (local_id == 0)
-      partial_sums_[item.get_group_linear_id()] = local_buf_[0];
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_buf_ = sycl_local_acc_t<int64_t>(wg_size_, cgh);
-  }
+  if (local_id == 0)
+    partial_sums[item.get_group_linear_id()] = local_buf[0];
+}
 
-  CountNonzerosKernelFunctor(
-      const scalar_t* data,
-      int64_t N,
-      int64_t* partial_sums,
-      int64_t wg_size)
-      : data_(data), N_(N), partial_sums_(partial_sums), wg_size_(wg_size) {}
-
- private:
-  const scalar_t* data_;
-  int64_t N_;
-  int64_t* partial_sums_;
-  int64_t wg_size_;
-  sycl_local_acc_t<int64_t> local_buf_;
+struct DivisorSizes {
+  int64_t divisor[XPU_MAX_TENSORINFO_DIMS];
+  int64_t sizes[XPU_MAX_TENSORINFO_DIMS];
 };
 
 // For each nonzero element, converts its flat index to per-dimension indices
 // and writes them directly into the output buffer (layout: dim-major, i.e.
 // out_ptr[d * num_nonzeros + slot]).
-struct ScatterToOutKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if (global_mask_ptr_[item_id] != 0) {
-      // target_pos is the inclusive prefix sum of global_mask, so
-      // target_pos[i]-1 is this element's rank among nonzeros in the chunk.
-      // global_offset shifts it to the correct position in the full output.
-      const int64_t slot = global_offset_ + target_pos_ptr_[item_id] - 1;
-      const int64_t flat_idx =
-          chunk_start_ + static_cast<int64_t>(item_id.get_linear_id());
-      for (int64_t d = 0; d < num_dim_; d++) {
-        out_ptr_[d * num_nonzeros_ + slot] = flat_idx / divisor_[d] % sizes_[d];
-      }
-    }
-  }
-  ScatterToOutKernelFunctor(
-      const int64_t* global_mask_ptr,
-      const int64_t* target_pos_ptr,
-      int64_t* out_ptr,
-      int64_t chunk_start,
-      int64_t global_offset,
-      int64_t num_nonzeros,
-      int64_t num_dim,
-      int64_t* divisor,
-      int64_t* sizes)
-      : global_mask_ptr_(global_mask_ptr),
-        target_pos_ptr_(target_pos_ptr),
-        out_ptr_(out_ptr),
-        chunk_start_(chunk_start),
-        global_offset_(global_offset),
-        num_nonzeros_(num_nonzeros),
-        num_dim_(num_dim) {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void scatter_to_out_kernel_implement(
+    const int64_t* global_mask_ptr,
+    const int64_t* target_pos_ptr,
+    int64_t* out_ptr,
+    int64_t chunk_start,
+    int64_t global_offset,
+    int64_t num_nonzeros,
+    int64_t num_dim,
+    DivisorSizes divisor_sizes) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const auto item_id = item.get_global_linear_id();
+  if (global_mask_ptr[item_id] != 0) {
+    // target_pos is the inclusive prefix sum of global_mask, so
+    // target_pos[i]-1 is this element's rank among nonzeros in the chunk.
+    // global_offset shifts it to the correct position in the full output.
+    const int64_t slot = global_offset + target_pos_ptr[item_id] - 1;
+    const int64_t flat_idx = chunk_start + static_cast<int64_t>(item_id);
     for (int64_t d = 0; d < num_dim; d++) {
-      divisor_[d] = divisor[d];
-      sizes_[d] = sizes[d];
+      out_ptr[d * num_nonzeros + slot] =
+          flat_idx / divisor_sizes.divisor[d] % divisor_sizes.sizes[d];
     }
   }
-
- private:
-  const int64_t* global_mask_ptr_;
-  const int64_t* target_pos_ptr_;
-  int64_t* out_ptr_;
-  int64_t chunk_start_;
-  int64_t global_offset_;
-  int64_t num_nonzeros_;
-  int64_t num_dim_;
-  int64_t divisor_[XPU_MAX_TENSORINFO_DIMS];
-  int64_t sizes_[XPU_MAX_TENSORINFO_DIMS];
-};
+}
 
 // Predicate for pstl::copy_if: returns true if self_begin_[x] != 0.
 template <typename scalar_t>
@@ -165,44 +131,26 @@ struct CopyIfFunc {
 };
 
 // Converts flat nonzero indices to per-dimension coordinates.
-struct FlattenIdxtoRealIdxKernelFunctor {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto global_id = item_id.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void flatten_idx_to_real_idx_kernel_impl(
+    int64_t N,
+    const int64_t num_dim,
+    const int64_t num_nonzeros,
+    int64_t* out_begin,
+    int64_t* idx_flat_begin,
+    DivisorSizes divisor_sizes) {
+  sycl::nd_item<1> item_id = syclext::this_work_item::get_nd_item<1>();
+  auto global_id = item_id.get_global_linear_id();
 
-    if (global_id < N_) {
-      auto dim = global_id / num_nonzeros_;
-      auto index = global_id % num_nonzeros_;
-      out_begin_[global_id] =
-          idx_flat_begin_[index] / divisor_[dim] % sizes_[dim];
-    }
+  if (global_id < N) {
+    auto* divisor = divisor_sizes.divisor;
+    auto* sizes = divisor_sizes.sizes;
+    auto dim = global_id / num_nonzeros;
+    auto index = global_id % num_nonzeros;
+
+    out_begin[global_id] = (idx_flat_begin[index] / divisor[dim]) % sizes[dim];
   }
-  FlattenIdxtoRealIdxKernelFunctor(
-      int64_t N,
-      const int64_t num_dim,
-      const int64_t num_nonzeros,
-      int64_t* out_begin,
-      int64_t* idx_flat_begin,
-      int64_t* divisor,
-      int64_t* sizes)
-      : N_(N),
-        num_nonzeros_(num_nonzeros),
-        out_begin_(out_begin),
-        idx_flat_begin_(idx_flat_begin) {
-    for (auto dim = num_dim - 1; dim >= 0; dim--) {
-      sizes_[dim] = sizes[dim];
-      divisor_[dim] = divisor[dim];
-    }
-  }
-
- private:
-  int64_t N_;
-  const int64_t num_nonzeros_;
-  int64_t* out_begin_;
-  int64_t* idx_flat_begin_;
-  int64_t divisor_[XPU_MAX_TENSORINFO_DIMS];
-  int64_t sizes_[XPU_MAX_TENSORINFO_DIMS];
-};
-
+}
 template <typename scalar_t>
 void nonzero_template(const Tensor& self_, Tensor& out) {
   Tensor self = self_.contiguous();
@@ -239,28 +187,33 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
     if (num_nonzeros > 0 && num_dim > 0) {
       int64_t* out_begin = out_.data_ptr<int64_t>();
 
-      int64_t sizes[XPU_MAX_TENSORINFO_DIMS];
-      int64_t divisor[XPU_MAX_TENSORINFO_DIMS];
-      sizes[num_dim - 1] = self.size(num_dim - 1);
-      divisor[num_dim - 1] = 1;
-      for (auto d = num_dim - 2; d >= 0; d--) {
-        sizes[d] = self.size(d);
-        divisor[d] = sizes[d + 1] * divisor[d + 1];
+      // preload sizes tensor for index calculation
+      struct DivisorSizes divisor_sizes;
+      divisor_sizes.sizes[num_dim - 1] = self.size(num_dim - 1);
+      divisor_sizes.divisor[num_dim - 1] = 1;
+      for (auto dim = num_dim - 2; dim >= 0; dim--) {
+        divisor_sizes.sizes[dim] = self.size(dim);
+        divisor_sizes.divisor[dim] =
+            divisor_sizes.sizes[dim + 1] * divisor_sizes.divisor[dim + 1];
       }
 
       const int64_t total = num_nonzeros * num_dim;
-      FlattenIdxtoRealIdxKernelFunctor kfn(
+
+      const auto wg_sz = std::min(
+          syclMaxWorkGroupSize<flatten_idx_to_real_idx_kernel_impl>(), total);
+      const auto num_wg = at::ceil_div(total, wg_sz);
+
+      sycl_kernel_submit<flatten_idx_to_real_idx_kernel_impl>(
+          wg_sz * num_wg,
+          wg_sz,
+          getCurrentSYCLQueue(),
+          0,
           total,
           num_dim,
           num_nonzeros,
           out_begin,
           idx_flat_begin,
-          divisor,
-          sizes);
-      const auto wg_sz =
-          std::min<int64_t>(at::xpu::getKernelMaxWorkGroupSize(kfn), total);
-      const auto num_wg = at::ceil_div(total, wg_sz);
-      sycl_kernel_submit(wg_sz * num_wg, wg_sz, queue, kfn);
+          divisor_sizes);
     }
 
     if (need_to_copy) {
@@ -275,13 +228,12 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
   const int64_t num_chunks = at::ceil_div(N, scatter_chunk_size);
 
   // ---- Pass 1: count nonzeros per chunk via work-group reduction ----
-  using CountFunctor = CountNonzerosKernelFunctor<scalar_t>;
   const int64_t count_wg_size =
-      at::xpu::getKernelMaxWorkGroupSize<CountFunctor>();
+      syclMaxWorkGroupSize<count_nonzeros_kernel_implement<scalar_t>>();
 
   // Pre-allocate a single device buffer wide enough to hold every WG's partial
   // sum for every chunk. All count kernels are enqueued without blocking so
-  // only one device→host transfer is needed at the end.
+  // only one device to host transfer is needed at the end.
   const int64_t max_wgs_per_chunk =
       at::ceil_div(scatter_chunk_size, count_wg_size);
   Tensor all_partial_sums =
@@ -296,16 +248,18 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
     const int64_t num_wgs = at::ceil_div(this_chunk, count_wg_size);
     chunk_wgs[ci] = num_wgs;
 
-    CountFunctor count_kfn(
+    sycl_kernel_submit<count_nonzeros_kernel_implement<scalar_t>>(
+        num_wgs * count_wg_size,
+        count_wg_size,
+        queue,
+        0,
         self_data + start,
         this_chunk,
         all_partial_sums_ptr + ci * max_wgs_per_chunk,
         count_wg_size);
-    sycl_kernel_submit(
-        num_wgs * count_wg_size, count_wg_size, queue, count_kfn);
   }
 
-  // Single device→host sync: retrieve all partial sums at once.
+  // Single device to host sync: retrieve all partial sums at once.
   const int64_t total_partial_sums = num_chunks * max_wgs_per_chunk;
   std::vector<int64_t> psums(total_partial_sums);
   memcpyDeviceToHost(
@@ -336,7 +290,8 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
       ? Tensor(at::detail::empty_xpu({num_dim, num_nonzeros}, out.options()))
       : out.resize_({num_dim, num_nonzeros});
 
-  // Precompute per-dimension sizes and divisors for flat→multi-dim conversion.
+  // Precompute per-dimension sizes and divisors for flatâ†’multi-dim
+  // conversion.
   int64_t sizes[XPU_MAX_TENSORINFO_DIMS];
   int64_t divisor[XPU_MAX_TENSORINFO_DIMS];
   if (num_dim > 0) {
@@ -345,6 +300,17 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
     for (auto d = num_dim - 2; d >= 0; d--) {
       sizes[d] = self.size(d);
       divisor[d] = sizes[d + 1] * divisor[d + 1];
+    }
+  }
+
+  struct DivisorSizes divisor_sizes;
+  if (num_dim > 0) {
+    divisor_sizes.sizes[num_dim - 1] = self.size(num_dim - 1);
+    divisor_sizes.divisor[num_dim - 1] = 1;
+    for (auto d = num_dim - 2; d >= 0; d--) {
+      divisor_sizes.sizes[d] = self.size(d);
+      divisor_sizes.divisor[d] =
+          divisor_sizes.sizes[d + 1] * divisor_sizes.divisor[d + 1];
     }
   }
 
@@ -369,21 +335,37 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
       // Fill global_mask[0..this_chunk): 1 where element is nonzero, 0
       // elsewhere.
-      IsNonzeroKernelFunctor<scalar_t> mask_kfn(
-          self_data + start, global_mask_ptr);
-      sycl_kernel_submit(sycl::range<1>(this_chunk), queue, mask_kfn);
+      const int64_t count_wg_size =
+          syclMaxWorkGroupSize<is_nonzero_kernel_implement<scalar_t>>();
+      const int64_t num_wgs = at::ceil_div(this_chunk, count_wg_size);
 
-      // Inclusive prefix sum of global_mask → target_pos[i] = number of
-      // nonzeros in [0..i] of this chunk. Used by ScatterToOutKernelFunctor to
-      // compute each nonzero's output slot: slot = global_offset +
-      // target_pos[i] - 1.
+      sycl_kernel_submit<is_nonzero_kernel_implement<scalar_t>>(
+          num_wgs * count_wg_size,
+          count_wg_size,
+          queue,
+          0,
+          self_data + start,
+          global_mask_ptr);
+
+      // Inclusive prefix sum of global_mask â†’ target_pos[i] = number of
+      // nonzeros in [0..i] of this chunk. Used by
+      // scatter_to_out_kernel_implement to compute each nonzero's output slot:
+      // slot = global_offset + target_pos[i] - 1.
       pstl::inclusive_scan<int64_t>(
           global_mask_ptr,
           global_mask_ptr + this_chunk,
           target_pos_ptr,
           int64_t(0));
 
-      ScatterToOutKernelFunctor scatter_kfn(
+      const int64_t count_wg_size1 =
+          syclMaxWorkGroupSize<scatter_to_out_kernel_implement>();
+      const int64_t num_wgs1 = at::ceil_div(this_chunk, count_wg_size);
+
+      sycl_kernel_submit<scatter_to_out_kernel_implement>(
+          num_wgs1 * count_wg_size1,
+          count_wg_size1,
+          queue,
+          0,
           global_mask_ptr,
           target_pos_ptr,
           out_ptr,
@@ -391,9 +373,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           chunk_offsets[ci],
           num_nonzeros,
           num_dim,
-          divisor,
-          sizes);
-      sycl_kernel_submit(sycl::range<1>(this_chunk), queue, scatter_kfn);
+          divisor_sizes);
     }
   }
 
