@@ -402,6 +402,12 @@ Tensor& add_out_sparse_compressed_xpu(
     const SparseCsrTensor& other,
     const Scalar& alpha,
     SparseCsrTensor& out) {
+  if (self.layout() == kStrided || other.layout() == kStrided) {
+    TORCH_CHECK(
+        out.layout() == kStrided,
+        "add: expected 'out' to be a strided tensor when one of the inputs is strided, but got layout ",
+        out.layout());
+  }
   if (self.layout() == kStrided) {
     at::add_out(out, self, other.to_dense(), alpha);
     return out;
