@@ -27,7 +27,7 @@ namespace at::native::xpu {
 // For bool, use volatile int to prevent the compiler from eliminating the load.
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void is_nonzero_kernel_implement(
+void is_nonzero_kernel_impl(
     const scalar_t* data_ptr,
     int64_t* global_mask_ptr) {
   auto item = syclext::this_work_item::get_nd_item<1>();
@@ -46,7 +46,7 @@ void is_nonzero_kernel_implement(
 // Each work-group writes its partial count to partial_sums_[group_id].
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void count_nonzeros_kernel_implement(
+void count_nonzeros_kernel_impl(
     const scalar_t* data,
     int64_t N,
     int64_t* partial_sums,
@@ -89,7 +89,7 @@ struct DivisorSizes {
 // and writes them directly into the output buffer (layout: dim-major, i.e.
 // out_ptr[d * num_nonzeros + slot]).
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void scatter_to_out_kernel_implement(
+void scatter_to_out_kernel_impl(
     const int64_t* global_mask_ptr,
     const int64_t* target_pos_ptr,
     int64_t* out_ptr,
@@ -229,7 +229,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
   // ---- Pass 1: count nonzeros per chunk via work-group reduction ----
   const int64_t count_wg_size =
-      syclMaxWorkGroupSize<count_nonzeros_kernel_implement<scalar_t>>();
+      syclMaxWorkGroupSize<count_nonzeros_kernel_impl<scalar_t>>();
 
   // Pre-allocate a single device buffer wide enough to hold every WG's partial
   // sum for every chunk. All count kernels are enqueued without blocking so
@@ -248,7 +248,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
     const int64_t num_wgs = at::ceil_div(this_chunk, count_wg_size);
     chunk_wgs[ci] = num_wgs;
 
-    sycl_kernel_submit<count_nonzeros_kernel_implement<scalar_t>>(
+    sycl_kernel_submit<count_nonzeros_kernel_impl<scalar_t>>(
         num_wgs * count_wg_size,
         count_wg_size,
         queue,
@@ -336,10 +336,10 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
       // Fill global_mask[0..this_chunk): 1 where element is nonzero, 0
       // elsewhere.
       const int64_t count_wg_size =
-          syclMaxWorkGroupSize<is_nonzero_kernel_implement<scalar_t>>();
+          syclMaxWorkGroupSize<is_nonzero_kernel_impl<scalar_t>>();
       const int64_t num_wgs = at::ceil_div(this_chunk, count_wg_size);
 
-      sycl_kernel_submit<is_nonzero_kernel_implement<scalar_t>>(
+      sycl_kernel_submit<is_nonzero_kernel_impl<scalar_t>>(
           num_wgs * count_wg_size,
           count_wg_size,
           queue,
@@ -349,7 +349,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
       // Inclusive prefix sum of global_mask â†’ target_pos[i] = number of
       // nonzeros in [0..i] of this chunk. Used by
-      // scatter_to_out_kernel_implement to compute each nonzero's output slot:
+      // scatter_to_out_kernel_impl to compute each nonzero's output slot:
       // slot = global_offset + target_pos[i] - 1.
       pstl::inclusive_scan<int64_t>(
           global_mask_ptr,
@@ -358,10 +358,10 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           int64_t(0));
 
       const int64_t count_wg_size1 =
-          syclMaxWorkGroupSize<scatter_to_out_kernel_implement>();
+          syclMaxWorkGroupSize<scatter_to_out_kernel_impl>();
       const int64_t num_wgs1 = at::ceil_div(this_chunk, count_wg_size);
 
-      sycl_kernel_submit<scatter_to_out_kernel_implement>(
+      sycl_kernel_submit<scatter_to_out_kernel_impl>(
           num_wgs1 * count_wg_size1,
           count_wg_size1,
           queue,
