@@ -83,6 +83,35 @@ inline const std::string& getVersionString() {
   return versionString;
 }
 
+inline std::string getXcclErrorDetailStr(
+    onecclResult_t result,
+    onecclComm_t comm) {
+  std::string detail = c10::str(
+      "oneCCL error ",
+      static_cast<int>(result),
+      " '",
+      onecclGetErrorString(result),
+      "', oneCCL version ",
+      getVersionString());
+  const char* lastError = comm != nullptr ? onecclGetLastError(comm) : nullptr;
+  if (lastError != nullptr && *lastError != '\0') {
+    detail += c10::str("\nLast error reported by oneCCL: ", lastError);
+  }
+  return detail;
+}
+
+#define C10D_XCCL_CHECK(cmd, comm)                    \
+  do {                                                \
+    onecclResult_t xcclResult = (cmd);                \
+    if (xcclResult != onecclSuccess) {                \
+      TORCH_CHECK_WITH(                               \
+          DistBackendError,                           \
+          false,                                      \
+          "XCCL error: ",                             \
+          getXcclErrorDetailStr(xcclResult, (comm))); \
+    }                                                 \
+  } while (0)
+
 namespace c10d {
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOps = {
@@ -163,11 +192,13 @@ inline xcclRedOpRAII unpackPreMulSum(
       ? preMulSupplement->tensor_factor.const_data_ptr<T>()
       : nullptr;
   T scalar_factor = T(preMulSupplement->double_factor);
-  onecclRedOpCreatePreMulSum(
-      &preMulSum,
-      /*scalar=*/has_tensor ? const_cast<T*>(ptr_factor) : &scalar_factor,
-      dataType,
-      residence,
+  C10D_XCCL_CHECK(
+      onecclRedOpCreatePreMulSum(
+          &preMulSum,
+          /*scalar=*/has_tensor ? const_cast<T*>(ptr_factor) : &scalar_factor,
+          dataType,
+          residence,
+          comm),
       comm);
   return xcclRedOpRAII(preMulSum, comm);
 }
@@ -299,6 +330,28 @@ namespace xccl {
 
 void oneccl_group_start();
 void oneccl_group_end();
+
+struct OnecclGroupGuard {
+  OnecclGroupGuard() {
+    oneccl_group_start();
+  }
+
+  ~OnecclGroupGuard() noexcept {
+    // Ensure the group is always closed, even if a prior call threw. Suppress
+    // any exception here so that none can escape this noexcept destructor and
+    // trigger std::terminate during stack unwinding.
+    try {
+      oneccl_group_end();
+    } catch (...) {
+    }
+  }
+
+  OnecclGroupGuard(const OnecclGroupGuard&) = delete;
+  OnecclGroupGuard& operator=(const OnecclGroupGuard&) = delete;
+  OnecclGroupGuard(OnecclGroupGuard&&) = delete;
+  OnecclGroupGuard& operator=(OnecclGroupGuard&&) = delete;
+};
+
 void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
