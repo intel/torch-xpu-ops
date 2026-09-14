@@ -14,12 +14,14 @@ import re
 from datetime import date, timedelta
 from pathlib import Path
 
+from alignment_triage import AUTO_FILE_LIMIT
 from xpu_alignment_collect import CollectionError, validate_collection
 
 
 SCHEMA_VERSION = 1
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
+REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
 LOCAL_RESULTS = {
@@ -42,7 +44,6 @@ VERDICTS = {
     "duplicate",
     "verification-gap",
 }
-IMPLEMENTATION_REPOSITORIES = {"intel/torch-xpu-ops", "pytorch/pytorch"}
 ENVIRONMENT_FIELDS = {
     "python_executable",
     "python_version",
@@ -477,7 +478,10 @@ def _validate_review(
             errors.append(f"review-invalid-verdict:{unit_id}")
             continue
         verdicts[unit_id] = str(verdict)
-        if entry.get("implementation_repository") not in IMPLEMENTATION_REPOSITORIES:
+        repository = entry.get("implementation_repository")
+        if verdict in {"needs-xpu-fix", "track-upstream"} and not (
+            isinstance(repository, str) and REPOSITORY_RE.fullmatch(repository)
+        ):
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
         if tracker is not None and (
@@ -497,6 +501,8 @@ def _validate_review(
         title, body = payload.get("title"), payload.get("body")
         if not isinstance(title, str) or not title.startswith(f"{ISSUE_TITLE_PREFIX} "):
             errors.append(f"payload-invalid-title:{unit_id}")
+        elif "\n" in title or "\r" in title:
+            errors.append(f"payload-multiline-title:{unit_id}")
         if not isinstance(body, str) or not body.strip():
             errors.append(f"payload-empty-body:{unit_id}")
         if payload.get("labels") != ISSUE_LABELS:
@@ -553,26 +559,12 @@ def build_decision(
     )
     if not producers_clean:
         validation_errors.append("producer-job-failed")
-    collection_blockers = (
-        collection.get("blockers")
-        if isinstance(collection.get("blockers"), list)
-        else []
-    )
     global_blockers = validation_errors
     unit_blocker_messages = [
         f"scan-blocked-result:{item['id']}:{item['local_result']}"
         for item in unit_blockers
     ]
-    blockers = (
-        global_blockers
-        + [str(blocker) for blocker in collection_blockers]
-        + unit_blocker_messages
-    )
-    attention_reasons = []
-    if collection.get("status") == "partial":
-        attention_reasons.append("incomplete-collection")
-    if "verification-gap" in verdicts.values():
-        attention_reasons.append("review-verification-gap")
+    has_verification_gap = "verification-gap" in verdicts.values()
 
     collection_status = collection.get("status")
     if global_blockers:
@@ -581,8 +573,8 @@ def build_decision(
     elif not payloads:
         would_decision = "none"
         published_payloads = []
-    elif len(payloads) == 1:
-        would_decision = "file-one"
+    elif len(payloads) <= AUTO_FILE_LIMIT:
+        would_decision = "auto-file"
         published_payloads = payloads
     else:
         would_decision = "triage"
@@ -591,6 +583,14 @@ def build_decision(
         decision = "dry-run"
     else:
         decision = would_decision
+    if would_decision == "blocked":
+        run_state = "failed"
+    elif collection_status == "partial":
+        run_state = "partial"
+    elif unit_blocker_messages or has_verification_gap:
+        run_state = "complete-with-warnings"
+    else:
+        run_state = "complete"
     return {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
@@ -598,11 +598,9 @@ def build_decision(
         "mode": mode,
         "decision": decision,
         "would_decision": would_decision,
-        "needs_attention": bool(blockers or attention_reasons),
-        "attention_reasons": attention_reasons,
+        "run_state": run_state,
         "global_blockers": global_blockers,
         "unit_blockers": unit_blocker_messages,
-        "blockers": blockers,
         "collection_status": collection_status,
         "collection_progress": progress,
         "mandatory_units": actionable,
@@ -643,7 +641,7 @@ def main() -> int:
     if github_output:
         with Path(github_output).open("a", encoding="utf-8") as handle:
             handle.write(f"decision={decision['decision']}\n")
-            handle.write(f"needs_attention={'true' if decision['needs_attention'] else 'false'}\n")
+            handle.write(f"run_state={decision['run_state']}\n")
             handle.write(f"actionable_count={len(decision['actionable_units'])}\n")
     return 0
 

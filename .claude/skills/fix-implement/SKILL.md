@@ -5,8 +5,8 @@ description: >
   proposed patch, or produce a staged code change from triage output.
   Takes fix-root-cause's output and edits code; leaves the change staged
   (uncommitted) for fix-verify to check. Does NOT run tests, does NOT
-  commit, does NOT open PRs. Called by both issue-handler
-  (`allow_skip=false`) and xpu-nightly-ci-fix (`allow_skip=true`).
+  commit, does NOT open PRs. Called by issue-handler, with `allow_skip`
+  set from the kind of issue being fixed.
 ---
 
 # Implement — Apply the Fix
@@ -41,11 +41,13 @@ is `fix-verify`'s job); staging-only, see HARD RULES.
   All git and edit operations in this skill run against
   `target_repo_dir`, never against `PYTORCH_DIR` when the two differ.
 - `allow_skip` — controls skip decorator strategy:
-  - `false` (**issue-handler**): never add skip decorators; must unskip
-    and really fix.
-  - `true` (**xpu-nightly-ci-fix**): may add a skip with tracking issue
-    when the fix requires significant implementation work beyond the
-    current scope. Stale skips must still be removed.
+  - `false` (UT and everything else): never add skip decorators; must
+    unskip and really fix.
+  - `true` (CI break: `pytorch-ci-failure`, or a mirrored DISABLED
+    test): may add a skip with a tracking issue when
+    the fix needs dependencies, information you do not have, or
+    feature-sized work. Repair in place first; the skip is the fallback.
+    Stale skips must still be removed.
 
 ## Step 0: Verify environment
 
@@ -168,7 +170,7 @@ tooling, not part of any bug fix (see HARD RULES).
 
 ## Step 3.5: Skip-guard review (only when `allow_skip=false`)
 
-Skip this step entirely when `allow_skip=true` (xpu-nightly-ci-fix flow).
+Skip this step entirely when `allow_skip=true` (the CI-break flow).
 
 When `allow_skip=false`, spawn a fresh-context subagent via the `Task`
 tool (`subagent_type=general-purpose`) to inspect the staged diff for
@@ -272,6 +274,7 @@ update is the **caller's** responsibility.
   "skip_added": false,
   "tracking_issue": null,
   "allow_skip": false,
+  "covers": [],
   "ready_for_verify": true,
   "verdict": "READY or NEEDS_HUMAN",
   "reason": "<enumerated reason code, see below>",
@@ -290,12 +293,16 @@ update is the **caller's** responsibility.
   --name-only` **at output time**. Re-run that command immediately
   before emitting the JSON block; do not cache a pre-Step-3.5 file list,
   because Step 3.5's reviewer may have unstaged offending files.
+- `covers` — other batch entries this patch also fixes, confirmed by
+  re-running them against the staged fix (see `issue-handler`, "One fix
+  may cover several sub-items"). Node ids or issue numbers; empty on the
+  single-bug path. They are not fixed again.
 - `skip_added` — `true` only when this run added a new skip decorator
   under `allow_skip=true`. Removing a stale skip is NOT `skip_added`.
 - `tracking_issue` — issue URL from the "Add a new skip" recipe in
-  Step 2 when `skip_added=true`; `null` otherwise. `xpu-nightly-ci-fix`
-  reads this to populate the "Needs Human (skip added)" section of
-  its summary.
+  Step 2 when `skip_added=true`; `null` otherwise. The orchestrator
+  reads this for the "Skipped (with tracking issue)" rows of its
+  fan-out report.
 - `allow_skip` — echo the input flag verbatim, so a reviewer can tell
   by looking at the output alone whether Step 3.5 ran.
 - `ready_for_verify` — `true` when Step 3.5 (if it ran) returned
