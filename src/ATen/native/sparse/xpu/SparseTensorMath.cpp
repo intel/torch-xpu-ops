@@ -19,6 +19,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 #undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <c10/xpu/XPUFunctions.h>
+#include <oneapi/mkl/spblas.hpp>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -32,8 +33,8 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/ops/hspmm_native.h>
 #include <ATen/ops/matmul.h>
 #include <ATen/ops/mm.h>
-#include <ATen/ops/sspaddmm_native.h>
 #include <ATen/ops/zeros.h>
+#include <comm/SYCLContext.h>
 #endif
 
 #include <ATen/ExpandUtils.h>
@@ -455,22 +456,61 @@ Tensor& _sspaddmm_out_xpu(
     Tensor col_indices = mat1_coalesced._indices()[1];
     Tensor values1 = mat1_coalesced._values();
 
-    if (mat1_is_double) {
-      Tensor self_dense = (beta.to<double>() != 0.0 && self._nnz() > 0)
-          ? self.to_dense()
-          : at::zeros({dim_i, dim_k}, mat2.options());
-      dense_result = at::empty({dim_i, dim_k}, mat2.options());
+    if (mat1.scalar_type() == kFloat || mat1.scalar_type() == kDouble) {
       Tensor crow_indices =
           at::_convert_indices_from_coo_to_csr(row_indices, dim_i, false);
-      xpu::sspaddmm_csr_dense_kernel(
-          dense_result,
-          crow_indices,
-          col_indices,
-          values1,
-          self_dense,
-          mat2,
-          beta,
-          alpha);
+      Tensor mat2_contiguous = mat2.contiguous();
+      dense_result = (beta.to<double>() != 0.0 && self._nnz() > 0)
+          ? self.to_dense()
+          : at::zeros({dim_i, dim_k}, mat2.options());
+
+      auto queue = at::xpu::getCurrentSYCLQueue();
+      oneapi::mkl::sparse::matrix_handle_t handle = nullptr;
+      oneapi::mkl::sparse::init_matrix_handle(&handle);
+
+      auto run_mkl = [&](auto scalar) {
+        using scalar_t = decltype(scalar);
+        (void)scalar;
+        auto set_data_event = oneapi::mkl::sparse::set_csr_data(
+            queue,
+            handle,
+            dim_i,
+            dim_j,
+            nnz1,
+            oneapi::mkl::index_base::zero,
+            crow_indices.data_ptr<int64_t>(),
+            col_indices.data_ptr<int64_t>(),
+            values1.data_ptr<scalar_t>());
+        auto optimize_event = oneapi::mkl::sparse::optimize_gemm(
+            queue,
+            oneapi::mkl::layout::row_major,
+            oneapi::mkl::transpose::nontrans,
+            oneapi::mkl::transpose::nontrans,
+            handle,
+            dim_k,
+            {set_data_event});
+        auto gemm_event = oneapi::mkl::sparse::gemm(
+            queue,
+            oneapi::mkl::layout::row_major,
+            oneapi::mkl::transpose::nontrans,
+            oneapi::mkl::transpose::nontrans,
+            alpha.to<scalar_t>(),
+            handle,
+            mat2_contiguous.data_ptr<scalar_t>(),
+            dim_k,
+            dim_k,
+            beta.to<scalar_t>(),
+            dense_result.data_ptr<scalar_t>(),
+            dim_k,
+            {optimize_event});
+        gemm_event.wait();
+      };
+      if (mat1.scalar_type() == kFloat) {
+        run_mkl(float{});
+      } else {
+        run_mkl(double{});
+      }
+      oneapi::mkl::sparse::release_matrix_handle(queue, &handle);
     } else {
       Tensor gathered = mat2.index_select(0, col_indices);
       Tensor prod = gathered * values1.unsqueeze(1);
