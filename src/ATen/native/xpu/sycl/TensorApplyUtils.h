@@ -13,6 +13,9 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Copy.h>
 #include <ATen/native/xpu/sycl/IndexUtils.h>
+#include <ATen/native/xpu/sycl/Philox4x32.h>
+#include <ATen/xpu/PhiloxXpuState.h>
+#include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <cmath>
@@ -22,6 +25,9 @@
 // work on both contiguous and non-contiguous tensor arguments of
 // arbitrary (up to XPU_MAX_TENSORINFO_DIMS) dimensioned arguments without
 // copying or temporary storage.
+//
+// The applied op is handed a per-work-item Philox state as its first
+// argument; see Note [tensor_apply2 RNG state].
 //
 
 namespace at {
@@ -127,6 +133,15 @@ inline void rearrangeDims(
   }
 }
 
+// Note [tensor_apply2 RNG state]
+// One work-item handles one `step`-sized block and seeds Philox from its own
+// index, so the launch is sized to the tensor rather than to the device. The
+// state is handed to the op by reference so a multi-element `step` advances it
+// rather than replaying it.
+//
+// Seeding costs two `philox4x32_10` rounds per block and keeps the sample
+// independent of the launch geometry, so a seed reproduces across device
+// models.
 template <
     typename Op,
     typename scalar1,
@@ -136,10 +151,10 @@ template <
     typename... Offsets>
 struct ApplyOp2 {
   inline static void apply(
-      sycl::nd_item<1>& item,
       TensorInfo<scalar1, IndexType> a,
       TensorInfo<scalar2, IndexType> b,
       const Op& op,
+      randStatePhilox4_32_10_t& state,
       int64_t n,
       IndexType linearIndex,
       Offsets... aOffsets,
@@ -163,10 +178,10 @@ struct ApplyOp2 {
         const IndexType,
         Offsets...>::
         apply(
-            item,
             a,
             b,
             op,
+            state,
             n,
             linearIndex + 1,
             aOffsets...,
@@ -186,15 +201,15 @@ template <
     typename Offset>
 struct ApplyOp2<Op, scalar1, scalar2, IndexType, 0, Offset> {
   inline static void apply(
-      sycl::nd_item<1>& item,
       TensorInfo<scalar1, IndexType> a,
       TensorInfo<scalar2, IndexType> b,
       const Op& op,
+      randStatePhilox4_32_10_t& state,
       int /*n*/,
       IndexType /*linearIndex*/,
       Offset aOffset,
       Offset bOffset) {
-    op(item, a.data[aOffset], b.data[bOffset]);
+    op(state, a.data[aOffset], b.data[bOffset]);
   }
 };
 
@@ -206,15 +221,15 @@ template <
     typename... Offsets>
 struct ApplyOp2<Op, scalar1, scalar2, IndexType, 0, Offsets...> {
   inline static void apply(
-      sycl::nd_item<1>& item,
       TensorInfo<scalar1, IndexType> a,
       TensorInfo<scalar2, IndexType> b,
       const Op& op,
+      randStatePhilox4_32_10_t& state,
       int n,
-      IndexType linearIndex,
+      IndexType /*linearIndex*/,
       Offsets... aOffsets,
       Offsets... bOffsets) {
-    op(item, n, a.data[aOffsets]..., b.data[bOffsets]...);
+    op(state, n, a.data[aOffsets]..., b.data[bOffsets]...);
   }
 };
 
@@ -226,17 +241,21 @@ template <
     int step>
 struct PointwiseApply2Functor {
   void operator()(sycl::nd_item<1> item) const {
-    for (IndexType linearIndex = (item.get_group(0) * item.get_local_range(0) +
-                                  item.get_local_id(0)) *
-             step;
-         linearIndex < totalElements_;
-         linearIndex +=
-         item.get_group_range(0) * item.get_local_range(0) * step) {
+    // See Note [tensor_apply2 RNG state]
+    auto seeds = at::xpu::philox::unpack(philox_args_);
+    randStatePhilox4_32_10_t state;
+    rand_init(
+        std::get<0>(seeds),
+        item.get_global_linear_id(),
+        std::get<1>(seeds),
+        &state);
+    IndexType linearIndex = item.get_global_linear_id() * step;
+    if (linearIndex < totalElements_) {
       ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
-          item,
           a_,
           b_,
           op_,
+          state,
           std::min(step, static_cast<int>(totalElements_ - linearIndex)),
           linearIndex);
     }
@@ -245,13 +264,19 @@ struct PointwiseApply2Functor {
       TensorInfo<scalar1, IndexType> a,
       TensorInfo<scalar2, IndexType> b,
       IndexType totalElements,
+      PhiloxXpuState philox_args,
       const Op op)
-      : a_(a), b_(b), totalElements_(totalElements), op_(op) {}
+      : a_(a),
+        b_(b),
+        totalElements_(totalElements),
+        philox_args_(philox_args),
+        op_(op) {}
 
  private:
   TensorInfo<scalar1, IndexType> a_;
   TensorInfo<scalar2, IndexType> b_;
   IndexType totalElements_;
+  PhiloxXpuState philox_args_;
   const Op op_;
 };
 
@@ -263,10 +288,6 @@ inline uint64_t get_apply_group_count(
       static_cast<uint64_t>(threads_per_group) * static_cast<uint64_t>(step);
   uint64_t num_groups =
       (total_elements + numel_per_thread - 1) / numel_per_thread;
-  uint64_t estimated_max_groups_per_tile =
-      syclMaxWorkItemsPerTile() / threads_per_group;
-  if (num_groups > estimated_max_groups_per_tile)
-    num_groups = estimated_max_groups_per_tile;
   return num_groups;
 }
 
@@ -275,10 +296,13 @@ template <
     typename scalar2,
     int step,
     typename Op,
-    int threads_per_group>
+    int threads_per_group,
+    typename RNG>
 inline bool tensor_apply2(
     at::TensorBase& a,
     at::TensorBase& b,
+    RNG gen,
+    uint64_t offsets_per_op,
     const Op op,
     TensorArgType aType = TensorArgType::ReadWrite,
     TensorArgType bType = TensorArgType::ReadOnly) {
@@ -299,8 +323,18 @@ inline bool tensor_apply2(
     return false;
   }
 
+  // Each work-item invokes `op` exactly once, so `offsets_per_op` -- the number
+  // of 32-bit values a single invocation may draw -- is the whole reservation.
+  PhiloxXpuState philox_args;
+  {
+    // See Note [Acquire lock when using random generators]
+    std::lock_guard<std::mutex> lock(gen->mutex_);
+    philox_args = gen->philox_xpu_state(offsets_per_op);
+  }
+
   if (a.numel() == 0) {
-    // Empty tensor; do nothing
+    // Empty tensor; do nothing. The generator is still advanced above, matching
+    // CUDA, which reserves in the launcher before the same early return.
     return true;
   }
 
@@ -338,7 +372,7 @@ inline bool tensor_apply2(
 
     using index_t = unsigned int;
     auto fn = PointwiseApply2Functor<Op, scalar1, scalar2, index_t, step>(
-        aInfo, bInfo, static_cast<index_t>(totalElements), op);
+        aInfo, bInfo, static_cast<index_t>(totalElements), philox_args, op);
     sycl_kernel_submit(
         group_count * threads_per_group,
         threads_per_group,
@@ -354,7 +388,7 @@ inline bool tensor_apply2(
 
     using index_t = uint64_t;
     auto fn = PointwiseApply2Functor<Op, scalar1, scalar2, index_t, step>(
-        aInfo, bInfo, static_cast<index_t>(totalElements), op);
+        aInfo, bInfo, static_cast<index_t>(totalElements), philox_args, op);
     sycl_kernel_submit(
         group_count * threads_per_group,
         threads_per_group,
@@ -378,15 +412,18 @@ template <
     typename scalar1,
     typename scalar2,
     typename Op,
-    int max_threads_per_group>
+    int max_threads_per_group,
+    typename RNG>
 inline bool tensor_apply2(
     at::TensorBase& a,
     at::TensorBase& b,
+    RNG gen,
+    uint64_t offsets_per_op,
     const Op op,
     TensorArgType aType = TensorArgType::ReadWrite,
     TensorArgType bType = TensorArgType::ReadOnly) {
   return tensor_apply2<scalar1, scalar2, 1, Op, max_threads_per_group>(
-      a, b, op, aType, bType);
+      a, b, gen, offsets_per_op, op, aType, bType);
 }
 
 } // namespace xpu
