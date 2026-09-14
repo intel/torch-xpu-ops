@@ -284,7 +284,7 @@ struct CalcMovingAvgQparamsHelperKernelFunctor {
 };
 
 void _calc_moving_avg_qparams_helper(
-    const at::Tensor fake_quant_on,
+    const at::Tensor& fake_quant_on,
     at::Tensor& running_min,
     at::Tensor& running_max,
     float* scale_ptr,

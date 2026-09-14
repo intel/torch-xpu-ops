@@ -99,7 +99,7 @@ inline void _rrelu_with_noise_xpu_train(
     Tensor& noise_,
     const Scalar& lower_,
     const Scalar& upper_,
-    std::optional<Generator> generator) {
+    const std::optional<Generator>& generator) {
   auto input = input_.contiguous();
   auto noise = noise_.contiguous();
   Tensor tmp_output = output.contiguous();

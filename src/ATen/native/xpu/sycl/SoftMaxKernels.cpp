@@ -10,11 +10,11 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/xpu/XPUContext.h>
-#include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
@@ -145,7 +145,7 @@ static inline int get_wgroup_size(
     int& global_size_row,
     int& local_size_row,
     int& local_size_col) {
-  int maxWGSize = syclMaxWorkGroupSize<KernelClass>();
+  int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
 
   int local_size = (dim_size + NUM * vec_size - 1) / (NUM * vec_size);
   local_size = std::min(local_size, maxWGSize);
@@ -189,8 +189,8 @@ static inline void get_wgroup_size_spatial(
     int inner_size,
     int& GroupSize,
     int& GroupRow) {
-  int maxWGSize = syclMaxWorkGroupSize<KernelClass>();
-  int total_resource = syclMaxWorkItemsPerTile();
+  int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
+  int total_resource = at::xpu::getDeviceMaxWorkItems();
 
   // set the GroupSize smaller to ensure larger group number
   // smaller GroupSize is friendly to the tail case
@@ -310,6 +310,9 @@ struct DispatchSoftmaxForwardKernelFunctor
     else if (sum_value != 0)
       sum_value = accscalar_t(1) / sum_value;
 
+      // The max reduce can drop a NaN, so max_value == lowest() alone does not
+      // mean the row was fully masked; sum_value still carries the NaN.
+
       // update result
 #pragma unroll(outer_loop)
     for (int i = 0; i < outer_loop; ++i) {
@@ -326,7 +329,8 @@ struct DispatchSoftmaxForwardKernelFunctor
                 static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
           } else if (
               is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest()) {
+              max_value == std::numeric_limits<accscalar_t>::lowest() &&
+              !at::_isnan(sum_value)) {
             reg_in[i][j] = static_cast<outscalar_t>(0);
           } else if (sum_value == 0) {
             reg_in[i][j] = nan_;
@@ -340,7 +344,8 @@ struct DispatchSoftmaxForwardKernelFunctor
                 static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
           } else if (
               is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest()) {
+              max_value == std::numeric_limits<accscalar_t>::lowest() &&
+              !at::_isnan(sum_value)) {
             out_data_point[j] = static_cast<outscalar_t>(0);
           } else if (sum_value == 0) {
             out_data_point[j] = static_cast<outscalar_t>(nan_);
@@ -597,6 +602,9 @@ struct SoftmaxForwardKernelFunctor {
     else
       sum_value = accscalar_t(1) / sum_value;
 
+    // The max reduce can drop a NaN, so max_value == lowest() alone does not
+    // mean the row was fully masked; sum_value still carries the NaN.
+
     // update result
     constexpr int out_vec_size = align_bytes / sizeof(outscalar_t);
     using out_vec_t =
@@ -620,7 +628,8 @@ struct SoftmaxForwardKernelFunctor {
                   in_data_[group_offset + linear_idx] - max_value - sum_value);
             else if (
                 is_safe_softmax &&
-                max_value == std::numeric_limits<accscalar_t>::lowest())
+                max_value == std::numeric_limits<accscalar_t>::lowest() &&
+                !at::_isnan(sum_value))
               out_data_[group_offset + linear_idx] =
                   static_cast<outscalar_t>(0);
             else
@@ -640,7 +649,8 @@ struct SoftmaxForwardKernelFunctor {
                 static_cast<outscalar_t>(in_val[j] - max_value - sum_value);
           else if (
               is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest())
+              max_value == std::numeric_limits<accscalar_t>::lowest() &&
+              !at::_isnan(sum_value))
             results[j] = static_cast<outscalar_t>(0);
           else
             results[j] = static_cast<outscalar_t>(
@@ -712,7 +722,7 @@ void softmax_forward_kernel(
 
   int local_size = std::min(
       (dim_size + vec_size - 1) / vec_size,
-      int(syclMaxWorkGroupSize<KernelClass>()));
+      int(at::xpu::getKernelMaxWorkGroupSize<KernelClass>()));
   int64_t local_range{local_size};
   int64_t global_range{local_size * outer_size};
 
@@ -1373,7 +1383,7 @@ void softmax_backward_kernel(
 
   int64_t local_size = std::min(
       (dim_size + vec_size - 1) / vec_size,
-      int64_t(syclMaxWorkGroupSize<KernelClass>()));
+      int64_t(at::xpu::getKernelMaxWorkGroupSize<KernelClass>()));
   int64_t local_range{local_size};
   int64_t global_range{local_size * outer_size};
 
@@ -1903,7 +1913,7 @@ Tensor& masked_softmax_forward(
     Tensor& output,
     Tensor& input,
     int dim,
-    const Tensor mask) {
+    const Tensor& mask) {
   auto inner_size = input.stride(dim);
   auto dim_size = input.size(dim);
   auto outer_size = input.numel() / (inner_size * dim_size);

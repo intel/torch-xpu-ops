@@ -21,6 +21,7 @@
 #include <ATen/native/SparseTensorUtils.h>
 #include <ATen/native/sparse/SparseTensorMath.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUUtils.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -79,47 +80,34 @@ using at::xpu::detail::TensorInfo;
 using indexT = int64_t;
 
 template <typename Op, typename IndexType, typename Real>
-struct SparseElementwiseKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    IndexType ind_skip = indices_.strides[0];
-    IndexType ind_nnz_skip = indices_.strides[1];
-    IndexType value_size = values_.strides[0];
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void sparse_elementwise_kernel(
+    Op op,
+    TensorInfo<Real, IndexType> dense,
+    TensorInfo<indexT, IndexType> indices,
+    TensorInfo<Real, IndexType> values,
+    const IndexType nnz) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  IndexType ind_skip = indices.strides[0];
+  IndexType ind_nnz_skip = indices.strides[1];
+  IndexType value_size = values.strides[0];
 
-    for (IndexType linearId = (IndexType)item.get_group(0); linearId < nnz_;
-         linearId += (IndexType)item.get_group_range(0)) {
-      IndexType index = 0;
-      for (IndexType d = 0; d < indices_.sizes[0]; d++) {
-        index = dense_.sizes[d] * index +
-            indices_.data[d * ind_skip + linearId * ind_nnz_skip];
-      }
-      Real* dst = dense_.data + index * value_size;
-      Real* src = values_.data + linearId * value_size;
-      for (IndexType linearId2 = (IndexType)item.get_local_id(0);
-           linearId2 < value_size;
-           linearId2 += (IndexType)item.get_local_range(0)) {
-        op_(dst + linearId2, src + linearId2);
-      }
+  for (IndexType linearId = (IndexType)item.get_group(0); linearId < nnz;
+       linearId += (IndexType)item.get_group_range(0)) {
+    IndexType index = 0;
+    for (IndexType d = 0; d < indices.sizes[0]; d++) {
+      index = dense.sizes[d] * index +
+          indices.data[d * ind_skip + linearId * ind_nnz_skip];
+    }
+    Real* dst = dense.data + index * value_size;
+    Real* src = values.data + linearId * value_size;
+    for (IndexType linearId2 = (IndexType)item.get_local_id(0);
+         linearId2 < value_size;
+         linearId2 += (IndexType)item.get_local_range(0)) {
+      op(dst + linearId2, src + linearId2);
     }
   }
-  SparseElementwiseKernelFunctor(
-      Op op,
-      TensorInfo<Real, IndexType> dense_info,
-      TensorInfo<indexT, IndexType> indices_info,
-      TensorInfo<Real, IndexType> values_info,
-      const IndexType nnz_value)
-      : op_(op),
-        dense_(dense_info),
-        indices_(indices_info),
-        values_(values_info),
-        nnz_(nnz_value) {}
-
- private:
-  Op op_;
-  TensorInfo<Real, IndexType> dense_;
-  TensorInfo<indexT, IndexType> indices_;
-  TensorInfo<Real, IndexType> values_;
-  const IndexType nnz_;
-};
+}
 
 // template <typename Op, typename IndexType, typename Real>
 // void sparseElementwiseKernel(
@@ -130,9 +118,10 @@ struct SparseElementwiseKernelFunctor {
 //     const IndexType nnz) {
 //   using KernelClass = SparseElementwiseKernellFunctor<Op, IndexType, Real>;
 //   auto& queue = getCurrentSYCLQueue();
-//   IndexType group_size = (IndexType)syclMaxWorkGroupSize<KernelClass>();
-//   IndexType target_global_size = (IndexType)syclMaxWorkItemsPerTile();
-//   auto max_work_group_num = target_global_size / group_size;
+//   IndexType group_size =
+//   (IndexType)at::xpu::getKernelMaxWorkGroupSize<KernelClass>(); IndexType
+//   target_global_size = (IndexType)at::xpu::getDeviceMaxWorkItems(); auto
+//   max_work_group_num = target_global_size / group_size;
 
 //   auto num_groups = CeilDiv(nnz, group_size);
 //   if (num_groups > max_work_group_num)
@@ -144,45 +133,32 @@ struct SparseElementwiseKernelFunctor {
 // }
 
 template <typename Op, typename IndexType, typename Real>
-struct SparseElementwiseKernelScalarFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    IndexType ind_skip = indices_.strides[0];
-    IndexType ind_nnz_skip = indices_.strides[1];
-    IndexType value_skip = values_.strides[0];
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void sparse_elementwise_scalar_kernel(
+    Op op,
+    TensorInfo<Real, IndexType> dense,
+    TensorInfo<indexT, IndexType> indices,
+    TensorInfo<Real, IndexType> values,
+    const IndexType nnz) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  IndexType ind_skip = indices.strides[0];
+  IndexType ind_nnz_skip = indices.strides[1];
+  IndexType value_skip = values.strides[0];
 
-    for (IndexType linearId =
-             (IndexType)item.get_group(0) * (IndexType)item.get_local_range(0) +
-             (IndexType)item.get_local_id(0);
-         linearId < nnz_;
-         linearId += (IndexType)item.get_group_range(0) *
-             (IndexType)item.get_local_range(0)) {
-      IndexType index = 0;
-      for (IndexType d = 0; d < indices_.sizes[0]; d++) {
-        index = dense_.sizes[d] * index +
-            indices_.data[d * ind_skip + linearId * ind_nnz_skip];
-      }
-      op_(dense_.data + index, values_.data + linearId * value_skip);
+  for (IndexType linearId =
+           (IndexType)item.get_group(0) * (IndexType)item.get_local_range(0) +
+           (IndexType)item.get_local_id(0);
+       linearId < nnz;
+       linearId += (IndexType)item.get_group_range(0) *
+           (IndexType)item.get_local_range(0)) {
+    IndexType index = 0;
+    for (IndexType d = 0; d < indices.sizes[0]; d++) {
+      index = dense.sizes[d] * index +
+          indices.data[d * ind_skip + linearId * ind_nnz_skip];
     }
+    op(dense.data + index, values.data + linearId * value_skip);
   }
-  SparseElementwiseKernelScalarFunctor(
-      Op op,
-      TensorInfo<Real, IndexType> dense_info,
-      TensorInfo<indexT, IndexType> indices_info,
-      TensorInfo<Real, IndexType> values_info,
-      const IndexType nnz_value)
-      : op_(op),
-        dense_(dense_info),
-        indices_(indices_info),
-        values_(values_info),
-        nnz_(nnz_value) {}
-
- private:
-  Op op_;
-  TensorInfo<Real, IndexType> dense_;
-  TensorInfo<indexT, IndexType> indices_;
-  TensorInfo<Real, IndexType> values_;
-  const IndexType nnz_;
-};
+}
 
 // template <typename Op, typename IndexType, typename Real>
 // void sparseElementwiseKernelScalar(
@@ -193,8 +169,8 @@ struct SparseElementwiseKernelScalarFunctor {
 //     const IndexType nnz) {
 //   using KernelClass = SparseElementwiseKernelScalarFunctor<Op, IndexType,
 //   Real>; auto& queue = getCurrentSYCLQueue(); IndexType group_size =
-//   (IndexType)syclMaxWorkGroupSize<KernelClass>(); IndexType
-//   target_global_size = (IndexType)syclMaxWorkItemsPerTile(); auto
+//   (IndexType)at::xpu::getKernelMaxWorkGroupSize<KernelClass>(); IndexType
+//   target_global_size = (IndexType)at::xpu::getDeviceMaxWorkItems(); auto
 //   max_work_group_num = target_global_size / group_size;
 
 //   auto num_groups = CeilDiv(nnz * group_size, group_size);
@@ -268,7 +244,7 @@ Tensor& add_out_dense_sparse_kernel(
   }
 
   if (sparse.is_coalesced()) {
-    size_t target_global_size = syclMaxWorkItemsPerTile();
+    size_t target_global_size = at::xpu::getDeviceMaxWorkItems();
 
     if (sparse.dense_dim() == 0) {
       AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -279,25 +255,31 @@ Tensor& add_out_dense_sparse_kernel(
           commonDtype,
           "add_out_dense_sparse_xpu",
           [&] {
-            auto caller = apply::SparseElementwiseKernelScalarFunctor<
+            constexpr auto kernel_ptr = apply::sparse_elementwise_scalar_kernel<
                 TensorCAddOp<scalar_t>,
                 uint64_t,
-                scalar_t>(
-                TensorCAddOp<scalar_t>(value.to<scalar_t>()),
-                V_INFO(r),
-                I_INFO(indices),
-                V_INFO(values),
-                static_cast<uint64_t>(nnz));
-            size_t group_size = syclMaxWorkGroupSize(caller);
+                scalar_t>;
+            auto op = TensorCAddOp<scalar_t>(value.to<scalar_t>());
+            auto dense_info = V_INFO(r);
+            auto indices_info = I_INFO(indices);
+            auto values_info = V_INFO(values);
+            auto nnz_val = static_cast<uint64_t>(nnz);
+            size_t group_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernel_ptr>();
             size_t max_work_group_num = target_global_size / group_size;
             size_t num_groups = (nnz + group_size - 1) / group_size;
             if (num_groups > max_work_group_num)
               num_groups = max_work_group_num;
-            sycl_kernel_submit(
+            sycl_kernel_submit<kernel_ptr>(
                 num_groups * group_size,
                 group_size,
                 getCurrentSYCLQueue(),
-                caller);
+                0,
+                op,
+                dense_info,
+                indices_info,
+                values_info,
+                nnz_val);
           });
     } else {
       // sparseElementwiseKernel needs values to be contiguous too
@@ -311,25 +293,31 @@ Tensor& add_out_dense_sparse_kernel(
           commonDtype,
           "add_out_dense_sparse_xpu",
           [&] {
-            auto caller = apply::SparseElementwiseKernelFunctor<
+            constexpr auto kernel_ptr = apply::sparse_elementwise_kernel<
                 TensorCAddOp<scalar_t>,
                 uint64_t,
-                scalar_t>(
-                TensorCAddOp<scalar_t>(value.to<scalar_t>()),
-                V_INFO(r),
-                I_INFO(indices),
-                V_INFO(values),
-                static_cast<uint64_t>(nnz));
-            size_t group_size = syclMaxWorkGroupSize(caller);
+                scalar_t>;
+            auto op = TensorCAddOp<scalar_t>(value.to<scalar_t>());
+            auto dense_info = V_INFO(r);
+            auto indices_info = I_INFO(indices);
+            auto values_info = V_INFO(values);
+            auto nnz_val = static_cast<uint64_t>(nnz);
+            size_t group_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernel_ptr>();
             size_t max_work_group_num = target_global_size / group_size;
             size_t num_groups = (nnz + group_size - 1) / group_size;
             if (num_groups > max_work_group_num)
               num_groups = max_work_group_num;
-            sycl_kernel_submit(
+            sycl_kernel_submit<kernel_ptr>(
                 num_groups * group_size,
                 group_size,
                 getCurrentSYCLQueue(),
-                caller);
+                0,
+                op,
+                dense_info,
+                indices_info,
+                values_info,
+                nnz_val);
           });
     }
   } else {
@@ -491,58 +479,42 @@ SparseTensor& mul_sparse_kernel(
 }
 
 template <typename scalar_t>
-struct SparseSumBackwardFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    const int64_t i =
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-    if (i >= total_threads)
-      return;
-    const int64_t j = input_indices_pos_ti.data[i];
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void sparse_sum_backward_kernel(
+    int64_t total_threads,
+    TensorInfo<int64_t, int64_t> grad_indices_ti,
+    TensorInfo<int64_t, int64_t> input_indices_ti,
+    TensorInfo<int64_t, int64_t> input_indices_pos_ti,
+    TensorInfo<scalar_t, int64_t> grad_values_expand_ti,
+    TensorInfo<scalar_t, int64_t> grad_input_values_ti) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const int64_t i =
+      item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+  if (i >= total_threads)
+    return;
+  const int64_t j = input_indices_pos_ti.data[i];
 
-    bool has_match = false;
-    if (grad_indices_ti.data[j] == input_indices_ti.data[i]) {
-      has_match = true;
-    }
-
-    int64_t grad_input_values_stride0 = grad_input_values_ti.strides[0];
-    int64_t out_start = i * grad_input_values_stride0;
-    int64_t out_end = (i + 1) * grad_input_values_stride0;
-    int64_t in_start = j * grad_values_expand_ti.strides[0];
-
-    if (has_match) {
-      for (int64_t out_i = out_start, in_i = in_start; out_i < out_end;
-           out_i++, in_i++) {
-        grad_input_values_ti.data[out_i] = grad_values_expand_ti.data[in_i];
-      }
-    } else {
-      for (int64_t out_i = out_start; out_i < out_end; out_i++) {
-        grad_input_values_ti.data[out_i] = scalar_t(0);
-      }
-    }
+  bool has_match = false;
+  if (grad_indices_ti.data[j] == input_indices_ti.data[i]) {
+    has_match = true;
   }
 
-  SparseSumBackwardFunctor(
-      int64_t total_threads,
-      const TensorInfo<int64_t, int64_t> grad_indices_ti,
-      const TensorInfo<int64_t, int64_t> input_indices_ti,
-      const TensorInfo<int64_t, int64_t> input_indices_pos_ti,
-      const TensorInfo<scalar_t, int64_t> grad_values_expand_ti,
-      TensorInfo<scalar_t, int64_t> grad_input_values_ti)
-      : total_threads(total_threads),
-        grad_indices_ti(grad_indices_ti),
-        input_indices_ti(input_indices_ti),
-        input_indices_pos_ti(input_indices_pos_ti),
-        grad_values_expand_ti(grad_values_expand_ti),
-        grad_input_values_ti(grad_input_values_ti) {}
+  int64_t grad_input_values_stride0 = grad_input_values_ti.strides[0];
+  int64_t out_start = i * grad_input_values_stride0;
+  int64_t out_end = (i + 1) * grad_input_values_stride0;
+  int64_t in_start = j * grad_values_expand_ti.strides[0];
 
- private:
-  int64_t total_threads;
-  const TensorInfo<int64_t, int64_t> grad_indices_ti;
-  const TensorInfo<int64_t, int64_t> input_indices_ti;
-  const TensorInfo<int64_t, int64_t> input_indices_pos_ti;
-  const TensorInfo<scalar_t, int64_t> grad_values_expand_ti;
-  TensorInfo<scalar_t, int64_t> grad_input_values_ti;
-};
+  if (has_match) {
+    for (int64_t out_i = out_start, in_i = in_start; out_i < out_end;
+         out_i++, in_i++) {
+      grad_input_values_ti.data[out_i] = grad_values_expand_ti.data[in_i];
+    }
+  } else {
+    for (int64_t out_i = out_start; out_i < out_end; out_i++) {
+      grad_input_values_ti.data[out_i] = scalar_t(0);
+    }
+  }
+}
 
 Tensor _sparse_sum_backward_kernel(
     const Tensor& grad_,
@@ -684,25 +656,27 @@ Tensor _sparse_sum_backward_kernel(
             auto grad_input_values_ti =
                 getTensorInfo<scalar_t, int64_t>(grad_input_values);
 
-            auto kfn = SparseSumBackwardFunctor<scalar_t>(
+            constexpr auto kernel_ptr = sparse_sum_backward_kernel<scalar_t>;
+            size_t target_global_size = at::xpu::getDeviceMaxWorkItems();
+            size_t group_size = std::min(
+                static_cast<size_t>(input_nnz),
+                static_cast<size_t>(
+                    at::xpu::getKernelMaxWorkGroupSize<kernel_ptr>()));
+            size_t max_work_group_num = target_global_size / group_size;
+            size_t num_groups = (input_nnz + group_size - 1) / group_size;
+            if (num_groups > max_work_group_num)
+              num_groups = max_work_group_num;
+            sycl_kernel_submit<kernel_ptr>(
+                num_groups * group_size,
+                group_size,
+                getCurrentSYCLQueue(),
+                0,
                 input_nnz,
                 grad_indices_ti,
                 input_indices_ti,
                 input_indices_pos_ti,
                 grad_values_expand_ti,
                 grad_input_values_ti);
-
-            size_t target_global_size = syclMaxWorkItemsPerTile();
-            size_t group_size = std::min(input_nnz, syclMaxWorkGroupSize(kfn));
-            size_t max_work_group_num = target_global_size / group_size;
-            size_t num_groups = (input_nnz + group_size - 1) / group_size;
-            if (num_groups > max_work_group_num)
-              num_groups = max_work_group_num;
-            sycl_kernel_submit(
-                num_groups * group_size,
-                group_size,
-                getCurrentSYCLQueue(),
-                kfn);
           });
     }
 

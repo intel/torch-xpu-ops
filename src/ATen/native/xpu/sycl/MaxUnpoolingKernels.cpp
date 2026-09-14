@@ -27,7 +27,6 @@ template <typename scalar_t, typename index_t, bool is_channels_last_>
 struct MaxUnpooling2dForwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t outputImageSize = outputHeight_ * outputWidth_;
-    auto output = output_data_;
     XPU_KERNEL_LOOP(item, linearIndex, numInputElements_) {
       int c = is_channels_last_
           ? linearIndex % numChannels_
@@ -38,11 +37,11 @@ struct MaxUnpooling2dForwardKernelFunctor {
       index_t offset = is_channels_last_
           ? n * numChannels_ * outputHeight_ * outputWidth_ + c
           : (n * numChannels_ + c) * outputHeight_ * outputWidth_;
-      output += offset;
+      scalar_t* out = output_data_ + offset;
       if constexpr (is_channels_last_) {
-        output[maxind * numChannels_] = input_data_[linearIndex];
+        out[maxind * numChannels_] = input_data_[linearIndex];
       } else {
-        output[maxind] = input_data_[linearIndex];
+        out[maxind] = input_data_[linearIndex];
       }
     }
   };
@@ -330,7 +329,6 @@ void max_unpooling3d_forward_template(
 template <typename scalar_t, typename index_t>
 struct MaxUnpooling3dClForwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto output_ptr = output_data_;
     auto input_ptr = input_data_;
     auto indices_ptr = indices_data_;
     for (index_t linearIndex = item.get_global_id(0);
@@ -342,8 +340,8 @@ struct MaxUnpooling3dClForwardKernelFunctor {
       index_t maxind = indices_ptr[linearIndex];
       index_t offset =
           n * numChannels_ * outputDepth_ * outputHeight_ * outputWidth_ + c;
-      output_ptr += offset;
-      output_ptr[maxind * numChannels_] = input_ptr[linearIndex];
+      scalar_t* out = output_data_ + offset;
+      out[maxind * numChannels_] = input_ptr[linearIndex];
     }
   }
   MaxUnpooling3dClForwardKernelFunctor(
