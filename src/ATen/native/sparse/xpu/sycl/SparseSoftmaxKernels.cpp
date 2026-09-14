@@ -56,7 +56,6 @@
 #include <ATen/ops/ones_like.h>
 #include <ATen/ops/softmax.h>
 #include <ATen/ops/softmax_native.h>
-#include <ATen/ops/zeros.h>
 #include <ATen/ops/zeros_like.h>
 #endif
 
@@ -66,49 +65,36 @@
 #include <comm/Memory.h>
 
 #include <ATen/native/sparse/xpu/sycl/SparseSoftmaxKernels.h>
-#include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
 namespace at::native::xpu {
 
 template <typename T, class InputIt1, class InputIt2, class OutputIt>
-struct MaxRowKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    int64_t curr_pool_size = pool_sizes_ptr[item_id];
-    auto mx_row = mx_buffer_ptr + static_cast<int64_t>(item_id * nvalues);
-    int64_t offset = pool_offsets_ptr[item_id];
-    for (int64_t p = 0; p < curr_pool_size; p++) {
-      int64_t i = *(sorted_indices_ptr + offset + p);
-      auto values_row = values_accessor[i].data();
-      for (int64_t j = 0; j < nvalues; j++) {
-        mx_row[j] = std::max(mx_row[j], values_row[j]);
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void max_row_kernel(
+    int64_t numel,
+    InputIt1 pool_sizes_ptr,
+    InputIt2 values_accessor,
+    InputIt1 sorted_indices_ptr,
+    InputIt1 pool_offsets_ptr,
+    OutputIt mx_buffer_ptr,
+    T nvalues) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  int64_t index = item_id.get_global_id(0);
+  if (index >= numel)
+    return;
+  int64_t curr_pool_size = pool_sizes_ptr[index];
+  auto mx_row = mx_buffer_ptr + static_cast<int64_t>(index * nvalues);
+  int64_t offset = pool_offsets_ptr[index];
+  for (int64_t p = 0; p < curr_pool_size; p++) {
+    int64_t i = *(sorted_indices_ptr + offset + p);
+    auto values_row = values_accessor[i].data();
+    for (int64_t j = 0; j < nvalues; j++) {
+      mx_row[j] = std::max(mx_row[j], values_row[j]);
     }
   }
-
-  MaxRowKernelFunctor(
-      InputIt1 pool_sizes_ptr,
-      InputIt2 values_accessor,
-      InputIt1 sorted_indices_ptr,
-      InputIt1 pool_offsets_ptr,
-      OutputIt mx_buffer_ptr,
-      T nvalues)
-      : pool_sizes_ptr(pool_sizes_ptr),
-        values_accessor(values_accessor),
-        sorted_indices_ptr(sorted_indices_ptr),
-        pool_offsets_ptr(pool_offsets_ptr),
-        mx_buffer_ptr(mx_buffer_ptr),
-        nvalues(nvalues) {}
-
- private:
-  InputIt1 pool_sizes_ptr;
-  InputIt2 values_accessor;
-  InputIt1 sorted_indices_ptr;
-  InputIt1 pool_offsets_ptr;
-  OutputIt mx_buffer_ptr;
-  T nvalues;
-};
+}
 
 template <typename T, class InputIt1, class InputIt2, class OutputIt>
 OutputIt max_row(
@@ -123,14 +109,22 @@ OutputIt max_row(
   const auto N = std::distance(pool_sizes_first, pool_sizes_last);
   auto& q = getCurrentSYCLQueue();
 
-  MaxRowKernelFunctor<T, InputIt1, InputIt2, OutputIt> mfn(
+  auto wg_size =
+      syclMaxWorkGroupSize<max_row_kernel<T, InputIt1, InputIt2, OutputIt>>();
+  sycl::range<1> local_range(wg_size);
+  sycl::range<1> global_range(((N + wg_size - 1) / wg_size) * wg_size);
+  sycl_kernel_submit<max_row_kernel<T, InputIt1, InputIt2, OutputIt>>(
+      global_range,
+      local_range,
+      q,
+      0,
+      static_cast<int64_t>(N),
       pool_sizes_first,
       values_accessor,
       sorted_indices_ptr,
       pool_offsets_ptr,
       mx_buffer_ptr,
       nvalues);
-  sycl_kernel_submit(sycl::range<1>(N), q, mfn);
 
   return mx_buffer_ptr;
 }
@@ -177,202 +171,150 @@ struct ReducePred {
   bool operator()(const T& x, const T& y) const {
     return offsets_ptr[x] == offsets_ptr[y];
   }
-  ReducePred(T* offsets_ptr) : offsets_ptr(offsets_ptr) {}
+  ReducePred(const T* offsets_ptr) : offsets_ptr(offsets_ptr) {}
 
  private:
-  T* offsets_ptr;
+  const T* offsets_ptr;
 };
 
 template <typename scalar_t, bool LogSoftMax>
-struct SparseCooSoftmaxFunctor {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void sparse_coo_softmax_kernel(
+    int64_t* sorted_pool_indices,
+    int64_t pool_size,
+    const int64_t* pool_sizes,
+    const int64_t* pool_offsets,
+    int64_t nvalues,
+    const scalar_t* mx_rows,
+    GenericPackedTensorAccessor<scalar_t, 2> input_values_acc,
+    GenericPackedTensorAccessor<scalar_t, 2> output_values_acc) {
   /*
     See ATen/native/sparse/SoftMax.cpp:cpu_sparse_coo_softmax for the CPU
     implementation of the sparse softmax algorithm that this implementation is
     based on.
   */
-  void operator()(sycl::nd_item<1> item) const {
-    int tid = item.get_local_id(0);
-    int blkid = item.get_group(0);
-    int blksz = item.get_local_range(0);
-    int gridsz = item.get_group_range(0);
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int tid = item.get_local_id(0);
+  int blkid = item.get_group(0);
+  int blksz = item.get_local_range(0);
+  int gridsz = item.get_group_range(0);
 
-    int index = tid + blkid * blksz;
-    int step = blksz * gridsz;
+  int index = tid + blkid * blksz;
+  int step = blksz * gridsz;
 
-    while (index < pool_size) {
-      int64_t offset = pool_offsets[index];
-      int64_t* pool_indices = sorted_pool_indices + offset;
-      int64_t pool_indices_size = pool_sizes[index];
-      scalar_t* mx_row = mx_rows + index * nvalues;
+  while (index < pool_size) {
+    int64_t offset = pool_offsets[index];
+    int64_t* pool_indices = sorted_pool_indices + offset;
+    int64_t pool_indices_size = pool_sizes[index];
+    const scalar_t* mx_row = mx_rows + index * nvalues;
 
-      for (int64_t j = 0; j < nvalues; j++) {
-        scalar_t exp_sums = 0;
-        for (int64_t p = 0; p < pool_indices_size; p++) {
-          auto i = pool_indices[p];
-          auto values_row = input_values_acc[i];
-          auto out_values_row = output_values_acc[i];
-
-          auto v = std::exp(values_row[j] - mx_row[j]);
-          if (!LogSoftMax) {
-            out_values_row[j] = v;
-          }
-          exp_sums += v;
+    for (int64_t j = 0; j < nvalues; j++) {
+      scalar_t exp_sums = 0;
+      for (int64_t p = 0; p < pool_indices_size; p++) {
+        auto i = pool_indices[p];
+        auto values_row = input_values_acc[i];
+        auto out_values_row = output_values_acc[i];
+        auto v = std::exp(values_row[j] - mx_row[j]);
+        if (!LogSoftMax) {
+          out_values_row[j] = v;
         }
-        for (int64_t p = 0; p < pool_indices_size; p++) {
-          auto i = pool_indices[p];
-          auto values_row = input_values_acc[i];
-          auto out_values_row = output_values_acc[i];
-
-          if (LogSoftMax) {
-            out_values_row[j] = values_row[j] - mx_row[j] - std::log(exp_sums);
-          } else {
-            out_values_row[j] *= 1.0 / exp_sums;
-          }
+        exp_sums += v;
+      }
+      for (int64_t p = 0; p < pool_indices_size; p++) {
+        auto i = pool_indices[p];
+        auto values_row = input_values_acc[i];
+        auto out_values_row = output_values_acc[i];
+        if (LogSoftMax) {
+          out_values_row[j] = values_row[j] - mx_row[j] - std::log(exp_sums);
+        } else {
+          out_values_row[j] *= 1.0 / exp_sums;
         }
       }
-      index += step;
     }
+    index += step;
   }
-
-  SparseCooSoftmaxFunctor(
-      int64_t* sorted_pool_indices,
-      int64_t pool_size,
-      int64_t* pool_sizes,
-      int64_t* pool_offsets,
-      int64_t nvalues,
-      scalar_t* mx_rows,
-      GenericPackedTensorAccessor<scalar_t, 2> input_values_acc,
-      GenericPackedTensorAccessor<scalar_t, 2> output_values_acc)
-      : sorted_pool_indices(sorted_pool_indices),
-        pool_size(pool_size),
-        pool_sizes(pool_sizes),
-        pool_offsets(pool_offsets),
-        nvalues(nvalues),
-        mx_rows(mx_rows),
-        input_values_acc(input_values_acc),
-        output_values_acc(output_values_acc) {}
-
- private:
-  int64_t* sorted_pool_indices;
-  int64_t pool_size;
-  int64_t* pool_sizes;
-  int64_t* pool_offsets;
-  int64_t nvalues;
-  scalar_t* mx_rows;
-  GenericPackedTensorAccessor<scalar_t, 2> input_values_acc;
-  GenericPackedTensorAccessor<scalar_t, 2> output_values_acc;
-};
+}
 
 template <typename scalar_t, bool LogSoftMax>
-struct SparseCooSoftmaxbBackwardFunctor {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void sparse_coo_softmax_backward_kernel(
+    int64_t* sorted_pool_indices,
+    int64_t size,
+    const int64_t* pool_sizes,
+    const int64_t* pool_offsets,
+    int64_t nvalues,
+    int64_t grad_nnz,
+    const int64_t* grad_offsets,
+    const int64_t* out_offsets,
+    const int64_t* lower_bound_values,
+    GenericPackedTensorAccessor<scalar_t, 2> values_accessor,
+    GenericPackedTensorAccessor<scalar_t, 2> out_values_accessor,
+    GenericPackedTensorAccessor<scalar_t, 2> grad_values_accessor) {
   /*
     See ATen/native/sparse/SoftMax.cpp:cpu_sparse_coo_softmax_backward for
     the CPU implementation of the sparse softmax backward algorithm that this
     implementation is based on.
   */
-  void operator()(sycl::nd_item<1> item) const {
-    int tid = item.get_local_id(0);
-    int blkid = item.get_group(0);
-    int blksz = item.get_local_range(0);
-    int gridsz = item.get_group_range(0);
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int tid = item.get_local_id(0);
+  int blkid = item.get_group(0);
+  int blksz = item.get_local_range(0);
+  int gridsz = item.get_group_range(0);
 
-    int index = tid + blkid * blksz;
-    int step = blksz * gridsz;
+  int index = tid + blkid * blksz;
+  int step = blksz * gridsz;
 
-    while (index < size) {
-      int64_t offset = pool_offsets[index];
-      int64_t* pool_indices = sorted_pool_indices + offset;
-      int64_t pool_indices_size = pool_sizes[index];
+  while (index < size) {
+    int64_t offset = pool_offsets[index];
+    int64_t* pool_indices = sorted_pool_indices + offset;
+    int64_t pool_indices_size = pool_sizes[index];
 
-      for (int64_t k = 0; k < nvalues; k++) {
-        scalar_t tmp_row{0};
+    for (int64_t k = 0; k < nvalues; k++) {
+      scalar_t tmp_row{0};
 
-        /* Compute tmp = - sum_j output_j * grad_j */
-        for (int64_t p = 0; p < pool_indices_size; p++) {
-          auto i = pool_indices[p];
-          auto out_values_row = out_values_accessor[i];
-          auto j = lower_bound_values[i];
-
-          /* Update `tmp_row` accumulator only when limits and pools are valid
-           */
-          if (j < grad_nnz && (out_offsets[i] == grad_offsets[j])) {
-            auto grad_values_row = grad_values_accessor[j];
-            if (LogSoftMax) {
-              tmp_row -= grad_values_row[k];
-            } else {
-              tmp_row -= out_values_row[k] * grad_values_row[k];
-            }
-          }
-        }
-
-        /* Compute grad_input = output * (grad + tmp)*/
-        for (int64_t p = 0; p < pool_indices_size; p++) {
-          auto i = pool_indices[p];
-          auto out_values_row = out_values_accessor[i];
-          auto values_row = values_accessor[i];
-          auto j = lower_bound_values[i];
-          if (j < grad_nnz && (out_offsets[i] == grad_offsets[j])) {
-            auto grad_values_row = grad_values_accessor[j];
-            if (LogSoftMax) {
-              values_row[k] =
-                  grad_values_row[k] + std::exp(out_values_row[k]) * tmp_row;
-            } else {
-              values_row[k] =
-                  out_values_row[k] * (grad_values_row[k] + tmp_row);
-            }
+      /* Compute tmp = - sum_j output_j * grad_j */
+      for (int64_t p = 0; p < pool_indices_size; p++) {
+        auto i = pool_indices[p];
+        auto out_values_row = out_values_accessor[i];
+        auto j = lower_bound_values[i];
+        /* Update `tmp_row` accumulator only when limits and pools are valid
+         */
+        if (j < grad_nnz && (out_offsets[i] == grad_offsets[j])) {
+          auto grad_values_row = grad_values_accessor[j];
+          if (LogSoftMax) {
+            tmp_row -= grad_values_row[k];
           } else {
-            if (LogSoftMax) {
-              values_row[k] = std::exp(out_values_row[k]) * tmp_row;
-            } else {
-              values_row[k] = out_values_row[k] * tmp_row;
-            }
+            tmp_row -= out_values_row[k] * grad_values_row[k];
           }
         }
       }
-      index += step;
+
+      /* Compute grad_input = output * (grad + tmp)*/
+      for (int64_t p = 0; p < pool_indices_size; p++) {
+        auto i = pool_indices[p];
+        auto out_values_row = out_values_accessor[i];
+        auto values_row = values_accessor[i];
+        auto j = lower_bound_values[i];
+        if (j < grad_nnz && (out_offsets[i] == grad_offsets[j])) {
+          auto grad_values_row = grad_values_accessor[j];
+          if (LogSoftMax) {
+            values_row[k] =
+                grad_values_row[k] + std::exp(out_values_row[k]) * tmp_row;
+          } else {
+            values_row[k] = out_values_row[k] * (grad_values_row[k] + tmp_row);
+          }
+        } else {
+          if (LogSoftMax) {
+            values_row[k] = std::exp(out_values_row[k]) * tmp_row;
+          } else {
+            values_row[k] = out_values_row[k] * tmp_row;
+          }
+        }
+      }
     }
+    index += step;
   }
-
-  SparseCooSoftmaxbBackwardFunctor(
-      int64_t* sorted_pool_indices,
-      int64_t size,
-      int64_t* pool_sizes,
-      int64_t* pool_offsets,
-      int64_t nvalues,
-      int64_t grad_nnz,
-      int64_t* grad_offsets,
-      int64_t* out_offsets,
-      int64_t* lower_bound_values,
-      GenericPackedTensorAccessor<scalar_t, 2> values_accessor,
-      GenericPackedTensorAccessor<scalar_t, 2> out_values_accessor,
-      GenericPackedTensorAccessor<scalar_t, 2> grad_values_accessor)
-      : sorted_pool_indices(sorted_pool_indices),
-        size(size),
-        pool_sizes(pool_sizes),
-        pool_offsets(pool_offsets),
-        nvalues(nvalues),
-        grad_nnz(grad_nnz),
-        grad_offsets(grad_offsets),
-        out_offsets(out_offsets),
-        lower_bound_values(lower_bound_values),
-        values_accessor(values_accessor),
-        out_values_accessor(out_values_accessor),
-        grad_values_accessor(grad_values_accessor) {}
-
- private:
-  int64_t* sorted_pool_indices;
-  int64_t size;
-  int64_t* pool_sizes;
-  int64_t* pool_offsets;
-  int64_t nvalues;
-  int64_t grad_nnz;
-  int64_t* grad_offsets;
-  int64_t* out_offsets;
-  int64_t* lower_bound_values;
-  GenericPackedTensorAccessor<scalar_t, 2> values_accessor;
-  GenericPackedTensorAccessor<scalar_t, 2> out_values_accessor;
-  GenericPackedTensorAccessor<scalar_t, 2> grad_values_accessor;
-};
+}
 
 Tensor get_offsets(
     const Tensor& indices,
@@ -392,28 +334,10 @@ Tensor get_offsets(
       host_strides[i] = host_strides[i + 1] * (i + 1 == dim ? 1 : sizes[i + 1]);
     }
   }
-  // auto strides = host_strides;
-  auto strides = at::empty({ndim}, indices.options());
-  // auto strides_ptr = strides.data_ptr<int64_t>();
-
-  // syclMemcpyAsync(
-  //     strides_ptr,
-  //     host_strides.data(),
-  //     host_strides.size() * sizeof(int64_t),
-  //     HostToDevice);
-
-  for (int kk = 0; kk < ndim; kk++) {
-    strides[kk] = host_strides[kk];
-  }
-
-  // auto indices_accessor = indices.packed_accessor64<int64_t, 2>();
   Tensor offsets = at::ones({nnz}, indices.options());
-
-  for (int i = 0; i < nnz; i++) {
-    for (int64_t j = 0; j < ndim; j++) {
-      if (j != dim) {
-        offsets[i] += (strides[j] * indices[j][i]);
-      }
+  for (int64_t j = 0; j < ndim; j++) {
+    if (j != dim) {
+      offsets.add_(indices[j], host_strides[j]);
     }
   }
   return offsets;
@@ -437,9 +361,10 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
   auto nnz = indices.size(1);
 
   auto offsets = get_offsets(indices, sizes, dim);
-  int64_t* offsets_ptr = offsets.data_ptr<int64_t>();
-  auto offsets_sort = get_offsets(indices, sizes, dim);
-  int64_t* offsets_sort_ptr = offsets_sort.data_ptr<int64_t>();
+  const int64_t* offsets_ptr = offsets.const_data_ptr<int64_t>();
+  // Same values as offsets, but pstl::sort permutes it in place below.
+  auto offsets_sort = offsets.clone();
+  int64_t* offsets_sort_ptr = offsets_sort.mutable_data_ptr<int64_t>();
 
   auto sorted_indices = at::empty({nnz}, indices.options());
   auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
@@ -448,16 +373,18 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
   SortFunctor<int64_t> sfn;
   pstl::sort<int64_t, int64_t>(offsets_sort_ptr, sorted_indices_ptr, nnz, sfn);
 
-  auto pool_sizes = at::ones({nnz}, indices.options());
+  auto pool_sizes = at::empty({nnz}, indices.options());
   auto constant_it = at::ones({nnz}, indices.options());
-  auto discard_it = at::zeros({nnz}, indices.options());
+  auto discard_it = at::empty({nnz}, indices.options());
   // sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
 
   auto new_end = pstl::reduce_by_key<int64_t>(
       sorted_indices_ptr,
       sorted_indices_ptr + nnz,
+      // Not const: inclusive_scan_if inside reduce_by_key deduces one InputIt
+      // for both this values range and the mutable head-flags mask.
       constant_it.data_ptr<int64_t>(),
-      discard_it.data_ptr<int64_t>(),
+      discard_it.mutable_data_ptr<int64_t>(),
       pool_sizes.data_ptr<int64_t>(),
       ReducePred<int64_t>(offsets_ptr));
   auto new_sz = std::distance(pool_sizes.data_ptr<int64_t>(), new_end);
@@ -483,9 +410,9 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
         values.options());
     auto mx_buffer_ptr = mx_buffer.data_ptr<scalar_t>();
 
-    auto pool_sizes_ptr = pool_sizes.data_ptr<int64_t>();
-    auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
-    auto pool_offsets_ptr = pool_offsets.data_ptr<int64_t>();
+    auto pool_sizes_ptr = pool_sizes.const_data_ptr<int64_t>();
+    auto sorted_indices_ptr = sorted_indices.const_data_ptr<int64_t>();
+    auto pool_offsets_ptr = pool_offsets.const_data_ptr<int64_t>();
 
     max_row<scalar_t>(
         pool_sizes_ptr,
@@ -520,7 +447,7 @@ void xpu_sparse_coo_softmax(
   out_indices.copy_(indices);
 
   if (dim >= sparse_dim) {
-    if (LogSoftMax) {
+    if constexpr (LogSoftMax) {
       auto new_values = _log_softmax(values, dim - sparse_dim + 1, false);
       out_values.set_(new_values);
     } else {
@@ -556,16 +483,19 @@ void xpu_sparse_coo_softmax(
   // Further, they will be invalid configuration parameters for the launch. So
   // let's not launch a kernel unless both are non-zero.
   if (nvalues > 0 && pool_size > 0) {
-    auto kfn = SparseCooSoftmaxFunctor<scalar_t, LogSoftMax>(
+    sycl_kernel_submit<sparse_coo_softmax_kernel<scalar_t, LogSoftMax>>(
+        global_range,
+        local_range,
+        getCurrentSYCLQueue(),
+        0,
         sorted_indices.template data_ptr<int64_t>(),
         pool_size,
-        pool_sizes.template data_ptr<int64_t>(),
-        pool_offsets.template data_ptr<int64_t>(),
+        pool_sizes.template const_data_ptr<int64_t>(),
+        pool_offsets.template const_data_ptr<int64_t>(),
         nvalues,
-        mx_buffer.template data_ptr<scalar_t>(),
+        mx_buffer.template const_data_ptr<scalar_t>(),
         values_accessor,
         out_values_accessor);
-    sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
   }
 }
 
@@ -603,7 +533,7 @@ void xpu_sparse_coo_softmax_backward(
   /* when dim >= sparse_dim the dense backward is used */
   if (dim >= sparse_dim) {
     if (at::equal(out_offsets, grad_offsets) == true) {
-      if (LogSoftMax) {
+      if constexpr (LogSoftMax) {
         auto r = at::_log_softmax_backward_data(
             grad_values, out_values, dim - sparse_dim + 1, input_dtype);
         values.set_(r);
@@ -617,8 +547,8 @@ void xpu_sparse_coo_softmax_backward(
           out_offsets.to(at::Device(kCPU), indices.dtype(), false, true);
       auto host_grad_offsets =
           grad_offsets.to(at::Device(kCPU), indices.dtype(), false, true);
-      auto out_offsets_accessor = host_out_offsets.data_ptr<int64_t>();
-      auto grad_offsets_accessor = host_grad_offsets.data_ptr<int64_t>();
+      auto out_offsets_accessor = host_out_offsets.const_data_ptr<int64_t>();
+      auto grad_offsets_accessor = host_grad_offsets.const_data_ptr<int64_t>();
 
       for (int64_t i = 0; i < out_nnz; i++) {
         auto low = std::lower_bound(
@@ -634,7 +564,7 @@ void xpu_sparse_coo_softmax_backward(
         */
         if (j < grad_nnz &&
             out_offsets_accessor[i] == grad_offsets_accessor[j]) {
-          if (LogSoftMax) {
+          if constexpr (LogSoftMax) {
             auto r = at::_log_softmax_backward_data(
                 grad_values[j], out_values[i], dim - sparse_dim, input_dtype);
             values[i].copy_(r);
@@ -665,10 +595,10 @@ void xpu_sparse_coo_softmax_backward(
       at::empty({out_offsets.size(0)}, indices.options());
 
   pstl::lower_bound_tensor<int64_t>(
-      grad_offsets.data_ptr<int64_t>(),
-      grad_offsets.data_ptr<int64_t>() + grad_offsets.size(0),
-      out_offsets.data_ptr<int64_t>(),
-      out_offsets.data_ptr<int64_t>() + out_offsets.size(0),
+      grad_offsets.const_data_ptr<int64_t>(),
+      grad_offsets.const_data_ptr<int64_t>() + grad_offsets.size(0),
+      out_offsets.const_data_ptr<int64_t>(),
+      out_offsets.const_data_ptr<int64_t>() + out_offsets.size(0),
       lower_bound_values.data_ptr<int64_t>());
 
   /* Compute independent pools of indices */
@@ -685,20 +615,24 @@ void xpu_sparse_coo_softmax_backward(
   sycl::range<1> local_range(block_size);
 
   if (nvalues > 0 && pool_size > 0) {
-    auto kfn = SparseCooSoftmaxbBackwardFunctor<scalar_t, LogSoftMax>(
+    sycl_kernel_submit<
+        sparse_coo_softmax_backward_kernel<scalar_t, LogSoftMax>>(
+        global_range,
+        local_range,
+        getCurrentSYCLQueue(),
+        0,
         sorted_indices.template data_ptr<int64_t>(),
         pool_size,
-        pool_sizes.template data_ptr<int64_t>(),
-        pool_offsets.template data_ptr<int64_t>(),
+        pool_sizes.template const_data_ptr<int64_t>(),
+        pool_offsets.template const_data_ptr<int64_t>(),
         nvalues,
         grad_nnz,
-        grad_offsets.data_ptr<int64_t>(),
-        out_offsets.data_ptr<int64_t>(),
-        lower_bound_values.data_ptr<int64_t>(),
+        grad_offsets.const_data_ptr<int64_t>(),
+        out_offsets.const_data_ptr<int64_t>(),
+        lower_bound_values.const_data_ptr<int64_t>(),
         values_accessor,
         out_values_accessor,
         grad_values_accessor);
-    sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
   }
 }
 

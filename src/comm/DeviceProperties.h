@@ -20,6 +20,10 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 DISABLE_SYCL_DEPRECATED_WARNING_END
 
 #include <comm/Runtime.h>
+#include <sycl/sycl.hpp>
+
+namespace syclext = sycl::ext::oneapi;
+namespace syclexp = sycl::ext::oneapi::experimental;
 
 namespace xpu {
 namespace sycl {
@@ -48,6 +52,30 @@ static int64_t syclMaxWorkGroupSize(
     const KernelClass& /*kfn*/,
     at::DeviceIndex dev_id = at::xpu::current_device()) {
   return syclMaxWorkGroupSize<KernelClass>(dev_id);
+}
+
+// For SYCL free function
+template <auto* kptr>
+static int64_t syclMaxWorkGroupSize(
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
+#if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
+  auto q = c10::xpu::getCurrentXPUStream(dev_id).queue();
+  auto ctxt = q.get_context();
+  auto dev = q.get_device();
+  auto exe_bndl =
+      ::syclexp::get_kernel_bundle<kptr, ::sycl::bundle_state::executable>(
+          ctxt);
+  ::sycl::kernel k = exe_bndl.template ext_oneapi_get_kernel<kptr>();
+  return k.get_info<::sycl::info::kernel_device_specific::work_group_size>(dev);
+#else
+  // Choose get_kernel_info(ctx, dev) for better performance
+  // according to the comments of this function.
+  auto& ctx = c10::xpu::get_device_context();
+  auto& dev = c10::xpu::get_raw_device(dev_id);
+  return ::syclexp::get_kernel_info<
+      kptr,
+      ::sycl::info::kernel_device_specific::work_group_size>(ctx, dev);
+#endif
 }
 
 static inline int64_t syclDeviceMaxWorkGroupSize(

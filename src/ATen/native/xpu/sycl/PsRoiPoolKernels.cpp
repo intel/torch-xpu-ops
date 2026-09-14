@@ -16,6 +16,7 @@
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -53,20 +54,22 @@ struct PsRoiPoolForwardKernel {
           static_cast<T>(roi_height) / static_cast<T>(pooled_height_);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
 
-      int hstart =
-          static_cast<int>(std::floor(static_cast<T>(ph) * bin_size_h));
-      int wstart =
-          static_cast<int>(std::floor(static_cast<T>(pw) * bin_size_w));
-      int hend =
-          static_cast<int>(std::ceil(static_cast<T>(ph + 1) * bin_size_h));
-      int wend =
-          static_cast<int>(std::ceil(static_cast<T>(pw + 1) * bin_size_w));
+      using opmath_t = at::opmath_type<T>;
+
+      int hstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(ph) * bin_size_h)));
+      int wstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(pw) * bin_size_w)));
+      int hend = static_cast<int>(sycl::ceil(
+          static_cast<opmath_t>(ph + 1) * static_cast<opmath_t>(bin_size_h)));
+      int wend = static_cast<int>(sycl::ceil(
+          static_cast<opmath_t>(pw + 1) * static_cast<opmath_t>(bin_size_w)));
 
       // Add roi offsets and clip to input boundaries
-      hstart = std::min(std::max(hstart + roi_start_h, 0), height_ - 1);
-      hend = std::min(std::max(hend + roi_start_h, 0), height_ - 1);
-      wstart = std::min(std::max(wstart + roi_start_w, 0), width_ - 1);
-      wend = std::min(std::max(wend + roi_start_w, 0), width_ - 1);
+      hstart = sycl::clamp(hstart + roi_start_h, 0, height_ - 1);
+      hend = sycl::clamp(hend + roi_start_h, 0, height_ - 1);
+      wstart = sycl::clamp(wstart + roi_start_w, 0, width_ - 1);
+      wend = sycl::clamp(wend + roi_start_w, 0, width_ - 1);
       bool is_empty = (hend <= hstart) || (wend <= wstart);
 
       const T* offset_input =
@@ -147,9 +150,8 @@ std::tuple<Tensor, Tensor> ps_roi_pool_kernel(
       at::zeros(output.sizes(), input.options().dtype(at::kInt));
 
   auto output_size = output.numel();
-  int64_t global_range = std::min(
-      ceil_div(static_cast<int64_t>(output_size), static_cast<int64_t>(512)),
-      static_cast<int64_t>(4096));
+  int64_t global_range =
+      xpuKernelLoopGroupRange(static_cast<int64_t>(output_size), 512);
   int64_t local_range = 512;
 
   if (output_size == 0) {
@@ -162,14 +164,14 @@ std::tuple<Tensor, Tensor> ps_roi_pool_kernel(
       input.scalar_type(), "ps_roi_pool_forward_kernel_xpu", [&] {
         auto kfn = PsRoiPoolForwardKernel<scalar_t>(
             output_size,
-            input_.data_ptr<scalar_t>(),
+            input_.const_data_ptr<scalar_t>(),
             spatial_scale,
             channels,
             height,
             width,
             pooled_height,
             pooled_width,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             channels_out,
             output.data_ptr<scalar_t>(),
             channel_mapping.data_ptr<int>());
@@ -205,20 +207,22 @@ struct PsRoiPoolBackwardKernel {
           static_cast<T>(roi_height) / static_cast<T>(pooled_height_);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
 
-      int hstart =
-          static_cast<int>(std::floor(static_cast<T>(ph) * bin_size_h));
-      int wstart =
-          static_cast<int>(std::floor(static_cast<T>(pw) * bin_size_w));
-      int hend =
-          static_cast<int>(std::ceil(static_cast<T>(ph + 1) * bin_size_h));
-      int wend =
-          static_cast<int>(std::ceil(static_cast<T>(pw + 1) * bin_size_w));
+      using opmath_t = at::opmath_type<T>;
+
+      int hstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(ph) * bin_size_h)));
+      int wstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(pw) * bin_size_w)));
+      int hend = static_cast<int>(sycl::ceil(
+          static_cast<opmath_t>(ph + 1) * static_cast<opmath_t>(bin_size_h)));
+      int wend = static_cast<int>(sycl::ceil(
+          static_cast<opmath_t>(pw + 1) * static_cast<opmath_t>(bin_size_w)));
 
       // Add roi offsets and clip to input boundaries
-      hstart = std::min(std::max(hstart + roi_start_h, 0), height_);
-      hend = std::min(std::max(hend + roi_start_h, 0), height_);
-      wstart = std::min(std::max(wstart + roi_start_w, 0), width_);
-      wend = std::min(std::max(wend + roi_start_w, 0), width_);
+      hstart = sycl::clamp(hstart + roi_start_h, 0, height_);
+      hend = sycl::clamp(hend + roi_start_h, 0, height_);
+      wstart = sycl::clamp(wstart + roi_start_w, 0, width_);
+      wend = sycl::clamp(wend + roi_start_w, 0, width_);
       bool is_empty = (hend <= hstart) || (wend <= wstart);
 
       int c_in = channel_mapping_[index];
@@ -291,9 +295,8 @@ Tensor ps_roi_pool_backward_kernel(
     int64_t width) {
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
-  int64_t global_range = std::min(
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512)),
-      static_cast<int64_t>(4096));
+  int64_t global_range =
+      xpuKernelLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
   int64_t local_range = 512;
 
   // handle possibly empty gradients
@@ -309,8 +312,8 @@ Tensor ps_roi_pool_backward_kernel(
       grad.scalar_type(), "ps_roi_pool_backward_kernel_xpu", [&] {
         auto kfn = PsRoiPoolBackwardKernel<scalar_t>(
             grad.numel(),
-            grad_.data_ptr<scalar_t>(),
-            channel_mapping.data_ptr<int>(),
+            grad_.const_data_ptr<scalar_t>(),
+            channel_mapping.const_data_ptr<int>(),
             spatial_scale,
             channels,
             height,
@@ -319,7 +322,7 @@ Tensor ps_roi_pool_backward_kernel(
             pooled_width,
             channels_out,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>());
+            rois_.const_data_ptr<scalar_t>());
         sycl_kernel_submit(
             global_range * local_range,
             local_range,

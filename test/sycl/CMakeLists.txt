@@ -14,7 +14,7 @@ set(TEST_SYCL_CXX_SRCS ${TEST_SYCL_ROOT}/main.cpp)
 sycl_add_executable(
   test_sycl_build_standalone
   SYCL_SOURCES ${TEST_SYCL_SYCL_SRCS}
-  CXX_SOURCES ${TEST_SYCL_CXX_SRCS} ${TEST_SYCL_CXX_SRCS})
+  CXX_SOURCES ${TEST_SYCL_CXX_SRCS})
 
 if(INSTALL_TEST)
   install(TARGETS test_sycl_build_standalone DESTINATION bin)

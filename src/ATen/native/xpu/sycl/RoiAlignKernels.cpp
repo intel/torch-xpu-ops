@@ -12,10 +12,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -127,12 +129,17 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
           input_ + (roi_batch_ind * channels_ + c) * height_ * width_;
 
       // We use roi_bin_grid to sample the grid and mimic integral
+      using opmath_t = at::opmath_type<T>;
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_height) /
+                static_cast<opmath_t>(pooled_height_))); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_width) /
+                static_cast<opmath_t>(pooled_width_)));
 
       // We do average (integral) pooling inside a bin
       // When the grid is empty, output zeros.
@@ -313,12 +320,17 @@ struct RoiAlignBackwardKernel {
           offset_grad_output[ph * h_stride_ + pw * w_stride_];
 
       // We use roi_bin_grid to sample the grid and mimic integral
+      using opmath_t = at::opmath_type<T>;
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_height) /
+                static_cast<opmath_t>(pooled_height_))); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_width) /
+                static_cast<opmath_t>(pooled_width_)));
 
       // We do average (integral) pooling inside a bin
       const T count = roi_bin_grid_h * roi_bin_grid_w; // e.g. = 4
@@ -466,8 +478,8 @@ Tensor roi_align_kernel(
       input.scalar_type(),
       "roi_align_forward_kernel_xpu",
       [&] {
-        int64_t local_range =
-            syclMaxWorkGroupSize<RoiAlignForwardKernel<scalar_t>>();
+        int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<
+            RoiAlignForwardKernel<scalar_t>>();
         int items_per_roi = pooled_height * pooled_width * channels;
         if (items_per_roi < local_range) {
           constexpr int simd_len = 32;
@@ -478,7 +490,7 @@ Tensor roi_align_kernel(
         int wgs_per_roi = (items_per_roi + local_range - 1) / local_range;
         int64_t global_range = wgs_per_roi * num_rois;
         auto kfn = RoiAlignForwardKernel<scalar_t>(
-            input_.data_ptr<scalar_t>(),
+            input_.const_data_ptr<scalar_t>(),
             spatial_scale,
             items_per_roi,
             wgs_per_roi,
@@ -489,7 +501,7 @@ Tensor roi_align_kernel(
             pooled_width,
             sampling_ratio,
             aligned,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>());
         sycl_kernel_submit(
             global_range * local_range,
@@ -515,7 +527,7 @@ Tensor roi_align_backward_kernel(
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
   int64_t global_range =
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512));
+      xpuKernelLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
   int64_t local_range = 512;
 
   // handle possibly empty gradients
@@ -539,7 +551,7 @@ Tensor roi_align_backward_kernel(
       [&] {
         auto kfn = RoiAlignBackwardKernel<scalar_t>(
             grad.numel(),
-            grad.data_ptr<scalar_t>(),
+            grad.const_data_ptr<scalar_t>(),
             spatial_scale,
             channels,
             height,
@@ -549,7 +561,7 @@ Tensor roi_align_backward_kernel(
             sampling_ratio,
             aligned,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             n_stride,
             c_stride,
             h_stride,

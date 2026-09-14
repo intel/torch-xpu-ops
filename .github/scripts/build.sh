@@ -1,101 +1,81 @@
 #!/bin/bash
+# Build PyTorch XPU wheel. Assumes PyTorch source is already prepared
+# (via prepare_pytorch.py) at ${WORKSPACE}/pytorch.
+#
 # Usage:
-#   ./build.sh --WORKSPACE=<path/to/dir> \
-#       --PYTORCH_REPO=<pytorch repo url> --PYTORCH_COMMIT=<pytorch branch or commit> \
-#       --TORCH_XPU_OPS_REPO=<torch-xpu-ops repo url> \
-#       --TORCH_XPU_OPS_COMMIT=<torch-xpu-ops branch, commit or pinned(use pytorch pinned commit)>
+#   ./build.sh [--WORKSPACE=<path>] [--USE_DPCLANG=yes]
 set -xe
-export GIT_PAGER=cat
 
-# Init params
-WORKSPACE=$(realpath ${WORKSPACE:-"/tmp"})
-PYTORCH_REPO=${PYTORCH_REPO:-"https://github.com/pytorch/pytorch.git"}
-PYTORCH_COMMIT=${PYTORCH_COMMIT:-"main"}
-TORCH_XPU_OPS_REPO=${TORCH_XPU_OPS_REPO:-"https://github.com/intel/torch-xpu-ops.git"}
-TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT:-"main"}
+USE_DPCLANG=${USE_DPCLANG:-"no"}
 for var; do
+    # shellcheck disable=SC2086
     eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
 done
 
-# Set pytorch
-rm -rf ${WORKSPACE}/pytorch
-git clone ${PYTORCH_REPO} ${WORKSPACE}/pytorch
-cd ${WORKSPACE}/pytorch
-git checkout ${PYTORCH_COMMIT}
-git remote -v && git branch && git show -s
-git rev-parse HEAD > ${WORKSPACE}/pytorch.commit
+WORKSPACE=$(realpath "${WORKSPACE:-/tmp}")
+cd "${WORKSPACE}/pytorch"
 
-# Set torch-xpu-ops
-if [ "${TORCH_XPU_OPS_COMMIT,,}" == "pinned" ];then
-    TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-    TORCH_XPU_OPS_COMMIT="$(cat ${WORKSPACE}/pytorch/third_party/xpu.txt)"
-fi
-rm -rf third_party/torch-xpu-ops
-if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
-    cp -r ${WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
-    cd third_party/torch-xpu-ops
+# Build using PyTorch's upstream build pipeline
+export GPU_ARCH_TYPE=xpu
+export DESIRED_CUDA=xpu
+
+if [ "${USE_DPCLANG}" == "yes" ]; then
+    # dpclang: open-source SYCL compiler, skip upstream env setup (no oneAPI)
+    export XPU_SYCL_COMPILER=dpclang
+    export USE_KINETO=0
+    export USE_ONEMKL_XPU=0
+    export USE_STATIC_MKL=1
+    export TH_BINARY_BUILD=1
+    export USE_CUDA=0
+    export INSTALL_TEST=0
+    python -m pip install -r requirements.txt
+    python -m pip install mkl-static==2026.0.0 mkl-include==2026.0.0
+    python -m pip install build auditwheel==6.4.2
+    WERROR=1 python -m build --wheel --no-isolation --outdir dist/
 else
-    git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-    cd third_party/torch-xpu-ops
-    git checkout ${TORCH_XPU_OPS_COMMIT}
-fi
-git remote -v && git branch && git show -s
+    # Normal XPU: use PyTorch's upstream build scripts
+    if [ "${XPU_ONEAPI_PATH}" == "" ]; then
+        REQS=$(python -c "
+import sys; sys.path.insert(0, '.github/scripts')
+from generate_binary_build_matrix import PYTORCH_EXTRA_INSTALL_REQUIREMENTS
+print(PYTORCH_EXTRA_INSTALL_REQUIREMENTS['xpu'])
+")
+        export PYTORCH_EXTRA_INSTALL_REQUIREMENTS="${REQS}"
+    fi
 
-# Pre Build
-cd ${WORKSPACE}/pytorch
-python -m pip install requests
-python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
-git submodule sync && git submodule update --init --recursive
-python -m pip install -r requirements.txt
-python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
-export USE_STATIC_MKL=1
-if [ "${XPU_ONEAPI_PATH}" == "" ];then
-    export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
-        intel-cmplr-lib-rt==2025.3.2 | \
-        intel-cmplr-lib-ur==2025.3.2 | \
-        intel-cmplr-lic-rt==2025.3.2 | \
-        intel-sycl-rt==2025.3.2 | \
-        oneccl-devel==2021.17.2 | \
-        oneccl==2021.17.2 | \
-        impi-rt==2021.17.2 | \
-        onemkl-sycl-blas==2025.3.1 | \
-        onemkl-sycl-dft==2025.3.1 | \
-        onemkl-sycl-lapack==2025.3.1 | \
-        onemkl-sycl-rng==2025.3.1 | \
-        onemkl-sycl-sparse==2025.3.1 | \
-        dpcpp-cpp-rt==2025.3.2 | \
-        intel-opencl-rt==2025.3.2 | \
-        mkl==2025.3.1 | \
-        intel-openmp==2025.3.2 | \
-        tbb==2022.3.1 | \
-        tcmlib==1.4.1 | \
-        umf==1.0.3 | \
-        intel-pti==0.16.0
-    "
+    # Step 1: Environment setup (sources oneAPI, sets XPU build flags)
+    ENV_FILE=$(mktemp)
+    trap 'rm -f "$ENV_FILE"' EXIT
+    python .ci/manywheel/build_env_setup.py --env-out "$ENV_FILE"
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+
+    # Step 2: Install build dependencies
+    python .ci/manywheel/build_install_deps.py "${WORKSPACE}/pytorch"
+
+    # Step 3: Build wheel
+    export WERROR=1
+    RAW_WHEEL_DIR=$(mktemp -d)
+    python .ci/manywheel/build_wheel.py "$RAW_WHEEL_DIR"
+
+    # Step 4: Repair wheel (RPATH patching + platform retagging)
+    mkdir -p dist/
+    python .ci/manywheel/repair_wheel.py "$RAW_WHEEL_DIR" dist/
 fi
 
-# Build
-sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-git diff
-WERROR=1 python setup.py bdist_wheel
+# Post Build: Install and verify
+python -m pip install --force-reinstall dist/torch*.whl
 
-# Post Build
-python -m pip install patchelf
-rm -rf ./tmp
-bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${WORKSPACE}/pytorch/dist/torch*.whl
-python -m pip install --force-reinstall tmp/torch*.whl
-
-# Verify
-cd ${WORKSPACE}
-python ${WORKSPACE}/pytorch/torch/utils/collect_env.py
+cd "${WORKSPACE}"
+python "${WORKSPACE}/pytorch/torch/utils/collect_env.py"
 python -c "import torch; print(torch.__config__.show())"
 python -c "import torch; print(torch.__config__.parallel_info())"
 xpu_is_compiled="$(python -c 'import torch; print(torch.xpu._is_compiled())')"
 
 # Save wheel
 if [ "${xpu_is_compiled,,}" == "true" ];then
-    rm -rf ${WORKSPACE}/torch-*.whl
-    cp ${WORKSPACE}/pytorch/tmp/torch-*.whl ${WORKSPACE}
+    rm -rf "${WORKSPACE}"/torch-*.whl
+    cp "${WORKSPACE}/pytorch/dist"/torch-*.whl "${WORKSPACE}"
 else
     echo "Build got failed!"
     exit 1

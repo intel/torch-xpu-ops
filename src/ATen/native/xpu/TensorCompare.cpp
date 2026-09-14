@@ -56,7 +56,6 @@ void minmax_out_impl(
     const Tensor& values,
     const Tensor& indices,
     Stub& stub) {
-  NoNamesGuard guard;
   if (self.numel() > 0) {
     if (self.numel() == 1 && self.dim() == 0) {
       values.fill_(self);

@@ -1,0 +1,22 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
+#pragma once
+
+#include <ATen/native/TensorIterator.h>
+
+namespace at::native::xpu {
+
+TORCH_XPU_API bool can_use_channels_last_transpose_kernel(
+    TensorIteratorBase& iter);
+
+TORCH_XPU_API void channels_last_transpose_kernel(TensorIteratorBase& iter);
+
+} // namespace at::native::xpu

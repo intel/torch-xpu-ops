@@ -9,28 +9,39 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
 #include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
 
 namespace at::native::xpu {
-template <typename scalar_t, typename acc_t = scalar_t>
+template <typename scalar_t, typename acc_t = at::opmath_type<scalar_t>>
 struct AcosFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::acos(static_cast<acc_t>(a));
+    if constexpr (c10::is_complex<acc_t>::value) {
+      return std::acos(static_cast<acc_t>(a));
+    } else {
+      return sycl::acos(static_cast<acc_t>(a));
+    }
   }
 };
 
 void acos_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "acos_xpu", [&]() {
+    AT_DISPATCH_V2(
+        common_dtype,
+        "acos_xpu",
+        AT_WRAP([&]() {
           using opmath_t = at::opmath_type<scalar_t>;
           auto caller = AcosFunctor<scalar_t, opmath_t>();
           gpu_kernel(iter, caller);
-        });
+        }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half,

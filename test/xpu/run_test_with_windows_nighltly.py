@@ -70,7 +70,6 @@ skip_files_list = [
     "test_matmul_cuda_xpu.py",
     "test_meta_xpu.py",
     # "test_modules_xpu.py",
-    "test_namedtensor_xpu.py",
     "test_native_functions_xpu.py",
     "test_native_mha_xpu.py",
     "test_nestedtensor_xpu.py",

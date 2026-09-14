@@ -14,6 +14,7 @@
 #include <ATen/core/Array.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
@@ -191,13 +192,15 @@ static void norm_global_reduce(
 
   if (local_id == 0) {
     sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores_ptr[group_id]);
-    int prev_groups_finished = count.fetch_add(1);
+    int prev_groups_finished = count.fetch_add(1, sycl_mem_odr_acq_rel);
     last_workgroup[0] = (prev_groups_finished == workgroup_num_foreach - 1);
   }
   sycl::group_barrier(item.get_group());
 
   // use the last workgroup for reduction
   if (last_workgroup[0]) {
+    // Only local_id 0 acquired; fence so the whole workgroup sees the stores.
+    sycl::atomic_fence(sycl_mem_odr_acq, sycl_mem_scp_dev);
     if constexpr (rms_norm) {
       sum2 = accscalar_t(0);
       for (int i = local_id; i < workgroup_num_foreach; i += workgroup_size) {
@@ -231,10 +234,6 @@ class NormConfig {
         problem_size(problem_size),
         problem_dim(problem_dim),
         element_size_bytes(element_size_bytes) {
-    semaphores_ptr = nullptr;
-    scratchpad_ptr = nullptr;
-    sub_group_num_global = 1;
-
     get_max_vec_size();
     if (problem_dim == 1) {
       get_workgroup_size();
@@ -258,11 +257,11 @@ class NormConfig {
   int workgroup_size;
   int sub_group_num;
 
-  int* semaphores_ptr;
-  void* scratchpad_ptr;
-  int sub_group_num_global;
+  int* semaphores_ptr = nullptr;
+  void* scratchpad_ptr = nullptr;
+  int sub_group_num_global = 1;
 
-  template <typename scalar_t>
+  template <bool rms_norm>
   void init_global_reduce(
       const Tensor& X,
       Tensor& semaphores,
@@ -274,9 +273,10 @@ class NormConfig {
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
           ? kFloat
           : X.scalar_type();
-      int scratchpad_size = 2 * batch_size * workgroup_num_foreach *
-          sizeof(acc_type_device<scalar_t, kXPU>);
-      scratchpad = at::zeros(scratchpad_size, X.options().dtype(kAccType));
+      // Every slot is written before it is read, so no zero-init.
+      int scratchpad_size =
+          (rms_norm ? 1 : 2) * workgroup_num * workgroup_num_foreach;
+      scratchpad = at::empty(scratchpad_size, X.options().dtype(kAccType));
       semaphores_ptr = semaphores.data_ptr<int>();
       scratchpad_ptr = scratchpad.data_ptr();
       sub_group_num_global = (workgroup_num_foreach + SIMD - 1) / SIMD;
@@ -284,7 +284,7 @@ class NormConfig {
   }
 
   void get_max_vec_size() {
-    int64_t total_resource = syclMaxWorkItemsPerTile();
+    int64_t total_resource = at::xpu::getDeviceMaxWorkItems();
 
     constexpr int float4_size = sizeof(float) * 4;
     max_vec_size = float4_size / element_size_bytes;
@@ -298,8 +298,8 @@ class NormConfig {
   // get resource size for Reduce problem [batch_size, problem_size]
   // the reduce is performed on problem_size dimension
   void get_workgroup_size() {
-    int max_workgroup_size = syclDeviceMaxWorkGroupSize();
-    int total_resource = syclMaxWorkItemsPerTile();
+    int max_workgroup_size = at::xpu::getDeviceMaxWorkGroupSize();
+    int total_resource = at::xpu::getDeviceMaxWorkItems();
     workgroup_num = total_resource / max_workgroup_size;
     int max_workgroup_num_foreach = 1;
     workgroup_size = max_workgroup_size;
@@ -331,8 +331,8 @@ class NormConfig {
 
   void get_workgroup_size_row() {
     // enlarge the occupancy, compute the least workgroup_num
-    int max_workgroup_size = syclDeviceMaxWorkGroupSize();
-    int total_resource = syclMaxWorkItemsPerTile();
+    int max_workgroup_size = at::xpu::getDeviceMaxWorkGroupSize();
+    int total_resource = at::xpu::getDeviceMaxWorkItems();
     workgroup_num = total_resource / max_workgroup_size;
 
     int max_block_row = max_workgroup_size / SIMD;
@@ -370,11 +370,7 @@ class NormConfig {
   }
 };
 
-template <
-    typename scalar_t,
-    typename mean_t,
-    typename weight_t,
-    bool one_moment = false>
+template <typename scalar_t, typename mean_t, typename weight_t, bool rms_norm>
 class NormBackward {
  public:
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
@@ -468,7 +464,9 @@ class NormBackward {
       accscalar_t sum2,
       const NormConfig& cfg) const {
     auto group_id = item_id.get_group(0);
-    a_data[group_id] = sum1;
+    if constexpr (!rms_norm) {
+      a_data[group_id] = sum1;
+    }
     b_data[group_id] = sum2;
   };
 };

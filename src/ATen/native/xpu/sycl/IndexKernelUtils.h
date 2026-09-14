@@ -48,7 +48,7 @@ inline bool fast_gather_kernel_eligible(
       get_alignment(static_cast<size_t>(iter.strides(0)[1])) == alignment;
 }
 
-#define SIMD 32
+inline constexpr int SIMD = 32;
 
 template <int Alignment, typename index_t>
 struct VectorizedGatherKernel {

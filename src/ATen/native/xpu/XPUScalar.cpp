@@ -46,6 +46,7 @@ Scalar _local_scalar_dense_xpu(const Tensor& self) {
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
       AT_EXPAND(AT_FLOAT8_TYPES),
       kComplexHalf,
+      kBComplex32,
       kHalf,
       kBool,
       kBFloat16,

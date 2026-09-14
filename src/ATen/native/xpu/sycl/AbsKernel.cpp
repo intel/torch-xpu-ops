@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
@@ -29,18 +30,25 @@ struct AbsFunctor {
 void abs_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.dtype();
   if (at::isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "abs_xpu", [&]() {
-      using opmath_t = at::opmath_type<scalar_t>;
-      gpu_kernel(iter, AbsFunctor<opmath_t>());
-    });
+    AT_DISPATCH_V2(
+        dtype,
+        "abs_xpu",
+        AT_WRAP([&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, AbsFunctor<opmath_t>());
+        }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
   } else {
-    AT_DISPATCH_ALL_TYPES_AND3(
-        ScalarType::Half,
-        ScalarType::BFloat16,
-        ScalarType::Bool,
+    AT_DISPATCH_V2(
         iter.dtype(),
         "abs_xpu",
-        [&]() { gpu_kernel(iter, AbsFunctor<scalar_t>()); });
+        AT_WRAP([&]() { gpu_kernel(iter, AbsFunctor<scalar_t>()); }),
+        AT_EXPAND(AT_ALL_TYPES),
+        ScalarType::Half,
+        ScalarType::BFloat16,
+        ScalarType::Bool);
   }
 }
 

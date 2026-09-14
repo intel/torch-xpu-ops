@@ -21,7 +21,7 @@ template <typename scalar_t, typename opmath_t>
 struct EluOutFunctor {
   scalar_t operator()(scalar_t a) const {
     opmath_t aop = static_cast<opmath_t>(a);
-    return aop > 0 ? aop * poscoef_ : std::expm1(aop * negiptcoef_) * negcoef_;
+    return aop > 0 ? aop * poscoef_ : sycl::expm1(aop * negiptcoef_) * negcoef_;
   }
 
   EluOutFunctor(opmath_t negcoef, opmath_t poscoef, opmath_t negiptcoef)
@@ -63,7 +63,7 @@ struct EluBackwardOutFunctor {
       return bop <= 0 ? aop * negiptcoef_ * (bop + negcoef_) : aop * poscoef_;
     } else {
       return bop <= 0
-          ? aop * negiptcoef_ * negcoef_ * std::exp(bop * negiptcoef_)
+          ? aop * negiptcoef_ * negcoef_ * sycl::exp(bop * negiptcoef_)
           : aop * poscoef_;
     }
   }

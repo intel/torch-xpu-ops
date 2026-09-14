@@ -11,6 +11,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/LossMulti.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <comm/SYCLContext.h>
@@ -24,39 +25,6 @@ const int MULTILABELMARGIN_THREADS =
     MULTILABELMARGIN_SUB_GROUP_SIZE * MULTILABELMARGIN_SUB_GROUP_SIZE;
 
 using namespace at::xpu;
-
-void multilabel_margin_loss_shape_check(
-    int64_t& nframe,
-    int64_t& dim,
-    const int64_t& ndims,
-    const Tensor& input,
-    const Tensor& target) {
-  TORCH_CHECK(
-      (ndims == 2 && input.size(1) != 0) ||
-          (ndims == 1 && input.size(0) != 0) || ndims == 0,
-      "Expected non-empty vector or matrix with optional 0-dim batch size, but got: ",
-      input.sizes());
-
-  if (ndims <= 1) {
-    nframe = 1;
-    dim = ndims == 0 ? 1 : input.size(0);
-    TORCH_CHECK(
-        target.dim() <= 1 && target.numel() == dim,
-        "inconsistent target size: ",
-        target.sizes(),
-        " for input of size: ",
-        input.sizes());
-  } else {
-    nframe = input.size(0);
-    dim = input.size(1);
-    TORCH_CHECK(
-        target.dim() == 2 && target.size(0) == nframe && target.size(1) == dim,
-        "inconsistent target size: ",
-        target.sizes(),
-        " for input of size: ",
-        input.sizes());
-  }
-}
 
 template <typename scalar_t, typename accscalar_t>
 struct MultilabelMarginLossForwardKernelFunctor

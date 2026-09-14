@@ -1,0 +1,57 @@
+FROM ubuntu:24.04
+
+ARG ACTIONS_RUNNER_VERSION=2.336.0
+ARG ACTIONS_RUNNER_ARCH=x64
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=UTC \
+    RUNNER_MANUALLY_TRAP_SIG=1 \
+    ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=1 \
+    ImageOS=ubuntu24
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        clang \
+        clang-tidy \
+        curl \
+        git \
+        gh \
+        jq \
+        libicu74 \
+        rsync \
+        sudo \
+        tar \
+        tzdata \
+        util-linux \
+        wget \
+        zip \
+        unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN (userdel -r ubuntu 2>/dev/null || true) && \
+    (groupdel ubuntu 2>/dev/null || true) && \
+    groupadd --gid 1000 runner && \
+    useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash runner && \
+    mkdir -p /home/runner /opt/hostedtoolcache && \
+    chown -R runner:runner /home/runner /opt/hostedtoolcache && \
+    echo "runner ALL=(ALL:ALL) NOPASSWD: ALL" >/etc/sudoers.d/runner && \
+    chmod 0440 /etc/sudoers.d/runner
+
+WORKDIR /home/runner
+
+RUN curl -fsSL \
+    "https://github.com/actions/runner/releases/download/v${ACTIONS_RUNNER_VERSION}/actions-runner-linux-${ACTIONS_RUNNER_ARCH}-${ACTIONS_RUNNER_VERSION}.tar.gz" \
+      -o /tmp/actions-runner.tar.gz && \
+    tar xzf /tmp/actions-runner.tar.gz && \
+    rm -f /tmp/actions-runner.tar.gz && \
+    ./bin/installdependencies.sh && \
+    chown -R runner:runner /home/runner
+
+COPY arc-runner-entrypoint.sh arc-runner-cleanup.sh /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/arc-runner-entrypoint.sh /usr/local/bin/arc-runner-cleanup.sh
+
+ENTRYPOINT []
+CMD ["/usr/local/bin/arc-runner-entrypoint.sh"]

@@ -12,7 +12,13 @@
 
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
+import torch
+from torch.testing import make_tensor
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_dtype import integral_types
 from torch.testing._internal.common_utils import run_tests
 
 try:
@@ -21,11 +27,83 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_binary_ufuncs import TestBinaryUfuncs
+    from test_binary_ufuncs import TestBinaryUfuncsDevice
+
+
+@dtypes(*integral_types())
+def _test_fmod_remainder_by_zero_integral(self, device, dtype):
+    fn_list = (torch.fmod, torch.remainder)
+    for fn in fn_list:
+        # check integral tensor fmod/remainder to zero
+        x = make_tensor((10, 10), device=device, dtype=dtype, low=-9, high=9)
+        zero = torch.zeros_like(x)
+        # RuntimeError on CPU
+        if self.device_type == "cpu":
+            with self.assertRaisesRegex(RuntimeError, "ZeroDivisionError"):
+                fn(x, zero)
+        elif torch.version.hip is not None:
+            # ROCm behavior: x % 0 is a no-op; x is returned
+            self.assertEqual(fn(x, zero), x)
+        elif self.device_type == "cuda" and dtype == torch.int64:
+            # CUDA behavior: Different value for different dtype
+            # Due to it's an undefined behavior, CUDA returns a pattern of all 1s
+            # for integral dividend (other than int64) divided by zero. For int64,
+            # CUDA returns all 1s for negative dividend, half 1s for positive dividend.
+            # uint8: 0xff -> 255
+            # int32: 0xffffffff -> -1
+            self.assertEqual(fn(x, zero) == 4294967295, x >= 0)
+            self.assertEqual(fn(x, zero) == -1, x < 0)
+        else:
+            value = 255 if dtype == torch.uint8 else -1
+            self.assertTrue(torch.all(fn(x, zero) == value))
+
+
+TestBinaryUfuncsDevice.test_fmod_remainder_by_zero_integral = (
+    _test_fmod_remainder_by_zero_integral
+)
+
 
 instantiate_device_type_tests(
-    TestBinaryUfuncs, globals(), only_for="xpu", allow_xpu=True
+    TestBinaryUfuncsDevice, globals(), only_for="xpu", allow_xpu=True
 )
+
+
+from torch.testing._internal.common_utils import TestCase
+
+
+class TestMixedDtypeElementwise(TestCase):
+    """Test mixed-precision elementwise ops (bf16/fp16 + fp32) correctness.
+
+    These exercise the LoadWithCastFP/StoreWithCastFP fast path in
+    gpu_kernel_impl when inputs have mixed floating-point dtypes.
+    """
+
+    def _test_mixed_dtype_binary(self, op, shape, low_dtype, device):
+        a_fp32 = torch.randn(shape, device=device, dtype=torch.float32)
+        b_fp32 = torch.randn(shape, device=device, dtype=torch.float32)
+        a_low = a_fp32.to(low_dtype)
+        expected = op(a_low.float(), b_fp32)
+        result = op(a_low, b_fp32)
+        self.assertEqual(result.dtype, torch.float32)
+        self.assertEqual(result, expected)
+        result_rev = op(b_fp32, a_low)
+        expected_rev = op(b_fp32, a_low.float())
+        self.assertEqual(result_rev, expected_rev)
+
+    def test_mixed_fp_small(self):
+        """GPT2 residual shapes: [4, 1024, 768]"""
+        ops = [torch.add, torch.sub, torch.mul, torch.div]
+        for op in ops:
+            for dt in [torch.bfloat16, torch.float16]:
+                self._test_mixed_dtype_binary(op, [4, 1024, 768], dt, "xpu")
+
+    def test_mixed_fp_large(self):
+        """GPT2 MLP / Albert MLP shapes: [4, 1024, 3072], [16, 512, 3072]"""
+        ops = [torch.add, torch.mul]
+        for op in ops:
+            for dt in [torch.bfloat16, torch.float16]:
+                for shape in [[4, 1024, 3072], [16, 512, 3072]]:
+                    self._test_mixed_dtype_binary(op, shape, dt, "xpu")
 
 
 if __name__ == "__main__":

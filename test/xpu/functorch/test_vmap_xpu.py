@@ -34,7 +34,6 @@ from common_utils import (
     is_valid_inplace_sample_input,
     opsToleranceOverride,
     skip,
-    skipOps,
     tol1,
     xfail,
     xfailIf,
@@ -61,6 +60,7 @@ from torch.testing._internal.common_device_type import (
     onlyOn,
     OpDTypes,
     ops,
+    skipOps,
     tol,
     toleranceOverride,
 )
@@ -94,7 +94,9 @@ TEST_GPU = TEST_CUDA or TEST_XPU
 
 def get_platform_specific_sdpa():
     ret = [SDPBackend.MATH]
-    if PLATFORM_SUPPORTS_FLASH_ATTENTION:
+    if PLATFORM_SUPPORTS_FLASH_ATTENTION and (
+        not TEST_XPU or torch._C._is_flash_attention_available()
+    ):
         ret.append(SDPBackend.FLASH_ATTENTION)
     if PLATFORM_SUPPORTS_MEM_EFF_ATTENTION:
         ret.append(SDPBackend.EFFICIENT_ATTENTION)
@@ -104,10 +106,6 @@ def get_platform_specific_sdpa():
 
 
 PLATFORM_SPECIFIC_SDPA = get_platform_specific_sdpa()
-
-# For XPU, add CUDNN_ATTENTION even though it's not supported - tests will fail with known issue
-if TEST_XPU and SDPBackend.CUDNN_ATTENTION not in PLATFORM_SPECIFIC_SDPA:
-    PLATFORM_SPECIFIC_SDPA.append(SDPBackend.CUDNN_ATTENTION)
 
 FALLBACK_REGEX = "There is a performance drop"
 
@@ -3976,6 +3974,15 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
             fail_with_randomness = randomness == "error"
             if backend != SDPBackend.MATH:
                 fail_with_randomness |= randomness == "same"
+            # On XPU, EFFICIENT_ATTENTION currently maps/falls back to the
+            # MATH implementation, so randomness="same" is allowed here.
+            if backend == SDPBackend.EFFICIENT_ATTENTION and randomness == "same":
+                fail_with_randomness = False
+            # On XPU, FLASH_ATTENTION with dropout and randomness="different"
+            # currently has no available kernel, so this path is expected to raise.
+            if backend == SDPBackend.FLASH_ATTENTION and randomness == "different":
+                fail_with_randomness = True
+
             context = (
                 self.assertRaises(RuntimeError)
                 # We currently don't support randomness == "same", and "error" should always error with randomness
@@ -4344,14 +4351,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         # RuntimeError: When vmap-ing torch.nn.functional.one_hot,
         # please provide an explicit positive num_classes argument.
         xfail("nn.functional.one_hot"),
-        # RuntimeError: Expected all tensors to be on the same device,
-        # but found at least two devices, cuda:0 and cpu!
-        xfail("eq", device_type=device_type),
-        xfail("ge", device_type=device_type),
-        xfail("gt", device_type=device_type),
-        xfail("le", device_type=device_type),
-        xfail("lt", device_type=device_type),
-        xfail("ne", device_type=device_type),
         # RuntimeError: aten::_flash_attention_forward hit the vmap fallback which is currently disabled
         xfail("torch.ops.aten._flash_attention_forward"),
     }
@@ -4386,8 +4385,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         }
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_vmap_exhaustive",
         vmap_fail.union(
             {
                 # RuntimeError: Batch norm got a batched tensor as input while the running_mean or running_var,
@@ -4450,15 +4447,12 @@ class TestVmapOperatorsOpInfo(TestCase):
         }
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_op_has_batch_rule",
         vmap_fail.union(
             {
                 xfail("as_strided", "partial_views"),
                 skip(
                     "to"
                 ),  # RuntimeError: required rank 4 tensor to use channels_last format
-                xfail("fill"),
                 # Batch norm got a batched tensor as input while the running_mean or running_var,
                 # which will be updated in place, were not batched.
                 xfail("native_batch_norm"),
@@ -4470,7 +4464,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 # masked index as input which is not supported
                 xfail("index_put", ""),
                 xfail("isin"),
-                xfail("masked_fill"),
                 xfail("masked_scatter"),
                 xfail("masked_select"),
                 xfail("nanquantile"),
@@ -4478,18 +4471,15 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail("put"),
                 xfail("quantile"),
                 xfail("renorm"),
-                xfail("squeeze_copy"),
                 xfail("resize_as_"),
                 xfail("take"),
                 xfail("tensor_split"),
-                xfail("transpose_copy"),
                 xfail("to_sparse"),
                 # TypeError: expected Tensor as element 0 in argument 0, but got float
                 xfail("item"),
                 xfail("tril"),  # Exception not raised on error input
                 xfail("triu"),  # Exception not raised on error input
                 xfail("__getitem__", ""),
-                xfail("count_nonzero"),
                 xfail(
                     "nn.functional.dropout"
                 ),  # works, can't check against for loop because of randomness inconsistency
@@ -4509,9 +4499,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail("histc"),
                 xfail("as_strided"),
                 xfail("as_strided_copy"),
-                xfail("permute_copy"),
-                xfail("t_copy"),
-                xfail("unsqueeze_copy"),
                 xfail("istft"),
                 xfail("nonzero"),
                 xfail("nn.functional.fractional_max_pool2d"),
@@ -4586,12 +4573,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 skip("_softmax_backward_data"),
                 # One or more of the overload doesn't have a Batch rule.
                 xfail("bincount"),
-                # RuntimeError: Expected all tensors to be on the same device,
-                # but found at least two devices, cuda:0 and cpu!
-                xfail("ge", device_type=device_type),
-                xfail(
-                    "searchsorted"
-                ),  # aten::searchsorted.Scalar hit the vmap fallback which is currently disabled
             }
         ),
     )
@@ -5181,8 +5162,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         allowed_dtypes=(torch.float,),
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_vmap_linalg_failure_1D_input",
         {
             xfail("linalg.vector_norm"),  # can accept vector inputs
             xfail("linalg.norm"),  # can accept vector inputs

@@ -14,8 +14,6 @@
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/TensorIterator.h>
 
-#include <ATen/native/TensorIterator.h>
-
 #include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
 #include <ATen/ops/gelu_backward_native.h>

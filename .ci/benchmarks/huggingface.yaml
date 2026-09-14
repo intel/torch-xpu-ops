@@ -13,8 +13,6 @@ skip:
     - google/gemma-3-4b-it
     - openai/gpt-oss-20b
     - mistralai/Mistral-7B-Instruct-v0.3
-    # Fails due to pytorch #164815 removed it
-    - CamemBert
 
   device:
     cpu:

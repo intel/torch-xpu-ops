@@ -11,9 +11,11 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Scalar.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReductionType.h>
+#include <ATen/xpu/XPUContext.h>
 #include <optional>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -60,14 +62,18 @@ struct SegmentReduceForwardKernelFunctor {
       // TODO: There is no need to branch with every element
       if (reduction_ == native::ReductionType::MAX) {
         initial_value =
-            std::isnan(data) ? data : std::max<scalar_t>(initial_value, data);
+            sycl::isnan(static_cast<at::opmath_type<scalar_t>>(data))
+            ? data
+            : std::max<scalar_t>(initial_value, data);
       } else if (
           reduction_ == native::ReductionType::MEAN ||
           reduction_ == native::ReductionType::SUM) {
         initial_value = initial_value + data;
       } else if (reduction_ == native::ReductionType::MIN) {
         initial_value =
-            std::isnan(data) ? data : std::min<scalar_t>(initial_value, data);
+            sycl::isnan(static_cast<at::opmath_type<scalar_t>>(data))
+            ? data
+            : std::min<scalar_t>(initial_value, data);
       } else if (reduction_ == native::ReductionType::PROD) {
         initial_value = initial_value * data;
       }
@@ -82,7 +88,8 @@ struct SegmentReduceForwardKernelFunctor {
       initial_value = static_cast<scalar_t>(NAN);
     } else if (
         reduction_ == native::ReductionType::MEAN &&
-        lengths_data_[lengths_idx] > 0 && !std::isnan(initial_value)) {
+        lengths_data_[lengths_idx] > 0 &&
+        !sycl::isnan(static_cast<at::opmath_type<scalar_t>>(initial_value))) {
       initial_value = initial_value / lengths_data_[lengths_idx];
     }
     int64_t output_index = outer_idx * output_stride_axis_ * output_size_axis_ +
@@ -166,7 +173,7 @@ void segment_reduce_forward_kernel(
     const int64_t lengths_cumsum_stride_axis) {
   const int64_t size = outer_offset * segment_count * inner_offset;
   using Kernel = SegmentReduceForwardKernelFunctor<scalar_t, index_t>;
-  const int64_t work_group_size = syclMaxWorkGroupSize<Kernel>();
+  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
   const int64_t work_group_num = (size + work_group_size - 1) / work_group_size;
   Kernel kfn(
       reduction,
@@ -357,7 +364,8 @@ struct SegmentReduceBackwardKernelFunctor {
       for (int64_t j = offset_start; j < offset_end; ++j) {
         int64_t data_index = outer_idx * data_stride_axis_ * data_size_axis_ +
             j * data_stride_axis_ + lane_id;
-        if (std::isnan(values_data_[data_index]) ||
+        if (sycl::isnan(static_cast<at::opmath_type<scalar_t>>(
+                values_data_[data_index])) ||
             values_data_[data_index] == output_data_[output_index]) {
           grad_input_data_[data_index] = grad_data_[output_index];
           counter++;
@@ -395,7 +403,8 @@ struct SegmentReduceBackwardKernelFunctor {
       for (int64_t j = offset_start; j < offset_end; ++j) {
         int64_t data_index = outer_idx * data_stride_axis_ * data_size_axis_ +
             j * data_stride_axis_ + lane_id;
-        if (std::isnan(values_data_[data_index]) ||
+        if (sycl::isnan(static_cast<at::opmath_type<scalar_t>>(
+                values_data_[data_index])) ||
             values_data_[data_index] == 0) {
           // explicitly compute exclusive prod
           scalar_t exclusive_prod = initial_prod_value_;
@@ -496,7 +505,7 @@ void segment_reduce_backward_kernel(
     const int64_t lengths_cumsum_stride_axis) {
   const int64_t size = outer_offset * segment_count * inner_offset;
   using Kernel = SegmentReduceBackwardKernelFunctor<scalar_t, index_t>;
-  const int64_t work_group_size = syclMaxWorkGroupSize<Kernel>();
+  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
   const int64_t work_group_num = (size + work_group_size - 1) / work_group_size;
 
   Kernel kfn(

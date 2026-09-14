@@ -8,8 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/NamedTensorUtils.h>
-
 #include <ATen/ops/equal_native.h>
 
 namespace at {
@@ -21,11 +19,6 @@ at::Tensor eq(const at::Tensor& self, const at::Tensor& other);
 } // namespace xpu
 namespace native {
 bool xpu_equal(const Tensor& self, const Tensor& src) {
-  if (!at::namedinference::are_names_equal(
-          self.unsafeGetTensorImpl(), src.unsafeGetTensorImpl())) {
-    return false;
-  }
-  at::NoNamesGuard guard;
   TORCH_CHECK(
       self.device() == src.device(),
       "Cannot compare two tensors on "

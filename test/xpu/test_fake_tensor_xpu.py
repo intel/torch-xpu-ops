@@ -33,6 +33,7 @@ from torch._subclasses.fake_tensor import (
     extract_tensor_metadata,
     FakeTensor,
     FakeTensorConverter,
+    FakeTensorDeviceMismatchError,
     FakeTensorMode,
     MetadataMismatchError,
     unset_fake_temporarily,
@@ -245,7 +246,8 @@ class FakeTensorTest(TestCase):
         fake_y = mode.from_tensor(y)
 
         with self.assertRaisesRegex(
-            RuntimeError, "Unhandled FakeTensor Device Propagation for.*"
+            FakeTensorDeviceMismatchError,
+            "Expected all tensors to be on the same device",
         ) as exc:
             torch.nextafter(fake_x, fake_y)
 
@@ -278,7 +280,8 @@ class FakeTensorTest(TestCase):
             y = torch.randn(10, device=device_type)
 
             with self.assertRaisesRegex(
-                RuntimeError, "Unhandled FakeTensor Device Propagation for.*"
+                FakeTensorDeviceMismatchError,
+                "Expected all tensors to be on the same device",
             ) as exc:
                 x + y
 
@@ -2196,24 +2199,26 @@ class FakeTensorDispatchCache(TestCase):
         with FakeTensorMode():
             FakeTensorMode.cache_clear()
             self.assertHitsMisses(0, 0)
+            try:
+                torch.set_default_device("cpu")
+                x = torch.tensor([1, 2])
+                y = x + 1.0
+                self.assertEqual(y.device.type, "cpu")
+                self.assertHitsMisses(0, 1)
 
-            torch.set_default_device("cpu")
-            x = torch.tensor([1, 2])
-            y = x + 1.0
-            self.assertEqual(y.device.type, "cpu")
-            self.assertHitsMisses(0, 1)
+                torch.set_default_device(device_type)
+                x = torch.tensor([1, 2])
+                y = x + 1.0
+                self.assertEqual(y.device.type, device_type)
+                self.assertHitsMisses(0, 2)
 
-            torch.set_default_device(device_type)
-            x = torch.tensor([1, 2])
-            y = x + 1.0
-            self.assertEqual(y.device.type, device_type)
-            self.assertHitsMisses(0, 2)
-
-            torch.set_default_device("cpu")
-            x = torch.tensor([1, 2])
-            y = x + 1.0
-            self.assertEqual(y.device.type, "cpu")
-            self.assertHitsMisses(1, 2)
+                torch.set_default_device("cpu")
+                x = torch.tensor([1, 2])
+                y = x + 1.0
+                self.assertEqual(y.device.type, "cpu")
+                self.assertHitsMisses(1, 2)
+            finally:
+                torch.set_default_device(None)
 
     def test_cache_inplace_op(self):
         """
@@ -2674,7 +2679,7 @@ class FakeTensorPreferDeviceType(TestCase):
 
             # Without the config, this should raise a device mismatch error
             with self.assertRaisesRegex(
-                RuntimeError, "Unhandled FakeTensor Device Propagation"
+                RuntimeError, "Expected all tensors to be on the same device"
             ):
                 mixed_device_op(cuda_tensor, None)
 
@@ -2712,7 +2717,7 @@ class FakeTensorPreferDeviceType(TestCase):
 
             # After exiting the config context, should raise error again
             with self.assertRaisesRegex(
-                RuntimeError, "Unhandled FakeTensor Device Propagation"
+                RuntimeError, "Expected all tensors to be on the same device"
             ):
                 mixed_device_op(cuda_tensor, None)
 

@@ -14,16 +14,15 @@
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
-static inline int padto_le(int src, int padding) {
-  return src / padding * padding;
-}
 
-static inline int64_t padto_le(int64_t src, int64_t padding) {
-  return src / padding * padding;
-}
+#ifdef __SYCL_DEVICE_ONLY__
+#define MAYBE_UNUSED_ON_HOST
+#else
+#define MAYBE_UNUSED_ON_HOST [[maybe_unused]]
+#endif
 
-static inline size_t padto_le(size_t src, int padding) {
-  return src / size_t(padding) * size_t(padding);
+MAYBE_UNUSED_ON_HOST static inline int padto_le(int src, int padding) {
+  return src / padding * padding;
 }
 
 template <typename scalar_t = sycl::ext::oneapi::bfloat16, int block_size = 32>
@@ -77,8 +76,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         for (int iu = 0; iu < Unroll; iu++) {
           const uint8_t* tmps8 =
               reinterpret_cast<const uint8_t*>(bptr + sg_id * TileK / 2);
-          int scale_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
-          int zp_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
+          int scale_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
+          int zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
           scalar_t scale = *(sptr + scale_offset);
           scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll

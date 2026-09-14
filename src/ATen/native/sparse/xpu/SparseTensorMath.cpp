@@ -26,7 +26,9 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #else
 #include <ATen/ops/_sparse_addmm.h>
 #include <ATen/ops/addmm.h>
+#include <ATen/ops/arange.h>
 #include <ATen/ops/bmm.h>
+#include <ATen/ops/hspmm_native.h>
 #include <ATen/ops/matmul.h>
 #include <ATen/ops/zeros.h>
 #endif
@@ -141,6 +143,78 @@ Tensor& s_addmm_sparse_dense_xpu_(
     const Scalar& beta,
     const Scalar& alpha) {
   return s_addmm_out_sparse_dense_xpu(t, t, sparse, dense, beta, alpha);
+}
+
+SparseTensor& hspmm_out_sparse_xpu(
+    const SparseTensor& sparse_,
+    const Tensor& dense,
+    SparseTensor& r_) {
+  TORCH_CHECK(
+      sparse_.is_xpu(), "hspmm: expected 'mat1' to be XPU, but got CPU");
+  TORCH_CHECK(r_.is_xpu(), "hspmm: expected 'out' to be XPU, but got CPU");
+  TORCH_CHECK(dense.is_xpu(), "hspmm: expected 'mat2' to be XPU, but got CPU");
+
+  TORCH_CHECK(at::xpu::check_device({r_, sparse_, dense}));
+
+  TORCH_CHECK(
+      sparse_.sparse_dim() == 2,
+      "hspmm: Argument #2: 2D tensor expected, got ",
+      sparse_.sparse_dim(),
+      "D tensor");
+  TORCH_CHECK(
+      sparse_.dense_dim() == 0,
+      "hspmm: Argument #2: scalar values expected, got ",
+      sparse_.dense_dim(),
+      "D values");
+  TORCH_CHECK(
+      dense.dim() == 2,
+      "hspmm: Argument #3: 2D tensor expected, got ",
+      dense.dim(),
+      "D tensor");
+
+  int64_t m = sparse_.size(0);
+  int64_t k = sparse_.size(1);
+  int64_t n = dense.size(1);
+
+  TORCH_CHECK(
+      dense.size(0) == k,
+      "hspmm: Argument #3: Expected dim 0 size ",
+      k,
+      ", got ",
+      dense.size(0));
+
+  get_sparse_impl(r_)->resize_and_clear_(1, 1, {m, n});
+
+  SparseTensor sparse = sparse_.coalesce();
+  int64_t nnz = sparse._nnz();
+
+  // Handle empty sparse tensor case
+  if (nnz == 0) {
+    // Result is already cleared with correct shape above
+    return r_;
+  }
+
+  Tensor spIndices = sparse._indices();
+  Tensor row_indices = spIndices.select(0, 0);
+  Tensor col_indices = spIndices.select(0, 1);
+
+  Tensor indices = at::empty({1, nnz}, spIndices.options());
+  indices.copy_(row_indices);
+
+  Tensor gathered = dense.index_select(0, col_indices);
+  Tensor values = gathered * sparse._values().unsqueeze(1);
+
+  get_sparse_impl(r_)->set_indices_and_values_unsafe(indices, values);
+  get_sparse_impl(r_)->set_nnz_and_narrow(nnz);
+  get_sparse_impl(r_)->set_coalesced(false);
+
+  return r_;
+}
+
+SparseTensor hspmm_sparse_xpu(const SparseTensor& sparse, const Tensor& dense) {
+  SparseTensor r = at::empty({0}, sparse.options());
+  hspmm_out_sparse_xpu(sparse, dense, r);
+  return r;
 }
 
 Tensor sparse_sparse_matmul_xpu(const Tensor& mat1_, const Tensor& mat2_) {

@@ -11,9 +11,11 @@
 #include <ATen/ExpandUtils.h>
 #include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/TensorOperators.h>
+#include <ATen/native/LinearAlgebraUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/SparseStubs.h>
+#include <ATen/native/sparse/xpu/sycl/SparseCsrTensorAddKernels.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
@@ -27,7 +29,9 @@
 #include <ATen/ops/addmv.h>
 #include <ATen/ops/baddbmm.h>
 #include <ATen/ops/copy_native.h>
+#include <ATen/ops/linalg_solve.h>
 #include <ATen/ops/mul.h>
+#include <ATen/ops/resize_as_sparse_native.h>
 #include <ATen/ops/scalar_tensor_native.h>
 #include <ATen/ops/sparse_compressed_tensor.h>
 #include <ATen/ops/triangular_solve.h>
@@ -82,11 +86,20 @@ Tensor addmm_calculation(
     const Scalar& alpha) {
   Tensor mat1_dense = mat1.layout() != kStrided ? mat1.to_dense() : mat1;
   Tensor mat2_dense = mat2.layout() != kStrided ? mat2.to_dense() : mat2;
-
   Tensor result_dense = mat1_dense.mm(mat2_dense) * alpha;
   if (beta.toComplexDouble() != 0.) {
     Tensor input_dense = input.layout() != kStrided ? input.to_dense() : input;
-    result_dense.add_(input_dense, beta);
+    // NOTE: For reduced-precision dtypes (e.g. bf16), the form
+    //   result_dense.add_(input_dense * beta)
+    // introduces two separate roundings:
+    //   1. input_dense (bf16) * beta (f32) -> intermediate (bf16)
+    //   2. result_dense (bf16) + intermediate (bf16) -> result_dense (bf16)
+    // The alternative form
+    //   result_dense.add_(input_dense, beta)
+    // avoids the intermediate rounding: the kernel promotes both bf16 operands
+    // to f32 registers, computes result_dense(f32) + input_dense(f32)*beta(f32)
+    // in a single fused step, then rounds once back to bf16.
+    result_dense.add_(input_dense * beta);
   }
   return result_dense;
 }
@@ -217,19 +230,17 @@ Tensor& addmm_out_sparse_compressed_xpu(
 
   // Same checks as in TORCH_META_FUNC(addmm) at
   // aten/src/ATen/native/LinearAlgebra.cpp
-  sparse::impl::_check_dim(mat1, 2, "mat1");
-  sparse::impl::_check_dim(mat2, 2, "mat2");
+  check_mm_shapes(mat1, mat2, "addmm");
+
+  std::array<int64_t, 2> result_shape = {mat1.size(0), mat2.size(1)};
 
   TORCH_CHECK(
-      mat1.size(1) == mat2.size(0),
-      "mat1 and mat2 shapes cannot be multiplied (",
-      mat1.size(0),
-      "x",
-      mat1.size(1),
-      " and ",
-      mat2.sizes()[0],
-      "x",
-      mat2.sizes()[1],
+      result_shape.size() >= (size_t)self.dim(),
+      "The number of sizes provided (",
+      result_shape.size(),
+      ") ",
+      "must be greater or equal to the number of dimensions in the tensor (",
+      self.dim(),
       ")");
 
   c10::MaybeOwned<at::Tensor> self_;
@@ -237,7 +248,7 @@ Tensor& addmm_out_sparse_compressed_xpu(
   if (&result == &self) {
     self_ = c10::MaybeOwned<Tensor>::borrowed(self);
   } else {
-    self_ = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm");
+    self_ = expand_size(self, result_shape, "addmm");
   }
 
   sparse::impl::_check_dim(*self_, 2, "self");
@@ -421,17 +432,9 @@ Tensor& add_out_sparse_compressed_xpu(
       return out;
     }
 
-    // Preserve the index dtype from self (int32 or int64)
-    auto index_dtype = self.crow_indices().scalar_type();
-    Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
-    Tensor out_csr = out_dense.to_sparse_csr();
-    Tensor result = at::sparse_compressed_tensor(
-        out_csr.crow_indices().to(index_dtype),
-        out_csr.col_indices().to(index_dtype),
-        out_csr.values(),
-        out_csr.sizes(),
-        out_csr.options().layout(at::kSparseCsr));
-    out.copy_(result);
+    at::native::resize_as_sparse_compressed_(out, self);
+    TORCH_INTERNAL_ASSERT(out.is_sparse_csr());
+    xpu::add_out_sparse_csr_kernel(self, other, alpha, out);
   }
   return out;
 }
@@ -498,6 +501,33 @@ std::tuple<Tensor&, Tensor&> triangular_solve_out_sparse_csr_xpu(
   at::triangular_solve_out(
       X, temp_clone_A, B, A.to_dense(), upper, transpose, unitriangular);
   return std::tuple<Tensor&, Tensor&>(X, clone_A);
+}
+
+// Solves the linear system A @ x = b, where A is a sparse CSR matrix and b is a
+// dense right-hand side. This mirrors the semantics of the CUDA (cuDSS) backend
+// in aten/src/ATen/native/sparse/cuda/SparseCsrTensorMath.cu. XPU has no direct
+// sparse solver available, so we fall back to a dense solve that still runs
+// entirely on the device.
+Tensor _sparse_csr_linear_solve_xpu(
+    const Tensor& A,
+    const Tensor& b,
+    const bool left) {
+  // layout check
+  TORCH_CHECK(A.is_sparse_csr(), "A must be a CSR matrix");
+  TORCH_CHECK(b.layout() == kStrided, "b must be a strided tensor");
+  // dim check
+  TORCH_CHECK(b.dim() == 1, "b must be a 1D tensor");
+  TORCH_CHECK(b.size(0) == A.size(0), "linear system size mismatch.");
+  TORCH_CHECK(b.size(0) == A.size(1), "linear system size mismatch.");
+  TORCH_CHECK(A.dtype() == b.dtype(), "A, x, and b must have the same dtype");
+  TORCH_CHECK(
+      A.scalar_type() == kFloat || A.scalar_type() == kDouble,
+      "only float32 and float64 dtypes are supported by the Sparse CSR backend");
+  TORCH_CHECK(
+      left == true, "only left == true is supported by the Sparse CSR backend");
+
+  Tensor A_dense = A.to_dense();
+  return at::linalg_solve(A_dense, b, left);
 }
 
 } // namespace at::native

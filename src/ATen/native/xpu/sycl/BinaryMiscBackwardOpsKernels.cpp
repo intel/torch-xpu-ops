@@ -9,7 +9,7 @@
  */
 
 #include <ATen/AccumulateType.h>
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
@@ -40,17 +40,26 @@ struct SigmoidBackwardFloatFunctor {
 void sigmoid_backward_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.dtype();
   if (isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, dtype, "sigmoid_backward_xpu", [&]() {
-          gpu_kernel(iter, SigmoidBackwardComplexFunctor<scalar_t>());
-        });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         dtype,
         "sigmoid_backward_xpu",
-        [&]() { gpu_kernel(iter, SigmoidBackwardFloatFunctor<scalar_t>()); });
+        AT_WRAP([&]() {
+          gpu_kernel(iter, SigmoidBackwardComplexFunctor<scalar_t>());
+        }),
+        kComplexFloat,
+        kComplexDouble,
+        kComplexHalf,
+        kBComplex32);
+  } else {
+    AT_DISPATCH_V2(
+        dtype,
+        "sigmoid_backward_xpu",
+        AT_WRAP([&]() {
+          gpu_kernel(iter, SigmoidBackwardFloatFunctor<scalar_t>());
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16);
   }
 }
 
@@ -88,12 +97,10 @@ struct LogitBackward1Functor {
 };
 
 void logit_backward_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
+  AT_DISPATCH_V2(
       iter.dtype(),
       "logit_xpu",
-      [&]() {
+      AT_WRAP([&]() {
         using T_ACC = acc_type_device<scalar_t, kXPU>;
         const T_ACC eps = eps_scalar.to<T_ACC>();
         if (eps < T_ACC(0)) {
@@ -103,7 +110,10 @@ void logit_backward_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
           const T_ACC hi = T_ACC(1) - eps;
           gpu_kernel(iter, LogitBackward1Functor<scalar_t>(lo, hi));
         }
-      });
+      }),
+      AT_EXPAND(AT_FLOATING_TYPES),
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16);
 }
 
 template <typename scalar_t>
@@ -130,17 +140,24 @@ struct TanhBackwardFunctor {
 void tanh_backward_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.dtype();
   if (isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, dtype, "tanh_backward_complex_xpu", [&]() {
+    AT_DISPATCH_V2(
+        dtype,
+        "tanh_backward_complex_xpu",
+        AT_WRAP([&]() {
           gpu_kernel(iter, TanhBackwardComplexFunctor<scalar_t>());
-        });
+        }),
+        kComplexFloat,
+        kComplexDouble,
+        kComplexHalf,
+        kBComplex32);
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         dtype,
         "tanh_backward_xpu",
-        [&]() { gpu_kernel(iter, TanhBackwardFunctor<scalar_t>()); });
+        AT_WRAP([&]() { gpu_kernel(iter, TanhBackwardFunctor<scalar_t>()); }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16);
   }
 }
 

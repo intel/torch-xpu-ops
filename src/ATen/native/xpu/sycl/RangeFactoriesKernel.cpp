@@ -10,6 +10,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <comm/SYCLContext.h>
@@ -201,7 +202,7 @@ Tensor& linspace_kernel(
     // skip
   } else if (steps == 1) {
     r.fill_(start);
-  } else if (isIntegralType(r.scalar_type(), 0)) {
+  } else if (isIntegralType(r.scalar_type(), false)) {
     AT_DISPATCH_INTEGRAL_TYPES(r.scalar_type(), "linspace_xpu", [&]() {
       scalar_t scalar_start = start.to<scalar_t>();
       scalar_t scalar_end = end.to<scalar_t>();
@@ -241,11 +242,22 @@ Tensor& linspace_kernel(
 template <typename scalar_t, typename step_type>
 struct LogspaceFunctor {
   scalar_t operator()(int64_t ind) const {
-    if (ind < halfway_) {
-      return std::pow(scalar_base_, scalar_start_ + step_ * ind);
+    if constexpr (c10::is_complex<step_type>::value) {
+      if (ind < halfway_) {
+        return std::pow(scalar_base_, scalar_start_ + step_ * ind);
+      }
+      return std::pow(scalar_base_, scalar_end_ - step_ * (steps_ - ind - 1));
+    } else {
+      using opmath_t = at::opmath_type<step_type>;
+      if (ind < halfway_) {
+        return static_cast<scalar_t>(sycl::pow(
+            static_cast<opmath_t>(scalar_base_),
+            static_cast<opmath_t>(scalar_start_ + step_ * ind)));
+      }
+      return static_cast<scalar_t>(sycl::pow(
+          static_cast<opmath_t>(scalar_base_),
+          static_cast<opmath_t>(scalar_end_ - step_ * (steps_ - ind - 1))));
     }
-
-    return std::pow(scalar_base_, scalar_end_ - step_ * (steps_ - ind - 1));
   }
   LogspaceFunctor(
       scalar_t scalar_start,
@@ -294,7 +306,7 @@ Tensor& logspace_kernel(
     } else {
       r.fill_(std::pow(base, start.to<double>()));
     }
-  } else if (isIntegralType(r.scalar_type(), 0)) {
+  } else if (isIntegralType(r.scalar_type(), false)) {
     AT_DISPATCH_INTEGRAL_TYPES(r.scalar_type(), "logspace_xpu", [&]() {
       float scalar_base =
           static_cast<float>(base); // Use float to avoid promotion to double
