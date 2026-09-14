@@ -50,6 +50,10 @@ rejected with a concrete explanation.
 
 ## Faithful XPU evidence
 
+Static verification is the exception to the runtime checks below: it constructs
+no reproducer and executes no XPU operation. Use the fixed-commit source
+snapshots and independent source review described in the automation contract.
+
 Prefer the upstream reproducer or regression test. When adapting another backend,
 change only device mechanics unless evidence requires more. Preserve supported
 inputs, shapes, strides, dtype, mode, seed, and oracle. Reuse identical initialized
@@ -136,5 +140,8 @@ Use exactly one verdict:
 
 Prefer `verification-gap` over a forced conclusion. A `needs-xpu-fix` payload has
 a `[xpu-alignment]` title, exactly the `ai_generated` label, upstream source and
-scan window, observed XPU behavior, target-path evidence, a copy-pasteable
-reproducer, relevant output, environment identity, and ownership rationale.
+scan window, target-path evidence, relevant links, and ownership rationale.
+Runtime payloads also include the copy-pasteable reproducer, observed output, and
+environment identity. Static payloads instead include the fixed source
+coordinates, snapshot references, oracle, and observed source difference; they do
+not include a reproducer or runner output.
