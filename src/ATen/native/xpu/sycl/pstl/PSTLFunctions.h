@@ -520,6 +520,54 @@ static inline OutputIt copy_if(
   return d_first + M;
 }
 
+template <typename index_t>
+struct CopyScalarKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    dst_[0] = src_[0];
+  }
+  CopyScalarKernelFunctor(const index_t* src, index_t* dst)
+      : src_(src), dst_(dst) {}
+
+ private:
+  const index_t* src_;
+  index_t* dst_;
+};
+
+template <typename index_t, class InputIt, class OutputIt, class UnaryPredicate>
+static inline void copy_if_count(
+    InputIt first,
+    InputIt last,
+    OutputIt d_first,
+    index_t* count_ptr,
+    UnaryPredicate pred) {
+  RECORD_FUNCTION("copy_if_count_xpu", {});
+  const auto N = std::distance(first, last);
+  if (N == 0) {
+    return;
+  }
+  auto& q = getCurrentSYCLQueue();
+
+  auto index_options = map_options<index_t>();
+
+  Tensor global_mask = at::empty({N}, index_options);
+  Tensor target_pos = at::empty({N}, index_options);
+  index_t* gmask_ptr = global_mask.data_ptr<index_t>();
+  index_t* tpos_ptr = target_pos.data_ptr<index_t>();
+
+  PredictKernelFunctor<index_t, InputIt, OutputIt, UnaryPredicate> kfn1(
+      first, pred, gmask_ptr);
+  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
+
+  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
+
+  CopyIfKernelFunctor<index_t, InputIt, OutputIt> kfn2(
+      first, d_first, gmask_ptr, tpos_ptr);
+  sycl_kernel_submit(sycl::range<1>(N), q, kfn2);
+
+  CopyScalarKernelFunctor<index_t> kfn3(tpos_ptr + N - 1, count_ptr);
+  sycl_kernel_submit(sycl::range<1>(1), q, kfn3);
+}
+
 template <
     typename output_t,
     class InputIt,
