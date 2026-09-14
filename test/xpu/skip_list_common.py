@@ -11,7 +11,7 @@ PYTORCH_TEST_DIR = "../../../../test"
 skip_dict = {
     "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    "nn/test_convolution_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_convolution.py": None,
     "nn/test_dropout_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     "nn/test_init_xpu.py": None,
