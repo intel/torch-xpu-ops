@@ -272,7 +272,8 @@ static-only plans and plans that reject their entire observed inventory. The col
 digest must match the prepare artifact and original collector manifest. A digest
 mismatch or missing result blocks finalization. A valid partial collection does
 not prevent execution or publication of fully covered, independently reviewed
-units.
+units. The MVP still schedules this artifact-producing job on `xpu-agent`; moving
+the whole job behind a runtime condition is a separate scheduling change.
 
 ## `scan-finalize` role
 
@@ -313,9 +314,9 @@ matching script and log digests, target-path proof, and a defensible oracle.
 A `"verification": "static"` unit has no runner record: its `evidence` cites the
 immutable audit snapshots exactly as
 `{"upstream_source": "evidence/...", "xpu_source": "evidence/..."}`. It still
-needs `target_path_verified`, is limited to `local_result: "confirmed"`, and
-cannot be `related-failure`, `not-reproduced`, or `blocked-*` because reading the
-frozen head cannot fail on the runner. When the runner environment is null,
+needs `target_path_verified`, may be `confirmed` or `not-reproduced`, and cannot
+be `related-failure` or `blocked-*` because reading the frozen head cannot fail
+on the runner. When the runner environment is null,
 `scan.json` explicitly records `"environment": null` to match it.
 Timeouts, launch errors, environment failures, or inconclusive evidence use a
 `blocked-*` result and make the scan incomplete. Rejected inventory items remain

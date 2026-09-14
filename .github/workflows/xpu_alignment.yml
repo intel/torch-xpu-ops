@@ -411,12 +411,14 @@ jobs:
             oracle and target-path evidence. A `"verification": "static"` unit has
             no log: verify both immutable source snapshots against prepare.json,
             classify it from those snapshots, and copy their paths into the
-            candidate evidence object. A timeout, launch error, environment
-            failure, or inconclusive result must remain a blocked result for that
-            unit and be recorded in scan.json blockers with id, local_result,
-            detail, and evidence. A unit blocker may still allow other reviewed
-            units to publish; only malformed coverage or a producer/artifact
-            failure blocks every unit.
+            candidate evidence object. Static results are `confirmed` when the
+            divergence is established and `not-reproduced` when it is disproved;
+            do not classify static units as `related-failure` or `blocked-*`.
+            A runtime timeout, launch error, environment failure, or inconclusive
+            result must remain a blocked result for that unit and be recorded in
+            scan.json blockers with id, local_result, detail, and evidence. A unit
+            blocker may still allow other reviewed units to publish; only malformed
+            coverage or a producer/artifact failure blocks every unit.
 
             Write only alignment-run/scan.json and optional scan_report.md. Do
             not modify preparation, scripts, runner files, GitHub, or execute code.

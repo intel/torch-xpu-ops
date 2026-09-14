@@ -21,7 +21,7 @@ from xpu_alignment_collect import CollectionError, validate_collection
 SCHEMA_VERSION = 1
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
-COMMIT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
+COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
@@ -37,7 +37,9 @@ LOCAL_RESULTS = {
 }
 ACTIONABLE_RESULTS = {"confirmed", "related-failure"}
 BLOCKED_RESULTS = LOCAL_RESULTS - ACTIONABLE_RESULTS - {"not-reproduced"}
-STATIC_RESULTS = {"confirmed"}
+# Static source evidence can confirm a difference or disprove it; runtime-only
+# failures cannot be inferred without a reproducer.
+STATIC_RESULTS = {"confirmed", "not-reproduced"}
 VERIFICATIONS = {"runtime", "static"}
 TRACKER_RE = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+")
 VERDICTS = {
@@ -488,16 +490,11 @@ def _validate_scan(
             if static and result not in STATIC_RESULTS:
                 errors.append(f"scan-static-invalid-result:{unit_id}")
             if result in ACTIONABLE_RESULTS | {"not-reproduced"}:
-                if not static and (
-                    runner_result.get("timed_out") or runner_result.get("error") is not None
-                ):
+                if runner_result.get("timed_out") or runner_result.get("error") is not None:
                     errors.append(f"scan-result-contradicts-runner:{unit_id}")
                 if candidate.get("target_path_verified") is not True:
                     errors.append(f"scan-target-unverified:{unit_id}")
             if static:
-                # Source read at the frozen head cannot be blocked by the runtime environment.
-                if result in BLOCKED_RESULTS:
-                    errors.append(f"scan-static-blocked:{unit_id}")
                 upstream_source = executions[unit_id].get("upstream_source")
                 xpu_source = executions[unit_id].get("xpu_source")
                 expected_evidence = {

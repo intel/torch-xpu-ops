@@ -2,9 +2,9 @@
 name: xpu-alignment
 description: >-
   Find upstream PyTorch behavior or fixes that may require XPU parity work,
-  validate them on XPU, and produce independently reviewed evidence. Use for
-  time-window alignment scans or targeted upstream-to-XPU investigations; not
-  for implementing the resulting fixes.
+  validate them with runtime or source evidence, and produce independently
+  reviewed evidence. Use for time-window alignment scans or targeted
+  upstream-to-XPU investigations; not for implementing the resulting fixes.
 ---
 
 # XPU Alignment
@@ -116,7 +116,9 @@ Read the immutable preparation artifact and deterministic runner results. Verify
 their digests and coverage before interpreting the raw logs or static source
 snapshots. Classify from observed evidence, including proof that the intended
 XPU path reached the oracle or that both static snapshots establish the claimed
-source divergence.
+source divergence. A static unit may be `confirmed` when the snapshots establish
+the divergence, or `not-reproduced` when review shows that the claimed divergence
+does not hold; it cannot be `related-failure` or `blocked-*`.
 Leave unresolved work explicit; never convert a runner or evidence failure into a
 rejection merely to make the run complete. Write only canonical `scan.json` and
 an optional scan report; do not modify preparation or runner-owned files.
@@ -130,8 +132,8 @@ case. Decide whether the behavior needs independent XPU work, is owned upstream,
 is already fixed or tracked, is not a defect, or lacks sufficient evidence.
 For a static unit, independently fetch both files at the recorded repositories,
 commits, and paths, confirm the snapshots are faithful, and verify that the real
-source difference supports the oracle. A static unit may be `confirmed` only;
-use `verification-gap` when the source evidence is insufficient.
+source difference supports the oracle. Use `verification-gap` when the source
+evidence is insufficient.
 
 Only `needs-xpu-fix` without an open `intel/torch-xpu-ops` canonical tracker may
 carry a new issue payload. When an existing issue covers the work, record it as
