@@ -444,10 +444,28 @@ def main():
                     help="actually write to GitHub (default: dry run)")
     ap.add_argument("--no-comment", action="store_true",
                     help="do not post the labels.md content as an issue comment")
+    ap.add_argument("--expect", metavar="REPO#ID",
+                    help="refuse to write unless labels.md targets this issue")
     args = ap.parse_args()
 
     priority_order = load_priority_order()
     repo, issue_id, rows, full_text = parse_labels_md(args.labels_md)
+
+    # labels.md is written by an agent that read attacker-authored issue text, so
+    # the target it names is untrusted. A caller that already knows which issue
+    # the run is for passes --expect and the mismatch stops here, before any
+    # write. The comparison is against the value parse_labels_md actually
+    # resolved -- checking that a matching header exists somewhere in the file
+    # would pass for a labels.md carrying an injected header above the real one,
+    # since the parse binds to the first match.
+    if args.expect:
+        actual = f"{repo}#{issue_id}"
+        if actual != args.expect:
+            sys.stderr.write(
+                f"ERROR: {args.labels_md} targets {actual}, expected {args.expect}; "
+                "refusing to write\n"
+            )
+            sys.exit(2)
     labels, native_type, priority_tier = classify(rows, priority_order)
 
     # Allowlist: only labels defined in labels.json may be written.
