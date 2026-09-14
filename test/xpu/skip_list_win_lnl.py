@@ -6,7 +6,7 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-PYTORCH_TEST_DIR = "..\..\..\..\test"
+PYTORCH_TEST_DIR = "..\\..\\..\\..\test"
 
 skip_dict = {
     # tensor(0.-0.j, device='xpu:0', dtype=torch.complex32) tensor(nan+nanj, device='xpu:0', dtype=torch.complex32) (1.5707964+0j)
