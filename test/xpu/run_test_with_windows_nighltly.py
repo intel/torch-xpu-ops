@@ -63,7 +63,6 @@ skip_files_list = [
     "test_distributions_xpu.py",
     "test_dynamic_shapes_xpu.py",
     "test_foreach_xpu.py",
-    # "test_indexing_xpu.py",
     "test_linalg_xpu.py",
     "test_maskedtensor_xpu.py",
     # "test_masked_xpu.py",

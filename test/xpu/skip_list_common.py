@@ -105,7 +105,7 @@ skip_dict = {
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
     ),
-    "test_indexing_xpu.py": (
+    f"{PYTORCH_TEST_DIR}/test_indexing.py": (
         # BMG hang (>10 min) taking down the xdist worker
         # https://github.com/intel/torch-xpu-ops/issues/4947
         "test_index_add_fast_path_xpu_float64",
