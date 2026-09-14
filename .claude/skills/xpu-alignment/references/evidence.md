@@ -50,6 +50,10 @@ rejected with a concrete explanation.
 
 ## Faithful XPU evidence
 
+Static verification is the exception to the runtime checks below: it constructs
+no reproducer and executes no XPU operation. Use the fixed-commit source
+snapshots and independent source review described in the automation contract.
+
 Prefer the upstream reproducer or regression test. When adapting another backend,
 change only device mechanics unless evidence requires more. Preserve supported
 inputs, shapes, strides, dtype, mode, seed, and oracle. Reuse identical initialized
