@@ -9,6 +9,7 @@
  */
 
 #pragma once
+#include <ATen/xpu/XPUContext.h>
 #include <c10/core/ScalarType.h>
 #include <comm/xpu_aten.h>
 #include <vector>
@@ -134,7 +135,7 @@ void launch_multi_tensor_apply_kernel(
     int num_wg,
     ArgTypes... args) {
   auto& q = getCurrentSYCLQueue();
-  int64_t simd = syclMaxSubGroupSize();
+  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
   int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
   int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
@@ -166,7 +167,7 @@ void multi_tensor_apply(
   size_t n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t simd = syclMaxSubGroupSize();
+  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
   int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   auto addressStorage = at::empty(
@@ -248,7 +249,7 @@ void multi_tensor_apply(
   size_t n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t simd = syclMaxSubGroupSize();
+  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
   int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   auto addressStorage = at::empty(
