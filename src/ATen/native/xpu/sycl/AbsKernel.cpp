@@ -18,6 +18,7 @@
 
 #include <ATen/native/xpu/sycl/AbsKernel.h>
 
+// This is a test for CI, do not merge
 namespace at::native::xpu {
 
 template <typename scalar_t>
