@@ -434,8 +434,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     if (r == rank) {
       handles[r] = base_ptr;
       buffers[r] = base_ptr;
-      signal_pads[r] =
-          (void*)((uintptr_t)base_ptr + block->signal_pad_offset);
+      signal_pads[r] = (void*)((uintptr_t)base_ptr + block->signal_pad_offset);
       continue;
     }
 
