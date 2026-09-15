@@ -32,7 +32,7 @@ def main():
     os.environ["CUDA_VERSION"] = "xpu"
     os.environ["USE_SCCACHE"] = "0"
     os.environ["USE_XCCL"] = "0"
-    os.environ["TORCH_XPU_ARCH_LIST"] = "bmg,lnl-m"
+    os.environ["TORCH_XPU_ARCH_LIST"] = "bmg,lnl-m,ptl"
     os.environ["SKIP_SETUP_CLEAN"] = "1"
     os.environ["WERROR"] = "1"
 
