@@ -28,7 +28,15 @@ jobs:
         with:
           repository: pytorch/pytorch
           sparse-checkout: .claude/skills/pr-review
-
+      - name: Checkout intel/torch-xpu-ops (provides the /ut-refactor-review skill)
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .claude/skills/ut-refactor-review
+      - name: Checkout KarhouTam/agent-skills (provides the /review-test-refactoring skill)
+        uses: actions/checkout@v7
+        with:
+          repository: KarhouTam/agent-skills
+          sparse-checkout: pytorch-test-refactoring
       - name: Run AI review
         id: ai-review
         uses: anthropics/claude-code-action@v1
