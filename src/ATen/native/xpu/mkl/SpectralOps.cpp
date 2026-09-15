@@ -280,8 +280,9 @@ Tensor& _exec_fft(
   return out;
 }
 
-// _sort_dims, _dft_scale, _fft_apply_normalization, and promote_fft_input are
-// defined in sycl/FFTKernelFunctor.cpp and declared in sycl/FFTKernelFunctor.h
+// _sort_dims, _dft_scale, _fft_apply_normalization, promote_fft_dtype, and
+// promote_fft_input are defined in sycl/FFTKernelFunctor.cpp and declared in
+// sycl/FFTKernelFunctor.h
 
 // _exec_fft rewrites the destination metadata via resize_/as_strided_. The
 // layout it leaves behind only matches a contiguous destination when the
@@ -309,15 +310,6 @@ static bool _exec_fft_preserves_layout(const Tensor& self, IntArrayRef dim) {
 
 static bool _has_exact_contiguous_strides(const Tensor& tensor) {
   return tensor.strides() == c10::contiguous_strides(tensor.sizes());
-}
-
-// Result type of promote_fft_input, without materializing the promoted tensor.
-ScalarType promote_fft_dtype(ScalarType dtype) {
-  if (dtype == ScalarType::Half || dtype == ScalarType::BFloat16)
-    return ScalarType::Float;
-  if (dtype == ScalarType::ComplexHalf)
-    return ScalarType::ComplexFloat;
-  return dtype;
 }
 
 } // namespace impl
