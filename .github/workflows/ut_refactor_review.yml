@@ -39,10 +39,8 @@ jobs:
           claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /pr-review skill to review PR
-            #${{ github.event.inputs.pytorch_pr }} in the pytorch/pytorch repository.
-            Load these two skills as auxiliary guidance:
-            - https://github.com/KarhouTam/agent-skills/blob/master/pytorch-test-refactoring/agent/skills/review-test-refactoring/SKILL.md
-            - https://raw.githubusercontent.com/intel/torch-xpu-ops/main/.claude/skills/ut-refactor-review/SKILL.md
+            https://github.com/pytorch/pytorch/pull/${{ github.event.inputs.pytorch_pr }}.
+            Load these two dedicated skills /ut-refactor-review and pytorch-test-refactoring/agent/skills/review-test-refactoring/SKILL.md as auxiliary guidance.
             Do NOT post any comment or review to the PyTorch PR. Only produce the
             review text as your final result; it will be written to the job summary.
         env:
