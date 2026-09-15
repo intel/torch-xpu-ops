@@ -28,7 +28,27 @@ import torch._inductor
 import torch._inductor.decomposition
 import torch.utils._pytree as pytree
 from functorch.compile import aot_function, nop
-from parameterized import parameterized_class
+
+try:
+    from parameterized import parameterized_class
+except ModuleNotFoundError:
+
+    def parameterized_class(parameters, class_name_func=None):
+        def decorator(cls):
+            module = sys.modules[cls.__module__]
+            for idx, parameter in enumerate(parameters):
+                if class_name_func is not None:
+                    name = class_name_func(cls, None, parameter)
+                else:
+                    name = f"{cls.__name__}_{idx}"
+                subclass = type(name, (cls,), dict(parameter))
+                subclass.__module__ = cls.__module__
+                setattr(module, name, subclass)
+            return cls
+
+        return decorator
+
+
 from torch._dynamo.functional_export import dynamo_graph_capture_for_export
 from torch._dynamo.testing import (
     AotEagerAndRecordGraphs,
@@ -2626,10 +2646,10 @@ class GraphModule(torch.nn.Module):
 
         sum_1: "f32[]" = torch.ops.aten.sum.default(getitem_2);  getitem_2 = None
         sum_2: "f32[]" = torch.ops.aten.sum.default(getitem_3);  getitem_3 = None
-        add_15: "f32[]" = torch.ops.aten.add.Tensor(sum_1, sum_2);  sum_1 = sum_2 = None
+        add: "f32[]" = torch.ops.aten.add.Tensor(sum_1, sum_2);  sum_1 = sum_2 = None
 
         cos: "f32[s77, 16]" = torch.ops.aten.cos.default(getitem_1);  getitem_1 = None
-        return (add_15, getitem_16, getitem_18, getitem_20, getitem_22, cos, primals_1, getitem_17, getitem_19, getitem_21, getitem_23)
+        return (add, getitem_16, getitem_18, getitem_20, getitem_22, cos, primals_1, getitem_17, getitem_19, getitem_21, getitem_23)
 
     class partitioned_fw_subgraph_0_1(torch.nn.Module):
         def forward(self, primals_0: "Sym(s77)", primals_1: "f32[s77, 16]"):
@@ -2653,16 +2673,16 @@ class GraphModule(torch.nn.Module):
         partitioned_bw_subgraph_0_0 = self.partitioned_bw_subgraph_0_0
         invoke_subgraph_15 = torch.ops.higher_order.invoke_subgraph(partitioned_bw_subgraph_0_0, 'partitioned_bw_subgraph_0_0', getitem_23, getitem_22, expand);  partitioned_bw_subgraph_0_0 = getitem_23 = getitem_22 = None
         getitem_5: "f32[s77, 16]" = invoke_subgraph_15[1];  invoke_subgraph_15 = None
-        add_16: "f32[s77, 16]" = torch.ops.aten.add.Tensor(expand, getitem_5);  expand = getitem_5 = None
+        add_1: "f32[s77, 16]" = torch.ops.aten.add.Tensor(expand, getitem_5);  expand = getitem_5 = None
 
         partitioned_bw_subgraph_0_3 = self.partitioned_bw_subgraph_0_1
-        invoke_subgraph_13 = torch.ops.higher_order.invoke_subgraph(partitioned_bw_subgraph_0_3, 'partitioned_bw_subgraph_0_1', getitem_21, getitem_20, add_16);  partitioned_bw_subgraph_0_3 = getitem_21 = getitem_20 = add_16 = None
+        invoke_subgraph_13 = torch.ops.higher_order.invoke_subgraph(partitioned_bw_subgraph_0_3, 'partitioned_bw_subgraph_0_1', getitem_21, getitem_20, add_1);  partitioned_bw_subgraph_0_3 = getitem_21 = getitem_20 = add_1 = None
         getitem_8: "f32[s77, 16]" = invoke_subgraph_13[1];  invoke_subgraph_13 = None
 
-        mul_10: "f32[s77, 16]" = torch.ops.aten.mul.Tensor(getitem_8, cos);  getitem_8 = cos = None
+        mul: "f32[s77, 16]" = torch.ops.aten.mul.Tensor(getitem_8, cos);  getitem_8 = cos = None
 
         partitioned_bw_subgraph_0_2 = self.partitioned_bw_subgraph_0_1
-        invoke_subgraph_11 = torch.ops.higher_order.invoke_subgraph(partitioned_bw_subgraph_0_2, 'partitioned_bw_subgraph_0_1', getitem_19, getitem_18, mul_10);  partitioned_bw_subgraph_0_2 = getitem_19 = getitem_18 = mul_10 = None
+        invoke_subgraph_11 = torch.ops.higher_order.invoke_subgraph(partitioned_bw_subgraph_0_2, 'partitioned_bw_subgraph_0_1', getitem_19, getitem_18, mul);  partitioned_bw_subgraph_0_2 = getitem_19 = getitem_18 = mul = None
         getitem_11: "f32[s77, 16]" = invoke_subgraph_11[1];  invoke_subgraph_11 = None
 
         partitioned_bw_subgraph_0_1 = self.partitioned_bw_subgraph_0_1
@@ -2674,15 +2694,15 @@ class GraphModule(torch.nn.Module):
         def forward(self, primals_0: "Sym(s77)", primals_1: "f32[s77, 16]", tangents_0: "f32[s77, 16]"):
             sin: "f32[s77, 16]" = torch.ops.aten.sin.default(primals_1);  primals_1 = None
             neg: "f32[s77, 16]" = torch.ops.aten.neg.default(sin);  sin = None
-            mul_9: "f32[s77, 16]" = torch.ops.aten.mul.Tensor(tangents_0, neg);  tangents_0 = neg = None
-            return (None, mul_9)
+            mul: "f32[s77, 16]" = torch.ops.aten.mul.Tensor(tangents_0, neg);  tangents_0 = neg = None
+            return (None, mul)
 
     class partitioned_bw_subgraph_0_1(torch.nn.Module):
         def forward(self, primals_0: "Sym(s77)", primals_1: "f32[s77, 16]", tangents_0: "f32[s77, 16]"):
             sin: "f32[s77, 16]" = torch.ops.aten.sin.default(primals_1);  primals_1 = None
             neg: "f32[s77, 16]" = torch.ops.aten.neg.default(sin);  sin = None
-            mul_10: "f32[s77, 16]" = torch.ops.aten.mul.Tensor(tangents_0, neg);  tangents_0 = neg = None
-            return (None, mul_10)
+            mul: "f32[s77, 16]" = torch.ops.aten.mul.Tensor(tangents_0, neg);  tangents_0 = neg = None
+            return (None, mul)
 """,
                 ignore_empty_lines=True,
             )
