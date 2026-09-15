@@ -1,0 +1,89 @@
+name: ut-review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pytorch_pr:
+        description: "PyTorch PR number to review (pytorch/pytorch)"
+        required: true
+
+env:
+  BEDROCK_MODEL: global.anthropic.claude-opus-5
+  CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ut-review-${{ github.event.inputs.pytorch_pr }}
+  cancel-in-progress: false
+
+jobs:
+  ut-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout pytorch/pytorch (provides the /pr-review skill)
+        uses: actions/checkout@v7
+        with:
+          repository: pytorch/pytorch
+
+      - name: Run AI review
+        id: ai-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
+          prompt: |
+            Use the /pr-review skill to review PR
+            #${{ github.event.inputs.pytorch_pr }} in the pytorch/pytorch repository.
+            Load these two skills as auxiliary guidance:
+            - https://github.com/KarhouTam/agent-skills/blob/master/pytorch-test-refactoring/agent/skills/review-test-refactoring/SKILL.md
+            - https://raw.githubusercontent.com/intel/torch-xpu-ops/main/.claude/skills/ut-refactor-review/SKILL.md
+            Do NOT post any comment or review to the PyTorch PR. Only produce the
+            review text as your final result; it will be written to the job summary.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Write review to job summary
+        if: steps.ai-review.outputs.execution_file
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) {
+              core.setFailed('No execution file produced by the AI review.');
+              return;
+            }
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) {
+              core.setFailed('AI review returned an error or no output.');
+              return;
+            }
+            const pr = '${{ github.event.inputs.pytorch_pr }}';
+            const header = `## ut-review for pytorch/pytorch#${pr}\n\n`;
+            await core.summary.addRaw(header + result.result).write();
+
+      - name: "Verify: AI review succeeded"
+        uses: actions/github-script@v9
+        env:
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+        with:
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            let ok = false;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+              ok = result && !result.is_error && result.total_cost_usd > 0;
+            }
+            if (!ok) {
+              core.setFailed('AI review failed: Bedrock returned an error or no output.');
+            }
