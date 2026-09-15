@@ -15,6 +15,7 @@
 import os
 import sys
 import unittest
+from contextlib import contextmanager
 
 import torch
 from torch.profiler import profile, ProfilerActivity
@@ -126,6 +127,20 @@ if torch.xpu.is_available() and "xpu" not in test_common_passes.Devices:
     test_common_passes.Devices.append("xpu")
 
 
+@contextmanager
+def _xpu_disable_fx_mutable_checks(device):
+    if device != "xpu":
+        yield
+        return
+
+    old_value = torch.fx.proxy.TracerBase.check_mutable_operations
+    torch.fx.proxy.TracerBase.check_mutable_operations = False
+    try:
+        yield
+    finally:
+        torch.fx.proxy.TracerBase.check_mutable_operations = old_value
+
+
 @instantiate_parametrized_tests
 class TestCommonPass(TestCase):
     @parametrize(
@@ -139,7 +154,8 @@ class TestCommonPass(TestCase):
     )
     def test_correctness(self, common_pass, f, device):
         inp = torch.randn(10, device=device)
-        traced_m = torch.fx.experimental.proxy_tensor.make_fx(f)(inp)
+        with _xpu_disable_fx_mutable_checks(device):
+            traced_m = torch.fx.experimental.proxy_tensor.make_fx(f)(inp)
         P = common_pass()
         res = P(traced_m)
         modified_m = res.graph_module
@@ -161,7 +177,8 @@ class TestCommonPass(TestCase):
     )
     def test_correctness_factory(self, common_pass, f, device):
         inp = torch.randn(10, device=device)
-        traced_m = torch.fx.experimental.proxy_tensor.make_fx(f)(inp, device)
+        with _xpu_disable_fx_mutable_checks(device):
+            traced_m = torch.fx.experimental.proxy_tensor.make_fx(f)(inp, device)
         P = common_pass()
         res = P(traced_m)
         modified_m = res.graph_module
