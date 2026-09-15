@@ -11,7 +11,13 @@ PYTORCH_TEST_DIR = "../../../../test"
 skip_dict = {
     "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/nn/test_convolution.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_convolution.py": (
+        # CPU-only reference tests. Upstream only exercises the tight
+        # rtol=2e-5/atol=5e-6 tolerance when torch.cuda.is_tf32_supported() is
+        # False, so PyTorch CI (CUDA runners) never hits it.
+        "test_conv3d_vs_scipy_mode_same_cpu_float32",
+        "test_conv3d_vs_scipy_mode_valid_cpu_float32",
+    ),
     "nn/test_dropout_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     "nn/test_init_xpu.py": None,
