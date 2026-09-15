@@ -34,6 +34,7 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as _functional_collectives
 import torch.distributed._symmetric_memory as symm_mem
 import torch.testing._internal.common_utils as common
+from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_distributed import (
     MultiProcContinuousTest,
     MultiProcessTestCase,
@@ -45,6 +46,7 @@ from torch.testing._internal.common_utils import (
     retry_on_connect_failures,
     run_tests,
     skip_but_pass_in_sandcastle_if,
+    TemporaryFileName,
     TEST_XPU,
     TestCase,
 )
@@ -1800,6 +1802,72 @@ instantiate_parametrized_tests(ProcessGroupXCCLTest)
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
     COLLECTIVE_ARGUMENT = auto()  # broadcast_object_list(device=)
+
+
+class XpuProfilerDistributedTest(MultiProcessTestCase):
+    @property
+    def world_size(self):
+        return 2
+
+    def setUp(self):
+        super().setUp()
+        self._spawn_processes()
+
+    def tearDown(self):
+        super().tearDown()
+        try:
+            os.remove(self.file_name)
+        except OSError:
+            pass
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_profiler_xpu_distributed(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        try:
+            torch.xpu.set_device(self.rank)
+
+            M = N = K = 4
+            x = torch.randn(M, K, device="xpu")
+            weight = torch.randn(K, N, device="xpu")
+
+            # Warm up so first-iteration setup costs stay out of the profiled region.
+            for _ in range(2):
+                _ = x @ weight
+            torch.xpu.synchronize()
+
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+            ) as prof:
+                output = x @ weight
+                dist.all_reduce(output)
+                prof.step()
+                # Sync before export so async XPU kernels are recorded.
+                torch.xpu.synchronize()
+
+            with TemporaryFileName(mode="w+") as fname:
+                prof.export_chrome_trace(fname)
+                with open(fname) as f:
+                    data = json.load(f)
+                kernels = [
+                    e for e in data.get("traceEvents", []) if e.get("cat") == "kernel"
+                ]
+
+            gemm_kernels = [k for k in kernels if "gemm" in k.get("name", "").lower()]
+            self.assertGreater(
+                len(gemm_kernels),
+                0,
+                f"[Rank {self.rank}] No GEMM kernel in trace; saw kernels: "
+                f"{[k.get('name') for k in kernels]}",
+            )
+        finally:
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":
