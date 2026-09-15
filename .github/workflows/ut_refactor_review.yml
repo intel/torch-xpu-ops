@@ -1,4 +1,4 @@
-name: ut-review
+name: UT Refactor Review
 
 on:
   workflow_dispatch:
