@@ -127,5 +127,5 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`ut-review\`](${jobUrl}) on **pytorch/pytorch&#35;${pr}** — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`ut-review\`](${jobUrl}) on **pytorch/pytorch[#${pr}]** — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
