@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: pytorch/pytorch
+          sparse-checkout: .claude/skills/pr-review
 
       - name: Run AI review
         id: ai-review
