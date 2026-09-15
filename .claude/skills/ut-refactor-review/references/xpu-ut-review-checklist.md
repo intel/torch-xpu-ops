@@ -30,3 +30,26 @@ of scope here.
 | --- | --- | --- |
 | `if device_type == "xpu": self.skipTest(...)` inside a test the PR enables on XPU | May be an over-skip: disables the whole XPU test to dodge one CUDA-specific check, hiding the real predicate. Human review required. | Info |
 | `@unittest.skipIf(not SM70OrLater, ...)` | Decorators like `@unittest.skipIf(not SM70OrLater, ...)` used in non-CUDA specific test classes will erroneously skip XPU and other active devices. | Blocker |
+
+## 2. Skips, xfails, and tolerances
+
+| Code Pattern | What It Means | Severity |
+| --- | --- | --- |
+| `@skipXPU` / `@skipIfXpu` / `@xfailIf(TEST_XPU)` / `DecorateInfo(unittest.skip("Skipped"))` without tracking issue link | Every skip/xfail needs a tracking issue. A bare skip/xfail is untraceable. | Major |
+| `device_type='xpu'` skip with no `dtypes=(...)` for a single-dtype failure | May be an over-skip beyond the actual failure. Narrow the scope to the failing dtype/device. | Info |
+| Old `@skipIfXpu` / skip left in place when the test already passes on XPU | Stale skips must be removed. | Minor |
+
+## 3. Test intent and coverage preservation
+
+| Code Pattern | What It Means | Severity |
+| --- | --- | --- |
+| Helper moved into a mixin/base class with an altered body | Helper extraction must be behavior-preserving; confirm no method body changed and both classes still reach it. | Major |
+| `if TEST_CUDA: < code block >` widened to `TEST_CUDA or TEST_XPU` | Assumes XPU exposes the same stats key as CUDA. Confirm the key exists for XPU rather than assuming parity, or it `KeyError`s. | Blocker |
+| Test exercises an op with only a CUDA/Meta registration, no XPU one | An op is mistakenly identified as being supported on XPU, which makes the "enabled" test fail or silently no-op. | Blocker |
+
+## 4. Cross-device blast radius
+
+| Code Pattern | What It Means | Severity |
+| --- | --- | --- |
+| Reordered `skips=`/`decorators=` tuples or changed `active_if` | Can silently alter another backend (MPS/HPU); a real reviewer concern. | Blocker |
+| An iterable feeding `@parametrize` converted `tuple -> set` (or `set -> tuple`) | Introduces nondeterministic ordering; has caused real breakage needing a follow-up fix. Flag any such conversion of a parametrization source. | Blocker |
