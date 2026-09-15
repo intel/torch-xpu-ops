@@ -1,14 +1,12 @@
 import os
 import sys
 
-from skip_list_common import skip_dict
+from skip_list_common import PYTORCH_TEST_DIR, skip_dict
 from skip_list_win import skip_dict as skip_dict_win
 from skip_list_win_lnl import skip_dict as skip_dict_win_lnl
 
 res = 0
 IS_WINDOWS = sys.platform == "win32"
-
-PYTORCH_TEST_DIR = "../../../../test"
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):

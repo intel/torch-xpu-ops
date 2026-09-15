@@ -6,7 +6,7 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-PYTORCH_TEST_DIR = "../../../../test"
+from skip_list_common import PYTORCH_TEST_DIR
 
 skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_indexing.py": (
