@@ -187,6 +187,11 @@ jobs:
             ut_list="${{ inputs.ut }}"
           fi
           # Check every ut in the list; do not stop at the first failure.
+          # ut_result_check.sh appends one health record per category here. The
+          # loop's CWD is inside ut_log/<artifact_dir>/<leg>/, so the path must
+          # be absolute for the file to land in the re-uploaded artifact.
+          export UT_RUN_HEALTH_FILE="${{ github.workspace }}/ut_log/run_health.jsonl"
+          : > "${UT_RUN_HEALTH_FILE}"
           check_ret=0
           for ut_name in ${ut_list}
           do
