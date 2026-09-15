@@ -23,15 +23,15 @@ void xpu_symm_free(
 }
 
 // Register allocator for XPU MemPool
-struct RegisterXPUMemPoolAllocator {
-  RegisterXPUMemPoolAllocator() {
-    std::shared_ptr<c10::xpu::XPUCachingAllocator::XPUAllocator> allocator =
-        torch::xpu::XPUPluggableAllocator::createCustomAllocator(
-            xpu_symm_alloc, xpu_symm_free);
-    register_mempool_allocator(c10::DeviceType::XPU, allocator);
-  }
-};
+bool register_xpu_mempool_allocator() {
+  std::shared_ptr<c10::xpu::XPUCachingAllocator::XPUAllocator> allocator =
+      torch::xpu::XPUPluggableAllocator::createCustomAllocator(
+          xpu_symm_alloc, xpu_symm_free);
+  register_mempool_allocator(c10::DeviceType::XPU, allocator);
+  return true;
+}
 
-static RegisterXPUMemPoolAllocator register_xpu_mempool_allocator_;
+[[maybe_unused]] const bool register_xpu_mempool_allocator_ =
+    register_xpu_mempool_allocator();
 
 } // namespace
