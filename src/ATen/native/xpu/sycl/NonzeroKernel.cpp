@@ -292,17 +292,6 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
   // Precompute per-dimension sizes and divisors for flatâ†’multi-dim
   // conversion.
-  int64_t sizes[XPU_MAX_TENSORINFO_DIMS];
-  int64_t divisor[XPU_MAX_TENSORINFO_DIMS];
-  if (num_dim > 0) {
-    sizes[num_dim - 1] = self.size(num_dim - 1);
-    divisor[num_dim - 1] = 1;
-    for (auto d = num_dim - 2; d >= 0; d--) {
-      sizes[d] = self.size(d);
-      divisor[d] = sizes[d + 1] * divisor[d + 1];
-    }
-  }
-
   struct DivisorSizes divisor_sizes;
   if (num_dim > 0) {
     divisor_sizes.sizes[num_dim - 1] = self.size(num_dim - 1);
