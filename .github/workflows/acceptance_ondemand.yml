@@ -128,10 +128,10 @@ jobs:
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
-      suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'torchbench' || 'huggingface,timm_models,torchbench'}}
+      suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
       category: target
-      model: ${{ inputs.test_pattern == 'test_pt_smoke' && 'hf_Bert,resnet50' || ''}}
+      model: ${{ inputs.test_pattern == 'test_pt_smoke' && 'BertForMaskedLM' || ''}}
 
   # ==================================================================
   # BASELINE pipeline
@@ -179,10 +179,10 @@ jobs:
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
-      suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'torchbench' || 'huggingface,timm_models,torchbench'}}
+      suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
       category: baseline
-      model: ${{ inputs.test_pattern == 'test_pt_smoke' && 'hf_Bert,resnet50' || ''}}
+      model: ${{ inputs.test_pattern == 'test_pt_smoke' && 'BertForMaskedLM' || ''}}
 
   # ==================================================================
   # Compare results
@@ -218,7 +218,7 @@ jobs:
             echo "| Test pattern     | ${{ inputs.test_pattern }} |"
             echo "| Triggered by     | ${{ github.actor }} |"
             echo ""
-            echo "Scope: \`${{ inputs.test_pattern }}\` — smoke = op_regression UT + torchbench(hf_Bert,resnet50); otherwise UT=\`xpu_p0\`, E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)."
+            echo "Scope: \`${{ inputs.test_pattern }}\` — smoke = op_regression UT + huggingface(BertForMaskedLM); otherwise UT=\`xpu_p0\`, E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)."
           } > "${GITHUB_STEP_SUMMARY}"
 
       - name: Download target E2E logs
