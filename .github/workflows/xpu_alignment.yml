@@ -526,12 +526,15 @@ jobs:
             for an issue or PR that explicitly owns the XPU work; a merely related
             upstream object does not suppress a local payload. Do not sample
             rejected inventory. If an existing GitHub issue covers the same work,
-            record its exact URL as `canonical_tracker` with its
+            record its canonical `/issues/<number>` URL without a fragment, query,
+            or trailing slash as `canonical_tracker` with its
             `canonical_tracker_state`, regardless of repository. Only an open
-            intel/torch-xpu-ops tracker replaces the payload and is not commented
-            on. Whenever a tracker is recorded and a payload is emitted, cite that
-            exact tracker URL in the payload body. Cite related upstream or XPU
-            issue, PR, and commit URLs in the payload or review report.
+            intel/torch-xpu-ops tracker replaces the payload and can justify
+            `duplicate`; it is not commented on. A closed or external issue cannot
+            justify `duplicate`. Whenever a tracker is recorded and a payload is
+            emitted, cite that exact tracker URL in the payload body. Cite related
+            upstream or XPU issue, PR, and commit URLs in the payload or review
+            report; PR URLs are context, not `canonical_tracker`.
 
             Write only alignment-run/review/review.json and optional
             review_report.md. Include a payload only for reviewed `needs-xpu-fix`

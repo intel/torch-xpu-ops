@@ -29,6 +29,7 @@ from alignment_triage import (
     filed_body,
     find_run_note,
     find_unit_comments,
+    is_open_issue,
     list_comments,
     post_comment,
     render_draft,
@@ -251,21 +252,22 @@ def main() -> int:
             dry_run=mode == "dry-run",
         )
         comments = find_unit_comments(existing, unit_id) if mode == "schedule" else []
-        filed_comment = next(
-            (comment for comment in reversed(comments) if FILED_MARKER_RE.search(comment["body"])),
-            None,
-        )
-        filed_issue_url = None
-        if filed_comment is not None:
-            filed_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
-            filed_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
-            if int(filed_comment["id"]) == int(comments[-1]["id"]):
+        try:
+            filed_comment = next(
+                (comment for comment in reversed(comments) if FILED_MARKER_RE.search(comment["body"])),
+                None,
+            )
+            filed_issue_url = None
+            if filed_comment is not None:
+                filed_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
+                if is_open_issue(args.repo, filed_number):
+                    filed_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
+            if filed_issue_url is not None and int(filed_comment["id"]) == int(comments[-1]["id"]):
                 if verdict == "auto-file":
                     filed.append((unit_id, filed_issue_url))
                 print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
                 continue
 
-        try:
             if comments:
                 comment_id = int(comments[-1]["id"])
                 update_comment(args.repo, comment_id, draft)

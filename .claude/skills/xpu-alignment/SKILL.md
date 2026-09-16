@@ -127,8 +127,7 @@ payload. Whenever a tracker is recorded and a payload is emitted, cite the exact
 tracker URL in the payload body. Cite any related upstream or XPU issue, PR, or
 commit in the payload or review report as context; these links do not suppress a
 payload. In automation, write only under `review/` and follow the minimal review
-contract. A
-blocked review produces no publishable payloads.
+contract. A blocked review produces no publishable payloads.
 
 ## Completion
 

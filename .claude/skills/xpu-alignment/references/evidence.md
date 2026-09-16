@@ -115,9 +115,12 @@ Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
 explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
 canonical tracker. The current source, a generic related issue, or an XPU mention
 alone does not establish upstream ownership. When upstream explicitly owns the
-XPU work, use `track-upstream`. When an existing ops tracker covers the work,
-record its URL as `canonical_tracker`; do not create a new payload or
-automatically comment on the existing tracker.
+XPU work, use `track-upstream`. Record an existing GitHub issue that covers the
+work as `canonical_tracker` with its `canonical_tracker_state`. Only an open
+`intel/torch-xpu-ops` issue replaces a new payload; do not automatically comment
+on it. A closed local issue remains context for a new payload, which cites its
+URL. An issue in another repository does not by itself replace a local payload.
+Record PR and commit URLs as related context, not as `canonical_tracker`.
 
 Use exactly one verdict:
 
@@ -131,7 +134,8 @@ Use exactly one verdict:
 - `fixed`: the relevant change is already present and verified;
 - `non-issue`: evidence establishes that the observed behavior is not a current
   XPU defect;
-- `duplicate`: a canonical tracker already covers the same work;
+- `duplicate`: an open `intel/torch-xpu-ops` canonical tracker already covers
+  the same work; a closed or external issue is not a duplicate tracker;
 - `verification-gap`: available evidence cannot support another verdict.
 
 Prefer `verification-gap` over a forced conclusion. A `needs-xpu-fix` payload has

@@ -506,6 +506,8 @@ def _validate_review(
         open_xpu_tracker = (
             tracker_state == "open" and tracker_repository == "intel/torch-xpu-ops"
         )
+        if verdict == "duplicate" and not open_xpu_tracker:
+            errors.append(f"review-invalid-duplicate-tracker:{unit_id}")
         expects_payload = verdict == "needs-xpu-fix" and not open_xpu_tracker
         if not expects_payload:
             if payload is not None:
@@ -521,6 +523,10 @@ def _validate_review(
             errors.append(f"payload-multiline-title:{unit_id}")
         if not isinstance(body, str) or not body.strip():
             errors.append(f"payload-empty-body:{unit_id}")
+        elif isinstance(tracker, str) and not re.search(
+            rf"{re.escape(tracker)}(?![0-9])", body
+        ):
+            errors.append(f"payload-missing-canonical-tracker:{unit_id}")
         if payload.get("labels") != ISSUE_LABELS:
             errors.append(f"payload-invalid-labels:{unit_id}")
         payloads.append({"unit_id": unit_id, "title": title, "body": body, "labels": ISSUE_LABELS})

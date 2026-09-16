@@ -24,6 +24,7 @@ from xpu_alignment_collect import CollectionError, sha256, validate_collection
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 MAX_TIMEOUT_SECONDS = 120
+ENVIRONMENT_PROBE_TIMEOUT_SECONDS = 120
 PR_SET_CHILD_SUBREAPER = 36
 ENVIRONMENT_FIELDS = {
     "python_executable",
@@ -277,7 +278,7 @@ print(json.dumps(payload, sort_keys=True))
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=ENVIRONMENT_PROBE_TIMEOUT_SECONDS,
                 check=False,
                 **process,
             )
