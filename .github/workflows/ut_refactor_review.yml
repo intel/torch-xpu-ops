@@ -55,8 +55,9 @@ jobs:
             Load these two dedicated skills torch-xpu-ops/.claude/skills/ut-refactor-review/SKILL.md
             and agent-skills/pytorch-test-refactoring/agent/skills/review-test-refactoring/SKILL.md as auxiliary.
             The pr-review skill drives HOW you analyze the diff, but for the final
-            output every finding MUST be classified by the severity defined
-            in review-test-refactoring and ut-refactor-review skills (Blocker / Major / Minor / Info).
+            output format please follow Review Output Format defined in review-test-refactoring.
+            Every finding should be classified by the severity defined in review-test-refactoring
+            and ut-refactor-review skills (Blocker / Major / Minor / Info).
             Group findings under these four severity headings.
             Do NOT post any comment or review to the PyTorch PR. Only produce the
             review text as your final result; it will be written to the job summary.
