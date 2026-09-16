@@ -22,75 +22,56 @@
 namespace at::native::xpu {
 
 template <typename scalar_t, int unroll_factor, typename transform_t>
-struct RreluWithNoiseKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    int group_size = item.get_local_range(0);
-    int num_groups = item.get_group_range(0);
-    int idx = item.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void rrelu_with_noise_kernel_fn(
+    int numel,
+    PhiloxXpuState philox_args,
+    scalar_t* output,
+    const scalar_t* input,
+    scalar_t* noise,
+    double lower,
+    double upper,
+    transform_t random_func) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto seeds = at::xpu::philox::unpack(philox_args);
+  int group_size = item.get_local_range(0);
+  int num_groups = item.get_group_range(0);
+  int idx = item.get_global_linear_id();
 
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+  randStatePhilox4_32_10_t state;
+  rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
 
-    int full_tile_work_size = group_size * num_groups * unroll_factor;
-    int rounded_size =
-        ((numel_ - 1) / full_tile_work_size + 1) * full_tile_work_size;
-    double range = upper_ - lower_;
+  int full_tile_work_size = group_size * num_groups * unroll_factor;
+  int rounded_size =
+      ((numel - 1) / full_tile_work_size + 1) * full_tile_work_size;
+  double range = upper - lower;
 
-    for (int linear_index = idx; linear_index < rounded_size;
-         linear_index += full_tile_work_size) {
-      auto rand = random_func_(&state);
+  for (int linear_index = idx; linear_index < rounded_size;
+       linear_index += full_tile_work_size) {
+    auto rand = random_func(&state);
 
-      // ensure that (&rand.x)[ii] is safe
-      static_assert(sizeof(rand) / sizeof(rand.x) == unroll_factor);
+    // ensure that (&rand.x)[ii] is safe
+    static_assert(sizeof(rand) / sizeof(rand.x) == unroll_factor);
 
 #pragma unroll
-      for (int ii = 0; ii < unroll_factor; ii++) {
-        int li = linear_index + group_size * num_groups * ii;
-        if (li >= numel_) {
-          continue;
-        }
-        scalar_t r = static_cast<scalar_t>((&rand.x)[ii]);
-        r = r * range + lower_;
-        if (input_[li] <= 0) {
-          output_[li] = input_[li] * r;
-          noise_[li] = r;
-        } else {
-          output_[li] = input_[li];
-          noise_[li] = static_cast<scalar_t>(1);
-        }
+    for (int ii = 0; ii < unroll_factor; ii++) {
+      int li = linear_index + group_size * num_groups * ii;
+      if (li >= numel) {
+        continue;
       }
-      // Some state (e.g. MTGP32) need to add barrier there.
+      scalar_t r = static_cast<scalar_t>((&rand.x)[ii]);
+      r = r * range + lower;
+      if (input[li] <= 0) {
+        output[li] = input[li] * r;
+        noise[li] = r;
+      } else {
+        output[li] = input[li];
+        noise[li] = static_cast<scalar_t>(1);
+      }
     }
+    // Some state (e.g. MTGP32) need to add barrier there.
   }
-  RreluWithNoiseKernelFunctor(
-      int numel,
-      PhiloxXpuState rng_engine_inputs,
-      scalar_t* output,
-      const scalar_t* input,
-      scalar_t* noise,
-      double lower,
-      double upper,
-      transform_t random_func)
-      : numel_(numel),
-        philox_args_(rng_engine_inputs),
-        output_(output),
-        input_(input),
-        noise_(noise),
-        lower_(lower),
-        upper_(upper),
-        random_func_(random_func) {}
-
- private:
-  int numel_;
-  PhiloxXpuState philox_args_;
-  scalar_t* output_;
-  const scalar_t* input_;
-  scalar_t* noise_;
-  double lower_;
-  double upper_;
-  transform_t random_func_;
-};
+}
 
 template <typename scalar_t>
 inline void _rrelu_with_noise_xpu_train(
@@ -130,7 +111,13 @@ inline void _rrelu_with_noise_xpu_train(
 
   if constexpr (std::same_as<scalar_t, double>) {
     templates::xpu::Uniform2DistributionFunctor tfn;
-    auto fn = RreluWithNoiseKernelFunctor<scalar_t, 2, decltype(tfn)>(
+    constexpr auto kptr =
+        rrelu_with_noise_kernel_fn<scalar_t, 2, decltype(tfn)>;
+    sycl_kernel_submit<kptr>(
+        num_groups * group_size,
+        group_size,
+        getCurrentSYCLQueue(),
+        0,
         numel,
         rng_engine_inputs,
         output_data,
@@ -139,12 +126,16 @@ inline void _rrelu_with_noise_xpu_train(
         lower,
         upper,
         tfn);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), fn);
   } else {
     // half and float
     templates::xpu::Uniform4DistributionFunctor tfn;
-    auto fn = RreluWithNoiseKernelFunctor<scalar_t, 4, decltype(tfn)>(
+    constexpr auto kptr =
+        rrelu_with_noise_kernel_fn<scalar_t, 4, decltype(tfn)>;
+    sycl_kernel_submit<kptr>(
+        num_groups * group_size,
+        group_size,
+        getCurrentSYCLQueue(),
+        0,
         numel,
         rng_engine_inputs,
         output_data,
@@ -153,8 +144,6 @@ inline void _rrelu_with_noise_xpu_train(
         lower,
         upper,
         tfn);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), fn);
   }
 
   if (!output.is_contiguous()) {
