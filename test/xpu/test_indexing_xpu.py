@@ -196,6 +196,29 @@ with XPUPatchForImport(False):
 
         self.assertEqual(out, dst)
 
+    def index_select_empty_source_bounds(self, device):
+        source = torch.empty((0, 3), device=device)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "self indexing axis dim should be positive"
+        ):
+            torch.index_select(
+                source, 0, torch.tensor([0, 1], device=device, dtype=torch.int64)
+            )
+
+        for indices in ([0, 5], [-1]):
+            with self.assertRaisesRegex(
+                RuntimeError, "INDICES element is out of DATA bounds"
+            ):
+                torch.index_select(
+                    source, 1, torch.tensor(indices, device=device, dtype=torch.int64)
+                )
+
+        result = torch.index_select(
+            source, 1, torch.tensor([0, 2], device=device, dtype=torch.int64)
+        )
+        self.assertEqual(result.shape, (0, 2))
+
     TestIndexing.test_index_put_deterministic_with_optional_tensors = (
         __test_index_put_deterministic_with_optional_tensors
     )
@@ -203,6 +226,9 @@ with XPUPatchForImport(False):
     TestIndexing.test_index_select = index_select
     TestIndexing.test_index_add_empty_index_1d = index_add_empty_index_1d
     TestIndexing.test_index_add_empty_index_2d = index_add_empty_index_2d
+    TestIndexing.test_index_select_empty_source_bounds = (
+        index_select_empty_source_bounds
+    )
 
 instantiate_device_type_tests(NumpyTests, globals(), only_for=("xpu"), allow_xpu=True)
 
