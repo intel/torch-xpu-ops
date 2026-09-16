@@ -106,7 +106,7 @@ void multi_margin_loss_backward_kernel(
   int i_end = dim;
   int i_step = item.get_local_range(0);
 
-  char* slm = static_cast<char *>(syclexp::get_work_group_scratch_memory());
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   auto smem = reinterpret_cast<accscalar_t*>(slm);
   smem[item.get_local_linear_id()] = 0;
   for (int i = i_start; i < i_end; i += i_step) {
@@ -192,7 +192,8 @@ Tensor& multi_margin_loss_kernel(
           if (p == 1) {
             constexpr auto kernelFunc =
                 multi_margin_loss_forward_kernel<1, scalar_t, accscalar_t>;
-            int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
             sycl_kernel_submit<kernelFunc>(
                 local_size,
                 local_size,
@@ -210,7 +211,8 @@ Tensor& multi_margin_loss_kernel(
           } else if (p == 2) {
             constexpr auto kernelFunc =
                 multi_margin_loss_forward_kernel<2, scalar_t, accscalar_t>;
-            int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
             sycl_kernel_submit<kernelFunc>(
                 local_size,
                 local_size,
@@ -238,7 +240,8 @@ Tensor& multi_margin_loss_kernel(
             if (p == 1) {
               constexpr auto kernelFunc =
                   multi_margin_loss_forward_kernel<1, scalar_t, accscalar_t>;
-              int64_t local_size = <at::xpu::getKernelMaxWorkGroupSizekernelFunc>();
+              int64_t local_size =
+                  <at::xpu::getKernelMaxWorkGroupSizekernelFunc>();
               sycl_kernel_submit<kernelFunc>(
                   nframe * local_size,
                   local_size,
@@ -256,7 +259,8 @@ Tensor& multi_margin_loss_kernel(
             } else if (p == 2) {
               constexpr auto kernelFunc =
                   multi_margin_loss_forward_kernel<2, scalar_t, accscalar_t>;
-              int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+              int64_t local_size =
+                  at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
               sycl_kernel_submit<kernelFunc>(
                   nframe * local_size,
                   local_size,
@@ -277,7 +281,8 @@ Tensor& multi_margin_loss_kernel(
             if (p == 1) {
               constexpr auto kernelFunc =
                   multi_margin_loss_forward_kernel<1, scalar_t, accscalar_t>;
-              int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+              int64_t local_size =
+                  at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
               sycl_kernel_submit<kernelFunc>(
                   nframe * local_size,
                   local_size,
@@ -295,7 +300,8 @@ Tensor& multi_margin_loss_kernel(
             } else if (p == 2) {
               constexpr auto kernelFunc =
                   multi_margin_loss_forward_kernel<2, scalar_t, accscalar_t>;
-              int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+              int64_t local_size =
+                  at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
               sycl_kernel_submit<kernelFunc>(
                   nframe * local_size,
                   local_size,
@@ -371,7 +377,8 @@ Tensor& multi_margin_loss_backward_kernel(
           if (p == 1) {
             constexpr auto kernelFunc =
                 multi_margin_loss_backward_kernel<1, scalar_t, accscalar_t>;
-            int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
             sycl_kernel_submit<kernelFunc>(
                 local_size,
                 local_size,
@@ -391,7 +398,8 @@ Tensor& multi_margin_loss_backward_kernel(
           } else if (p == 2) {
             constexpr auto kernelFunc =
                 multi_margin_loss_backward_kernel<2, scalar_t, accscalar_t>;
-            int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
             sycl_kernel_submit<kernelFunc>(
                 local_size,
                 local_size,
@@ -420,7 +428,8 @@ Tensor& multi_margin_loss_backward_kernel(
           if (p == 1) {
             constexpr auto kernelFunc =
                 multi_margin_loss_backward_kernel<1, scalar_t, accscalar_t>;
-            int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
             sycl_kernel_submit<kernelFunc>(
                 in_sizes[0] * local_size,
                 local_size,
@@ -440,7 +449,8 @@ Tensor& multi_margin_loss_backward_kernel(
           } else if (p == 2) {
             constexpr auto kernelFunc =
                 multi_margin_loss_backward_kernel<2, scalar_t, accscalar_t>;
-            int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
+            int64_t local_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
             sycl_kernel_submit<kernelFunc>(
                 in_sizes[0] * local_size,
                 local_size,
