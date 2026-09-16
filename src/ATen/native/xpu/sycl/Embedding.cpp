@@ -129,7 +129,7 @@ void renorm_kernel(
     }
   }
 
-  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   auto smem_ = reinterpret_cast<accscalar_t*>(slm);
 
   v = GroupReduceSumSGSizeEqualstoNumSG(item, v, smem_);
