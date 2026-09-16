@@ -48,7 +48,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the skill pytorch/.claude/skills/pr-review/SKILL.md to review PR
             https://github.com/pytorch/pytorch/pull/${{ github.event.inputs.pytorch_pr }}.
