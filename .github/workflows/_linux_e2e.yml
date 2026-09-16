@@ -228,6 +228,7 @@ jobs:
           mode: training
           scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
+          skip_summary: 'true'
       - name: Acceptance Test - inference (${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
@@ -237,6 +238,7 @@ jobs:
           mode: inference
           scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
+          skip_summary: 'true'
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}

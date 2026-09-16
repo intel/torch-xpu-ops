@@ -25,6 +25,10 @@ inputs:
     type: string
     default: 'true'
     description: 'Overwrite pytorch model lists with torch-xpu-ops .ci/benchmarks/ overlay'
+  skip_summary:
+    type: string
+    default: 'false'
+    description: "When 'true', skip the per-suite E2E summary (caller runs its own comparison)"
 
 runs:
   using: composite
@@ -60,7 +64,7 @@ runs:
         run_with_shard() {
           # set models to run
           if [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
-            models_list_args=" -k ${MODEL_ONLY_NAME} "
+            models_list_args=" -k $(echo  ${MODEL_ONLY_NAME} |sed 's/,/ -k /g') "
           elif [ "${{ inputs.overwrite_model_list }}" != "true" ];then
             models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
           else
@@ -114,6 +118,7 @@ runs:
         done
 
     - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      if: ${{ inputs.skip_summary != 'true' }}
       shell: bash -xe {0}
       run: |
         cd ./pytorch
