@@ -46,12 +46,12 @@ jobs:
   build:
     name: ${{ inputs.pytorch }}
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-    runs-on: build
+    runs-on: CLX-4912
     container:
       image: 'ubuntu:24.04'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-        - /home/sdp:/home/jenkins
+        - /home/jenkins:/home/jenkins
       env:
         no_proxy: localhost,laurentides.igk.intel.com
     env:
