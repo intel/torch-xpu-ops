@@ -91,10 +91,10 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v4
       with:
-        name: Torch-XPU-Wheel-8cd50b4bc9722a87c60363e4c3434e1e6281eb64-35046630507-1
+        name: Torch-XPU-Wheel-8cd50b4bc9722a87c60363e4c3434e1e6281eb64-35061638950-1
         github-token: ${{ github.token }}
         repository: mengfei25/torch-xpu-ops
-        run-id: 35046630507
+        run-id: 35061638950
         path: ${{ github.workspace }}/wheels
     - name: Download Pytorch wheel
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
@@ -164,7 +164,7 @@ runs:
         mv frameworks.ai.pytorch.torch-xpu-ops third_party/torch-xpu-ops
         cd third_party/torch-xpu-ops
         git config --global --add safe.directory /__w/torch-xpu-ops/torch-xpu-ops/pytorch/third_party/torch-xpu-ops
-        git checkout e12bf65e4eb0445bedf965ee84e0ce75d43b2a00
+        git checkout d16dd6d80284d64f0
         git status && git diff && git show -s
     - name: Install E2E Requirements
       shell: bash -xe {0}
