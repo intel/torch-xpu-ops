@@ -14,6 +14,7 @@
 #include <ATen/native/StridedRandomAccessor.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/nested/xpu/sycl/NestedTensorTransformerFunctionKernels.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 // keep align with cuda, global range0 is set to output_batch_size, global_range
@@ -155,7 +156,7 @@ void remove_padding_kernel(
   auto queue = getCurrentSYCLQueue();
   if (output_dim == 2) {
     constexpr auto kptr = remove_padding2_fn<T>;
-    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
     sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit<kptr>(
@@ -172,7 +173,7 @@ void remove_padding_kernel(
         batch_size);
   } else {
     constexpr auto kptr = remove_padding_fn<T>;
-    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
     sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit<kptr>(
@@ -206,7 +207,7 @@ void remove_padding_transform0213_kernel(
   auto queue = getCurrentSYCLQueue();
   constexpr auto kptr = remove_padding_transform0213_fn<T>;
 
-  int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+  int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
   sycl::range<2> local_range(1, max_wg_size);
 
@@ -453,7 +454,7 @@ void add_padding_kernel_impl(
   auto queue = getCurrentSYCLQueue();
   if (input_dim == 1) {
     constexpr auto kptr = add_padding1_fn<T>;
-    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
     sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit<kptr>(
@@ -472,7 +473,7 @@ void add_padding_kernel_impl(
   }
   if (input_dim == 2) {
     constexpr auto kptr = add_padding2_fn<T>;
-    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
     sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit<kptr>(
@@ -492,7 +493,7 @@ void add_padding_kernel_impl(
   }
   if (input_dim == 3) {
     constexpr auto kptr = add_padding3_fn<T>;
-    int64_t max_wg_size = syclMaxWorkGroupSize<kptr>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
     sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit<kptr>(
