@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -477,8 +478,8 @@ Tensor roi_align_kernel(
       input.scalar_type(),
       "roi_align_forward_kernel_xpu",
       [&] {
-        int64_t local_range =
-            syclMaxWorkGroupSize<RoiAlignForwardKernel<scalar_t>>();
+        int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<
+            RoiAlignForwardKernel<scalar_t>>();
         int items_per_roi = pooled_height * pooled_width * channels;
         if (items_per_roi < local_range) {
           constexpr int simd_len = 32;
@@ -489,7 +490,7 @@ Tensor roi_align_kernel(
         int wgs_per_roi = (items_per_roi + local_range - 1) / local_range;
         int64_t global_range = wgs_per_roi * num_rois;
         auto kfn = RoiAlignForwardKernel<scalar_t>(
-            input_.data_ptr<scalar_t>(),
+            input_.const_data_ptr<scalar_t>(),
             spatial_scale,
             items_per_roi,
             wgs_per_roi,
@@ -500,7 +501,7 @@ Tensor roi_align_kernel(
             pooled_width,
             sampling_ratio,
             aligned,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>());
         sycl_kernel_submit(
             global_range * local_range,
@@ -550,7 +551,7 @@ Tensor roi_align_backward_kernel(
       [&] {
         auto kfn = RoiAlignBackwardKernel<scalar_t>(
             grad.numel(),
-            grad.data_ptr<scalar_t>(),
+            grad.const_data_ptr<scalar_t>(),
             spatial_scale,
             channels,
             height,
@@ -560,7 +561,7 @@ Tensor roi_align_backward_kernel(
             sampling_ratio,
             aligned,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             n_stride,
             c_stride,
             h_stride,

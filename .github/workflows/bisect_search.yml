@@ -54,10 +54,9 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         SEARCH_COMMITS: ${{ inputs.search_commits }}
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}
@@ -67,7 +66,7 @@ jobs:
         USE_KINETO: 0
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: gs-scripts
       - name: Prepare test env
@@ -208,7 +207,7 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bisect-search
           path: ${{ github.workspace }}/gs-logs

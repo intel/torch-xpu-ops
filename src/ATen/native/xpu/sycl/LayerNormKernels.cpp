@@ -14,6 +14,7 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -27,7 +28,8 @@ namespace native {
 namespace xpu {
 
 template <typename scalar_t, typename mean_t, typename weight_t, bool rms_norm>
-class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
+class LayerNormBackward
+    : public NormBackward<scalar_t, mean_t, weight_t, rms_norm> {
  public:
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   LayerNormBackward() = delete;
@@ -40,7 +42,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
       const weight_t* gamma_data,
       int64_t M,
       int64_t N)
-      : NormBackward<scalar_t, mean_t, weight_t>(
+      : NormBackward<scalar_t, mean_t, weight_t, rms_norm>(
             X_data,
             dY_data,
             dX_data,
@@ -50,9 +52,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             nullptr,
             nullptr),
         M(M),
-        N(N) {
-    numel = M * N;
-  }
+        N(N) {}
 
   LayerNormBackward(
       const scalar_t* X_data,
@@ -65,7 +65,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
       accscalar_t* b_data,
       int64_t M,
       int64_t N)
-      : NormBackward<scalar_t, mean_t, weight_t>(
+      : NormBackward<scalar_t, mean_t, weight_t, rms_norm>(
             X_data,
             dY_data,
             dX_data,
@@ -76,7 +76,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             b_data),
         M(M),
         N(N) {}
-  using NB = NormBackward<scalar_t, mean_t, weight_t>;
+  using NB = NormBackward<scalar_t, mean_t, weight_t, rms_norm>;
 
   template <
       int vec_size,
@@ -188,7 +188,6 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 
   int64_t M;
   int64_t N;
-  int64_t numel;
 };
 
 // we could make it dependent on dtype, but that would lead to different results
@@ -500,34 +499,41 @@ struct VectorizedLayerNormKernelFunctor
       // Computation is performed in T_ACC, X is cast to T_ACC and result is
       // implicitly cast to T
       if (gamma_vec != nullptr && beta_vec != nullptr) {
+        vec_t gamma_data = gamma_vec[i];
+        if constexpr (!rms_norm) {
+          vec_t beta_data = beta_vec[i];
 #pragma unroll
-        for (int ii = 0; ii < vec_size; ii++) {
-          if constexpr (!rms_norm) {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+          for (int ii = 0; ii < vec_size; ii++) {
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                     (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
-                static_cast<T_ACC>(beta_vec[i].val[ii]);
-          } else {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+                static_cast<T_ACC>(beta_data.val[ii]);
+          }
+        } else {
+#pragma unroll
+          for (int ii = 0; ii < vec_size; ii++) {
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * static_cast<T_ACC>(data.val[ii]));
           }
         }
       } else if (gamma_vec != nullptr) {
+        vec_t gamma_data = gamma_vec[i];
 #pragma unroll
         for (int ii = 0; ii < vec_size; ii++) {
           if constexpr (!rms_norm) {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean));
           } else {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * static_cast<T_ACC>(data.val[ii]));
           }
         }
       } else if (beta_vec != nullptr) {
+        vec_t beta_data = beta_vec[i];
 #pragma unroll
         for (int ii = 0; ii < vec_size; ii++) {
           out.val[ii] =
               (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
-              static_cast<T_ACC>(beta_vec[i].val[ii]);
+              static_cast<T_ACC>(beta_data.val[ii]);
         }
       } else {
 #pragma unroll
@@ -609,7 +615,7 @@ int64_t layer_norm_wg_size_select(
     return wg_size;
 
   // (XeCore count * EUs per XeCore) * HW threads per EU
-  int64_t total_hw_threads = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int64_t total_hw_threads = at::xpu::getDeviceHWThreads();
   // Only use preferred_wg_size when less than 50% HW threads would be left idle
   if (M * threads_per_wg > total_hw_threads / 2)
     return preferred_wg_size;
@@ -630,7 +636,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
   auto wg_size = layer_norm_wg_size_select(
-      syclMaxWorkGroupSize<KernelClass>(), M, N / vec_size);
+      at::xpu::getKernelMaxWorkGroupSize<KernelClass>(), M, N / vec_size);
   KernelClass kfn(
       N,
       eps,
@@ -1162,9 +1168,10 @@ void layer_norm_backward_kernel_impl(
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
           ? kFloat
           : X.scalar_type();
-      Tensor a = at::empty({M}, X.options().dtype(kAccType));
+      Tensor a =
+          rms_norm ? Tensor() : at::empty({M}, X.options().dtype(kAccType));
+      accscalar_t* a_data = rms_norm ? nullptr : a.data_ptr<accscalar_t>();
       Tensor b = at::empty({M}, X.options().dtype(kAccType));
-      accscalar_t* a_data = a.data_ptr<accscalar_t>();
       accscalar_t* b_data = b.data_ptr<accscalar_t>();
 
       LayerNormBackward<scalar_t, mean_t, weight_t, rms_norm> norm(
@@ -1179,8 +1186,7 @@ void layer_norm_backward_kernel_impl(
           M,
           N);
       Tensor semaphores, scratchpad;
-      config.template init_global_reduce<accscalar_t>(
-          X, semaphores, scratchpad);
+      config.template init_global_reduce<rms_norm>(X, semaphores, scratchpad);
       rowwise_moments_kernel<
           scalar_t,
           mean_t,
@@ -1198,16 +1204,17 @@ void layer_norm_backward_kernel_impl(
   auto config_w = NormConfig(M, N, 0, sizeof(scalar_t));
   auto norm_config_global_size =
       config_w.workgroup_num * config_w.block_row * config_w.workgroup_size;
-  int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int thread_slots = at::xpu::getDeviceHWThreads();
   // use two stage col reduction if norm config occupancy < 50%
   // TODO: we can relax this restriction in future for better perf
   bool use_two_stage_col_reduction =
       (dY.dtype() == kFloat || dY.dtype() == kBFloat16 ||
        dY.dtype() == kHalf) &&
-      norm_config_global_size / syclMaxSubGroupSize() * 2 <= thread_slots;
+      norm_config_global_size / at::xpu::getDeviceMaxSubGroupSize() * 2 <=
+          thread_slots;
   // cuda uses condition M > 64 * 1024 && N / 32 < sm_count / 2 to parallelize
   // in the M dimension
-  int xe_core_count = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+  int xe_core_count = at::xpu::getDeviceXeCoreCount();
   int tile_n = N / 32;
   if (use_two_stage_col_reduction && M > xe_core_count * 1024 &&
       tile_n < xe_core_count * 2) {
@@ -1228,7 +1235,7 @@ void layer_norm_backward_kernel_impl(
     for (auto i = 0; i < 3; i++) {
       // occupancy <= 50%
       if (num_tile_m * num_tile_n * local_size_x * SIMD /
-              syclMaxSubGroupSize() * 2 <=
+              at::xpu::getDeviceMaxSubGroupSize() * 2 <=
           thread_slots) {
         if (adjust_m) {
           tile_size_m /= 2;

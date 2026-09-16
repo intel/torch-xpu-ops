@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 1000
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Clean old wheel artifacts
         if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
         shell: cmd
@@ -49,7 +49,7 @@ jobs:
           if exist "%GITHUB_WORKSPACE%\wheel_artifact" rmdir /s /q "%GITHUB_WORKSPACE%\wheel_artifact"
       - name: Download Torch Wheel
         if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-*
           path: ${{ github.workspace }}/wheel_artifact
@@ -246,7 +246,6 @@ jobs:
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ut
           set PYTORCH_TEST_WITH_SLOW=1
-          set PYTORCH_ENABLE_XPU_FALLBACK=1
           set PYTEST_ADDOPTS=-v --timeout 600 --timeout_method=thread --max-worker-restart 1000000 -n 1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_with_windows_nighltly.py
@@ -254,7 +253,7 @@ jobs:
           for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: "${{ github.workspace }}/ut_log"
@@ -268,20 +267,20 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
+        uses: ./.github/actions/setup-python
         with:
-          python-version: ${{ inputs.python }}
+          python: ${{ inputs.python }}
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
       - name: UT Test Results Summary
         shell: bash
         run: |
-          python -m pip install junitparser
+          uv pip install junitparser
           find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
           python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
           # Check the failure logs
@@ -312,7 +311,7 @@ jobs:
           fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
@@ -326,9 +325,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
@@ -337,7 +336,9 @@ jobs:
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log
+          # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
           cd "${latest_dir}"
           find "${{ github.workspace }}/ut_log" -type f \
               \( -name "failures_*.log" -o \
@@ -383,7 +384,7 @@ jobs:
           done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log

@@ -1576,18 +1576,39 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_put_wait_signal(self) -> None:
-        """Verify put_signal / wait_signal over the SYCL IPC peer mapping."""
+        """Verify put_signal / wait_signal over the SYCL IPC peer mapping.
+
+        The handshake is repeated so that a signal flag which is not visible
+        across ranks (e.g. one left behind in L1) surfaces as a hang, and each
+        round asserts that data written before put_signal is readable by the
+        peer once wait_signal returns.
+        """
         self._init_process()
 
-        t = symm_mem.empty(1, device="xpu")
+        numel = 1024
+        iters = 50
+        t = symm_mem.empty(numel, dtype=torch.int32, device=self.device)
+        t.fill_(-1)
         hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
+        # Signalling uses channel 0, so keep the barrier on a separate channel.
+        hdl.barrier(channel=1)
 
-        # Ring: each rank sends a signal to its right neighbor and waits for
-        # a signal from its left neighbor.
+        # Ring: each rank pushes into its right neighbor's buffer and signals
+        # it, then waits for the signal from its left neighbor.
         dst = (self.rank + 1) % self.world_size
         src = (self.rank - 1) % self.world_size
-        hdl.put_signal(dst_rank=dst, channel=0, timeout_ms=10_000)
-        hdl.wait_signal(src_rank=src, channel=0, timeout_ms=10_000)
+        for i in range(1, iters + 1):
+            hdl.get_buffer(dst, (numel,), torch.int32).fill_(self.rank * iters + i)
+            hdl.put_signal(dst_rank=dst, channel=0, timeout_ms=10_000)
+            hdl.wait_signal(src_rank=src, channel=0, timeout_ms=10_000)
+            expected = src * iters + i
+            self.assertTrue(
+                t.eq(expected).all().item(),
+                f"iteration {i}: expected all {expected}, got {t.unique().tolist()}",
+            )
+            # The ring handshake is one-way, so without this the left peer can
+            # start writing iteration i + 1 while we are still reading i.
+            hdl.barrier(channel=1)
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)

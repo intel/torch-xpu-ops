@@ -97,9 +97,7 @@ struct PowScalarTensorFunctor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> exp) const {
     return std::exp(fct_ * exp);
   }
-  PowScalarTensorFunctor(c10::complex<T> base) {
-    fct_ = std::log(base);
-  }
+  PowScalarTensorFunctor(c10::complex<T> base) : fct_(std::log(base)) {}
 
  private:
   c10::complex<T> fct_;

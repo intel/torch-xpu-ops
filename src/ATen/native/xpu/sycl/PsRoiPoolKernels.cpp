@@ -164,14 +164,14 @@ std::tuple<Tensor, Tensor> ps_roi_pool_kernel(
       input.scalar_type(), "ps_roi_pool_forward_kernel_xpu", [&] {
         auto kfn = PsRoiPoolForwardKernel<scalar_t>(
             output_size,
-            input_.data_ptr<scalar_t>(),
+            input_.const_data_ptr<scalar_t>(),
             spatial_scale,
             channels,
             height,
             width,
             pooled_height,
             pooled_width,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             channels_out,
             output.data_ptr<scalar_t>(),
             channel_mapping.data_ptr<int>());
@@ -312,8 +312,8 @@ Tensor ps_roi_pool_backward_kernel(
       grad.scalar_type(), "ps_roi_pool_backward_kernel_xpu", [&] {
         auto kfn = PsRoiPoolBackwardKernel<scalar_t>(
             grad.numel(),
-            grad_.data_ptr<scalar_t>(),
-            channel_mapping.data_ptr<int>(),
+            grad_.const_data_ptr<scalar_t>(),
+            channel_mapping.const_data_ptr<int>(),
             spatial_scale,
             channels,
             height,
@@ -322,7 +322,7 @@ Tensor ps_roi_pool_backward_kernel(
             pooled_width,
             channels_out,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>());
+            rois_.const_data_ptr<scalar_t>());
         sycl_kernel_submit(
             global_range * local_range,
             local_range,

@@ -668,12 +668,11 @@ class RadixSortUpsweep {
         end_bit_(end_bit),
         num_groups_(num_groups),
         count_out_(count_out),
+        subgroup_id_(lid_ / SUBGROUP_SIZE),
+        subgroup_tid_(lid_ % SUBGROUP_SIZE),
         local_storage_(reinterpret_cast<LocalStorage&>(
             *(local_ptr.template get_multi_ptr<sycl::access::decorated::no>()
-                  .get()))) {
-    subgroup_id_ = lid_ / SUBGROUP_SIZE;
-    subgroup_tid_ = lid_ % SUBGROUP_SIZE;
-  }
+                  .get()))) {}
 
   inline DigitT extract_digit(KeyTraitsT key) {
     auto pass_bits = end_bit_ - begin_bit_;

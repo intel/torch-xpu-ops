@@ -21,6 +21,27 @@ esac
 readonly TEST_PLATFORM="$_final_platform"
 unset _test_platform_normalized _final_platform
 
+# Human-readable platform label used in issue comments. Derived from the runner
+# so shared invocations (Windows nightly, distributed) don't mislabel results.
+readonly TEST_RUNNER="${TEST_RUNNER:-}"
+_test_runner_normalized="${TEST_RUNNER,,}"
+case "$TEST_PLATFORM" in
+  windows)
+    _issue_platform="Windows"
+    ;;
+  *)
+    if [[ "$_test_runner_normalized" == *"bmg"* ]]; then
+      _issue_platform="BMG"
+    elif [[ "$_test_runner_normalized" == *"distributed"* ]]; then
+      _issue_platform="distributed"
+    else
+      _issue_platform="Linux"
+    fi
+    ;;
+esac
+readonly ISSUE_PLATFORM="$_issue_platform"
+unset _test_runner_normalized _issue_platform
+
 # Expected test case counts for op_ut between linux and windows(Focus scope)
 declare -A OP_UT_EXPECTED=(
     ["linux"]=178548
@@ -305,7 +326,7 @@ run_distributed_tests() {
 mark_passed_issue() {
     local PASSED_FILE="$1"
     local ISSUE_FILE="$2"
-    random_issues="$(gh issue list --repo ${REPO} --label 'skipped,random' --json number --jq '.[].number')"
+    random_issues="$(gh issue list --repo ${REPO} --state 'open' --label 'random' --json number --jq '.[].number')"
     # Cehck before start
     [[ ! -f "$PASSED_FILE" ]] && { echo "❌ Missing $PASSED_FILE" >&2; exit 1; }
     [[ ! -f "$ISSUE_FILE" ]] && { echo "❌ Missing $ISSUE_FILE" >&2; exit 1; }
@@ -364,14 +385,77 @@ mark_passed_issue() {
         gh --repo "$REPO" issue edit "${issue_id}" --body-file "issue-body-${issue_id}.txt"
         # Add comment
         if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
-            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on ${ISSUE_PLATFORM}"
         else
-            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing"
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing on ${ISSUE_PLATFORM}"
         fi
         # Clean up temporary file
         rm -f "issue-body-${issue_id}.txt"
         echo "✅ Updated issue #${issue_id}"
     done
+}
+
+# Read a numeric attribute out of an XML start tag
+_xml_attr() {
+    local tag="$1" attr="$2" value
+    value=$(printf '%s' "$tag" | grep -o "${attr}=\"[0-9]*\"" | head -n 1 | grep -o '[0-9]*')
+    echo "${value:-0}"
+}
+
+# Check xpu_profiling results from the pytest junit xml reports
+check_profiling_ut() {
+    echo "========================================================================="
+    echo "Running tests for: xpu_profiling"
+    echo "========================================================================="
+    local reports=() total_tests=0 total_failures=0 total_errors=0 report_count=0
+    # check-ut.py only globs ut_log/*.xml, so the reports live one level above this ut dir
+    mapfile -t reports < <({ find . -type f -name '*.xml'; find .. -maxdepth 1 -type f -name '*.xml'; } | sort -u)
+    if [[ "${#reports[@]}" -eq 0 ]]; then
+        echo "❌ TEST FAILED: xpu_profiling - no pytest junit xml report found"
+        exit 1
+    fi
+    echo "📋 Test Reports:"
+    for report in "${reports[@]}"; do
+        local tag tests failures errors
+        tag=$(grep -o '<testsuite [^>]*>' "$report" | head -n 1)
+        if [[ -z "$tag" ]]; then
+            echo "   ⚠️  ${report}: not a pytest report, skipped"
+            continue
+        fi
+        tests=$(_xml_attr "$tag" tests)
+        failures=$(_xml_attr "$tag" failures)
+        errors=$(_xml_attr "$tag" errors)
+        report_count=$((report_count + 1))
+        total_tests=$((total_tests + tests))
+        total_failures=$((total_failures + failures))
+        total_errors=$((total_errors + errors))
+        if [[ "$failures" -gt 0 ]] || [[ "$errors" -gt 0 ]]; then
+            echo "   ❌ ${report}: ${tests} tests, ${failures} failures, ${errors} errors"
+            tr '<' '\n' < "$report" | awk '
+                /^testcase / { match($0, / name="[^"]*"/); name=substr($0, RSTART+7, RLENGTH-8) }
+                /^failure|^error/ { if (name != "") { print "      - " name; name="" } }
+            '
+        else
+            echo "   ✅ ${report}: ${tests} tests"
+        fi
+    done
+    local suite="xpu_profiling"
+    if [[ -f "passed_${suite}.log" ]] && [[ -f "Known_issue.log" ]]; then
+        echo -e "\\n✅ Passing Known Issues:"
+        check_passed_known_issues "passed_${suite}.log" "Known_issue.log"
+    fi
+    if [[ -f "failures_${suite}.log" ]] && [[ -f "Known_issue.log" ]]; then
+        echo -e "\\nChecking New Failures:"
+        check_new_failed "failures_${suite}.log" "Known_issue.log"
+    fi
+    echo -e "\\n📈 Final Summary:"
+    echo "   Reports: ${report_count}, Tests: ${total_tests}, Failed: ${total_failures}, Errors: ${total_errors}"
+    if [[ "$total_failures" -gt 0 ]] || [[ "$total_errors" -gt 0 ]] || [[ "$total_tests" -le 0 ]]; then
+        echo "❌ TEST FAILED: xpu_profiling"
+        exit 1
+    else
+        echo "✅ TEST PASSED: xpu_profiling"
+    fi
 }
 
 # Main dispatcher - route to appropriate test runner based on suite type
@@ -386,7 +470,7 @@ case "$ut_suite" in
         check_skipped_ut
         ;;
     xpu_profiling)
-        echo "💡 Not check the test suite results: ${ut_suite}" >&2
+        check_profiling_ut
         ;;
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2

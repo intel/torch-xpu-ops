@@ -123,8 +123,23 @@ void _calculate_moving_average(
   } else {
     std::tie(x_min, x_max) = at::aminmax(x);
   }
+
+  TORCH_CHECK(
+      running_min.scalar_type() == running_max.scalar_type(),
+      "running_min and running_max must have the same dtype");
+  const auto running_state_dtype = running_min.scalar_type();
+
+  if (x_min.scalar_type() != running_state_dtype) {
+    x_min = x_min.to(running_state_dtype);
+    x_max = x_max.to(running_state_dtype);
+  }
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::kBFloat16, at::kHalf, x.scalar_type(), "MovingAverageMinMax", [&] {
+      at::kBFloat16,
+      at::kHalf,
+      running_state_dtype,
+      "MovingAverageMinMax",
+      [&] {
         scalar_t* x_min_data = x_min.data_ptr<scalar_t>();
         scalar_t* x_max_data = x_max.data_ptr<scalar_t>();
         scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
@@ -269,8 +284,7 @@ struct CalcMovingAvgQparamsHelperKernelFunctor {
 };
 
 void _calc_moving_avg_qparams_helper(
-    const at::Tensor& x,
-    const at::Tensor fake_quant_on,
+    const at::Tensor& fake_quant_on,
     at::Tensor& running_min,
     at::Tensor& running_max,
     float* scale_ptr,
@@ -290,7 +304,7 @@ void _calc_moving_avg_qparams_helper(
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::kBFloat16,
       at::kHalf,
-      x.scalar_type(),
+      running_min.scalar_type(),
       "ChooseQuantizationParams",
       [&] {
         const scalar_t* running_min_data =

@@ -156,7 +156,7 @@ inline int64_t get_ldc(const bool is_transposed, const Tensor& c) {
   return ldc;
 }
 
-inline int64_t get_stridec(const Tensor c) {
+inline int64_t get_stridec(const Tensor& c) {
   return c.sizes()[1] * c.sizes()[2];
 }
 

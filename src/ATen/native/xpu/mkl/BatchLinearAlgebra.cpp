@@ -58,16 +58,33 @@ void error_handle(
   auto ids = be.ids();
 
   for (size_t i = 0; i < errs.size(); ++i) {
+    if (!errs[i]) {
+      info_cpu[ids[i]] = -1;
+      continue;
+    }
     try {
       std::rethrow_exception(errs[i]);
     } catch (const oneapi::mkl::lapack::exception& e) {
+#ifdef _WIN32
+      // what() returns a char* into mkl_sycl_lapack.dll's CRT heap; unsafe
+      // across DLL boundaries on Windows. info() and detail() return plain
+      // integers, safe.
       TORCH_WARN(
-          "Caught lapack exception:\nWhat: ",
+          "Caught lapack exception:",
+          "\nInfo: ",
+          e.info(),
+          "\nDetail: ",
+          e.detail());
+#else
+      TORCH_WARN(
+          "Caught lapack exception:",
+          "\nWhat: ",
           e.what(),
           "\nInfo: ",
           e.info(),
           "\nDetail: ",
           e.detail());
+#endif
       info_cpu[ids[i]] = e.info();
     } catch (const sycl::exception& e) {
       TORCH_WARN("Caught SYCL exception:\nWhat: ", e.what(), "\nInfo: -1");
@@ -251,22 +268,13 @@ static void apply_lu_solve_xpu_(
   std::vector<int32_t> info_vec(batch_size, 0);
   int32_t* info_data = info_vec.data();
 
+  // The scratchpad depends only on batch_size, so callers hoist it.
   auto execute_mkl_getrs = [&](const scalar_t* a,
                                scalar_t* b,
                                const int64_t* ipiv,
-                               int64_t batch_size) {
-    int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
-        queue,
-        trans,
-        n,
-        nrhs,
-        lda,
-        stride_a,
-        stride_ipiv,
-        ldb,
-        stride_b,
-        batch_size);
-    Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
+                               int64_t batch_size,
+                               scalar_t* scratchpad,
+                               int64_t scratchpad_size) {
     try {
       mkl_getrs<scalar_t>(
           queue,
@@ -282,11 +290,26 @@ static void apply_lu_solve_xpu_(
           ldb,
           stride_b,
           batch_size,
-          reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
+          scratchpad,
           scratchpad_size);
     } catch (const oneapi::mkl::lapack::batch_error& be) {
       error_handle(info_data, be);
     }
+  };
+
+  auto alloc_getrs_scratchpad = [&](int64_t batch_size) {
+    int64_t size = mkl_getrs_scratchpad<scalar_t>(
+        queue,
+        trans,
+        n,
+        nrhs,
+        lda,
+        stride_a,
+        stride_ipiv,
+        ldb,
+        stride_b,
+        batch_size);
+    return std::make_pair(at::empty({size}, b_.options()), size);
   };
 
   bool is_broadcast = false;
@@ -301,12 +324,24 @@ static void apply_lu_solve_xpu_(
   }
 
   if (!is_broadcast) {
-    execute_mkl_getrs(a, b, ipiv, batch_size);
+    auto [scratchpad_at, scratchpad_size] = alloc_getrs_scratchpad(batch_size);
+    execute_mkl_getrs(
+        a,
+        b,
+        ipiv,
+        batch_size,
+        reinterpret_cast<scalar_t*>(scratchpad_at.mutable_data_ptr()),
+        scratchpad_size);
     return;
   }
 
   BroadcastLinearIndices lu_index(
       native::batchCount(lu_), lu_batch_shape, b_batch_shape);
+
+  // Every iteration solves one matrix, so one scratchpad serves them all.
+  auto [scratchpad_at, scratchpad_size] = alloc_getrs_scratchpad(1);
+  auto* scratchpad =
+      reinterpret_cast<scalar_t*>(scratchpad_at.mutable_data_ptr());
 
   for (const auto i : c10::irange(batch_size)) {
     int64_t lu_index_i = lu_index(i);
@@ -314,7 +349,13 @@ static void apply_lu_solve_xpu_(
     scalar_t* b_working_ptr = &b[i * stride_b];
     const int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
 
-    execute_mkl_getrs(a_working_ptr, b_working_ptr, ipiv_working_ptr, 1);
+    execute_mkl_getrs(
+        a_working_ptr,
+        b_working_ptr,
+        ipiv_working_ptr,
+        1,
+        scratchpad,
+        scratchpad_size);
   }
 }
 
@@ -526,11 +567,13 @@ Tensor& ungqr_mkl(Tensor& result, const Tensor& tau) {
       Tensor scratchpad_at = at::zeros({scratchpad_size}, result.options());
       auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
 
+      // One wait for the loop: the in-order queue serializes the scratchpad.
+      sycl::event last_event;
       for (const auto batch_item : c10::irange(batch_size)) {
         auto* result_batch_ptr = result_data + batch_item * matrix_stride;
         auto* tau_batch_ptr = tau_data + batch_item * tau_stride;
 
-        oneapi::mkl::lapack::ungqr(
+        last_event = oneapi::mkl::lapack::ungqr(
             queue,
             m,
             n,
@@ -539,9 +582,9 @@ Tensor& ungqr_mkl(Tensor& result, const Tensor& tau) {
             lda,
             tau_batch_ptr,
             scratchpad,
-            scratchpad_size)
-            .wait();
+            scratchpad_size);
       }
+      last_event.wait();
     }
   });
 
@@ -595,11 +638,13 @@ Tensor& orgqr_mkl(Tensor& result, const Tensor& tau) {
       Tensor scratchpad_at = at::zeros({scratchpad_size}, result.options());
       auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
 
+      // One wait for the loop: the in-order queue serializes the scratchpad.
+      sycl::event last_event;
       for (const auto batch_item : c10::irange(batch_size)) {
         auto* result_batch_ptr = result_data + batch_item * matrix_stride;
         auto* tau_batch_ptr = tau_data + batch_item * tau_stride;
 
-        oneapi::mkl::lapack::orgqr(
+        last_event = oneapi::mkl::lapack::orgqr(
             queue,
             m,
             n,
@@ -608,9 +653,9 @@ Tensor& orgqr_mkl(Tensor& result, const Tensor& tau) {
             lda,
             tau_batch_ptr,
             scratchpad,
-            scratchpad_size)
-            .wait();
+            scratchpad_size);
       }
+      last_event.wait();
     }
   });
 

@@ -15033,6 +15033,7 @@ class TestNNDeviceType(NNTestCase):
 
     @onlyOn(["cuda", "xpu"])
     @dtypes(torch.half, torch.float)
+    @dtypesIfXPU(torch.float)
     def test_softmax(self, device, dtype):
         input = torch.rand(32, 100, device=device, dtype=dtype, requires_grad=True)
         inputf = input.to(torch.float).detach().requires_grad_(True)

@@ -24,6 +24,12 @@
 #  SYCL_HOST_FLAGS
 #  -- SYCL compiler's 3rd party host compiler (e.g. gcc) arguments .
 #
+#  SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
+#  -- Host arguments omitted when composing the SYCL compiler command line.
+#
+#  SYCL_HOST_FLAGS_ONLY_FOR_SYCL
+#  -- Host arguments used only when composing the SYCL compiler command line.
+#
 #  SYCL_DEVICE_LINK_FLAGS
 #  -- Arguments used when linking device object.
 #
@@ -58,10 +64,6 @@ macro(SYCL_FIND_HELPER_FILE _name _extension)
   # Set this variable as internal, so the user isn't bugged with it.
   set(SYCL_${_name} ${SYCL_${_name}} CACHE INTERNAL "Location of ${_full_name}" FORCE)
 endmacro()
-
-# SYCL_HOST_COMPILER
-set(SYCL_HOST_COMPILER "${CMAKE_CXX_COMPILER}"
-  CACHE FILEPATH "Host side compiler used by SYCL")
 
 # SYCL_EXECUTABLE
 set(SYCL_EXECUTABLE ${SYCL_COMPILER} CACHE FILEPATH "SYCL compiler")
@@ -210,6 +212,10 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       list(APPEND ${sycl_target}_INTERMEDIATE_LINK_OBJECTS "${generated_file}")
 
       set(SYCL_build_type "Device")
+
+      # Apply the compiler launcher (e.g. ccache) to the individual SYCL object
+      # compile, mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
+      set(SYCL_compiler_launcher ${CMAKE_SYCL_COMPILER_LAUNCHER})
 
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
