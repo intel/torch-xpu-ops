@@ -11,7 +11,7 @@
 /*
  * Subgroup top-k kernel implementation -- shared header.
  *
- * Contains SubgroupTopKFunctor, sbtopk_launch_impl, and
+ * Contains subgroup_topk_kernel, sbtopk_launch_impl, and
  * sbtopk_launch_vec_dispatch templates.  Included by per-K compilation
  * units (TensorTopKSbtopkKernel_k*.cpp) to split AOT compilation across
  * files.
@@ -32,7 +32,6 @@
 
 namespace at::native::xpu {
 
-namespace syclex = sycl::ext::oneapi::experimental;
 namespace intelex = sycl::ext::intel::experimental;
 
 static constexpr int SG_SIZE = 32;
@@ -43,7 +42,7 @@ static_assert(
     "SG_MERGE_LEVELS must equal log2(SG_SIZE)");
 
 // ================================================================
-// SubgroupTopKFunctor
+// subgroup_topk_kernel
 //
 // K: compile-time max top-k (must be >= runtime k)
 // VEC_SIZE: vectorized load width
@@ -53,246 +52,233 @@ static_assert(
 //         otherwise.  int32 avoids 64-bit arithmetic on slice indices,
 //         reducing register pressure.
 // ================================================================
+// Returns true if a is "better" than b — i.e. a should rank higher.
+// NaN is treated as better than any non-NaN (matching CPU/CUDA behavior).
+// A sentinel (idx == -1) is always worse than a real entry.
+template <bool Largest, typename scalar_t, typename IndexT>
+inline bool subgroup_topk_better(
+    scalar_t a,
+    IndexT a_idx,
+    scalar_t b,
+    IndexT b_idx) {
+  // Sentinel is always worse
+  if (a_idx == -1)
+    return false;
+  if (b_idx == -1)
+    return true;
+  // NaN beats non-NaN
+  bool a_nan = at::_isnan(a);
+  bool b_nan = at::_isnan(b);
+  if (a_nan != b_nan)
+    return a_nan;
+  if (a_nan)
+    return a_idx < b_idx; // both NaN: smaller index ranks higher
+  if constexpr (Largest) {
+    return a > b;
+  } else {
+    return a < b;
+  }
+}
+
+// Insert val into a K-sorted buffer.
+// Fully unrolled, no early break — SIMD-friendly.
+template <int K, bool Largest, typename scalar_t, typename IndexT>
+inline void subgroup_topk_insert(
+    scalar_t* top_vals,
+    IndexT* top_idx,
+    int count,
+    scalar_t val,
+    IndexT idx) {
+  if (count >= K &&
+      !subgroup_topk_better<Largest>(val, idx, top_vals[K - 1], top_idx[K - 1]))
+    return;
+  bool inserted = false;
+#pragma unroll
+  for (int i = K - 1; i >= 0; --i) {
+    bool stop = (i == 0) ||
+        (i <= count &&
+         !subgroup_topk_better<Largest>(
+             val, idx, top_vals[i - 1], top_idx[i - 1]));
+    if (!inserted && stop) {
+      top_vals[i] = val;
+      top_idx[i] = idx;
+      inserted = true;
+    } else if (!inserted) {
+      top_vals[i] = top_vals[i - 1];
+      top_idx[i] = top_idx[i - 1];
+    }
+  }
+}
+
+// Bitonic merge: A[K] and B[K] are both sorted in the same direction.
+// When A[i] holds a sentinel (A_idx[i]==-1), any real entry replaces it.
+template <int K, bool Largest, typename scalar_t, typename IndexT>
+inline void subgroup_topk_bitonic_merge(
+    scalar_t* A,
+    IndexT* A_idx,
+    const scalar_t* B,
+    const IndexT* B_idx) {
+  // Step 1: compare with reversed partner
+#pragma unroll
+  for (int i = 0; i < K; ++i) {
+    scalar_t bv = B[K - 1 - i];
+    IndexT bi = B_idx[K - 1 - i];
+    if (subgroup_topk_better<Largest>(bv, bi, A[i], A_idx[i])) {
+      A[i] = bv;
+      A_idx[i] = bi;
+    }
+  }
+  // Step 2: bitonic sort — standard bitonic merge network.
+  //
+  // After step 1, A[0..K-1] is bitonic (first decreasing then increasing,
+  // or vice versa).  At stride = K/2 we compare A[i] with A[i + K/2]
+  // for i in [0, K/2) and swap so the "better" value goes to the low
+  // half.  This guarantees:
+  //   (a) every element in A[0..K/2-1] >= every element in A[K/2..K-1],
+  //   (b) each half is itself bitonic (splitting a bitonic sequence at
+  //       the midpoint with min/max produces two bitonic subsequences).
+  // Recurse with stride K/4, K/8, ..., 1 and each sub-piece halves
+  // again, until every piece has length 1 — the array is sorted.
+  //
+  // j = i ^ stride pairs each element with its partner at distance
+  // `stride`.  The guard j > i ensures each pair is processed once.
+  //
+  // Example for K = 16:
+  //   stride 8: (0,8) (1,9) (2,10) ... (7,15)   — 8 pairs
+  //   stride 4: (0,4) (1,5) (2,6) (3,7)          — two groups of 4
+  //             (8,12) (9,13) (10,14) (11,15)
+  //   stride 2: (0,2) (1,3) (4,6) (5,7) ...      — four groups of 2
+  //   stride 1: (0,1) (2,3) (4,5) ... (14,15)    — 8 adjacent pairs
+#pragma unroll
+  for (int stride = K / 2; stride >= 1; stride >>= 1) {
+#pragma unroll
+    for (int i = 0; i < K; ++i) {
+      int j = i ^ stride;
+      bool swap = (j > i) &&
+          subgroup_topk_better<Largest>(A[j], A_idx[j], A[i], A_idx[i]);
+      if (swap) {
+        scalar_t tv = A[i];
+        A[i] = A[j];
+        A[j] = tv;
+        IndexT ti = A_idx[i];
+        A_idx[i] = A_idx[j];
+        A_idx[j] = ti;
+      }
+    }
+  }
+}
+
 template <
     typename scalar_t,
     int K,
     int VEC_SIZE,
     bool Largest,
     typename IndexT = int>
-struct SubgroupTopKFunctor {
-  // Returns true if a is "better" than b — i.e. a should rank higher.
-  // NaN is treated as better than any non-NaN (matching CPU/CUDA behavior).
-  // A sentinel (idx == -1) is always worse than a real entry.
-  static inline bool better(
-      scalar_t a,
-      IndexT a_idx,
-      scalar_t b,
-      IndexT b_idx) {
-    // Sentinel is always worse
-    if (a_idx == -1)
-      return false;
-    if (b_idx == -1)
-      return true;
-    // NaN beats non-NaN
-    bool a_nan = at::_isnan(a);
-    bool b_nan = at::_isnan(b);
-    if (a_nan != b_nan)
-      return a_nan;
-    if (a_nan)
-      return a_idx < b_idx; // both NaN: smaller index ranks higher
-    if constexpr (Largest) {
-      return a > b;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SG_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((intelex::grf_size<128>))
+    SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>)) inline void subgroup_topk_kernel(
+        const scalar_t* inputData,
+        scalar_t* topKData,
+        int64_t* indicesData,
+        IndexT numSlices,
+        int64_t sliceSize,
+        int k) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  sycl::sub_group sg = item.get_sub_group();
+  int sg_lid = sg.get_local_linear_id();
+
+  // Each sub-group handles one slice
+  int sgs_per_wg = item.get_local_range(0) / SG_SIZE;
+  IndexT slice = static_cast<IndexT>(item.get_group_linear_id()) * sgs_per_wg +
+      sg.get_group_linear_id();
+  if (slice >= numSlices)
+    return;
+
+  const scalar_t* inputSlice =
+      inputData + static_cast<int64_t>(slice) * sliceSize;
+  scalar_t* topKSlice = topKData + static_cast<int64_t>(slice) * k;
+  int64_t* indicesSlice = indicesData + static_cast<int64_t>(slice) * k;
+
+  // Initialize sorted top-K buffer
+  scalar_t top_vals[K];
+  IndexT top_idx_local[K];
+  scalar_t init_val;
+  if constexpr (Largest) {
+    if constexpr (std::numeric_limits<scalar_t>::has_infinity) {
+      init_val = -std::numeric_limits<scalar_t>::infinity();
     } else {
-      return a < b;
+      init_val = std::numeric_limits<scalar_t>::lowest();
     }
-  }
-
-  // Insert val into a K-sorted buffer.
-  // Fully unrolled, no early break — SIMD-friendly.
-  inline void insert(
-      scalar_t* top_vals,
-      IndexT* top_idx,
-      int count,
-      scalar_t val,
-      IndexT idx) const {
-    if (count >= K && !better(val, idx, top_vals[K - 1], top_idx[K - 1]))
-      return;
-    bool inserted = false;
-#pragma unroll
-    for (int i = K - 1; i >= 0; --i) {
-      bool stop = (i == 0) ||
-          (i <= count && !better(val, idx, top_vals[i - 1], top_idx[i - 1]));
-      if (!inserted && stop) {
-        top_vals[i] = val;
-        top_idx[i] = idx;
-        inserted = true;
-      } else if (!inserted) {
-        top_vals[i] = top_vals[i - 1];
-        top_idx[i] = top_idx[i - 1];
-      }
-    }
-  }
-
-  // Bitonic merge: A[K] and B[K] are both sorted in the same direction.
-  // When A[i] holds a sentinel (A_idx[i]==-1), any real entry replaces it.
-  inline void bitonic_merge(
-      scalar_t* A,
-      IndexT* A_idx,
-      const scalar_t* B,
-      const IndexT* B_idx) const {
-    // Step 1: compare with reversed partner
-#pragma unroll
-    for (int i = 0; i < K; ++i) {
-      scalar_t bv = B[K - 1 - i];
-      IndexT bi = B_idx[K - 1 - i];
-      if (better(bv, bi, A[i], A_idx[i])) {
-        A[i] = bv;
-        A_idx[i] = bi;
-      }
-    }
-    // Step 2: bitonic sort — standard bitonic merge network.
-    //
-    // After step 1, A[0..K-1] is bitonic (first decreasing then increasing,
-    // or vice versa).  At stride = K/2 we compare A[i] with A[i + K/2]
-    // for i in [0, K/2) and swap so the "better" value goes to the low
-    // half.  This guarantees:
-    //   (a) every element in A[0..K/2-1] >= every element in A[K/2..K-1],
-    //   (b) each half is itself bitonic (splitting a bitonic sequence at
-    //       the midpoint with min/max produces two bitonic subsequences).
-    // Recurse with stride K/4, K/8, ..., 1 and each sub-piece halves
-    // again, until every piece has length 1 — the array is sorted.
-    //
-    // j = i ^ stride pairs each element with its partner at distance
-    // `stride`.  The guard j > i ensures each pair is processed once.
-    //
-    // Example for K = 16:
-    //   stride 8: (0,8) (1,9) (2,10) ... (7,15)   — 8 pairs
-    //   stride 4: (0,4) (1,5) (2,6) (3,7)          — two groups of 4
-    //             (8,12) (9,13) (10,14) (11,15)
-    //   stride 2: (0,2) (1,3) (4,6) (5,7) ...      — four groups of 2
-    //   stride 1: (0,1) (2,3) (4,5) ... (14,15)    — 8 adjacent pairs
-#pragma unroll
-    for (int stride = K / 2; stride >= 1; stride >>= 1) {
-#pragma unroll
-      for (int i = 0; i < K; ++i) {
-        int j = i ^ stride;
-        bool swap = (j > i) && better(A[j], A_idx[j], A[i], A_idx[i]);
-        if (swap) {
-          scalar_t tv = A[i];
-          A[i] = A[j];
-          A[j] = tv;
-          IndexT ti = A_idx[i];
-          A_idx[i] = A_idx[j];
-          A_idx[j] = ti;
-        }
-      }
-    }
-  }
-
-  void operator()(sycl::nd_item<1> item) const {
-    sycl::sub_group sg = item.get_sub_group();
-    int sg_lid = sg.get_local_linear_id();
-
-    // Each sub-group handles one slice
-    int sgs_per_wg = item.get_local_range(0) / SG_SIZE;
-    IndexT slice =
-        static_cast<IndexT>(item.get_group_linear_id()) * sgs_per_wg +
-        sg.get_group_linear_id();
-    if (slice >= numSlices_)
-      return;
-
-    const scalar_t* inputSlice =
-        inputData_ + static_cast<int64_t>(slice) * sliceSize_;
-    scalar_t* topKSlice = topKData_ + static_cast<int64_t>(slice) * k_;
-    int64_t* indicesSlice = indicesData_ + static_cast<int64_t>(slice) * k_;
-
-    // Initialize sorted top-K buffer
-    scalar_t top_vals[K];
-    IndexT top_idx_local[K];
-    scalar_t init_val;
-    if constexpr (Largest) {
-      if constexpr (std::numeric_limits<scalar_t>::has_infinity) {
-        init_val = -std::numeric_limits<scalar_t>::infinity();
-      } else {
-        init_val = std::numeric_limits<scalar_t>::lowest();
-      }
+  } else {
+    if constexpr (std::numeric_limits<scalar_t>::has_infinity) {
+      init_val = std::numeric_limits<scalar_t>::infinity();
     } else {
-      if constexpr (std::numeric_limits<scalar_t>::has_infinity) {
-        init_val = std::numeric_limits<scalar_t>::infinity();
-      } else {
-        init_val = std::numeric_limits<scalar_t>::max();
-      }
+      init_val = std::numeric_limits<scalar_t>::max();
     }
+  }
 #pragma unroll
-    for (int i = 0; i < K; ++i) {
-      top_vals[i] = init_val;
-      top_idx_local[i] = -1;
-    }
-    int count = 0;
+  for (int i = 0; i < K; ++i) {
+    top_vals[i] = init_val;
+    top_idx_local[i] = -1;
+  }
+  int count = 0;
 
-    // ---- Phase 1: scan data with vec loads ----
-    using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
-    int stride = SG_SIZE * VEC_SIZE;
+  // ---- Phase 1: scan data with vec loads ----
+  using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
+  int stride = SG_SIZE * VEC_SIZE;
 
-    int64_t base;
-    for (base = sg_lid * VEC_SIZE; base + VEC_SIZE <= sliceSize_;
-         base += stride) {
-      alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
-      *reinterpret_cast<LoadT*>(&src) =
-          *reinterpret_cast<const LoadT*>(&inputSlice[base]);
+  int64_t base;
+  for (base = sg_lid * VEC_SIZE; base + VEC_SIZE <= sliceSize; base += stride) {
+    alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
+    *reinterpret_cast<LoadT*>(&src) =
+        *reinterpret_cast<const LoadT*>(&inputSlice[base]);
 #pragma unroll
-      for (int v = 0; v < VEC_SIZE; ++v) {
-        insert(
-            top_vals,
-            top_idx_local,
-            count,
-            src[v],
-            static_cast<IndexT>(base + v));
-        if (count < K)
-          count++;
-      }
-    }
-    // Scalar tail
-    for (IndexT idx = static_cast<IndexT>(base);
-         idx < sliceSize_ && idx < base + VEC_SIZE;
-         ++idx) {
-      scalar_t val = inputSlice[idx];
-      insert(top_vals, top_idx_local, count, val, idx);
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      subgroup_topk_insert<K, Largest>(
+          top_vals,
+          top_idx_local,
+          count,
+          src[v],
+          static_cast<IndexT>(base + v));
       if (count < K)
         count++;
     }
-
-    // ---- Phase 2: sub-group bitonic merge ----
-#pragma unroll
-    for (int d = 0; d < SG_MERGE_LEVELS; ++d) {
-      int partner = sg_lid ^ (1 << d);
-
-      scalar_t partner_vals[K];
-      IndexT partner_idx[K];
-#pragma unroll
-      for (int i = 0; i < K; ++i) {
-        partner_vals[i] = sycl::select_from_group(sg, top_vals[i], partner);
-        partner_idx[i] = sycl::select_from_group(sg, top_idx_local[i], partner);
-      }
-
-      bitonic_merge(top_vals, top_idx_local, partner_vals, partner_idx);
-    }
-
-    // ---- Phase 3: lane 0 writes output ----
-    if (sg_lid == 0) {
-      for (int i = 0; i < k_; ++i) {
-        topKSlice[i] = top_vals[i];
-        indicesSlice[i] = static_cast<int64_t>(top_idx_local[i]);
-      }
-    }
+  }
+  // Scalar tail
+  for (IndexT idx = static_cast<IndexT>(base);
+       idx < sliceSize && idx < base + VEC_SIZE;
+       ++idx) {
+    scalar_t val = inputSlice[idx];
+    subgroup_topk_insert<K, Largest>(top_vals, top_idx_local, count, val, idx);
+    if (count < K)
+      count++;
   }
 
-  auto get(syclex::properties_tag) const {
-    return syclex::properties{
-        syclex::sub_group_size<SG_SIZE>, intelex::grf_size<128>};
+  // ---- Phase 2: sub-group bitonic merge ----
+#pragma unroll
+  for (int d = 0; d < SG_MERGE_LEVELS; ++d) {
+    int partner = sg_lid ^ (1 << d);
+
+    scalar_t partner_vals[K];
+    IndexT partner_idx[K];
+#pragma unroll
+    for (int i = 0; i < K; ++i) {
+      partner_vals[i] = sycl::select_from_group(sg, top_vals[i], partner);
+      partner_idx[i] = sycl::select_from_group(sg, top_idx_local[i], partner);
+    }
+
+    subgroup_topk_bitonic_merge<K, Largest>(
+        top_vals, top_idx_local, partner_vals, partner_idx);
   }
 
-  SubgroupTopKFunctor(
-      const scalar_t* inputData,
-      scalar_t* topKData,
-      int64_t* indicesData,
-      IndexT numSlices,
-      int64_t sliceSize,
-      int k)
-      : inputData_(inputData),
-        topKData_(topKData),
-        indicesData_(indicesData),
-        numSlices_(numSlices),
-        sliceSize_(sliceSize),
-        k_(k) {}
-
-  const scalar_t* inputData_;
-  scalar_t* topKData_;
-  int64_t* indicesData_;
-  IndexT numSlices_;
-  int64_t sliceSize_;
-  int k_;
-};
+  // ---- Phase 3: lane 0 writes output ----
+  if (sg_lid == 0) {
+    for (int i = 0; i < k; ++i) {
+      topKSlice[i] = top_vals[i];
+      indicesSlice[i] = static_cast<int64_t>(top_idx_local[i]);
+    }
+  }
+}
 
 // ================================================================
 // Launch function
@@ -310,11 +296,19 @@ inline void sbtopk_launch_impl(
   auto num_wgs = at::ceil_div(
       static_cast<int64_t>(numSlices), static_cast<int64_t>(SGS_PER_WG));
 
-  SubgroupTopKFunctor<scalar_t, K, VEC_SIZE, Largest, IndexT> functor(
-      input, topK, indices, numSlices, sliceSize, k);
-
-  sycl_kernel_submit(
-      num_wgs * WG_SIZE, WG_SIZE, at::xpu::getCurrentSYCLQueue(), functor);
+  constexpr auto kernel =
+      subgroup_topk_kernel<scalar_t, K, VEC_SIZE, Largest, IndexT>;
+  sycl_kernel_submit<kernel>(
+      num_wgs * WG_SIZE,
+      WG_SIZE,
+      at::xpu::getCurrentSYCLQueue(),
+      0,
+      input,
+      topK,
+      indices,
+      numSlices,
+      sliceSize,
+      k);
 }
 
 // Vec-size dispatch: picks the largest VEC_SIZE compatible with
