@@ -179,7 +179,10 @@ Tensor& orgqr_kernel_xpu(Tensor& result, const Tensor& tau) {
 
 REGISTER_XPU_DISPATCH(orgqr_stub, &orgqr_kernel_xpu);
 
-void cholesky_kernel_fallback(const Tensor& input, const Tensor& info, bool upper) {
+void cholesky_kernel_fallback(
+    const Tensor& input,
+    const Tensor& info,
+    bool upper) {
   TORCH_WARN_ONCE(
       "torch.linalg.cholesky op is using CPU fallback implementation on XPU. (temporary)");
 
