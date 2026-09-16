@@ -69,7 +69,7 @@ static inline void softmax_group_reduce(
   // there are WGroupSize/subGroupSize elements after this step
   int idx = sg_id - (lid_row * sub_group_num);
   if (sg_local_id == 0) {
-    local_data[lid_row][idx] = val;
+    *(local_data + sg_id) = val;
   }
   sycl::group_barrier(item.get_group());
 
@@ -78,10 +78,13 @@ static inline void softmax_group_reduce(
   if (idx == 0) {
     val = init;
     if (sg_local_id < sub_group_num) {
-      val = accscalar_t(local_data[lid_row][sg_local_id]);
+      val = accscalar_t(*(local_data + lid_row * sub_group_num + sg_local_id));
     }
     for (int i = sg_local_id + SIMD; i < sub_group_num; i += SIMD) {
-      val = bin_op(val, static_cast<accscalar_t>(local_data[lid_row][i]));
+      val = bin_op(
+          val,
+          static_cast<accscalar_t>(
+              *(local_data + lid_row * sub_group_num + i)));
     }
 #pragma unroll
     for (int i = 1; i < SIMD; i <<= 1) {
@@ -93,12 +96,12 @@ static inline void softmax_group_reduce(
 
     // the 0th WI (the 0th WI in the 0th sub_group) generate the final result
     if (sg_local_id == 0) {
-      local_data[lid_row][0] = val;
+      *(local_data + lid_row * sub_group_num) = val;
     }
   }
 
   sycl::group_barrier(item.get_group());
-  val = local_data[lid_row][0];
+  val = *(local_data + lid_row * sub_group_num);
 }
 
 template <
@@ -111,6 +114,7 @@ static inline void softmax_group_reduce_spatial(
     item_t item,
     accscalar_t input[vec_size],
     const local_shared_t& local_data,
+    int local_size,
     int block_row,
     reduce_op bin_op) {
   auto local_row_id = item.get_local_id(1);
@@ -118,7 +122,8 @@ static inline void softmax_group_reduce_spatial(
 
 #pragma unroll(vec_size)
   for (int j = 0; j < vec_size; ++j) {
-    local_data[local_row_id][local_col_id][j] = input[j];
+    *(local_data + local_row_id * local_size * vec_size +
+      local_col_id * vec_size + j) = input[j];
   }
   sycl::group_barrier(item.get_group());
 
@@ -127,16 +132,20 @@ static inline void softmax_group_reduce_spatial(
     if (local_row_id % (k << 1) == 0 && local_row_id + k < block_row)
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        local_data[local_row_id][local_col_id][j] = bin_op(
-            local_data[local_row_id][local_col_id][j],
-            local_data[local_row_id + k][local_col_id][j]);
+        *(local_data + local_row_id * local_size * vec_size +
+          local_col_id * vec_size + j) =
+            bin_op(
+                *(local_data + local_row_id * local_size * vec_size +
+                  local_col_id * vec_size + j),
+                *(local_data + (local_row_id + k) * local_size * vec_size +
+                  local_col_id * vec_size + j));
       }
     k *= 2;
     sycl::group_barrier(item.get_group());
   }
 }
 
-template <int SIMD, int vec_size, int NUM, class KernelClass>
+template <int SIMD, int vec_size, int NUM, auto* kptr>
 static inline int get_wgroup_size(
     uint64_t dim_size,
     int outer_size,
@@ -145,7 +154,7 @@ static inline int get_wgroup_size(
     int& global_size_row,
     int& local_size_row,
     int& local_size_col) {
-  int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
+  int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<kptr>();
 
   int local_size = (dim_size + NUM * vec_size - 1) / (NUM * vec_size);
   local_size = std::min(local_size, maxWGSize);
@@ -182,14 +191,14 @@ static inline int get_wgroup_size(
 }
 
 // this method help to divide the computation resource for spatial_softmax
-template <int vec_size, class KernelClass>
+template <int vec_size, auto* kptr>
 static inline void get_wgroup_size_spatial(
     int bs,
     int dim_size,
     int inner_size,
     int& GroupSize,
     int& GroupRow) {
-  int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
+  int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   int total_resource = at::xpu::getDeviceMaxWorkItems();
 
   // set the GroupSize smaller to ensure larger group number
@@ -209,6 +218,7 @@ static inline void get_wgroup_size_spatial(
   GroupRow = std::min(GroupRow, int(dim_size));
 }
 
+// SYCL free function
 template <
     int INNER_LOOP,
     int vec_size,
@@ -221,198 +231,161 @@ template <
     int outer_loop,
     bool is_masked,
     typename calc_t,
-    typename vec_t,
     bool is_safe_softmax,
     bool is_same_dtype>
-struct DispatchSoftmaxForwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
-    if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
-      return;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void dispatch_softmax_forward_kernel_func(
+    const inscalar_t* in_data,
+    outscalar_t* out_data,
+    int dim_size,
+    int outer_size,
+    const bool* mask_data,
+    calc_t input_calc,
+    int sub_group_num,
+    int global_size_row,
+    int local_size_row,
+    int range,
+    int local_size,
+    accscalar_t neginf,
+    accscalar_t nan) {
+  using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  if (local_size == 1 && item.get_global_id(0) >= outer_size)
+    return;
 
-    uint32_t lid_row = 0;
-    uint32_t lid_col = item.get_local_id(0);
-    uint32_t group_offset = item.get_group(0) * dim_size_;
-    if (local_size_row_ != 1) {
-      lid_row = item.get_local_id(0) / local_size_;
-      lid_col = item.get_local_id(0) % local_size_;
-      group_offset =
-          (item.get_group(0) * local_size_row_ + lid_row) * dim_size_;
-    }
-    vec_t reg_in[outer_loop];
-    vec_t reg_mask[outer_loop];
-    auto lid_offset = lid_col * vec_size;
-    auto local_stride = local_size_ * vec_size;
+  accscalar_t* local_max =
+      static_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
+  accscalar_t* local_sum = local_max + local_size_row * sub_group_num;
 
-    // load data and get max value
-    accscalar_t max_value = std::numeric_limits<accscalar_t>::lowest();
+  uint32_t lid_row = 0;
+  uint32_t lid_col = item.get_local_id(0);
+  uint32_t group_offset = item.get_group(0) * dim_size;
+  if (local_size_row != 1) {
+    lid_row = item.get_local_id(0) / local_size;
+    lid_col = item.get_local_id(0) % local_size;
+    group_offset = (item.get_group(0) * local_size_row + lid_row) * dim_size;
+  }
+  vec_t reg_in[outer_loop];
+  vec_t reg_mask[outer_loop];
+  auto lid_offset = lid_col * vec_size;
+  auto local_stride = local_size * vec_size;
+
+  // load data and get max value
+  accscalar_t max_value = std::numeric_limits<accscalar_t>::lowest();
 #pragma unroll(outer_loop)
-    for (int i = 0; i < outer_loop; ++i) {
-      auto index = i * local_stride + lid_offset;
-      if (index >= dim_size_)
-        break;
+  for (int i = 0; i < outer_loop; ++i) {
+    auto index = i * local_stride + lid_offset;
+    if (index >= dim_size)
+      break;
 
-      reg_in[i] =
-          *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + index));
+    reg_in[i] =
+        *(reinterpret_cast<const vec_t*>(in_data + group_offset + index));
+    if constexpr (is_masked) {
+      auto vec_offset = group_offset + index;
+#pragma unroll(vec_size)
+      for (int j = 0; j < vec_size; ++j) {
+        auto linear_idx = vec_offset + j;
+        auto mask_offset = input_calc.get(linear_idx)[1];
+        reg_mask[i][j] = mask_data[mask_offset];
+      }
+    }
+#pragma unroll(vec_size)
+    for (int j = 0; j < vec_size; ++j) {
       if constexpr (is_masked) {
-        auto vec_offset = group_offset + index;
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          auto linear_idx = vec_offset + j;
-          auto mask_offset = input_calc_.get(linear_idx)[1];
-          reg_mask[i][j] = mask_data_[mask_offset];
+        if (reg_mask[i][j]) {
+          reg_in[i][j] = neginf;
         }
       }
-#pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        if constexpr (is_masked) {
-          if (reg_mask[i][j]) {
-            reg_in[i][j] = neginf_;
-          }
-        }
-        max_value = std::max(max_value, accscalar_t(reg_in[i][j]));
-      }
+      max_value = std::max(max_value, accscalar_t(reg_in[i][j]));
     }
-    if (local_size_ > 1) {
-      softmax_group_reduce<SIMD, accscalar_t>(
-          item,
-          lid_row,
-          sub_group_num_,
-          max_value,
-          std::numeric_limits<accscalar_t>::lowest(),
-          local_max_,
-          [](accscalar_t a, accscalar_t b) { return std::max(a, b); });
-    }
+  }
+  if (local_size > 1) {
+    softmax_group_reduce<SIMD, accscalar_t>(
+        item,
+        lid_row,
+        sub_group_num,
+        max_value,
+        std::numeric_limits<accscalar_t>::lowest(),
+        local_max,
+        [](accscalar_t a, accscalar_t b) { return std::max(a, b); });
+  }
 
-    // get sum value
-    accscalar_t sum_value = 0;
+  // get sum value
+  accscalar_t sum_value = 0;
 #pragma unroll(outer_loop)
-    for (int i = 0;
-         i < outer_loop && ((i * local_stride + lid_offset) < dim_size_);
-         ++i) {
+  for (int i = 0;
+       i < outer_loop && ((i * local_stride + lid_offset) < dim_size);
+       ++i) {
 #pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        sum_value += sycl::exp(reg_in[i][j] - max_value);
-      }
+    for (int j = 0; j < vec_size; ++j) {
+      sum_value += sycl::exp(reg_in[i][j] - max_value);
     }
-    if (local_size_ > 1) {
-      softmax_group_reduce<SIMD, accscalar_t>(
-          item,
-          lid_row,
-          sub_group_num_,
-          sum_value,
-          accscalar_t(0),
-          local_sum_,
-          [](accscalar_t a, accscalar_t b) { return a + b; });
-    }
-    if constexpr (LogSoftMax)
-      sum_value = sycl::log(sum_value);
-    else if (sum_value != 0)
-      sum_value = accscalar_t(1) / sum_value;
+  }
+  if (local_size > 1) {
+    softmax_group_reduce<SIMD, accscalar_t>(
+        item,
+        lid_row,
+        sub_group_num,
+        sum_value,
+        accscalar_t(0),
+        local_sum,
+        [](accscalar_t a, accscalar_t b) { return a + b; });
+  }
+  if constexpr (LogSoftMax)
+    sum_value = sycl::log(sum_value);
+  else if (sum_value != 0)
+    sum_value = accscalar_t(1) / sum_value;
 
-      // The max reduce can drop a NaN, so max_value == lowest() alone does not
-      // mean the row was fully masked; sum_value still carries the NaN.
+    // The max reduce can drop a NaN, so max_value == lowest() alone does not
+    // mean the row was fully masked; sum_value still carries the NaN.
 
-      // update result
+    // update result
 #pragma unroll(outer_loop)
-    for (int i = 0; i < outer_loop; ++i) {
-      auto index = i * local_stride + lid_offset;
-      if (index >= dim_size_)
-        break;
-      outscalar_t* out_data_point = out_data_ + group_offset + index;
+  for (int i = 0; i < outer_loop; ++i) {
+    auto index = i * local_stride + lid_offset;
+    if (index >= dim_size)
+      break;
+    outscalar_t* out_data_point = out_data + group_offset + index;
 
 #pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        if constexpr (is_same_dtype) {
-          if constexpr (LogSoftMax) {
-            reg_in[i][j] =
-                static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
-          } else if (
-              is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest() &&
-              !at::_isnan(sum_value)) {
-            reg_in[i][j] = static_cast<outscalar_t>(0);
-          } else if (sum_value == 0) {
-            reg_in[i][j] = nan_;
-          } else {
-            reg_in[i][j] = static_cast<outscalar_t>(
-                sycl::exp(reg_in[i][j] - max_value) * sum_value);
-          }
+    for (int j = 0; j < vec_size; ++j) {
+      if constexpr (is_same_dtype) {
+        if constexpr (LogSoftMax) {
+          reg_in[i][j] =
+              static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
+        } else if (
+            is_safe_softmax &&
+            max_value == std::numeric_limits<accscalar_t>::lowest() &&
+            !at::_isnan(sum_value)) {
+          reg_in[i][j] = static_cast<outscalar_t>(0);
+        } else if (sum_value == 0) {
+          reg_in[i][j] = nan;
         } else {
-          if constexpr (LogSoftMax) {
-            out_data_point[j] =
-                static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
-          } else if (
-              is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest() &&
-              !at::_isnan(sum_value)) {
-            out_data_point[j] = static_cast<outscalar_t>(0);
-          } else if (sum_value == 0) {
-            out_data_point[j] = static_cast<outscalar_t>(nan_);
-          } else {
-            out_data_point[j] = static_cast<outscalar_t>(
-                sycl::exp(reg_in[i][j] - max_value) * sum_value);
-          }
+          reg_in[i][j] = static_cast<outscalar_t>(
+              sycl::exp(reg_in[i][j] - max_value) * sum_value);
+        }
+      } else {
+        if constexpr (LogSoftMax) {
+          out_data_point[j] =
+              static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
+        } else if (
+            is_safe_softmax &&
+            max_value == std::numeric_limits<accscalar_t>::lowest() &&
+            !at::_isnan(sum_value)) {
+          out_data_point[j] = static_cast<outscalar_t>(0);
+        } else if (sum_value == 0) {
+          out_data_point[j] = static_cast<outscalar_t>(nan);
+        } else {
+          out_data_point[j] = static_cast<outscalar_t>(
+              sycl::exp(reg_in[i][j] - max_value) * sum_value);
         }
       }
-      if constexpr (is_same_dtype)
-        *(reinterpret_cast<vec_t*>(out_data_ + group_offset + index)) =
-            reg_in[i];
     }
+    if constexpr (is_same_dtype)
+      *(reinterpret_cast<vec_t*>(out_data + group_offset + index)) = reg_in[i];
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_max_ = sycl_local_acc_t<accscalar_t, 2>(
-        sycl::range<2>{(size_t)local_size_row_, (size_t)sub_group_num_}, cgh);
-    local_sum_ = sycl_local_acc_t<accscalar_t, 2>(
-        sycl::range<2>{(size_t)local_size_row_, (size_t)sub_group_num_}, cgh);
-  }
-
-  DispatchSoftmaxForwardKernelFunctor(
-      const inscalar_t* in_data,
-      outscalar_t* out_data,
-      int dim_size,
-      int outer_size,
-      const bool* mask_data,
-      calc_t input_calc,
-      int sub_group_num,
-      int global_size_row,
-      int local_size_row,
-      int range,
-      int local_size,
-      accscalar_t neginf,
-      accscalar_t nan)
-      : in_data_(in_data),
-        out_data_(out_data),
-        dim_size_(dim_size),
-        outer_size_(outer_size),
-        mask_data_(mask_data),
-        input_calc_(input_calc),
-        sub_group_num_(sub_group_num),
-        global_size_row_(global_size_row),
-        local_size_row_(local_size_row),
-        range_(range),
-        local_size_(local_size),
-        neginf_(neginf),
-        nan_(nan) {}
-
- private:
-  const inscalar_t* in_data_;
-  outscalar_t* out_data_;
-  int dim_size_;
-  int outer_size_;
-  const bool* mask_data_;
-  calc_t input_calc_;
-  int sub_group_num_;
-  int global_size_row_;
-  int local_size_row_;
-  int range_;
-  int local_size_;
-  accscalar_t neginf_;
-  accscalar_t nan_;
-  sycl_local_acc_t<accscalar_t, 2> local_max_;
-  sycl_local_acc_t<accscalar_t, 2> local_sum_;
-};
+}
 
 // replace std::nullptr_t to avoid kernel name in std namespace
 struct DummyFunctor {};
@@ -438,14 +411,50 @@ bool dispatch_softmax_forward_kernel(
     int outer_size,
     const bool* mask_data = nullptr,
     calc_t input_calc = nullptr) {
-  using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
   auto& queue = getCurrentSYCLQueue();
 
   accscalar_t neginf = -std::numeric_limits<accscalar_t>::infinity();
   accscalar_t nan = std::numeric_limits<accscalar_t>::quiet_NaN();
 
   if constexpr (is_masked) {
-    using KernelClass = DispatchSoftmaxForwardKernelFunctor<
+    int sub_group_num, global_size_row, local_size_row, range, local_size;
+    int max_group_size = get_wgroup_size<
+        SIMD,
+        vec_size,
+        outer_loop,
+        &dispatch_softmax_forward_kernel_func<
+            INNER_LOOP,
+            vec_size,
+            SIMD,
+            inscalar_t,
+            outscalar_t,
+            accscalar_t,
+            IndexType,
+            LogSoftMax,
+            outer_loop,
+            is_masked,
+            calc_t,
+            /*is_safe_softmax = */ false,
+            is_same_dtype>>(
+        dim_size,
+        outer_size,
+        sub_group_num,
+        range,
+        global_size_row,
+        local_size_row,
+        local_size);
+
+    if (max_group_size * INNER_LOOP < dim_size) {
+      return false;
+    }
+
+    int64_t local_range{local_size_row * local_size};
+    int64_t global_range{global_size_row * local_size_row * local_size};
+
+    // compute slm memory size
+    int slm_sz = 2 * sizeof(accscalar_t) * local_size_row * sub_group_num;
+
+    sycl_kernel_submit<dispatch_softmax_forward_kernel_func<
         INNER_LOOP,
         vec_size,
         SIMD,
@@ -457,29 +466,12 @@ bool dispatch_softmax_forward_kernel(
         outer_loop,
         is_masked,
         calc_t,
-        vec_t,
         /*is_safe_softmax = */ false,
-        is_same_dtype>;
-
-    int sub_group_num, global_size_row, local_size_row, range, local_size;
-    int max_group_size =
-        get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
-            dim_size,
-            outer_size,
-            sub_group_num,
-            range,
-            global_size_row,
-            local_size_row,
-            local_size);
-
-    if (max_group_size * INNER_LOOP < dim_size) {
-      return false;
-    }
-
-    int64_t local_range{local_size_row * local_size};
-    int64_t global_range{global_size_row * local_size_row * local_size};
-
-    auto kfn = KernelClass(
+        is_same_dtype>>(
+        global_range,
+        local_range,
+        queue,
+        slm_sz,
         in_data,
         out_data,
         dim_size,
@@ -493,10 +485,48 @@ bool dispatch_softmax_forward_kernel(
         local_size,
         neginf,
         nan);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
     DummyFunctor dummy;
-    using KernelClass = DispatchSoftmaxForwardKernelFunctor<
+
+    int sub_group_num, global_size_row, local_size_row, range, local_size;
+
+    int max_group_size = get_wgroup_size<
+        SIMD,
+        vec_size,
+        outer_loop,
+        &dispatch_softmax_forward_kernel_func<
+            INNER_LOOP,
+            vec_size,
+            SIMD,
+            inscalar_t,
+            outscalar_t,
+            accscalar_t,
+            IndexType,
+            LogSoftMax,
+            outer_loop,
+            is_masked,
+            DummyFunctor,
+            is_safe_softmax,
+            is_same_dtype>>(
+        dim_size,
+        outer_size,
+        sub_group_num,
+        range,
+        global_size_row,
+        local_size_row,
+        local_size);
+
+    if (max_group_size * INNER_LOOP < dim_size) {
+      return false;
+    }
+
+    int64_t local_range{local_size_row * local_size};
+    int64_t global_range{global_size_row * local_size_row * local_size};
+
+    // compute wgroup scratch memory size
+    int slm_sz = 2 * sizeof(accscalar_t) * local_size_row * sub_group_num;
+
+    sycl_kernel_submit<dispatch_softmax_forward_kernel_func<
         INNER_LOOP,
         vec_size,
         SIMD,
@@ -508,28 +538,12 @@ bool dispatch_softmax_forward_kernel(
         outer_loop,
         is_masked,
         DummyFunctor,
-        vec_t,
         is_safe_softmax,
-        is_same_dtype>;
-    int sub_group_num, global_size_row, local_size_row, range, local_size;
-    int max_group_size =
-        get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
-            dim_size,
-            outer_size,
-            sub_group_num,
-            range,
-            global_size_row,
-            local_size_row,
-            local_size);
-
-    if (max_group_size * INNER_LOOP < dim_size) {
-      return false;
-    }
-
-    int64_t local_range{local_size_row * local_size};
-    int64_t global_range{global_size_row * local_size_row * local_size};
-
-    auto kfn = KernelClass(
+        is_same_dtype>>(
+        global_range,
+        local_range,
+        queue,
+        slm_sz,
         in_data,
         out_data,
         dim_size,
@@ -543,7 +557,6 @@ bool dispatch_softmax_forward_kernel(
         local_size,
         neginf,
         nan);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
   return true;
 }
@@ -555,143 +568,130 @@ template <
     typename accscalar_t,
     typename IndexType,
     bool LogSoftMax,
-    typename vec_t,
     int align_bytes,
     bool is_safe_softmax>
-struct SoftmaxForwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    IndexType local_id = item.get_local_id(0);
-    auto group_offset = item.get_group(0) * dim_size_;
-    int start = ((uint64_t)(in_data_ + group_offset)) % align_bytes /
-        sizeof(inscalar_t);
-    IndexType loops_end = (dim_size_ + start + vec_size - 1) / vec_size;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void softmax_forward_kernel_func(
+    const inscalar_t* in_data,
+    outscalar_t* out_data,
+    int dim_size,
+    int outer_size,
+    int local_size) {
+  using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    // get max value
-    auto max_value = std::numeric_limits<accscalar_t>::lowest();
-    for (int i = local_id; i < loops_end; i += local_size_) {
-      vec_t in_val = *(reinterpret_cast<const vec_t*>(
-          in_data_ + group_offset - start + i * vec_size));
+  IndexType local_id = item.get_local_id(0);
+  auto group_offset = item.get_group(0) * dim_size;
+  int start =
+      ((uint64_t)(in_data + group_offset)) % align_bytes / sizeof(inscalar_t);
+  IndexType loops_end = (dim_size + start + vec_size - 1) / vec_size;
+
+  // get max value
+  auto max_value = std::numeric_limits<accscalar_t>::lowest();
+  for (int i = local_id; i < loops_end; i += local_size) {
+    vec_t in_val = *(reinterpret_cast<const vec_t*>(
+        in_data + group_offset - start + i * vec_size));
 #pragma unroll(vec_size)
-      for (IndexType j = 0; j < vec_size; ++j) {
-        IndexType linear_idx = i * vec_size + j - start;
-        if (linear_idx >= 0 && linear_idx < dim_size_) {
-          inscalar_t in_value = in_val[j];
-          max_value = std::max(accscalar_t(in_value), max_value);
-        }
+    for (IndexType j = 0; j < vec_size; ++j) {
+      IndexType linear_idx = i * vec_size + j - start;
+      if (linear_idx >= 0 && linear_idx < dim_size) {
+        inscalar_t in_value = in_val[j];
+        max_value = std::max(accscalar_t(in_value), max_value);
       }
     }
-    max_value = sycl::reduce_over_group(
-        item.get_group(), max_value, sycl::maximum<accscalar_t>());
+  }
+  max_value = sycl::reduce_over_group(
+      item.get_group(), max_value, sycl::maximum<accscalar_t>());
 
-    // get sum value
-    auto sum_value = accscalar_t(0);
-    for (IndexType i = local_id; i < loops_end; i += local_size_) {
-      vec_t in_val = *(reinterpret_cast<const vec_t*>(
-          in_data_ + group_offset - start + i * vec_size));
+  // get sum value
+  auto sum_value = accscalar_t(0);
+  for (IndexType i = local_id; i < loops_end; i += local_size) {
+    vec_t in_val = *(reinterpret_cast<const vec_t*>(
+        in_data + group_offset - start + i * vec_size));
+#pragma unroll(vec_size)
+    for (int j = 0; j < vec_size; ++j) {
+      IndexType linear_idx = i * vec_size + j - start;
+      if (linear_idx >= 0 && linear_idx < dim_size)
+        sum_value += sycl::exp(accscalar_t(in_val[j]) - max_value);
+    }
+  }
+  sum_value = sycl::reduce_over_group(
+      item.get_group(), sum_value, sycl::plus<accscalar_t>());
+  if constexpr (LogSoftMax)
+    sum_value = sycl::log(sum_value);
+  else
+    sum_value = accscalar_t(1) / sum_value;
+
+  // The max reduce can drop a NaN, so max_value == lowest() alone does not
+  // mean the row was fully masked; sum_value still carries the NaN.
+
+  // update result
+  constexpr int out_vec_size = align_bytes / sizeof(outscalar_t);
+  using out_vec_t =
+      at::native::memory::aligned_vector<outscalar_t, out_vec_size>;
+  constexpr int store_rounds = vec_size / out_vec_size;
+  static_assert(
+      store_rounds >= 1 && vec_size == out_vec_size * store_rounds,
+      "vec_size must be a multiple of out_vec_size");
+  bool can_vec_store =
+      ((uint64_t)(out_data + group_offset - start)) % align_bytes == 0;
+
+  for (IndexType i = local_id; i < loops_end; i += local_size) {
+    auto remaining = dim_size + start - i * vec_size;
+    if ((start > 0 && i == 0) || (remaining < vec_size)) {
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         IndexType linear_idx = i * vec_size + j - start;
-        if (linear_idx >= 0 && linear_idx < dim_size_)
-          sum_value += sycl::exp(accscalar_t(in_val[j]) - max_value);
-      }
-    }
-    sum_value = sycl::reduce_over_group(
-        item.get_group(), sum_value, sycl::plus<accscalar_t>());
-    if constexpr (LogSoftMax)
-      sum_value = sycl::log(sum_value);
-    else
-      sum_value = accscalar_t(1) / sum_value;
-
-    // The max reduce can drop a NaN, so max_value == lowest() alone does not
-    // mean the row was fully masked; sum_value still carries the NaN.
-
-    // update result
-    constexpr int out_vec_size = align_bytes / sizeof(outscalar_t);
-    using out_vec_t =
-        at::native::memory::aligned_vector<outscalar_t, out_vec_size>;
-    constexpr int store_rounds = vec_size / out_vec_size;
-    static_assert(
-        store_rounds >= 1 && vec_size == out_vec_size * store_rounds,
-        "vec_size must be a multiple of out_vec_size");
-    bool can_vec_store =
-        ((uint64_t)(out_data_ + group_offset - start)) % align_bytes == 0;
-
-    for (IndexType i = local_id; i < loops_end; i += local_size_) {
-      auto remaining = dim_size_ + start - i * vec_size;
-      if ((start > 0 && i == 0) || (remaining < vec_size)) {
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          IndexType linear_idx = i * vec_size + j - start;
-          if (linear_idx >= 0 && linear_idx < dim_size_) {
-            if constexpr (LogSoftMax)
-              out_data_[group_offset + linear_idx] = static_cast<outscalar_t>(
-                  in_data_[group_offset + linear_idx] - max_value - sum_value);
-            else if (
-                is_safe_softmax &&
-                max_value == std::numeric_limits<accscalar_t>::lowest() &&
-                !at::_isnan(sum_value))
-              out_data_[group_offset + linear_idx] =
-                  static_cast<outscalar_t>(0);
-            else
-              out_data_[group_offset + linear_idx] = static_cast<outscalar_t>(
-                  sycl::exp(in_data_[group_offset + linear_idx] - max_value) *
-                  sum_value);
-          }
-        }
-      } else {
-        vec_t in_val = *(reinterpret_cast<const vec_t*>(
-            in_data_ + group_offset - start + i * vec_size));
-        outscalar_t results[vec_size];
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
+        if (linear_idx >= 0 && linear_idx < dim_size) {
           if constexpr (LogSoftMax)
-            results[j] =
-                static_cast<outscalar_t>(in_val[j] - max_value - sum_value);
+            out_data[group_offset + linear_idx] = static_cast<outscalar_t>(
+                in_data[group_offset + linear_idx] - max_value - sum_value);
           else if (
               is_safe_softmax &&
               max_value == std::numeric_limits<accscalar_t>::lowest() &&
               !at::_isnan(sum_value))
-            results[j] = static_cast<outscalar_t>(0);
+            out_data[group_offset + linear_idx] = static_cast<outscalar_t>(0);
           else
-            results[j] = static_cast<outscalar_t>(
-                sycl::exp(in_val[j] - max_value) * sum_value);
+            out_data[group_offset + linear_idx] = static_cast<outscalar_t>(
+                sycl::exp(in_data[group_offset + linear_idx] - max_value) *
+                sum_value);
         }
-        if (can_vec_store) {
-#pragma unroll(store_rounds)
-          for (int r = 0; r < store_rounds; ++r) {
-            *(reinterpret_cast<out_vec_t*>(
-                out_data_ + group_offset - start + i * vec_size +
-                r * out_vec_size)) =
-                *(reinterpret_cast<out_vec_t*>(&results[r * out_vec_size]));
-          }
-        } else {
+      }
+    } else {
+      vec_t in_val = *(reinterpret_cast<const vec_t*>(
+          in_data + group_offset - start + i * vec_size));
+      outscalar_t results[vec_size];
 #pragma unroll(vec_size)
-          for (int j = 0; j < vec_size; ++j) {
-            out_data_[group_offset + i * vec_size + j - start] = results[j];
-          }
+      for (int j = 0; j < vec_size; ++j) {
+        if constexpr (LogSoftMax)
+          results[j] =
+              static_cast<outscalar_t>(in_val[j] - max_value - sum_value);
+        else if (
+            is_safe_softmax &&
+            max_value == std::numeric_limits<accscalar_t>::lowest() &&
+            !at::_isnan(sum_value))
+          results[j] = static_cast<outscalar_t>(0);
+        else
+          results[j] = static_cast<outscalar_t>(
+              sycl::exp(in_val[j] - max_value) * sum_value);
+      }
+      if (can_vec_store) {
+#pragma unroll(store_rounds)
+        for (int r = 0; r < store_rounds; ++r) {
+          *(reinterpret_cast<out_vec_t*>(
+              out_data + group_offset - start + i * vec_size +
+              r * out_vec_size)) =
+              *(reinterpret_cast<out_vec_t*>(&results[r * out_vec_size]));
+        }
+      } else {
+#pragma unroll(vec_size)
+        for (int j = 0; j < vec_size; ++j) {
+          out_data[group_offset + i * vec_size + j - start] = results[j];
         }
       }
     }
   }
-  SoftmaxForwardKernelFunctor(
-      const inscalar_t* in_data,
-      outscalar_t* out_data,
-      int dim_size,
-      int outer_size,
-      int local_size)
-      : in_data_(in_data),
-        out_data_(out_data),
-        dim_size_(dim_size),
-        outer_size_(outer_size),
-        local_size_(local_size) {}
-
- private:
-  const inscalar_t* in_data_;
-  outscalar_t* out_data_;
-  int dim_size_;
-  int outer_size_;
-  int local_size_;
-};
+}
 
 template <
     int vec_size,
@@ -709,27 +709,40 @@ void softmax_forward_kernel(
     int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
-  using KernelClass = SoftmaxForwardKernelFunctor<
+
+  int local_size = std::min(
+      (dim_size + vec_size - 1) / vec_size,
+      int(at::xpu::getKernelMaxWorkGroupSize<softmax_forward_kernel_func<
+              vec_size,
+              inscalar_t,
+              outscalar_t,
+              accscalar_t,
+              IndexType,
+              LogSoftMax,
+              align_bytes,
+              is_safe_softmax>>()));
+  int64_t local_range{local_size};
+  int64_t global_range{local_size * outer_size};
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<softmax_forward_kernel_func<
       vec_size,
       inscalar_t,
       outscalar_t,
       accscalar_t,
       IndexType,
       LogSoftMax,
-      vec_t,
       align_bytes,
-      is_safe_softmax>;
-
-  int local_size = std::min(
-      (dim_size + vec_size - 1) / vec_size,
-      int(at::xpu::getKernelMaxWorkGroupSize<KernelClass>()));
-  int64_t local_range{local_size};
-  int64_t global_range{local_size * outer_size};
-
-  auto kfn = KernelClass(in_data, out_data, dim_size, outer_size, local_size);
-
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(global_range, local_range, queue, kfn);
+      is_safe_softmax>>(
+      global_range,
+      local_range,
+      queue,
+      0,
+      in_data,
+      out_data,
+      dim_size,
+      outer_size,
+      local_size);
 }
 
 template <
@@ -739,167 +752,142 @@ template <
     typename accscalar_t,
     typename IndexType,
     bool LogSoftMax,
-    typename vec_t,
     bool is_safe_softmax,
     bool is_same_dtype>
-struct SpatialSoftmaxForwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<3> item) const {
-    IndexType global_col = item.get_global_id(2);
-    IndexType local_row_id = item.get_local_id(1);
-    IndexType local_col_id = item.get_local_id(2);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void spatial_softmax_forward_kernel_func(
+    const inscalar_t* in_data,
+    outscalar_t* out_data,
+    int dim_size,
+    int inner_size,
+    int outer_size,
+    int local_size,
+    int block_row,
+    int group_num) {
+  using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
+  auto item = syclext::this_work_item::get_nd_item<3>();
 
-    auto group_offset = item.get_global_id(0) * dim_size_ * inner_size_;
+  accscalar_t* local_data =
+      static_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
 
-    // get max value
-    accscalar_t max_value[vec_size];
-    auto offset = local_row_id * inner_size_ + global_col * vec_size;
-    vec_t value =
-        *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
+  IndexType global_col = item.get_global_id(2);
+  IndexType local_row_id = item.get_local_id(1);
+  IndexType local_col_id = item.get_local_id(2);
+
+  auto group_offset = item.get_global_id(0) * dim_size * inner_size;
+
+  // get max value
+  accscalar_t max_value[vec_size];
+  auto offset = local_row_id * inner_size + global_col * vec_size;
+  vec_t value =
+      *(reinterpret_cast<const vec_t*>(in_data + group_offset + offset));
+#pragma unroll(vec_size)
+  for (int j = 0; j < vec_size; ++j) {
+    max_value[j] = accscalar_t(value[j]);
+  }
+  for (int i = local_row_id + block_row; i < dim_size; i += block_row) {
+    offset = i * inner_size + global_col * vec_size;
+    value = *(reinterpret_cast<const vec_t*>(in_data + group_offset + offset));
 #pragma unroll(vec_size)
     for (int j = 0; j < vec_size; ++j) {
-      max_value[j] = accscalar_t(value[j]);
+      max_value[j] = std::max(max_value[j], accscalar_t(value[j]));
     }
-    for (int i = local_row_id + block_row_; i < dim_size_; i += block_row_) {
-      offset = i * inner_size_ + global_col * vec_size;
-      value =
-          *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
-#pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        max_value[j] = std::max(max_value[j], accscalar_t(value[j]));
-      }
-    }
-    if (block_row_ > 1) {
-      softmax_group_reduce_spatial<vec_size, accscalar_t>(
-          item,
-          max_value,
-          local_data_,
-          block_row_,
-          [](accscalar_t a, accscalar_t b) { return std::max(a, b); });
-#pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        max_value[j] = local_data_[0][local_col_id][j];
-      }
-      sycl::group_barrier(item.get_group());
-    }
-
-    // get sum value
-    accscalar_t sum_value[vec_size];
-    offset = local_row_id * inner_size_ + global_col * vec_size;
-    value = *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
+  }
+  if (block_row > 1) {
+    softmax_group_reduce_spatial<vec_size, accscalar_t>(
+        item,
+        max_value,
+        local_data,
+        local_size,
+        block_row,
+        [](accscalar_t a, accscalar_t b) { return std::max(a, b); });
 #pragma unroll(vec_size)
     for (int j = 0; j < vec_size; ++j) {
-      sum_value[j] = sycl::exp(value[j] - max_value[j]);
+      max_value[j] = *(local_data + local_col_id * vec_size + j);
     }
-    for (int i = local_row_id + block_row_; i < dim_size_; i += block_row_) {
-      offset = i * inner_size_ + global_col * vec_size;
-      value =
-          *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
-#pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        sum_value[j] += sycl::exp(value[j] - max_value[j]);
-      }
-    }
-    if (block_row_ > 1) {
-      softmax_group_reduce_spatial<vec_size, accscalar_t>(
-          item,
-          sum_value,
-          local_data_,
-          block_row_,
-          [](accscalar_t a, accscalar_t b) { return a + b; });
-#pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        if constexpr (LogSoftMax)
-          sum_value[j] = sycl::log(local_data_[0][local_col_id][j]);
-        else
-          sum_value[j] = accscalar_t(1) / local_data_[0][local_col_id][j];
-      }
-    } else {
-#pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        if constexpr (LogSoftMax)
-          sum_value[j] = sycl::log(sum_value[j]);
-        else
-          sum_value[j] = accscalar_t(1) / sum_value[j];
-      }
-    }
+    sycl::group_barrier(item.get_group());
+  }
 
-    // update result
-    if (global_col * vec_size < inner_size_) {
-      for (int i = local_row_id; i < dim_size_; i += block_row_) {
-        auto offset = i * inner_size_ + global_col * vec_size;
-        vec_t in_val =
-            *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
-        outscalar_t* out_data_point = out_data_ + group_offset + offset;
+  // get sum value
+  accscalar_t sum_value[vec_size];
+  offset = local_row_id * inner_size + global_col * vec_size;
+  value = *(reinterpret_cast<const vec_t*>(in_data + group_offset + offset));
 #pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          if constexpr (is_same_dtype) {
-            if constexpr (LogSoftMax)
-              in_val[j] = static_cast<inscalar_t>(
-                  in_val[j] - max_value[j] - sum_value[j]);
-            else if (
-                is_safe_softmax &&
-                max_value[j] == -std::numeric_limits<inscalar_t>::infinity())
-              in_val[j] = static_cast<inscalar_t>(0);
-            else
-              in_val[j] = static_cast<inscalar_t>(
-                  sycl::exp(in_val[j] - max_value[j]) * sum_value[j]);
-          } else {
-            if constexpr (LogSoftMax)
-              out_data_point[j] = static_cast<outscalar_t>(
-                  in_val[j] - max_value[j] - sum_value[j]);
-            else if (
-                is_safe_softmax &&
-                max_value[j] == -std::numeric_limits<outscalar_t>::infinity())
-              out_data_point[j] = static_cast<outscalar_t>(0);
-            else
-              out_data_point[j] = static_cast<outscalar_t>(
-                  sycl::exp(in_val[j] - max_value[j]) * sum_value[j]);
-          }
+  for (int j = 0; j < vec_size; ++j) {
+    sum_value[j] = sycl::exp(value[j] - max_value[j]);
+  }
+  for (int i = local_row_id + block_row; i < dim_size; i += block_row) {
+    offset = i * inner_size + global_col * vec_size;
+    value = *(reinterpret_cast<const vec_t*>(in_data + group_offset + offset));
+#pragma unroll(vec_size)
+    for (int j = 0; j < vec_size; ++j) {
+      sum_value[j] += sycl::exp(value[j] - max_value[j]);
+    }
+  }
+  if (block_row > 1) {
+    softmax_group_reduce_spatial<vec_size, accscalar_t>(
+        item,
+        sum_value,
+        local_data,
+        local_size,
+        block_row,
+        [](accscalar_t a, accscalar_t b) { return a + b; });
+#pragma unroll(vec_size)
+    for (int j = 0; j < vec_size; ++j) {
+      if constexpr (LogSoftMax)
+        sum_value[j] = sycl::log(*(local_data + local_col_id * vec_size + j));
+      else
+        sum_value[j] =
+            accscalar_t(1) / *(local_data + local_col_id * vec_size + j);
+    }
+  } else {
+#pragma unroll(vec_size)
+    for (int j = 0; j < vec_size; ++j) {
+      if constexpr (LogSoftMax)
+        sum_value[j] = sycl::log(sum_value[j]);
+      else
+        sum_value[j] = accscalar_t(1) / sum_value[j];
+    }
+  }
+
+  // update result
+  if (global_col * vec_size < inner_size) {
+    for (int i = local_row_id; i < dim_size; i += block_row) {
+      auto offset = i * inner_size + global_col * vec_size;
+      vec_t in_val =
+          *(reinterpret_cast<const vec_t*>(in_data + group_offset + offset));
+      outscalar_t* out_data_point = out_data + group_offset + offset;
+#pragma unroll(vec_size)
+      for (int j = 0; j < vec_size; ++j) {
+        if constexpr (is_same_dtype) {
+          if constexpr (LogSoftMax)
+            in_val[j] = static_cast<inscalar_t>(
+                in_val[j] - max_value[j] - sum_value[j]);
+          else if (
+              is_safe_softmax &&
+              max_value[j] == -std::numeric_limits<inscalar_t>::infinity())
+            in_val[j] = static_cast<inscalar_t>(0);
+          else
+            in_val[j] = static_cast<inscalar_t>(
+                sycl::exp(in_val[j] - max_value[j]) * sum_value[j]);
+        } else {
+          if constexpr (LogSoftMax)
+            out_data_point[j] = static_cast<outscalar_t>(
+                in_val[j] - max_value[j] - sum_value[j]);
+          else if (
+              is_safe_softmax &&
+              max_value[j] == -std::numeric_limits<outscalar_t>::infinity())
+            out_data_point[j] = static_cast<outscalar_t>(0);
+          else
+            out_data_point[j] = static_cast<outscalar_t>(
+                sycl::exp(in_val[j] - max_value[j]) * sum_value[j]);
         }
-        if constexpr (is_same_dtype)
-          *(reinterpret_cast<vec_t*>(out_data_ + group_offset + offset)) =
-              in_val;
       }
+      if constexpr (is_same_dtype)
+        *(reinterpret_cast<vec_t*>(out_data + group_offset + offset)) = in_val;
     }
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_data_ = sycl_local_acc_t<accscalar_t, 3>(
-        sycl::range<3>{
-            (size_t)block_row_, (size_t)local_size_, (size_t)vec_size},
-        cgh);
-  }
-
-  SpatialSoftmaxForwardKernelFunctor(
-      const inscalar_t* in_data,
-      outscalar_t* out_data,
-      int dim_size,
-      int inner_size,
-      int outer_size,
-      int local_size,
-      int block_row,
-      int group_num)
-      : in_data_(in_data),
-        out_data_(out_data),
-        dim_size_(dim_size),
-        inner_size_(inner_size),
-        outer_size_(outer_size),
-        local_size_(local_size),
-        block_row_(block_row),
-        group_num_(group_num) {}
-
- private:
-  const inscalar_t* in_data_;
-  outscalar_t* out_data_;
-  int dim_size_;
-  int inner_size_;
-  int outer_size_;
-  int local_size_;
-  int block_row_;
-  int group_num_;
-  sycl_local_acc_t<accscalar_t, 3> local_data_;
-}; // namespace impl
+}
 
 template <
     int vec_size,
@@ -916,20 +904,18 @@ void spatial_softmax_forward(
     int dim_size,
     int inner_size,
     int outer_size) {
-  using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
-  using KernelClass = SpatialSoftmaxForwardKernelFunctor<
-      vec_size,
-      inscalar_t,
-      outscalar_t,
-      accscalar_t,
-      IndexType,
-      LogSoftMax,
-      vec_t,
-      is_safe_softmax,
-      is_same_dtype>;
-
   int local_size, block_row;
-  get_wgroup_size_spatial<vec_size, KernelClass>(
+  get_wgroup_size_spatial<
+      vec_size,
+      spatial_softmax_forward_kernel_func<
+          vec_size,
+          inscalar_t,
+          outscalar_t,
+          accscalar_t,
+          IndexType,
+          LogSoftMax,
+          is_safe_softmax,
+          is_same_dtype>>(
       outer_size, dim_size, inner_size, local_size, block_row);
   int group_num =
       (inner_size + local_size * vec_size - 1) / (local_size * vec_size);
@@ -937,16 +923,21 @@ void spatial_softmax_forward(
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
   sycl::range<3> local_range{(size_t)1, (size_t)block_row, (size_t)local_size};
 
-  auto kfn = SpatialSoftmaxForwardKernelFunctor<
+  int slm_sz = sizeof(accscalar_t) * block_row * local_size * vec_size;
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<spatial_softmax_forward_kernel_func<
       vec_size,
       inscalar_t,
       outscalar_t,
       accscalar_t,
       IndexType,
       LogSoftMax,
-      vec_t,
       is_safe_softmax,
-      is_same_dtype>(
+      is_same_dtype>>(
+      global_range,
+      local_range,
+      queue,
+      slm_sz,
       in_data,
       out_data,
       dim_size,
@@ -955,8 +946,6 @@ void spatial_softmax_forward(
       local_size,
       block_row,
       group_num);
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
 template <
@@ -970,146 +959,115 @@ template <
     bool LogSoftMax,
     bool is_masked,
     typename calc_t,
-    typename vec_t,
     int NUM,
     bool is_same_dtype = false>
-struct DispatchSoftmaxBackwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
-    if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
-      return;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void dispatch_softmax_backward_kernel_func(
+    inscalar_t* gradInput,
+    const outscalar_t* output,
+    const outscalar_t* gradOutput,
+    int dim_size,
+    int outer_size,
+    const bool* mask_data,
+    calc_t input_calc,
+    int sub_group_num,
+    int global_size_row,
+    int local_size_row,
+    int range,
+    int local_size) {
+  using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  if (local_size == 1 && item.get_global_id(0) >= outer_size)
+    return;
 
-    uint32_t lid_row = item.get_local_id(0) / local_size_;
-    uint32_t lid_col = item.get_local_id(0) % local_size_;
-    uint32_t group_offset =
-        (item.get_group(0) * local_size_row_ + lid_row) * dim_size_;
+  accscalar_t* local_sum =
+      static_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
 
-    // load data and get max value
-    accscalar_t sum_value = accscalar_t(0);
-    vec_t reg_out[NUM];
-    vec_t reg_gradout[NUM];
+  uint32_t lid_row = item.get_local_id(0) / local_size;
+  uint32_t lid_col = item.get_local_id(0) % local_size;
+  uint32_t group_offset =
+      (item.get_group(0) * local_size_row + lid_row) * dim_size;
+
+  // load data and get max value
+  accscalar_t sum_value = accscalar_t(0);
+  vec_t reg_out[NUM];
+  vec_t reg_gradout[NUM];
 #pragma unroll(NUM)
-    for (int i = 0; i < NUM; ++i) {
-      auto index = (lid_col + i * local_size_) * vec_size;
-      if (index >= dim_size_)
-        break;
+  for (int i = 0; i < NUM; ++i) {
+    auto index = (lid_col + i * local_size) * vec_size;
+    if (index >= dim_size)
+      break;
 
-      reg_out[i] =
-          *(reinterpret_cast<const vec_t*>(output_ + group_offset + index));
-      reg_gradout[i] =
-          *(reinterpret_cast<const vec_t*>(gradOutput_ + group_offset + index));
-      if constexpr (is_masked) {
-        auto vec_offset = group_offset + index;
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          auto linear_idx = vec_offset + j;
-          auto mask_offset = input_calc_.get(linear_idx)[1];
-          if (mask_data_[mask_offset]) {
-            reg_out[i][j] = outscalar_t(0);
-          }
-        }
-      }
-
+    reg_out[i] =
+        *(reinterpret_cast<const vec_t*>(output + group_offset + index));
+    reg_gradout[i] =
+        *(reinterpret_cast<const vec_t*>(gradOutput + group_offset + index));
+    if constexpr (is_masked) {
+      auto vec_offset = group_offset + index;
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        if constexpr (LogSoftMax) {
-          sum_value += reg_gradout[i][j];
-        } else {
-          sum_value += reg_out[i][j] * reg_gradout[i][j];
+        auto linear_idx = vec_offset + j;
+        auto mask_offset = input_calc.get(linear_idx)[1];
+        if (mask_data[mask_offset]) {
+          reg_out[i][j] = outscalar_t(0);
         }
       }
     }
-    if (local_size_ > 1) {
-      softmax_group_reduce<SIMD, accscalar_t>(
-          item,
-          lid_row,
-          sub_group_num_,
-          sum_value,
-          accscalar_t(0),
-          local_sum_,
-          [](accscalar_t a, accscalar_t b) { return a + b; });
-    }
-    // update result
-#pragma unroll(NUM)
-    for (int i = 0; i < NUM; ++i) {
-      auto index = (lid_col + i * local_size_) * vec_size;
-      if (index >= dim_size_)
-        break;
-      auto offset = group_offset + index;
+
 #pragma unroll(vec_size)
-      for (int j = 0; j < vec_size; ++j) {
-        if constexpr (LogSoftMax) {
-          auto exp_out = sycl::exp(static_cast<accscalar_t>(reg_out[i][j]));
-          if constexpr (is_same_dtype) {
-            reg_out[i][j] = static_cast<outscalar_t>(
-                reg_gradout[i][j] - exp_out * sum_value);
-          } else {
-            gradInput_[offset + j] = static_cast<inscalar_t>(
-                reg_gradout[i][j] - exp_out * sum_value);
-          }
-        } else {
-          if constexpr (is_same_dtype) {
-            reg_out[i][j] = static_cast<outscalar_t>(
-                reg_out[i][j] * (reg_gradout[i][j] - sum_value));
-          } else {
-            gradInput_[offset + j] = static_cast<inscalar_t>(
-                reg_out[i][j] * (reg_gradout[i][j] - sum_value));
-          }
-        }
-      }
-      if constexpr (is_same_dtype) {
-        *(reinterpret_cast<vec_t*>(gradInput_ + group_offset + index)) =
-            reg_out[i];
+    for (int j = 0; j < vec_size; ++j) {
+      if constexpr (LogSoftMax) {
+        sum_value += reg_gradout[i][j];
+      } else {
+        sum_value += reg_out[i][j] * reg_gradout[i][j];
       }
     }
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_sum_ = sycl_local_acc_t<accscalar_t, 2>(
-        sycl::range<2>{(size_t)local_size_row_, (size_t)sub_group_num_}, cgh);
+  if (local_size > 1) {
+    softmax_group_reduce<SIMD, accscalar_t>(
+        item,
+        lid_row,
+        sub_group_num,
+        sum_value,
+        accscalar_t(0),
+        local_sum,
+        [](accscalar_t a, accscalar_t b) { return a + b; });
   }
-
-  DispatchSoftmaxBackwardKernelFunctor(
-      inscalar_t* gradInput,
-      const outscalar_t* output,
-      const outscalar_t* gradOutput,
-      int dim_size,
-      int outer_size,
-      const bool* mask_data,
-      calc_t input_calc,
-      int sub_group_num,
-      int global_size_row,
-      int local_size_row,
-      int range,
-      int local_size)
-      : gradInput_(gradInput),
-        output_(output),
-        gradOutput_(gradOutput),
-        dim_size_(dim_size),
-        outer_size_(outer_size),
-        mask_data_(mask_data),
-        input_calc_(input_calc),
-        sub_group_num_(sub_group_num),
-        global_size_row_(global_size_row),
-        local_size_row_(local_size_row),
-        range_(range),
-        local_size_(local_size) {}
-
- private:
-  inscalar_t* gradInput_;
-  const outscalar_t* output_;
-  const outscalar_t* gradOutput_;
-  int dim_size_;
-  int outer_size_;
-  const bool* mask_data_;
-  calc_t input_calc_;
-  int sub_group_num_;
-  int global_size_row_;
-  int local_size_row_;
-  int range_;
-  int local_size_;
-  sycl_local_acc_t<accscalar_t, 2> local_sum_;
-};
+  // update result
+#pragma unroll(NUM)
+  for (int i = 0; i < NUM; ++i) {
+    auto index = (lid_col + i * local_size) * vec_size;
+    if (index >= dim_size)
+      break;
+    auto offset = group_offset + index;
+#pragma unroll(vec_size)
+    for (int j = 0; j < vec_size; ++j) {
+      if constexpr (LogSoftMax) {
+        auto exp_out = sycl::exp(static_cast<accscalar_t>(reg_out[i][j]));
+        if constexpr (is_same_dtype) {
+          reg_out[i][j] =
+              static_cast<outscalar_t>(reg_gradout[i][j] - exp_out * sum_value);
+        } else {
+          gradInput[offset + j] =
+              static_cast<inscalar_t>(reg_gradout[i][j] - exp_out * sum_value);
+        }
+      } else {
+        if constexpr (is_same_dtype) {
+          reg_out[i][j] = static_cast<outscalar_t>(
+              reg_out[i][j] * (reg_gradout[i][j] - sum_value));
+        } else {
+          gradInput[offset + j] = static_cast<inscalar_t>(
+              reg_out[i][j] * (reg_gradout[i][j] - sum_value));
+        }
+      }
+    }
+    if constexpr (is_same_dtype) {
+      *(reinterpret_cast<vec_t*>(gradInput + group_offset + index)) =
+          reg_out[i];
+    }
+  }
+}
 
 template <
     int INNER_LOOP,
@@ -1131,28 +1089,28 @@ bool dispatch_softmax_backward_kernel(
     int outer_size,
     const bool* mask_data = nullptr,
     calc_t input_calc = nullptr) {
-  using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
   auto& queue = getCurrentSYCLQueue();
   constexpr int NUM = INNER_LOOP / vec_size * (SIMD32 / SIMD);
 
   int sub_group_num, global_size_row, local_size_row, range, local_size;
   if constexpr (is_masked) {
-    using KernelClass = DispatchSoftmaxBackwardKernelFunctor<
-        INNER_LOOP,
-        vec_size,
+    int max_group_size = get_wgroup_size<
         SIMD,
-        inscalar_t,
-        outscalar_t,
-        accscalar_t,
-        IndexType,
-        LogSoftMax,
-        is_masked,
-        calc_t,
-        vec_t,
+        vec_size,
         NUM,
-        is_same_dtype>;
-
-    int max_group_size = get_wgroup_size<SIMD, vec_size, NUM, KernelClass>(
+        &dispatch_softmax_backward_kernel_func<
+            INNER_LOOP,
+            vec_size,
+            SIMD,
+            inscalar_t,
+            outscalar_t,
+            accscalar_t,
+            IndexType,
+            LogSoftMax,
+            is_masked,
+            calc_t,
+            NUM,
+            is_same_dtype>>(
         dim_size,
         outer_size,
         sub_group_num,
@@ -1165,7 +1123,28 @@ bool dispatch_softmax_backward_kernel(
       return false;
     }
 
-    auto kfn = KernelClass(
+    int64_t local_range{local_size_row * local_size};
+    int64_t global_range{global_size_row * local_size_row * local_size};
+
+    int slm_sz = sizeof(accscalar_t) * local_size_row * sub_group_num;
+
+    sycl_kernel_submit<dispatch_softmax_backward_kernel_func<
+        INNER_LOOP,
+        vec_size,
+        SIMD,
+        inscalar_t,
+        outscalar_t,
+        accscalar_t,
+        IndexType,
+        LogSoftMax,
+        is_masked,
+        calc_t,
+        NUM,
+        is_same_dtype>>(
+        global_range,
+        local_range,
+        queue,
+        slm_sz,
         gradInput,
         output,
         gradOutput,
@@ -1178,29 +1157,25 @@ bool dispatch_softmax_backward_kernel(
         local_size_row,
         range,
         local_size);
-
-    int64_t local_range{local_size_row * local_size};
-    int64_t global_range{global_size_row * local_size_row * local_size};
-
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
     DummyFunctor dummy;
-    using KernelClass = DispatchSoftmaxBackwardKernelFunctor<
-        INNER_LOOP,
-        vec_size,
+    int max_group_size = get_wgroup_size<
         SIMD,
-        inscalar_t,
-        outscalar_t,
-        accscalar_t,
-        IndexType,
-        LogSoftMax,
-        is_masked,
-        DummyFunctor,
-        vec_t,
+        vec_size,
         NUM,
-        is_same_dtype>;
-
-    int max_group_size = get_wgroup_size<SIMD, vec_size, NUM, KernelClass>(
+        &dispatch_softmax_backward_kernel_func<
+            INNER_LOOP,
+            vec_size,
+            SIMD,
+            inscalar_t,
+            outscalar_t,
+            accscalar_t,
+            IndexType,
+            LogSoftMax,
+            is_masked,
+            DummyFunctor,
+            NUM,
+            is_same_dtype>>(
         dim_size,
         outer_size,
         sub_group_num,
@@ -1213,7 +1188,28 @@ bool dispatch_softmax_backward_kernel(
       return false;
     }
 
-    auto kfn = KernelClass(
+    int64_t local_range{local_size_row * local_size};
+    int64_t global_range{global_size_row * local_size_row * local_size};
+
+    int slm_sz = sizeof(accscalar_t) * local_size_row * sub_group_num;
+
+    sycl_kernel_submit<dispatch_softmax_backward_kernel_func<
+        INNER_LOOP,
+        vec_size,
+        SIMD,
+        inscalar_t,
+        outscalar_t,
+        accscalar_t,
+        IndexType,
+        LogSoftMax,
+        is_masked,
+        DummyFunctor,
+        NUM,
+        is_same_dtype>>(
+        global_range,
+        local_range,
+        queue,
+        slm_sz,
         gradInput,
         output,
         gradOutput,
@@ -1226,11 +1222,6 @@ bool dispatch_softmax_backward_kernel(
         local_size_row,
         range,
         local_size);
-
-    int64_t local_range{local_size_row * local_size};
-    int64_t global_range{global_size_row * local_size_row * local_size};
-
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
 
   return true;
@@ -1242,119 +1233,104 @@ template <
     typename outscalar_t,
     typename accscalar_t,
     bool LogSoftMax,
-    typename vec_t,
     int align_bytes,
     bool is_same_dtype>
-struct SoftmaxBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int local_id = item.get_local_id(0);
-    auto group_offset = item.get_group(0) * dim_size_;
-    int start = ((uint64_t)(output_ + group_offset)) % align_bytes /
-        sizeof(outscalar_t);
-    int loops_end = (dim_size_ + start + vec_size - 1) / vec_size;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void softmax_backward_kernel_func(
+    inscalar_t* gradInput,
+    const outscalar_t* output,
+    const outscalar_t* gradOutput,
+    int dim_size,
+    int outer_size,
+    int local_size) {
+  using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    vec_t* vec_gradin_data_ptr =
-        reinterpret_cast<vec_t*>(gradInput_ + group_offset - start);
-    const vec_t* vec_out_data_ptr =
-        reinterpret_cast<const vec_t*>(output_ + group_offset - start);
-    const vec_t* vec_gradout_data_ptr =
-        reinterpret_cast<const vec_t*>(gradOutput_ + group_offset - start);
+  int local_id = item.get_local_id(0);
+  auto group_offset = item.get_group(0) * dim_size;
+  int start =
+      ((uint64_t)(output + group_offset)) % align_bytes / sizeof(outscalar_t);
+  int loops_end = (dim_size + start + vec_size - 1) / vec_size;
 
-    // get sum value
-    auto sum_value = accscalar_t(0);
-    for (int i = local_id; i < loops_end; i += local_size_) {
-      auto gradout_val = vec_gradout_data_ptr[i];
-      if constexpr (LogSoftMax) {
+  vec_t* vec_gradin_data_ptr =
+      reinterpret_cast<vec_t*>(gradInput + group_offset - start);
+  const vec_t* vec_out_data_ptr =
+      reinterpret_cast<const vec_t*>(output + group_offset - start);
+  const vec_t* vec_gradout_data_ptr =
+      reinterpret_cast<const vec_t*>(gradOutput + group_offset - start);
+
+  // get sum value
+  auto sum_value = accscalar_t(0);
+  for (int i = local_id; i < loops_end; i += local_size) {
+    auto gradout_val = vec_gradout_data_ptr[i];
+    if constexpr (LogSoftMax) {
 #pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          int64_t linear_idx = i * vec_size + j - start;
-          if (linear_idx >= 0 && linear_idx < dim_size_) {
-            sum_value += gradout_val[j];
-          }
-        }
-      } else {
-        vec_t out_val = vec_out_data_ptr[i];
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          int64_t linear_idx = i * vec_size + j - start;
-          if (linear_idx >= 0 && linear_idx < dim_size_) {
-            sum_value += out_val[j] * gradout_val[j];
-          }
+      for (int j = 0; j < vec_size; ++j) {
+        int64_t linear_idx = i * vec_size + j - start;
+        if (linear_idx >= 0 && linear_idx < dim_size) {
+          sum_value += gradout_val[j];
         }
       }
-    }
-    sum_value = sycl::reduce_over_group(
-        item.get_group(), sum_value, sycl::plus<accscalar_t>());
-
-    // update result
-    for (int i = local_id; i < loops_end; i += local_size_) {
-      // handle the head and tail
-      auto remaining = dim_size_ + start - i * vec_size;
-      if ((start > 0 && i == 0) || (remaining < vec_size)) {
+    } else {
+      vec_t out_val = vec_out_data_ptr[i];
 #pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          auto linear_idx = i * vec_size + j - start;
-          if (linear_idx >= 0 && linear_idx < dim_size_) {
-            auto offset = group_offset + linear_idx;
-            if constexpr (LogSoftMax) {
-              auto exp_out =
-                  sycl::exp(static_cast<accscalar_t>(output_[offset]));
-              gradInput_[offset] = gradOutput_[offset] - exp_out * sum_value;
-            } else {
-              gradInput_[offset] =
-                  output_[offset] * (gradOutput_[offset] - sum_value);
-            }
-          }
+      for (int j = 0; j < vec_size; ++j) {
+        int64_t linear_idx = i * vec_size + j - start;
+        if (linear_idx >= 0 && linear_idx < dim_size) {
+          sum_value += out_val[j] * gradout_val[j];
         }
-      } else {
-        vec_t grad_val = vec_gradout_data_ptr[i];
-        vec_t out_val = vec_out_data_ptr[i];
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          if constexpr (is_same_dtype) {
-            if constexpr (LogSoftMax) {
-              auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
-              out_val[j] = grad_val[j] - exp_out * sum_value;
-            } else {
-              out_val[j] = out_val[j] * (grad_val[j] - sum_value);
-            }
-          } else {
-            auto offset = group_offset - start + i * vec_size + j;
-            if constexpr (LogSoftMax) {
-              auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
-              gradInput_[offset] = grad_val[j] - exp_out * sum_value;
-            } else {
-              gradInput_[offset] = out_val[j] * (grad_val[j] - sum_value);
-            }
-          }
-        }
-        if constexpr (is_same_dtype)
-          vec_gradin_data_ptr[i] = out_val;
       }
     }
   }
-  SoftmaxBackwardKernelFunctor(
-      inscalar_t* gradInput,
-      const outscalar_t* output,
-      const outscalar_t* gradOutput,
-      int dim_size,
-      int outer_size,
-      int local_size)
-      : gradInput_(gradInput),
-        output_(output),
-        gradOutput_(gradOutput),
-        dim_size_(dim_size),
-        outer_size_(outer_size),
-        local_size_(local_size) {}
+  sum_value = sycl::reduce_over_group(
+      item.get_group(), sum_value, sycl::plus<accscalar_t>());
 
- private:
-  inscalar_t* gradInput_;
-  const outscalar_t* output_;
-  const outscalar_t* gradOutput_;
-  int dim_size_;
-  int outer_size_;
-  int local_size_;
-};
+  // update result
+  for (int i = local_id; i < loops_end; i += local_size) {
+    // handle the head and tail
+    auto remaining = dim_size + start - i * vec_size;
+    if ((start > 0 && i == 0) || (remaining < vec_size)) {
+#pragma unroll(vec_size)
+      for (int j = 0; j < vec_size; ++j) {
+        auto linear_idx = i * vec_size + j - start;
+        if (linear_idx >= 0 && linear_idx < dim_size) {
+          auto offset = group_offset + linear_idx;
+          if constexpr (LogSoftMax) {
+            auto exp_out = sycl::exp(static_cast<accscalar_t>(output[offset]));
+            gradInput[offset] = gradOutput[offset] - exp_out * sum_value;
+          } else {
+            gradInput[offset] =
+                output[offset] * (gradOutput[offset] - sum_value);
+          }
+        }
+      }
+    } else {
+      vec_t grad_val = vec_gradout_data_ptr[i];
+      vec_t out_val = vec_out_data_ptr[i];
+#pragma unroll(vec_size)
+      for (int j = 0; j < vec_size; ++j) {
+        if constexpr (is_same_dtype) {
+          if constexpr (LogSoftMax) {
+            auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
+            out_val[j] = grad_val[j] - exp_out * sum_value;
+          } else {
+            out_val[j] = out_val[j] * (grad_val[j] - sum_value);
+          }
+        } else {
+          auto offset = group_offset - start + i * vec_size + j;
+          if constexpr (LogSoftMax) {
+            auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
+            gradInput[offset] = grad_val[j] - exp_out * sum_value;
+          } else {
+            gradInput[offset] = out_val[j] * (grad_val[j] - sum_value);
+          }
+        }
+      }
+      if constexpr (is_same_dtype)
+        vec_gradin_data_ptr[i] = out_val;
+    }
+  }
+}
 
 template <
     int vec_size,
@@ -1371,27 +1347,38 @@ void softmax_backward_kernel(
     int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
-  using KernelClass = SoftmaxBackwardKernelFunctor<
+  int64_t local_size = std::min(
+      (dim_size + vec_size - 1) / vec_size,
+      int64_t(at::xpu::getKernelMaxWorkGroupSize<softmax_backward_kernel_func<
+                  vec_size,
+                  inscalar_t,
+                  outscalar_t,
+                  accscalar_t,
+                  LogSoftMax,
+                  align_bytes,
+                  is_same_dtype>>()));
+  int64_t local_range{local_size};
+  int64_t global_range{local_size * outer_size};
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<softmax_backward_kernel_func<
       vec_size,
       inscalar_t,
       outscalar_t,
       accscalar_t,
       LogSoftMax,
-      vec_t,
       align_bytes,
-      is_same_dtype>;
-
-  int64_t local_size = std::min(
-      (dim_size + vec_size - 1) / vec_size,
-      int64_t(at::xpu::getKernelMaxWorkGroupSize<KernelClass>()));
-  int64_t local_range{local_size};
-  int64_t global_range{local_size * outer_size};
-
-  auto kfn = KernelClass(
-      gradInput, output, gradOutput, dim_size, outer_size, local_size);
-
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(global_range, local_range, queue, kfn);
+      is_same_dtype>>(
+      global_range,
+      local_range,
+      queue,
+      0,
+      gradInput,
+      output,
+      gradOutput,
+      dim_size,
+      outer_size,
+      local_size);
 }
 
 template <
@@ -1400,124 +1387,100 @@ template <
     typename outscalar_t,
     typename accscalar_t,
     bool LogSoftMax,
-    typename vec_t,
     bool is_same_dtype>
-struct SpatialSoftmaxBackwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<3> item) const {
-    auto global_col = item.get_global_id(2);
-    auto local_row_id = item.get_local_id(1);
-    auto local_col_id = item.get_local_id(2);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void spatial_softmax_backward_kernel_func(
+    inscalar_t* gradInput,
+    const outscalar_t* output,
+    const outscalar_t* gradOutput,
+    int dim_size,
+    int inner_size,
+    int outer_size,
+    int local_size,
+    int block_row) {
+  using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
+  auto item = syclext::this_work_item::get_nd_item<3>();
 
-    auto group_offset = item.get_global_id(0) * dim_size_ * inner_size_;
-    auto gradin_ptr = gradInput_ + group_offset;
-    auto out_ptr = output_ + group_offset;
-    auto gradout_ptr = gradOutput_ + group_offset;
+  accscalar_t* local_data =
+      static_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
 
-    // get sum value
-    accscalar_t sum_value[vec_size];
+  auto global_col = item.get_global_id(2);
+  auto local_row_id = item.get_local_id(1);
+  auto local_col_id = item.get_local_id(2);
+
+  auto group_offset = item.get_global_id(0) * dim_size * inner_size;
+  auto gradin_ptr = gradInput + group_offset;
+  auto out_ptr = output + group_offset;
+  auto gradout_ptr = gradOutput + group_offset;
+
+  // get sum value
+  accscalar_t sum_value[vec_size];
 #pragma unroll(vec_size)
-    for (int j = 0; j < vec_size; ++j)
-      sum_value[j] = accscalar_t(0);
+  for (int j = 0; j < vec_size; ++j)
+    sum_value[j] = accscalar_t(0);
 
-    for (int i = local_row_id; i < dim_size_; i += block_row_) {
-      auto offset = i * inner_size_ + global_col * vec_size;
+  for (int i = local_row_id; i < dim_size; i += block_row) {
+    auto offset = i * inner_size + global_col * vec_size;
+    vec_t gradout_val = *(reinterpret_cast<const vec_t*>(gradout_ptr + offset));
+    if constexpr (LogSoftMax) {
+#pragma unroll(vec_size)
+      for (int j = 0; j < vec_size; ++j)
+        sum_value[j] += gradout_val[j];
+    } else {
+      vec_t out_val = *(reinterpret_cast<const vec_t*>(out_ptr + offset));
+#pragma unroll(vec_size)
+      for (int j = 0; j < vec_size; ++j)
+        sum_value[j] += accscalar_t(gradout_val[j]) * out_val[j];
+    }
+  }
+  if (block_row > 1) {
+    softmax_group_reduce_spatial<vec_size, accscalar_t>(
+        item,
+        sum_value,
+        local_data,
+        local_size,
+        block_row,
+        [](accscalar_t a, accscalar_t b) { return a + b; });
+#pragma unroll(vec_size)
+    for (int j = 0; j < vec_size; ++j) {
+      sum_value[j] = *(local_data + local_col_id * vec_size + j);
+    }
+  }
+
+  // update result
+  if (global_col * vec_size < inner_size) {
+    for (int i = local_row_id; i < dim_size; i += block_row) {
+      auto offset = i * inner_size + global_col * vec_size;
+      vec_t out_val = *(reinterpret_cast<const vec_t*>(out_ptr + offset));
       vec_t gradout_val =
           *(reinterpret_cast<const vec_t*>(gradout_ptr + offset));
-      if constexpr (LogSoftMax) {
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j)
-          sum_value[j] += gradout_val[j];
-      } else {
-        vec_t out_val = *(reinterpret_cast<const vec_t*>(out_ptr + offset));
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j)
-          sum_value[j] += accscalar_t(gradout_val[j]) * out_val[j];
-      }
-    }
-    if (block_row_ > 1) {
-      softmax_group_reduce_spatial<vec_size, accscalar_t>(
-          item,
-          sum_value,
-          local_data_,
-          block_row_,
-          [](accscalar_t a, accscalar_t b) { return a + b; });
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        sum_value[j] = local_data_[0][local_col_id][j];
-      }
-    }
-
-    // update result
-    if (global_col * vec_size < inner_size_) {
-      for (int i = local_row_id; i < dim_size_; i += block_row_) {
-        auto offset = i * inner_size_ + global_col * vec_size;
-        vec_t out_val = *(reinterpret_cast<const vec_t*>(out_ptr + offset));
-        vec_t gradout_val =
-            *(reinterpret_cast<const vec_t*>(gradout_ptr + offset));
-#pragma unroll(vec_size)
-        for (int j = 0; j < vec_size; ++j) {
-          if constexpr (is_same_dtype) {
-            if constexpr (LogSoftMax) {
-              auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
-              out_val[j] = static_cast<outscalar_t>(
-                  gradout_val[j] - exp_out * sum_value[j]);
-            } else {
-              out_val[j] = static_cast<outscalar_t>(
-                  out_val[j] * (gradout_val[j] - sum_value[j]));
-            }
+        if constexpr (is_same_dtype) {
+          if constexpr (LogSoftMax) {
+            auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
+            out_val[j] = static_cast<outscalar_t>(
+                gradout_val[j] - exp_out * sum_value[j]);
           } else {
-            if constexpr (LogSoftMax) {
-              auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
-              gradin_ptr[offset + j] = static_cast<inscalar_t>(
-                  gradout_val[j] - exp_out * sum_value[j]);
-            } else {
-              gradin_ptr[offset + j] = static_cast<inscalar_t>(
-                  out_val[j] * (gradout_val[j] - sum_value[j]));
-            }
+            out_val[j] = static_cast<outscalar_t>(
+                out_val[j] * (gradout_val[j] - sum_value[j]));
+          }
+        } else {
+          if constexpr (LogSoftMax) {
+            auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
+            gradin_ptr[offset + j] = static_cast<inscalar_t>(
+                gradout_val[j] - exp_out * sum_value[j]);
+          } else {
+            gradin_ptr[offset + j] = static_cast<inscalar_t>(
+                out_val[j] * (gradout_val[j] - sum_value[j]));
           }
         }
-        if constexpr (is_same_dtype)
-          *(reinterpret_cast<vec_t*>(gradin_ptr + offset)) = out_val;
       }
+      if constexpr (is_same_dtype)
+        *(reinterpret_cast<vec_t*>(gradin_ptr + offset)) = out_val;
     }
   }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_data_ = sycl_local_acc_t<accscalar_t, 3>(
-        sycl::range<3>{
-            (size_t)block_row_, (size_t)local_size_, (size_t)vec_size},
-        cgh);
-  }
-
-  SpatialSoftmaxBackwardKernelFunctor(
-      inscalar_t* gradInput,
-      const outscalar_t* output,
-      const outscalar_t* gradOutput,
-      int dim_size,
-      int inner_size,
-      int outer_size,
-      int local_size,
-      int block_row)
-      : gradInput_(gradInput),
-        output_(output),
-        gradOutput_(gradOutput),
-        dim_size_(dim_size),
-        inner_size_(inner_size),
-        outer_size_(outer_size),
-        local_size_(local_size),
-        block_row_(block_row) {}
-
- private:
-  inscalar_t* gradInput_;
-  const outscalar_t* output_;
-  const outscalar_t* gradOutput_;
-  int dim_size_;
-  int inner_size_;
-  int outer_size_;
-  int local_size_;
-  int block_row_;
-  sycl_local_acc_t<accscalar_t, 3> local_data_;
-};
+}
 
 template <
     int vec_size,
@@ -1533,18 +1496,16 @@ void spatial_softmax_backward_kernel(
     int dim_size,
     int inner_size,
     int outer_size) {
-  using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
-  using KernelClass = SpatialSoftmaxBackwardKernelFunctor<
-      vec_size,
-      inscalar_t,
-      outscalar_t,
-      accscalar_t,
-      LogSoftMax,
-      vec_t,
-      is_same_dtype>;
-
   int local_size, block_row;
-  get_wgroup_size_spatial<vec_size, KernelClass>(
+  get_wgroup_size_spatial<
+      vec_size,
+      spatial_softmax_backward_kernel_func<
+          vec_size,
+          inscalar_t,
+          outscalar_t,
+          accscalar_t,
+          LogSoftMax,
+          is_same_dtype>>(
       outer_size, dim_size, inner_size, local_size, block_row);
   int group_num =
       (inner_size + local_size * vec_size - 1) / (local_size * vec_size);
@@ -1552,14 +1513,20 @@ void spatial_softmax_backward_kernel(
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
   sycl::range<3> local_range{(size_t)1, (size_t)block_row, (size_t)local_size};
 
-  auto kfn = SpatialSoftmaxBackwardKernelFunctor<
+  int slm_sz = sizeof(accscalar_t) * block_row * local_size * vec_size;
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<spatial_softmax_backward_kernel_func<
       vec_size,
       inscalar_t,
       outscalar_t,
       accscalar_t,
       LogSoftMax,
-      vec_t,
-      is_same_dtype>(
+      is_same_dtype>>(
+      global_range,
+      local_range,
+      queue,
+      slm_sz,
       gradInput,
       output,
       gradOutput,
@@ -1568,9 +1535,6 @@ void spatial_softmax_backward_kernel(
       outer_size,
       local_size,
       block_row);
-
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
 template <
