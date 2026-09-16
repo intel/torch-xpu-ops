@@ -28,15 +28,18 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: pytorch/pytorch
+          path: pytorch
           sparse-checkout: .claude/skills/pr-review
       - name: Checkout intel/torch-xpu-ops (provides the /ut-refactor-review skill)
         uses: actions/checkout@v7
         with:
+          path: torch-xpu-ops
           sparse-checkout: .claude/skills/ut-refactor-review
       - name: Checkout KarhouTam/agent-skills (provides the /review-test-refactoring skill)
         uses: actions/checkout@v7
         with:
           repository: KarhouTam/agent-skills
+          path: agent-skills
           sparse-checkout: pytorch-test-refactoring
       - name: Run AI review
         id: ai-review
@@ -47,9 +50,9 @@ jobs:
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
-            Use the /pr-review skill to review PR
+            Use the skill pytorch/.claude/skills/pr-review/SKILL.md to review PR
             https://github.com/pytorch/pytorch/pull/${{ github.event.inputs.pytorch_pr }}.
-            Load these two dedicated skills /ut-refactor-review and pytorch-test-refactoring/agent/skills/review-test-refactoring/SKILL.md as auxiliary guidance.
+            Load these two dedicated skills torch-xpu-ops/.claude/skills/ut-refactor-review/SKILL.md and agent-skills/pytorch-test-refactoring/agent/skills/review-test-refactoring/SKILL.md as auxiliary guidance.
             Do NOT post any comment or review to the PyTorch PR. Only produce the
             review text as your final result; it will be written to the job summary.
         env:
