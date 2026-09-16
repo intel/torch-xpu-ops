@@ -27,53 +27,36 @@ namespace xpu {
 // ======================= group sort =======================
 
 template <typename method_t, typename key_t, typename value_t>
-struct SegmentedGroupRadixSortPairsFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    int seg_idx = item.get_group(0);
-    int seg_offset = seg_idx * num_elements_;
-    auto method = method_t(item, slm_);
-    method.load_keys(keys_in_ + seg_offset, num_elements_);
-    method.load_values(
-        values_in_ == nullptr ? nullptr : values_in_ + seg_offset,
-        num_elements_);
-    int begin_bit = 0;
-    int end_bit = KeyTraits<key_t>::endbit();
-    while (true) {
-      method.rank_keys(begin_bit, end_bit);
-      method.exchange_keys();
-      method.exchange_values();
-      begin_bit += method_t::RADIX_BITS;
-      if (begin_bit >= end_bit)
-        break;
-    }
-    method.store_keys(keys_out_ + seg_offset, num_elements_);
-    method.store_values(values_out_ + seg_offset, num_elements_);
-  }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
-  }
-  SegmentedGroupRadixSortPairsFunctor(
-      const key_t* keys_in,
-      key_t* keys_out,
-      const value_t* values_in,
-      value_t* values_out,
-      int num_elements)
-      : keys_in_(keys_in),
-        keys_out_(keys_out),
-        values_in_(values_in),
-        values_out_(values_out),
-        num_elements_(num_elements) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>)) inline void segmented_group_radix_sort_pairs_func(
+    const key_t* keys_in,
+    key_t* keys_out,
+    const value_t* values_in,
+    value_t* values_out,
+    int num_elements) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
 
- private:
-  const key_t* keys_in_;
-  key_t* keys_out_;
-  const value_t* values_in_;
-  value_t* values_out_;
-  int num_elements_;
-  sycl_local_acc_t<char> slm_;
-};
+  int seg_idx = item.get_group(0);
+  int seg_offset = seg_idx * num_elements;
+  auto method = method_t(item, slm);
+  method.load_keys(keys_in + seg_offset, num_elements);
+  method.load_values(
+      values_in == nullptr ? nullptr : values_in + seg_offset, num_elements);
+  int begin_bit = 0;
+  int end_bit = KeyTraits<key_t>::endbit();
+  while (true) {
+    method.rank_keys(begin_bit, end_bit);
+    method.exchange_keys();
+    method.exchange_values();
+    begin_bit += method_t::RADIX_BITS;
+    if (begin_bit >= end_bit)
+      break;
+  }
+  method.store_keys(keys_out + seg_offset, num_elements);
+  method.store_values(values_out + seg_offset, num_elements);
+}
 
 template <
     typename key_t,
@@ -96,67 +79,54 @@ void segmented_group_radix_sort_pairs_kernel(
       KEYS_PER_ITEM,
       IS_DESCENDING,
       value_t>;
-  auto caller = SegmentedGroupRadixSortPairsFunctor<method_t, key_t, value_t>(
-      keys_in, keys_out, values_in, values_out, num_elements);
-  sycl_kernel_submit(
+  int slm_size = method_t::LocalMemorySize();
+  sycl_kernel_submit<
+      segmented_group_radix_sort_pairs_func<method_t, key_t, value_t>>(
       num_segments * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      caller);
+      slm_size,
+      keys_in,
+      keys_out,
+      values_in,
+      values_out,
+      num_elements);
 }
 
 // ======================= upsweep =======================
 
 template <typename method_t, typename key_t, typename value_t>
-struct SegmentedRadixSortPairsUpsweepFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    int seg_idx = item.get_group(0) / num_tiles_;
-    int tile_idx = item.get_group(0) % num_tiles_;
-    auto keys_in_seg = keys_in_ + seg_idx * num_elements_;
-    auto counts_seg = counts_ + seg_idx * method_t::RADIX_BUCKETS * num_tiles_;
-    int tile_offset = tile_idx * method_t::PROCESSING_LENGTH;
-    int tile_end = (num_elements_ - tile_offset < method_t::PROCESSING_LENGTH)
-        ? num_elements_
-        : tile_offset + method_t::PROCESSING_LENGTH;
-    auto method = method_t(
-        item,
-        keys_in_seg,
-        tile_idx,
-        begin_bit_,
-        end_bit_,
-        num_tiles_,
-        counts_seg,
-        slm_);
-    method.run(tile_offset, tile_end);
-  }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
-  }
-  SegmentedRadixSortPairsUpsweepFunctor(
-      const key_t* keys_in,
-      int* counts,
-      int num_elements,
-      int num_tiles,
-      int begin_bit,
-      int end_bit)
-      : keys_in_(keys_in),
-        counts_(counts),
-        num_elements_(num_elements),
-        num_tiles_(num_tiles),
-        begin_bit_(begin_bit),
-        end_bit_(end_bit) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>)) inline void segmented_radix_sort_pairs_upsweep_func(
+    const key_t* keys_in,
+    int* counts,
+    int num_elements,
+    int num_tiles,
+    int begin_bit,
+    int end_bit) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
 
- private:
-  const key_t* keys_in_;
-  int* counts_;
-  int num_elements_;
-  int num_tiles_;
-  int begin_bit_;
-  int end_bit_;
-  sycl_local_acc_t<char> slm_;
-};
+  int seg_idx = item.get_group(0) / num_tiles;
+  int tile_idx = item.get_group(0) % num_tiles;
+  auto keys_in_seg = keys_in + seg_idx * num_elements;
+  auto counts_seg = counts + seg_idx * method_t::RADIX_BUCKETS * num_tiles;
+  int tile_offset = tile_idx * method_t::PROCESSING_LENGTH;
+  int tile_end = (num_elements - tile_offset < method_t::PROCESSING_LENGTH)
+      ? num_elements
+      : tile_offset + method_t::PROCESSING_LENGTH;
+  auto method = method_t(
+      item,
+      keys_in_seg,
+      tile_idx,
+      begin_bit,
+      end_bit,
+      num_tiles,
+      counts_seg,
+      slm);
+  method.run(tile_offset, tile_end);
+}
 
 template <
     typename key_t,
@@ -181,39 +151,38 @@ void segmented_radix_sort_pairs_upsweep_kernel(
       value_t>;
   int num_tiles = static_cast<int>(
       ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH));
-  auto caller = SegmentedRadixSortPairsUpsweepFunctor<method_t, key_t, value_t>(
-      keys_in, counts, num_elements, num_tiles, begin_bit, end_bit);
-  sycl_kernel_submit(
+  int slm_size = method_t::LocalMemorySize();
+  sycl_kernel_submit<
+      segmented_radix_sort_pairs_upsweep_func<method_t, key_t, value_t>>(
       num_segments * num_tiles * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      caller);
+      slm_size,
+      keys_in,
+      counts,
+      num_elements,
+      num_tiles,
+      begin_bit,
+      end_bit);
 }
 
 // ======================= scan bins =======================
 
 template <typename method_t>
-struct SegmentedRadixSortPairsScanFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    constexpr int RADIX_BUCKETS = 16;
-    int seg_idx = item.get_group(0);
-    auto counts_seg = counts_ + seg_idx * RADIX_BUCKETS * num_tiles_;
-    auto method = method_t(item, counts_seg, slm_);
-    method.run(num_tiles_ * RADIX_BUCKETS);
-  }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
-  }
-  SegmentedRadixSortPairsScanFunctor(int* counts, int num_tiles)
-      : counts_(counts), num_tiles_(num_tiles) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::nd_range_kernel<
+        1>)) inline void segmented_radix_sort_pairs_scan_func(int* counts, int num_tiles) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
 
- private:
-  int* counts_;
-  int num_tiles_;
-  sycl_local_acc_t<char> slm_;
-};
+  constexpr int RADIX_BUCKETS = 16;
+  int seg_idx = item.get_group(0);
+  auto counts_seg = counts + seg_idx * RADIX_BUCKETS * num_tiles;
+  auto method = method_t(item, counts_seg, slm);
+  method.run(num_tiles * RADIX_BUCKETS);
+}
 
 template <int KEYS_PER_ITEM, int GROUP_SIZE, int SUBGROUP_SIZE>
 void segmented_radix_sort_pairs_scan_kernel(
@@ -221,72 +190,50 @@ void segmented_radix_sort_pairs_scan_kernel(
     int num_tiles,
     int num_segments) {
   using method_t = RadixSortScanBins<GROUP_SIZE, KEYS_PER_ITEM, SUBGROUP_SIZE>;
-  auto caller = SegmentedRadixSortPairsScanFunctor<method_t>(counts, num_tiles);
-  sycl_kernel_submit(
+  int slm_size = method_t::LocalMemorySize();
+  sycl_kernel_submit<segmented_radix_sort_pairs_scan_func<method_t>>(
       num_segments * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      caller);
+      slm_size,
+      counts,
+      num_tiles);
 }
 
 // ======================= downsweep =======================
 
 template <typename method_t, typename key_t, typename value_t>
-struct SegmentedRadixSortPairsDownsweepFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    int seg_idx = item.get_group(0) / num_tiles_;
-    int tile_idx = item.get_group(0) % num_tiles_;
-    int seg_offset = seg_idx * num_elements_;
-    int tile_offset = tile_idx * method_t::PROCESSING_LENGTH;
-    auto counts_seg = counts_ + seg_idx * method_t::RADIX_BUCKETS * num_tiles_;
-    auto method = method_t(item, slm_);
-    method.load_keys(keys_in_ + seg_offset, num_elements_, tile_offset);
-    method.load_values(
-        values_in_ == nullptr ? nullptr : values_in_ + seg_offset,
-        num_elements_,
-        tile_offset);
-    method.load_bin_offsets(counts_seg, tile_idx, num_tiles_);
-    method.rank_keys(begin_bit_, end_bit_);
-    method.exchange_and_store_keys(keys_out_ + seg_offset, num_elements_);
-    method.exchange_and_store_values(values_out_ + seg_offset, num_elements_);
-  }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
-  }
-  SegmentedRadixSortPairsDownsweepFunctor(
-      const key_t* keys_in,
-      key_t* keys_out,
-      const value_t* values_in,
-      value_t* values_out,
-      int num_elements,
-      int num_tiles,
-      int begin_bit,
-      int end_bit,
-      int* counts)
-      : keys_in_(keys_in),
-        keys_out_(keys_out),
-        values_in_(values_in),
-        values_out_(values_out),
-        num_elements_(num_elements),
-        num_tiles_(num_tiles),
-        begin_bit_(begin_bit),
-        end_bit_(end_bit),
-        counts_(counts) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>)) inline void segmented_radix_sort_pairs_downsweep_func(
+    const key_t* keys_in,
+    key_t* keys_out,
+    const value_t* values_in,
+    value_t* values_out,
+    int num_elements,
+    int num_tiles,
+    int begin_bit,
+    int end_bit,
+    int* counts) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
 
- private:
-  const key_t* keys_in_;
-  key_t* keys_out_;
-  const value_t* values_in_;
-  value_t* values_out_;
-  int num_elements_;
-  int num_tiles_;
-  int begin_bit_;
-  int end_bit_;
-  int* counts_;
-  sycl_local_acc_t<char> slm_;
-};
+  int seg_idx = item.get_group(0) / num_tiles;
+  int tile_idx = item.get_group(0) % num_tiles;
+  int seg_offset = seg_idx * num_elements;
+  int tile_offset = tile_idx * method_t::PROCESSING_LENGTH;
+  auto counts_seg = counts + seg_idx * method_t::RADIX_BUCKETS * num_tiles;
+  auto method = method_t(item, slm);
+  method.load_keys(keys_in + seg_offset, num_elements, tile_offset);
+  method.load_values(
+      values_in == nullptr ? nullptr : values_in + seg_offset,
+      num_elements,
+      tile_offset);
+  method.load_bin_offsets(counts_seg, tile_idx, num_tiles);
+  method.rank_keys(begin_bit, end_bit);
+  method.exchange_and_store_keys(keys_out + seg_offset, num_elements);
+  method.exchange_and_store_values(values_out + seg_offset, num_elements);
+}
 
 template <
     typename key_t,
@@ -314,22 +261,22 @@ void segmented_radix_sort_pairs_downsweep_kernel(
       value_t>;
   int num_tiles = static_cast<int>(
       ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH));
-  auto caller =
-      SegmentedRadixSortPairsDownsweepFunctor<method_t, key_t, value_t>(
-          keys_in,
-          keys_out,
-          values_in,
-          values_out,
-          num_elements,
-          num_tiles,
-          begin_bit,
-          end_bit,
-          count);
-  sycl_kernel_submit(
+  int slm_size = method_t::LocalMemorySize();
+  sycl_kernel_submit<
+      segmented_radix_sort_pairs_downsweep_func<method_t, key_t, value_t>>(
       num_segments * num_tiles * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      caller);
+      slm_size,
+      keys_in,
+      keys_out,
+      values_in,
+      values_out,
+      num_elements,
+      num_tiles,
+      begin_bit,
+      end_bit,
+      count);
 }
 
 // ======================= large sort =======================
@@ -461,83 +408,54 @@ inline index_t make_alignment_n(index_t size) {
 }
 
 template <typename method_t, typename key_t, typename value_t>
-struct SegmentedGroupRadixSelectPairsFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>)) inline void segmented_group_radix_select_pairs_kernel(
+    const key_t* keys_in,
+    key_t* keys_out,
+    const value_t* values_in,
+    value_t* values_out,
+    int nelements,
+    int k) {
   enum {
     MAX_KV_BYTES = std::max(sizeof(key_t), sizeof(value_t)),
   };
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  char* slm_ = static_cast<char*>(syclexp::get_work_group_scratch_memory());
+  int seg_idx = item.get_group(0);
+  int seg_offset = seg_idx * nelements;
+  auto method = method_t(item, slm_);
 
-  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    int seg_idx = item.get_group(0);
-    int seg_offset = seg_idx * nelements_;
-    auto method = method_t(item, slm_);
+  auto keys_in_seg = keys_in + seg_offset;
+  auto values_in_seg = values_in == nullptr ? nullptr : values_in + seg_offset;
 
-    auto keys_in_seg = keys_in_ + seg_offset;
-    auto values_in_seg =
-        values_in_ == nullptr ? nullptr : values_in_ + seg_offset;
+  key_t* keys_temp = reinterpret_cast<key_t*>(
+      slm_ + make_alignment_n<MAX_KV_BYTES>(method_t::LocalMemorySize()));
+  value_t* values_temp = reinterpret_cast<value_t*>(
+      reinterpret_cast<char*>(keys_temp) +
+      make_alignment_n<MAX_KV_BYTES>(k * sizeof(key_t)));
 
-    key_t* keys_temp = reinterpret_cast<key_t*>(
-        slm_.template get_multi_ptr<sycl::access::decorated::no>().get() +
-        make_alignment_n<MAX_KV_BYTES>(method_t::LocalMemorySize()));
-    value_t* values_temp = reinterpret_cast<value_t*>(
-        reinterpret_cast<char*>(keys_temp) +
-        make_alignment_n<MAX_KV_BYTES>(k_ * sizeof(key_t)));
+  method.load_keys(keys_in_seg, nelements);
+  method.load_values(values_in_seg, nelements);
 
-    method.load_keys(keys_in_seg, nelements_);
-    method.load_values(values_in_seg, nelements_);
-
-    int num_start = method_t::PROCESSING_LENGTH;
-    while (num_start < nelements_) {
-      method.topk(KeyTraits<key_t>::endbit(), 0, k_, keys_temp, values_temp);
-      sycl::group_barrier(item.get_group());
-      method.topk_append_keys(
-          keys_in_seg, keys_temp, nelements_, num_start, k_);
-      method.topk_append_values(
-          values_in_seg, values_temp, nelements_, num_start, k_);
-      num_start += method_t::PROCESSING_LENGTH - k_;
-      sycl::group_barrier(item.get_group());
-    }
-
-    method.topk(
-        KeyTraits<key_t>::endbit(),
-        0,
-        k_,
-        keys_out_ + seg_idx * k_,
-        values_out_ + seg_idx * k_);
+  int num_start = method_t::PROCESSING_LENGTH;
+  while (num_start < nelements) {
+    method.topk(KeyTraits<key_t>::endbit(), 0, k, keys_temp, values_temp);
+    sycl::group_barrier(item.get_group());
+    method.topk_append_keys(keys_in_seg, keys_temp, nelements, num_start, k);
+    method.topk_append_values(
+        values_in_seg, values_temp, nelements, num_start, k);
+    num_start += method_t::PROCESSING_LENGTH - k;
+    sycl::group_barrier(item.get_group());
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm_ = sycl_local_acc_t<char>(
-        make_alignment_n<MAX_KV_BYTES>(method_t::LocalMemorySize()) +
-            make_alignment_n<MAX_KV_BYTES>(k_ * sizeof(key_t)) +
-            k_ * sizeof(value_t),
-        cgh);
-  }
-
-  SegmentedGroupRadixSelectPairsFunctor(
-      const key_t* keys_in,
-      key_t* keys_out,
-      const value_t* values_in,
-      value_t* values_out,
-      int nelements,
-      int k)
-      : keys_in_(keys_in),
-        keys_out_(keys_out),
-        values_in_(values_in),
-        values_out_(values_out),
-        nelements_(nelements),
-        k_(k) {}
-
- private:
-  const key_t* keys_in_;
-  key_t* keys_out_;
-  const value_t* values_in_;
-  value_t* values_out_;
-  int nelements_;
-  int k_;
-  sycl_local_acc_t<char> slm_;
-};
+  method.topk(
+      KeyTraits<key_t>::endbit(),
+      0,
+      k,
+      keys_out + seg_idx * k,
+      values_out + seg_idx * k);
+}
 
 template <
     typename key_t,
@@ -562,13 +480,24 @@ inline void group_radix_select_pairs_kernel(
       IS_DESCENDING,
       value_t>;
   TORCH_CHECK(k <= method_t::PROCESSING_LENGTH);
-  auto caller = SegmentedGroupRadixSelectPairsFunctor<method_t, key_t, value_t>(
-      keys_in, keys_out, values_in, values_out, num_elements, k);
-  sycl_kernel_submit(
+  enum {
+    MAX_KV_BYTES = std::max(sizeof(key_t), sizeof(value_t)),
+  };
+  size_t slm_size =
+      make_alignment_n<MAX_KV_BYTES>(method_t::LocalMemorySize()) +
+      make_alignment_n<MAX_KV_BYTES>(k * sizeof(key_t)) + k * sizeof(value_t);
+  sycl_kernel_submit<
+      segmented_group_radix_select_pairs_kernel<method_t, key_t, value_t>>(
       num_segments * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      caller);
+      slm_size,
+      keys_in,
+      keys_out,
+      values_in,
+      values_out,
+      num_elements,
+      k);
 }
 
 // ======================= interface =======================
