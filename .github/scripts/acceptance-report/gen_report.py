@@ -14,7 +14,6 @@ an XLSX workbook, and a brief GITHUB_STEP_SUMMARY. Standard library only.
 
 import csv
 import html
-import difflib
 import math
 import os
 import re
