@@ -37,6 +37,7 @@ macro(set_build_flags)
     return()
   endif()
   set(SYCL_HOST_FLAGS)
+  set(SYCL_HOST_FLAGS_DIRECT_TO_SYCL)
   set(SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL)
   set(SYCL_HOST_FLAGS_ONLY_FOR_SYCL)
   set(SYCL_DEVICE_COMPILE_DEFINITIONS)
@@ -74,6 +75,10 @@ macro(set_build_flags)
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+      # This is a driver option and cannot be forwarded with -Xarch_host.
+      list(APPEND SYCL_HOST_FLAGS_DIRECT_TO_SYCL -Qunused-arguments)
+    endif()
     # These GCC warning options remain available to regular host compilation,
     # but are not supported by the Intel SYCL/Clang host frontend.
     list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
