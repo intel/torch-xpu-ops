@@ -287,6 +287,7 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
     "verdict": "needs-xpu-fix",
     "implementation_repository": "pytorch/pytorch",
     "canonical_tracker": null,
+    "canonical_tracker_state": null,
     "payload": {
       "title": "[xpu-alignment] ...",
       "body": "...",
@@ -298,13 +299,23 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 ```
 
 `units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without a canonical tracker has a payload, and every payload
-targets `intel/torch-xpu-ops`. `implementation_repository` is required for
+`needs-xpu-fix` without an open `intel/torch-xpu-ops` canonical tracker has a
+payload, and every payload targets `intel/torch-xpu-ops`.
+`implementation_repository` is required for
 `needs-xpu-fix` and `track-upstream` and unused otherwise; the
 [evidence reference](evidence.md) defines which repository to name.
-`status: blocked` lists blockers and contains no payloads. When an existing
-`intel/torch-xpu-ops` issue covers the same work, record its URL as
-`canonical_tracker`; do not create a payload or comment on that tracker.
+`status: blocked` lists blockers and contains no payloads. When an existing issue
+covers the same work, record its URL as `canonical_tracker` and its `open` or
+`closed` state as `canonical_tracker_state`; both fields are set together or both
+are null. An open `intel/torch-xpu-ops` tracker replaces the payload and is not
+commented on. An open tracker in another repository remains recorded but does
+not replace the XPU payload. Record a tracker in any repository rather than
+dropping it, so a later run does not re-investigate the same ground. Whenever a
+tracker is recorded and a payload is emitted, the payload body cites that exact
+tracker URL. Cite related upstream or XPU issue, PR, and commit URLs in the
+payload or review report as context; those links do not suppress a payload. A
+tracker that is `closed` cannot receive the work, so a `needs-xpu-fix` unit still
+carries a payload.
 
 This role requires read-only GitHub access to refresh source and tracker state,
 but it does not require an XPU runtime.

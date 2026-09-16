@@ -36,6 +36,7 @@ LOCAL_RESULTS = {
 }
 ACTIONABLE_RESULTS = {"confirmed", "related-failure"}
 BLOCKED_RESULTS = LOCAL_RESULTS - ACTIONABLE_RESULTS - {"not-reproduced"}
+TRACKER_RE = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+")
 VERDICTS = {
     "needs-xpu-fix",
     "track-upstream",
@@ -484,13 +485,28 @@ def _validate_review(
         ):
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
+        tracker_state = entry.get("canonical_tracker_state")
+        tracker_repository = None
         if tracker is not None and (
-            not isinstance(tracker, str)
-            or not tracker.startswith("https://github.com/intel/torch-xpu-ops/issues/")
+            not isinstance(tracker, str) or not TRACKER_RE.fullmatch(tracker)
         ):
             errors.append(f"review-invalid-tracker:{unit_id}")
+        elif isinstance(tracker, str):
+            tracker_repository = "/".join(
+                tracker.removeprefix("https://github.com/").split("/")[:2]
+            ).lower()
+        if (tracker is None) != (tracker_state is None) or tracker_state not in {
+            None,
+            "open",
+            "closed",
+        }:
+            errors.append(f"review-invalid-tracker-state:{unit_id}")
         payload = entry.get("payload")
-        expects_payload = verdict == "needs-xpu-fix" and tracker is None
+        # A closed tracker cannot receive the work, so the finding still needs its own issue.
+        open_xpu_tracker = (
+            tracker_state == "open" and tracker_repository == "intel/torch-xpu-ops"
+        )
+        expects_payload = verdict == "needs-xpu-fix" and not open_xpu_tracker
         if not expects_payload:
             if payload is not None:
                 errors.append(f"review-unexpected-payload:{unit_id}")

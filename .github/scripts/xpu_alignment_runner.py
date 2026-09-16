@@ -277,7 +277,7 @@ print(json.dumps(payload, sort_keys=True))
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=120,
                 check=False,
                 **process,
             )
