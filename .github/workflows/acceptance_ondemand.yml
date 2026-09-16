@@ -22,6 +22,13 @@ on:
         default: '3.10'
         description: Python version (e.g. 3.10, 3.11, 3.12)
 
+      # ----- Test scope (command pattern) -----
+      test_pattern:
+        type: choice
+        options: [test_pt, test_pt_ut, test_pt_e2e]
+        default: test_pt
+        description: 'Command pattern: test_pt (UT+E2E), test_pt_ut (UT only), test_pt_e2e (E2E only).'
+
       # ----- Common base refs -----
       pytorch:
         type: string
@@ -50,7 +57,7 @@ on:
 permissions: read-all
 
 run-name: >-
-  Acceptance / ${{ inputs.test_component }} ${{ inputs.target_version }} vs ${{ inputs.baseline_version }}
+  Acceptance / ${{ inputs.test_component }} [${{ inputs.test_pattern }}] ${{ inputs.target_version }} vs ${{ inputs.baseline_version }}
 
 jobs:
   # ==================================================================
@@ -71,6 +78,7 @@ jobs:
 
   target-ut:
     name: target / ut
+    if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_ut' }}
     needs: target-build
     secrets: inherit
     permissions:
@@ -89,6 +97,7 @@ jobs:
 
   target-e2e:
     name: target / e2e
+    if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_e2e' }}
     needs: target-build
     secrets: inherit
     strategy:
@@ -123,6 +132,7 @@ jobs:
 
   baseline-ut:
     name: baseline / ut
+    if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_ut' }}
     needs: baseline-build
     secrets: inherit
     permissions:
@@ -141,6 +151,7 @@ jobs:
 
   baseline-e2e:
     name: baseline / e2e
+    if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_e2e' }}
     needs: baseline-build
     secrets: inherit
     strategy:
@@ -188,6 +199,8 @@ jobs:
             echo "| Baseline version | \`${{ inputs.baseline_version }}\` |"
             echo "| Base pytorch     | ${{ inputs.pytorch }} |"
             echo "| Base torch-xpu-ops | ${{ inputs.torch_xpu_ops }} |"
+            echo "| Test pattern     | ${{ inputs.test_pattern }} |"
+            echo "| Triggered by     | ${{ github.actor }} |"
             echo ""
             echo "Scope: UT=\`p0\`; E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)"
           } > "${GITHUB_STEP_SUMMARY}"
