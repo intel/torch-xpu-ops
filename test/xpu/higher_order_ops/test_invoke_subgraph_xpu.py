@@ -28,27 +28,7 @@ import torch._inductor
 import torch._inductor.decomposition
 import torch.utils._pytree as pytree
 from functorch.compile import aot_function, nop
-
-try:
-    from parameterized import parameterized_class
-except ModuleNotFoundError:
-
-    def parameterized_class(parameters, class_name_func=None):
-        def decorator(cls):
-            module = sys.modules[cls.__module__]
-            for idx, parameter in enumerate(parameters):
-                if class_name_func is not None:
-                    name = class_name_func(cls, None, parameter)
-                else:
-                    name = f"{cls.__name__}_{idx}"
-                subclass = type(name, (cls,), dict(parameter))
-                subclass.__module__ = cls.__module__
-                setattr(module, name, subclass)
-            return cls
-
-        return decorator
-
-
+from parameterized import parameterized_class
 from torch._dynamo.functional_export import dynamo_graph_capture_for_export
 from torch._dynamo.testing import (
     AotEagerAndRecordGraphs,
