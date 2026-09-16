@@ -15,6 +15,7 @@
 #include <ATen/ATen.h>
 #include <ATen/native/BucketizationUtils.h>
 #include <comm/SYCLContext.h>
+#include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/BucketizationKernels.h>
 
@@ -77,59 +78,38 @@ int64_t cus_upper_bound(
 }
 
 template <typename input_t, typename output_t>
-struct SearchsortedKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    for (int64_t i = item.get_global_id(0); i < numel_in_;
-         i += item.get_global_range()[0]) {
-      // If boundaries tensor is 1d, we always search the entire boundary
-      // tensor
-      int64_t start_bd = is_1d_boundaries_ ? 0 : i / idim_in_ * idim_bd_;
-      int64_t end_bd = start_bd + idim_bd_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void searchsorted_kernel_impl(
+    const bool right,
+    int64_t numel_in,
+    int64_t idim_in,
+    int64_t idim_bd,
+    const int64_t* data_st,
+    bool is_1d_boundaries,
+    const input_t* data_in_data,
+    const input_t* data_bd_data,
+    output_t* data_out_data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  for (int64_t i = item.get_global_id(0); i < numel_in;
+       i += item.get_global_range()[0]) {
+    // If boundaries tensor is 1d, we always search the entire boundary
+    // tensor
+    int64_t start_bd = is_1d_boundaries ? 0 : i / idim_in * idim_bd;
+    int64_t end_bd = start_bd + idim_bd;
 
-      int64_t pos = !right_
-          ? cus_lower_bound(
-                start_bd, end_bd, data_in_data_[i], data_bd_data_, data_st_) -
-              start_bd
-          : cus_upper_bound(
-                start_bd, end_bd, data_in_data_[i], data_bd_data_, data_st_) -
-              start_bd;
+    int64_t pos = !right
+        ? cus_lower_bound(
+              start_bd, end_bd, data_in_data[i], data_bd_data, data_st) -
+            start_bd
+        : cus_upper_bound(
+              start_bd, end_bd, data_in_data[i], data_bd_data, data_st) -
+            start_bd;
 
-      // type conversion might happen here
-      data_out_data_[i] = pos;
-    }
+    // type conversion might happen here
+    data_out_data[i] = pos;
   }
+}
 
-  SearchsortedKernelFunctor(
-      const bool right,
-      int64_t numel_in,
-      int64_t idim_in,
-      int64_t idim_bd,
-      const int64_t* data_st,
-      bool is_1d_boundaries,
-      const input_t* data_in_data,
-      const input_t* data_bd_data,
-      output_t* data_out_data)
-      : right_(right),
-        numel_in_(numel_in),
-        idim_in_(idim_in),
-        idim_bd_(idim_bd),
-        data_st_(data_st),
-        is_1d_boundaries_(is_1d_boundaries),
-        data_in_data_(data_in_data),
-        data_bd_data_(data_bd_data),
-        data_out_data_(data_out_data) {}
-
- private:
-  const bool right_;
-  int64_t numel_in_;
-  int64_t idim_in_;
-  int64_t idim_bd_;
-  const int64_t* data_st_;
-  bool is_1d_boundaries_;
-  const input_t* data_in_data_;
-  const input_t* data_bd_data_;
-  output_t* data_out_data_;
-};
 template <typename input_t, typename output_t>
 void searchsorted_template(
     Tensor& result,
@@ -150,19 +130,10 @@ void searchsorted_template(
   auto data_in_data = input.const_data_ptr<input_t>();
   auto data_bd_data = boundaries.const_data_ptr<input_t>();
   auto data_out_data = result.mutable_data_ptr<output_t>();
-  SearchsortedKernelFunctor<input_t, output_t> kfn(
-      right,
-      numel_in,
-      idim_in,
-      idim_bd,
-      data_st,
-      is_1d_boundaries,
-      data_in_data,
-      data_bd_data,
-      data_out_data);
 
   int64_t rng, grng, tile_size;
-  tile_size = syclMaxWorkGroupSize(kfn);
+  tile_size =
+      syclMaxWorkGroupSize<searchsorted_kernel_impl<input_t, output_t>>();
   rng = numel_in;
   if (rng == 0) {
     rng = static_cast<int64_t>(1);
@@ -178,7 +149,20 @@ void searchsorted_template(
     }
   }
 
-  sycl_kernel_submit(grng, tile_size, getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit<searchsorted_kernel_impl<input_t, output_t>>(
+      grng,
+      tile_size,
+      getCurrentSYCLQueue(),
+      0,
+      right,
+      numel_in,
+      idim_in,
+      idim_bd,
+      data_st,
+      is_1d_boundaries,
+      data_in_data,
+      data_bd_data,
+      data_out_data);
 }
 
 void searchsorted_dispatch(

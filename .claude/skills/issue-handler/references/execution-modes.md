@@ -141,6 +141,7 @@ markers are sub-headings within that one comment.
 | `<!-- agent:implement -->` | `fix-implement` (diff, not prose) |
 | `<!-- agent:verify -->` | `fix-verify` |
 | `<!-- agent:summary -->` | `issue-handler` (Stage 6 closing summary) |
+| `<!-- agent:review -->` | the `fix` workflow — the template a human fills in to review the fix |
 | `<!-- agent:batch-fanout -->` | `issue-handler` (batch fan-out summary, skip-list or heterogeneous) |
 
 ### 4. Canonical section headings
