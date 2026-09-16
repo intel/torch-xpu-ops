@@ -36,7 +36,7 @@ on:
         description: 'Base PyTorch ref (commit/branch/tag, or `repo@ref`).'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: 'pinned'
         description: 'Base torch-xpu-ops ref, or `pinned`.'
 
       # ----- Component under test -----
