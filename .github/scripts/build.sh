@@ -14,6 +14,7 @@ done
 
 WORKSPACE=$(realpath "${WORKSPACE:-/tmp}")
 cd "${WORKSPACE}/pytorch"
+PYTORCH_WHEEL_LINUX_SCRIPT_PATH="${WORKSPACE}/pytorch/.ci/wheel/linux"
 
 # Build using PyTorch's upstream build pipeline
 export GPU_ARCH_TYPE=xpu
@@ -46,21 +47,21 @@ print(PYTORCH_EXTRA_INSTALL_REQUIREMENTS['xpu'])
     # Step 1: Environment setup (sources oneAPI, sets XPU build flags)
     ENV_FILE=$(mktemp)
     trap 'rm -f "$ENV_FILE"' EXIT
-    python .ci/manywheel/build_env_setup.py --env-out "$ENV_FILE"
+    python "${PYTORCH_WHEEL_LINUX_SCRIPT_PATH}/build_env_setup.py" --env-out "$ENV_FILE"
     # shellcheck source=/dev/null
     source "$ENV_FILE"
 
     # Step 2: Install build dependencies
-    python .ci/manywheel/build_install_deps.py "${WORKSPACE}/pytorch"
+    python "${PYTORCH_WHEEL_LINUX_SCRIPT_PATH}/build_install_deps.py" "${WORKSPACE}/pytorch"
 
     # Step 3: Build wheel
     export WERROR=1
     RAW_WHEEL_DIR=$(mktemp -d)
-    python .ci/manywheel/build_wheel.py "$RAW_WHEEL_DIR"
+    python "${PYTORCH_WHEEL_LINUX_SCRIPT_PATH}/build_wheel.py" "$RAW_WHEEL_DIR"
 
     # Step 4: Repair wheel (RPATH patching + platform retagging)
     mkdir -p dist/
-    python .ci/manywheel/repair_wheel.py "$RAW_WHEEL_DIR" dist/
+    python "${PYTORCH_WHEEL_LINUX_SCRIPT_PATH}/repair_wheel.py" "$RAW_WHEEL_DIR" dist/
 fi
 
 # Post Build: Install and verify
