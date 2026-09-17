@@ -207,8 +207,8 @@ sentence how they group (which sub-item takes the fix, which are
 re-checked against it):
 
 ```markdown
-4. `test_foo_xpu_float8_e4m3fn` (`TestBarXPU`) -- pytorch/pytorch#197334
-5. `test_foo_xpu_float8_e5m2` -- pytorch/pytorch#197336
+4. `test_foo_xpu_float8_e4m3fn` (`TestBarXPU`) -- `pytorch/pytorch#197334`
+5. `test_foo_xpu_float8_e5m2` -- `pytorch/pytorch#197336`
 ```
 
 ### 6b. JSON block

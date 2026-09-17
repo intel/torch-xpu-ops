@@ -1299,6 +1299,10 @@ jobs:
             -F body=@file`) and never create a second comment. It is public and
             not retractable (edit history stays visible), so it carries your
             stage reports only -- never raw command output, env, or credentials.
+            Write every upstream issue or PR reference in backticks
+            (`pytorch/pytorch#197334`), never bare, as a URL, or as a markdown
+            link: a rendered reference back-links this comment onto the pytorch
+            issue. Run and job log links are fine.
             End by appending your summary to it and reporting the branch name.
             Do not write a review block; the workflow appends the human
             review template itself.

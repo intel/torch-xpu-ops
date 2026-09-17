@@ -125,6 +125,13 @@ The comment is public and editing does not retract anything (edit history
 stays visible), so it carries stage reports only — never raw command
 output, environment, or credentials.
 
+**Upstream issues and PRs go in backticks** — `` `pytorch/pytorch#197334` ``,
+never a bare `pytorch/pytorch#197334`, a URL, or a markdown link. Any of the
+rendered forms cross-references this comment onto the upstream issue's
+timeline, so every stage of every run leaves a back-link on a repo that did
+not ask for one. Backticks are a code span, which GitHub does not linkify.
+Links to a workflow run or job log are fine — those do not back-link.
+
 The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
 already lives in the root-cause block above it.
