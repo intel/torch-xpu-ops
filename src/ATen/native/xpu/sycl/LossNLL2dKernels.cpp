@@ -432,7 +432,8 @@ void nll_loss2d_backward_kernel(
           auto weight_ = optional_contiguous(weight);
           int64_t map_nelem = target_numel / batch_size;
           constexpr auto kfn = nll_loss2d_backward_kernel_<scalar_t>;
-          int64_t max_work_group_size = at::xpu::getKernelMaxWorkGroupSize<kfn>();
+          int64_t max_work_group_size =
+              at::xpu::getKernelMaxWorkGroupSize<kfn>();
           int blocks_per_sample =
               (map_nelem + max_work_group_size - 1) / max_work_group_size / 128;
           blocks_per_sample = (blocks_per_sample == 0) ? 1 : blocks_per_sample;
