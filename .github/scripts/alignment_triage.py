@@ -6,7 +6,7 @@
 
 Drafts live as bot comments carrying a unit marker. Publishing preserves the
 reviewed title and visible body and adds only a hidden stable-unit marker for
-idempotency. No agent runs between approval and filing.
+idempotency.
 """
 
 from __future__ import annotations
@@ -17,21 +17,32 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import date
 
 UNIT_MARKER = "<!-- alignment-unit: {unit_id} -->"
 DRY_RUN_UNIT_MARKER = "<!-- alignment-dry-run-unit: {run_id}:{unit_id} -->"
 # Provenance is visible text, not an HTML comment: a triager reading a draft
 # needs the run that produced it in order to re-read the underlying evidence.
-PROVENANCE_LINE = "<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>"
+PROVENANCE_LINE = (
+    "<sub>alignment scan `{scan_date}`, "
+    "[workflow run `{run_id}`]({run_url})</sub>"
+)
 FILED_MARKER = "<!-- alignment-unit-filed: #{number} -->"
 FILED_MARKER_RE = re.compile(r"<!-- alignment-unit-filed: #(\d+) -->")
 PUBLISHED_UNIT_MARKER = "<!-- alignment-published-unit: {unit_id} -->"
-# One notification per run, so a re-run does not ping anyone twice.
+# Scheduled summaries are unique and updated in place on a re-run. Keeping the
+# same mention in an edited comment does not send a second notification.
 RUN_NOTE_MARKER = "<!-- alignment-run-note: {run_id} -->"
 TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
 
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
+AUTO_FILE_LIMIT = 3
+# A marker only identifies a comment the publisher itself wrote. Quoting or
+# copying a draft reproduces the marker verbatim, and neither identity below can
+# be impersonated. `github-actions[bot]` wrote the drafts published before the
+# workflow moved to `MERGE_TOKEN`.
+PUBLISHER_LOGINS = frozenset({"torchxpubot", "github-actions[bot]"})
 # Unit ids become comment markers, file names and glob fragments, so they are
 # restricted to one plain token with no separator or metacharacter.
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
@@ -70,6 +81,7 @@ def render_draft(
     body: str,
     run_id: str,
     scan_date: str,
+    run_url: str,
     *,
     dry_run: bool = False,
 ) -> str:
@@ -79,10 +91,15 @@ def render_draft(
         else UNIT_MARKER.format(unit_id=unit_id)
     )
     prefix = "[DRY RUN] " if dry_run else ""
+    scan_day = date.fromisoformat(scan_date)
+    dated_title = (
+        f"{ISSUE_TITLE_PREFIX} [{scan_day.strftime('%y-%m-%d')}] "
+        f"{title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()}"
+    )
     return (
         f"{marker}\n"
-        f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date)}\n"
-        f"### {prefix}{title}\n\n{body}\n"
+        f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date, run_url=run_url)}\n"
+        f"### {prefix}{dated_title}\n\n{body}\n"
     )
 
 
@@ -96,41 +113,49 @@ def post_comment(repo: str, issue: int, body: str) -> int:
     return int(created["id"])
 
 
-def has_unit(comments: list[dict], unit_id: str) -> bool:
+def _published_comments(comments: list[dict], marker: str) -> list[dict]:
+    return [
+        comment
+        for comment in comments
+        if (comment.get("user") or {}).get("login") in PUBLISHER_LOGINS
+        and marker in (comment.get("body") or "")
+    ]
+
+
+def find_unit_comments(comments: list[dict], unit_id: str) -> list[dict]:
     marker = UNIT_MARKER.format(unit_id=unit_id)
-    return any(marker in (comment.get("body") or "") for comment in comments)
+    matches = _published_comments(comments, marker)
+    return sorted(matches, key=lambda comment: int(comment.get("id", 0)))
 
 
-def has_run_note(comments: list[dict], run_id: str) -> bool:
+def find_run_note(comments: list[dict], run_id: str) -> dict | None:
     marker = RUN_NOTE_MARKER.format(run_id=run_id)
-    return any(marker in (comment.get("body") or "") for comment in comments)
+    matches = _published_comments(comments, marker)
+    if len(matches) > 1:
+        fail(f"{len(matches)} run summaries carry the marker for run `{run_id}`.")
+    return matches[0] if matches else None
 
 
 def render_run_note(
-    run_id: str, scan_date: str, headline: str, lines: list[str], notify: str
+    run_id: str,
+    run_url: str,
+    headline: str,
+    lines: list[str],
+    notify: str,
+    *,
+    dry_run: bool = False,
 ) -> str:
-    """The one comment that actively pings a human, rather than waiting to be found."""
-    parts = [
-        RUN_NOTE_MARKER.format(run_id=run_id),
+    """Render a scheduled summary marker or a repeatable dry-run summary."""
+    parts = ([] if dry_run else [RUN_NOTE_MARKER.format(run_id=run_id)]) + [
         f"**{headline}**",
         "",
         *lines,
         "",
-        f"<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>",
+        f"<sub>[workflow run `{run_id}`]({run_url})</sub>",
     ]
     if notify:
         parts += ["", notify]
     return "\n".join(parts) + "\n"
-
-
-def find_draft(comments: list[dict], unit_id: str) -> dict:
-    marker = UNIT_MARKER.format(unit_id=unit_id)
-    matches = [comment for comment in comments if marker in (comment.get("body") or "")]
-    if not matches:
-        fail(f"No draft comment carries the marker for `{unit_id}`.")
-    if len(matches) > 1:
-        fail(f"{len(matches)} draft comments carry the marker for `{unit_id}`.")
-    return matches[0]
 
 
 def parse_draft(body: str, unit_id: str) -> tuple[str, str]:

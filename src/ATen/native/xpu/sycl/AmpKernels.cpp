@@ -115,52 +115,37 @@ void amp_foreach_non_finite_check_and_unscale_kernel(
       });
 }
 
-struct AmpUpdateScaleKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    // There is only single item/task scheduled.
-    if (item.get_global_linear_id() != 0)
-      return;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void amp_update_scale_ff_kernel(
+    float* current_scale,
+    int* growth_tracker,
+    const float* found_inf,
+    double growth_factor,
+    double backoff_factor,
+    int growth_interval) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  // There is only single item/task scheduled.
+  if (item.get_global_linear_id() != 0)
+    return;
 
-    if (*found_inf_) {
-      *current_scale_ *= backoff_factor_;
-      *growth_tracker_ = 0;
-    } else {
-      // Entering this branch means we just carried out a successful step,
-      // so growth_tracker is incremented before comparing to growth_interval.
-      auto successful = (*growth_tracker_) + 1;
-      if (successful == growth_interval_) {
-        auto new_scale = static_cast<float>((*current_scale_) * growth_factor_);
-        if (!sycl::isinf(new_scale)) {
-          *current_scale_ = new_scale;
-        }
-        *growth_tracker_ = 0;
-      } else {
-        *growth_tracker_ = successful;
+  if (*found_inf) {
+    *current_scale *= backoff_factor;
+    *growth_tracker = 0;
+  } else {
+    // Entering this branch means we just carried out a successful step,
+    // so growth_tracker is incremented before comparing to growth_interval.
+    auto successful = (*growth_tracker) + 1;
+    if (successful == growth_interval) {
+      auto new_scale = static_cast<float>((*current_scale) * growth_factor);
+      if (!std::isinf(new_scale)) {
+        *current_scale = new_scale;
       }
+      *growth_tracker = 0;
+    } else {
+      *growth_tracker = successful;
     }
   }
-  AmpUpdateScaleKernelFunctor(
-      float* current_scale,
-      int* growth_tracker,
-      const float* found_inf,
-      double growth_factor,
-      double backoff_factor,
-      int growth_interval)
-      : current_scale_(current_scale),
-        growth_tracker_(growth_tracker),
-        found_inf_(found_inf),
-        growth_factor_(growth_factor),
-        backoff_factor_(backoff_factor),
-        growth_interval_(growth_interval) {}
-
- private:
-  float* current_scale_;
-  int* growth_tracker_;
-  const float* found_inf_;
-  double growth_factor_;
-  double backoff_factor_;
-  int growth_interval_;
-};
+}
 
 Tensor& amp_update_scale_kernel(
     Tensor& current_scale,
@@ -169,16 +154,17 @@ Tensor& amp_update_scale_kernel(
     double growth_factor,
     double backoff_factor,
     int64_t growth_interval) {
-  AmpUpdateScaleKernelFunctor kfn(
+  sycl_kernel_submit<amp_update_scale_ff_kernel>(
+      sycl::range<1>(1),
+      sycl::range<1>(1),
+      getCurrentSYCLQueue(),
+      0,
       current_scale.mutable_data_ptr<float>(),
       growth_tracker.mutable_data_ptr<int>(),
       found_inf.const_data_ptr<float>(),
       growth_factor,
       backoff_factor,
       growth_interval);
-  sycl_kernel_submit(
-      sycl::range<1>(1), sycl::range<1>(1), getCurrentSYCLQueue(), kfn);
-
   return current_scale;
 }
 
