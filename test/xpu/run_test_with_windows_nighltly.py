@@ -61,7 +61,7 @@ skip_files_list = [
     "test_decomp.py",
     "test_decomp_xpu.py",
     "test_distributions_xpu.py",
-    "test_dynamic_shapes_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_dynamic_shapes.py",
     f"{PYTORCH_TEST_DIR}/test_foreach.py",
     "test_linalg_xpu.py",
     "test_maskedtensor_xpu.py",

@@ -106,7 +106,7 @@ skip_dict = {
         "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
     "test_distributions_xpu.py": None,
-    "test_dynamic_shapes_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_dynamic_shapes.py": None,
     f"{PYTORCH_TEST_DIR}/test_foreach.py": None,
     f"{PYTORCH_TEST_DIR}/test_indexing.py": (
         # BMG hang (>10 min) taking down the xdist worker
