@@ -357,6 +357,7 @@ _cuda_xfail_xpu_pass = [
     ("nn.Conv2d", "test_memory_format"),
     ("nn.ConvTranspose2d", "test_memory_format"),
     ("nn.LazyConvTranspose2d", "test_memory_format"),
+    ("nn.ConvTranspose1d", "test_cpu_gpu_parity"),
     ("narrow_copy", "test_meta_outplace"),
     ("narrow_copy", "test_dispatch_meta_outplace"),
     ("narrow_copy", "test_dispatch_symbolic_meta_outplace"),

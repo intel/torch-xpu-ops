@@ -14,16 +14,15 @@
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
-static inline int padto_le(int src, int padding) {
-  return src / padding * padding;
-}
 
-static inline int64_t padto_le(int64_t src, int64_t padding) {
-  return src / padding * padding;
-}
+#ifdef __SYCL_DEVICE_ONLY__
+#define MAYBE_UNUSED_ON_HOST
+#else
+#define MAYBE_UNUSED_ON_HOST [[maybe_unused]]
+#endif
 
-static inline size_t padto_le(size_t src, int padding) {
-  return src / size_t(padding) * size_t(padding);
+MAYBE_UNUSED_ON_HOST static inline int padto_le(int src, int padding) {
+  return src / padding * padding;
 }
 
 template <typename scalar_t = sycl::ext::oneapi::bfloat16, int block_size = 32>
