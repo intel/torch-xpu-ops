@@ -1444,13 +1444,6 @@ jobs:
 
           notes:
           ```
-
-          `issue-drop`: nothing to repair -- an alignment difference, a corner
-          case -- so it leaves the fix rate instead of counting as a failure.
-
-          Batch run: one comment per sub-item, adding `item=<upstream issue>`
-          inside the marker. A bare verdict there cannot say which patch it
-          judged and is discarded.
           EOF
           gh api --method PATCH "$C" -F body=@body.md
 
