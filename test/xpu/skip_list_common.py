@@ -20,7 +20,7 @@ skip_dict = {
     ),
     "nn/test_dropout_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
-    "nn/test_init_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_init.py": None,
     "nn/test_lazy_modules_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
