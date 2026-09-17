@@ -407,4 +407,5 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
     "test_mkldnn_fusion_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_compile_to_python.py": None,
 }
