@@ -55,8 +55,8 @@ The first is recoverable and the second is not, which points one way: **when
 the evidence does not settle it, do not file.** Say so in the draft's `reason`
 instead.
 
-Two corollaries. Use `file: true` on a wide denylisted error only when you have
-a specific reason the failures belong together as code - a shared operator, a
+Two corollaries. Use `file: true` on one of these wide, uninformative errors
+only when you have a specific reason the failures belong together as code - a shared operator, a
 shared kernel, a recent change in that area - and put that reason in the
 summary. And never mark something infrastructure because it is hard to triage:
 that mutes nothing, but it does mean nobody looks.

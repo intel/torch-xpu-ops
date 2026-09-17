@@ -33,14 +33,7 @@ artifacts by a deterministic collector; none of it is a judgement.
   },
 
   "ut_jobs": {
-    "basic": {
-      "runner_name": "bmg-test-04",
-      "new_failures": 312,
-      // Failures whose message matches the infra denylist. A share, not a
-      // verdict: see references/infra-judgement.md.
-      "infra_pattern_cases": ["op_extended,test_ops_xpu.TestFooXPU,test_a"],
-      "infra_pattern_ratio": 0.03
-    }
+    "basic": { "runner_name": "bmg-test-04", "new_failures": 312 }
   },
 
   // The nightly each category was compared against. Rendered into the issue by

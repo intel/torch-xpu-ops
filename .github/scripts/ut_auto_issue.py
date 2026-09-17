@@ -87,30 +87,6 @@ EXPECTED_CASES = {
     "op_ut": 178548,
 }
 
-# A run can pass the count check and still be poisoned - a runner losing its GPU
-# near the end of the suite barely moves the count. Matching one of these is not
-# on its own evidence of that: "infra" is a claim about the machine, and a
-# message cannot make a claim about the machine. An OOM or a device-lost in one
-# test file is far likelier to be that test allocating too much or hanging the
-# GPU, which is a product bug and belongs in an issue. What is recorded is the
-# share of a UT job's failures carrying one; reading that share is the skill's.
-INFRA_PATTERNS = [
-    "device lost",
-    "ze_result_error",
-    "ur_result_error",
-    "ur error",
-    "out of memory",
-    "outofmemoryerror",
-    "no space left on device",
-    "worker crashed",
-    "connection reset",
-    "connection refused",
-    "bus error",
-    "cannot allocate memory",
-    "dmesg",
-    "gpu hang",
-]
-
 
 # --------------------------------------------------------------------------- #
 # gh plumbing
@@ -330,9 +306,9 @@ def read_lines(path: Path | None) -> list[str]:
 # so H3 catches it. Evaluation is per category rather than per UT job, because the
 # `basic` UT job carries three and they fail independently.
 #
-# All six are facts about the artifacts. Whether a machine misbehaved is not:
-# the share of failures carrying a denylisted message is recorded here and read
-# by the skill, so the facts it sees are not already filtered by one verdict.
+# All six are facts about the artifacts. Whether a machine misbehaved is not,
+# so nothing here decides it: the failures and their messages go out as they
+# are, and the skill reads them.
 # --------------------------------------------------------------------------- #
 
 
@@ -521,16 +497,6 @@ def read_reproduce(root: Path, category: str) -> dict:
         elif line.startswith("Reproduce Command:"):
             entry["command_template"] = line.split(":", 1)[1].strip()
     return entry
-
-
-# --------------------------------------------------------------------------- #
-# Failure signatures
-# --------------------------------------------------------------------------- #
-
-
-def is_infra(message: str) -> bool:
-    low = message.lower()
-    return any(p in low for p in INFRA_PATTERNS)
 
 
 # --------------------------------------------------------------------------- #
@@ -891,15 +857,9 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
     if dropped:
         print(f"note: dropped {dropped} {ut_job} cases from unhealthy categories")
 
-    # What share of a UT job's failures carry a denylisted message is a fact;
-    # calling that share machine breakage is a reading of it, and belongs to
-    # the skill. Recorded here, decided there.
-    infra = {c.line for c in kept if is_infra(c.message)}
     ut_job_health[ut_job] = {
         "runner_name": current.runners.get(ut_job, ""),
         "new_failures": len(kept),
-        "infra_pattern_cases": sorted(infra),
-        "infra_pattern_ratio": round(len(infra) / len(kept), 4) if kept else 0.0,
     }
     return kept
 

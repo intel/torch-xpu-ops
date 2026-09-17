@@ -123,9 +123,9 @@ produced just as readily by a test allocating too much as by a runner whose GPU
 fell off the bus.
 
 Withdraw a whole UT job the same way - every group from it marked `file: false`
-- when `run.json.ut_jobs[<job>].infra_pattern_ratio` is high over a meaningful
-number of failures, above about 0.3 over at least 10. On a night the machine
-misbehaved, the ordinary-looking failures around it are not trustworthy either.
+- when its failures are mostly messages of that kind, spread across unrelated
+test files. On a night the machine misbehaved, the ordinary-looking failures
+around it are not trustworthy either.
 
 A case whose `cls` is `unknown` because its module lost case names upstream is
 worth a line in `notes` rather than an issue: what looks like a new failing
