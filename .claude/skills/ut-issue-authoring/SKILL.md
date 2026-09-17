@@ -129,25 +129,31 @@ around it are not trustworthy either.
 
 ## A case whose `cls` is `unknown` because the module's names moved
 
-When a module lost case names between the baseline and this run, a failure in
-it that the baseline never saw is classified `unknown` rather than
-`new_case_failure`: it may be an old test under a new name. Which of the two it
-is cannot be settled by comparing sets, only by reading the names, so it is
-yours to decide.
+When a module both lost and gained case names between the baseline and this
+run, a failure in it that the baseline never saw is classified `unknown` rather
+than `new_case_failure`: it may be an old test under a new name. Which of the
+two it is cannot be settled by comparing sets, only by reading the names, so it
+is yours to decide.
 
 `run.json.report.vanished_cases` gives, per module, the names that went
-(`lost_names`) and the names that arrived (`gained_names`).
+(`lost_names`) and the names that arrived (`gained_names`), and a `kind` of
+`moved` for the modules where this can happen at all.
 
-- **A rename.** The failing name is recognisably one of the lost names - a
-  suffix added, a word changed, a parametrization respelled. Do not file: the
-  test is not new and it is not newly broken either, it is the same test under
-  a name that has not been compared against anything. Put it in `notes` with
-  both names.
-- **Genuinely new, or you cannot tell.** File it if it is worth an issue. It
-  will carry no classification label, which is the honest outcome: nothing
-  established that this case ever passed here.
+**File it either way.** The case is failing tonight, and an unfiled failure is
+neither reported nor muted - it just goes on being red. What the rename changes
+is what the issue says, not whether it exists:
 
-You cannot move a case out of `unknown`. If a case looks to you like a
+- **It looks like one of the lost names renamed.** File it, and say so in the
+  summary, naming the old name. Without that line a triager reads the issue as
+  a test that has never worked, and takes the commit range for the onset of a
+  failure that may be years old.
+- **It looks genuinely new, or you cannot tell.** File it as you would any
+  other group.
+
+Either way the issue carries no classification label, which is the honest
+outcome: nothing established that this case ever passed here.
+
+You cannot move a case out of `unknown`. If one looks to you like a
 `regression` or a `new_case_failure`, say so in `notes`; do not act on it.
 
 ## Finally

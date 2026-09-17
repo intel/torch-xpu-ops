@@ -751,14 +751,21 @@ def record_vanished_cases(work: Path, categories: set[str],
     cases are absent from the JUnit XML rather than recorded as skipped - and a
     test removed or renamed in stock pytorch.
 
-    Returns the `(category, module)` pairs affected, which is what
-    classify_case needs: in a module that lost names, a failing case absent
-    from the baseline has not been shown to be new.
+    Each row is one of three kinds, which differ in what they cost:
 
-    Telling a rename from a removal plus an addition is a judgement about two
-    names, not a set operation, so it is not made here. What is recorded is
-    both halves of the move - the names that went and the names that arrived -
-    for the skill to read.
+      module_gone  the module produced no cases at all. Its cases are dark and
+                   nothing reports them as failures, because they did not fail.
+      removed      names went and none arrived. Nothing here can be a rename,
+                   so no classification is disturbed. What it does leave behind
+                   is any open issue still muting one of those names, which now
+                   subtracts nothing.
+      moved        names went and names arrived. This is the one that can make
+                   `new_case_failure` a false claim, so cases in these modules
+                   are classified `unknown` instead.
+
+    Which arrived name is which departed one, if any, is a judgement about two
+    strings rather than a set operation, so it is not made here: both halves
+    are recorded for the skill to read.
     """
     churned: set[tuple[str, str]] = set()
     for category in sorted(categories):
@@ -771,16 +778,23 @@ def record_vanished_cases(work: Path, categories: set[str],
         live_modules = set(module_counts(tonight))
         for module, names in sorted(lost.items(),
                                     key=lambda kv: (-len(kv[1]), kv[0])):
-            churned.add((category, module))
+            arrived = gained.get(module, [])
+            if module not in live_modules:
+                kind = "module_gone"
+            elif arrived:
+                kind = "moved"
+                churned.add((category, module))
+            else:
+                kind = "removed"
             report["vanished_cases"].append({
                 "category": category,
                 "module": module,
+                "kind": kind,
                 "cases": len(names),
                 "baseline_passed": base.passed_by_module.get(module, 0),
-                "module_gone": module not in live_modules,
                 "baseline_run": base.meta.run_id,
                 "lost_names": names[:NAME_SAMPLE],
-                "gained_names": gained.get(module, [])[:NAME_SAMPLE],
+                "gained_names": arrived[:NAME_SAMPLE],
             })
     if report["vanished_cases"]:
         total = sum(v["cases"] for v in report["vanished_cases"])
@@ -1121,17 +1135,18 @@ def finish(report: dict, report_dir: Path) -> int:
             "",
             "### Cases the baseline ran and this run does not have",
             "",
-            "These did not fail - they did not run, whether because a module "
-            "stopped importing or because a test was removed or renamed "
-            "upstream. A failing case in one of these modules is classified "
-            "`unknown` rather than `new_case_failure`.",
+            "These did not fail - they did not run. `module_gone` is a file "
+            "that produced nothing, `removed` is names that went with none "
+            "arriving, and `moved` is names that went while others arrived: "
+            "only the last can be a rename, so only its modules have their "
+            "failing cases classified `unknown` rather than `new_case_failure`.",
             "",
-            "| Category | Module | Missing | Passing in baseline | Whole module |",
+            "| Category | Module | Kind | Missing | Passing in baseline |",
             "|---|---|---|---|---|",
         ]
         lines += [
-            f"| {v['category']} | `{v['module']}` | {v['cases']} "
-            f"| {v['baseline_passed']} | {'yes' if v['module_gone'] else 'no'} |"
+            f"| {v['category']} | `{v['module']}` | {v['kind']} | {v['cases']} "
+            f"| {v['baseline_passed']} |"
             for v in report["vanished_cases"]
         ]
         lines.append("")
