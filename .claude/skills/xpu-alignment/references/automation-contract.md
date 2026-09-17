@@ -216,11 +216,6 @@ writes one result for every execution-plan entry:
 }
 ```
 
-`command` records the invoked Python options and artifact-relative script path;
-the scratch working directory, credential-free environment, and process-group
-isolation remain runner-owned execution context. Python runs unbuffered so
-diagnostic output written before a timeout or signal is retained in the log.
-
 `status: complete` means the runner produced a structurally valid result for
 every planned execution, not that every reproducer succeeded. The collection
 digest must match the prepare artifact and original collector manifest. A digest
@@ -290,7 +285,7 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
   "units": [{
     "id": "issue-123",
     "verdict": "needs-xpu-fix",
-    "implementation_repository": "intel/torch-xpu-ops",
+    "implementation_repository": "pytorch/pytorch",
     "canonical_tracker": null,
     "payload": {
       "title": "[xpu-alignment] ...",
@@ -303,14 +298,11 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 ```
 
 `units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without a canonical tracker has a payload. Its
-`implementation_repository` is the GitHub `owner/repo` where the code change
-belongs; the payload still targets `intel/torch-xpu-ops`. For `track-upstream`,
-the field names the repository that already owns the implementation, or
-`intel/torch-xpu-ops` for observation-only parity work that depends on an
-upstream change landing. Other verdicts do not use this field. `status: blocked`
-lists blockers and contains no payloads.
-When an existing
+`needs-xpu-fix` without a canonical tracker has a payload, and every payload
+targets `intel/torch-xpu-ops`. `implementation_repository` is required for
+`needs-xpu-fix` and `track-upstream` and unused otherwise; the
+[evidence reference](evidence.md) defines which repository to name.
+`status: blocked` lists blockers and contains no payloads. When an existing
 `intel/torch-xpu-ops` issue covers the same work, record its URL as
 `canonical_tracker`; do not create a payload or comment on that tracker.
 
@@ -327,10 +319,21 @@ payload ownership, and payload shape.
 
 Clean producer jobs and complete artifact coverage are required for publication.
 An individual runner-backed unit blocker excludes only that unit; it does not
-invalidate other fully covered, independently reviewed payloads. Exactly one
-review-approved scheduled payload is filed automatically, while two or more go
-to human triage. The same policy applies to a structurally valid partial
-collection, but the workflow also publishes the source progress and errors,
-notifies maintainers for a scheduled run, and finishes red. Dry runs never file
-and never notify. A malformed collection, incomplete coverage, environment core
-failure, or producer job failure publishes only a blocker summary.
+invalidate other fully covered, independently reviewed payloads. A scheduled run
+automatically files all review-approved payloads when there are one to three.
+With four or more payloads, it publishes every candidate as a draft for manual
+handling and files none automatically. The same policy applies to a structurally
+valid partial collection, but the workflow also publishes the source progress
+and errors, notifies maintainers for a scheduled run, and finishes red. Source
+progress is also shown when a partial collection has an unrelated global
+blocker. Dry runs publish drafts only and never notify. A malformed collection,
+incomplete coverage, environment core failure, or producer job failure publishes
+only a blocker summary.
+
+The gate records `run_state` as `complete`, `complete-with-warnings`, `partial`,
+or `failed`; the publisher uses this value for the Run Summary and workflow
+status. An automatically created issue is published by `torchxpubot`. Draft and
+issue titles include the UTC scan date
+after the `[xpu-alignment]` prefix. The publishing and cost-comment steps use the
+repository's `MERGE_TOKEN` so their author remains `torchxpubot`; agents never
+receive that token.

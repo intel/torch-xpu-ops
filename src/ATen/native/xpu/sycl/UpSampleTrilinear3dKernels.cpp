@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -121,7 +122,7 @@ void launch_upsample_trilinear3d_kernel(
     PackedTensorAccessor64<scalar_t, 5> odata_acc) {
   constexpr auto kptr = upsample_trilinear3d_kernel_fn<scalar_t, accscalar_t>;
 
-  int64_t wg_size = syclMaxWorkGroupSize<kptr>();
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   int num_group = at::ceil_div(n, (int)wg_size);
   auto queue = getCurrentSYCLQueue();
 
@@ -313,7 +314,7 @@ void launch_upsample_trilinear3d_backward_kernel(
   constexpr auto kptr =
       upsample_trilinear3d_backward_kernel_fn<scalar_t, accscalar_t>;
 
-  int64_t wg_size = syclMaxWorkGroupSize<kptr>();
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
   auto queue = getCurrentSYCLQueue();
 
