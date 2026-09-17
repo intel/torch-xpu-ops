@@ -93,7 +93,7 @@ MAX_TRACEBACK_SAMPLES = 300
 INFRA_SIGNATURE_RATIO = 0.3
 # A share is only evidence once there is something to take a share of. Below
 # this many new failures a single infra-looking one clears 30% on its own - it
-# does so for any n <= 3 - and the leg would be discarded on one data point.
+# does so for any n <= 3 - and the UT job would be discarded on one data point.
 INFRA_MIN_CASES = 10
 # How many distinct test files one infra signature may reach and still be filed
 # as the bug it describes. Beyond this it is read as the machine instead. A
@@ -108,20 +108,20 @@ GITHUB_BODY_LIMIT = 65536
 # Headroom below the hard cap, so appending to an issue on a later night has room.
 SAFE_BODY_LIMIT = 60000
 
-# Covered legs. xpu_distributed is deliberately excluded: it reports through
+# Covered UT jobs. xpu_distributed is deliberately excluded: it reports through
 # run_distributed_tests in ut_result_check.sh, which produces neither the
 # per-category passed/failed logs nor a case count, so neither the health
 # gate nor the baseline comparison has anything to read.
-LEG_CATEGORIES = {
+UT_JOB_CATEGORIES = {
     "basic": ["op_regression", "op_regression_dev1", "op_extended"],
     "op_ut": ["op_ut"],
 }
-CATEGORY_LEG = {c: leg for leg, cats in LEG_CATEGORIES.items() for c in cats}
+CATEGORY_UT_JOB = {c: job for job, cats in UT_JOB_CATEGORIES.items() for c in cats}
 
 # fetch_issues.sh:25 honours the BMG-only known-failure label only on a runner
 # whose name contains `bmg`, so the label has to follow the machine that ran the
-# leg rather than the leg itself: nightly_ondemand.yml:166 sends `xpu_distributed`
-# to `distributed`, and a leg that lands off BMG must not carry a BMG-only skip.
+# UT job rather than the job itself: nightly_ondemand.yml:166 sends `xpu_distributed`
+# to `distributed`, and a UT job that lands off BMG must not carry a BMG-only skip.
 BMG_LABEL = "skipped_bmg"
 
 # Mirrors EXPECTED_CASES in ut_result_check.sh (linux column). Only a fallback:
@@ -214,8 +214,8 @@ class Case:
         return f"{self.category},{self.class_name},{self.test_name}"
 
     @property
-    def leg(self) -> str:
-        return CATEGORY_LEG.get(self.category, "unknown")
+    def ut_job(self) -> str:
+        return CATEGORY_UT_JOB.get(self.category, "unknown")
 
     @property
     def is_collection_error(self) -> bool:
@@ -258,7 +258,7 @@ class BaselineMeta:
     run_id: int
     created_at: str
     age_in_runs: int
-    leg: str
+    ut_job: str
     job_url: str
     torch: str
     torch_xpu_ops: str
@@ -280,11 +280,11 @@ class Baseline:
 class RunInfo:
     run_id: int
     created_at: str
-    job_urls: dict[str, str]  # leg -> job url
-    torch: dict[str, str]  # leg -> sha
+    job_urls: dict[str, str]  # ut_job -> job url
+    torch: dict[str, str]  # ut_job -> sha
     torch_xpu_ops: dict[str, str]
     collect_env: dict[str, str]
-    runners: dict[str, str] = field(default_factory=dict)  # leg -> runner name
+    runners: dict[str, str] = field(default_factory=dict)  # ut_job -> runner name
 
 
 @dataclass
@@ -304,7 +304,7 @@ class Evidence:
     baselines: dict[str, BaselineMeta]
     tracebacks: dict[str, list[str]]
     reproduce: dict[str, dict]
-    leg_health: dict[str, dict]
+    ut_job_health: dict[str, dict]
     gates: dict[str, bool]
     report: dict = field(default_factory=dict)
 
@@ -330,9 +330,9 @@ def list_artifacts(run_id: int) -> list[tuple[str, bool]]:
     return [(r[0], r[1] == "true") for r in rows if len(r) >= 2]
 
 
-def pick_artifact(names: list[tuple[str, bool]], prefix: str, leg: str, run_id: int):
-    """Highest run attempt of `<prefix>-<sha>-<leg>-<run_id>-<attempt>`."""
-    pat = re.compile(rf"^{re.escape(prefix)}-.+-{re.escape(leg)}-{run_id}-(\d+)")
+def pick_artifact(names: list[tuple[str, bool]], prefix: str, ut_job: str, run_id: int):
+    """Highest run attempt of `<prefix>-<sha>-<ut_job>-<run_id>-<attempt>`."""
+    pat = re.compile(rf"^{re.escape(prefix)}-.+-{re.escape(ut_job)}-{run_id}-(\d+)")
     best, best_attempt = None, -1
     for name, expired in names:
         m = pat.match(name)
@@ -356,7 +356,7 @@ def download(run_id: int, artifact: str, dest: Path) -> bool:
 
 def find_file(root: Path, name: str) -> Path | None:
     """Shallowest match. The summary job moves the per-category logs into
-    ut_log/<leg>/, so their depth differs before and after it runs."""
+    ut_log/<ut_job>/, so their depth differs before and after it runs."""
     hits = sorted(root.rglob(name), key=lambda p: (len(p.parts), str(p)))
     return hits[0] if hits else None
 
@@ -376,8 +376,8 @@ def read_lines(path: Path | None) -> list[str]:
 #
 #   H1  build job conclusion          not success -> nothing downstream can be
 #                                     trusted; abort the whole run
-#   H2  leg's test job conclusion     cancelled or skipped
-#   H3  UT data artifact              missing, or fails to download -> skip the leg
+#   H2  UT job conclusion             cancelled or skipped
+#   H3  UT data artifact              missing, or fails to download -> skip the UT job
 #   H4  category present at all       no health record and no category log means
 #                                     the category never ran: a quiet skip, not
 #                                     an error
@@ -386,16 +386,16 @@ def read_lines(path: Path | None) -> list[str]:
 #   H6  new-failure CSV row count     disagrees with new_failure_list.txt, so
 #                                     some failures lost their error message
 #   H7  infra-signature share         above INFRA_SIGNATURE_RATIO, over at
-#                                     least INFRA_MIN_CASES failures: the leg is
+#                                     least INFRA_MIN_CASES failures: the UT job is
 #                                     infra breakage, not a set of product bugs
 #
-# H2 needs no code of its own - a cancelled or skipped leg uploads no artifact,
-# so H3 catches it. Evaluation is per category rather than per leg, because the
-# `basic` leg carries three and they fail independently.
+# H2 needs no code of its own - a cancelled or skipped UT job uploads no artifact,
+# so H3 catches it. Evaluation is per category rather than per UT job, because the
+# `basic` UT job carries three and they fail independently.
 #
 # H1-H6 are facts about the artifacts and are settled here. H7 is a reading of
 # them - a share is only infra breakage if you decide it is - so collection
-# records the share and infra_leg_gate in the filing half decides on it. The
+# records the share and infra_ut_job_gate in the filing half decides on it. The
 # threshold and the outcome are unchanged; only the place moved, so that the
 # facts a model sees are not already filtered by one verdict.
 # --------------------------------------------------------------------------- #
@@ -477,27 +477,28 @@ def resolve_jobs(run_id: int) -> list[tuple[int, str, str, str]]:
     return [(int(r[0]), r[1], r[2], r[3]) for r in rows if len(r) >= 4]
 
 
-def leg_jobs(jobs: list[tuple[int, str, str, str]], leg: str) -> list[tuple]:
-    """The leg's jobs, the container one first when there is one."""
-    cands = [j for j in jobs if f"({leg})" in j[1]]
+def jobs_for(jobs: list[tuple[int, str, str, str]], ut_job: str) -> list[tuple]:
+    """The workflow jobs of one UT job, the container one first when there is
+    one."""
+    cands = [j for j in jobs if f"({ut_job})" in j[1]]
     return sorted(cands, key=lambda j: (not j[1].endswith("test-in-container"), j[0]))
 
 
-def job_url(run_id: int, jobs: list[tuple[int, str, str, str]], leg: str) -> str:
-    """Job-level link, so the reader lands on the leg's log rather than a matrix
+def job_url(run_id: int, jobs: list[tuple[int, str, str, str]], ut_job: str) -> str:
+    """Job-level link, so the reader lands on the UT job's log rather than a matrix
     summary page. Falls back to the run URL."""
     run_url = f"{SERVER}/{REPO}/actions/runs/{run_id}"
-    cands = leg_jobs(jobs, leg)
+    cands = jobs_for(jobs, ut_job)
     return f"{run_url}/job/{cands[0][0]}" if cands else run_url
 
 
-def job_runner(jobs: list[tuple[int, str, str, str]], leg: str) -> str:
-    """Which machine ran the leg.
+def job_runner(jobs: list[tuple[int, str, str, str]], ut_job: str) -> str:
+    """Which machine ran the UT job.
 
     One error on one box reads differently from the same error on two, and
-    nothing else in the artifacts says which box a leg landed on.
+    nothing else in the artifacts says which box a UT job landed on.
     """
-    cands = leg_jobs(jobs, leg)
+    cands = jobs_for(jobs, ut_job)
     return cands[0][3] if cands else ""
 
 
@@ -574,7 +575,7 @@ def extract_tracebacks(root: Path, wanted: dict[tuple[str, str], str]) -> dict[s
 def read_reproduce(root: Path, category: str) -> dict:
     """The `cd` and the pytest invocation linux-uttest/action.yml recorded.
 
-    Written by every UT leg and never read until now, which is why the issues
+    Written by every UT job and never read until now, which is why the issues
     have carried no reproduce line: the path differs per category and there is
     nowhere else it is stated.
     """
@@ -690,7 +691,7 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
     candidate's `basic` artifact can resolve up to three categories at once.
 
     So the lookback is spent per category rather than per run: a category whose
-    leg keeps failing goes on looking after its neighbours have settled, and a
+    UT job keeps failing goes on looking after its neighbours have settled, and a
     candidate that produced no readable artifact for it costs it nothing.
     """
     pending = set(categories)
@@ -705,13 +706,13 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
         names = list_artifacts(cand_id)
         jobs = resolve_jobs(cand_id)
         dirs: dict[str, Path] = {}
-        for leg in {CATEGORY_LEG[c] for c in pending}:
-            artifact = pick_artifact(names, "Inductor-XPU-UT-Data", leg, cand_id)
-            dest = work / f"baseline-{cand_id}-{leg}"
+        for ut_job in {CATEGORY_UT_JOB[c] for c in pending}:
+            artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, cand_id)
+            dest = work / f"baseline-{cand_id}-{ut_job}"
             if artifact and download(cand_id, artifact, dest):
-                dirs[leg] = dest
+                dirs[ut_job] = dest
         for category in sorted(pending):
-            root = dirs.get(CATEGORY_LEG[category])
+            root = dirs.get(CATEGORY_UT_JOB[category])
             if root is None:
                 # Recorded but not charged, so that an empty walk is legible:
                 # "nothing to read" and "read and found unhealthy" are the two
@@ -732,7 +733,7 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
                 if looked[category] >= MAX_BASELINE_LOOKBACK:
                     pending.discard(category)
                 continue
-            leg = CATEGORY_LEG[category]
+            ut_job = CATEGORY_UT_JOB[category]
             passed, failed, every = read_case_sets(root, category)
             torch, tpo = read_versions(root)
             baselines[category] = Baseline(
@@ -740,8 +741,8 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
                     run_id=cand_id,
                     created_at=cand["createdAt"][:10],
                     age_in_runs=age,
-                    leg=leg,
-                    job_url=job_url(cand_id, jobs, leg),
+                    ut_job=ut_job,
+                    job_url=job_url(cand_id, jobs, ut_job),
                     torch=torch,
                     torch_xpu_ops=tpo,
                 ),
@@ -870,7 +871,7 @@ def record_vanished_modules(work: Path, categories: set[str],
         base = baselines.get(category)
         if base is None:
             continue
-        root = work / f"current-{CATEGORY_LEG[category]}"
+        root = work / f"current-{CATEGORY_UT_JOB[category]}"
         if not root.is_dir():
             continue
         _, _, every = read_case_sets(root, category)
@@ -917,29 +918,31 @@ def parse_cases_block(body: str) -> set[str]:
 # --------------------------------------------------------------------------- #
 
 
-def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path,
+def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work: Path,
                 jobs: list, report: dict, current: RunInfo,
-                leg_health: dict) -> list[Case]:
-    """Artifact health checks plus this run's new failures, for one leg."""
-    data_artifact = pick_artifact(names, "Inductor-XPU-UT-Data", leg, run_id)
+                ut_job_health: dict) -> list[Case]:
+    """Artifact health checks plus this run's new failures, for one UT job."""
+    data_artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, run_id)
     if data_artifact is None:
-        report["skipped_legs"].append({"leg": leg, "reason": "no UT data artifact"})
-        warn(f"{leg}: no usable Inductor-XPU-UT-Data artifact; filing nothing")
+        report["skipped_ut_jobs"].append(
+            {"ut_job": ut_job, "reason": "no UT data artifact"})
+        warn(f"{ut_job}: no usable Inductor-XPU-UT-Data artifact; filing nothing")
         return []
-    root = work / f"current-{leg}"
+    root = work / f"current-{ut_job}"
     if not download(run_id, data_artifact, root):
-        report["skipped_legs"].append({"leg": leg, "reason": "artifact download failed"})
+        report["skipped_ut_jobs"].append(
+            {"ut_job": ut_job, "reason": "artifact download failed"})
         return []
 
-    current.job_urls[leg] = job_url(run_id, jobs, leg)
-    current.runners[leg] = job_runner(jobs, leg)
+    current.job_urls[ut_job] = job_url(run_id, jobs, ut_job)
+    current.runners[ut_job] = job_runner(jobs, ut_job)
     torch, tpo = read_versions(root)
-    current.torch[leg] = torch
-    current.torch_xpu_ops[leg] = tpo
-    current.collect_env[leg] = read_collect_env(root)
+    current.torch[ut_job] = torch
+    current.torch_xpu_ops[ut_job] = tpo
+    current.collect_env[ut_job] = read_collect_env(root)
 
     healthy_categories = set()
-    for category in LEG_CATEGORIES[leg]:
+    for category in UT_JOB_CATEGORIES[ut_job]:
         state, actual, expected = category_state(root, category)
         report["categories"].append({
             "category": category, "state": state,
@@ -955,13 +958,13 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
                 "nothing for it."
             )
         else:
-            print(f"note: {category} never ran in this leg; nothing to file")
+            print(f"note: {category} never ran in this UT job; nothing to file")
 
-    failures_artifact = pick_artifact(names, "New-UT-Failures", leg, run_id)
+    failures_artifact = pick_artifact(names, "New-UT-Failures", ut_job, run_id)
     if failures_artifact is None:
-        print(f"note: {leg} produced no new failures")
+        print(f"note: {ut_job} produced no new failures")
         return []
-    csv_dir = work / f"current-{leg}-newfail"
+    csv_dir = work / f"current-{ut_job}-newfail"
     if not download(run_id, failures_artifact, csv_dir):
         return []
     cases = parse_failure_csv(find_file(csv_dir, "new_ut_failure_list.csv"))
@@ -971,30 +974,30 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
     expected_rows = len(read_lines(find_file(root, "new_failure_list.txt")))
     if expected_rows and expected_rows != len(cases):
         warn(
-            f"{leg}: new failure count mismatch: filtered={expected_rows}, "
+            f"{ut_job}: new failure count mismatch: filtered={expected_rows}, "
             f"csv={len(cases)}, so some failures lost their error message"
         )
 
     kept = [c for c in cases if c.category in healthy_categories]
     dropped = len(cases) - len(kept)
     if dropped:
-        print(f"note: dropped {dropped} {leg} cases from unhealthy categories")
+        print(f"note: dropped {dropped} {ut_job} cases from unhealthy categories")
 
-    # H7 is decided later, by infra_leg_gate: what share of a leg's failures
+    # H7 is decided later, by infra_ut_job_gate: what share of a UT job's failures
     # carry a denylisted message is a fact, and calling that share infra
     # breakage is a reading of it. Recorded here, acted on there.
     infra = {c.line for c in kept if is_infra(normalize_error(c.message))}
-    leg_health[leg] = {
-        "runner_name": current.runners.get(leg, ""),
+    ut_job_health[ut_job] = {
+        "runner_name": current.runners.get(ut_job, ""),
         "new_failures": len(kept),
         "infra_pattern_cases": sorted(infra),
         "infra_pattern_ratio": round(len(infra) / len(kept), 4) if kept else 0.0,
     }
     if infra and len(kept) < INFRA_MIN_CASES:
         print(
-            f"note: {leg} has {len(infra)}/{len(kept)} infra-looking new "
+            f"note: {ut_job} has {len(infra)}/{len(kept)} infra-looking new "
             f"failures. That is under the {INFRA_MIN_CASES} it takes for the "
-            "share to mean anything, so the leg is kept. Each error is still "
+            "share to mean anything, so the UT job is kept. Each error is still "
             "judged on how many test files it reached."
         )
     return kept
@@ -1006,7 +1009,7 @@ def new_report(args) -> dict:
         "test_type": args.test_type,
         "mode": args.mode,
         "categories": [],
-        "skipped_legs": [],
+        "skipped_ut_jobs": [],
         "vanished_modules": [],
         "baseline_walk": [],
         "unknown_case_lines": [],
@@ -1033,7 +1036,7 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         job_urls={}, torch={}, torch_xpu_ops={}, collect_env={}, runners={},
     )
     gates = {"build_failed": False, "abort": False, "oversized": False}
-    leg_health: dict[str, dict] = {}
+    ut_job_health: dict[str, dict] = {}
     cases: list[Case] = []
 
     jobs = resolve_jobs(args.run_id)
@@ -1044,25 +1047,26 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
             "build job did not succeed, so nothing downstream can be trusted; "
             "filing nothing for this run"
         )
-        report["skipped_legs"].append({"leg": "*", "reason": "build not successful"})
+        report["skipped_ut_jobs"].append(
+            {"ut_job": "*", "reason": "build not successful"})
         gates["build_failed"] = True
         return Evidence(
             run=current, cases=[], classification={}, new_case_reason={},
             collection_context={}, baselines={}, tracebacks={}, reproduce={},
-            leg_health=leg_health, gates=gates, report=carried_report(report),
+            ut_job_health=ut_job_health, gates=gates, report=carried_report(report),
         )
 
     names = list_artifacts(args.run_id)
-    for leg in LEG_CATEGORIES:
-        cases.extend(collect_leg(args.run_id, leg, names, work, jobs, report,
-                                 current, leg_health))
+    for ut_job in UT_JOB_CATEGORIES:
+        cases.extend(collect_ut_job(args.run_id, ut_job, names, work, jobs, report,
+                                 current, ut_job_health))
 
     if len(cases) > ABORT_THRESHOLD:
         print(
             f"::error::{len(cases)} new failures exceeds ABORT_THRESHOLD "
             f"({ABORT_THRESHOLD}); assuming infra breakage and creating nothing"
         )
-        report["skipped_legs"].append({"leg": "*", "reason": "abort threshold"})
+        report["skipped_ut_jobs"].append({"ut_job": "*", "reason": "abort threshold"})
         gates["abort"] = True
         # Nothing downstream will read these, and resolving baselines for them
         # means downloading five past nightlies to answer a question already
@@ -1070,7 +1074,7 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         return Evidence(
             run=current, cases=cases, classification={}, new_case_reason={},
             collection_context={}, baselines={}, tracebacks={}, reproduce={},
-            leg_health=leg_health, gates=gates, report=carried_report(report),
+            ut_job_health=ut_job_health, gates=gates, report=carried_report(report),
         )
     gates["oversized"] = len(cases) > OVERSIZED_THRESHOLD
 
@@ -1095,17 +1099,17 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
 
     tracebacks: dict[str, list[str]] = {}
     samples = sample_traceback_targets(cases, MAX_TRACEBACK_SAMPLES)
-    for leg in sorted({c.leg for c in samples}):
-        root = work / f"current-{leg}"
+    for ut_job in sorted({c.ut_job for c in samples}):
+        root = work / f"current-{ut_job}"
         if root.is_dir():
             tracebacks.update(extract_tracebacks(root, {
                 (c.class_name, c.test_name): c.line
-                for c in samples if c.leg == leg
+                for c in samples if c.ut_job == ut_job
             }))
 
     reproduce: dict[str, dict] = {}
     for category in sorted({c.category for c in cases}):
-        root = work / f"current-{CATEGORY_LEG[category]}"
+        root = work / f"current-{CATEGORY_UT_JOB[category]}"
         entry = read_reproduce(root, category) if root.is_dir() else {}
         if entry:
             reproduce[category] = entry
@@ -1114,12 +1118,13 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         run=current, cases=cases, classification=classification,
         new_case_reason=reasons, collection_context=context,
         baselines={cat: b.meta for cat, b in baselines.items()},
-        tracebacks=tracebacks, reproduce=reproduce, leg_health=leg_health,
+        tracebacks=tracebacks, reproduce=reproduce, ut_job_health=ut_job_health,
         gates=gates, report=carried_report(report),
     )
 
 
-CARRIED_SECTIONS = ("categories", "skipped_legs", "vanished_modules", "baseline_walk")
+CARRIED_SECTIONS = ("categories", "skipped_ut_jobs", "vanished_modules",
+                    "baseline_walk")
 
 
 def carried_report(report: dict) -> dict:
@@ -1140,8 +1145,8 @@ def rendered_blocks(evidence: Evidence) -> dict:
 
     Composed here rather than left to the filing step because a bisect range
     is the part most easily got wrong and most misleading when wrong: the
-    baseline sha and tonight's sha have to come from the same leg, and nothing
-    in the rendered text says which leg it came from. Everything below is a
+    baseline sha and tonight's sha have to come from the same UT job, and nothing
+    in the rendered text says which UT job it came from. Everything below is a
     string to be copied, not data to be assembled.
     """
     run = evidence.run
@@ -1149,24 +1154,25 @@ def rendered_blocks(evidence: Evidence) -> dict:
     compare: dict[str, str] = {}
     staleness: dict[str, str] = {}
     for category, base in sorted(evidence.baselines.items()):
-        leg = CATEGORY_LEG[category]
+        ut_job = CATEGORY_UT_JOB[category]
         baseline_rows[category] = [
-            f"| {category} | Last good | [#{base.run_id} ({base.leg})]({base.job_url}) "
+            f"| {category} | Last good "
+            f"| [#{base.run_id} ({base.ut_job})]({base.job_url}) "
             f"| {base.created_at} | {commit_link(PYTORCH_REPO, base.torch)} "
             f"| {commit_link(REPO, base.torch_xpu_ops)} |",
             f"| {category} | First seen bad | "
-            f"[#{run.run_id} ({leg})]({run.job_urls.get(leg, '')}) "
+            f"[#{run.run_id} ({ut_job})]({run.job_urls.get(ut_job, '')}) "
             f"| {run.created_at} "
-            f"| {commit_link(PYTORCH_REPO, run.torch.get(leg, ''))} "
-            f"| {commit_link(REPO, run.torch_xpu_ops.get(leg, ''))} |",
+            f"| {commit_link(PYTORCH_REPO, run.torch.get(ut_job, ''))} "
+            f"| {commit_link(REPO, run.torch_xpu_ops.get(ut_job, ''))} |",
         ]
-        if base.torch and run.torch.get(leg):
+        if base.torch and run.torch.get(ut_job):
             link = (f"Changes in range ({category}): "
                     f"[pytorch]({SERVER}/{PYTORCH_REPO}/compare/"
-                    f"{base.torch}...{run.torch[leg]})")
-            if base.torch_xpu_ops and run.torch_xpu_ops.get(leg):
+                    f"{base.torch}...{run.torch[ut_job]})")
+            if base.torch_xpu_ops and run.torch_xpu_ops.get(ut_job):
                 link += (f" - [torch-xpu-ops]({SERVER}/{REPO}/compare/"
-                         f"{base.torch_xpu_ops}...{run.torch_xpu_ops[leg]})")
+                         f"{base.torch_xpu_ops}...{run.torch_xpu_ops[ut_job]})")
             compare[category] = link
         # A stale baseline keeps "regression" true but makes the range much
         # weaker evidence, so say so rather than presenting a five-night range
@@ -1253,7 +1259,7 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
     write_json(out / "run.json", {
         "run_id": run.run_id,
         "created_at": run.created_at,
-        # Per leg throughout, because a bisect range is per leg: the baseline
+        # Per UT job throughout, because a bisect range is per UT job: the baseline
         # sha and tonight's sha have to come from the same one or the compare
         # link spans the wrong commits.
         "job_urls": run.job_urls,
@@ -1261,9 +1267,9 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
         "torch_xpu_ops": run.torch_xpu_ops,
         "runners": run.runners,
         "collect_env": run.collect_env,
-        "category_leg": CATEGORY_LEG,
+        "category_ut_job": CATEGORY_UT_JOB,
         "gates": evidence.gates,
-        "legs": evidence.leg_health,
+        "ut_jobs": evidence.ut_job_health,
         "report": evidence.report,
         # Stated here so that the filing rules have one source of truth and a
         # change to a threshold does not have to be chased into prose.
@@ -1273,16 +1279,16 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
             "safe_body_chars": SAFE_BODY_LIMIT,
             "hard_body_chars": GITHUB_BODY_LIMIT,
             "infra_max_test_files": INFRA_MAX_FILES_TO_FILE,
-            "infra_leg_share": INFRA_SIGNATURE_RATIO,
-            "infra_leg_min_cases": INFRA_MIN_CASES,
+            "infra_ut_job_share": INFRA_SIGNATURE_RATIO,
+            "infra_ut_job_min_cases": INFRA_MIN_CASES,
         },
-        # Resolved, keyed `<cls>|<leg>`, because the runner is per leg. Every
+        # Resolved, keyed `<cls>|<ut_job>`, because the runner is per UT job. Every
         # case also carries its own resolved list; this map is here for a group
         # whose cases have all been placed already and for cross-checking a split.
         "labels": {
-            f"{cls}|{leg}": labels_for(cls, runner)
+            f"{cls}|{ut_job}": labels_for(cls, runner)
             for cls in (CLS_REGRESSION, CLS_NEW_CASE, CLS_PERSISTENT, CLS_UNKNOWN)
-            for leg, runner in sorted(run.runners.items())
+            for ut_job, runner in sorted(run.runners.items())
         },
         "marker_template": MARKER_TEMPLATE,
         "marker_version": MARKER_VERSION,
@@ -1293,7 +1299,7 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
             {
                 "line": c.line,
                 "category": c.category,
-                "leg": c.leg,
+                "ut_job": c.ut_job,
                 "class_name": c.class_name,
                 "test_name": c.test_name,
                 "test_file": c.test_file,
@@ -1303,8 +1309,8 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
                 "cls": evidence.classification.get(c.line, CLS_UNKNOWN),
                 "labels": labels_for(
                     evidence.classification.get(c.line, CLS_UNKNOWN),
-                    run.runners.get(c.leg, "")),
-                "runner_name": run.runners.get(c.leg, ""),
+                    run.runners.get(c.ut_job, "")),
+                "runner_name": run.runners.get(c.ut_job, ""),
                 "has_traceback": c.line in evidence.tracebacks,
             }
             for c in evidence.cases
@@ -1383,8 +1389,8 @@ def known_case_lines(work: Path) -> tuple[dict[str, set[str]], dict[str, set[str
     """
     cases: dict[str, set[str]] = {}
     modules: dict[str, set[str]] = {}
-    for category, leg in sorted(CATEGORY_LEG.items()):
-        root = work / f"current-{leg}"
+    for category, ut_job in sorted(CATEGORY_UT_JOB.items()):
+        root = work / f"current-{ut_job}"
         if not root.is_dir():
             continue
         _, _, every = read_case_sets(root, category)
@@ -1484,8 +1490,8 @@ def finish(report: dict, report_dir: Path) -> int:
             for c in report["categories"]
         ]
         lines.append("")
-    for skipped in report["skipped_legs"]:
-        lines.append(f"- Skipped `{skipped['leg']}`: {skipped['reason']}")
+    for skipped in report["skipped_ut_jobs"]:
+        lines.append(f"- Skipped `{skipped['ut_job']}`: {skipped['reason']}")
     if report["vanished_modules"]:
         lines += [
             "",

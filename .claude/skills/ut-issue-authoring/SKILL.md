@@ -58,7 +58,7 @@ One evidence directory, given in the prompt. It contains:
 
 | File | What it holds |
 |---|---|
-| `run.json` | the run, per test leg: job links, torch and torch-xpu-ops commits, which machine ran it, health of each category, and the gates the collector already applied |
+| `run.json` | the run, per UT job: job links, torch and torch-xpu-ops commits, which machine ran it, health of each category, and the gates the collector already applied |
 | `cases.json` | every new failure, one record each, with its message, its test file, its baseline classification, and whether a traceback was captured |
 | `classifications.json` | the same classifications with the baseline numbers behind them |
 | `tracebacks.json` | full failure text for a sample of cases, split into lines |
@@ -161,7 +161,7 @@ Read [references/infra-judgement.md](references/infra-judgement.md) before
 deciding not to file a group on these grounds. Briefly: a denylisted message
 such as an out-of-memory or a device-lost is not on its own evidence of machine
 breakage - a test allocating too much is a product bug, and it produces the
-same message. Breadth, timing and which machine ran the leg are what separate
+same message. Breadth, timing and which machine ran the UT job are what separate
 the two.
 
 ## Filing
@@ -173,9 +173,9 @@ short, and in this order:
    settles some of it: `build_failed` or `abort` means file nothing at all.
    `oversized` means the night is too large to group meaningfully - file
    nothing, and say what the volume looks like. Then apply your own reading:
-   a leg whose `infra_pattern_ratio` is above `limits.infra_leg_share` over at
-   least `limits.infra_leg_min_cases` failures is machine breakage, not a set
-   of product bugs, so nothing from that leg is filed.
+   a UT job whose `infra_pattern_ratio` is above `limits.infra_ut_job_share`
+   over at least `limits.infra_ut_job_min_cases` failures is machine breakage,
+   not a set of product bugs, so nothing from that UT job is filed.
 2. **Check what is already open** with `gh issue list`, and drop every case an
    open issue still mutes. A line struck through as `~~<line>~~` mutes nothing
    and does not count: that issue released the case, so it is yours to file -

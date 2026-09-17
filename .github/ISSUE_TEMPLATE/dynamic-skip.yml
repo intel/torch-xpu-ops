@@ -3,6 +3,10 @@ description: Create an issue to skip PR unrelated failures dynamically
 title: "[Bug Skip]: "
 labels: ["skipped"]
 
+# A machine-filed skip issue carries the same sections and the same `Cases:`
+# block; see agent/ut-auto-issue-body.md. `gh issue create` does not apply the
+# labels above, so ut_auto_issue.py applies them itself.
+
 body:
 - type: markdown
   attributes:

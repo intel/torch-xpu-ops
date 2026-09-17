@@ -1,4 +1,4 @@
-name: Nightly UT Auto Issue
+name: UT Issue Auto Creation
 
 on:
   workflow_call:
