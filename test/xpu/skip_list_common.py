@@ -27,7 +27,7 @@ skip_dict = {
     "nn/test_multihead_attention_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
-    "nn/test_pooling_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Tensor-likes are not close!
