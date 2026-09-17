@@ -381,7 +381,7 @@ skip_dict = {
     "export/test_export_training_ir_to_run_decomp_xpu.py": None,
     "test_basic_torch_np_xpu.py": None,
     "test_fx_xpu.py": None,
-    "test_multiprocessing_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
     "test_numba_integration_xpu.py": None,
     "test_numpy_interop_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
