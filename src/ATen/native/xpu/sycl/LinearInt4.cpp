@@ -26,6 +26,7 @@ MAYBE_UNUSED_ON_HOST static inline int padto_le(int src, int padding) {
 }
 
 template <typename scalar_t = sycl::ext::oneapi::bfloat16, int block_size = 32>
+// clang-format off
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<16>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void linear_int4_kernel_(
@@ -39,6 +40,7 @@ void linear_int4_kernel_(
     int lda,
     int ldb,
     int ldc) {
+  // clang-format on
   int constexpr Unroll = 2;
   int constexpr SgSize = 16;
   int constexpr blocksize = block_size;
