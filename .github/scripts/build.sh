@@ -14,7 +14,7 @@ done
 
 WORKSPACE=$(realpath "${WORKSPACE:-/tmp}")
 cd "${WORKSPACE}/pytorch"
-PYTORCH_WHEEL_LINUX_SCRIPT_PATH="${WORKSPACE}/pytorch/.ci/wheel/linux"
+PYTORCH_WHEEL_LINUX_SCRIPT_PATH="./.ci/wheel/linux"
 
 # Build using PyTorch's upstream build pipeline
 export GPU_ARCH_TYPE=xpu
