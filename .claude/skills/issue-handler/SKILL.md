@@ -649,10 +649,7 @@ invoking workflow reads that, exports `base_sha..branch` as a patch
 artifact, and a human applies it. **Do not push or open the PR from this
 skill.**
 
-### Comment blocks this skill writes
-
-The leaf skills own their own blocks; these two are yours. Append them
-collapsed, per [execution-modes.md](references/execution-modes.md).
+### `batch-fanout` and `summary` block templates
 
 Batch runs only:
 
