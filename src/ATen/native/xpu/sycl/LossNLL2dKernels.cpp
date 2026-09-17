@@ -108,10 +108,10 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void nll_loss
       acc_weight += cur_weight;
     }
   }
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto acc_weight_smem = reinterpret_cast<accscalar_t*>(lsm);
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
+  auto acc_weight_smem = reinterpret_cast<accscalar_t*>(slm);
   auto input_sum_smem = reinterpret_cast<accscalar_t*>(
-      lsm + sizeof(accscalar_t) * work_group_size);
+      slm + sizeof(accscalar_t) * work_group_size);
 
   auto acc_weight_reduce = GroupReduceSumWithoutBroadcast<accscalar_t, SIMD>(
       item, acc_weight, acc_weight_smem);
