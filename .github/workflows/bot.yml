@@ -1432,47 +1432,25 @@ jobs:
 
           ## Review
 
-          Copy into a new comment, keep ONE verdict line, delete the rest, say
-          why. The dashboard harvests these markers, and a comment carrying two
-          different verdicts is dropped as ambiguous rather than guessed at.
+          Copy into a new comment, keep ONE verdict, add a note. Two verdicts in
+          one comment are dropped as ambiguous.
 
           ```
           **strong-accepted** <!-- review: strong-accepted -->
           **weak-accepted** <!-- review: weak-accepted -->
           **weak-rejected** <!-- review: weak-rejected -->
           **strong-rejected** <!-- review: strong-rejected -->
-
-          why: root-cause | already-fixed | fix-wrong | other
-          notes:
-          ```
-
-          `why:` codes -- `root-cause` fixes the real bug, `already-fixed` no
-          longer reproduces, `fix-wrong` the patch does not fix it. Anything
-          else: `other` plus `notes:`.
-
-          A fifth verdict is about the issue, not the patch: use it when there
-          is nothing to repair -- an accepted XPU/CUDA alignment difference, a
-          corner case nobody intends to fix, a report that does not hold. It
-          leaves the fix rate entirely instead of counting as a failure, and it
-          needs no `why:`, since the verdict is the reason:
-
-          ```
           **issue-drop** <!-- review: issue-drop -->
 
           notes:
           ```
 
-          A batch run produced one patch per sub-item, so review it one comment
-          per sub-item, naming the sub-item by its upstream issue number inside
-          the marker. A bare verdict on such a run cannot say which patch it
-          judged and is discarded:
+          `issue-drop`: nothing to repair -- an alignment difference, a corner
+          case -- so it leaves the fix rate instead of counting as a failure.
 
-          ```
-          **weak-accepted** <!-- review: weak-accepted item=197334 -->
-
-          why: root-cause
-          notes:
-          ```
+          Batch run: one comment per sub-item, adding `item=<upstream issue>`
+          inside the marker. A bare verdict there cannot say which patch it
+          judged and is discarded.
           EOF
           gh api --method PATCH "$C" -F body=@body.md
 
