@@ -23,8 +23,8 @@
 
 namespace at::native::xpu {
 
-// WR (replace enum class) due to
-// https://jira.devtools.intel.com/browse/CMPLRLLVM-72438
+// WA (replace enum class) due to
+// enum not well supported in sycl free function
 const int NormType_L1 = 0;
 const int NormType_L2 = 1;
 const int NormType_LInf = 2;
