@@ -31,6 +31,7 @@ REPO = os.environ.get("GITHUB_REPOSITORY") or "intel/torch-xpu-ops"
 SERVER = os.environ.get("GITHUB_SERVER_URL") or "https://github.com"
 PYTORCH_REPO = "pytorch/pytorch"
 TEMPLATE = Path(".github/ISSUE_TEMPLATE/agent/ut-auto-issue-body.md")
+SKIP_FORM = Path(".github/ISSUE_TEMPLATE/dynamic-skip.yml")
 
 # Stamped into every body so a later night, and a reader, can tell a
 # machine-filed issue from a hand-written one.
@@ -50,7 +51,6 @@ BMG_LABEL = "skipped_bmg"
 # An issue may carry any of these, so dedup has to ask for each separately:
 # repeated --label on one `gh issue list` means every label at once.
 DEDUP_LABELS = ("skipped", "skipped_bmg", "regression", "new_case_failure")
-
 MAX_CASES_PER_ISSUE = 400
 # Headroom below GitHub's 65536, so appending to an issue later has room.
 SAFE_BODY_LIMIT = 60000
@@ -126,14 +126,30 @@ def already_muted() -> dict[str, int]:
 # --------------------------------------------------------------------------- #
 
 
+def form_labels() -> list[str]:
+    """The labels the Dynamic skip form gives every skip issue.
+
+    Read rather than hardcoded so the form stays the one place that says what a
+    skip issue is. A form cannot express the rest - `skipped_bmg` follows the
+    machine that ran the job and the classification labels follow the baseline
+    comparison - so those are added below.
+    """
+    text = SKIP_FORM.read_text(encoding="utf-8")
+    match = re.search(r"^labels:\s*\[(.*?)\]\s*$", text, re.MULTILINE)
+    if not match:
+        raise SystemExit(f"::error::no labels: line in {SKIP_FORM}")
+    return [name.strip().strip("\"'") for name in match.group(1).split(",")
+            if name.strip()]
+
+
 def is_bmg(runner: str) -> bool:
     # Case-insensitive where fetch_issues.sh is not: the runner label there is
     # `bmg-test` while the hostname recorded in the evidence is `BMG-17691`.
     return "bmg" in runner.lower()
 
 
-def labels_for(cls: str, runner: str) -> list[str]:
-    labels = ["skipped"]
+def labels_for(cls: str, runner: str, base: list[str]) -> list[str]:
+    labels = list(base)
     if is_bmg(runner):
         labels.append(BMG_LABEL)
     if cls in CLS_LABELS:
@@ -254,19 +270,25 @@ def reproduce_for(case: dict, reproduce: dict) -> str:
 
 
 def error_log_for(cases: list[dict], tracebacks: dict) -> str:
+    """The failing message, then its traceback.
+
+    The message is a level below the section headings, which are the form's
+    fields: a `###` here would read as another section.
+    """
     for case in cases:
         text = tracebacks.get(case["line"])
         if text:
             return "\n".join([
-                f"### {case['message'] or 'No message was recorded.'}",
+                f"#### {case['message'] or 'No message was recorded.'}",
                 "",
                 "```",
                 *text,
                 "```",
             ])
     message = next((c["message"] for c in cases if c["message"]), "")
-    return "\n".join([f"### {message}" if message else "### No message was "
-                      "recorded for this failure.", "", NO_TRACEBACK])
+    heading = f"#### {message}" if message else (
+        "#### No message was recorded for this failure.")
+    return "\n".join([heading, "", NO_TRACEBACK])
 
 
 def load_template() -> str:
@@ -404,6 +426,7 @@ def main() -> int:
         return finish(report, report_dir)
 
     template = load_template()
+    base_labels = form_labels()
     muted = already_muted()
     created: list[tuple[dict, list[int]]] = []
 
@@ -435,7 +458,7 @@ def main() -> int:
 
         cls = cases[0]["cls"]
         runner = cases[0]["runner_name"]
-        labels = labels_for(cls, runner)
+        labels = labels_for(cls, runner, base_labels)
         category = cases[0]["category"]
         group_contexts = [contexts[c["line"]] for c in cases
                           if c["line"] in contexts]

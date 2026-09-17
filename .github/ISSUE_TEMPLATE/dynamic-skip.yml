@@ -3,9 +3,17 @@ description: Create an issue to skip PR unrelated failures dynamically
 title: "[Bug Skip]: "
 labels: ["skipped"]
 
-# A machine-filed skip issue carries the same sections and the same `Cases:`
-# block; see agent/ut-auto-issue-body.md. `gh issue create` does not apply the
-# labels above, so ut_auto_issue.py applies them itself.
+# This form defines the shape of a skip issue for both a human and the nightly
+# bot: ut_create_issues.py renders the same `label:` headings, in this order,
+# and reads the `labels:` above rather than hardcoding them. The labels that
+# depend on the run - skipped_bmg, regression, new_case_failure - cannot come
+# from here, because a form cannot set a label from what a field contains.
+#
+# The `Cases:` block is parsed by fetch_issues.sh, by the awk filter in
+# _linux_ut.yml and by mark_passed_issue in ut_result_check.sh. Between them
+# the contract is: a line starting with `Cases:`, one case per line with no
+# blank lines inside, and a blank line to end it. Nothing else in a body may
+# contain the string `Cases:`, or the awk filter starts collecting again there.
 
 body:
 - type: markdown
@@ -49,6 +57,33 @@ body:
       ```
   validations:
     required: true
+- type: textarea
+  attributes:
+    label: Summary
+    description: One to three sentences on what is failing and why these cases are one bug.
+  validations:
+    required: false
+- type: textarea
+  attributes:
+    label: ErrorLog
+    description: The failure message, and the traceback if you have it.
+  validations:
+    required: false
+- type: textarea
+  attributes:
+    label: Reproduce
+    description: The directory to run from and the pytest invocation.
+  validations:
+    required: false
+- type: textarea
+  attributes:
+    label: Pytorch Version
+    description: |
+      Where the failure started, if you know: the last run that passed these
+      cases and the first that did not, with their torch and torch-xpu-ops
+      commits.
+  validations:
+    required: false
 - type: textarea
   attributes:
     label: Versions
