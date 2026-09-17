@@ -1,8 +1,9 @@
 # Infra or product
 
 Per group, decide whether the failures describe a bug in the code under test
-or a machine that misbehaved. Set `infra.verdict` to `infra`, `product` or
-`unsure`.
+or a machine that misbehaved: `infra`, `product` or `unsure`. Only a `product`
+group is filed; for the other two, name the group and the reason in your final
+message so the night's report still shows the failures.
 
 ## The trap
 
@@ -67,12 +68,11 @@ that is failing everything else can go the other way.
 
 ## Practical guidance
 
-- Default to `unsure` when you are unsure. It is not a wasted answer: it leaves
-  the deterministic rule in charge, which is the right outcome when you have
-  nothing to add.
+- Default to `unsure` when you are unsure. It files nothing, which leaves the
+  cases running and reported - the right outcome when you have nothing to add.
 - Use `product` on a wide denylisted error only when you have a specific reason
   the failures belong together as code - a shared operator, a shared kernel, a
-  recent change in that area - and put that reason in `infra.reason`.
+  recent change in that area - and put that reason in the issue's summary.
 - Use `infra` on a narrow error when the evidence points at the machine despite
   the small blast radius, for example the same device error appearing across
   categories on one runner while the other runner is clean.
