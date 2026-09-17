@@ -50,7 +50,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
 
 
 skip_files_list = [
-    "test_autocast_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_autocast.py",
     "test_autograd_fallback_xpu.py",
     "test_autograd_xpu.py",
     # "test_binary_ufuncs_xpu.py",
