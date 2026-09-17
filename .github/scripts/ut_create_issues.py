@@ -160,7 +160,7 @@ def commit_link(repo: str, sha: str) -> str:
     return f"[`{sha[:8]}`]({SERVER}/{repo}/commit/{sha})" if sha else "unknown"
 
 
-def evidence_block(run: dict, category: str, cls: str,
+def evidence_block(run: dict, category: str, cls: str, cls_reason: str,
                    contexts: list[dict]) -> str:
     """When the failure started, and what it cost, for one group's category.
 
@@ -215,11 +215,10 @@ def evidence_block(run: dict, category: str, cls: str,
                 "",
             ]
     if cls == "persistent":
-        lines += ["This failure predates the baseline: the case was already "
-                  "failing there, so the range above is not its onset.", ""]
+        lines += [f"Classified `persistent`: {cls_reason}. The range above is "
+                  "not this failure's onset.", ""]
     if cls == "unknown":
-        lines += ["This failure could not be classified; see the reason "
-                  "recorded in the evidence.", ""]
+        lines += [f"Unclassified: {cls_reason}.", ""]
     if contexts:
         lines += [
             "These test files did not fail their cases - they erased them. A "
@@ -451,6 +450,7 @@ def main() -> int:
                 "ERROR_LOG": error_log,
                 "REPRODUCE": reproduce_for(chunk[0], reproduce),
                 "EVIDENCE": evidence_block(run_json, category, cls,
+                                           cases[0].get("cls_reason", ""),
                                            group_contexts if part == 1 else []),
                 "COLLECT_ENV": run_json["collect_env"].get(
                     cases[0]["ut_job"], "collect_env was not captured."),
