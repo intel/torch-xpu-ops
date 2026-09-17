@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -183,11 +184,11 @@ static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
     return;
   }
 
-  int64_t max_wg_size =
-      syclMaxWorkGroupSize<scatter_gather_elementwise_kernel<func_t>>();
+  int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      scatter_gather_elementwise_kernel<func_t>>();
   int outputSize = N;
   int work_group_size = outputSize > max_wg_size ? max_wg_size : outputSize;
-  const auto target_global_size = syclMaxWorkItemsPerTile();
+  const int64_t target_global_size = at::xpu::getDeviceMaxWorkItems();
   // Each work group size is work_group_size, one full device launch is
   // target_global_size, so we can calculate max work group num as below
   const int max_work_group_num = target_global_size / work_group_size;
