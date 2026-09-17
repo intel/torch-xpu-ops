@@ -253,7 +253,6 @@ Regression checks on the fixed build:
 test result with the fix applied. One row per test case, same labels the
 reproduce block used. The regression table lists the suites run beyond
 the reproducer; omit the table and its heading line when none were run.
-`refined_command` is not repeated here — it is in the JSON block.
 
 ```json
 {

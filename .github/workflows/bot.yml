@@ -1444,8 +1444,7 @@ jobs:
           batch does not say which test it means and is dropped. `run=<id>` only
           when judging a run other than the newest.
 
-          A CI DISABLED sub-item -- `item=` is the `pytorch/pytorch` issue that
-          sub-item links in the fan-out table:
+          A CI DISABLED sub-item, `item=` from the fan-out table:
 
           ```
           **strong-accepted** <!-- review: strong-accepted item=197334 -->
@@ -1460,8 +1459,7 @@ jobs:
           ```
 
           An `[xpu-alignment]` issue that should not have been filed -- one issue
-          per difference, so no `item=`, and `issue-drop` keeps it out of the
-          fix rate instead of scoring it as a failed fix:
+          per difference, so no `item=`:
 
           ```
           **issue-drop** <!-- review: issue-drop -->

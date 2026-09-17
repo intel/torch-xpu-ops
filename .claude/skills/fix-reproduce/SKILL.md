@@ -691,9 +691,8 @@ link to the failing job; or naming what blocked a stage.>
 ```
 
 One row per test case (for a batch, label rows by sub-item number:
-`4. \`test_foo...\``). `Verdict` is one of `REPRODUCED`,
-`NOT_REPRODUCED`, `NO_REPRODUCER`, `CANNOT_VERIFY`. `Observed` is the
-one-line failure signature, backticked — never a pasted traceback.
+`4. \`test_foo...\``). `Observed` is the one-line failure signature,
+backticked — never a pasted traceback.
 
 **`refined_command` contract.** A single shell-executable string that,
 run by itself, reliably triggers the failure. A downstream skill (a

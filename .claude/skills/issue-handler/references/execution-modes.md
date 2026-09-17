@@ -126,11 +126,9 @@ stays visible), so it carries stage reports only — never raw command
 output, environment, or credentials.
 
 **Upstream issues and PRs go in backticks** — `` `pytorch/pytorch#197334` ``,
-never a bare `pytorch/pytorch#197334`, a URL, or a markdown link. Any of the
-rendered forms cross-references this comment onto the upstream issue's
-timeline, so every stage of every run leaves a back-link on a repo that did
-not ask for one. Backticks are a code span, which GitHub does not linkify.
-Links to a workflow run or job log are fine — those do not back-link.
+never a bare `pytorch/pytorch#197334`, a URL, or a markdown link. All three
+render as a reference, which back-links the comment onto the upstream issue;
+a code span is not linkified. Run and job log links are fine.
 
 The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
@@ -160,9 +158,8 @@ required — without them GitHub renders the tables and fenced diffs inside
 as literal text.
 
 The `<summary>` titles are **fixed strings** — use the table below
-verbatim, do not reword them per run. The body inside `<details>` keeps
-the shape defined by the producing skill's own `## Output` template; the
-only change is dropping its `##` heading line.
+verbatim, do not reword them per run. The body keeps the shape defined by
+the producing skill's own `## Output` template.
 
 For re-run detection (Stage 0), locate the single session comment by
 its `<!-- agent:session -->` marker; the per-stage `<!-- agent:<name> -->`

@@ -460,11 +460,6 @@ this repo already has versus what is missing. This is the fix strategy.>
 *Automated by fix-root-cause.*
 ```
 
-Prose paragraphs, not a bullet per field: the mechanism and the fix
-strategy need sentences that connect file:line evidence, and squeezing
-them into `- **Root cause:**` bullets is what makes successive runs read
-differently. The structured values still go out in the JSON block below.
-
 ```json
 {
   "root_cause": "2-3 sentences",
