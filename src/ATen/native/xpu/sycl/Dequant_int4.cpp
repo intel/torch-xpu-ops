@@ -27,7 +27,7 @@ void dequant_int4_kernel_fn(
     const uint8_t* weight_int4,
     const scalar_t* ScaleAndZeros,
     scalar_t* weight_dequant) {
-// clang-format on
+  // clang-format on
   auto it = syclext::this_work_item::get_nd_item<1>();
   int constexpr GroupN = TileN;
   int constexpr GroupK = SgSize * TileK;
