@@ -414,4 +414,5 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
+    f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
 }
