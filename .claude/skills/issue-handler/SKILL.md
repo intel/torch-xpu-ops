@@ -659,17 +659,11 @@ comment for a human to review the fix. Do not write it yourself:
 **weak-accepted** <!-- review: weak-accepted -->
 **weak-rejected** <!-- review: weak-rejected -->
 **strong-rejected** <!-- review: strong-rejected -->
-**issue-drop** <!-- review: issue-drop -->
 
 notes:
 ```
 
-A reviewer copies it into a new comment and keeps one verdict — the
-dashboard harvests these markers, and two verdicts in one comment are
-dropped as ambiguous. `issue-drop` means nothing needed repairing (an
-alignment difference, a corner case), so it leaves the fix rate rather than
-counting as a failure. A batch run is reviewed one comment per sub-item,
-adding `item=<upstream issue>` inside the marker.
+A reviewer copies it into a new comment, keeps one line, and says why.
 
 ## Iterative loop bounds
 
