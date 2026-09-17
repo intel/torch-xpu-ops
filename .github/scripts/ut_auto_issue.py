@@ -1,27 +1,16 @@
 #!/usr/bin/env python3
-"""Facts and audit for the nightly UT auto-issue pipeline.
+"""Facts for the nightly UT auto-issue pipeline.
 
-Nightly failures are turned into GitHub issues by the ut-issue-authoring skill.
-This script does the two parts of that which are not judgement, and neither of
-them writes an issue:
+Nightly failures become GitHub issues in three steps: this script states what
+happened, the ut-issue-authoring skill groups the failures and drafts the
+issues, and ut_create_issues.py files them. Only the last of the three writes
+anything.
 
-  emit-evidence  downloads the run's artifacts and states what happened - which
-                 cases failed, how each compares with its category's baseline,
-                 which modules stopped producing cases at all, what the
-                 tracebacks say, and the markdown for the parts of an issue
-                 body that are error-prone to assemble by hand. It groups
-                 nothing and decides nothing.
-
-  audit          reads back the `Cases:` block of every open bot issue and
-                 reports any line naming a case this run has never heard of.
-
-The audit exists because of how muting works. An issue carrying the `skipped`
-label has its case lines subtracted from the next nightly by `grep -vFxf` in
-ut_result_check.sh - whole line, fixed string, no tolerance. A line naming a
-case that does not exist matches nothing on the day it is written and looks
-harmless, stays in the issue indefinitely, and silently swallows a real failure
-the first night a test of that name fails. Nothing else in the pipeline would
-ever mention it.
+What is stated here is the part that is not a judgement: which cases failed,
+and how each compares with its category's baseline - passed there and fails now
+(`regression`), absent there (`new_case_failure`), already failing
+(`persistent`), or no usable baseline (`unknown`). That comparison is exact set
+membership over ~180,000 cases, so it belongs in code rather than in a model.
 
 Run by hand against a past nightly to see what it collected:
 
@@ -32,7 +21,6 @@ Run by hand against a past nightly to see what it collected:
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import os
@@ -49,25 +37,15 @@ SERVER = os.environ.get("GITHUB_SERVER_URL") or "https://github.com"
 PYTORCH_REPO = "pytorch/pytorch"
 WORKFLOW = "nightly_ondemand.yml"
 
-# Stamped into every filed body so a reader, and the next night's dedup pass,
-# can tell a machine-filed issue from a hand-written one.
-MARKER_VERSION = "v1"
-MARKER_TEMPLATE = "<!-- ut-auto-issue:{version}:run={run_id}:part={part}/{parts} -->"
-CASES_BEGIN = "<!-- cases:begin -->"
-CASES_END = "<!-- cases:end -->"
-
 # Four states, from comparing a failing case against its category's baseline:
 #   regression        - passed in the baseline, fails now
 #   new_case_failure  - absent from the baseline, or present but skipped
 #   persistent        - already failing in the baseline; onset predates it
-#   unknown           - no usable baseline for that category
+#   unknown           - no usable baseline, or the case cannot be compared
 CLS_REGRESSION = "regression"
 CLS_NEW_CASE = "new_case_failure"
 CLS_PERSISTENT = "persistent"
 CLS_UNKNOWN = "unknown"
-# Only these two are labels; `persistent` and `unknown` are stated in the body
-# instead, because neither "it used to pass" nor "it is a new case" is true.
-CLS_LABELS = {CLS_REGRESSION, CLS_NEW_CASE}
 
 # How far back to look for a category's baseline. Charged per category, and
 # only against nightlies that had something to say about it: one whose artifact
@@ -80,33 +58,15 @@ MAX_BASELINE_CANDIDATES = 25
 # Pages of 100 workflow runs to scan while collecting those candidates. Most
 # runs of this workflow are on-demand, so a page holds far fewer than 100.
 MAX_CANDIDATE_PAGES = 5
-MAX_CASES_PER_ISSUE = 400
-MAX_ISSUES_PER_RUN = 15
-ABORT_THRESHOLD = 5000
-# Above this many new failures the evidence stops being something a model can
-# read in one pass, and a night this red is a question about the machine rather
-# than about which bug is which. Grouping falls back to the deterministic rule.
-OVERSIZED_THRESHOLD = 1000
+# Above this many new failures the night is a question about the machine rather
+# than about which bug is which, and the evidence stops being something a model
+# can read in one pass. Collection stops here: resolving baselines means
+# downloading five past nightlies to answer a question already settled.
+TOO_MANY_THRESHOLD = 1000
 # How many distinct (test file, exact message) strata get a traceback captured.
 # Sampling, not grouping: two rows with byte-identical messages are one message.
 MAX_TRACEBACK_SAMPLES = 300
-INFRA_SIGNATURE_RATIO = 0.3
-# A share is only evidence once there is something to take a share of. Below
-# this many new failures a single infra-looking one clears 30% on its own - it
-# does so for any n <= 3 - and the UT job would be discarded on one data point.
-INFRA_MIN_CASES = 10
-# How many distinct test files one infra signature may reach and still be filed
-# as the bug it describes. Beyond this it is read as the machine instead. A
-# couple of files sharing an OOM is an ordinary way for one memory regression
-# to look, since these messages carry no operator to tell them apart; more than
-# five unrelated files failing the same way in one night is not something a
-# product bug does. Erring high is the safe side: holding a group back wrongly
-# costs a night of red, filing wrongly mutes a test that still fails.
-INFRA_MAX_FILES_TO_FILE = 5
 HEALTH_RATIO = 0.95
-GITHUB_BODY_LIMIT = 65536
-# Headroom below the hard cap, so appending to an issue on a later night has room.
-SAFE_BODY_LIMIT = 60000
 
 # Covered UT jobs. xpu_distributed is deliberately excluded: it reports through
 # run_distributed_tests in ut_result_check.sh, which produces neither the
@@ -117,12 +77,6 @@ UT_JOB_CATEGORIES = {
     "op_ut": ["op_ut"],
 }
 CATEGORY_UT_JOB = {c: job for job, cats in UT_JOB_CATEGORIES.items() for c in cats}
-
-# fetch_issues.sh:25 honours the BMG-only known-failure label only on a runner
-# whose name contains `bmg`, so the label has to follow the machine that ran the
-# UT job rather than the job itself: nightly_ondemand.yml:166 sends `xpu_distributed`
-# to `distributed`, and a UT job that lands off BMG must not carry a BMG-only skip.
-BMG_LABEL = "skipped_bmg"
 
 # Mirrors EXPECTED_CASES in ut_result_check.sh (linux column). Only a fallback:
 # runs predating run_health.jsonl carry no recorded verdict of their own.
@@ -138,9 +92,8 @@ EXPECTED_CASES = {
 # on its own evidence of that: "infra" is a claim about the machine, and a
 # message cannot make a claim about the machine. An OOM or a device-lost in one
 # test file is far likelier to be that test allocating too much or hanging the
-# GPU, which is a product bug and belongs in an issue. The same signature
-# appearing across unrelated files in one night is what the machine looks like,
-# so breadth decides - see INFRA_MAX_FILES_TO_FILE.
+# GPU, which is a product bug and belongs in an issue. What is recorded is the
+# share of a UT job's failures carrying one; reading that share is the skill's.
 INFRA_PATTERNS = [
     "device lost",
     "ze_result_error",
@@ -157,18 +110,6 @@ INFRA_PATTERNS = [
     "dmesg",
     "gpu hang",
 ]
-
-DTYPES = (
-    "float8_e4m3fn|float8_e5m2|bfloat16|complex128|complex64|float16|float32"
-    "|float64|int16|int32|int64|int8|uint8|bool"
-)
-RE_PATH = re.compile(r"/(?:[^\s/]+/)+([^\s/]+)")
-RE_HEX = re.compile(r"0x[0-9a-fA-F]+")
-RE_LINE_NO = re.compile(r"\bline \d+")
-RE_DTYPE_SUFFIX = re.compile(rf"_(?:xpu|cpu|cuda|meta)(?::\d+)?_(?:{DTYPES})\b")
-RE_SAMPLE_INPUT = re.compile(r"SampleInput\(.*", re.DOTALL)
-RE_TENSOR_REPR = re.compile(r"Tensor\[size=\([^)]*\)[^\]]*\]")
-RE_NUMBER = re.compile(r"\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\b")
 
 
 # --------------------------------------------------------------------------- #
@@ -289,17 +230,16 @@ class RunInfo:
 
 @dataclass
 class Evidence:
-    """Everything the filing half is allowed to treat as true.
+    """Everything the rest of the pipeline is allowed to treat as true.
 
     Self-contained by design: it holds the baseline-derived numbers the issue
-    bodies quote rather than the baselines themselves, so the filing half never
-    needs to download a past nightly, and a model reading it between the two
-    halves sees the same facts the filing half will use.
+    bodies quote rather than the baselines themselves, so nothing after this
+    step needs to download a past nightly.
     """
     run: RunInfo
     cases: list[Case]
     classification: dict[str, str]
-    new_case_reason: dict[str, str]
+    cls_reason: dict[str, str]
     collection_context: dict[str, dict]
     baselines: dict[str, BaselineMeta]
     tracebacks: dict[str, list[str]]
@@ -371,7 +311,7 @@ def read_lines(path: Path | None) -> list[str]:
 # --------------------------------------------------------------------------- #
 # Health gate
 #
-# The gate that runs before anything else. Its checks are cited as H1-H7 in the
+# The gate that runs before anything else. Its checks are cited as H1-H6 in the
 # warnings and in the report artifact, so they are enumerated here:
 #
 #   H1  build job conclusion          not success -> nothing downstream can be
@@ -385,19 +325,14 @@ def read_lines(path: Path | None) -> list[str]:
 #                                     is truncated and the machine is suspect
 #   H6  new-failure CSV row count     disagrees with new_failure_list.txt, so
 #                                     some failures lost their error message
-#   H7  infra-signature share         above INFRA_SIGNATURE_RATIO, over at
-#                                     least INFRA_MIN_CASES failures: the UT job is
-#                                     infra breakage, not a set of product bugs
 #
 # H2 needs no code of its own - a cancelled or skipped UT job uploads no artifact,
 # so H3 catches it. Evaluation is per category rather than per UT job, because the
 # `basic` UT job carries three and they fail independently.
 #
-# H1-H6 are facts about the artifacts and are settled here. H7 is a reading of
-# them - a share is only infra breakage if you decide it is - so collection
-# records the share and infra_ut_job_gate in the filing half decides on it. The
-# threshold and the outcome are unchanged; only the place moved, so that the
-# facts a model sees are not already filtered by one verdict.
+# All six are facts about the artifacts. Whether a machine misbehaved is not:
+# the share of failures carrying a denylisted message is recorded here and read
+# by the skill, so the facts it sees are not already filtered by one verdict.
 # --------------------------------------------------------------------------- #
 
 
@@ -589,41 +524,12 @@ def read_reproduce(root: Path, category: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Signature and deterministic grouping
+# Failure signatures
 # --------------------------------------------------------------------------- #
 
 
-def last_segment(message: str) -> str:
-    """check-ut.py joins several `ExceptionType: msg` hits with ' ; '."""
-    segments = [s.strip() for s in message.split(" ; ") if s.strip()]
-    return segments[-1] if segments else ""
-
-
-def headline_of(message: str) -> str:
-    return " ".join(last_segment(message).split())[:200]
-
-
-def normalize_error(message: str) -> str:
-    """Collapse a failure message to a signature stable across nights.
-
-    Empty messages (segfault, worker crash) share a sentinel, which correctly
-    collapses a whole crashed file into one group.
-    """
-    text = last_segment(message)
-    if not text:
-        return "CRASH_NO_MESSAGE"
-    text = RE_SAMPLE_INPUT.sub("SampleInput(...)", text)
-    text = RE_TENSOR_REPR.sub("Tensor[...]", text)
-    text = RE_PATH.sub(r"\1", text)
-    text = RE_HEX.sub("0xX", text)
-    text = RE_LINE_NO.sub("line N", text)
-    text = RE_DTYPE_SUFFIX.sub("", text)
-    text = RE_NUMBER.sub("N", text)
-    return " ".join(text.split())[:200]
-
-
-def is_infra(normalized: str) -> bool:
-    low = normalized.lower()
+def is_infra(message: str) -> bool:
+    low = message.lower()
     return any(p in low for p in INFRA_PATTERNS)
 
 
@@ -668,16 +574,29 @@ def read_case_sets(root: Path, category: str) -> tuple[set, set, set]:
     return passed, failed, every | passed | failed
 
 
+def roster(work: Path, category: str) -> set[str]:
+    """Every case this run's category produced, skipped ones included."""
+    root = work / f"current-{CATEGORY_UT_JOB[category]}"
+    if not root.is_dir():
+        return set()
+    return read_case_sets(root, category)[2]
+
+
+def case_from_line(line: str) -> Case | None:
+    """A `category,class_name,test_name` roster line, back as a Case."""
+    parts = line.split(",")
+    if len(parts) < 3:
+        return None
+    return Case(parts[0], parts[1], ",".join(parts[2:]), "")
+
+
 def module_counts(lines: set[str]) -> dict[str, int]:
     """`category,class_name,test_name` lines, counted per test module."""
     counts: dict[str, int] = {}
     for line in lines:
-        parts = line.split(",")
-        if len(parts) < 3:
-            continue
-        module = Case(parts[0], parts[1], ",".join(parts[2:]), "").module
-        if module:
-            counts[module] = counts.get(module, 0) + 1
+        case = case_from_line(line)
+        if case and case.module:
+            counts[case.module] = counts.get(case.module, 0) + 1
     return counts
 
 
@@ -770,7 +689,8 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
 # --------------------------------------------------------------------------- #
 
 
-def classify_case(case: Case, baselines: dict[str, Baseline]) -> str:
+def classify_case(case: Case, baselines: dict[str, Baseline],
+                  churned: set[tuple[str, str]]) -> tuple[str, str]:
     """Per case, against its own category's baseline. Exact set membership.
 
     A whole-module row is compared at module granularity instead, because
@@ -787,49 +707,46 @@ def classify_case(case: Case, baselines: dict[str, Baseline]) -> str:
     """
     baseline = baselines.get(case.category)
     if baseline is None:
-        return CLS_UNKNOWN
+        return CLS_UNKNOWN, "no usable baseline for this category"
     if case.is_collection_error:
         if baseline.passed_by_module.get(case.module):
-            return CLS_REGRESSION
+            return CLS_REGRESSION, "the module's cases passed in the baseline"
         if case.module in baseline.all_by_module:
-            return CLS_PERSISTENT
-        return CLS_NEW_CASE
+            return CLS_PERSISTENT, "the baseline knew the module and passed none of it"
+        return CLS_NEW_CASE, "the baseline had never seen this module"
     if case.line in baseline.passed:
-        return CLS_REGRESSION
+        return CLS_REGRESSION, "passed in the baseline"
     if case.line in baseline.failed:
-        return CLS_PERSISTENT
-    # Either absent from the baseline or present but skipped: in both
-    # readings the case has never been observed working here.
-    return CLS_NEW_CASE
-
-
-def new_case_reason(case: Case, baseline: Baseline | None) -> str:
-    if baseline is None or case.line not in baseline.all_cases:
-        return "absent"
-    return "skipped"
+        return CLS_PERSISTENT, "already failing in the baseline"
+    if case.line in baseline.all_cases:
+        return CLS_NEW_CASE, "present in the baseline but skipped there"
+    # Absent from the baseline, which only means "new test" if the module's
+    # names are otherwise unchanged. A test renamed in stock pytorch is absent
+    # under its new name and present under its old one, and calling that a new
+    # case claims it has never been observed working when it may have been
+    # passing for years.
+    if (case.category, case.module) in churned:
+        return CLS_UNKNOWN, (
+            "absent from the baseline, but the module lost case names between "
+            "the baseline and this run, so this may be a test renamed upstream"
+        )
+    return CLS_NEW_CASE, "absent from the baseline"
 
 
 # --------------------------------------------------------------------------- #
 # What stopped running
 #
-# A module that fails to import does not fail its cases, it erases them: they
-# reach neither passed_<cat>.log nor failures_<cat>.log, so they never enter
-# new_ut_failure_list.csv, and a few hundred missing cases sit far below the 5%
-# count gate in ut_result_check.sh:check_test_cases. Comparing module coverage
-# against the baseline is the only thing here that sees them.
+# A case can leave the run without failing: a module that will not import
+# erases its cases rather than failing them, and a test removed or renamed in
+# stock pytorch is simply not there. Neither reaches new_ut_failure_list.csv,
+# and a few hundred missing cases sit far below the 5% count gate in
+# ut_result_check.sh:check_test_cases. Comparing this run's roster against the
+# baseline's is the only thing here that sees them.
 #
-# The same per-module index is what classifies a collection error above:
-# the module row is in neither the baseline's passed nor its failed set, but
-# the module is in passed_by_module, so "did this used to work" is answerable
-# exactly, one level up from the case.
-#
-# Nothing in this stage mutes on its own. What it produces is the blast radius
-# - how many cases the file used to pass - which the renderer puts into the
-# issue. The issue itself does mute, like any other: it carries the whole-
-# module row, so the row stops being a new failure on the next run and the job
-# goes green with the file still dark. That trade is deliberate; leaving it red
-# forever ends with nobody reading the nightly at all. The count is what keeps
-# the muted state honest, so it belongs in the issue body and not only a log.
+# It matters twice. The count of cases a module used to pass is the blast
+# radius an issue about that module has to state. And a module whose names
+# changed is one where "absent from the baseline" stops meaning "new test" -
+# see classify_case.
 # --------------------------------------------------------------------------- #
 
 
@@ -855,62 +772,53 @@ def collection_error_context(case: Case,
     }
 
 
-def record_vanished_modules(work: Path, categories: set[str],
-                            baselines: dict[str, Baseline],
-                            report: dict) -> None:
-    """Modules that produced cases in the baseline and none at all in this run.
+def record_vanished_cases(work: Path, categories: set[str],
+                          baselines: dict[str, Baseline],
+                          report: dict) -> set[tuple[str, str]]:
+    """Cases the baseline ran and this run does not have at all.
 
-    Independent of the collection-error rows above, so it also catches a file
-    that stops producing cases without reporting an error. The likeliest way
-    for that to happen here is the skip list: xpu_test_utils.py:launch_test
-    turns it into `pytest -k "not ..."`, and deselected cases are absent from
-    the JUnit XML entirely rather than recorded as skipped, so a pattern that
-    happens to match a whole file empties it silently.
+    Three things leave this trace and only this one sees them: a module that
+    will not import, a skip pattern wide enough to empty a file - deselected
+    cases are absent from the JUnit XML rather than recorded as skipped - and a
+    test removed or renamed in stock pytorch.
+
+    Returns the `(category, module)` pairs affected, which is what
+    classify_case needs: in a module that lost names, a failing case absent
+    from the baseline has not been shown to be new.
     """
+    churned: set[tuple[str, str]] = set()
     for category in sorted(categories):
         base = baselines.get(category)
-        if base is None:
+        tonight = roster(work, category)
+        if base is None or not tonight:
             continue
-        root = work / f"current-{CATEGORY_UT_JOB[category]}"
-        if not root.is_dir():
-            continue
-        _, _, every = read_case_sets(root, category)
-        tonight = module_counts(every)
-        gone = [
-            (module, count)
-            for module, count in base.passed_by_module.items()
-            if module not in tonight
-        ]
-        for module, count in sorted(gone, key=lambda kv: (-kv[1], kv[0])):
-            report["vanished_modules"].append({
-                "category": category, "module": module,
-                "baseline_passed": count, "baseline_run": base.meta.run_id,
+        per_module: dict[str, int] = {}
+        for line in base.all_cases - tonight:
+            case = case_from_line(line)
+            if case and case.module:
+                per_module[case.module] = per_module.get(case.module, 0) + 1
+        live_modules = set(module_counts(tonight))
+        for module, count in sorted(per_module.items(),
+                                    key=lambda kv: (-kv[1], kv[0])):
+            churned.add((category, module))
+            report["vanished_cases"].append({
+                "category": category,
+                "module": module,
+                "cases": count,
+                "baseline_passed": base.passed_by_module.get(module, 0),
+                "module_gone": module not in live_modules,
+                "baseline_run": base.meta.run_id,
             })
-    if report["vanished_modules"]:
-        total = sum(v["baseline_passed"] for v in report["vanished_modules"])
+    if report["vanished_cases"]:
+        total = sum(v["cases"] for v in report["vanished_cases"])
         warn(
-            f"{len(report['vanished_modules'])} module(s) produced no cases in "
-            f"this run but had {total} passing case(s) in their baseline; see "
-            "the report artifact. Reported only - nothing filed, nothing muted."
+            f"{total} case(s) the baseline ran are absent from this run, across "
+            f"{len(report['vanished_cases'])} module(s); see the report "
+            "artifact. They did not fail - they did not run, whether because a "
+            "module stopped importing or because a test was removed or renamed "
+            "upstream. Reported only; nothing filed, nothing muted."
         )
-
-
-def parse_cases_block(body: str) -> set[str]:
-    """The lines that actually mute. `mark_passed_issue` rewrites a line to
-    `~~<line>~~` once the case passes, which stops it muting; such a line is
-    kept as history but no longer claims the case."""
-    start = body.find(CASES_BEGIN)
-    end = body.find(CASES_END)
-    if start == -1 or end == -1 or end < start:
-        return set()
-    live = set()
-    for raw in body[start + len(CASES_BEGIN):end].splitlines():
-        line = raw.strip()
-        if not line or line == "Cases:":
-            continue
-        if not (line.startswith("~~") and line.endswith("~~")):
-            live.add(line)
-    return live
+    return churned
 
 
 # --------------------------------------------------------------------------- #
@@ -983,23 +891,16 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
     if dropped:
         print(f"note: dropped {dropped} {ut_job} cases from unhealthy categories")
 
-    # H7 is decided later, by infra_ut_job_gate: what share of a UT job's failures
-    # carry a denylisted message is a fact, and calling that share infra
-    # breakage is a reading of it. Recorded here, acted on there.
-    infra = {c.line for c in kept if is_infra(normalize_error(c.message))}
+    # What share of a UT job's failures carry a denylisted message is a fact;
+    # calling that share machine breakage is a reading of it, and belongs to
+    # the skill. Recorded here, decided there.
+    infra = {c.line for c in kept if is_infra(c.message)}
     ut_job_health[ut_job] = {
         "runner_name": current.runners.get(ut_job, ""),
         "new_failures": len(kept),
         "infra_pattern_cases": sorted(infra),
         "infra_pattern_ratio": round(len(infra) / len(kept), 4) if kept else 0.0,
     }
-    if infra and len(kept) < INFRA_MIN_CASES:
-        print(
-            f"note: {ut_job} has {len(infra)}/{len(kept)} infra-looking new "
-            f"failures. That is under the {INFRA_MIN_CASES} it takes for the "
-            "share to mean anything, so the UT job is kept. Each error is still "
-            "judged on how many test files it reached."
-        )
     return kept
 
 
@@ -1007,12 +908,10 @@ def new_report(args) -> dict:
     return {
         "run_id": args.run_id,
         "test_type": args.test_type,
-        "mode": args.mode,
         "categories": [],
         "skipped_ut_jobs": [],
-        "vanished_modules": [],
+        "vanished_cases": [],
         "baseline_walk": [],
-        "unknown_case_lines": [],
     }
 
 
@@ -1025,9 +924,9 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
     """Everything that can be read off the artifacts, and nothing else.
 
     No grouping, no infra verdict, no GitHub write. What comes out is meant to
-    be enough for the filing half to work from alone, which is why the
-    baseline-derived numbers are computed here rather than the baselines
-    carried across.
+    be enough for the skill and the filing step to work from alone, which is
+    why the baseline-derived numbers are computed here rather than the
+    baselines carried across.
     """
     run_meta = gh_json(f"repos/{REPO}/actions/runs/{args.run_id}")
     current = RunInfo(
@@ -1035,7 +934,7 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         created_at=run_meta.get("created_at", "")[:10],
         job_urls={}, torch={}, torch_xpu_ops={}, collect_env={}, runners={},
     )
-    gates = {"build_failed": False, "abort": False, "oversized": False}
+    gates = {"build_failed": False, "too_many": False}
     ut_job_health: dict[str, dict] = {}
     cases: list[Case] = []
 
@@ -1051,7 +950,7 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
             {"ut_job": "*", "reason": "build not successful"})
         gates["build_failed"] = True
         return Evidence(
-            run=current, cases=[], classification={}, new_case_reason={},
+            run=current, cases=[], classification={}, cls_reason={},
             collection_context={}, baselines={}, tracebacks={}, reproduce={},
             ut_job_health=ut_job_health, gates=gates, report=carried_report(report),
         )
@@ -1061,37 +960,32 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         cases.extend(collect_ut_job(args.run_id, ut_job, names, work, jobs, report,
                                  current, ut_job_health))
 
-    if len(cases) > ABORT_THRESHOLD:
-        print(
-            f"::error::{len(cases)} new failures exceeds ABORT_THRESHOLD "
-            f"({ABORT_THRESHOLD}); assuming infra breakage and creating nothing"
+    if len(cases) > TOO_MANY_THRESHOLD:
+        warn(
+            f"{len(cases)} new failures is past the {TOO_MANY_THRESHOLD} at "
+            "which a night is a question about the machine rather than about "
+            "which bug is which; collecting the count and nothing else"
         )
-        report["skipped_ut_jobs"].append({"ut_job": "*", "reason": "abort threshold"})
-        gates["abort"] = True
-        # Nothing downstream will read these, and resolving baselines for them
-        # means downloading five past nightlies to answer a question already
-        # settled.
+        report["skipped_ut_jobs"].append({"ut_job": "*", "reason": "too many failures"})
+        gates["too_many"] = True
         return Evidence(
-            run=current, cases=cases, classification={}, new_case_reason={},
+            run=current, cases=cases, classification={}, cls_reason={},
             collection_context={}, baselines={}, tracebacks={}, reproduce={},
             ut_job_health=ut_job_health, gates=gates, report=carried_report(report),
         )
-    gates["oversized"] = len(cases) > OVERSIZED_THRESHOLD
 
     # Every healthy category, not just the ones with something to file: a
     # category whose only symptom is that a file stopped producing cases
     # reports no failure at all, so a night that is otherwise green is exactly
-    # the night the vanished-module check has to survive to.
+    # the night the vanished-case check has to survive to.
     healthy = {c["category"] for c in report["categories"] if c["state"] == "complete"}
     baselines = resolve_baselines(
         args.run_id, healthy | {c.category for c in cases}, work, report)
-    record_vanished_modules(work, healthy, baselines, report)
+    churned = record_vanished_cases(work, healthy, baselines, report)
 
-    classification = {c.line: classify_case(c, baselines) for c in cases}
-    reasons = {
-        c.line: new_case_reason(c, baselines.get(c.category))
-        for c in cases if not c.is_collection_error
-    }
+    verdicts = {c.line: classify_case(c, baselines, churned) for c in cases}
+    classification = {line: cls for line, (cls, _) in verdicts.items()}
+    cls_reason = {line: why for line, (_, why) in verdicts.items()}
     context = {
         c.line: collection_error_context(c, baselines)
         for c in cases if c.is_collection_error
@@ -1116,14 +1010,14 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
 
     return Evidence(
         run=current, cases=cases, classification=classification,
-        new_case_reason=reasons, collection_context=context,
+        cls_reason=cls_reason, collection_context=context,
         baselines={cat: b.meta for cat, b in baselines.items()},
         tracebacks=tracebacks, reproduce=reproduce, ut_job_health=ut_job_health,
         gates=gates, report=carried_report(report),
     )
 
 
-CARRIED_SECTIONS = ("categories", "skipped_ut_jobs", "vanished_modules",
+CARRIED_SECTIONS = ("categories", "skipped_ut_jobs", "vanished_cases",
                     "baseline_walk")
 
 
@@ -1136,132 +1030,16 @@ def carried_report(report: dict) -> dict:
 # --------------------------------------------------------------------------- #
 
 
-def commit_link(repo: str, sha: str) -> str:
-    return f"[`{sha[:8]}`]({SERVER}/{repo}/commit/{sha})" if sha else "unknown"
-
-
-def rendered_blocks(evidence: Evidence) -> dict:
-    """Paste-ready markdown that does not depend on how failures are grouped.
-
-    Composed here rather than left to the filing step because a bisect range
-    is the part most easily got wrong and most misleading when wrong: the
-    baseline sha and tonight's sha have to come from the same UT job, and nothing
-    in the rendered text says which UT job it came from. Everything below is a
-    string to be copied, not data to be assembled.
-    """
-    run = evidence.run
-    baseline_rows: dict[str, list[str]] = {}
-    compare: dict[str, str] = {}
-    staleness: dict[str, str] = {}
-    for category, base in sorted(evidence.baselines.items()):
-        ut_job = CATEGORY_UT_JOB[category]
-        baseline_rows[category] = [
-            f"| {category} | Last good "
-            f"| [#{base.run_id} ({base.ut_job})]({base.job_url}) "
-            f"| {base.created_at} | {commit_link(PYTORCH_REPO, base.torch)} "
-            f"| {commit_link(REPO, base.torch_xpu_ops)} |",
-            f"| {category} | First seen bad | "
-            f"[#{run.run_id} ({ut_job})]({run.job_urls.get(ut_job, '')}) "
-            f"| {run.created_at} "
-            f"| {commit_link(PYTORCH_REPO, run.torch.get(ut_job, ''))} "
-            f"| {commit_link(REPO, run.torch_xpu_ops.get(ut_job, ''))} |",
-        ]
-        if base.torch and run.torch.get(ut_job):
-            link = (f"Changes in range ({category}): "
-                    f"[pytorch]({SERVER}/{PYTORCH_REPO}/compare/"
-                    f"{base.torch}...{run.torch[ut_job]})")
-            if base.torch_xpu_ops and run.torch_xpu_ops.get(ut_job):
-                link += (f" - [torch-xpu-ops]({SERVER}/{REPO}/compare/"
-                         f"{base.torch_xpu_ops}...{run.torch_xpu_ops[ut_job]})")
-            compare[category] = link
-        # A stale baseline keeps "regression" true but makes the range much
-        # weaker evidence, so say so rather than presenting a five-night range
-        # in the same shape as a one-night one.
-        if base.age_in_runs > 1:
-            gap = base.age_in_runs - 1
-            staleness[category] = (
-                f"Note: the last healthy {category} nightly was "
-                f"{base.age_in_runs} runs back ({gap} intervening "
-                f"{'nightly' if gap == 1 else 'nightlies'} did not complete this "
-                "category), so this range is wider than one night and the failure "
-                "may predate the first-seen-bad run."
-            )
-
-    collection: dict[str, dict] = {}
-    for line, ctx in sorted(evidence.collection_context.items()):
-        dropped = ctx["baseline_passed"]
-        collection[line] = {
-            "table_row": f"| `{ctx['module']}` | {ctx['category']} "
-                         f"| {ctx['state']} | {dropped} |",
-            "verdict": {
-                CLS_REGRESSION: (
-                    f"Classified as a **regression**: the module's {dropped} "
-                    "case(s) passed in the baseline and do not run now. The row "
-                    "itself is in neither the baseline's passed nor its failed "
-                    "set - a healthy run records a module's cases, never the "
-                    "module - so the comparison behind that label is at module "
-                    "granularity."
-                ),
-                CLS_PERSISTENT: (
-                    "Classified as **persistent**: the baseline knew this module "
-                    "but had nothing passing in it, so the breakage predates the "
-                    "baseline."
-                ),
-                CLS_NEW_CASE: (
-                    "Classified as a **new test file**: the baseline had never "
-                    "seen this module, so it has not been observed importing here."
-                ),
-                CLS_UNKNOWN: (
-                    "**Baseline unavailable**, so whether this module used to "
-                    "import could not be determined."
-                ),
-            }[evidence.classification.get(line, CLS_UNKNOWN)],
-            "baseline_passed": dropped,
-        }
-    return {
-        "baseline_table_header": [
-            "| Category | | Run | Date | torch | torch-xpu-ops |",
-            "|---|---|---|---|---|---|",
-        ],
-        "baseline_table_rows": baseline_rows,
-        "compare_links": compare,
-        "baseline_staleness": staleness,
-        "collection_error": collection,
-    }
-
-
-def is_bmg(runner: str) -> bool:
-    # Case-insensitive where fetch_issues.sh is not, because the runner label
-    # there is `bmg-test` while the hostname recorded here is `BMG-17691`.
-    return "bmg" in runner.lower()
-
-
-def labels_for(cls: str, runner: str) -> list[str]:
-    """The final list, not the rule that produces it.
-
-    Which labels an issue carries is a pure function of its classification and
-    the machine that ran it, with no judgement in it anywhere, so it is
-    resolved here and copied at filing time. Handing the filing step three
-    lookups to perform instead is how a `persistent` group ends up labelled
-    `new_case_failure`.
-    """
-    labels = ["skipped"]
-    if is_bmg(runner):
-        labels.append(BMG_LABEL)
-    if cls in CLS_LABELS:
-        labels.append(cls)
-    return labels
-
-
 def emit_evidence(evidence: Evidence, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     run = evidence.run
     write_json(out / "run.json", {
         "run_id": run.run_id,
         "created_at": run.created_at,
-        # Per UT job throughout, because a bisect range is per UT job: the baseline
-        # sha and tonight's sha have to come from the same one or the compare
-        # link spans the wrong commits.
+        "digest": evidence.digest,
+        # Per UT job throughout, because a bisect range is per UT job: the
+        # baseline sha and tonight's sha have to come from the same one or the
+        # compare link spans the wrong commits.
         "job_urls": run.job_urls,
         "torch": run.torch,
         "torch_xpu_ops": run.torch_xpu_ops,
@@ -1270,31 +1048,12 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
         "category_ut_job": CATEGORY_UT_JOB,
         "gates": evidence.gates,
         "ut_jobs": evidence.ut_job_health,
+        "baselines": {cat: vars(meta) for cat, meta in evidence.baselines.items()},
         "report": evidence.report,
-        # Stated here so that the filing rules have one source of truth and a
-        # change to a threshold does not have to be chased into prose.
-        "limits": {
-            "max_issues_per_run": MAX_ISSUES_PER_RUN,
-            "max_cases_per_issue": MAX_CASES_PER_ISSUE,
-            "safe_body_chars": SAFE_BODY_LIMIT,
-            "hard_body_chars": GITHUB_BODY_LIMIT,
-            "infra_max_test_files": INFRA_MAX_FILES_TO_FILE,
-            "infra_ut_job_share": INFRA_SIGNATURE_RATIO,
-            "infra_ut_job_min_cases": INFRA_MIN_CASES,
-        },
-        # Resolved, keyed `<cls>|<ut_job>`, because the runner is per UT job. Every
-        # case also carries its own resolved list; this map is here for a group
-        # whose cases have all been placed already and for cross-checking a split.
-        "labels": {
-            f"{cls}|{ut_job}": labels_for(cls, runner)
-            for cls in (CLS_REGRESSION, CLS_NEW_CASE, CLS_PERSISTENT, CLS_UNKNOWN)
-            for ut_job, runner in sorted(run.runners.items())
-        },
-        "marker_template": MARKER_TEMPLATE,
-        "marker_version": MARKER_VERSION,
     })
     write_json(out / "cases.json", {
         "count": len(evidence.cases),
+        "counts_by_cls": class_counts(evidence.classification),
         "cases": [
             {
                 "line": c.line,
@@ -1307,138 +1066,27 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
                 "is_collection_error": c.is_collection_error,
                 "message": c.message,
                 "cls": evidence.classification.get(c.line, CLS_UNKNOWN),
-                "labels": labels_for(
-                    evidence.classification.get(c.line, CLS_UNKNOWN),
-                    run.runners.get(c.ut_job, "")),
+                "cls_reason": evidence.cls_reason.get(c.line, ""),
                 "runner_name": run.runners.get(c.ut_job, ""),
                 "has_traceback": c.line in evidence.tracebacks,
             }
             for c in evidence.cases
         ],
+        "collection_context": list(evidence.collection_context.values()),
         "reproduce": evidence.reproduce,
     })
-    counts: dict[str, int] = {}
-    for cls in evidence.classification.values():
-        counts[cls] = counts.get(cls, 0) + 1
-    write_json(out / "classifications.json", {
-        "by_case": evidence.classification,
-        "counts": counts,
-        "new_case_reason": evidence.new_case_reason,
-        "collection_context": list(evidence.collection_context.values()),
-        "baselines": {cat: vars(meta) for cat, meta in evidence.baselines.items()},
-    })
     write_json(out / "tracebacks.json", {"by_case": evidence.tracebacks})
-    write_json(out / "blocks.json", rendered_blocks(evidence))
-    write_json(out / "digest.json", {
-        "all_cases": evidence.digest, "count": len(evidence.cases),
-    })
+
+
+def class_counts(classification: dict[str, str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for cls in classification.values():
+        counts[cls] = counts.get(cls, 0) + 1
+    return counts
 
 
 def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-
-
-# --------------------------------------------------------------------------- #
-# Decisions - opinions, checked before use
-# --------------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------------- #
-# Apply - the only half that writes
-# --------------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------------- #
-# Audit - what the filed issues actually mute
-#
-# The `Cases:` block of an issue is a byte-exact subtraction rule: every line
-# in it is removed from the next run's failures by `grep -vFxf` in
-# ut_result_check.sh:92. A line matching nothing looks harmless tonight and
-# stays in the issue forever, so the night a test with that exact name really
-# does fail, it is subtracted in silence.
-#
-# This runs after the issues exist, so it prevents nothing. What it does is
-# make such a line visible on the night it appears instead of months later.
-# --------------------------------------------------------------------------- #
-
-
-def bot_issue_bodies() -> dict[int, str]:
-    seen: dict[int, str] = {}
-    for label in ("skipped", "skipped_bmg", "new_case_failure", "regression"):
-        rows = gh_tsv(
-            f"repos/{REPO}/issues?state=open&labels={label}&per_page=100",
-            ".[] | select(.pull_request == null) "
-            '| [(.number|tostring), (.body // "" | @base64)] | @tsv',
-        )
-        for row in rows:
-            if len(row) >= 2 and int(row[0]) not in seen:
-                seen[int(row[0])] = base64.b64decode(row[1]).decode(
-                    "utf-8", errors="replace"
-                )
-    return seen
-
-
-def known_case_lines(work: Path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-    """Every case and every module this run saw, per category.
-
-    Read from all_cases_<category>.log in the artifacts the collection step
-    already downloaded, which is the full roster including skipped cases - not
-    just the failures. A muting line naming a case in here is legitimate
-    whatever it did tonight; one naming nothing at all cannot have come from
-    the artifacts at all.
-    """
-    cases: dict[str, set[str]] = {}
-    modules: dict[str, set[str]] = {}
-    for category, ut_job in sorted(CATEGORY_UT_JOB.items()):
-        root = work / f"current-{ut_job}"
-        if not root.is_dir():
-            continue
-        _, _, every = read_case_sets(root, category)
-        if not every:
-            continue
-        cases[category] = every
-        modules[category] = set(module_counts(every))
-    return cases, modules
-
-
-def audit_issues(work: Path, report: dict) -> None:
-    cases, modules = known_case_lines(work)
-    if not cases:
-        warn("no category rosters in the work directory; skipping the mute audit")
-        return
-    for number, body in sorted(bot_issue_bodies().items()):
-        for line in sorted(parse_cases_block(body)):
-            parts = line.split(",")
-            if len(parts) < 3:
-                report["unknown_case_lines"].append(
-                    {"issue": number, "line": line, "reason": "not a case row"})
-                continue
-            category = parts[0]
-            if category not in cases:
-                # The category did not run tonight, so there is no roster to
-                # check against and absence proves nothing.
-                continue
-            if line in cases[category]:
-                continue
-            case = Case(category, parts[1], ",".join(parts[2:]), "")
-            # A whole-module row never appears in a roster - a healthy run
-            # records a module's cases, never the module - so it is checked
-            # one level up, against the modules the roster does contain.
-            if case.is_collection_error and case.module in modules[category]:
-                continue
-            report["unknown_case_lines"].append(
-                {"issue": number, "line": line,
-                 "reason": "no such case in this run's roster"})
-    if report["unknown_case_lines"]:
-        offenders = sorted({u["issue"] for u in report["unknown_case_lines"]})
-        warn(
-            f"{len(report['unknown_case_lines'])} muting line(s) in "
-            f"{len(offenders)} issue(s) name a case this run has never heard "
-            f"of: {', '.join('#' + str(n) for n in offenders)}. Each one is a "
-            "subtraction rule that matches nothing today and will silently "
-            "mute a real failure the day a test of that name fails. Fix or "
-            "delete the line; see the report artifact for which."
-        )
 
 
 # --------------------------------------------------------------------------- #
@@ -1450,11 +1098,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--test-type", default="")
-    parser.add_argument("--mode", default="emit-evidence",
-                        choices=("emit-evidence", "audit"))
     parser.add_argument("--work-dir", default="ut_auto_issue_work")
     parser.add_argument("--report-dir", default="ut_auto_issue_report")
-    parser.add_argument("--evidence-dir", default="")
+    parser.add_argument("--evidence-dir", required=True)
     args = parser.parse_args()
 
     report_dir = Path(args.report_dir)
@@ -1462,27 +1108,21 @@ def main() -> int:
     report = new_report(args)
     work = Path(args.work_dir)
 
-    if args.mode == "audit":
-        audit_issues(work, report)
-        return finish(report, report_dir)
-
-    if not args.evidence_dir:
-        raise SystemExit("::error::--mode emit-evidence needs --evidence-dir")
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True, exist_ok=True)
     evidence = collect_evidence(args, work, report)
     emit_evidence(evidence, Path(args.evidence_dir))
+    report["counts_by_cls"] = class_counts(evidence.classification)
     print(f"Wrote evidence for {len(evidence.cases)} new failure(s) to "
           f"{args.evidence_dir}")
     return finish(report, report_dir)
 
 
 def finish(report: dict, report_dir: Path) -> int:
-    name = "report.json" if report["mode"] == "emit-evidence" else "audit.json"
-    (report_dir / name).write_text(
+    (report_dir / "report.json").write_text(
         json.dumps(report, indent=2), encoding="utf-8"
     )
-    lines = [f"## UT auto-issue - {report['mode']}", "", f"Run `{report['run_id']}`", ""]
+    lines = ["## UT auto-issue - evidence", "", f"Run `{report['run_id']}`", ""]
     if report["categories"]:
         lines += ["| Category | State | Cases | Expected |", "|---|---|---|---|"]
         lines += [
@@ -1492,37 +1132,30 @@ def finish(report: dict, report_dir: Path) -> int:
         lines.append("")
     for skipped in report["skipped_ut_jobs"]:
         lines.append(f"- Skipped `{skipped['ut_job']}`: {skipped['reason']}")
-    if report["vanished_modules"]:
+    if report.get("counts_by_cls"):
+        lines += ["", "| Classification | New failures |", "|---|---|"]
         lines += [
-            "",
-            "### Modules that produced no cases in this run",
-            "",
-            "These passed in their baseline and are absent here, so they did not "
-            "fail - they did not run.",
-            "",
-            "| Category | Module | Passing in baseline | Baseline run |",
-            "|---|---|---|---|",
-        ]
-        lines += [
-            f"| {v['category']} | `{v['module']}` | {v['baseline_passed']} "
-            f"| {v['baseline_run']} |"
-            for v in report["vanished_modules"]
+            f"| {cls} | {count} |"
+            for cls, count in sorted(report["counts_by_cls"].items())
         ]
         lines.append("")
-    if report["unknown_case_lines"]:
+    if report["vanished_cases"]:
         lines += [
             "",
-            "### Muting lines that name no known case",
+            "### Cases the baseline ran and this run does not have",
             "",
-            "Each of these subtracts nothing today and will subtract a real "
-            "failure the day a test of that name fails.",
+            "These did not fail - they did not run, whether because a module "
+            "stopped importing or because a test was removed or renamed "
+            "upstream. A failing case in one of these modules is classified "
+            "`unknown` rather than `new_case_failure`.",
             "",
-            "| Issue | Line | Reason |",
-            "|---|---|---|",
+            "| Category | Module | Missing | Passing in baseline | Whole module |",
+            "|---|---|---|---|---|",
         ]
         lines += [
-            f"| #{u['issue']} | `{u['line']}` | {u['reason']} |"
-            for u in report["unknown_case_lines"]
+            f"| {v['category']} | `{v['module']}` | {v['cases']} "
+            f"| {v['baseline_passed']} | {'yes' if v['module_gone'] else 'no'} |"
+            for v in report["vanished_cases"]
         ]
         lines.append("")
     summary = "\n".join(lines) + "\n"
