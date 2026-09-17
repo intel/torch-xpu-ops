@@ -451,10 +451,10 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>)) void batch_norm
   auto sg_lid = sg.get_local_linear_id();
   auto sg_id = sg.get_group_linear_id();
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto shared_n_ = reinterpret_cast<int*>(lsm);
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
+  auto shared_n_ = reinterpret_cast<int*>(slm);
   auto shared_avg_var_ =
-      reinterpret_cast<stat_accscalar_t*>(lsm + (size_t)(SIMD) * sizeof(int));
+      reinterpret_cast<stat_accscalar_t*>(slm + (size_t)(SIMD) * sizeof(int));
 
   // Compute the mean and variance across (batch, x/y/z)
   // this uses the Welford (in the for loop)/parallel algorithm (to sum
@@ -753,10 +753,10 @@ void batch_norm_collect_statistics_channels_last_kernel(
   auto m2_th = m_2_n[0];
   auto count_th = count[0];
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto shmem_mean_ = reinterpret_cast<accscalar_t*>(lsm);
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
+  auto shmem_mean_ = reinterpret_cast<accscalar_t*>(slm);
   auto shmem_m2n_ =
-      reinterpret_cast<accscalar_t*>(lsm + sizeof(accscalar_t) * wg_size);
+      reinterpret_cast<accscalar_t*>(slm + sizeof(accscalar_t) * wg_size);
   auto shmem_count_ =
       reinterpret_cast<int*>((char*)shmem_m2n_ + sizeof(accscalar_t) * wg_size);
   auto is_last_group_done_ =
@@ -1802,9 +1802,9 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>)) void batch_norm
       GenericPackedTensorAccessor<input_scalar_t, 3, DefaultPtrTraits, index_t>>
       g(r_mean, input, grad_output);
   int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   auto local_sum_ =
-      reinterpret_cast<Float2<input_scalar_t, stat_accscalar_t>*>(lsm);
+      reinterpret_cast<Float2<input_scalar_t, stat_accscalar_t>*>(slm);
   auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
       item, g, grad_output, plane, num_sg, local_sum_);
 
@@ -2063,10 +2063,10 @@ void batch_norm_backward_reduce_channels_last_kernel(
   auto sum_dy_th = sum_dy[0];
   auto sum_dy_xmu_th = sum_dy_xmu[0];
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto shmem_sum_dy_ = reinterpret_cast<accscalar_t*>(lsm);
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
+  auto shmem_sum_dy_ = reinterpret_cast<accscalar_t*>(slm);
   auto shmem_sum_dy_xmu_ =
-      reinterpret_cast<accscalar_t*>(lsm + wg_size * sizeof(accscalar_t));
+      reinterpret_cast<accscalar_t*>(slm + wg_size * sizeof(accscalar_t));
   auto is_last_group_done_ = reinterpret_cast<bool*>(
       (char*)shmem_sum_dy_xmu_ + wg_size * sizeof(accscalar_t));
 
@@ -3935,9 +3935,9 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>)) void batch_norm
       g(mean, input, grad_output);
   int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   auto local_sum_ =
-      reinterpret_cast<Float2<input_scalar_t, stat_accscalar_t>*>(lsm);
+      reinterpret_cast<Float2<input_scalar_t, stat_accscalar_t>*>(slm);
   auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
       item, g, grad_output, plane, num_sg, local_sum_);
 
@@ -4065,9 +4065,9 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>)) void batch_norm
       g(mean, input, grad_output);
   int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   auto local_sum_ =
-      reinterpret_cast<Float2<input_scalar_t, stat_accscalar_t>*>(lsm);
+      reinterpret_cast<Float2<input_scalar_t, stat_accscalar_t>*>(slm);
   auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
       item, g, grad_output, plane, num_sg, local_sum_);
 

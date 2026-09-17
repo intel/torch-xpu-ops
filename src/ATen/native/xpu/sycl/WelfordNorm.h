@@ -176,15 +176,15 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     }
   }
 
-  char* lsm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
+  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   size_t offset = 0;
-  auto shmem_mean = reinterpret_cast<acc_vec_t*>(lsm);
+  auto shmem_mean = reinterpret_cast<acc_vec_t*>(slm);
   offset += local_size * sizeof(acc_vec_t);
-  auto shmem_m2n = reinterpret_cast<acc_vec_t*>(lsm + offset);
+  auto shmem_m2n = reinterpret_cast<acc_vec_t*>(slm + offset);
   offset += local_size * sizeof(acc_vec_t);
-  auto shmem_count = reinterpret_cast<int_vec_t*>(lsm + offset);
+  auto shmem_count = reinterpret_cast<int_vec_t*>(slm + offset);
   offset += local_size * sizeof(int_vec_t);
-  auto is_last_group_done = reinterpret_cast<bool*>(lsm + offset);
+  auto is_last_group_done = reinterpret_cast<bool*>(slm + offset);
 
   welford_vertical_merge<VEC_SIZE>(
       item, count, mean, m2n, shmem_count, shmem_mean, shmem_m2n);
