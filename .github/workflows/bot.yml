@@ -1127,12 +1127,11 @@ jobs:
       # a build-in-the-loop fix (pytorch clone, build tree) lives here instead
       # of /tmp, so it's all in one already-established, gitignored place.
       AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
-      # "[Tracking] CI DISABLED issues": a queue, not a bug report. Each comment
-      # mirrors one upstream DISABLED-test announcement, so the bug lives in the
-      # linked pytorch/pytorch issue and the queue's own history is dead weight
-      # the agent must not read. This number is the only thing separating that
-      # case from a normal issue; keep it in sync with the mirror script's
-      # TRACKING (.github/scripts/bot_nightly_watch.py).
+      # "[Tracking] CI DISABLED issues": a queue, not a bug report. A maintainer
+      # comments `@torchxpubot fix` there with the upstream DISABLED-test issue
+      # to work on, so the bug lives in that linked pytorch/pytorch issue and
+      # the queue's own history is dead weight the agent must not read. This
+      # number is the only thing separating that case from a normal issue.
       CI_TRACKING_ISSUE: "5272"
       # xpu-agent runners are a mix of BMG and PVC GPUs. Pin AOT to just those
       # two archs so a functionality fix builds against the hardware it runs on
