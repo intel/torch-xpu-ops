@@ -12,6 +12,4 @@
 
 #include <ATen/core/Tensor.h>
 
-namespace at::native::xpu {
-
-} // namespace at::native::xpu
+namespace at::native::xpu {} // namespace at::native::xpu

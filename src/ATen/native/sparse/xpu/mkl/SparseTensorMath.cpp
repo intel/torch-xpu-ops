@@ -14,6 +14,4 @@
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl/spblas.hpp>
 
-namespace at::native::xpu {
-
-} // namespace at::native::xpu
+namespace at::native::xpu {} // namespace at::native::xpu
