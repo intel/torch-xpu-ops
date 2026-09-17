@@ -42,8 +42,10 @@ If some of a group's cases are already placed and some are not, file only the
 unplaced ones, and comment on the existing issue that the same root cause
 produced more failures tonight.
 
-Also fetch `skipped_bmg`, `regression` and `new_case_failure`, since an issue
-carrying one of those may not carry `skipped`.
+Repeat the command for `skipped_bmg`, `regression` and `new_case_failure`,
+since an issue carrying one of those may not carry `skipped`. Several
+`--label` flags on one call means every label at once, not any of them, so it
+is one call per label.
 
 `--json body` hands you each body as a JSON string with its newlines escaped,
 so an issue is one physical line and a line-anchored `grep -x` for a case
