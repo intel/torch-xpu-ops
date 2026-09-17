@@ -405,7 +405,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_modes.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
     "dynamo/test_recompiles_xpu.py": None,
-    "functorch/test_ac_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_ac.py": None,
     "test_cuda_multigpu_xpu.py": None,
     "test_cuda_nvml_based_avail_xpu.py": None,
     "test_cuda_primary_ctx_xpu.py": None,
