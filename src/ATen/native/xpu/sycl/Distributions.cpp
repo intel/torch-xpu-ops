@@ -18,44 +18,39 @@
 
 namespace at::native::xpu {
 
+constexpr int poisson_threads_per_group = 512;
+constexpr int gamma_threads_per_group = 256;
+
 template <typename scalar_t>
 struct PoissonTensorApplyFunctor {
   void operator()(
-      sycl::nd_item<1> item,
+      randStatePhilox4_32_10_t& state,
       scalar_t& ret_val,
       const scalar_t& lambda) const {
     SYCL_KERNEL_ASSERT(
         lambda >= 0 &&
         "invalid Poisson rate, expected rate to be non-negative");
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(
-        std::get<0>(seeds),
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
-        std::get<1>(seeds),
-        &state);
     ret_val = static_cast<scalar_t>(rand_poisson(&state, lambda));
   }
-  PoissonTensorApplyFunctor(PhiloxXpuState rng_engine_inputs)
-      : philox_args_(rng_engine_inputs) {}
-
- private:
-  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t>
 void poisson_kernel(
     const at::TensorBase& ret,
     const at::TensorBase& lambda,
-    PhiloxXpuState rng_engine_inputs) {
-  auto functor = PoissonTensorApplyFunctor<scalar_t>(rng_engine_inputs);
+    XPUGeneratorImpl* gen) {
+  PoissonTensorApplyFunctor<scalar_t> functor;
   at::native::xpu::tensor_apply2<
       scalar_t,
       scalar_t,
       decltype(functor),
-      /*max_threads_per_block=*/512>(
+      poisson_threads_per_group>(
       const_cast<at::TensorBase&>(ret),
       const_cast<at::TensorBase&>(lambda),
+      gen,
+      // Knuth (lambda < 64) draws k+1 uniforms for k ~ Poisson(lambda), so the
+      // count is unbounded; 256 holds the overrun probability under 1e-70.
+      /*offsets_per_op=*/256,
       functor);
 }
 
@@ -63,18 +58,12 @@ void launch_poisson_kernel(
     const TensorBase& ret,
     const TensorBase& lambda,
     at::XPUGeneratorImpl* gen) {
-  PhiloxXpuState rng_engine_inputs;
-  {
-    // See Note [Acquire lock when using random generators]
-    std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(20);
-  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       ret.scalar_type(),
       "poisson_xpu",
-      [&] { poisson_kernel<scalar_t>(ret, lambda, rng_engine_inputs); });
+      [&] { poisson_kernel<scalar_t>(ret, lambda, gen); });
 }
 
 struct rand_uniform_wrapper {
@@ -133,17 +122,9 @@ void launch_binomial_kernel(TensorIteratorBase& iter, XPUGeneratorImpl* gen) {
 template <typename scalar_t, typename accscalar_t>
 struct GammaTensorApplyFunctor {
   void operator()(
-      sycl::nd_item<1> item,
+      randStatePhilox4_32_10_t& state,
       scalar_t& ret_val,
       const scalar_t& alpha) const {
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(
-        std::get<0>(seeds),
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
-        std::get<1>(seeds),
-        &state);
-
     auto uniform_lambda = [&state]() { return rand_uniform(&state); };
     BaseSampler<accscalar_t, decltype(uniform_lambda)> standard_uniform(
         uniform_lambda);
@@ -160,28 +141,26 @@ struct GammaTensorApplyFunctor {
     auto min_value = std::numeric_limits<scalar_t>::min();
     ret_val = (min_value > sample) ? min_value : sample;
   }
-
-  GammaTensorApplyFunctor(PhiloxXpuState philox_args)
-      : philox_args_(philox_args) {}
-
- private:
-  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t>
 void gamma_kernel(
     const at::TensorBase& ret,
     const at::TensorBase& alpha,
-    PhiloxXpuState philox_args) {
+    XPUGeneratorImpl* gen) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-  GammaTensorApplyFunctor<scalar_t, accscalar_t> functor(philox_args);
+  GammaTensorApplyFunctor<scalar_t, accscalar_t> functor;
   at::native::xpu::tensor_apply2<
       scalar_t,
       scalar_t,
       decltype(functor),
-      /*max_threads_per_block=*/256>(
+      gamma_threads_per_group>(
       const_cast<at::TensorBase&>(ret),
       const_cast<at::TensorBase&>(alpha),
+      gen,
+      // Rejection sampling overruns this only in the tail, unlike poisson's
+      // systematic overrun; kept at 10 to match CUDA's philox_cuda_state(10).
+      /*offsets_per_op=*/10,
       functor);
 }
 
@@ -189,23 +168,12 @@ void launch_gamma_kernel(
     Tensor& ret,
     const Tensor& alpha,
     XPUGeneratorImpl* gen) {
-  PhiloxXpuState rng_engine_inputs;
-  {
-    // See Note [Acquire lock when using random generators]
-    std::lock_guard<std::mutex> lock(gen->mutex_);
-    // Using a seed value of 10 for the Philox random engine initialization.
-    // This seed was chosen to ensure consistent random number generation
-    // behavior for this specific kernel. Modify with caution as it affects
-    // reproducibility of results.
-    rng_engine_inputs = gen->philox_xpu_state(10);
-  }
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       ret.scalar_type(),
       "gamma_xpu",
-      [&] { gamma_kernel<scalar_t>(ret, alpha, rng_engine_inputs); });
+      [&] { gamma_kernel<scalar_t>(ret, alpha, gen); });
 }
 
 template <typename scalar_t, typename accscalar_t>
