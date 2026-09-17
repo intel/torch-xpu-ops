@@ -131,17 +131,6 @@ jobs:
             --work-dir "${WORK_DIR}" \
             --report-dir "${{ github.workspace }}/ut_auto_issue_report"
 
-      - name: Check the drafts without filing
-        # Same checks, same rendering, nothing created. What a dry run is for.
-        if: ${{ ! inputs.create_issues }}
-        run: |
-          python3 .github/scripts/ut_create_issues.py \
-            --evidence-dir "${EVIDENCE_DIR}" \
-            --drafts "${DRAFTS}" \
-            --work-dir "${WORK_DIR}" \
-            --report-dir "${{ github.workspace }}/ut_auto_issue_report" \
-            --dry-run
-
       - name: Report usage cost
         # Every run, filing or not: the analysis costs the same either way.
         if: ${{ always() }}
