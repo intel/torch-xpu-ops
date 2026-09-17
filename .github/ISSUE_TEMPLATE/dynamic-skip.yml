@@ -3,17 +3,28 @@ description: Create an issue to skip PR unrelated failures dynamically
 title: "[Bug Skip]: "
 labels: ["skipped"]
 
-# This form defines the shape of a skip issue for both a human and the nightly
-# bot: ut_create_issues.py renders the same `label:` headings, in this order,
-# and reads the `labels:` above rather than hardcoding them. The labels that
-# depend on the run - skipped_bmg, regression, new_case_failure - cannot come
-# from here, because a form cannot set a label from what a field contains.
+# This form is the one definition of a skip issue, for a human and for the
+# nightly bot alike. ut_create_issues.py reads it and renders one `### <label>`
+# section per textarea below, in this order, filling each by its `id`. Add,
+# reorder or rename a field and the bot follows; only a new `id` needs the
+# script to learn what goes in it.
 #
-# The `Cases:` block is parsed by fetch_issues.sh, by the awk filter in
-# _linux_ut.yml and by mark_passed_issue in ut_result_check.sh. Between them
-# the contract is: a line starting with `Cases:`, one case per line with no
-# blank lines inside, and a blank line to end it. Nothing else in a body may
-# contain the string `Cases:`, or the awk filter starts collecting again there.
+# It also reads the `labels:` above, and the three below that no form can
+# express, because a form cannot set a label from what a field contains:
+# the first follows the machine that ran the job, the others follow this run's
+# comparison against the last healthy nightly. A `persistent` or `unknown`
+# failure deliberately has no classification label.
+#
+# bot-label bmg-runner: skipped_bmg
+# bot-label cls-regression: regression
+# bot-label cls-new_case_failure: new_case_failure
+#
+# The `Cases:` block is what mutes, and it is parsed by fetch_issues.sh, by the
+# awk filter in _linux_ut.yml and by mark_passed_issue in ut_result_check.sh.
+# Between them the contract is: a line starting with `Cases:`, one case per
+# line with no blank lines inside, and a blank line to end it. Nothing else in
+# a body may contain the string `Cases:`, or the awk filter starts collecting
+# again there.
 
 body:
 - type: markdown
@@ -21,6 +32,7 @@ body:
     value: >
       #### Before submitting a bug, please make sure the issue hasn't been already addressed by searching through [the existing and past issues](https://github.com/pytorch/pytorch/issues?q=is%3Aissue+sort%3Acreated-desc+).
 - type: textarea
+  id: cases
   attributes:
     label: 🐛 Describe the bug with skip template
     description: |
@@ -58,24 +70,28 @@ body:
   validations:
     required: true
 - type: textarea
+  id: summary
   attributes:
     label: Summary
     description: One to three sentences on what is failing and why these cases are one bug.
   validations:
     required: false
 - type: textarea
+  id: error_log
   attributes:
     label: ErrorLog
     description: The failure message, and the traceback if you have it.
   validations:
     required: false
 - type: textarea
+  id: reproduce
   attributes:
     label: Reproduce
     description: The directory to run from and the pytest invocation.
   validations:
     required: false
 - type: textarea
+  id: pytorch_version
   attributes:
     label: Pytorch Version
     description: |
@@ -85,6 +101,7 @@ body:
   validations:
     required: false
 - type: textarea
+  id: versions
   attributes:
     label: Versions
     description: |

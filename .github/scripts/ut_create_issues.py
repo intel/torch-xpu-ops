@@ -30,7 +30,9 @@ from pathlib import Path
 REPO = os.environ.get("GITHUB_REPOSITORY") or "intel/torch-xpu-ops"
 SERVER = os.environ.get("GITHUB_SERVER_URL") or "https://github.com"
 PYTORCH_REPO = "pytorch/pytorch"
-TEMPLATE = Path(".github/ISSUE_TEMPLATE/agent/ut-auto-issue-body.md")
+# The one definition of a skip issue: its sections, their order, and the labels
+# it carries. Read rather than mirrored, so a bot issue cannot drift from a
+# hand-written one.
 SKIP_FORM = Path(".github/ISSUE_TEMPLATE/dynamic-skip.yml")
 
 # Stamped into every body so a later night, and a reader, can tell a
@@ -43,11 +45,6 @@ CASES_END = "<!-- cases:end -->"
 TITLE_PREFIX = "[Bug Skip]: "
 MAX_TITLE = 140
 CLS_PREFIX = {"regression": "[Regression] ", "new_case_failure": "[New Case] "}
-# Only these two are labels. `persistent` and `unknown` state their position in
-# the body instead, because neither "it used to pass" nor "it is a new case" is
-# true of them.
-CLS_LABELS = ("regression", "new_case_failure")
-BMG_LABEL = "skipped_bmg"
 # An issue may carry any of these, so dedup has to ask for each separately:
 # repeated --label on one `gh issue list` means every label at once.
 DEDUP_LABELS = ("skipped", "skipped_bmg", "regression", "new_case_failure")
@@ -122,24 +119,66 @@ def already_muted() -> dict[str, int]:
 
 
 # --------------------------------------------------------------------------- #
-# Labels and title
+# The form, read
 # --------------------------------------------------------------------------- #
 
 
-def form_labels() -> list[str]:
-    """The labels the Dynamic skip form gives every skip issue.
+def form_text() -> str:
+    return SKIP_FORM.read_text(encoding="utf-8")
 
-    Read rather than hardcoded so the form stays the one place that says what a
-    skip issue is. A form cannot express the rest - `skipped_bmg` follows the
-    machine that ran the job and the classification labels follow the baseline
-    comparison - so those are added below.
+
+def form_fields(text: str) -> list[tuple[str, str]]:
+    """`(id, label)` per textarea, in the order GitHub renders them.
+
+    Scanned rather than parsed as YAML so this stays stdlib-only. The two keys
+    are unambiguous by indentation: `id` is a sibling of `type` at two spaces,
+    `label` sits under `attributes` at four, and any prose that might contain
+    either word is indented deeper inside a `description`.
     """
-    text = SKIP_FORM.read_text(encoding="utf-8")
+    fields: list[tuple[str, str]] = []
+    current: dict[str, str] = {}
+    for line in text.splitlines():
+        if line.startswith("- type:"):
+            current = {"type": line.split(":", 1)[1].strip()}
+        elif line.startswith("  id: "):
+            current["id"] = line[6:].strip()
+        elif line.startswith("    label: "):
+            current["label"] = line[11:].strip()
+            if current.get("type") == "textarea" and "id" in current:
+                fields.append((current["id"], current["label"]))
+    if not fields:
+        raise SystemExit(f"::error::no identified textarea in {SKIP_FORM}")
+    return fields
+
+
+def form_labels(text: str) -> list[str]:
+    """The labels the form gives every skip issue, plus the ones it cannot.
+
+    `labels:` applies only to the web flow - `gh issue create` does not read a
+    template - so it is read here and applied by hand. The rest cannot be
+    expressed by a form at all, since a form cannot set a label from what a
+    field contains, so the form declares them for this script instead.
+    """
     match = re.search(r"^labels:\s*\[(.*?)\]\s*$", text, re.MULTILINE)
     if not match:
         raise SystemExit(f"::error::no labels: line in {SKIP_FORM}")
     return [name.strip().strip("\"'") for name in match.group(1).split(",")
             if name.strip()]
+
+
+def bot_labels(text: str) -> dict[str, str]:
+    found = dict(re.findall(r"^#\s*bot-label\s+(\S+):\s*(\S+)\s*$", text,
+                            re.MULTILINE))
+    missing = {"bmg-runner", "cls-regression", "cls-new_case_failure"} - set(found)
+    if missing:
+        raise SystemExit(
+            f"::error::{SKIP_FORM} declares no bot-label for {sorted(missing)}")
+    return found
+
+
+# --------------------------------------------------------------------------- #
+# Labels and title
+# --------------------------------------------------------------------------- #
 
 
 def is_bmg(runner: str) -> bool:
@@ -148,12 +187,15 @@ def is_bmg(runner: str) -> bool:
     return "bmg" in runner.lower()
 
 
-def labels_for(cls: str, runner: str, base: list[str]) -> list[str]:
+def labels_for(cls: str, runner: str, base: list[str],
+               extra: dict[str, str]) -> list[str]:
+    """A `persistent` or `unknown` group gets no classification label, because
+    neither "it used to pass" nor "it is a new case" is true of it."""
     labels = list(base)
     if is_bmg(runner):
-        labels.append(BMG_LABEL)
-    if cls in CLS_LABELS:
-        labels.append(cls)
+        labels.append(extra["bmg-runner"])
+    if f"cls-{cls}" in extra:
+        labels.append(extra[f"cls-{cls}"])
     return labels
 
 
@@ -291,20 +333,32 @@ def error_log_for(cases: list[dict], tracebacks: dict) -> str:
     return "\n".join([heading, "", NO_TRACEBACK])
 
 
-def load_template() -> str:
-    text = TEMPLATE.read_text(encoding="utf-8")
-    # The leading comment documents the template; it is not part of a body.
-    return re.sub(r"\A<!--.*?-->\n", "", text, flags=re.DOTALL)
+def cases_section(lines: list[str]) -> str:
+    """The muting block, in the shape all three of its parsers expect.
+
+    The blank line before the end marker is what ends the block: the awk filter
+    in _linux_ut.yml stops at the first line with no alphanumerics and
+    mark_passed_issue at the first empty one, and the marker itself is neither.
+    """
+    return "\n".join([CASES_BEGIN, "Cases:", *lines, "", CASES_END])
 
 
-def render(template: str, slots: dict[str, str]) -> str:
-    body = template
-    for key, value in slots.items():
-        body = body.replace("{{" + key + "}}", value)
-    left = re.findall(r"\{\{(\w+)\}\}", body)
-    if left:
-        raise SystemExit(f"::error::template slot(s) {', '.join(left)} not filled")
-    return body
+def render_body(fields: list[tuple[str, str]], slots: dict[str, str],
+                marker: str) -> str:
+    """One `### <label>` section per form field, in the form's order.
+
+    A field the script has nothing for is still rendered, empty, rather than
+    dropped: the sections a skip issue has are the form's business, and a body
+    missing one would not be the same document as a hand-written issue.
+    """
+    unknown = set(slots) - {field_id for field_id, _ in fields}
+    if unknown:
+        raise SystemExit(
+            f"::error::{SKIP_FORM} has no field for {sorted(unknown)}")
+    out: list[str] = []
+    for field_id, label in fields:
+        out += [f"### {label}", "", slots.get(field_id, ""), ""]
+    return "\n".join(out + [marker, ""])
 
 
 # --------------------------------------------------------------------------- #
@@ -342,7 +396,7 @@ def check_draft(draft: dict, index: dict[str, dict]) -> tuple[list[dict], str]:
     return cases, ""
 
 
-def split(cases: list[dict], render_body) -> list[list[dict]]:
+def split(cases: list[dict], body_of) -> list[list[dict]]:
     """Into as few parts as each will render inside the body limit.
 
     Splitting is the only correct response to a group that is too big: the
@@ -354,7 +408,7 @@ def split(cases: list[dict], render_body) -> list[list[dict]]:
              for i in range(0, len(cases), MAX_CASES_PER_ISSUE)]
     while queue:
         chunk = queue.pop(0)
-        if len(chunk) > 1 and len(render_body(chunk)) > SAFE_BODY_LIMIT:
+        if len(chunk) > 1 and len(body_of(chunk)) > SAFE_BODY_LIMIT:
             half = len(chunk) // 2
             queue[:0] = [chunk[:half], chunk[half:]]
             continue
@@ -425,8 +479,10 @@ def main() -> int:
         warn(f"gate(s) {', '.join(blocking)} are set for this run; filing nothing")
         return finish(report, report_dir)
 
-    template = load_template()
-    base_labels = form_labels()
+    form = form_text()
+    fields = form_fields(form)
+    base_labels = form_labels(form)
+    extra_labels = bot_labels(form)
     muted = already_muted()
     created: list[tuple[dict, list[int]]] = []
 
@@ -458,7 +514,7 @@ def main() -> int:
 
         cls = cases[0]["cls"]
         runner = cases[0]["runner_name"]
-        labels = labels_for(cls, runner, base_labels)
+        labels = labels_for(cls, runner, base_labels, extra_labels)
         category = cases[0]["category"]
         group_contexts = [contexts[c["line"]] for c in cases
                           if c["line"] in contexts]
@@ -467,20 +523,21 @@ def main() -> int:
                     first: int | None = None) -> str:
             error_log = (f"See #{first} for the failure text." if first
                          else error_log_for(chunk, tracebacks))
-            return render(template, {
-                "CASES": "\n".join(c["line"] for c in chunk),
-                "SUMMARY": draft["summary"].strip(),
-                "ERROR_LOG": error_log,
-                "REPRODUCE": reproduce_for(chunk[0], reproduce),
-                "EVIDENCE": evidence_block(run_json, category, cls,
-                                           cases[0].get("cls_reason", ""),
-                                           group_contexts if part == 1 else []),
-                "COLLECT_ENV": run_json["collect_env"].get(
-                    cases[0]["ut_job"], "collect_env was not captured."),
-                "MARKER": MARKER.format(version=MARKER_VERSION,
-                                        run_id=run_json["run_id"],
-                                        part=part, parts=parts),
-            })
+            collect_env = run_json["collect_env"].get(
+                cases[0]["ut_job"], "collect_env was not captured.")
+            return render_body(fields, {
+                "cases": cases_section([c["line"] for c in chunk]),
+                "summary": draft["summary"].strip(),
+                "error_log": error_log,
+                "reproduce": f"```bash\n{reproduce_for(chunk[0], reproduce)}\n```",
+                "pytorch_version": evidence_block(
+                    run_json, category, cls, cases[0].get("cls_reason", ""),
+                    group_contexts if part == 1 else []),
+                "versions": ("<details><summary>Detail</summary>\n\n```\n"
+                             f"{collect_env}\n```\n\n</details>"),
+            }, MARKER.format(version=MARKER_VERSION,
+                             run_id=run_json["run_id"],
+                             part=part, parts=parts))
 
         chunks = split(cases, body_of)
         numbers: list[int] = []
