@@ -1,65 +1,61 @@
 <!--
-Body template for issues filed from a nightly UT run by the ut-issue-authoring
-skill. Copy the structure exactly and replace the <angle bracket> slots.
+Body of an issue filed from a nightly UT run. Rendered by
+.github/scripts/ut_create_issues.py, which strips this comment and replaces
+every {{TOKEN}}. Nothing here is written by a model: the skill supplies the
+summary, and every other slot is filled from the evidence.
 
 The two `###` headings are what the 🐛 Dynamic skip form in ../dynamic-skip.yml
 renders, so a machine-filed issue and a hand-written one read the same and are
-parsed the same. Its `labels:` only apply to the web form, so the labels of a
-machine-filed issue are applied by ut_auto_issue.py instead.
+parsed the same. That form's `labels:` apply only to the web flow, so the
+labels of a machine-filed issue are applied by the script instead.
 
-Two parts are load-bearing and must not change without updating their consumers:
+Two parts are load-bearing and must not change without updating their
+consumers:
 
   * The `Cases:` block is parsed by fetch_issues.sh plus the awk filter in
     _linux_ut.yml, and every line in it is removed from the next run's failures
     by `grep -vFxf` in ut_result_check.sh. It must start with a line containing
     `Cases:`, carry one `<category>,<class name>,<test name>` line per case with
-    no blank lines in between, and never be truncated or abbreviated - an
-    incomplete block silently fails to skip the case, and a line that names no
-    real case silently mutes a future failure. Every line is copied verbatim
-    from the evidence; none is ever typed out or reformatted.
+    no blank lines in between, and never be truncated - an incomplete block
+    silently fails to skip the case, and a line that names no real case
+    silently mutes a future failure. Every line is copied from the evidence and
+    checked against it before the issue is created.
   * The trailing ut-auto-issue marker is how a machine-filed issue is
     recognised on later nights.
-
-Everything else is for humans and is safe to edit by hand.
 -->
 ### 🐛 Describe the bug with skip template
 
 <!-- cases:begin -->
 Cases:
-<one verbatim case line per case, no blank lines, never abbreviated>
+{{CASES}}
 <!-- cases:end -->
 
 ## Summary
 
-<one to three sentences on what is failing and why these cases are one bug>
+{{SUMMARY}}
 
 ## ErrorLog
 
-### <the failing message, as it appears in the evidence>
-
-```
-<traceback lines copied from tracebacks.json, or "No traceback captured in the JUnit XML.">
-```
+{{ERROR_LOG}}
 
 ## Reproduce
 
 ```bash
-<the cd from reproduce.file_path>
-<the command from reproduce.command_template, with the case substituted>
+{{REPRODUCE}}
 ```
 
 ## Pytorch Version
 
-<the version lines: detected in, latest good where it applies, current>
-
-<the evidence block for this issue's classification, pasted from blocks.json>
+{{EVIDENCE}}
 
 ### Versions
 
 <details><summary>Detail</summary>
 
-<collect_env for this issue's UT job, from run.json>
+```
+{{COLLECT_ENV}}
+```
 
 </details>
 
-<!-- ut-auto-issue:v1:run=<run id>:part=<n>/<total> -->
+{{MARKER}}
