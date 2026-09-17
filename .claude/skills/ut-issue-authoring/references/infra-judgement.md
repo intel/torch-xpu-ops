@@ -33,9 +33,9 @@ couple of files, is that code.
 one dtype, one kernel or one recently changed area point at that thing, whatever
 the message sounds like.
 
-**The machine itself.** `run.json` gives `runners` per leg. One error appearing
+**The machine itself.** `run.json` gives `runners` per UT job. One error appearing
 on two different machines argues against a machine fault. The same error on one
-machine while the other leg is clean argues for it.
+machine while the other UT job is clean argues for it.
 
 **The rest of the run.** `run.json.report.categories` shows whether each
 category completed. A run that finished everything else and produced a handful
@@ -79,16 +79,16 @@ that is failing everything else can go the other way.
 - Never call something `infra` because it is hard to triage. That decision
   mutes nothing, but it does mean nobody looks.
 
-## Withdrawing a whole leg, or the whole run
+## Withdrawing a whole ut_job, or the whole run
 
-Some evidence is about the run rather than about any one group: a leg that
+Some evidence is about the run rather than about any one group: a UT job that
 produced hundreds of device errors, a category that stopped part way, a machine
-that failed everything it touched. `run.json.legs[leg].infra_pattern_ratio`
+that failed everything it touched. `run.json.ut_jobs[ut_job].infra_pattern_ratio`
 puts a number on the first of those, and
 `run.json.report.categories` on the second.
 
-When a leg looks like that, file nothing from it - including the
+When a UT job looks like that, file nothing from it - including the
 ordinary-looking failures, which are not trustworthy either on a night the
-machine misbehaved. When only part of a leg looks wrong, judge group by group
-instead; withdrawing the leg would also drop the failures that had nothing to
+machine misbehaved. When only part of a UT job looks wrong, judge group by group
+instead; withdrawing the UT job would also drop the failures that had nothing to
 do with it.

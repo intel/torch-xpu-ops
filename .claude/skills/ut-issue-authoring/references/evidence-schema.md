@@ -10,17 +10,17 @@ artifacts by a deterministic collector; none of it is a judgement.
   "run_id": 12345678,
   "created_at": "2026-08-30",
 
-  // Everything below is keyed by test leg - `basic` or `op_ut` - because a
-  // bisect range is per leg. The baseline commit and tonight's commit have to
-  // come from the same leg or the compare link spans the wrong commits.
+  // Everything below is keyed by UT job - `basic` or `op_ut` - because a
+  // bisect range is per UT job. The baseline commit and tonight's commit have to
+  // come from the same UT job or the compare link spans the wrong commits.
   "job_urls":      { "basic": "https://github.com/.../job/123" },
   "torch":         { "basic": "abc1234..." },
   "torch_xpu_ops": { "basic": "def5678..." },
-  "runners":       { "basic": "bmg-test-04" },   // which machine ran the leg
+  "runners":       { "basic": "bmg-test-04" },   // which machine ran the UT job
   "collect_env":   { "basic": "PyTorch version: ..." },
 
-  // Which leg each category belongs to.
-  "category_leg": { "op_extended": "basic", "op_ut": "op_ut" },
+  // Which UT job each category belongs to.
+  "category_ut_job": { "op_extended": "basic", "op_ut": "op_ut" },
 
   "gates": {
     "build_failed": false,   // nothing downstream can be trusted
@@ -28,7 +28,7 @@ artifacts by a deterministic collector; none of it is a judgement.
     "oversized":    false    // too many failures to group; file nothing
   },
 
-  "legs": {
+  "ut_jobs": {
     "basic": {
       "runner_name": "bmg-test-04",
       "new_failures": 312,
@@ -45,11 +45,12 @@ artifacts by a deterministic collector; none of it is a judgement.
   // of truth for them.
   "limits": { "max_issues_per_run": 15, "max_cases_per_issue": 400,
               "safe_body_chars": 60000, "hard_body_chars": 65536,
-              "infra_max_test_files": 5, "infra_leg_share": 0.3,
-              "infra_leg_min_cases": 10 },
+              "infra_max_test_files": 5, "infra_ut_job_share": 0.3,
+              "infra_ut_job_min_cases": 10 },
 
-  // Resolved label lists, keyed `<cls>|<leg>`, the runner being per leg. Every
-  // case in cases.json also carries its own; both are copied, never derived.
+  // Resolved label lists, keyed `<cls>|<ut_job>`, the runner being per UT job.
+  // Every case in cases.json also carries its own; both are copied, never
+  // derived.
   "labels": { "regression|op_ut": ["skipped", "skipped_bmg", "regression"],
               "persistent|op_ut": ["skipped", "skipped_bmg"],
               "unknown|basic":    ["skipped", "skipped_bmg"] },
@@ -60,7 +61,7 @@ artifacts by a deterministic collector; none of it is a judgement.
   "report": {
     "categories": [{"category": "op_ut", "state": "complete",
                     "actual": 178102, "expected": 178548}],
-    "skipped_legs": [],
+    "skipped_ut_jobs": [],
     "vanished_modules": [],
     "baseline_walk": []
   }
@@ -82,7 +83,7 @@ grouping must cover exactly.
     {
       "line": "op_extended,test_ops_xpu.TestFooXPU,test_bar_xpu_float32",
       "category": "op_extended",
-      "leg": "basic",
+      "ut_job": "basic",
       "class_name": "test_ops_xpu.TestFooXPU",
       "test_name": "test_bar_xpu_float32",
       "test_file": "test_ops_xpu.py",
@@ -153,7 +154,7 @@ The same classifications with the working behind them.
   // The nightly each category was compared against.
   "baselines": {
     "op_extended": { "run_id": 12345000, "created_at": "2026-08-29",
-                     "age_in_runs": 1, "leg": "basic", "job_url": "...",
+                     "age_in_runs": 1, "ut_job": "basic", "job_url": "...",
                      "torch": "abc1234", "torch_xpu_ops": "def5678" }
   }
 }
@@ -179,9 +180,9 @@ saying which case it came from.
 
 Markdown already rendered from the facts, to be pasted rather than rebuilt.
 The bisect range is the reason this file exists: the baseline commit and
-tonight's commit have to come from the same test leg, nothing in the rendered
-link says which leg it came from, and a range spanning the wrong commits sends
-a reader hunting through the wrong history.
+tonight's commit have to come from the same UT job, nothing in the rendered
+link says which UT job it came from, and a range spanning the wrong commits
+sends a reader hunting through the wrong history.
 
 ```jsonc
 {

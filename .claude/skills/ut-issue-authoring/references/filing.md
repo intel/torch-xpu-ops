@@ -13,12 +13,12 @@ each step can only reduce what the next one files.
 | `abort` | more new failures than the run-level threshold. File nothing. |
 | `oversized` | too many failures to group meaningfully. File nothing; say what the volume looks like. |
 
-Then your own reading, per leg, from `run.json.legs`:
+Then your own reading, per UT job, from `run.json.ut_jobs`:
 
 ```
-infra_pattern_ratio > limits.infra_leg_share
-  and new_failures >= limits.infra_leg_min_cases
-    -> that leg is machine breakage. File nothing from it.
+infra_pattern_ratio > limits.infra_ut_job_share
+  and new_failures >= limits.infra_ut_job_min_cases
+    -> that UT job is machine breakage. File nothing from it.
 ```
 
 This is deliberately blunt. A share of denylisted messages that high says the
@@ -126,12 +126,12 @@ Keep it under about 140 characters and plain ASCII.
 
 Copy the `labels` list from any case in the group - `cases.json` carries it
 resolved, per case. It is the same list for every case in a uniform group,
-because it is a pure function of `cls` and the runner that ran the leg.
+because it is a pure function of `cls` and the runner that ran the UT job.
 
 What it resolves to, for reading the list rather than for producing one:
 
 - `skipped` on every issue, without exception. It is what mutes the case.
-- `skipped_bmg` only when the leg ran on a BMG runner - `fetch_issues.sh:25`
+- `skipped_bmg` only when the UT job ran on a BMG runner - `fetch_issues.sh:25`
   honours it on those and ignores it everywhere else, so putting it on a
   non-BMG issue claims a scope the issue does not have.
 - The classification, and only when it is `regression` or `new_case_failure`.
@@ -142,7 +142,7 @@ What it resolves to, for reading the list rather than for producing one:
 Do not derive it, and in particular do not reach for `new_case_failure` because
 a failure looks new to you.
 
-`run.json.labels` holds the same lists keyed `<cls>|<leg>`, for a group whose
+`run.json.labels` holds the same lists keyed `<cls>|<ut_job>`, for a group whose
 cases were all already placed.
 
 ### Body
@@ -158,7 +158,7 @@ Paste, do not compose:
 | stale-baseline note | `blocks.json.baseline_staleness[category]`, when present |
 | whole-module table and verdict | `blocks.json.collection_error[line]` |
 | reproduce command | `cases.json.reproduce[category]`, with the case substituted for `failed_case` |
-| collect_env | `run.json.collect_env[leg]` |
+| collect_env | `run.json.collect_env[ut_job]` |
 
 Only the summary, the root cause and the title are yours to write.
 

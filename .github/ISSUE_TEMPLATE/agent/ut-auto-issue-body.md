@@ -2,6 +2,11 @@
 Body template for issues filed from a nightly UT run by the ut-issue-authoring
 skill. Copy the structure exactly and replace the <angle bracket> slots.
 
+The two `###` headings are what the 🐛 Dynamic skip form in ../dynamic-skip.yml
+renders, so a machine-filed issue and a hand-written one read the same and are
+parsed the same. Its `labels:` only apply to the web form, so the labels of a
+machine-filed issue are applied by ut_auto_issue.py instead.
+
 Two parts are load-bearing and must not change without updating their consumers:
 
   * The `Cases:` block is parsed by fetch_issues.sh plus the awk filter in
@@ -53,7 +58,7 @@ Cases:
 
 <details><summary>Detail</summary>
 
-<collect_env for this issue's leg, from run.json>
+<collect_env for this issue's UT job, from run.json>
 
 </details>
 
