@@ -187,17 +187,23 @@ struct Msg {
 };
 
 // SYCL_KERNEL_ASSERT_MSG is not ready
+// TODO: add actual handling for the message argument
+// See: https://github.com/intel/torch-xpu-ops/issues/5165
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void assert_async_kernel1(const scalar_t* input, Msg msg) {
   SYCL_KERNEL_ASSERT(input[0] != 0);
 }
 
+// TODO: add actual handling for the message argument
+// See: https://github.com/intel/torch-xpu-ops/issues/5165
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void assert_async_kernel2(const c10::complex<float>* input, Msg msg) {
   SYCL_KERNEL_ASSERT(input[0] != c10::complex<float>(0, 0));
 }
 
+// TODO: add actual handling for the message argument
+// See: https://github.com/intel/torch-xpu-ops/issues/5165
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void assert_async_kernel3(const c10::complex<double>* input, Msg msg) {
   SYCL_KERNEL_ASSERT(input[0] != c10::complex<double>(0, 0));

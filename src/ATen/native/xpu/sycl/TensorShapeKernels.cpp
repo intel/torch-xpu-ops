@@ -14,6 +14,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorShape.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/util/TypeCast.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -678,7 +679,7 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
     num_groups += at::ceil_div(split_chunk_size, GROUP_SIZE * BYTES_PER_THREAD);
   }
 
-  int64_t tile_size = syclMaxWorkItemsPerTile();
+  int64_t tile_size = at::xpu::getDeviceMaxWorkItems();
   const int64_t max_groups = tile_size / GROUP_SIZE * 2.0;
 
   // Make each thread process BYTES_PER_THREAD * iter_factor bytes to regulate
