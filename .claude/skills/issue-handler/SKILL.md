@@ -659,11 +659,29 @@ comment for a human to review the fix. Do not write it yourself:
 **weak-accepted** <!-- review: weak-accepted -->
 **weak-rejected** <!-- review: weak-rejected -->
 **strong-rejected** <!-- review: strong-rejected -->
+**issue-drop** <!-- review: issue-drop -->
 
+why: root-cause | already-fixed | fix-wrong | other
 notes:
 ```
 
-A reviewer copies it into a new comment, keeps one line, and says why.
+A reviewer copies it into a new comment, keeps one verdict line, and says
+why. The verdict is harvested by the dashboard, so the shape matters: one
+comment carries exactly one verdict, and on a batch run it names its
+sub-item by upstream issue number inside the marker — a bare verdict there
+cannot say which patch it judged and is discarded:
+
+```
+**weak-accepted** <!-- review: weak-accepted item=197334 -->
+
+why: root-cause
+notes:
+```
+
+`issue-drop` is the one verdict that is not about the patch: there was
+nothing to repair (an accepted XPU/CUDA alignment difference, a corner case
+nobody intends to fix, a report that does not hold). It leaves the fix rate
+entirely rather than counting as a failure, and needs no `why:`.
 
 ## Iterative loop bounds
 
