@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -170,7 +171,7 @@ void nll_loss2d_forward_kernel(
         "nll_loss2d_forward_no_reduce_kernel",
         [&] {
           constexpr auto kfn = nll_loss2d_forward_noreduce_kernel<scalar_t>;
-          int64_t local_range = syclMaxWorkGroupSize<kfn>();
+          int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<kfn>();
           auto global_range = (count + local_range - 1) / local_range;
           sycl_kernel_submit<kfn>(
               global_range * local_range,
@@ -215,7 +216,6 @@ void nll_loss2d_forward_kernel(
        &target_,
        &output,
        &total_weight,
-       &input,
        &target,
        &reduction,
        &ignore_index] {
@@ -400,7 +400,7 @@ void nll_loss2d_backward_kernel(
         "nll_loss2d_backward_no_reduce_kernel",
         [&] {
           constexpr auto kfn = nll_loss2d_backward_noreduce_kernel<scalar_t>;
-          int64_t local_range = syclMaxWorkGroupSize<kfn>();
+          int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<kfn>();
           auto global_range = (count + local_range - 1) / local_range;
           sycl_kernel_submit<kfn>(
               global_range * local_range,
@@ -432,7 +432,7 @@ void nll_loss2d_backward_kernel(
           auto weight_ = optional_contiguous(weight);
           int64_t map_nelem = target_numel / batch_size;
           constexpr auto kfn = nll_loss2d_backward_kernel_<scalar_t>;
-          int64_t max_work_group_size = syclMaxWorkGroupSize<kfn>();
+          int64_t max_work_group_size = at::xpu::getKernelMaxWorkGroupSize<kfn>();
           int blocks_per_sample =
               (map_nelem + max_work_group_size - 1) / max_work_group_size / 128;
           blocks_per_sample = (blocks_per_sample == 0) ? 1 : blocks_per_sample;

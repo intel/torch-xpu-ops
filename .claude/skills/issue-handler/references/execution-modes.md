@@ -141,6 +141,7 @@ markers are sub-headings within that one comment.
 | `<!-- agent:implement -->` | `fix-implement` (diff, not prose) |
 | `<!-- agent:verify -->` | `fix-verify` |
 | `<!-- agent:summary -->` | `issue-handler` (Stage 6 closing summary) |
+| `<!-- agent:review -->` | the `fix` workflow — the template a human fills in to review the fix |
 | `<!-- agent:batch-fanout -->` | `issue-handler` (batch fan-out summary, skip-list or heterogeneous) |
 
 ### 4. Canonical section headings
@@ -183,12 +184,9 @@ Objective, Current Status`.
 
 ## Reset-between-entries recipe (batched fan-out)
 
-Both orchestrators run a fan-out loop over independent
-entries (`issue-handler`'s Stage 1u batch path, `xpu-nightly-ci-fix`'s
-nightly batch). Each entry is a separate sub-bug and can triage to a
-different `target_repo`, so a prior entry's staged diff must not
-bleed into the next. Both orchestrators use this identical recipe;
-it lives here so the two copies cannot drift.
+Stage 1u fans out over independent entries. Each entry is a separate
+sub-bug and can triage to a different `target_repo`, so a prior entry's
+staged diff must not bleed into the next.
 
 Capture the two independent base SHAs **once**, before entering the
 loop:
