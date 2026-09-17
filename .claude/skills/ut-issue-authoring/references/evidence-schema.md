@@ -61,9 +61,25 @@ about the machine rather than about the code.
 `report.vanished_cases` is what the baseline ran and this run does not have at
 all, per module - a module that stopped importing, a skip pattern wide enough
 to empty a file, or a test removed or renamed in stock pytorch. These did not
-fail; they did not run. A failing case in such a module is classified `unknown`
-rather than `new_case_failure`, because "absent from the baseline" stops
-meaning "new test" once the module's names have moved.
+fail; they did not run.
+
+```jsonc
+{
+  "category": "op_ut", "module": "test_ops_xpu",
+  "cases": 3,              // baseline names absent tonight
+  "baseline_passed": 412,  // of those, how many the baseline passed
+  "module_gone": false,    // true when the module produced nothing at all
+  "baseline_run": 12345000,
+  "lost_names":   ["test_foo_xpu_float32"],        // up to 20 of each
+  "gained_names": ["test_foo_new_xpu_float32"]
+}
+```
+
+A failing case in such a module is classified `unknown` rather than
+`new_case_failure`, because "absent from the baseline" stops meaning "new
+test" once the module's names have moved. Whether a gained name is a lost one
+renamed is a judgement about two strings, so the collector does not make it -
+see [SKILL.md](../SKILL.md).
 
 `report.baseline_walk` records every nightly the collector looked at per
 category and why it was or was not usable. Context for a category that ended up
