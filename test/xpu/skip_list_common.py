@@ -379,7 +379,7 @@ skip_dict = {
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_training_ir_to_run_decomp_xpu.py": None,
-    "test_basic_torch_np_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
     "test_fx_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
     "test_numba_integration_xpu.py": None,
