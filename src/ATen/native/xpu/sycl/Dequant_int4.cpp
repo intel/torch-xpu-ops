@@ -18,6 +18,7 @@ template <
     int TileK = 1,
     int TileN = 16,
     int SgSize = 16>
+// clang-format off
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SgSize>))
 void dequant_int4_kernel_fn(
@@ -26,6 +27,7 @@ void dequant_int4_kernel_fn(
     const uint8_t* weight_int4,
     const scalar_t* ScaleAndZeros,
     scalar_t* weight_dequant) {
+// clang-format on
   auto it = syclext::this_work_item::get_nd_item<1>();
   int constexpr GroupN = TileN;
   int constexpr GroupK = SgSize * TileK;
