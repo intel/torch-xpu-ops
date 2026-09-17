@@ -179,6 +179,7 @@ caller would paste as a comment:
 
 | Field | Value |
 |-------|-------|
+| Issue type | single-bug / batch-bug (skip-list) / batch-bug (heterogeneous) / non-bug |
 | Reproduction missing | yes / no |
 | Scope | pytorch / torch-xpu-ops / both / unclear |
 | Dependencies | comma-separated list, or (none) |
@@ -199,6 +200,16 @@ update it in place. The marker is part of the report; the skill does
 not consume it.
 
 Omit the `**Reason:**` line entirely when `handling == agent-fixable`.
+
+For a batch issue, list the sub-items this run handles under the table,
+one numbered line each, numbered as in the issue body — and say in one
+sentence how they group (which sub-item takes the fix, which are
+re-checked against it):
+
+```markdown
+4. `test_foo_xpu_float8_e4m3fn` (`TestBarXPU`) -- pytorch/pytorch#197334
+5. `test_foo_xpu_float8_e5m2` -- pytorch/pytorch#197336
+```
 
 ### 6b. JSON block
 

@@ -438,17 +438,32 @@ responsibility — this skill only emits the report.
 ```
 <!-- agent:root-cause -->
 
-## Root-cause Analysis
+## Root Cause
 
-- **Issue type:** <kernel/operator bug | core framework bug | inductor bug>
-- **Fix repo:** <pytorch | torch-xpu-ops | N/A>
-- **Analyzed at:** <target_repo>@<short_sha>
-- **Root cause:** <2-3 sentences>
-- **Fix strategy:** <files/functions to change, or "None">
-- **Verdict:** <IMPLEMENTING / NEEDS_HUMAN> — <one-line reason>
+Analyzed at `<fix_repo>@<short_sha>`, pytorch `origin/main@<short_sha>`.
+
+<Paragraph 1 — the mechanism: which function/dispatch/macro is wrong,
+cited as `path/to/file.cpp:LINE`, and why that produces the observed
+failure.>
+
+<Paragraph 2, when the failure is new — why it appeared now: the
+upstream commit, PR, or config change that started exercising this path.>
+
+<Paragraph 3, when applicable — how upstream (CUDA) handles the same
+case, cited as `aten/src/ATen/native/cuda/Foo.cu:LINE-LINE`, and what
+this repo already has versus what is missing. This is the fix strategy.>
+
+- **Verdict:** <IMPLEMENTING | NEEDS_HUMAN> — <one-line reason>
+- **Target repo:** <pytorch | torch-xpu-ops | N/A>
+- **Domain:** <root-cause domain>
 
 *Automated by fix-root-cause.*
 ```
+
+Prose paragraphs, not a bullet per field: the mechanism and the fix
+strategy need sentences that connect file:line evidence, and squeezing
+them into `- **Root cause:**` bullets is what makes successive runs read
+differently. The structured values still go out in the JSON block below.
 
 ```json
 {

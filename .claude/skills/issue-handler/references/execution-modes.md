@@ -129,20 +129,54 @@ The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
 already lives in the root-cause block above it.
 
+### Collapse the stage blocks
+
+Append each stage block **collapsed**, so the session comment reads as a
+list of stage titles and the reader expands only the stage they care
+about. Drop the block's own `##` heading line (the `<summary>` replaces
+it) and keep the marker outside `<details>` so marker searches still
+work:
+
+```markdown
+<!-- agent:root-cause -->
+
+<details>
+<summary><b>Root Cause</b></summary>
+
+<the block body the leaf skill returned, unchanged>
+
+</details>
+```
+
+The blank line after `<summary>` and the one before `</details>` are
+required — without them GitHub renders the tables and fenced diffs inside
+as literal text.
+
+The `<summary>` titles are **fixed strings** — use the table below
+verbatim, do not reword them per run. The body inside `<details>` keeps
+the shape defined by the producing skill's own `## Output` template; the
+only change is dropping its `##` heading line.
+
 For re-run detection (Stage 0), locate the single session comment by
 its `<!-- agent:session -->` marker; the per-stage `<!-- agent:<name> -->`
 markers are sub-headings within that one comment.
 
-| Block within the session comment | Producing leaf skill |
-|---|---|
-| `<!-- agent:triage -->` | `issue-triage` |
-| `<!-- agent:reproduce -->` | `fix-reproduce` (only on standalone `@torchxpubot reproduce`; not on pipeline runs) |
-| `<!-- agent:root-cause -->` | `fix-root-cause` |
-| `<!-- agent:implement -->` | `fix-implement` (diff, not prose) |
-| `<!-- agent:verify -->` | `fix-verify` |
-| `<!-- agent:summary -->` | `issue-handler` (Stage 6 closing summary) |
-| `<!-- agent:review -->` | the `fix` workflow — the template a human fills in to review the fix |
-| `<!-- agent:batch-fanout -->` | `issue-handler` (batch fan-out summary, skip-list or heterogeneous) |
+Blocks in append order:
+
+| Block within the session comment | `<summary>` title | Producing skill |
+|---|---|---|
+| `<!-- agent:session -->` | expanded, no `<details>` | `issue-handler` (Stage 1 intro line) |
+| `<!-- agent:triage -->` | `Issue Triage` | `issue-triage` |
+| `<!-- agent:reproduce -->` | `Reproduce` | `fix-reproduce` (only on standalone `@torchxpubot reproduce`; not on pipeline runs) |
+| `<!-- agent:root-cause -->` | `Root Cause` | `fix-root-cause` |
+| `<!-- agent:implement -->` | `Implement Result` | `fix-implement` (diff, not prose) |
+| `<!-- agent:verify -->` | `Verify` | `fix-verify` |
+| `<!-- agent:batch-fanout -->` | `Batch fan-out results` | `issue-handler` (batch runs only, skip-list or heterogeneous) |
+| `<!-- agent:summary -->` | expanded, no `<details>` | `issue-handler` (Stage 6 closing summary) |
+| `<!-- agent:review -->` | expanded, no `<details>` | the `fix` workflow — the template a human fills in to review the fix |
+
+The two expanded blocks are what a reader should see without clicking:
+the intro says what the run is, the summary says how it ended.
 
 ### 4. Canonical section headings
 
