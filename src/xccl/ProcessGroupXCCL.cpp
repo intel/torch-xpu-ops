@@ -375,7 +375,8 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   xpuEventCacheEnabled_.store(getCvarBool(TORCH_XCCL_XPU_EVENT_CACHE, true));
-  traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 2000);
+  traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 0);
+  FlightRecorderXCCL::get()->enabled_ = traceBufferSize_ > 0;
   enableTiming_.store(getCvarBool(TORCH_XCCL_ENABLE_TIMING, false));
 
   // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just
