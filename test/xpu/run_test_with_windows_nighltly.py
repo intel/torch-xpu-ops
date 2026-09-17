@@ -69,7 +69,7 @@ skip_files_list = [
     "test_matmul_cuda_xpu.py",
     "test_meta_xpu.py",
     "test_native_functions_xpu.py",
-    "test_native_mha_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_native_mha.py",
     "test_nestedtensor_xpu.py",
     "test_nn_xpu.py",
     "test_ops_fwd_gradients_xpu.py",

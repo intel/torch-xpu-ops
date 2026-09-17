@@ -154,7 +154,7 @@ skip_dict = {
     ),
     f"{PYTORCH_TEST_DIR}/test_modules.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
-    "test_native_mha_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_native_mha.py": None,
     "test_nn_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2531
         # cuDNN CTC test uses CUDA-only backend/device assumptions.
