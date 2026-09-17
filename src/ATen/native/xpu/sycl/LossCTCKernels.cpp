@@ -21,6 +21,7 @@
  * log_probs (also calling them inputs)
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -362,7 +363,7 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
   Tensor neg_log_likelihood = at::empty({batch_size}, log_probs.options());
 
   constexpr auto kfn = ctc_loss_log_alpha_kernel<scalar_t, target_t>;
-  int max_threads = syclMaxWorkGroupSize<kfn>();
+  int max_threads = at::xpu::getKernelMaxWorkGroupSize<kfn>();
 
   int threads_target = max_threads;
   while (threads_target / 2 >= 2 * max_target_length + 1) {
@@ -825,7 +826,7 @@ Tensor ctc_loss_backward_kernel_template(
                                         // beta))
 
   constexpr auto kfn = ctc_loss_backward_log_beta_kernel<scalar_t, target_t>;
-  int max_threads = syclMaxWorkGroupSize<kfn>();
+  int max_threads = at::xpu::getKernelMaxWorkGroupSize<kfn>();
   int threads_target = max_threads;
   while (threads_target / 2 >= 2 * max_target_length + 1) {
     threads_target /= 2;
@@ -906,7 +907,7 @@ Tensor ctc_loss_backward_kernel_template(
 
     constexpr auto kfn =
         ctc_loss_backward_collect_nonblank_kernel<scalar_t, target_t>;
-    max_threads = syclMaxWorkGroupSize<kfn>();
+    max_threads = at::xpu::getKernelMaxWorkGroupSize<kfn>();
     int threads_target = max_threads;
     while (threads_target / 2 >= max_target_length && threads_target > 1) {
       threads_target /= 2;
@@ -952,7 +953,7 @@ Tensor ctc_loss_backward_kernel_template(
         zero_infinity);
   } else { // small problem, use naive algorithm
     constexpr auto kfn = ctc_loss_backward_collect_kernel<scalar_t, target_t>;
-    max_threads = syclMaxWorkGroupSize<kfn>();
+    max_threads = at::xpu::getKernelMaxWorkGroupSize<kfn>();
     int threads_input = max_threads;
     while (threads_input / 2 >= log_probs.size(0) && threads_input > 1) {
       threads_input /= 2;
@@ -1004,7 +1005,7 @@ Tensor ctc_loss_backward_kernel_template(
   // zero those invalid graident elements due to padding
   {
     constexpr auto kfn = ctc_loss_zero_padded_gradients_kernel<scalar_t>;
-    max_threads = syclMaxWorkGroupSize<kfn>();
+    max_threads = at::xpu::getKernelMaxWorkGroupSize<kfn>();
     int threads_input = max_threads;
     while (threads_input / 2 >= log_probs.size(0)) {
       threads_input /= 2;

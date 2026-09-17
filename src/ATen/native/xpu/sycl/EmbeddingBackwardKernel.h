@@ -14,6 +14,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
@@ -257,7 +258,7 @@ void compute_grad_weight_bags(
                          // buffer.
   auto segment_offsets_data = segment_offsets.const_data_ptr<index_t>();
 
-  int64_t max_sub_group_size = syclMaxSubGroupSize();
+  int64_t max_sub_group_size = at::xpu::getDeviceMaxSubGroupSize();
   int64_t stride_warped =
       at::ceil_div(stride, max_sub_group_size) * max_sub_group_size;
 
@@ -279,7 +280,7 @@ void compute_grad_weight_bags(
       per_sample_weights_data,
       segment_offsets_data);
 
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int64_t group_size = std::min(stride_warped, work_group_size);
   auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
   auto total_items = num_groups * group_size;
@@ -377,7 +378,7 @@ void compute_grad_weight(
       : indices_data; // use the indices_data handler as the dummy buffer.
   auto segment_offsets_data = segment_offsets.const_data_ptr<index_t>();
 
-  int64_t max_sub_group_size = syclMaxSubGroupSize();
+  int64_t max_sub_group_size = at::xpu::getDeviceMaxSubGroupSize();
   int64_t stride_warped =
       at::ceil_div(stride, max_sub_group_size) * max_sub_group_size;
 
@@ -393,7 +394,7 @@ void compute_grad_weight(
       count_data,
       segment_offsets_data);
 
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int64_t group_size = std::min(stride_warped, work_group_size);
   auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
   auto total_items = num_groups * group_size;
@@ -506,7 +507,7 @@ void sum_and_scatter(
       grad_weight_per_segment_data,
       segment_sizes_offsets_data);
 
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int64_t stride_warped =
       at::ceil_div(stride, work_group_size) * work_group_size;
   kfn.set_stride_warped(stride_warped);
