@@ -1433,6 +1433,40 @@ jobs:
 
           notes:
           ```
+
+          On a batch run add `item=<pytorch issue>` to say which sub-item the
+          verdict is about -- one comment per sub-item, since a bare verdict on a
+          batch does not say which test it means and is dropped. `run=<id>` only
+          when judging a run other than the newest.
+
+          <details>
+          <summary>Examples</summary>
+
+          A CI DISABLED sub-item -- `item=` is the `pytorch/pytorch` issue that
+          sub-item links in the fan-out table:
+
+          ```
+          **strong-accepted** <!-- review: strong-accepted item=197334 -->
+          notes: same TensorAssign overload as upstream CUDA, fp8 dispatch list matches
+          ```
+
+          Another sub-item of the same batch, judged on an earlier run:
+
+          ```
+          **weak-rejected** <!-- review: weak-rejected run=35171979678 item=197335 -->
+          notes: green only because the test is skipped, the kernel still lacks fp8
+          ```
+
+          An `[xpu-alignment]` issue that should not have been filed -- one issue
+          per difference, so no `item=`, and `issue-drop` keeps it out of the
+          fix rate instead of scoring it as a failed fix:
+
+          ```
+          **issue-drop** <!-- review: issue-drop -->
+          notes: accepted XPU/CUDA numerics difference, nothing to repair
+          ```
+
+          </details>
           EOF
           gh api --method PATCH "$C" -F body=@body.md
 
