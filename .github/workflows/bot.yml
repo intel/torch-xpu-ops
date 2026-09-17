@@ -1419,7 +1419,8 @@ jobs:
 
           <!-- agent:review -->
 
-          ## Review
+          <details>
+          <summary><b>Review</b></summary>
 
           Copy into a new comment, keep ONE verdict, add a note. Two verdicts in
           one comment are dropped as ambiguous.
@@ -1438,9 +1439,6 @@ jobs:
           verdict is about -- one comment per sub-item, since a bare verdict on a
           batch does not say which test it means and is dropped. `run=<id>` only
           when judging a run other than the newest.
-
-          <details>
-          <summary>Examples</summary>
 
           A CI DISABLED sub-item -- `item=` is the `pytorch/pytorch` issue that
           sub-item links in the fan-out table:
