@@ -47,7 +47,7 @@ runs:
           # overlay torch-xpu-ops model lists for nightly / PR tests
           rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
         fi
-        rm -rf inductor_log torch
+        rm -rf torch
         sed -i 's/choices=range(1, 16),/choices=range(1, 17),/g' benchmarks/dynamo/common.py
         # check param
         contains() {
@@ -62,11 +62,14 @@ runs:
           fi
         }
         run_with_shard() {
-          # set models to run
-          if [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
-            models_list_args=" -k $(echo  ${MODEL_ONLY_NAME} |sed 's/,/ -k /g') "
+          # dynamo -k/--filter is one OR-of-regex; pass a single quoted
+          # alternation so the downstream eval treats '|' literally (not a pipe).
+          if [ -n "${MODEL_ONLY_NAME:-}" ]; then
+            model_re=$(echo "${MODEL_ONLY_NAME}" |sed 's/,/|/g')
+            models_list_args=" -k '^(${model_re})\$' "
           elif [ "${{ inputs.overwrite_model_list }}" != "true" ];then
-            models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
+            model_re=$(awk -F ',|;| ' 'NF{printf "%s%s", sep, $1; sep="|"}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)
+            models_list_args=" -k '(${model_re})' "
           else
             models_list_args=""
           fi

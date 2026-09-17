@@ -83,6 +83,7 @@ jobs:
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
+          rm -rf ${{ github.workspace }}/pytorch/inductor_log
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
