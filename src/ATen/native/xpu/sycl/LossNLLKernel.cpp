@@ -116,7 +116,7 @@ void nll_loss_forward_reduce2d_kernel(
     int64_t ignore_index,
     int64_t smem_size) {
   auto item = syclext::this_work_item::get_nd_item<1>();
-  char* scratch = (char*)syclexp::get_work_group_scratch_memory();
+  char* scratch = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   accscalar_t* sh_inputs = (accscalar_t*)scratch;
   accscalar_t* acc_weight =
       (accscalar_t*)(scratch + sizeof(accscalar_t) * smem_size);
