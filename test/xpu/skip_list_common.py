@@ -411,4 +411,5 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/lazy/test_reuse_ir.py": None,
+    f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
 }
