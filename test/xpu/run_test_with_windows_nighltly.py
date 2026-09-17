@@ -78,7 +78,6 @@ skip_files_list = [
     # "test_ops_xpu.py",
     "test_optim_xpu.py",
     # "test_reductions_xpu.py",
-    # "test_scatter_gather_ops_xpu.py",
     "test_segment_reductions_xpu.py",
     "test_shape_ops_xpu.py",
     "test_sort_and_select_xpu.py",

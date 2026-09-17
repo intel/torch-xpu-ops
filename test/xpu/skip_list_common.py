@@ -193,7 +193,7 @@ skip_dict = {
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
-    "test_scatter_gather_ops_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
     "test_segment_reductions_xpu.py": None,
     "test_shape_ops_xpu.py": (
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
