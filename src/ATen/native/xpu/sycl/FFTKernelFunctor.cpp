@@ -428,30 +428,24 @@ void KERNEL_NAME(const DFT_FTYPE *in, DFT_FTYPE *out, sycl::local_accessor<DFT_F
 constexpr int supported_sizes[][3] = {{512, 32, 16}, {768, 32, 24}};
 
 template <typename T>
-struct TwiddleTableKernel2FactsFunctor {
-  void operator()(sycl::item<2> item) const {
-    const int row = item.get_id(0);
-    const int col = item.get_id(1);
-    const T theta = (2.0 * row * col) / (fact0_ * fact1_);
-    T* cosPtr = twidl_buf_ + row * fact1_ * 2 + col * 2;
-    T* sinPtr = twidl_buf_ + row * fact1_ * 2 + col * 2 + 1;
-    *cosPtr = scale_ * sycl::cospi(theta);
-    *sinPtr = scale_ * sycl::sinpi(theta);
-  }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void twiddle_table_kernel2_facts_kernel_impl(
+    std::int64_t fact0,
+    std::int64_t fact1,
+    T* twidl_buf,
+    T scale) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int row = item.get_global_id(0);
+  const int col = item.get_global_id(1);
+  if (row >= fact0 || col >= fact1)
+    return;
 
-  TwiddleTableKernel2FactsFunctor(
-      std::int64_t fact0,
-      std::int64_t fact1,
-      T* twidl_buf,
-      T scale)
-      : fact0_(fact0), fact1_(fact1), twidl_buf_(twidl_buf), scale_(scale) {}
-
- private:
-  std::int64_t fact0_;
-  std::int64_t fact1_;
-  T* twidl_buf_;
-  T scale_;
-};
+  const T theta = (2.0 * row * col) / (fact0 * fact1);
+  T* cosPtr = twidl_buf + row * fact1 * 2 + col * 2;
+  T* sinPtr = twidl_buf + row * fact1 * 2 + col * 2 + 1;
+  *cosPtr = scale * sycl::cospi(theta);
+  *sinPtr = scale * sycl::sinpi(theta);
+}
 
 template <typename T>
 void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
@@ -478,11 +472,18 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
         twidl_buf = (T*)desc.twidl_table[dim][i];
       }
 
-      auto ker =
-          TwiddleTableKernel2FactsFunctor<T>(fact0, fact1, twidl_buf, scale);
-      q.submit([&](sycl::handler& h) {
-        h.parallel_for(sycl::range<2>(fact0, fact1), ker);
-      });
+      int64_t sg_sizes = syclMaxSubGroupSize();
+      int64_t max_work_group_size =
+          syclMaxWorkGroupSize<twiddle_table_kernel2_facts_kernel_impl<T>>();
+      int64_t local_x = sg_sizes;
+      int64_t local_y = max_work_group_size / local_x;
+      sycl::range<2> local_range(local_y, local_x);
+
+      int64_t global_x = ((fact0 + local_x - 1) / local_x) * local_x;
+      int64_t global_y = ((fact1 + local_y - 1) / local_y) * local_y;
+      sycl::range<2> global_range(global_y, global_x);
+      sycl_kernel_submit<twiddle_table_kernel2_facts_kernel_impl<T>>(
+          global_range, local_range, q, 0, fact0, fact1, twidl_buf, scale);
     }
   }
 }
@@ -979,47 +980,41 @@ struct HermitianSymmetryOffsetCalculator {
 };
 
 template <typename scalar_t, typename inp_calc_t, typename out_calc_t>
-struct FFTConjugateCopyKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto in_offset = ic_.get(item_id)[0];
-    auto out_offset = oc_.get(item_id)[0];
-    out_data_[out_offset] = std::conj(in_data_[in_offset]);
-  }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void fft_conjugate_copy_kernel_impl(
+    int64_t total_work_items,
+    scalar_t* out_data,
+    const scalar_t* in_data,
+    inp_calc_t ic,
+    out_calc_t oc) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto idx = item_id.get_global_id(0);
+  if (idx >= total_work_items)
+    return;
 
-  FFTConjugateCopyKernelFunctor(
-      int64_t numel,
-      scalar_t* out_data,
-      const scalar_t* in_data,
-      inp_calc_t ic,
-      out_calc_t oc)
-      : numel_(numel),
-        out_data_(out_data),
-        in_data_(in_data),
-        ic_(ic),
-        oc_(oc) {}
-
- private:
-  int64_t numel_;
-  scalar_t* out_data_;
-  const scalar_t* in_data_;
-  inp_calc_t ic_;
-  out_calc_t oc_;
-};
+  auto in_offset = ic.get(idx)[0];
+  auto out_offset = oc.get(idx)[0];
+  out_data[out_offset] = std::conj(in_data[in_offset]);
+}
 
 template <typename scalar_t, typename inp_calc_t, typename out_calc_t>
-void _fft_conjugate_copy_kernel(
+void launch_fft_conjugate_copy_kernel(
     int64_t numel,
     scalar_t* out_data,
     const scalar_t* in_data,
     inp_calc_t ic,
     out_calc_t oc) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  int thread_num = numel;
 
-  auto ker = FFTConjugateCopyKernelFunctor<scalar_t, inp_calc_t, out_calc_t>(
-      numel, out_data, in_data, ic, oc);
+  int64_t max_work_group_size = syclMaxWorkGroupSize<
+      fft_conjugate_copy_kernel_impl<scalar_t, inp_calc_t, out_calc_t>>();
 
-  sycl_kernel_submit(sycl::range<1>(thread_num), queue, ker);
+  int local_range = max_work_group_size;
+  int global_range = ((numel + local_range - 1) / local_range) * local_range;
+
+  sycl_kernel_submit<
+      fft_conjugate_copy_kernel_impl<scalar_t, inp_calc_t, out_calc_t>>(
+      global_range, local_range, queue, 0, numel, out_data, in_data, ic, oc);
 }
 
 void _fft_fill_with_conjugate_symmetry_xpu(
@@ -1042,7 +1037,7 @@ void _fft_fill_with_conjugate_symmetry_xpu(
 
   const auto numel = c10::multiply_integers(signal_half_sizes);
   AT_DISPATCH_COMPLEX_TYPES(dtype, "_fft_fill_with_conjugate_symmetry_", [&] {
-    _fft_conjugate_copy_kernel(
+    launch_fft_conjugate_copy_kernel(
         numel,
         static_cast<scalar_t*>(out_data),
         static_cast<const scalar_t*>(in_data),

@@ -1,7 +1,7 @@
 import os
 import sys
 
-from skip_list_common import skip_dict
+from skip_list_common import PYTORCH_TEST_DIR, skip_dict
 from skip_list_win import skip_dict as skip_dict_win
 from skip_list_win_lnl import skip_dict as skip_dict_win_lnl
 
@@ -62,8 +62,7 @@ skip_files_list = [
     "test_decomp_xpu.py",
     "test_distributions_xpu.py",
     "test_dynamic_shapes_xpu.py",
-    "test_foreach_xpu.py",
-    # "test_indexing_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_foreach.py",
     "test_linalg_xpu.py",
     "test_maskedtensor_xpu.py",
     # "test_masked_xpu.py",
