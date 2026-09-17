@@ -127,9 +127,28 @@ Withdraw a whole UT job the same way - every group from it marked `file: false`
 test files. On a night the machine misbehaved, the ordinary-looking failures
 around it are not trustworthy either.
 
-A case whose `cls` is `unknown` because its module lost case names upstream is
-worth a line in `notes` rather than an issue: what looks like a new failing
-test may be an old one renamed.
+## A case whose `cls` is `unknown` because the module's names moved
+
+When a module lost case names between the baseline and this run, a failure in
+it that the baseline never saw is classified `unknown` rather than
+`new_case_failure`: it may be an old test under a new name. Which of the two it
+is cannot be settled by comparing sets, only by reading the names, so it is
+yours to decide.
+
+`run.json.report.vanished_cases` gives, per module, the names that went
+(`lost_names`) and the names that arrived (`gained_names`).
+
+- **A rename.** The failing name is recognisably one of the lost names - a
+  suffix added, a word changed, a parametrization respelled. Do not file: the
+  test is not new and it is not newly broken either, it is the same test under
+  a name that has not been compared against anything. Put it in `notes` with
+  both names.
+- **Genuinely new, or you cannot tell.** File it if it is worth an issue. It
+  will carry no classification label, which is the honest outcome: nothing
+  established that this case ever passed here.
+
+You cannot move a case out of `unknown`. If a case looks to you like a
+`regression` or a `new_case_failure`, say so in `notes`; do not act on it.
 
 ## Finally
 

@@ -66,6 +66,9 @@ TOO_MANY_THRESHOLD = 1000
 # How many distinct (test file, exact message) strata get a traceback captured.
 # Sampling, not grouping: two rows with byte-identical messages are one message.
 MAX_TRACEBACK_SAMPLES = 300
+# Names shown per module that lost or gained cases. Enough to see whether one
+# name became another; a dtype parametrization alone runs to dozens.
+NAME_SAMPLE = 20
 HEALTH_RATIO = 0.95
 
 # Covered UT jobs. xpu_distributed is deliberately excluded: it reports through
@@ -751,6 +754,11 @@ def record_vanished_cases(work: Path, categories: set[str],
     Returns the `(category, module)` pairs affected, which is what
     classify_case needs: in a module that lost names, a failing case absent
     from the baseline has not been shown to be new.
+
+    Telling a rename from a removal plus an addition is a judgement about two
+    names, not a set operation, so it is not made here. What is recorded is
+    both halves of the move - the names that went and the names that arrived -
+    for the skill to read.
     """
     churned: set[tuple[str, str]] = set()
     for category in sorted(categories):
@@ -758,22 +766,21 @@ def record_vanished_cases(work: Path, categories: set[str],
         tonight = roster(work, category)
         if base is None or not tonight:
             continue
-        per_module: dict[str, int] = {}
-        for line in base.all_cases - tonight:
-            case = case_from_line(line)
-            if case and case.module:
-                per_module[case.module] = per_module.get(case.module, 0) + 1
+        lost = names_by_module(base.all_cases - tonight)
+        gained = names_by_module(tonight - base.all_cases)
         live_modules = set(module_counts(tonight))
-        for module, count in sorted(per_module.items(),
-                                    key=lambda kv: (-kv[1], kv[0])):
+        for module, names in sorted(lost.items(),
+                                    key=lambda kv: (-len(kv[1]), kv[0])):
             churned.add((category, module))
             report["vanished_cases"].append({
                 "category": category,
                 "module": module,
-                "cases": count,
+                "cases": len(names),
                 "baseline_passed": base.passed_by_module.get(module, 0),
                 "module_gone": module not in live_modules,
                 "baseline_run": base.meta.run_id,
+                "lost_names": names[:NAME_SAMPLE],
+                "gained_names": gained.get(module, [])[:NAME_SAMPLE],
             })
     if report["vanished_cases"]:
         total = sum(v["cases"] for v in report["vanished_cases"])
@@ -785,6 +792,16 @@ def record_vanished_cases(work: Path, categories: set[str],
             "upstream. Reported only; nothing filed, nothing muted."
         )
     return churned
+
+
+def names_by_module(lines: set[str]) -> dict[str, list[str]]:
+    """Test names, sorted, per test module."""
+    out: dict[str, list[str]] = {}
+    for line in lines:
+        case = case_from_line(line)
+        if case and case.module:
+            out.setdefault(case.module, []).append(case.test_name)
+    return {module: sorted(names) for module, names in out.items()}
 
 
 # --------------------------------------------------------------------------- #
