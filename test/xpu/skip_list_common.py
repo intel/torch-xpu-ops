@@ -406,4 +406,5 @@ skip_dict = {
     "test_cuda_trace_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
     "test_mkldnn_fusion_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
 }
