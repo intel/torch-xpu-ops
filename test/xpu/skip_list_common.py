@@ -11,7 +11,13 @@ PYTORCH_TEST_DIR = "../../../../test"
 skip_dict = {
     "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    "nn/test_convolution_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_convolution.py": (
+        # CPU-only reference tests. Upstream only exercises the tight
+        # rtol=2e-5/atol=5e-6 tolerance when torch.cuda.is_tf32_supported() is
+        # False, so PyTorch CI (CUDA runners) never hits it.
+        "test_conv3d_vs_scipy_mode_same_cpu_float32",
+        "test_conv3d_vs_scipy_mode_valid_cpu_float32",
+    ),
     "nn/test_dropout_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     "nn/test_init_xpu.py": None,
@@ -67,7 +73,7 @@ skip_dict = {
         # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
-    "test_autocast_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
     "test_autograd_fallback_xpu.py": None,
     "test_autograd_xpu.py": (
         # skipped due to #2536, torch._C._scatter or torch._C._gather
@@ -101,11 +107,8 @@ skip_dict = {
     ),
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
-    "test_foreach_xpu.py": (
-        # RuntimeError: Tried to instantiate dummy base class CUDAGraph
-        "use_cuda_graph_True",
-    ),
-    "test_indexing_xpu.py": (
+    f"{PYTORCH_TEST_DIR}/test_foreach.py": None,
+    f"{PYTORCH_TEST_DIR}/test_indexing.py": (
         # BMG hang (>10 min) taking down the xdist worker
         # https://github.com/intel/torch-xpu-ops/issues/4947
         "test_index_add_fast_path_xpu_float64",
@@ -138,12 +141,6 @@ skip_dict = {
         "test_compile_dyn_quant_matmul_4bit_m_32_k_64_n_4096_xpu",
         "_tunableop_",
         "_tuning_tunableop_",
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_lobpcg_ortho_xpu_float64",
-        "test_pca_lowrank_xpu",
-        "test_svd_lowrank_xpu_complex128",
-        "test_svd_lowrank_xpu_float64",
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
@@ -343,6 +340,7 @@ skip_dict = {
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_execution_trace_xpu.py": None,
     "profiler/test_profiler_xpu.py": None,
+    "profiler/test_profiler_use_cases.py": None,
     "export/test_hop_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
     "export/test_converter_xpu.py": None,
@@ -375,6 +373,7 @@ skip_dict = {
     "dynamo/test_deviceguard_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
@@ -385,7 +384,7 @@ skip_dict = {
     "test_multiprocessing_xpu.py": None,
     "test_numba_integration_xpu.py": None,
     "test_numpy_interop_xpu.py": None,
-    "test_out_dtype_op_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
     "test_python_dispatch_xpu.py": None,
