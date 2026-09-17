@@ -19,7 +19,8 @@ template <
     int TileN = 16,
     int SgSize = 16>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SgSize>)) void dequant_int4_kernel_fn(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SgSize>))
+void dequant_int4_kernel_fn(
     int n,
     int k,
     const uint8_t* weight_int4,
