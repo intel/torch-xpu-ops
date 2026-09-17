@@ -28,7 +28,8 @@ static inline size_t padto_le(size_t src, int padding) {
 
 template <typename scalar_t = sycl::ext::oneapi::bfloat16, int block_size = 32>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<16>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>)) void linear_int4_kernel_(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void linear_int4_kernel_(
     const scalar_t* A,
     const uint8_t* B,
     scalar_t* C,
