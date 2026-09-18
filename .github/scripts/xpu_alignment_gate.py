@@ -508,6 +508,8 @@ def _validate_review(
         )
         if verdict == "duplicate" and not open_xpu_tracker:
             errors.append(f"review-invalid-duplicate-tracker:{unit_id}")
+        if verdict == "needs-xpu-fix" and open_xpu_tracker:
+            errors.append(f"review-invalid-needs-xpu-fix-tracker:{unit_id}")
         expects_payload = verdict == "needs-xpu-fix" and not open_xpu_tracker
         if not expects_payload:
             if payload is not None:
