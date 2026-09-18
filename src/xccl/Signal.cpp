@@ -56,7 +56,8 @@ void barrier_impl_xpu(
     int world_size,
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<barrierKernel>();
+  int64_t maxNumThreadsPerBlock =
+      at::xpu::getKernelMaxWorkGroupSize<barrierKernel>();
   const size_t numThreadsPerBlock =
       std::min<size_t>(maxNumThreadsPerBlock, std::max(32, world_size));
 
@@ -118,7 +119,8 @@ void put_signal_impl_xpu(
     int world_size,
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<putSignalKernel>();
+  int64_t maxNumThreadsPerBlock =
+      at::xpu::getKernelMaxWorkGroupSize<putSignalKernel>();
   const size_t numThreadsPerBlock = std::min<size_t>(maxNumThreadsPerBlock, 32);
 
   if (!(numThreadsPerBlock > 0)) {
@@ -181,7 +183,8 @@ void wait_signal_impl_xpu(
     int world_size,
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<waitSignalKernel>();
+  int64_t maxNumThreadsPerBlock =
+      at::xpu::getKernelMaxWorkGroupSize<waitSignalKernel>();
   const size_t numThreadsPerBlock = std::min<size_t>(maxNumThreadsPerBlock, 32);
 
   if (!(numThreadsPerBlock > 0)) {
