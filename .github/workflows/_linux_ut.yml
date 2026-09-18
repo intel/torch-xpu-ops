@@ -70,7 +70,6 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-          skip_summary: ${{ inputs.skip_summary }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
@@ -112,7 +111,6 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ env.UT_LABEL }}
-          skip_summary: ${{ inputs.skip_summary }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
