@@ -171,7 +171,7 @@ Blocks in append order:
 |---|---|---|
 | `<!-- agent:session -->` | expanded, no `<details>` | `issue-handler` (Stage 1 intro line) |
 | `<!-- agent:triage -->` | `Issue Triage` | `issue-triage` |
-| `<!-- agent:reproduce -->` | `Reproduce` | `fix-reproduce` (only on standalone `@torchxpubot reproduce`; not on pipeline runs) |
+| `<!-- agent:reproduce -->` | `Reproduce` | `fix-reproduce` |
 | `<!-- agent:root-cause -->` | `Root Cause` | `fix-root-cause` |
 | `<!-- agent:implement -->` | `Implement Result` | `fix-implement` (diff, not prose) |
 | `<!-- agent:verify -->` | `Verify` | `fix-verify` |
@@ -199,12 +199,11 @@ Objective, Current Status`.
   report block (returned to the orchestrator, which fills the session
   comment with it); the `agent:status:DISCOVERED → TRIAGING`
   transition; section-heading skeleton.
-- **Stage 2** (`fix-reproduce`) owns: the `refined_command`
-  extracted for downstream stages; the
-  `agent:status:REPRODUCING → TRIAGED` transition (via the
-  orchestrator's reading of the reproduce verdict). Does NOT post a
-  comment on issue-handler pipeline runs (comments are for
-  standalone `@torchxpubot reproduce` invocations).
+- **Stage 2** (`fix-reproduce`) owns: the `<!-- agent:reproduce -->`
+  report block (returned to the orchestrator, which appends it to the
+  session comment); the `refined_command` extracted for downstream
+  stages; the `agent:status:REPRODUCING → TRIAGED` transition (via the
+  orchestrator's reading of the reproduce verdict).
 - **Stage 3** (`fix-root-cause`) owns: the `<!-- agent:root-cause -->`
   report block (returned to the orchestrator, which appends it to the
   session comment); `Root Cause Analysis`, `Proposed

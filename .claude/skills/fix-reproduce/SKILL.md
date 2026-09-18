@@ -668,9 +668,8 @@ REPRODUCED
 
 ### Markdown block
 
-On a standalone `@torchxpubot reproduce` the caller posts the run as a
-comment; emit this block for it (on pipeline runs the orchestrator folds
-the verdict into later stages instead):
+Emit this block with the output above; the orchestrator appends it to the
+session comment.
 
 ```markdown
 <!-- agent:reproduce -->
