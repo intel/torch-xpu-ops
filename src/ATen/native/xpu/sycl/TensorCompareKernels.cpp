@@ -63,6 +63,21 @@ struct ClampFunctor {
 };
 
 template <typename scalar_t>
+struct ClampBackwardFunctor {
+  using opmath_t = at::opmath_type<scalar_t>;
+  scalar_t operator()(scalar_t grad, scalar_t v, scalar_t lower, scalar_t upper)
+      const {
+    if (v < lower || v > upper) {
+      return scalar_t(0);
+    }
+    if ((v == lower || v == upper) && lower < upper) {
+      return static_cast<scalar_t>(static_cast<opmath_t>(grad) / opmath_t(2));
+    }
+    return grad;
+  }
+};
+
+template <typename scalar_t>
 struct ClampScalarFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(scalar_t v) const {
@@ -127,6 +142,17 @@ void clamp_kernel(TensorIteratorBase& iter) {
       iter.common_dtype(),
       "clamp_xpu",
       AT_WRAP([&] { gpu_kernel(iter, ClampFunctor<scalar_t>()); }),
+      AT_EXPAND(AT_ALL_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+      kHalf,
+      kBFloat16);
+}
+
+void clamp_backward_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_V2(
+      iter.common_dtype(),
+      "clamp_backward_xpu",
+      AT_WRAP([&] { gpu_kernel(iter, ClampBackwardFunctor<scalar_t>()); }),
       AT_EXPAND(AT_ALL_TYPES),
       AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
       kHalf,
