@@ -241,7 +241,7 @@ Tensor& multi_margin_loss_kernel(
               constexpr auto kernelFunc =
                   multi_margin_loss_forward_kernel<1, scalar_t, accscalar_t>;
               int64_t local_size =
-                  <at::xpu::getKernelMaxWorkGroupSizekernelFunc>();
+                  at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
               sycl_kernel_submit<kernelFunc>(
                   nframe * local_size,
                   local_size,
