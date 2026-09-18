@@ -953,7 +953,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
-          python .github/scripts/bot_ut_check.py \
+          python3 .github/scripts/bot_ut_check.py \
             --pr-number ${{ needs.parse-command.outputs.pr_number }} \
             --repo ${{ github.repository }} \
             --output /tmp/ut_data.json
@@ -1067,7 +1067,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
-          python .github/scripts/bot_ut_check.py \
+          python3 .github/scripts/bot_ut_check.py \
             --pr-number ${{ needs.parse-command.outputs.pr_number }} \
             --repo ${{ github.repository }} \
             --deterministic
