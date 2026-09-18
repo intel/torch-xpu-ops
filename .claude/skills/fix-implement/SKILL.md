@@ -251,20 +251,25 @@ markdown block so a downstream caller can locate its own previous
 implement comment (if any) and update it in place. Comment location and
 update is the **caller's** responsibility.
 
-```
+````markdown
 <!-- agent:implement -->
 
 ## Implement Result
 
 - **Target repo:** <pytorch | torch-xpu-ops>
 - **Analyzed at:** <target_repo>@<short_sha>
-- **What I changed:** <bullet list of files and what changed in each>
+- **What I changed:** <per file: what changed in it, with the line count>
 - **Why:** <one sentence connecting each change to the triage root cause; must cite file:line for every upstream/CUDA comparison — see the hard rule below>
 - **Skip added:** <yes (tracking: intel/torch-xpu-ops#N, url: <url>) | no>
 - **Ready for verify:** <yes | no>
 
-*Automated by fix-implement.*
+```diff
+<git diff --cached, or the key hunks when the full diff would blow the
+65000-char comment limit>
 ```
+
+*Automated by fix-implement.*
+````
 
 ```json
 {
