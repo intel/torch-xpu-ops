@@ -224,8 +224,7 @@ class BatchKernelConfig {
         wg_range_x_(0),
         wg_range_y_(0) {}
 
-  template <class KernelClass>
-  void build() {
+  void build(size_t max_work_group_size) {
     size_t wg_size;
     size_t sg_size = at::xpu::getDeviceMaxSubGroupSize();
     // Caller takes responsibility of if work group size is valid or compatible.
@@ -334,7 +333,7 @@ class BatchKernelConfig {
         prefer_wg_size_ <= syclDeviceMaxWorkGroupSize()) {
       wg_size = prefer_wg_size_;
     } else {
-      wg_size = syclMaxWorkGroupSize<kptr>();
+      wg_size = max_work_group_size;
     }
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;
@@ -424,6 +423,16 @@ class BatchKernelConfig {
     batch_range_ = problem_along_x_
         ? (problem_batch_ + glb_range_y_ - 1) / glb_range_y_ * glb_range_y_
         : (problem_batch_ + glb_range_x_ - 1) / glb_range_x_ * glb_range_x_;
+  }
+
+  template <class KernelClass>
+  void build() {
+    build(syclMaxWorkGroupSize<KernelClass>());
+  }
+
+  template <auto* kptr>
+  void build() {
+    build(syclMaxWorkGroupSize<kptr>());
   }
 
   BatchKernelConfig(
