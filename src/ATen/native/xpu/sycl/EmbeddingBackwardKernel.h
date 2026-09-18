@@ -13,6 +13,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
@@ -33,8 +34,9 @@ inline void krn_partials_per_segment_kernel(
   auto offsets_ptr = offsets_data;
 
   auto item = syclext::this_work_item::get_nd_item<1>();
-  auto id = item.get_local_linear_id();
-  if (id < num_of_segments) {
+  auto id = item.get_global_linear_id();
+  auto stride = item.get_global_range(0);
+  for (; id < num_of_segments; id += stride) {
     const index_t idx_start = offsets_ptr[id];
     const index_t idx_end = (id == num_of_segments - 1)
         ? static_cast<index_t>(numel)
@@ -51,11 +53,19 @@ void krn_partials_per_segment(
     index_t num_of_segments,
     int64_t numel) {
   constexpr auto caller = krn_partials_per_segment_kernel<index_t>;
-  auto global_range = sycl::range<1>((size_t)num_of_segments);
-  auto local_range = sycl::range<1>((size_t)num_of_segments);
+  if (num_of_segments == 0) {
+    return;
+  }
+  const int64_t group_size = std::min<int64_t>(
+      static_cast<int64_t>(num_of_segments),
+      at::xpu::getKernelMaxWorkGroupSize<caller>());
+  const int64_t global_range =
+      xpuKernelLoopGroupRange(
+          static_cast<int64_t>(num_of_segments), group_size) *
+      group_size;
   sycl_kernel_submit<caller>(
-      global_range,
-      local_range,
+      sycl::range<1>((size_t)global_range),
+      sycl::range<1>((size_t)group_size),
       getCurrentSYCLQueue(),
       0,
       ret,
@@ -78,8 +88,9 @@ inline void krn_partial_segment_offset_kernel(
   auto segment_offsets_ptr = segment_offsets_data;
 
   auto item = syclext::this_work_item::get_nd_item<1>();
-  auto id = item.get_local_linear_id();
-  if (id < num_of_segments) {
+  auto id = item.get_global_linear_id();
+  auto stride = item.get_global_range(0);
+  for (; id < num_of_segments; id += stride) {
     index_t idx = partials_per_segment_offset_ptr[id];
     const index_t num_partials = partials_per_segment_ptr[id];
     const index_t segment_offset = segment_offsets_ptr[id];
@@ -97,11 +108,19 @@ void krn_partial_segment_offset(
     const index_t* segment_offsets,
     index_t num_of_segments) {
   constexpr auto caller = krn_partial_segment_offset_kernel<index_t>;
-  auto global_range = sycl::range<1>((size_t)num_of_segments);
-  auto local_range = sycl::range<1>((size_t)num_of_segments);
+  if (num_of_segments == 0) {
+    return;
+  }
+  const int64_t group_size = std::min<int64_t>(
+      static_cast<int64_t>(num_of_segments),
+      at::xpu::getKernelMaxWorkGroupSize<caller>());
+  const int64_t global_range =
+      xpuKernelLoopGroupRange(
+          static_cast<int64_t>(num_of_segments), group_size) *
+      group_size;
   sycl_kernel_submit<caller>(
-      global_range,
-      local_range,
+      sycl::range<1>((size_t)global_range),
+      sycl::range<1>((size_t)group_size),
       getCurrentSYCLQueue(),
       0,
       ret,
