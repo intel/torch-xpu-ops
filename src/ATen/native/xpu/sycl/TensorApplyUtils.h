@@ -13,6 +13,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Copy.h>
 #include <ATen/native/xpu/sycl/IndexUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <cmath>
@@ -264,7 +265,7 @@ inline uint64_t get_apply_group_count(
   uint64_t num_groups =
       (total_elements + numel_per_thread - 1) / numel_per_thread;
   uint64_t estimated_max_groups_per_tile =
-      syclMaxWorkItemsPerTile() / threads_per_group;
+      at::xpu::getDeviceMaxWorkItems() / threads_per_group;
   if (num_groups > estimated_max_groups_per_tile)
     num_groups = estimated_max_groups_per_tile;
   return num_groups;
