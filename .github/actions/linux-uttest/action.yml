@@ -237,6 +237,11 @@ runs:
         esac
         if [[ "${category}" == 'distributed' ]]; then
           xpu-smi topology -m
+          export ZE_AFFINITY_MASK="0,1,2,3"
+          export BACKEND="xccl"
+          export WORLD_SIZE=4
+          export USE_CCL_V2=1
+          export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}${GITHUB_WORKSPACE}/pytorch/test/distributed/pipelining"
           export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
           XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
           if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
