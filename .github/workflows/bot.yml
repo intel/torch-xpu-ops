@@ -294,7 +294,9 @@ jobs:
 
             \`fix\` reproduces the issue on an XPU runner and, for C++/SYCL
             changes, source-builds and verifies the fix in the loop. The fix is
-            committed to a local \`agent/fix-issue-<N>\` branch and exported as a
+            committed to a local \`agent/fix-issue-<N>\` branch (or
+            \`agent/fix-pytorch-issue-<M>\` when the bug is filed upstream, e.g. a
+            mirrored DISABLED test) and exported as a
             downloadable **patch artifact** on the workflow run (it is not
             pushed); one comment here is updated live with each stage's report
             (triage, root cause, the diff, verification) as the run progresses.
@@ -1287,7 +1289,10 @@ jobs:
             Output contract (the pipeline already implements this; do not
             deviate): on a verified fix, /issue-handler commits it onto
             `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
-            (single bug) or per-sub-item branches (batch) and writes
+            (single bug) or per-sub-item branches (batch) -- named after the
+            *upstream* issue (`agent/fix-pytorch-issue-<M>`) when the bug is
+            filed in pytorch/pytorch and this issue is only the tracking queue,
+            per /issue-handler's Branch naming -- and writes
             `${{ env.AGENT_SPACE }}/fix_result*.json` recording `verdict`,
             `target_repo`, `fix_repo_dir`, `branch`, `base_sha`, `changed_files`.
             Do NOT push, fetch, or open a PR -- the workflow reads each
