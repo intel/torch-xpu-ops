@@ -173,14 +173,18 @@ const Tensor& _fft_apply_normalization(
   return (scale == 1.0) ? self : self.mul_(scale);
 }
 
+ScalarType promote_fft_dtype(ScalarType dtype) {
+  if (dtype == ScalarType::Half || dtype == ScalarType::BFloat16)
+    return ScalarType::Float;
+  if (dtype == ScalarType::ComplexHalf)
+    return ScalarType::ComplexFloat;
+  return dtype;
+}
+
 // TODO: Remove this work-around in future.
 Tensor promote_fft_input(const Tensor& input) {
-  if (input.scalar_type() == ScalarType::Half ||
-      input.scalar_type() == ScalarType::BFloat16)
-    return input.to(ScalarType::Float);
-  if (input.scalar_type() == ScalarType::ComplexHalf)
-    return input.to(ScalarType::ComplexFloat);
-  return input;
+  const auto dtype = promote_fft_dtype(input.scalar_type());
+  return dtype == input.scalar_type() ? input : input.to(dtype);
 }
 
 std::string kernel_src = R"""(
