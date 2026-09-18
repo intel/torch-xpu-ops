@@ -298,29 +298,19 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 }
 ```
 
-`units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without an open `intel/torch-xpu-ops` canonical tracker has a
-payload, and every payload targets `intel/torch-xpu-ops`.
+`units` covers the provisional actionable set exactly once. The
+[tracker policy](evidence.md#tracker-ownership-and-reuse) defines which verdicts
+need a payload; every payload targets `intel/torch-xpu-ops`. The gate checks
+payload presence and exact tracker citation against that policy.
 `implementation_repository` is required for
 `needs-xpu-fix` and `track-upstream` and unused otherwise; the
 [evidence reference](evidence.md) defines which repository to name.
-`status: blocked` lists blockers and contains no payloads. When an existing issue
-covers the same work, record its URL as `canonical_tracker` and its `open` or
-`closed` state as `canonical_tracker_state`; both fields are set together or both
-are null. Use the canonical `https://github.com/<owner>/<repo>/issues/<number>`
-URL without a trailing slash, query, or fragment. PR and commit URLs are related
-context, not canonical trackers. Previously retained review artifacts that name
-a tracker without its state must be reviewed again before this gate can replay
-them. An open `intel/torch-xpu-ops` tracker replaces the payload and is not
-commented on. An open tracker in another repository remains recorded but does
-not replace the XPU payload. Record a tracker in any repository rather than
-dropping it, so a later run does not re-investigate the same ground. Whenever a
-tracker is recorded and a payload is emitted, the payload body cites that exact
-tracker URL. Cite related upstream or XPU issue, PR, and commit URLs in the
-payload or review report as context; those links do not suppress a payload. A
-tracker that is `closed` cannot receive the work, so a `needs-xpu-fix` unit still
-carries a payload. Use `duplicate` only for an open `intel/torch-xpu-ops`
-tracker.
+`status: blocked` lists blockers and contains no payloads. `canonical_tracker`
+and `canonical_tracker_state` are set together or both null. The tracker field
+accepts only a canonical `https://github.com/<owner>/<repo>/issues/<number>` URL
+without a trailing slash, query, or fragment; the state is `open` or `closed`.
+Previously retained review artifacts that name a tracker without its state must
+be reviewed again before this gate can replay them.
 
 This role requires read-only GitHub access to refresh source and tracker state,
 but it does not require an XPU runtime.

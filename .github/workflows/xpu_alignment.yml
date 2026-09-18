@@ -522,24 +522,13 @@ jobs:
             Independently cover every scan candidate whose local result is
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
-            existing trackers in `intel/torch-xpu-ops`. Search `pytorch/pytorch`
-            for an issue or PR that explicitly owns the XPU work; a merely related
-            upstream object does not suppress a local payload. Do not sample
-            rejected inventory. If an existing GitHub issue covers the same work,
-            record its canonical `/issues/<number>` URL without a fragment, query,
-            or trailing slash as `canonical_tracker` with its
-            `canonical_tracker_state`, regardless of repository. Only an open
-            intel/torch-xpu-ops tracker replaces the payload and can justify
-            `duplicate`; it is not commented on. A closed or external issue cannot
-            justify `duplicate`. Whenever a tracker is recorded and a payload is
-            emitted, cite that exact tracker URL in the payload body. Cite related
-            upstream or XPU issue, PR, and commit URLs in the payload or review
-            report; PR URLs are context, not `canonical_tracker`.
+            existing trackers. Apply the ownership, tracker, verdict, and citation
+            rules in .claude/skills/xpu-alignment/references/evidence.md. Use
+            .claude/skills/xpu-alignment/references/automation-contract.md for
+            review.json fields. Do not sample rejected inventory.
 
             Write only alignment-run/review/review.json and optional
-            review_report.md. Include a payload only for reviewed `needs-xpu-fix`
-            without an open intel/torch-xpu-ops canonical tracker. Do not execute
-            code or modify GitHub.
+            review_report.md. Do not execute code or modify GitHub.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
