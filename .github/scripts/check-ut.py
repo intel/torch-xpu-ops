@@ -318,6 +318,8 @@ def determine_category(ut):
         return 'test_xpu'
     elif 'op_ut' in ut:
         return 'op_ut'
+    elif 'xpu_profiling' in ut:
+        return 'xpu_profiling'
     else:
         return 'unknown'
 

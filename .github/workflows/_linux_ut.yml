@@ -70,6 +70,7 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
+          skip_summary: ${{ inputs.skip_summary }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
@@ -91,10 +92,12 @@ jobs:
 
   test-in-baremetal:
     timeout-minutes: 600
-    if: ${{ contains(inputs.ut, 'distributed') }}
+    if: ${{ contains(inputs.ut, 'distributed') || inputs.ut == 'xpu_p0' }}
     runs-on: ${{ inputs.runner }}
     env:
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      # xpu_p0 is split: the distributed group runs here (baremetal), the rest in the container job.
+      UT_LABEL: ${{ inputs.ut == 'xpu_p0' && 'xpu_p0_distributed' || inputs.ut }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -108,19 +111,20 @@ jobs:
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
-          ut_name: ${{ inputs.ut }}
+          ut_name: ${{ env.UT_LABEL }}
+          skip_summary: ${{ inputs.skip_summary }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 

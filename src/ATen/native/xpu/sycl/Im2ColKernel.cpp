@@ -17,7 +17,7 @@
 
 #include <ATen/native/im2col_shape_check.h>
 #include <comm/Runtime.h>
-#include <comm/SYCLHelpers.h>
+#include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/Im2ColKernel.h>
 
@@ -26,85 +26,56 @@ namespace native {
 namespace xpu {
 
 template <typename T>
-struct Im2colKernelFunctor {
-  void operator()(sycl::item<1> itemId) const {
-    auto in_ptr = in_data;
-    auto out_ptr = out_data;
-    auto id = itemId.get_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void im2col_kernel_func(
+    const T* in_data,
+    const int64_t channels,
+    const int64_t height,
+    const int64_t width,
+    const int64_t height_col,
+    const int64_t width_col,
+    const int64_t kernel_h,
+    const int64_t kernel_w,
+    const int64_t pad_h,
+    const int64_t pad_w,
+    const int64_t stride_h,
+    const int64_t stride_w,
+    const int64_t dilation_h,
+    const int64_t dilation_w,
+    T* out_data) {
+  auto itemId = syclext::this_work_item::get_nd_item<1>();
 
-    int64_t w_out = id % width_col;
-    id /= width_col;
+  auto in_ptr = in_data;
+  auto out_ptr = out_data;
+  auto id = itemId.get_global_id(0);
+  if (id >= channels * height_col * width_col) {
+    return;
+  }
 
-    int64_t h_out = id % height_col;
-    int64_t channel_in = id / height_col;
-    int64_t channel_out = channel_in * kernel_h * kernel_w;
-    int64_t h_in = h_out * stride_h - pad_h;
-    int64_t w_in = w_out * stride_w - pad_w;
+  int64_t w_out = id % width_col;
+  id /= width_col;
 
-    out_ptr += (channel_out * height_col + h_out) * width_col + w_out;
-    in_ptr += (channel_in * height + h_in) * width + w_in;
+  int64_t h_out = id % height_col;
+  int64_t channel_in = id / height_col;
+  int64_t channel_out = channel_in * kernel_h * kernel_w;
+  int64_t h_in = h_out * stride_h - pad_h;
+  int64_t w_in = w_out * stride_w - pad_w;
 
-    for (int64_t i = 0; i < kernel_h; ++i) {
-      for (int64_t j = 0; j < kernel_w; ++j) {
-        int64_t h = h_in + i * dilation_h;
-        int64_t w = w_in + j * dilation_w;
-        *out_ptr = (h >= 0 && w >= 0 && h < height && w < width)
-            ? in_ptr[i * dilation_h * width + j * dilation_w]
-            : static_cast<T>(0);
-        ;
-        out_ptr += height_col * width_col;
-      }
+  out_ptr += (channel_out * height_col + h_out) * width_col + w_out;
+  in_ptr += (channel_in * height + h_in) * width + w_in;
+
+  for (int64_t i = 0; i < kernel_h; ++i) {
+    for (int64_t j = 0; j < kernel_w; ++j) {
+      int64_t h = h_in + i * dilation_h;
+      int64_t w = w_in + j * dilation_w;
+      *out_ptr = (h >= 0 && w >= 0 && h < height && w < width)
+          ? in_ptr[i * dilation_h * width + j * dilation_w]
+          : static_cast<T>(0);
+      ;
+      out_ptr += height_col * width_col;
     }
   }
-  Im2colKernelFunctor(
-      const T* in_data_,
-      const int64_t channels_,
-      const int64_t height_,
-      const int64_t width_,
-      const int64_t height_col_,
-      const int64_t width_col_,
-      const int64_t kernel_h_,
-      const int64_t kernel_w_,
-      const int64_t pad_h_,
-      const int64_t pad_w_,
-      const int64_t stride_h_,
-      const int64_t stride_w_,
-      const int64_t dilation_h_,
-      const int64_t dilation_w_,
-      T* out_data_)
-      : in_data(in_data_),
-        channels(channels_),
-        height(height_),
-        width(width_),
-        height_col(height_col_),
-        width_col(width_col_),
-        kernel_h(kernel_h_),
-        kernel_w(kernel_w_),
-        pad_h(pad_h_),
-        pad_w(pad_w_),
-        stride_h(stride_h_),
-        stride_w(stride_w_),
-        dilation_h(dilation_h_),
-        dilation_w(dilation_w_),
-        out_data(out_data_) {}
-
- private:
-  const T* in_data;
-  const int64_t channels;
-  const int64_t height;
-  const int64_t width;
-  const int64_t height_col;
-  const int64_t width_col;
-  const int64_t kernel_h;
-  const int64_t kernel_w;
-  const int64_t pad_h;
-  const int64_t pad_w;
-  const int64_t stride_h;
-  const int64_t stride_w;
-  const int64_t dilation_h;
-  const int64_t dilation_w;
-  T* out_data;
-};
+}
 
 template <typename T>
 static void im2col_kernel(
@@ -130,7 +101,16 @@ static void im2col_kernel(
 
   auto in_data = data_im;
   auto out_data = data_col;
-  auto kfn = Im2colKernelFunctor<T>(
+
+  int64_t local_range = syclMaxWorkGroupSize<im2col_kernel_func<T>>();
+  int64_t global_range =
+      ((total_threads + local_range - 1) / local_range) * local_range;
+
+  sycl_kernel_submit<im2col_kernel_func<T>>(
+      global_range,
+      local_range,
+      sycl_queue,
+      0,
       in_data,
       channels,
       height,
@@ -146,7 +126,6 @@ static void im2col_kernel(
       dilation_h,
       dilation_w,
       out_data);
-  sycl_kernel_submit(::sycl::range<1>(total_threads), sycl_queue, kfn);
 }
 
 void im2col_kernel(

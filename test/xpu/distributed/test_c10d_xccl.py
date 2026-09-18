@@ -769,6 +769,51 @@ class CommTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_all_gather_into_tensor_mx_dtypes(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        device = "xpu"
+        # The two halves of an MX tensor: packed fp4 payload and its e8m0 scale.
+        for dtype in [torch.float4_e2m1fn_x2, torch.float8_e8m0fnu]:
+            # Neither dtype supports arithmetic or casting, so build the byte
+            # pattern as uint8 and reinterpret. Keeping the payload
+            # rank-dependent means an implementation that skips the transfer
+            # cannot pass.
+            tensor = torch.full(
+                (12, 12), self.rank + 1, dtype=torch.uint8, device=device
+            ).view(dtype)
+            output_tensor = torch.zeros(
+                self.world_size * 12, 12, dtype=torch.uint8, device=device
+            ).view(dtype)
+            dist.all_gather_into_tensor(output_tensor, tensor)
+            gathered = output_tensor.view(torch.uint8)
+            for i in range(self.world_size):
+                expected = torch.full((12, 12), i + 1, dtype=torch.uint8, device=device)
+                self.assertEqual(gathered[i * 12 : (i + 1) * 12], expected)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_reduction_rejects_float4(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        tensor = torch.zeros(12, 12, dtype=torch.uint8, device="xpu").view(
+            torch.float4_e2m1fn_x2
+        )
+        with self.assertRaisesRegex(RuntimeError, "Float4"):
+            dist.all_reduce(tensor)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_unwaited(self) -> None:
         # Verify that the process can terminate gracefully
         # even with unwaited tensors

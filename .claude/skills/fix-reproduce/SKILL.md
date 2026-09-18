@@ -6,8 +6,7 @@ description: >
   bug still reproduces before an orchestrator commits time to a fix.
   Runs a three-stage fallback (nightly wheel -> source build -> CI
   environment alignment) and returns REPRODUCED / NOT_REPRODUCED /
-  NO_REPRODUCER / CANNOT_VERIFY. Called by both issue-handler and
-  xpu-nightly-ci-fix orchestrators.
+  NO_REPRODUCER / CANNOT_VERIFY. Called by the issue-handler orchestrator.
 ---
 
 # Reproduce — Verify the Bug Exists
@@ -38,8 +37,8 @@ the result.
   Providers (set by the orchestrator, not this skill):
   - **Issue body** — extracted by `issue-triage` from the reproducer section
     (via `issue-handler`).
-  - **CI failure log** — the failing pytest node id from the nightly CI report
-    (via `xpu-nightly-ci-fix`).
+  - **CI failure log** — the failing pytest node id from the nightly CI report,
+    passed through as a batch sub-item.
 - `stage` — which reproduction path to run. Default `auto`.
   - `auto` — run the full three-stage fallback chain (nightly → source_build →
     ci_env). Used by orchestrators that need a definitive verdict.
@@ -418,9 +417,8 @@ Pick which CI to align against based on the reproducer:
 | Path is `pytorch/test/...` or absolute path inside a pytorch tree | `pytorch` |
 | Ambiguous / `python -c` snippet with no path | try `torch-xpu-ops` first, fall back to `pytorch` |
 
-The orchestrator (`issue-handler` for issues from either repo,
-`xpu-nightly-ci-fix` for torch-xpu-ops nightly failures) may also
-pass `ci_repo` explicitly; when set, use it and skip the heuristic.
+The orchestrator may also pass `ci_repo` explicitly; when set, use it
+and skip the heuristic.
 
 ### Path A — `ci_repo=torch-xpu-ops`
 
