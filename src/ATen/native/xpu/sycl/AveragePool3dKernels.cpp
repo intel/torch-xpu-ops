@@ -139,8 +139,7 @@ void avg_pool3d_out_template(
 
   index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
   auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit<
-      avg_pool3d_kernel_impl<scalar_t, accscalar_t, index_t>>(
+  sycl_kernel_submit<avg_pool3d_kernel_impl<scalar_t, accscalar_t, index_t>>(
       sycl::range<3>{
           size_t(z_group_range),
           size_t(height_group_range * height_group_size),
@@ -336,11 +335,11 @@ void avg_pool3d_backward_stride1_template(
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
 
   index_t width_group_size = 32;
-  index_t height_group_size =
-      at::xpu::getKernelMaxWorkGroupSize<avg_pool3d_backward_stride1_kernel_impl<
-          scalar_t,
-          accscalar_t,
-          index_t>>() /
+  index_t height_group_size = at::xpu::getKernelMaxWorkGroupSize<
+                                  avg_pool3d_backward_stride1_kernel_impl<
+                                      scalar_t,
+                                      accscalar_t,
+                                      index_t>>() /
       width_group_size;
   index_t width_group_range =
       ceil_div<index_t>(grad_input.size(-1), width_group_size);
@@ -350,10 +349,8 @@ void avg_pool3d_backward_stride1_template(
   index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
 
   auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit<avg_pool3d_backward_stride1_kernel_impl<
-      scalar_t,
-      accscalar_t,
-      index_t>>(
+  sycl_kernel_submit<
+      avg_pool3d_backward_stride1_kernel_impl<scalar_t, accscalar_t, index_t>>(
       sycl::range<3>{
           size_t(z_group_range),
           size_t(height_group_range * height_group_size),
@@ -478,10 +475,8 @@ void avg_pool3d_backward_atomic_template(
   index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
 
   auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit<avg_pool3d_backward_atomic_kernel_impl<
-      scalar_t,
-      accscalar_t,
-      index_t>>(
+  sycl_kernel_submit<
+      avg_pool3d_backward_atomic_kernel_impl<scalar_t, accscalar_t, index_t>>(
       sycl::range<3>{
           size_t(z_group_range),
           size_t(height_group_range * height_group_size),
@@ -596,10 +591,8 @@ void avg_pool3d_backward_template(
 
   index_t width_group_size = 32;
   index_t height_group_size =
-      at::xpu::getKernelMaxWorkGroupSize<avg_pool3d_backward_kernel_impl<
-          scalar_t,
-          accscalar_t,
-          index_t>>() /
+      at::xpu::getKernelMaxWorkGroupSize<
+          avg_pool3d_backward_kernel_impl<scalar_t, accscalar_t, index_t>>() /
       width_group_size;
   index_t width_group_range =
       ceil_div<index_t>(grad_output.size(-1), width_group_size);
