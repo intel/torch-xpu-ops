@@ -1440,21 +1440,23 @@ jobs:
           ```
 
           On a batch run add `item=<pytorch issue>` to say which sub-item the
-          verdict is about -- one comment per sub-item, since a bare verdict on a
-          batch does not say which test it means and is dropped. `run=<id>` only
-          when judging a run other than the newest.
+          verdict is about, **in the bold text and in the marker** -- the marker
+          is invisible, so the bold line is all a reader sees. One comment per
+          sub-item, since a bare verdict on a batch does not say which test it
+          means and is dropped. `run=<id>` only when judging a run other than the
+          newest, in both places too.
 
           A CI DISABLED sub-item, `item=` from the fan-out table:
 
           ```
-          **strong-accepted** <!-- review: strong-accepted item=197334 -->
+          **strong-accepted item=197334** <!-- review: strong-accepted item=197334 -->
           notes: same TensorAssign overload as upstream CUDA, fp8 dispatch list matches
           ```
 
           Another sub-item of the same batch, judged on an earlier run:
 
           ```
-          **weak-rejected** <!-- review: weak-rejected run=35171979678 item=197335 -->
+          **weak-rejected run=35171979678 item=197335** <!-- review: weak-rejected run=35171979678 item=197335 -->
           notes: green only because the test is skipped, the kernel still lacks fp8
           ```
 
