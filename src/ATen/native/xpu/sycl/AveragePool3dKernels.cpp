@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -126,9 +127,11 @@ void avg_pool3d_out_template(
   auto input_acc = work_input.packed_accessor64<const scalar_t, 4>();
   auto output_acc = work_output.packed_accessor64<scalar_t, 4>();
 
+  // width size is fixed size = 32, height dim equals =
+  // at::xpu::getKernelMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
   index_t height_group_size =
-      syclMaxWorkGroupSize<
+      at::xpu::getKernelMaxWorkGroupSize<
           avg_pool3d_kernel_impl<scalar_t, accscalar_t, index_t>>() /
       width_group_size;
   index_t width_group_range =
@@ -333,10 +336,11 @@ void avg_pool3d_backward_stride1_template(
     int totalZ) {
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
-
+  // width size is fixed size = 32, height dim equals =
+  // at::xpu::getKernelMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
   index_t height_group_size =
-      syclMaxWorkGroupSize<avg_pool3d_backward_stride1_kernel_impl<
+      at::xpu::getKernelMaxWorkGroupSize<avg_pool3d_backward_stride1_kernel_impl<
           scalar_t,
           accscalar_t,
           index_t>>() /
@@ -462,9 +466,11 @@ void avg_pool3d_backward_atomic_template(
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
 
+  // width size is fixed size = 32, height dim equals =
+  // at::xpu::getKernelMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
   index_t height_group_size =
-      syclMaxWorkGroupSize<avg_pool3d_backward_atomic_kernel_impl<
+      at::xpu::getKernelMaxWorkGroupSize<avg_pool3d_backward_atomic_kernel_impl<
           scalar_t,
           accscalar_t,
           index_t>>() /
@@ -593,9 +599,11 @@ void avg_pool3d_backward_template(
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
 
+  // width size is fixed size = 32, height dim equals =
+  // at::xpu::getKernelMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
   index_t height_group_size =
-      syclMaxWorkGroupSize<avg_pool3d_backward_kernel_impl<
+      at::xpu::getKernelMaxWorkGroupSize<avg_pool3d_backward_kernel_impl<
           scalar_t,
           accscalar_t,
           index_t>>() /

@@ -21,6 +21,7 @@
 #include <ATen/native/SparseTensorUtils.h>
 #include <ATen/native/sparse/SparseTensorMath.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUUtils.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -117,9 +118,10 @@ void sparse_elementwise_kernel(
 //     const IndexType nnz) {
 //   using KernelClass = SparseElementwiseKernellFunctor<Op, IndexType, Real>;
 //   auto& queue = getCurrentSYCLQueue();
-//   IndexType group_size = (IndexType)syclMaxWorkGroupSize<KernelClass>();
-//   IndexType target_global_size = (IndexType)syclMaxWorkItemsPerTile();
-//   auto max_work_group_num = target_global_size / group_size;
+//   IndexType group_size =
+//   (IndexType)at::xpu::getKernelMaxWorkGroupSize<KernelClass>(); IndexType
+//   target_global_size = (IndexType)at::xpu::getDeviceMaxWorkItems(); auto
+//   max_work_group_num = target_global_size / group_size;
 
 //   auto num_groups = CeilDiv(nnz, group_size);
 //   if (num_groups > max_work_group_num)
@@ -167,8 +169,8 @@ void sparse_elementwise_scalar_kernel(
 //     const IndexType nnz) {
 //   using KernelClass = SparseElementwiseKernelScalarFunctor<Op, IndexType,
 //   Real>; auto& queue = getCurrentSYCLQueue(); IndexType group_size =
-//   (IndexType)syclMaxWorkGroupSize<KernelClass>(); IndexType
-//   target_global_size = (IndexType)syclMaxWorkItemsPerTile(); auto
+//   (IndexType)at::xpu::getKernelMaxWorkGroupSize<KernelClass>(); IndexType
+//   target_global_size = (IndexType)at::xpu::getDeviceMaxWorkItems(); auto
 //   max_work_group_num = target_global_size / group_size;
 
 //   auto num_groups = CeilDiv(nnz * group_size, group_size);
@@ -242,7 +244,7 @@ Tensor& add_out_dense_sparse_kernel(
   }
 
   if (sparse.is_coalesced()) {
-    size_t target_global_size = syclMaxWorkItemsPerTile();
+    size_t target_global_size = at::xpu::getDeviceMaxWorkItems();
 
     if (sparse.dense_dim() == 0) {
       AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -262,7 +264,8 @@ Tensor& add_out_dense_sparse_kernel(
             auto indices_info = I_INFO(indices);
             auto values_info = V_INFO(values);
             auto nnz_val = static_cast<uint64_t>(nnz);
-            size_t group_size = syclMaxWorkGroupSize<kernel_ptr>();
+            size_t group_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernel_ptr>();
             size_t max_work_group_num = target_global_size / group_size;
             size_t num_groups = (nnz + group_size - 1) / group_size;
             if (num_groups > max_work_group_num)
@@ -299,7 +302,8 @@ Tensor& add_out_dense_sparse_kernel(
             auto indices_info = I_INFO(indices);
             auto values_info = V_INFO(values);
             auto nnz_val = static_cast<uint64_t>(nnz);
-            size_t group_size = syclMaxWorkGroupSize<kernel_ptr>();
+            size_t group_size =
+                at::xpu::getKernelMaxWorkGroupSize<kernel_ptr>();
             size_t max_work_group_num = target_global_size / group_size;
             size_t num_groups = (nnz + group_size - 1) / group_size;
             if (num_groups > max_work_group_num)
@@ -653,10 +657,11 @@ Tensor _sparse_sum_backward_kernel(
                 getTensorInfo<scalar_t, int64_t>(grad_input_values);
 
             constexpr auto kernel_ptr = sparse_sum_backward_kernel<scalar_t>;
-            size_t target_global_size = syclMaxWorkItemsPerTile();
+            size_t target_global_size = at::xpu::getDeviceMaxWorkItems();
             size_t group_size = std::min(
                 static_cast<size_t>(input_nnz),
-                static_cast<size_t>(syclMaxWorkGroupSize<kernel_ptr>()));
+                static_cast<size_t>(
+                    at::xpu::getKernelMaxWorkGroupSize<kernel_ptr>()));
             size_t max_work_group_num = target_global_size / group_size;
             size_t num_groups = (input_nnz + group_size - 1) / group_size;
             if (num_groups > max_work_group_num)
