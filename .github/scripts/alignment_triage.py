@@ -92,9 +92,11 @@ def render_draft(
     )
     prefix = "[DRY RUN] " if dry_run else ""
     scan_day = date.fromisoformat(scan_date)
+    title_text = title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()
+    title_text = re.sub(r"^(?:\[\d{2}(?:\d{2})?-\d{2}-\d{2}\]\s*)+", "", title_text)
     dated_title = (
         f"{ISSUE_TITLE_PREFIX} [{scan_day.strftime('%y-%m-%d')}] "
-        f"{title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()}"
+        f"{title_text}"
     )
     return (
         f"{marker}\n"
