@@ -73,6 +73,16 @@ macro(set_build_flags)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
+    # These GCC warning options remain available to regular host compilation,
+    # but are not supported by the Intel SYCL/Clang host frontend.
+    list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
+      -Wno-stringop-overflow
+      -Wno-dangling-reference
+      -Wno-error=dangling-reference)
+    CHECK_SYCL_FLAG("-Wno-maybe-uninitialized;-Werror=unknown-warning-option" SUPPORTS_NO_MAYBE_UNINITIALIZED)
+    if(NOT SUPPORTS_NO_MAYBE_UNINITIALIZED)
+      list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL -Wno-maybe-uninitialized)
+    endif()
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)

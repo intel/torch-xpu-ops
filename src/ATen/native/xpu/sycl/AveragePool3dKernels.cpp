@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -173,9 +174,10 @@ void avg_pool3d_out_template(
       output_acc);
 
   // width size is fixed size = 32, height dim equals =
-  // syclMaxWorkGroupSize(kfn) / width_size
+  // at::xpu::getKernelMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
-  index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
+  index_t height_group_size =
+      at::xpu::getKernelMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
       ceil_div<index_t>(work_output.size(-1), width_group_size);
   index_t height_group_range =
@@ -384,9 +386,10 @@ void avg_pool3d_backward_stride1_template(
   AvgPool3dBackwardStride1KernelFunctor<scalar_t, accscalar_t, index_t> kfn(
       kT, kH, kW, normFactor, offsetZ, grad_output_acc, grad_input_acc);
   // width size is fixed size = 32, height dim equals =
-  // syclMaxWorkGroupSize(kfn) / width_size
+  // at::xpu::getKernelMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
-  index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
+  index_t height_group_size =
+      at::xpu::getKernelMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
       ceil_div<index_t>(grad_input.size(-1), width_group_size);
   index_t height_group_range =
@@ -546,9 +549,10 @@ void avg_pool3d_backward_atomic_template(
       grad_input_acc);
 
   // width size is fixed size = 32, height dim equals =
-  // syclMaxWorkGroupSize(kfn) / width_size
+  // at::xpu::getKernelMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
-  index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
+  index_t height_group_size =
+      at::xpu::getKernelMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
       ceil_div<index_t>(grad_output.size(-1), width_group_size);
   index_t height_group_range =
@@ -704,9 +708,10 @@ void avg_pool3d_backward_template(
       grad_input_acc);
 
   // width size is fixed size = 32, height dim equals =
-  // syclMaxWorkGroupSize(kfn) / width_size
+  // at::xpu::getKernelMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
-  index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
+  index_t height_group_size =
+      at::xpu::getKernelMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
       ceil_div<index_t>(grad_output.size(-1), width_group_size);
   index_t height_group_range =

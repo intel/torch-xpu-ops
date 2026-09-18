@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+from skip_list_common import PYTORCH_TEST_DIR
+
 skip_dict = {
     # tensor(0.-0.j, device='xpu:0', dtype=torch.complex32) tensor(nan+nanj, device='xpu:0', dtype=torch.complex32) (1.5707964+0j)
     "test_unary_ufuncs_xpu.pyy": (
@@ -35,7 +37,7 @@ skip_dict = {
     ),
     # https://github.com/intel/torch-xpu-ops/issues/1171
     # AssertionError: 'Assertion maxind >= 0 && maxind < outputImageSize failed' not found in '\nAssertHandler::printMessage\n' : The expected error was not found
-    "nn\test_pooling_xpu.py": (
+    "nn/test_pooling_xpu.py": (
         "test_MaxUnpool_index_errors_case1_xpu",
         "test_MaxUnpool_index_errors_case2_xpu",
         "test_MaxUnpool_index_errors_case4_xpu",
@@ -127,7 +129,7 @@ skip_dict = {
     ),
     "test_upsample_bilinear_bwd.py": ("test_upsample_bilinear_bwd",),
     "test_upsample_nearest.py": ("test_upsample_nearest",),
-    "nn\test_convolution_xpu.py": (
+    f"{PYTORCH_TEST_DIR}/nn/test_convolution.py": (
         "test_conv_noncontig_weights_and_bias_xpu",
         "test_conv_noncontig_weights_xpu",
         "test_conv_transpose_with_output_size_and_no_batch_dim_ConvTranspose2d_xpu",
