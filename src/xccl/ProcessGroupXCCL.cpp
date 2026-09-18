@@ -401,6 +401,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << ", TORCH_XCCL_ENABLE_TIMING: " << enableTiming_.load()
             << ", TORCH_XCCL_BLOCKING_WAIT: " << blockingWait_
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug
+            << ", TORCH_FR_BUFFER_SIZE: " << traceBufferSize_
             << ", TORCH_XCCL_NAN_CHECK: " << enableNanCheck_
             << ", TORCH_XCCL_XPU_EVENT_CACHE: " << xpuEventCacheEnabled_;
 
