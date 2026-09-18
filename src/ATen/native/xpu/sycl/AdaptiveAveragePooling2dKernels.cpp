@@ -507,7 +507,8 @@ void adaptive_avg_pool2d_backward_kernel(
           int64_t ohw01_shared_size = ((isizeH + isizeW) * 2) * sizeof(int);
           int64_t ikhw_shared_size = (osizeH + osizeW) * sizeof(opmath_t);
           int64_t total_shared_size = ohw01_shared_size + ikhw_shared_size;
-          bool using_shared = at::xpu::getDeviceLocalMemSize() >= total_shared_size;
+          bool using_shared =
+              at::xpu::getDeviceLocalMemSize() >= total_shared_size;
 
           auto& q = getCurrentSYCLQueue();
           if (using_shared) {
