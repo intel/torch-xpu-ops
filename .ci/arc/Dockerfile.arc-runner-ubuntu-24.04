@@ -33,9 +33,9 @@ RUN (userdel -r ubuntu 2>/dev/null || true) && \
         > /etc/sudoers.d/runner && \
     chmod 0440 /etc/sudoers.d/runner
 
-RUN chmod -R 777 /var/cache/ && \
-    setfacl -m u::rwx,g::rwx,o::rwx /var/cache/ && \
-    setfacl -d -m u::rwx,g::rwx,o::rwx /var/cache/
+RUN chmod -R 777 /var/ && \
+    setfacl -m u::rwx,g::rwx,o::rwx /var/ && \
+    setfacl -d -m u::rwx,g::rwx,o::rwx /var/
 
 WORKDIR /home/runner
 
