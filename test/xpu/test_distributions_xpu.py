@@ -37,6 +37,7 @@ with XPUPatchForImport(False):
         TestValidation,
     )
 
+import math
 from itertools import product
 
 import numpy as np
@@ -199,6 +200,20 @@ def _test_lowrank_multivariate_normal_moments(self):
     self.assertEqual(d.variance, empirical_var, atol=0.02, rtol=0)
 
 
+def _test_vonmises_sample(self):
+    # Seed bumped for XPU's RNG stream; see Note [Randomized statistical tests].
+    set_rng_seed(0)
+    for loc in [0.0, math.pi / 2.0]:
+        for concentration in [0.03, 0.3, 1.0, 10.0, 100.0]:
+            self._check_sampler_sampler(
+                VonMises(loc, concentration),
+                scipy.stats.vonmises(loc=loc, kappa=concentration),
+                f"VonMises(loc={loc}, concentration={concentration})",
+                num_samples=int(1e5),
+                circular=True,
+            )
+
+
 TestDistributions.test_beta_underflow_gpu = _test_beta_underflow_gpu
 TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
 TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
@@ -208,6 +223,7 @@ TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_
 TestDistributions.test_lowrank_multivariate_normal_moments = (
     _test_lowrank_multivariate_normal_moments
 )
+TestDistributions.test_vonmises_sample = _test_vonmises_sample
 instantiate_device_type_tests(
     TestDistributions, globals(), only_for="xpu", allow_xpu=True
 )
