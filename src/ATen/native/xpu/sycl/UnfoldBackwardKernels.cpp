@@ -19,6 +19,7 @@
 #include <c10/core/ScalarType.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 
@@ -35,12 +36,16 @@ void unfold_backward_elementwise_kernel(
     int total_n_elems,
     func_t f) {
   auto item = syclext::this_work_item::get_nd_item<1>();
-  int idx = item.get_local_linear_id();
+  int idx = item.get_global_linear_id();
+  int stride = item.get_global_range(0);
+  for (; idx < total_work_items; idx += stride) {
+    int elem_idx = idx;
 #pragma unroll
-  for (int i = 0; i < n_elems_per_work_item; ++i) {
-    if (idx < total_n_elems) {
-      f(idx);
-      idx += total_work_items;
+    for (int i = 0; i < n_elems_per_work_item; ++i) {
+      if (elem_idx < total_n_elems) {
+        f(elem_idx);
+        elem_idx += total_work_items;
+      }
     }
   }
 }
@@ -56,11 +61,16 @@ static void _launch_unfold_backward_kernel(int total_n_elems, func_t f) {
       (total_n_elems + n_elems_per_work_item - 1) / n_elems_per_work_item;
   constexpr auto kfn =
       unfold_backward_elementwise_kernel<n_elems_per_work_item, func_t>;
+  int work_group_size = std::min<int>(
+      total_work_items, at::xpu::getKernelMaxWorkGroupSize<kfn>());
+  int64_t global_range =
+      xpuKernelLoopGroupRange(total_work_items, work_group_size) *
+      work_group_size;
   auto& queue = getCurrentSYCLQueue();
 
   sycl_kernel_submit<kfn>(
-      sycl::range<1>(total_work_items),
-      sycl::range<1>(total_work_items),
+      sycl::range<1>(global_range),
+      sycl::range<1>(work_group_size),
       queue,
       0,
       total_work_items,
