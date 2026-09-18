@@ -179,4 +179,29 @@ Tensor& orgqr_kernel_xpu(Tensor& result, const Tensor& tau) {
 
 REGISTER_XPU_DISPATCH(orgqr_stub, &orgqr_kernel_xpu);
 
+void cholesky_kernel_fallback(
+    const Tensor& input,
+    const Tensor& info,
+    bool upper) {
+  auto input_cpu = input.to(input.options().device(kCPU));
+  auto info_cpu = info.to(info.options().device(kCPU));
+
+  cholesky_stub(at::kCPU, input_cpu, info_cpu, upper);
+
+  input.copy_(input_cpu);
+  info.copy_(info_cpu);
+
+  return;
+}
+
+void cholesky_kernel_xpu(const Tensor& result, const Tensor& info, bool upper) {
+#if defined(USE_ONEMKL_XPU)
+  return native::xpu::potrf_mkl(result, info, upper);
+#else
+  return cholesky_kernel_fallback(result, info, upper);
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(cholesky_stub, &cholesky_kernel_xpu);
+
 } // namespace at::native
