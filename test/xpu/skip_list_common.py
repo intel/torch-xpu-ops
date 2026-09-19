@@ -229,7 +229,6 @@ skip_dict = {
         # skipped due to #2536, torch._C._scatter or torch._C._gather
         "test_pickle_gradscaler_xpu",
         "test_grad_scaler_pass_itself_xpu",
-        "test_grad_scaling_state_dict_xpu",
         "test_typed_storage_deprecation_warning",
         "test_typed_storage_internal_no_warning",
         # TypeError: map2_ is only implemented on CPU tensors
