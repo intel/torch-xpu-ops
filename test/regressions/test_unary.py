@@ -7,6 +7,8 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 # Owner(s): ["module: intel"]
+import math
+
 import torch
 from torch.testing._internal.common_utils import TestCase
 
@@ -94,6 +96,16 @@ class TestSimpleUnary(TestCase):
         torch.tanh(z_cpu).backward(torch.ones_like(z_cpu))
         torch.tanh(z_xpu).backward(torch.ones_like(z_xpu))
         self.assertEqual(z_cpu.grad, z_xpu.grad.cpu())
+
+    # Regression test for #5431: abs_xpu had no Float8_e5m2 case, so abs and
+    # upstream isinf/isfinite, which both depend on abs, raised NotImplementedError
+    # on XPU while CPU worked.
+    def test_abs_isinf_isfinite_float8_e5m2(self):
+        a_cpu = torch.tensor([1.0, math.inf, -math.inf, math.nan]).to(torch.float8_e5m2)
+        a_xpu = a_cpu.xpu()
+        self.assertEqual(a_cpu.abs().float(), a_xpu.abs().float().cpu())
+        self.assertEqual(a_cpu.isinf(), a_xpu.isinf().cpu())
+        self.assertEqual(a_cpu.isfinite(), a_xpu.isfinite().cpu())
 
     @Dtypes(all_basic_and_complex_types, [torch.bool])
     def test_neg_out(self, dtype):
