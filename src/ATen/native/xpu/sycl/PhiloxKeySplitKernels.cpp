@@ -225,8 +225,6 @@ Tensor _philox_key_fold_in_tensor_xpu(const Tensor& key, const Tensor& data) {
       key.device(),
       " and ",
       data.device());
-  // TODO: Relax this and allow for arbitrary data shape that broadcasts with
-  // batched keys?
   TORCH_CHECK(
       data.numel() == 1,
       "_philox_key_fold_in: data must be a single value, got ",
