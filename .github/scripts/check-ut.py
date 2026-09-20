@@ -16,8 +16,8 @@ failures_by_category = defaultdict(list)
 passed_cases = []
 passed_by_category = defaultdict(list)
 # Every case seen, whatever its status. passed/failures alone cannot express
-# "skipped", which ut_auto_issue.py needs to tell a newly-enabled case from a
-# brand-new one.
+# "skipped", which ut_collect_evidence.py needs to tell a newly-enabled case
+# from a brand-new one.
 all_by_category = defaultdict(list)
 category_totals = defaultdict(lambda: {
     'Test cases': 0,

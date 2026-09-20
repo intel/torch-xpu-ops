@@ -14,7 +14,7 @@ membership over ~180,000 cases, so it belongs in code rather than in a model.
 
 Run by hand against a past nightly to see what it collected:
 
-    python .github/scripts/ut_auto_issue.py --run-id <run_id> \
+    python .github/scripts/ut_collect_evidence.py --run-id <run_id> \
         --evidence-dir ./evidence
 """
 

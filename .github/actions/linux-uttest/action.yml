@@ -243,7 +243,7 @@ runs:
           echo -e "No Passed logs"
         fi
         # Copied the full case universe (includes skipped cases), used by
-        # ut_auto_issue.py to classify a failure against its baseline.
+        # ut_collect_evidence.py to classify a failure against its baseline.
         if ls all_cases_*.log 1> /dev/null 2>&1; then
           cp all_cases_*.log ${{ github.workspace }}/ut_log
           echo -e "All-cases logs Copied"

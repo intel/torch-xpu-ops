@@ -130,8 +130,8 @@ check_passed_known_issues() {
 }
 
 # Append this category's count verdict to $UT_RUN_HEALTH_FILE as JSON Lines.
-# ut_auto_issue.py reads it to tell a truncated run from a healthy one, and to
-# health-check baseline candidates. A category that never ran gets no line,
+# ut_collect_evidence.py reads it to tell a truncated run from a healthy one,
+# and to health-check baseline candidates. A category that never ran gets no line,
 # which is how "absent" is distinguished from "truncated".
 # Writes only to the file: check_test_cases' stdout is captured by its caller.
 record_run_health() {

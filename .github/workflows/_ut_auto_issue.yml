@@ -76,7 +76,7 @@ jobs:
         # failed, and how each compares with its category's baseline. It groups
         # nothing and files nothing.
         run: |
-          python3 .github/scripts/ut_auto_issue.py \
+          python3 .github/scripts/ut_collect_evidence.py \
             --run-id "${{ inputs.run_id }}" \
             --test-type "${{ inputs.test_type }}" \
             --work-dir "${WORK_DIR}" \
