@@ -74,6 +74,31 @@ void philox_key_split_kernel(
   }
 }
 
+// Fold the value `data` into the key at `index`, deriving a new
+// (seed, offset) pair.
+inline void philox_key_fold_in_impl(
+    const uint64_t* input,
+    uint64_t* output,
+    int64_t index,
+    uint64_t data) {
+  const uint64_t seed = input[index * 2];
+  const uint64_t offset = input[index * 2 + 1];
+
+  const uint2 key = {
+      static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+  const uint64_t folded = offset + data;
+  const uint4 counter = {
+      static_cast<uint32_t>(folded),
+      static_cast<uint32_t>(folded >> 32),
+      // restrict subsequence=0
+      0,
+      0};
+
+  const auto r = philox4x32_10(counter, key);
+  philox_derive_key(r, &output[index * 2], &output[index * 2 + 1]);
+}
+
+// data passed by value (baked into the launch).
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void philox_key_fold_in_kernel(
     const uint64_t* input,
@@ -83,20 +108,22 @@ void philox_key_fold_in_kernel(
   auto item = syclext::this_work_item::get_nd_item<1>();
 
   XPU_KERNEL_LOOP(item, index, num_keys) {
-    uint64_t seed = input[index * 2];
-    uint64_t offset = input[index * 2 + 1];
+    philox_key_fold_in_impl(input, output, index, static_cast<uint64_t>(data));
+  }
+}
 
-    uint2 key = {
-        static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
-    uint4 counter = {
-        static_cast<uint32_t>(offset + static_cast<uint64_t>(data)),
-        static_cast<uint32_t>((offset + static_cast<uint64_t>(data)) >> 32),
-        // restrict subsequence=0
-        0,
-        0};
+// data read from device memory at kernel execution time, so the value is not
+// baked into the launch (CUDA graph-safe variant).
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void philox_key_fold_in_tensor_kernel(
+    const uint64_t* input,
+    uint64_t* output,
+    int64_t num_keys,
+    const uint64_t* data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    auto r = philox4x32_10(counter, key);
-    philox_derive_key(r, &output[index * 2], &output[index * 2 + 1]);
+  XPU_KERNEL_LOOP_TYPE(item, index, num_keys, int64_t) {
+    philox_key_fold_in_impl(input, output, index, data[0]);
   }
 }
 
@@ -174,6 +201,60 @@ Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data) {
       output.data_ptr<uint64_t>(),
       num_keys,
       data);
+
+  return output;
+}
+
+Tensor _philox_key_fold_in_tensor_xpu(const Tensor& key, const Tensor& data) {
+  TORCH_CHECK(
+      key.dim() >= 1 && key.size(-1) == 2,
+      "_philox_key_fold_in: key must have shape (*batch, 2), got shape ",
+      key.sizes());
+  TORCH_CHECK(
+      key.scalar_type() == kUInt64,
+      "_philox_key_fold_in: key must have dtype uint64, got ",
+      key.scalar_type());
+  TORCH_CHECK(
+      data.scalar_type() == kUInt64,
+      "_philox_key_fold_in: data must have dtype uint64, got ",
+      data.scalar_type());
+  TORCH_CHECK(
+      data.device() == key.device(),
+      "_philox_key_fold_in: Expected all tensors to be on the same device, "
+      "got ",
+      key.device(),
+      " and ",
+      data.device());
+  // TODO: Relax this and allow for arbitrary data shape that broadcasts with
+  // batched keys?
+  TORCH_CHECK(
+      data.numel() == 1,
+      "_philox_key_fold_in: data must be a single value, got ",
+      data.numel(),
+      " elements");
+
+  Tensor output = at::empty_like(key);
+  int64_t num_keys = key.numel() / 2;
+  if (num_keys == 0) {
+    return output;
+  }
+
+  constexpr int64_t work_group_size =
+      256; // TODO: wg_size 256 on performance of XPU remains to be investigated
+  const int64_t work_group_num =
+      xpuKernelLoopGroupRange(num_keys, work_group_size);
+  auto key_contig = key.contiguous();
+  auto data_contig = data.contiguous();
+
+  sycl_kernel_submit<philox_key_fold_in_tensor_kernel>(
+      sycl::range<1>(work_group_num * work_group_size),
+      sycl::range<1>(work_group_size),
+      at::xpu::getCurrentSYCLQueue(),
+      0,
+      key_contig.data_ptr<uint64_t>(),
+      output.data_ptr<uint64_t>(),
+      num_keys,
+      data_contig.const_data_ptr<uint64_t>());
 
   return output;
 }
