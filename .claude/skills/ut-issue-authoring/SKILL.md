@@ -116,11 +116,47 @@ the filing step links them.
 
 Set `file: false`, with a `reason`, when the failures describe a machine that
 misbehaved rather than a bug in the code under test, or when the evidence does
-not settle which it is. Read
-[references/infra-judgement.md](references/infra-judgement.md) before deciding
-that on the strength of a message: an out-of-memory or a device-lost is
-produced just as readily by a test allocating too much as by a runner whose GPU
-fell off the bus.
+not settle which it is.
+
+The messages that look most like a broken machine are the ones that say least:
+
+```
+UR_RESULT_ERROR_DEVICE_LOST
+XPU out of memory. Tried to allocate 2.00 GiB
+RuntimeError: Native API failed
+```
+
+None of these carries an operator, a shape or a dtype, so none of them says
+what caused it: a test allocating far too much produces the same string as a
+runner whose GPU fell off the bus, and so does a kernel that hangs the device.
+Four things do separate them:
+
+- **Breadth.** A machine that loses its GPU does not stop at one test file. The
+  same message across many unrelated files is the machine; confined to one
+  file, or to one operator across a couple, it is that code. More than about
+  five unrelated files is already more than a product bug usually manages.
+- **Coincidence with something specific.** Failures that all touch one
+  operator, one dtype, one kernel or one recently changed area point at that
+  thing, whatever the message sounds like.
+- **The machine itself.** `run.json.runners` gives the machine per UT job. The
+  same error on two of them argues against a machine fault; on one of them
+  while the other is clean, for it.
+- **The traceback.** One that ends inside a test's own allocation or a specific
+  kernel is a product bug. One that ends in driver teardown with nothing above
+  it is weak evidence either way.
+
+Nothing checks this decision after you, so weigh the two mistakes instead of
+trying to be right. Withhold a product bug and the cases keep running and keep
+appearing in the nightly report, where a human can still find them. File a
+machine fault and the cases are muted for something that will clear itself, and
+stay dark until somebody closes the issue. The first is recoverable and the
+second is not: **when the evidence does not settle it, do not file.**
+
+Two corollaries. File one of these wide, uninformative errors only when you
+have a specific reason the failures belong together as code - a shared
+operator, a shared kernel, a recent change in that area - and put that reason
+in the summary. And never withhold a group because it is hard to triage: that
+mutes nothing, but it does mean nobody looks.
 
 Withdraw a whole UT job the same way - every group from it marked `file: false`
 - when its failures are mostly messages of that kind, spread across unrelated
