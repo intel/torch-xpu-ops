@@ -371,7 +371,7 @@ template <typename mask_t>
 std::tuple<Tensor, Tensor> dropout(
     XPUGeneratorImpl* gen,
     const Tensor& self,
-  double p) {
+    double p) {
   Tensor mask = at::empty_like(
       self, self.options().dtype(c10::CppTypeToScalarType<mask_t>::value));
   const int64_t nelem = self.numel();
