@@ -66,7 +66,7 @@ def run(cmd: list[str], check: bool = True) -> str:
 
 
 def gh_tsv(path: str, jq: str) -> list[list[str]]:
-    out = run(["gh", "api", "--paginate", path, "-q", jq], check=False)
+    out = run(["gh", "api", "--paginate", path, "-q", jq])
     return [line.split("\t") for line in out.splitlines() if line.strip()]
 
 
@@ -100,7 +100,13 @@ def parse_cases_block(body: str) -> set[str]:
 
 
 def already_muted() -> dict[str, int]:
-    """Every case line an open issue still mutes, and which issue mutes it."""
+    """Every case line an open issue still mutes, and which issue mutes it.
+
+    Raises rather than returning what it managed to read: this is the only
+    thing standing between a case an issue already covers and a second issue
+    covering it again, so an empty answer has to mean "nothing is muted", never
+    "the query failed".
+    """
     muted: dict[str, int] = {}
     for label in DEDUP_LABELS:
         rows = gh_tsv(
