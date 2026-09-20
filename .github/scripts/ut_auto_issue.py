@@ -1022,27 +1022,35 @@ def carried_report(report: dict) -> dict:
 
 
 def emit_evidence(evidence: Evidence, out: Path) -> None:
+    """Two files, split by how they are read.
+
+    Everything needed to group the failures is in one document, because all of
+    it is read together. The tracebacks are not: the JUnit failure text of a
+    bad night runs to megabytes even after sampling, and it is read for the few
+    cases a reader is actually asking about.
+    """
     out.mkdir(parents=True, exist_ok=True)
     run = evidence.run
-    write_json(out / "run.json", {
-        "run_id": run.run_id,
-        "created_at": run.created_at,
-        "digest": evidence.digest,
-        # Per UT job throughout, because a bisect range is per UT job: the
-        # baseline sha and tonight's sha have to come from the same one or the
-        # compare link spans the wrong commits.
-        "job_urls": run.job_urls,
-        "torch": run.torch,
-        "torch_xpu_ops": run.torch_xpu_ops,
-        "runners": run.runners,
-        "collect_env": run.collect_env,
-        "category_ut_job": CATEGORY_UT_JOB,
-        "gates": evidence.gates,
-        "ut_jobs": evidence.ut_job_health,
-        "baselines": {cat: vars(meta) for cat, meta in evidence.baselines.items()},
-        "report": evidence.report,
-    })
-    write_json(out / "cases.json", {
+    write_json(out / "evidence.json", {
+        "run": {
+            "run_id": run.run_id,
+            "created_at": run.created_at,
+            "digest": evidence.digest,
+            # Per UT job throughout, because a bisect range is per UT job: the
+            # baseline sha and tonight's sha have to come from the same one or
+            # the compare link spans the wrong commits.
+            "job_urls": run.job_urls,
+            "torch": run.torch,
+            "torch_xpu_ops": run.torch_xpu_ops,
+            "runners": run.runners,
+            "collect_env": run.collect_env,
+            "category_ut_job": CATEGORY_UT_JOB,
+            "gates": evidence.gates,
+            "ut_jobs": evidence.ut_job_health,
+            "baselines": {cat: vars(meta)
+                          for cat, meta in evidence.baselines.items()},
+            "report": evidence.report,
+        },
         "count": len(evidence.cases),
         "counts_by_cls": class_counts(evidence.classification),
         "cases": [

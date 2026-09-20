@@ -27,13 +27,12 @@ doubt, file less.
 
 | File | What it holds |
 |---|---|
-| `run.json` | the run per UT job: job links, commits, which machine ran it, the health of each category, the gates already applied, and what stopped running |
-| `cases.json` | every new failure, with its message, its test file and its baseline classification |
-| `tracebacks.json` | full failure text for a sample of cases |
+| `evidence.json` | `run`: the run per UT job - job links, commits, which machine ran it, the health of each category, the gates already applied, and what stopped running. `cases`: every new failure, with its message, its test file and its baseline classification. |
+| `tracebacks.json` | full failure text, for one case per distinct (test file, message) |
 
 Fields are described in
-[references/evidence-schema.md](references/evidence-schema.md). `run.json` and
-`cases.json` are enough to group; open `tracebacks.json` for the entries you
+[references/evidence-schema.md](references/evidence-schema.md).
+`evidence.json` is enough to group; open `tracebacks.json` for the entries you
 need rather than whole. You may read repository source to understand a test,
 but the evidence directory is the only source of truth about this run.
 
@@ -49,7 +48,7 @@ GitHub access.
 ```jsonc
 {
   "run_id": 12345678,
-  "digest": "<copied from run.json.digest>",
+  "digest": "<copied from evidence.json run.digest>",
   "drafts": [
     {
       "id": "g1",              // your own; referenced by another draft's `related`
@@ -58,6 +57,9 @@ GitHub access.
       "title_text": "addmm returns the wrong dtype for bfloat16 inputs",
       "summary": "One to three sentences: what is failing, and why these cases are one bug.",
       "cases": ["op_ut,test_ops_xpu.TestFooXPU,test_addmm_xpu_bfloat16"],
+      // Whose traceback to show: one of `cases`, carrying `has_traceback`.
+      // Omit it and the filing step picks for you.
+      "error_case": "op_ut,test_ops_xpu.TestFooXPU,test_addmm_xpu_bfloat16",
       "related": ["g2"]        // drafts sharing this root cause, if any
     }
   ],
@@ -70,17 +72,23 @@ Only `title_text` and `summary` are yours to write. The prefixes
 `Cases:` block, the traceback, the baseline table, the reproduce command and
 the marker are added by the filing step, from the evidence.
 
+A group is one root cause, not one message, so it may hold several. Name the
+case whose traceback shows that cause most clearly in `error_case` and the
+filing step copies that case's message and traceback into the issue. Never
+copy the traceback text into the draft yourself: it is third-party output, and
+the issue has to carry it byte for byte.
+
 ## Every case line is copied, never written
 
 A line in `cases` is a byte-exact subtraction rule against the next nightly.
-The filing step checks each one against `cases.json` and **rejects the whole
+The filing step checks each one against `evidence.json` and **rejects the whole
 draft** if one names no real case. Copy them: never retype, never reformat,
 never correct what looks like a typo.
 
 ## Keep each group uniform
 
-Read both of these off `cases.json`, not off the failure message. A draft that
-breaks either is rejected.
+Read both of these off `evidence.json`, not off the failure message. A draft
+that breaks either is rejected.
 
 **One `cls` per group.** The classification is the claim the issue makes - that
 these cases passed in the last healthy nightly, or that they never existed
@@ -119,7 +127,7 @@ fell off the bus. What does separate them:
   code. Past about five unrelated files, a product bug is unlikely.
 - **Coincidence.** Failures that all touch one operator, dtype, kernel or
   recently changed area point at that thing, whatever the message says.
-- **The machine.** `run.json.runners` gives the machine per UT job. The same
+- **The machine.** `run.runners` gives the machine per UT job. The same
   error on two of them argues against a machine fault; on one while the other
   is clean, for it.
 - **The traceback.** One ending inside a test's own allocation or a specific
@@ -144,7 +152,7 @@ either.
 A module that both lost and gained case names may have had a test renamed
 upstream, so a failure the baseline never saw is `unknown` rather than
 `new_case_failure`. Only reading the two names can tell, and that is yours:
-`run.json.report.vanished_cases` gives `lost_names` and `gained_names` per
+`run.report.vanished_cases` gives `lost_names` and `gained_names` per
 module, with `kind: moved` where this applies.
 
 **File it either way** - the case is failing tonight, and an unfiled failure is

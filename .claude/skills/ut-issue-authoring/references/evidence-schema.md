@@ -3,7 +3,14 @@
 Read off the run's artifacts by a deterministic collector. None of it is a
 judgement.
 
-## `run.json`
+Two files, split by how they are read: everything needed to group the failures
+is in `evidence.json`, because all of it is read together, and the tracebacks
+are not, because they run to megabytes and are read for the few cases you are
+actually asking about.
+
+## `evidence.json`
+
+### `run`
 
 ```jsonc
 {
@@ -52,7 +59,7 @@ judgement.
 }
 ```
 
-### `report.vanished_cases`
+### `run.report.vanished_cases`
 
 What the baseline ran and this run does not have at all, per module. These did
 not fail; they did not run.
@@ -79,7 +86,7 @@ A failing case in a `moved` module is classified `unknown`, not
 about two strings, so the collector does not make it - see
 [SKILL.md](../SKILL.md).
 
-## `cases.json`
+### `cases`
 
 One record per new failure. This is the set your grouping must cover exactly.
 
@@ -106,6 +113,8 @@ One record per new failure. This is the set your grouping must cover exactly.
       "cls": "regression",
       "cls_reason": "passed in the baseline",
       "runner_name": "bmg-test-04",
+      // Whether tracebacks.json has this one. Only such a case may be named
+      // as a draft's `error_case`.
       "has_traceback": true
     }
   ],
@@ -136,6 +145,6 @@ One record per new failure. This is the set your grouping must cover exactly.
 ```
 
 Full `<failure>` text from the JUnit XML, one case per distinct (test file,
-exact message); `message` in `cases.json` is only its last line. The filing
-step picks each issue's traceback, so read these to understand what a group is,
-not to copy them anywhere.
+exact message); `message` in `evidence.json` is only its last line. Read these
+to understand what a group is; to choose which one an issue shows, name the
+case in the draft's `error_case` rather than copying the text.

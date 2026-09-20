@@ -311,13 +311,19 @@ def reproduce_for(case: dict, reproduce: dict) -> str:
     return "\n".join(x for x in (entry.get("file_path", ""), command) if x)
 
 
-def error_log_for(cases: list[dict], tracebacks: dict) -> str:
-    """The failing message, then its traceback.
+def error_log_for(cases: list[dict], tracebacks: dict, chosen: str = "") -> str:
+    """The failing message, then its traceback, for one case of the group.
+
+    `chosen` is the draft's pick, which is a judgement: a group is one root
+    cause, not one message, so the clearest traceback in it is not necessarily
+    the first. The text itself is copied from the evidence either way - it is
+    third-party output, and nothing downstream should be able to reword it.
 
     The message is a level below the section headings, which are the form's
     fields: a `###` here would read as another section.
     """
-    for case in cases:
+    order = sorted(cases, key=lambda c: c["line"] != chosen)
+    for case in order:
         text = tracebacks.get(case["line"])
         if text:
             return "\n".join([
@@ -327,7 +333,7 @@ def error_log_for(cases: list[dict], tracebacks: dict) -> str:
                 *text,
                 "```",
             ])
-    message = next((c["message"] for c in cases if c["message"]), "")
+    message = next((c["message"] for c in order if c["message"]), "")
     heading = f"#### {message}" if message else (
         "#### No message was recorded for this failure.")
     return "\n".join([heading, "", NO_TRACEBACK])
@@ -387,6 +393,9 @@ def check_draft(draft: dict, index: dict[str, dict]) -> tuple[list[dict], str]:
         return [], (f"{len(unknown)} case line(s) name no case in this run's "
                     f"evidence, the first being `{unknown[0]}`")
     cases = [index[ln] for ln in dict.fromkeys(lines)]
+    chosen = draft.get("error_case") or ""
+    if chosen and chosen not in {c["line"] for c in cases}:
+        return [], f"`error_case` names `{chosen}`, which is not in this group"
     classes = {c["cls"] for c in cases}
     if len(classes) > 1:
         return [], f"mixes classifications: {', '.join(sorted(classes))}"
@@ -447,13 +456,13 @@ def main() -> int:
                         help="render and check everything, create nothing")
     args = parser.parse_args()
 
-    evidence = Path(args.evidence_dir)
-    run_json = json.loads((evidence / "run.json").read_text())
-    cases_json = json.loads((evidence / "cases.json").read_text())
-    tracebacks = json.loads((evidence / "tracebacks.json").read_text())["by_case"]
-    index = {c["line"]: c for c in cases_json["cases"]}
-    contexts = {c["line"]: c for c in cases_json.get("collection_context", [])}
-    reproduce = cases_json.get("reproduce", {})
+    evidence = json.loads((Path(args.evidence_dir) / "evidence.json").read_text())
+    tracebacks = json.loads(
+        (Path(args.evidence_dir) / "tracebacks.json").read_text())["by_case"]
+    run_json = evidence["run"]
+    index = {c["line"]: c for c in evidence["cases"]}
+    contexts = {c["line"]: c for c in evidence.get("collection_context", [])}
+    reproduce = evidence.get("reproduce", {})
 
     work = Path(args.work_dir)
     work.mkdir(parents=True, exist_ok=True)
@@ -522,7 +531,8 @@ def main() -> int:
         def body_of(chunk: list[dict], part: int = 1, parts: int = 1,
                     first: int | None = None) -> str:
             error_log = (f"See #{first} for the failure text." if first
-                         else error_log_for(chunk, tracebacks))
+                         else error_log_for(chunk, tracebacks,
+                                            draft.get("error_case", "")))
             collect_env = run_json["collect_env"].get(
                 cases[0]["ut_job"], "collect_env was not captured.")
             return render_body(fields, {
