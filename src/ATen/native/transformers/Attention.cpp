@@ -344,8 +344,8 @@ at::Tensor& _fill_mem_eff_dropout_mask_(
     const int64_t offset) {
   PhiloxXpuState philox_state(
       static_cast<uint64_t>(seed), static_cast<uint64_t>(offset));
-    auto mask = xpu::mem_eff_attention_dropout_mask_kernel(
-      self, dropout_p, philox_state);
+  auto mask =
+      xpu::mem_eff_attention_dropout_mask_kernel(self, dropout_p, philox_state);
   self.copy_(mask);
   return self;
 }
@@ -359,8 +359,8 @@ static at::Tensor& _fill_mem_eff_dropout_mask_from_device_tensors_(
       philox_seed_t.data_ptr<int64_t>(),
       philox_offset_t.data_ptr<int64_t>(),
       0);
-      auto mask = xpu::mem_eff_attention_dropout_mask_kernel(
-      self, dropout_p, philox_state);
+  auto mask =
+      xpu::mem_eff_attention_dropout_mask_kernel(self, dropout_p, philox_state);
   self.copy_(mask);
   return self;
 }
