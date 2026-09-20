@@ -405,6 +405,30 @@ def check_draft(draft: dict, index: dict[str, dict]) -> tuple[list[dict], str]:
     return cases, ""
 
 
+def quoted_traceback_matches(draft: dict, tracebacks: dict) -> str:
+    """Whether the draft's `traceback` really is the evidence it claims to quote.
+
+    The copy is not what the issue renders, so a wrong one mutes nothing. What
+    it does is put the summary's argument next to the text it was argued from,
+    for a human reviewing the drafts - and a copy that has been tidied up,
+    shortened or invented leaves that reader checking the reasoning against
+    the reasoning. Reported, not rejected: the harm is a misled reviewer.
+    """
+    quoted = draft.get("traceback")
+    if quoted is None:
+        return ""
+    chosen = draft.get("error_case") or ""
+    if not chosen:
+        return "carries a `traceback` without an `error_case` to attribute it to"
+    actual = tracebacks.get(chosen)
+    if actual is None:
+        return f"quotes a traceback for `{chosen}`, which has none in the evidence"
+    if list(quoted) != list(actual):
+        return (f"quotes {len(quoted)} line(s) for `{chosen}` where the "
+                f"evidence has {len(actual)}, and they do not match")
+    return ""
+
+
 def split(cases: list[dict], body_of) -> list[list[dict]]:
     """Into as few parts as each will render inside the body limit.
 
@@ -457,8 +481,7 @@ def main() -> int:
     args = parser.parse_args()
 
     evidence = json.loads((Path(args.evidence_dir) / "evidence.json").read_text())
-    tracebacks = json.loads(
-        (Path(args.evidence_dir) / "tracebacks.json").read_text())["by_case"]
+    tracebacks = evidence.get("tracebacks", {})
     run_json = evidence["run"]
     index = {c["line"]: c for c in evidence["cases"]}
     contexts = {c["line"]: c for c in evidence.get("collection_context", [])}
@@ -467,7 +490,7 @@ def main() -> int:
     work = Path(args.work_dir)
     work.mkdir(parents=True, exist_ok=True)
     report = {"run_id": run_json["run_id"], "dry_run": args.dry_run,
-              "created": [], "skipped": [], "rejected": []}
+              "created": [], "skipped": [], "rejected": [], "misquoted": []}
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -506,6 +529,11 @@ def main() -> int:
             report["rejected"].append({"draft": name, "reason": problem})
             warn(f"draft {name} not filed: {problem}")
             continue
+        misquote = quoted_traceback_matches(draft, tracebacks)
+        if misquote:
+            report["misquoted"].append({"draft": name, "reason": misquote})
+            warn(f"draft {name} {misquote}; the issue still renders the "
+                 "evidence, but review the summary against it")
 
         placed = [c for c in cases if c["line"] in muted]
         cases = [c for c in cases if c["line"] not in muted]
@@ -621,6 +649,8 @@ def finish(report: dict, report_dir: Path) -> int:
         lines.append(f"- Not filed, `{item['draft']}`: {item['reason']}")
     for item in report["rejected"]:
         lines.append(f"- **Rejected**, `{item['draft']}`: {item['reason']}")
+    for item in report.get("misquoted", []):
+        lines.append(f"- Filed, but `{item['draft']}` {item['reason']}")
     summary = "\n".join(lines) + "\n"
     print(summary)
     step_summary = os.environ.get("GITHUB_STEP_SUMMARY")

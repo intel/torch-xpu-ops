@@ -66,6 +66,15 @@ TOO_MANY_THRESHOLD = 1000
 # How many distinct (test file, exact message) strata get a traceback captured.
 # Sampling, not grouping: two rows with byte-identical messages are one message.
 MAX_TRACEBACK_SAMPLES = 300
+# The evidence is one document and it is read whole, so the failure text has to
+# be bounded. A JUnit <failure> carries the whole longrepr, and an OpInfo case
+# dumps its SampleInput into it: 300 of those unabridged is megabytes, more
+# than anything downstream can read. The ends of one say why the test failed;
+# the middle is the tensors.
+MAX_TRACEBACK_LINES = 40
+# And a ceiling on all of them together, spent on the most repeated messages
+# first, so that one pathological file cannot crowd out the rest.
+MAX_TRACEBACK_CHARS = 300_000
 # Names shown per module that lost or gained cases. Enough to see whether one
 # name became another; a dtype parametrization alone runs to dozens.
 NAME_SAMPLE = 20
@@ -484,6 +493,36 @@ def extract_tracebacks(root: Path, wanted: dict[tuple[str, str], str]) -> dict[s
         except ET.ParseError as exc:
             warn(f"could not parse {xml.name}: {exc}")
     return found
+
+
+def trim_traceback(lines: list[str]) -> list[str]:
+    """Both ends of a long one, which is where it says what went wrong."""
+    if len(lines) <= MAX_TRACEBACK_LINES:
+        return lines
+    head = MAX_TRACEBACK_LINES * 3 // 4
+    tail = MAX_TRACEBACK_LINES - head
+    dropped = len(lines) - head - tail
+    return [*lines[:head], f"... {dropped} line(s) omitted ...", *lines[-tail:]]
+
+
+def within_budget(ranked: list[Case], found: dict[str, list[str]]) -> dict:
+    """Trimmed, and as many as the budget allows, most-repeated message first."""
+    kept: dict[str, list[str]] = {}
+    spent = 0
+    for case in ranked:
+        lines = found.get(case.line)
+        if not lines:
+            continue
+        lines = trim_traceback(lines)
+        size = sum(len(line) + 1 for line in lines)
+        if spent + size > MAX_TRACEBACK_CHARS:
+            break
+        kept[case.line] = lines
+        spent += size
+    if len(kept) < len(found):
+        print(f"note: kept {len(kept)} of {len(found)} traceback(s), "
+              f"{spent} chars, against a {MAX_TRACEBACK_CHARS} budget")
+    return kept
 
 
 def read_reproduce(root: Path, category: str) -> dict:
@@ -991,6 +1030,7 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
                 (c.class_name, c.test_name): c.line
                 for c in samples if c.ut_job == ut_job
             }))
+    tracebacks = within_budget(samples, tracebacks)
 
     reproduce: dict[str, dict] = {}
     for category in sorted({c.category for c in cases}):
@@ -1022,13 +1062,7 @@ def carried_report(report: dict) -> dict:
 
 
 def emit_evidence(evidence: Evidence, out: Path) -> None:
-    """Two files, split by how they are read.
-
-    Everything needed to group the failures is in one document, because all of
-    it is read together. The tracebacks are not: the JUnit failure text of a
-    bad night runs to megabytes even after sampling, and it is read for the few
-    cases a reader is actually asking about.
-    """
+    """One document: everything the skill reads about this run."""
     out.mkdir(parents=True, exist_ok=True)
     run = evidence.run
     write_json(out / "evidence.json", {
@@ -1067,14 +1101,13 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
                 "cls": evidence.classification.get(c.line, CLS_UNKNOWN),
                 "cls_reason": evidence.cls_reason.get(c.line, ""),
                 "runner_name": run.runners.get(c.ut_job, ""),
-                "has_traceback": c.line in evidence.tracebacks,
             }
             for c in evidence.cases
         ],
         "collection_context": list(evidence.collection_context.values()),
         "reproduce": evidence.reproduce,
+        "tracebacks": evidence.tracebacks,
     })
-    write_json(out / "tracebacks.json", {"by_case": evidence.tracebacks})
 
 
 def class_counts(classification: dict[str, str]) -> dict[str, int]:
