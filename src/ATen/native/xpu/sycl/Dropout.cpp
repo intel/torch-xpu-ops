@@ -449,10 +449,24 @@ Tensor mem_eff_attention_dropout_mask_kernel(
 
   if (canUse32BitIndexMath(self)) {
     launcher<unsigned int, uint8_t>(
-        self, ret, mask, keep_prob, nelem, philox_state, num_groups, group_size);
+        self,
+        ret,
+        mask,
+        keep_prob,
+        nelem,
+        philox_state,
+        num_groups,
+        group_size);
   } else {
     launcher<uint64_t, uint8_t>(
-        self, ret, mask, keep_prob, nelem, philox_state, num_groups, group_size);
+        self,
+        ret,
+        mask,
+        keep_prob,
+        nelem,
+        philox_state,
+        num_groups,
+        group_size);
   }
   return mask;
 }
