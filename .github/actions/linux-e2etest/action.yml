@@ -39,7 +39,8 @@ runs:
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_e2e/
 
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
-          model_list_args=(--model-only "${MODEL_ONLY_NAME}")
+          model_re=$(echo "${MODEL_ONLY_NAME}" |sed 's/,/|/g')
+          models_list_args=" -k '^(${model_re})\$' "
         fi
         if [ "${{ github.event_name }}" != "pull_request" ]; then
           rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmark/ ./benchmarks/dynamo/

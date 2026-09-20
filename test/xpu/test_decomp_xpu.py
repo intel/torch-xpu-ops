@@ -44,6 +44,7 @@ with XPUImportCtx(False):
         decomposition_names,
         HasDecompTest,
         normalize_op_input_output,
+        op_assert_equal_tol_table,
         op_assert_ref_tol_table,
         ref_vjp_no_create,
         TestDecomp,
@@ -72,14 +73,68 @@ op_assert_ref_tol_table.update(
 )
 
 
+# For integer output dtypes the kernel evaluates pow() in float32 (matching CUDA,
+# which does the same to avoid promotion to double) while the decomposition
+# evaluates in float64. sycl::pow is only accurate to 16 ULP, so a value such as
+# pow(3.0f, 3.0f) can come back as 26.999... and truncate to 26 instead of 27.
+# Allow the same off-by-one upstream already allows for integer linspace.
+op_assert_equal_tol_table.update(
+    {
+        (dtype, overload): (0, 1)
+        for dtype in (
+            torch.int8,
+            torch.uint8,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+        )
+        for overload in (
+            torch.ops.aten.logspace.default,
+            torch.ops.aten.logspace.Tensor_Tensor,
+            torch.ops.aten.logspace.Tensor_Scalar,
+            torch.ops.aten.logspace.Scalar_Tensor,
+        )
+    }
+)
+
 # ======================================================================
 # CROSS_REF_EXCLUDE_SET patches (XPU-specific exclusions)
 # ======================================================================
 
 # XPU: max_pool2d_with_indices_backward tests are not applicable
 # More details in https://github.com/pytorch/pytorch/pull/182619
-CROSS_REF_EXCLUDE_SET.add(("xpu", None, "max_pool2d_with_indices_backward"))
+CROSS_REF_EXCLUDE_SET.add(
+    ("xpu", None, "max_pool2d_with_indices_backward"),
+)
 
+# XPU: dot_xpu_mkl for ops listed is not implemented for int8/uint8
+CROSS_REF_EXCLUDE_SET.update(
+    {
+        ("xpu", torch.int8, "__rmatmul__"),  # "dot_xpu_mkl" not implemented for int8
+        ("xpu", torch.uint8, "__rmatmul__"),  # "dot_xpu_mkl" not implemented for uint8
+        ("xpu", torch.int8, "tensordot"),  # "dot_xpu_mkl" not implemented for int8
+        ("xpu", torch.uint8, "tensordot"),  # "dot_xpu_mkl" not implemented for uint8
+    }
+)
+
+# XPU: oneDNN uses saturated arithmetic for int8/uint8 BLAS ops (values clamp to
+# the dtype boundary), while PyTorch's decompositions compute in wider types and
+# wrap modularly. For example, the fused native baddbmm saturates the full
+# batch1@batch2 + self result, while the decomposition does bmm (saturated) then
+# a separate int8 addition (which wraps). mv/addmv/addmm have the same mismatch
+# because their native XPU path routes through onednn::matmul.
+CROSS_REF_EXCLUDE_SET.update(
+    {
+        ("xpu", torch.int8, "baddbmm"),
+        ("xpu", torch.uint8, "baddbmm"),
+        ("xpu", torch.int8, "addmm"),
+        ("xpu", torch.uint8, "addmm"),
+        ("xpu", torch.int8, "addmv"),
+        ("xpu", torch.uint8, "addmv"),
+        ("xpu", torch.int8, "mv"),
+        ("xpu", torch.uint8, "mv"),
+    }
+)
 
 # ======================================================================
 # CROSS_REF_BACKWARD_EXCLUDE_SET patches (XPU-specific exclusions)
