@@ -236,6 +236,7 @@ runs:
           *) category="default" ;;
         esac
         if [[ "${category}" == 'distributed' ]]; then
+          sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends etcd-server
           xpu-smi topology -m
           export ZE_AFFINITY_MASK="0,1,2,3"
           export BACKEND="xccl"
@@ -280,7 +281,7 @@ runs:
           echo "::group::${test_file}"
           python -m pytest -v "pytorch/${test_file}" \
             --junit-xml="${{ github.workspace }}/ut_log/${ut_name}_${log_name}.xml" \
-            2>&1 | tee "${log_dir}/${log_name}.log" \
+            2>&1 | tee "${log_dir}/${ut_name}_test_${log_name}.log" \
             || echo -e "${test_file}" >> "${log_dir}/${ut_name}_failed.log"
           echo "::endgroup::"
         done < ${log_dir}/${ut_name}_files.txt

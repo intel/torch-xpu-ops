@@ -264,8 +264,8 @@ def determine_category(ut):
         return 'upstream_distributed'
     elif 'upstream_inductor' in ut:
         return 'upstream_inductor'
-    elif 'upstream' in ut:
-        return 'upstream_ut'
+    elif 'upstream_default' in ut:
+        return 'upstream_default'
     elif 'xpu_profiling' in ut:
         return 'xpu_profiling'
     else:
