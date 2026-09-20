@@ -1,7 +1,7 @@
 # Evidence directory
 
-Everything a nightly UT run is known to have done. All of it was read off
-artifacts by a deterministic collector; none of it is a judgement.
+Read off the run's artifacts by a deterministic collector. None of it is a
+judgement.
 
 ## `run.json`
 
@@ -13,31 +13,23 @@ artifacts by a deterministic collector; none of it is a judgement.
   // written against a different night's failures.
   "digest": "9f2a...",
 
-  // Everything below is keyed by UT job - `basic` or `op_ut` - because a
-  // bisect range is per UT job. The baseline commit and tonight's commit have
-  // to come from the same one or the compare link spans the wrong commits.
+  // Keyed by UT job - `basic` or `op_ut` - because a bisect range is per job:
+  // the baseline commit and tonight's have to come from the same one.
   "job_urls":      { "basic": "https://github.com/.../job/123" },
   "torch":         { "basic": "abc1234..." },
   "torch_xpu_ops": { "basic": "def5678..." },
   "runners":       { "basic": "bmg-test-04" },   // which machine ran it
   "collect_env":   { "basic": "PyTorch version: ..." },
-
-  // Which UT job each category belongs to.
   "category_ut_job": { "op_extended": "basic", "op_ut": "op_ut" },
 
-  // Either of these means the run is not worth filing from, and the filing
-  // step will refuse anyway.
-  "gates": {
-    "build_failed": false,   // nothing downstream can be trusted
-    "too_many":     false    // more failures than a night's worth of grouping
-  },
+  // Either one means the run is not worth filing from, and the filing step
+  // refuses anyway.
+  "gates": { "build_failed": false, "too_many": false },
 
-  "ut_jobs": {
-    "basic": { "runner_name": "bmg-test-04", "new_failures": 312 }
-  },
+  "ut_jobs": { "basic": { "runner_name": "bmg-test-04", "new_failures": 312 } },
 
-  // The nightly each category was compared against. Rendered into the issue by
-  // the filing step; here so you can see how old the comparison is.
+  // What each category was compared against. Rendered into the issue by the
+  // filing step; here so you can see how old the comparison is.
   "baselines": {
     "op_extended": { "run_id": 12345000, "created_at": "2026-08-29",
                      "age_in_runs": 1, "ut_job": "basic", "job_url": "...",
@@ -45,21 +37,25 @@ artifacts by a deterministic collector; none of it is a judgement.
   },
 
   "report": {
+    // A category that is not `complete` was truncated, and its failures were
+    // dropped during collection: a truncated run is a statement about the
+    // machine rather than about the code.
     "categories": [{"category": "op_ut", "state": "complete",
                     "actual": 178102, "expected": 178548}],
     "skipped_ut_jobs": [],
-    "vanished_cases": [],
+    "vanished_cases": [],    // below
+    // Every nightly the collector looked at per category, and why it was or
+    // was not usable. Context for a category with no baseline; nothing to act
+    // on.
     "baseline_walk": []
   }
 }
 ```
 
-A category with `state` other than `complete` produced no filable failures: its
-cases were dropped during collection, because a truncated run is a statement
-about the machine rather than about the code.
+### `report.vanished_cases`
 
-`report.vanished_cases` is what the baseline ran and this run does not have at
-all, per module. These did not fail; they did not run.
+What the baseline ran and this run does not have at all, per module. These did
+not fail; they did not run.
 
 ```jsonc
 {
@@ -67,8 +63,8 @@ all, per module. These did not fail; they did not run.
   // module_gone: the file produced no cases at all - it stopped importing, or
   //              a skip pattern emptied it.
   // removed:     names went and none arrived. Nothing here can be a rename.
-  // moved:       names went and names arrived. Only this one can make
-  //              "absent from the baseline" mean something other than "new".
+  // moved:       names went and names arrived. Only this one makes "absent
+  //              from the baseline" mean something other than "new".
   "kind": "moved",
   "cases": 3,              // baseline names absent tonight
   "baseline_passed": 412,  // of those, how many the baseline passed
@@ -78,15 +74,10 @@ all, per module. These did not fail; they did not run.
 }
 ```
 
-A failing case in a `moved` module is classified `unknown` rather than
-`new_case_failure`, because "absent from the baseline" stops meaning "new test"
-once the module's names have moved. Whether a gained name is a lost one renamed
-is a judgement about two strings, so the collector does not make it - see
+A failing case in a `moved` module is classified `unknown`, not
+`new_case_failure`. Whether a gained name is a lost one renamed is a judgement
+about two strings, so the collector does not make it - see
 [SKILL.md](../SKILL.md).
-
-`report.baseline_walk` records every nightly the collector looked at per
-category and why it was or was not usable. Context for a category that ended up
-with no baseline; nothing to decide.
 
 ## `cases.json`
 
@@ -131,8 +122,6 @@ One record per new failure. This is the set your grouping must cover exactly.
 }
 ```
 
-`cls` is one of:
-
 | `cls` | Means | Label the issue gets |
 |---|---|---|
 | `regression` | passed in the baseline, fails now | `regression` |
@@ -146,14 +135,7 @@ One record per new failure. This is the set your grouping must cover exactly.
 { "by_case": { "op_ut,test_foo_xpu.TestFooXPU,test_a": ["Traceback ...", "..."] } }
 ```
 
-Full `<failure>` text from the JUnit XML, split into lines, for one case per
-distinct (test file, exact message). The `message` field in `cases.json` is
-only the last exception line. The filing step picks the traceback for each
-issue; read these to understand what a group is, not to copy them anywhere.
-
-## `drafts.json`
-
-What you write. The schema is in [SKILL.md](../SKILL.md). The filing step
-rejects a draft whose `cases` contain a line absent from `cases.json`, whose
-cases do not all share one `cls`, or which mixes whole-module rows with
-ordinary cases - so those are checks, not suggestions.
+Full `<failure>` text from the JUnit XML, one case per distinct (test file,
+exact message); `message` in `cases.json` is only its last line. The filing
+step picks each issue's traceback, so read these to understand what a group is,
+not to copy them anywhere.
