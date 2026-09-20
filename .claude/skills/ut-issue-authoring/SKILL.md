@@ -17,13 +17,11 @@ each category's baseline. Answer the two questions that comparison cannot:
 rather than a bug at all**. Write one draft per group to `drafts.json`;
 `ut_create_issues.py` turns the drafts into issues.
 
-## Filing an issue mutes a test
-
-Every issue carries the `skipped` label, and the next nightly subtracts that
-issue's cases from its own results. So the two mistakes are not symmetric: a
-group you do not file keeps running and keeps appearing in the nightly report,
-where a human still sees it; a group you do file is muted until somebody closes
-the issue. **When in doubt, file less** - set `file: false` and say why.
+Every issue it files carries the `skipped` label, and the next nightly
+subtracts that issue's cases from its own results. **Filing an issue mutes a
+test**, until somebody closes the issue; a group left unfiled keeps running and
+keeps appearing in the nightly report, where a human still sees it. When in
+doubt, file less.
 
 ## Input
 
