@@ -34,5 +34,25 @@ class TestScatterGatherBComplex32(TestCase):
         self.assertEqual(x[0, 4], src[0, 2])
 
 
+class TestScatterFillFloat8(TestCase):
+    def test_scatter_fill_float8(self):
+        # scatter_ with a scalar value hits ScatterFillBaseKernel's
+        # TensorAssign overload, which must support fp8 dtypes.
+        for dtype in (
+            torch.float8_e4m3fn,
+            torch.float8_e4m3fnuz,
+            torch.float8_e5m2,
+            torch.float8_e5m2fnuz,
+        ):
+            x = torch.zeros(4, 8, dtype=dtype, device=xpu_device)
+            idx = torch.tensor([[0, 2, 4]], dtype=torch.long, device=xpu_device)
+            x.scatter_(1, idx, 1.0)
+            self.assertEqual(x.dtype, dtype)
+            self.assertEqual(x[0, 0].float(), torch.tensor(1.0))
+            self.assertEqual(x[0, 2].float(), torch.tensor(1.0))
+            self.assertEqual(x[0, 4].float(), torch.tensor(1.0))
+            self.assertEqual(x[0, 1].float(), torch.tensor(0.0))
+
+
 if __name__ == "__main__":
     run_tests()
