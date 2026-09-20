@@ -74,8 +74,6 @@ void philox_key_split_kernel(
   }
 }
 
-// Fold the value `data` into the key at `index`, deriving a new
-// (seed, offset) pair.
 inline void philox_key_fold_in_impl(
     const uint64_t* input,
     uint64_t* output,
