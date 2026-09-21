@@ -466,7 +466,7 @@ check_profiling_ut() {
     fi
     # Fallback verdict: only used when check-ut.py produced no failure list to filter against
     local failed_count=$((total_failures + total_errors))
-    if [[ -f "failures_${suite}.log" ]] && [[ -f "Known_issue.log" ]]; then
+    if [[ -f "failures_${suite}.log" ]]; then
         echo -e "\\n🔍 Filtered Cases:"
         local filtered_count
         grep -noFf "Known_issue.log" "failures_${suite}.log" > "failures_${suite}_removed.log"
