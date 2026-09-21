@@ -6,6 +6,7 @@
 namespace c10d::symmetric_memory {
 
 struct barrierKernel {
+  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
@@ -55,7 +56,8 @@ void barrier_impl_xpu(
     int world_size,
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<barrierKernel>();
+  int64_t maxNumThreadsPerBlock =
+      at::xpu::getKernelMaxWorkGroupSize<barrierKernel>();
   const size_t numThreadsPerBlock =
       std::min<size_t>(maxNumThreadsPerBlock, std::max(32, world_size));
 
@@ -73,12 +75,13 @@ void barrier_impl_xpu(
 }
 
 struct putSignalKernel {
+  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
     if (thread_id == 0) {
       auto put_success = try_put_signal_device(
-          signal_pads[dst_rank] + world_size * channel + rank, 10000000);
+          signal_pads[dst_rank] + world_size * channel + rank, timeout_ms);
       if (!put_success) {
         SYCL_KERNEL_ASSERT(false);
       }
@@ -116,7 +119,8 @@ void put_signal_impl_xpu(
     int world_size,
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<putSignalKernel>();
+  int64_t maxNumThreadsPerBlock =
+      at::xpu::getKernelMaxWorkGroupSize<putSignalKernel>();
   const size_t numThreadsPerBlock = std::min<size_t>(maxNumThreadsPerBlock, 32);
 
   if (!(numThreadsPerBlock > 0)) {
@@ -135,17 +139,16 @@ void put_signal_impl_xpu(
 }
 
 struct waitSignalKernel {
+  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
     if (thread_id == 0) {
       auto wait_success = try_wait_signal_device(
-          signal_pads[rank] + world_size * channel + src_rank, 10000000);
+          signal_pads[rank] + world_size * channel + src_rank, timeout_ms);
       if (!wait_success) {
         SYCL_KERNEL_ASSERT(false);
       }
-
-      sycl::atomic_fence(sycl::memory_order_seq_cst, sycl::memory_scope_system);
     }
   }
 
@@ -180,7 +183,8 @@ void wait_signal_impl_xpu(
     int world_size,
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<waitSignalKernel>();
+  int64_t maxNumThreadsPerBlock =
+      at::xpu::getKernelMaxWorkGroupSize<waitSignalKernel>();
   const size_t numThreadsPerBlock = std::min<size_t>(maxNumThreadsPerBlock, 32);
 
   if (!(numThreadsPerBlock > 0)) {

@@ -20,6 +20,7 @@ from torch.testing._internal.common_device_type import (
     ops,
     skip,
     skipOps,
+    xfail,
 )
 from torch.testing._internal.common_methods_invocations import ops_and_refs
 from torch.testing._internal.common_utils import (
@@ -140,6 +141,22 @@ class Namespace:
 
                 xpu_results = sample.output_process_fn_grad(xpu_results)
                 cpu_results = cpu_sample.output_process_fn_grad(cpu_results)
+
+                # assertEqual cannot consume experimental BComplex32 (many
+                # ops it dispatches to, e.g. isclose/sub/abs, are not
+                # implemented for it). complex64 is a lossless widening, so
+                # the parity check still runs. Widen only when both sides
+                # agree, so a one-sided promotion still fails on dtype.
+                # Track: https://github.com/pytorch/pytorch/issues/177859
+                # TODO: Remove this widening after BComplex32 support is ready.
+                if (
+                    isinstance(xpu_results, torch.Tensor)
+                    and isinstance(cpu_results, torch.Tensor)
+                    and xpu_results.dtype is torch.bcomplex32
+                    and cpu_results.dtype is torch.bcomplex32
+                ):
+                    xpu_results = xpu_results.to(torch.complex64)
+                    cpu_results = cpu_results.to(torch.complex64)
 
                 # CHANGED: Use 1e-3 for all dtypes on XPU
                 self.assertEqual(xpu_results, cpu_results, atol=1e-3, rtol=1e-3)
@@ -263,6 +280,11 @@ class TestCompositeCompliance(TestCase):
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
+    @skipOps(
+        {
+            xfail("nn.functional.grid_sample"),
+        }
+    )
     def test_cow_input(self, device, dtype, op):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()

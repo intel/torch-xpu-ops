@@ -37,11 +37,12 @@ def main():
     # Get PR info
     pr_json = run(
         f"gh pr view {args.pr_number} --repo {args.repo} "
-        f"--json title,mergeCommit,merged,baseRefName,headRefName"
+        f"--json title,mergeCommit,state,baseRefName,headRefName"
     )
     pr = json.loads(pr_json)
 
-    if not pr["merged"]:
+    # `merged` is not a gh pr view field; state is MERGED once the PR lands.
+    if pr["state"] != "MERGED":
         print(f"::error::PR #{args.pr_number} is not merged. Cannot revert.")
         # Post comment via gh
         run(

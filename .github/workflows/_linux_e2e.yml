@@ -69,7 +69,6 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         MODEL_ONLY_NAME: ${{ inputs.model }}
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -84,6 +83,7 @@ jobs:
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
+          rm -rf ${{ github.workspace }}/pytorch/inductor_log
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
@@ -229,6 +229,7 @@ jobs:
           mode: training
           scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
+          skip_summary: 'true'
       - name: Acceptance Test - inference (${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
@@ -238,6 +239,7 @@ jobs:
           mode: inference
           scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
+          skip_summary: 'true'
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}

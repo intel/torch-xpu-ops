@@ -12,19 +12,22 @@ file(GLOB xpu_native_cpp "native/xpu/*.cpp" "native/sparse/*.cpp" "native/sparse
 file(GLOB xpu_sycl "native/xpu/sycl/*.cpp" "native/sparse/xpu/sycl/*.cpp" "native/nested/xpu/sycl/*.cpp" "native/transformers/sycl/*.cpp" "native/quantized/sycl/*.cpp")
 file(GLOB xpu_sycltla "native/transformers/xpu/flash_attn/sycltla/*.cpp")
 file(GLOB xpu_sleep "xpu/Sleep.cpp")
+file(GLOB xpu_comm "native/xpu/sycl/comm/*.cpp" )
 
 if(USE_ONEMKL_XPU)
-  file(GLOB xpu_mkl "native/xpu/mkl/*.cpp")
+  file(GLOB xpu_mkl "native/xpu/mkl/*.cpp" "native/sparse/xpu/mkl/*.cpp")
   list(APPEND ATen_XPU_MKL_SRCS ${xpu_mkl})
 endif()
 list(APPEND ATen_XPU_NATIVE_CPP_SRCS ${xpu_native_cpp})
 list(APPEND ATen_XPU_SYCL_SRCS ${xpu_sycl} ${xpu_sleep})
 list(APPEND ATen_XPU_SYCLTLA_SRCS ${xpu_sycltla})
+list(APPEND ATen_XPU_SYCL_COMM_SRCS ${xpu_comm})
 
 set(ATen_XPU_MKL_SRCS ${ATen_XPU_MKL_SRCS} PARENT_SCOPE)
 set(ATen_XPU_NATIVE_CPP_SRCS ${ATen_XPU_NATIVE_CPP_SRCS} PARENT_SCOPE)
 set(ATen_XPU_SYCL_SRCS ${ATen_XPU_SYCL_SRCS} PARENT_SCOPE)
 set(ATen_XPU_SYCLTLA_SRCS ${ATen_XPU_SYCLTLA_SRCS} PARENT_SCOPE)
+set(ATen_XPU_SYCL_COMM_SRCS ${ATen_XPU_SYCL_COMM_SRCS} PARENT_SCOPE)
 
 # ATen XPU headers
 
@@ -44,6 +47,7 @@ install_xpu_headers("native/nested/xpu/sycl")
 install_xpu_headers("native/quantized/xpu")
 install_xpu_headers("native/quantized/xpu/sycl")
 install_xpu_headers("native/sparse/xpu")
+install_xpu_headers("native/sparse/xpu/mkl")
 install_xpu_headers("native/sparse/xpu/sycl")
 install_xpu_headers("native/transformers/xpu")
 install_xpu_headers("native/transformers/xpu/flash_attn")

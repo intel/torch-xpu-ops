@@ -5,6 +5,9 @@ inputs:
   ut_name:
     required: true
     description: Which ut to launch
+  skip_summary:
+    default: 'false'
+    description: "When 'true', do not write the per-job UT summary panel (caller runs its own comparison)"
 
 runs:
   using: composite
@@ -13,8 +16,13 @@ runs:
       shell: bash -xe {0}
       run: |
         which python && python -V
-        which pip && pip list
-        cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
+        uv pip list
+    - name: Install pytest XPU custom plugin
+      shell: bash -xe {0}
+      run: |
+        # Global pytest plugin: auto-registered via pytest11 entry point,
+        # restarts an xdist worker on fatal XPU failures (crash/OOM/segfault).
+        uv pip install ${{ github.workspace }}/.github/scripts/pytest_custom_config
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
@@ -99,44 +107,63 @@ runs:
       run: |
         mkdir -p ut_log/xpu_profiling/issue_reproduce
         cd pytorch/third_party/torch-xpu-ops
-        # RN50 Test
-        PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
-        cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/xpu_profiling
-        # All Issue Reproduce UT
-        python -u test/profiling/correlation_id_mixed.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/correlation_id_mixed.log
-        python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/reproducer.missing.gpu.kernel.time.log
-        python -u test/profiling/time_precision_in_profile.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/time_precision_in_profile.log
-        python -u test/profiling/profile_partial_runtime_ops.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/profile_partial_runtime_ops.log
-        python -u test/profiling/triton_xpu_ops_time.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
-        python -m pytest -s test/profiling/test_profiler_correctness.py | \
+        # xdist (-n / --tx from detect-devices.sh) captures stdout and would drop
+        # the profiler tables the cases print for manual check
+        export PYTEST_ADDOPTS="-v --timeout 3600 --timeout_method=thread"
+        # RN50 Test (runs rn50.py, then checks its kernel events, runtime op time and .pt artifact)
+        # the xpu_profiling_ prefix is what check-ut.py uses to group these reports
+        python -m pytest -s -v \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_rn50.xml \
+          test/profiling/test_rn50_profiling.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/rn50.log
+        cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/xpu_profiling || true
+        # All Issue Reproduce UT (-s keeps the profiler tables in the log for manual check)
+        python -m pytest -s -v \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_issue_reproducers.xml \
+          test/profiling/test_issue_reproducers.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_issue_reproducers.log
+        python -m pytest -s \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_profiler_correctness.xml \
+          test/profiling/test_profiler_correctness.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_profiler_correctness.log
         # Overlapping kernels test (depends on rn50.log.json from RN50 run above)
-        python -m pytest -s test/profiling/test_for_overlapping_kernels.py | \
+        python -m pytest -s \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_for_overlapping_kernels.xml \
+          test/profiling/test_for_overlapping_kernels.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
+        python -m pytest -s \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_profiler_use_cases.xml \
+          test/xpu/profiler/test_profiler_use_cases.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_use_cases.log
 
         # llama case for calls number test
-        pip install transformers
-        python test/profiling/llama.py | \
+        uv pip install transformers
+        python -m pytest -s -v \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_llama.xml \
+          test/profiling/test_llama_profiling.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
-        python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/xpu_profiling/llama.log -o ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
-        python -m pytest -s test_cpp_thread.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_cpp_thread.log
-        python -m pytest -s test_execution_trace.py | \
+        python -m pytest -s \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_execution_trace.xml \
+          test_execution_trace.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
-        python -m pytest -s test_memory_profiler.py | \
+        python -m pytest -s \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_memory_profiler.xml \
+          test_memory_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
-        python -m pytest -s test_profiler_tree.py | \
+        python -m pytest -s \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_profiler_tree.xml \
+          test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
-        python -m pytest -s test_xpu_profiler.py | \
+        python -m pytest -s \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_xpu_profiler.xml \
+          test_xpu_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
+
+        find ${{ github.workspace }}/ut_log/xpu_profiling -type f -name "*.xml" \
+          -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
 
     - name: xpu_distributed
       shell: timeout 36000 bash -xeu -o pipefail {0}
@@ -144,12 +171,7 @@ runs:
       run: |
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
-
-        PYTHON_BIN="$(python -c 'import sys; print(sys.executable)')"
-        export PATH="$(dirname "$PYTHON_BIN"):$PATH"
-        export CCL_ROOT="$(realpath $(dirname "$PYTHON_BIN")/..)"
-        export PATH="${CCL_ROOT}/bin/libfabric:${PATH}"
-        export LD_LIBRARY_PATH="${CCL_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+        export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
@@ -161,31 +183,116 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
 
-    - name: p0
+    - name: xpu_p0
       shell: timeout 72000 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'p0' }}
+      if: ${{ inputs.ut_name == 'xpu_p0' }}
       env:
         PYTORCH_TEST_WITH_SLOW: 1
-        LOG_BASE: ${{ github.workspace }}/ut_log/p0
+        LOG_BASE: ${{ github.workspace }}/ut_log/xpu_p0
         PYTORCH_ROOT_DIR: ${{ github.workspace }}/pytorch
         XML_OUTPUT_DIR: ${{ github.workspace }}/ut_log
-        XML_PREFIX: p0_with_
+        XML_PREFIX: xpu_p0_with_
       run: |
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
-        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" \
-          2> "${LOG_BASE}/p0_with_skip_test_error.log" \
-          | tee "${LOG_BASE}/p0_with_skip_test.log" || true
-        find . -name "p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
+        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" inductor non-inductor profiling \
+          2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
+          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
+        find . -name "xpu_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
-          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log"
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
+
+    - name: xpu_p0_distributed
+      shell: timeout 72000 bash -eo pipefail {0}
+      if: ${{ inputs.ut_name == 'xpu_p0_distributed' }}
+      env:
+        PYTORCH_TEST_WITH_SLOW: 1
+        LOG_BASE: ${{ github.workspace }}/ut_log/xpu_p0_distributed
+        PYTORCH_ROOT_DIR: ${{ github.workspace }}/pytorch
+        XML_OUTPUT_DIR: ${{ github.workspace }}/ut_log
+        XML_PREFIX: xpu_p0_with_
+      run: |
+        mkdir -p "${LOG_BASE}"
+        cd "${GITHUB_WORKSPACE}/pytorch/"
+        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" distributed \
+          2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
+          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
+        find . -name "xpu_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
+        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
+
+    - name: upstream_ut
+      shell: timeout 72000 bash -eu -o pipefail {0}
+      if: ${{ contains(inputs.ut_name, 'upstream_') }}
+      run: |
+        export PYTORCH_TEST_WITH_SLOW=1
+        export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+        ut_name="${{ inputs.ut_name }}"
+        log_dir="${{ github.workspace }}/ut_log/${ut_name}"
+        mkdir -p ${log_dir}
+        case "${ut_name}" in
+          upstream_distributed) category="distributed" ;;
+          upstream_inductor) category="inductor" ;;
+          *) category="default" ;;
+        esac
+        if [[ "${category}" == 'distributed' ]]; then
+          sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends etcd-server
+          uv pip install python-etcd
+          xpu-smi topology -m
+          export ZE_AFFINITY_MASK="0,1,2,3"
+          export BACKEND="xccl"
+          export WORLD_SIZE=4
+          export USE_CCL_V2=1
+          export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}${GITHUB_WORKSPACE}/pytorch/test/distributed/pipelining"
+          export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
+          XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+          if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
+            echo -e "[ERROR] XCCL is not enabled"
+            exit 1
+          fi
+        fi
+        # Get the list of done test files for the current category
+        python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
+          --category ${category} --${category}-output ${log_dir}/${ut_name}_files.txt > /dev/null
+        # do eager to inductor cases
+        if [[ "${category}" == 'inductor' ]]; then
+          # test_torch not in the done list
+          echo "::group::eager to inductor cases (pytorch/test/run_test.py --inductor xxx)"
+          # Distribute tests across the GPUs listed in ZE_AFFINITY_MASK (e.g. 0,1,2,3,4,5,6,7)
+          IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
+          num_shards=${#gpus[@]}
+          for i in "${!gpus[@]}"; do
+            shard_id=$((i + 1))
+            (
+              ZE_AFFINITY_MASK="${gpus[$i]}" \
+              PYTEST_ADDOPTS="" \
+              python pytorch/test/run_test.py --inductor \
+                --include test_modules test_ops test_ops_gradients \
+                --shard ${shard_id} ${num_shards} \
+                --junit-xml="${{ github.workspace }}/ut_log/upstream_inductor_eager_to_inductor_shard${shard_id}.xml"
+            ) &
+          done
+          wait
+          echo "::endgroup::"
+        fi
+        # loop files
+        while IFS= read -r test_file; do
+          [ -z "${test_file}" ] && continue
+          log_name="${test_file//\//_}"
+          echo "::group::${test_file}"
+          python -m pytest -v "pytorch/${test_file}" \
+            --junit-xml="${{ github.workspace }}/ut_log/${ut_name}_${log_name}.xml" \
+            2>&1 | tee "${log_dir}/${ut_name}_test_${log_name}.log" \
+            || echo -e "${test_file}" >> "${log_dir}/${ut_name}_failed.log"
+          echo "::endgroup::"
+        done < ${log_dir}/${ut_name}_files.txt
 
     # Summary
     - name: UT Test Results Summary
-      if: ${{ !cancelled() }}
+      if: ${{ !cancelled() && inputs.skip_summary != 'true' }}
       shell: timeout 180 bash -xe {0}
       run: |
-        pip install junitparser
+        uv pip install junitparser
         python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs
         if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
@@ -205,6 +312,14 @@ runs:
           echo -e "Passed logs Copied"
         else
           echo -e "No Passed logs"
+        fi
+        # Copied the full case universe (includes skipped cases), used by
+        # ut_collect_evidence.py to classify a failure against its baseline.
+        if ls all_cases_*.log 1> /dev/null 2>&1; then
+          cp all_cases_*.log ${{ github.workspace }}/ut_log
+          echo -e "All-cases logs Copied"
+        else
+          echo -e "No All-cases logs"
         fi
         # Copied the Summary logs
         if ls category*.log 1> /dev/null 2>&1; then

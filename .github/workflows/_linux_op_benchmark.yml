@@ -40,8 +40,6 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
-      env:
-        AGENT_TOOLSDIRECTORY: /opt/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -63,7 +61,7 @@ jobs:
           do
             python ${i%.*}.py > ${{ github.workspace }}/op_benchmark/${i%.*}.log
           done
-          pip install pandas openpyxl
+          uv pip install pandas openpyxl
           # Summary forward op time
           python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
           # Summary backward op time
@@ -95,9 +93,9 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
       - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v7
+        uses: ./.github/actions/setup-python
         with:
-          python-version: ${{ inputs.python }}
+          python: ${{ inputs.python }}
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v8
         with:
@@ -130,7 +128,7 @@ jobs:
           fi
       - name: Check the OP Regression
         run: |
-          pip install tabulate pandas
+          uv pip install tabulate pandas
           # Compare forward op
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
           # Compare backward op

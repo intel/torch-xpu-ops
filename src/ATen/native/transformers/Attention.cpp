@@ -97,7 +97,7 @@ std::tuple<Tensor, Tensor, Tensor> transform_bias_rescale_qkv_xpu(
 }
 
 static bool check_for_seq_len_1_nested_tensor(
-    sdp::sdp_params params,
+    const sdp::sdp_params& params,
     bool debug) {
   // When this function is called we are assured that the nt is dim==4
   if (!params.query.is_nested()) {
@@ -477,6 +477,16 @@ _scaled_dot_product_efficient_attention_xpu(
       std::move(philox_offset_tensor));
 }
 
+// The meta kernel allocates the input gradients with
+// empty_permuted((B, H, S, D), (0, 2, 1, 3)) -- see
+// meta__scaled_dot_product_efficient_backward in
+// torch/_meta_registrations.py -- so compiled code asserts BHSD sizes over
+// BSHD-contiguous memory, while autograd hands back plain contiguous
+// tensors.
+static Tensor to_bshd_contiguous(const Tensor& t) {
+  return t.permute({0, 2, 1, 3}).contiguous().permute({0, 2, 1, 3});
+}
+
 /**
  * Fall back implementation of efficient attention backward.
  * Since the forward path uses _scaled_dot_product_attention_math (which is
@@ -637,11 +647,11 @@ _scaled_dot_product_efficient_attention_backward_xpu(
 
   int idx = 0;
   if (grad_input_mask[0])
-    grad_q = grads[idx++];
+    grad_q = to_bshd_contiguous(grads[idx++]);
   if (grad_input_mask[1])
-    grad_k = grads[idx++];
+    grad_k = to_bshd_contiguous(grads[idx++]);
   if (grad_input_mask[2])
-    grad_v = grads[idx++];
+    grad_v = to_bshd_contiguous(grads[idx++]);
   if (grad_input_mask[3] && ab.defined())
     grad_bias = grads[idx++];
 

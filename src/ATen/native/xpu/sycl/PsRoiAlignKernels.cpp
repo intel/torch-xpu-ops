@@ -82,115 +82,84 @@ T bilinear_interpolate(
 }
 
 template <typename T>
-struct PsRoiAlignForwardKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP(item, index, nthreads_) {
-      // (n, c, ph, pw) is an element in the pooled output
-      int pw = index % pooled_width_;
-      int ph = (index / pooled_width_) % pooled_height_;
-      int c_out = (index / pooled_width_ / pooled_height_) % channels_out_;
-      int n = index / pooled_width_ / pooled_height_ / channels_out_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void ps_roi_align_forward_kernel_impl(
+    int nthreads,
+    const T* input,
+    const T spatial_scale,
+    int channels,
+    int height,
+    int width,
+    int pooled_height,
+    int pooled_width,
+    int sampling_ratio,
+    const T* rois,
+    int channels_out,
+    T* output,
+    int* channel_mapping) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP(item, index, nthreads) {
+    // (n, c, ph, pw) is an element in the pooled output
+    int pw = index % pooled_width;
+    int ph = (index / pooled_width) % pooled_height;
+    int c_out = (index / pooled_width / pooled_height) % channels_out;
+    int n = index / pooled_width / pooled_height / channels_out;
 
-      // (n, c_in, ph, pw) is the associated element in the input
-      int c_in = (c_out * pooled_height_ + ph) * pooled_width_ + pw;
+    // (n, c_in, ph, pw) is the associated element in the input
+    int c_in = (c_out * pooled_height + ph) * pooled_width + pw;
 
-      const T* offset_rois = rois_ + n * 5;
-      int roi_batch_ind = offset_rois[0];
+    const T* offset_rois = rois + n * 5;
+    int roi_batch_ind = offset_rois[0];
 
-      // Do not using rounding; this implementation detail is critical
-      T roi_start_w = offset_rois[1] * spatial_scale_ - static_cast<T>(0.5);
-      T roi_start_h = offset_rois[2] * spatial_scale_ - static_cast<T>(0.5);
-      T roi_end_w = offset_rois[3] * spatial_scale_ - static_cast<T>(0.5);
-      T roi_end_h = offset_rois[4] * spatial_scale_ - static_cast<T>(0.5);
+    // Do not using rounding; this implementation detail is critical
+    T roi_start_w = offset_rois[1] * spatial_scale - static_cast<T>(0.5);
+    T roi_start_h = offset_rois[2] * spatial_scale - static_cast<T>(0.5);
+    T roi_end_w = offset_rois[3] * spatial_scale - static_cast<T>(0.5);
+    T roi_end_h = offset_rois[4] * spatial_scale - static_cast<T>(0.5);
 
-      T roi_width = roi_end_w - roi_start_w;
-      T roi_height = roi_end_h - roi_start_h;
-      T bin_size_h =
-          static_cast<T>(roi_height) / static_cast<T>(pooled_height_);
-      T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
+    T roi_width = roi_end_w - roi_start_w;
+    T roi_height = roi_end_h - roi_start_h;
+    T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
+    T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
-      // Do not using floor/ceil; this implementation detail is critical
-      T hstart = static_cast<T>(ph) * bin_size_h + roi_start_h;
-      T wstart = static_cast<T>(pw) * bin_size_w + roi_start_w;
+    // Do not using floor/ceil; this implementation detail is critical
+    T hstart = static_cast<T>(ph) * bin_size_h + roi_start_h;
+    T wstart = static_cast<T>(pw) * bin_size_w + roi_start_w;
 
-      // We use roi_bin_grid to sample the grid and mimic integral
-      using opmath_t = at::opmath_type<T>;
-      int roi_bin_grid_h = (sampling_ratio_ > 0)
-          ? sampling_ratio_
-          : static_cast<int>(sycl::ceil(
-                static_cast<opmath_t>(roi_height) /
-                static_cast<opmath_t>(pooled_height_))); // e.g., = 2
-      int roi_bin_grid_w = (sampling_ratio_ > 0)
-          ? sampling_ratio_
-          : static_cast<int>(sycl::ceil(
-                static_cast<opmath_t>(roi_width) /
-                static_cast<opmath_t>(pooled_width_)));
-      const T count = roi_bin_grid_h * roi_bin_grid_w;
+    // We use roi_bin_grid to sample the grid and mimic integral
+    using opmath_t = at::opmath_type<T>;
+    int roi_bin_grid_h = (sampling_ratio > 0)
+        ? sampling_ratio
+        : static_cast<int>(sycl::ceil(
+              static_cast<opmath_t>(roi_height) /
+              static_cast<opmath_t>(pooled_height))); // e.g., = 2
+    int roi_bin_grid_w = (sampling_ratio > 0)
+        ? sampling_ratio
+        : static_cast<int>(sycl::ceil(
+              static_cast<opmath_t>(roi_width) /
+              static_cast<opmath_t>(pooled_width)));
+    const T count = roi_bin_grid_h * roi_bin_grid_w;
 
-      const T* offset_input =
-          input_ + (roi_batch_ind * channels_ + c_in) * height_ * width_;
-      T out_sum = 0.;
-      for (int iy = 0; iy < roi_bin_grid_h; iy++) {
-        const T y = hstart +
-            static_cast<T>(iy + .5f) * bin_size_h /
-                static_cast<T>(roi_bin_grid_h);
-        for (int ix = 0; ix < roi_bin_grid_w; ix++) {
-          const T x = wstart +
-              static_cast<T>(ix + .5f) * bin_size_w /
-                  static_cast<T>(roi_bin_grid_w);
-          T val =
-              bilinear_interpolate(offset_input, height_, width_, y, x, index);
-          out_sum += val;
-        }
+    const T* offset_input =
+        input + (roi_batch_ind * channels + c_in) * height * width;
+    T out_sum = 0.;
+    for (int iy = 0; iy < roi_bin_grid_h; iy++) {
+      const T y = hstart +
+          static_cast<T>(iy + .5f) * bin_size_h /
+              static_cast<T>(roi_bin_grid_h);
+      for (int ix = 0; ix < roi_bin_grid_w; ix++) {
+        const T x = wstart +
+            static_cast<T>(ix + .5f) * bin_size_w /
+                static_cast<T>(roi_bin_grid_w);
+        T val = bilinear_interpolate(offset_input, height, width, y, x, index);
+        out_sum += val;
       }
-      out_sum /= count;
-      output_[index] = out_sum;
-      channel_mapping_[index] = c_in;
     }
+    out_sum /= count;
+    output[index] = out_sum;
+    channel_mapping[index] = c_in;
   }
-  PsRoiAlignForwardKernel(
-      int nthreads,
-      const T* input,
-      const T spatial_scale,
-      int channels,
-      int height,
-      int width,
-      int pooled_height,
-      int pooled_width,
-      int sampling_ratio,
-      const T* rois,
-      int channels_out,
-      T* output,
-      int* channel_mapping)
-      : nthreads_(nthreads),
-        input_(input),
-        spatial_scale_(spatial_scale),
-        channels_(channels),
-        height_(height),
-        width_(width),
-        pooled_height_(pooled_height),
-        pooled_width_(pooled_width),
-        sampling_ratio_(sampling_ratio),
-        rois_(rois),
-        channels_out_(channels_out),
-        output_(output),
-        channel_mapping_(channel_mapping) {}
-
- private:
-  int nthreads_;
-  const T* input_;
-  const T spatial_scale_;
-  int channels_;
-  int height_;
-  int width_;
-  int pooled_height_;
-  int pooled_width_;
-  int sampling_ratio_;
-  const T* rois_;
-  int channels_out_;
-  T* output_;
-  int* channel_mapping_;
-};
+}
 
 template <typename T>
 void bilinear_interpolate_gradient(
@@ -252,151 +221,120 @@ void bilinear_interpolate_gradient(
 }
 
 template <typename T>
-struct PsRoiAlignBackwardKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP(item, index, nthreads_) {
-      // (n, c, ph, pw) is an element in the pooled output
-      int pw = index % pooled_width_;
-      int ph = (index / pooled_width_) % pooled_height_;
-      int n = index / pooled_width_ / pooled_height_ / channels_out_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void ps_roi_align_backward_kernel_impl(
+    int nthreads,
+    const T* grad_output,
+    const int* channel_mapping,
+    const T spatial_scale,
+    int channels,
+    int height,
+    int width,
+    int pooled_height,
+    int pooled_width,
+    int sampling_ratio,
+    int channels_out,
+    T* grad_input,
+    const T* rois) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP(item, index, nthreads) {
+    // (n, c, ph, pw) is an element in the pooled output
+    int pw = index % pooled_width;
+    int ph = (index / pooled_width) % pooled_height;
+    int n = index / pooled_width / pooled_height / channels_out;
 
-      const T* offset_rois = rois_ + n * 5;
-      int roi_batch_ind = offset_rois[0];
+    const T* offset_rois = rois + n * 5;
+    int roi_batch_ind = offset_rois[0];
 
-      // Do not using rounding; this implementation detail is critical
-      T roi_start_w = offset_rois[1] * spatial_scale_ - static_cast<T>(0.5);
-      T roi_start_h = offset_rois[2] * spatial_scale_ - static_cast<T>(0.5);
-      T roi_end_w = offset_rois[3] * spatial_scale_ - static_cast<T>(0.5);
-      T roi_end_h = offset_rois[4] * spatial_scale_ - static_cast<T>(0.5);
+    // Do not using rounding; this implementation detail is critical
+    T roi_start_w = offset_rois[1] * spatial_scale - static_cast<T>(0.5);
+    T roi_start_h = offset_rois[2] * spatial_scale - static_cast<T>(0.5);
+    T roi_end_w = offset_rois[3] * spatial_scale - static_cast<T>(0.5);
+    T roi_end_h = offset_rois[4] * spatial_scale - static_cast<T>(0.5);
 
-      // Force small ROIs to be 1x1
-      T roi_width = roi_end_w - roi_start_w;
-      T roi_height = roi_end_h - roi_start_h;
-      T bin_size_h =
-          static_cast<T>(roi_height) / static_cast<T>(pooled_height_);
-      T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
+    // Force small ROIs to be 1x1
+    T roi_width = roi_end_w - roi_start_w;
+    T roi_height = roi_end_h - roi_start_h;
+    T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
+    T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
-      int c_in = channel_mapping_[index];
+    int c_in = channel_mapping[index];
 
-      // Do not using floor/ceil; this implementation detail is critical
-      T hstart = static_cast<T>(ph) * bin_size_h + roi_start_h;
-      T wstart = static_cast<T>(pw) * bin_size_w + roi_start_w;
+    // Do not using floor/ceil; this implementation detail is critical
+    T hstart = static_cast<T>(ph) * bin_size_h + roi_start_h;
+    T wstart = static_cast<T>(pw) * bin_size_w + roi_start_w;
 
-      const T grad_output_this_bin = grad_output_[index];
+    const T grad_output_this_bin = grad_output[index];
 
-      // We use roi_bin_grid to sample the grid and mimic integral
-      using opmath_t = at::opmath_type<T>;
-      int roi_bin_grid_h = (sampling_ratio_ > 0)
-          ? sampling_ratio_
-          : static_cast<int>(sycl::ceil(
-                static_cast<opmath_t>(roi_height) /
-                static_cast<opmath_t>(pooled_height_))); // e.g., = 2
-      int roi_bin_grid_w = (sampling_ratio_ > 0)
-          ? sampling_ratio_
-          : static_cast<int>(sycl::ceil(
-                static_cast<opmath_t>(roi_width) /
-                static_cast<opmath_t>(pooled_width_)));
-      const T count = roi_bin_grid_h * roi_bin_grid_w;
+    // We use roi_bin_grid to sample the grid and mimic integral
+    using opmath_t = at::opmath_type<T>;
+    int roi_bin_grid_h = (sampling_ratio > 0)
+        ? sampling_ratio
+        : static_cast<int>(sycl::ceil(
+              static_cast<opmath_t>(roi_height) /
+              static_cast<opmath_t>(pooled_height))); // e.g., = 2
+    int roi_bin_grid_w = (sampling_ratio > 0)
+        ? sampling_ratio
+        : static_cast<int>(sycl::ceil(
+              static_cast<opmath_t>(roi_width) /
+              static_cast<opmath_t>(pooled_width)));
+    const T count = roi_bin_grid_h * roi_bin_grid_w;
 
-      const int offset = (roi_batch_ind * channels_ + c_in) * height_ * width_;
+    const int offset = (roi_batch_ind * channels + c_in) * height * width;
 
-      for (int iy = 0; iy < roi_bin_grid_h; iy++) {
-        const T y = hstart +
-            static_cast<T>(iy + .5f) * bin_size_h /
-                static_cast<T>(roi_bin_grid_h);
-        for (int ix = 0; ix < roi_bin_grid_w; ix++) {
-          const T x = wstart +
-              static_cast<T>(ix + .5f) * bin_size_w /
-                  static_cast<T>(roi_bin_grid_w);
+    for (int iy = 0; iy < roi_bin_grid_h; iy++) {
+      const T y = hstart +
+          static_cast<T>(iy + .5f) * bin_size_h /
+              static_cast<T>(roi_bin_grid_h);
+      for (int ix = 0; ix < roi_bin_grid_w; ix++) {
+        const T x = wstart +
+            static_cast<T>(ix + .5f) * bin_size_w /
+                static_cast<T>(roi_bin_grid_w);
 
-          T w1, w2, w3, w4;
-          int x_low, x_high, y_low, y_high;
+        T w1, w2, w3, w4;
+        int x_low, x_high, y_low, y_high;
 
-          bilinear_interpolate_gradient(
-              height_,
-              width_,
-              y,
-              x,
-              w1,
-              w2,
-              w3,
-              w4,
-              x_low,
-              x_high,
-              y_low,
-              y_high,
-              index);
+        bilinear_interpolate_gradient(
+            height,
+            width,
+            y,
+            x,
+            w1,
+            w2,
+            w3,
+            w4,
+            x_low,
+            x_high,
+            y_low,
+            y_high,
+            index);
 
-          T g1 = grad_output_this_bin * w1 / count;
-          T g2 = grad_output_this_bin * w2 / count;
-          T g3 = grad_output_this_bin * w3 / count;
-          T g4 = grad_output_this_bin * w4 / count;
+        T g1 = grad_output_this_bin * w1 / count;
+        T g2 = grad_output_this_bin * w2 / count;
+        T g3 = grad_output_this_bin * w3 / count;
+        T g4 = grad_output_this_bin * w4 / count;
 
-          if (x_low >= 0 && x_high >= 0 && y_low >= 0 && y_high >= 0) {
-            atomicAdd(
-                (sycl_global_ptr<T>)(grad_input_ + offset + y_low * width_ +
-                                     x_low),
-                static_cast<T>(g1));
-            atomicAdd(
-                (sycl_global_ptr<T>)(grad_input_ + offset + y_low * width_ +
-                                     x_high),
-                static_cast<T>(g2));
-            atomicAdd(
-                (sycl_global_ptr<T>)(grad_input_ + offset + y_high * width_ +
-                                     x_low),
-                static_cast<T>(g3));
-            atomicAdd(
-                (sycl_global_ptr<T>)(grad_input_ + offset + y_high * width_ +
-                                     x_high),
-                static_cast<T>(g4));
-          } // if
-        } // ix
-      } // iy
-    } // XPU_KERNEL_LOOP
-  }
-  PsRoiAlignBackwardKernel(
-      int nthreads,
-      const T* grad_output,
-      const int* channel_mapping,
-      const T spatial_scale,
-      int channels,
-      int height,
-      int width,
-      int pooled_height,
-      int pooled_width,
-      int sampling_ratio,
-      int channels_out,
-      T* grad_input,
-      const T* rois)
-      : nthreads_(nthreads),
-        grad_output_(grad_output),
-        channel_mapping_(channel_mapping),
-        spatial_scale_(spatial_scale),
-        channels_(channels),
-        height_(height),
-        width_(width),
-        pooled_height_(pooled_height),
-        pooled_width_(pooled_width),
-        sampling_ratio_(sampling_ratio),
-        channels_out_(channels_out),
-        grad_input_(grad_input),
-        rois_(rois) {}
-
- private:
-  int nthreads_;
-  const T* grad_output_;
-  const int* channel_mapping_;
-  const T spatial_scale_;
-  int channels_;
-  int height_;
-  int width_;
-  int pooled_height_;
-  int pooled_width_;
-  int sampling_ratio_;
-  int channels_out_;
-  T* grad_input_;
-  const T* rois_;
-};
+        if (x_low >= 0 && x_high >= 0 && y_low >= 0 && y_high >= 0) {
+          atomicAdd(
+              (sycl_global_ptr<T>)(grad_input + offset + y_low * width + x_low),
+              static_cast<T>(g1));
+          atomicAdd(
+              (sycl_global_ptr<T>)(grad_input + offset + y_low * width +
+                                   x_high),
+              static_cast<T>(g2));
+          atomicAdd(
+              (sycl_global_ptr<T>)(grad_input + offset + y_high * width +
+                                   x_low),
+              static_cast<T>(g3));
+          atomicAdd(
+              (sycl_global_ptr<T>)(grad_input + offset + y_high * width +
+                                   x_high),
+              static_cast<T>(g4));
+        } // if
+      } // ix
+    } // iy
+  } // XPU_KERNEL_LOOP
+}
 
 std::tuple<at::Tensor, at::Tensor> ps_roi_align_kernel(
     const at::Tensor& input,
@@ -433,25 +371,24 @@ std::tuple<at::Tensor, at::Tensor> ps_roi_align_kernel(
   auto rois_ = rois.contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(
       input.scalar_type(), "ps_roi_align_forward_kernel_xpu", [&] {
-        auto kfn = PsRoiAlignForwardKernel<scalar_t>(
+        sycl_kernel_submit<ps_roi_align_forward_kernel_impl<scalar_t>>(
+            global_range * local_range,
+            local_range,
+            at::xpu::getCurrentSYCLQueue(),
+            0,
             output_size,
-            input_.data_ptr<scalar_t>(),
-            spatial_scale,
+            input_.const_data_ptr<scalar_t>(),
+            static_cast<scalar_t>(spatial_scale),
             channels,
             height,
             width,
             pooled_height,
             pooled_width,
             sampling_ratio,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             channels_out,
             output.data_ptr<scalar_t>(),
             channel_mapping.data_ptr<int>());
-        sycl_kernel_submit(
-            global_range * local_range,
-            local_range,
-            at::xpu::getCurrentSYCLQueue(),
-            kfn);
       });
   return std::make_tuple(output, channel_mapping);
 }
@@ -487,11 +424,15 @@ Tensor ps_roi_align_backward_kernel(
   auto rois_ = rois.contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(
       grad.scalar_type(), "ps_roi_align_backward_kernel_xpu", [&] {
-        auto kfn = PsRoiAlignBackwardKernel<scalar_t>(
+        sycl_kernel_submit<ps_roi_align_backward_kernel_impl<scalar_t>>(
+            global_range * local_range,
+            local_range,
+            at::xpu::getCurrentSYCLQueue(),
+            0,
             grad.numel(),
-            grad_.data_ptr<scalar_t>(),
-            channel_mapping.data_ptr<int>(),
-            spatial_scale,
+            grad_.const_data_ptr<scalar_t>(),
+            channel_mapping.const_data_ptr<int>(),
+            static_cast<scalar_t>(spatial_scale),
             channels,
             height,
             width,
@@ -500,12 +441,7 @@ Tensor ps_roi_align_backward_kernel(
             sampling_ratio,
             channels_out,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>());
-        sycl_kernel_submit(
-            global_range * local_range,
-            local_range,
-            at::xpu::getCurrentSYCLQueue(),
-            kfn);
+            rois_.const_data_ptr<scalar_t>());
       });
   return grad_input;
 }

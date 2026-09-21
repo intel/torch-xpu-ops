@@ -30,27 +30,32 @@ endif()
 set(CMAKE_COMMAND "@CMAKE_COMMAND@") # path
 set(source_file "@source_file@") # path
 set(SYCL_generated_dependency_file "@SYCL_generated_dependency_file@") # path
-set(SYCL_host_compiler "@SYCL_HOST_COMPILER@") # path
 set(generated_file_path "@generated_file_path@") # path
 set(generated_file_internal "@generated_file@") # path
 set(SYCL_executable "@SYCL_EXECUTABLE@") # path
+set(SYCL_compiler_launcher @SYCL_compiler_launcher@) # list
 set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
+set(SYCL_host_flags_excluded_from_sycl [==[@SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL@]==]) # list
+set(SYCL_host_flags_only_for_sycl [==[@SYCL_HOST_FLAGS_ONLY_FOR_SYCL@]==]) # list
 
 list(REMOVE_DUPLICATES SYCL_include_dirs)
 
-set(SYCL_host_compiler_flags "-fsycl-host-compiler-options=")
+# The Intel SYCL driver (icx/icpx) performs host and device compilation from
+# the same SYCL command. Pass each CMAKE_HOST_FLAGS entry as a separate
+# -Xarch_host pair so flags containing spaces remain one argument, while
+# SYCL_compile_flags contains the common/device options.
+set(SYCL_host_arch_flags)
+
 set(SYCL_include_args)
 
 foreach(dir ${SYCL_include_dirs})
   # Args with spaces need quotes around them to get them to be parsed as a single argument.
   if(dir MATCHES " ")
     list(APPEND SYCL_include_args "-I\"${dir}\"")
-    string(APPEND SYCL_host_compiler_flags "-I\"${dir}\" ")
   else()
     list(APPEND SYCL_include_args -I${dir})
-    string(APPEND SYCL_host_compiler_flags "-I${dir} ")
   endif()
 endforeach()
 
@@ -63,23 +68,16 @@ endforeach()
 # Choose host flags in FindSYCL.cmake
 @SYCL_host_flags@
 
-# Adding permissive flag for MSVC build to overcome ambiguous symbol error.
-if(WIN32)
-  string(APPEND SYCL_host_compiler_flags "/permissive- ")
-endif()
-
-
 list(REMOVE_DUPLICATES CMAKE_HOST_FLAGS)
 foreach(flag ${CMAKE_HOST_FLAGS})
-  # Extra quotes are added around each flag to help SYCL parse out flags with spaces.
-  string(APPEND SYCL_host_compiler_flags "${flag} ")
+  string(STRIP "${flag}" normalized_flag)
+  if(NOT normalized_flag IN_LIST SYCL_host_flags_excluded_from_sycl)
+    list(APPEND SYCL_host_arch_flags -Xarch_host "${normalized_flag}")
+  endif()
 endforeach()
-foreach(def ${SYCL_compile_definitions})
-  string(APPEND SYCL_host_compiler_flags "-D${def} ")
+foreach(flag ${SYCL_host_flags_only_for_sycl})
+  list(APPEND SYCL_host_arch_flags -Xarch_host "${flag}")
 endforeach()
-
-# string(APPEND SYCL_host_compiler_flags "\"")
-set(SYCL_host_compiler "-fsycl-host-compiler=${SYCL_host_compiler}")
 
 # SYCL_execute_process - Executes a command with optional command echo and status message.
 #
@@ -133,14 +131,14 @@ else()
 endif()
 SYCL_execute_process(
   "Generating ${generated_file}"
-  COMMAND "${SYCL_executable}"
+  COMMAND ${SYCL_compiler_launcher}
+  "${SYCL_executable}"
   ${SYCL_dependency_file_args}
   -c
   "${source_file}"
   -o "${generated_file}"
   ${SYCL_include_args}
-  ${SYCL_host_compiler}
-  ${SYCL_host_compiler_flags}
+  ${SYCL_host_arch_flags}
   ${SYCL_compile_flags}
   )
 

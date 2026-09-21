@@ -23,60 +23,38 @@
 
 namespace at::native::xpu {
 
-template <typename scalar_t, typename index_t, bool is_channels_last_>
-struct MaxUnpooling2dForwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int64_t outputImageSize = outputHeight_ * outputWidth_;
-    auto output = output_data_;
-    XPU_KERNEL_LOOP(item, linearIndex, numInputElements_) {
-      int c = is_channels_last_
-          ? linearIndex % numChannels_
-          : (linearIndex / inputWidth_ / inputHeight_) % numChannels_;
-      int n = linearIndex / inputWidth_ / inputHeight_ / numChannels_;
-      int maxind = indices_data_[linearIndex];
-      SYCL_KERNEL_ASSERT(maxind >= 0 && maxind < outputImageSize);
-      index_t offset = is_channels_last_
-          ? n * numChannels_ * outputHeight_ * outputWidth_ + c
-          : (n * numChannels_ + c) * outputHeight_ * outputWidth_;
-      output += offset;
-      if constexpr (is_channels_last_) {
-        output[maxind * numChannels_] = input_data_[linearIndex];
-      } else {
-        output[maxind] = input_data_[linearIndex];
-      }
+template <typename scalar_t, typename index_t, bool is_channels_last>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void max_unpooling_2d_forward_kernel_impl(
+    const index_t numInputElements,
+    const scalar_t* input_data,
+    const int64_t* indices_data,
+    const index_t numChannels,
+    const index_t inputHeight,
+    const index_t inputWidth,
+    const index_t outputHeight,
+    const index_t outputWidth,
+    scalar_t* output_data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t outputImageSize = outputHeight * outputWidth;
+  XPU_KERNEL_LOOP(item, linearIndex, numInputElements) {
+    int c = is_channels_last
+        ? linearIndex % numChannels
+        : (linearIndex / inputWidth / inputHeight) % numChannels;
+    int n = linearIndex / inputWidth / inputHeight / numChannels;
+    int maxind = indices_data[linearIndex];
+    SYCL_KERNEL_ASSERT(maxind >= 0 && maxind < outputImageSize);
+    index_t offset = is_channels_last
+        ? n * numChannels * outputHeight * outputWidth + c
+        : (n * numChannels + c) * outputHeight * outputWidth;
+    scalar_t* out = output_data + offset;
+    if constexpr (is_channels_last) {
+      out[maxind * numChannels] = input_data[linearIndex];
+    } else {
+      out[maxind] = input_data[linearIndex];
     }
-  };
-  MaxUnpooling2dForwardKernelFunctor(
-      const index_t numInputElements,
-      const scalar_t* input_data,
-      const int64_t* indices_data,
-      const index_t numChannels,
-      const index_t inputHeight,
-      const index_t inputWidth,
-      const index_t outputHeight,
-      const index_t outputWidth,
-      scalar_t* output_data)
-      : numInputElements_(numInputElements),
-        input_data_(input_data),
-        indices_data_(indices_data),
-        numChannels_(numChannels),
-        inputHeight_(inputHeight),
-        inputWidth_(inputWidth),
-        outputHeight_(outputHeight),
-        outputWidth_(outputWidth),
-        output_data_(output_data) {}
-
- private:
-  const int64_t numInputElements_;
-  const scalar_t* input_data_;
-  const int64_t* indices_data_;
-  const int64_t numChannels_;
-  const int64_t inputHeight_;
-  const int64_t inputWidth_;
-  const int64_t outputHeight_;
-  const int64_t outputWidth_;
-  scalar_t* output_data_;
-};
+  }
+}
 
 Tensor& max_unpooling2d_forward_kernel(
     Tensor& output,
@@ -163,10 +141,17 @@ Tensor& max_unpooling2d_forward_kernel(
               "max_unpooling2d_forward_xpu",
               [&] {
                 if (is_channels_last(memory_format)) {
-                  auto kfn = MaxUnpooling2dForwardKernelFunctor<
+                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+                  int64_t num_groups =
+                      xpuKernelLoopGroupRange(count, group_size);
+                  sycl_kernel_submit<max_unpooling_2d_forward_kernel_impl<
                       scalar_t,
                       index_t,
-                      true>(
+                      true>>(
+                      num_groups * group_size,
+                      group_size,
+                      getCurrentSYCLQueue(),
+                      0,
                       count,
                       self.const_data_ptr<scalar_t>(),
                       indices.const_data_ptr<int64_t>(),
@@ -176,20 +161,19 @@ Tensor& max_unpooling2d_forward_kernel(
                       oheight,
                       owidth,
                       output.mutable_data_ptr<scalar_t>());
-
-                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups =
-                      xpuKernelLoopGroupRange(count, group_size);
-                  sycl_kernel_submit(
-                      num_groups * group_size,
-                      group_size,
-                      getCurrentSYCLQueue(),
-                      kfn);
                 } else {
-                  auto kfn = MaxUnpooling2dForwardKernelFunctor<
+                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+                  int64_t num_groups =
+                      xpuKernelLoopGroupRange(count, group_size);
+
+                  sycl_kernel_submit<max_unpooling_2d_forward_kernel_impl<
                       scalar_t,
                       index_t,
-                      false>(
+                      false>>(
+                      num_groups * group_size,
+                      group_size,
+                      getCurrentSYCLQueue(),
+                      0,
                       count,
                       self.const_data_ptr<scalar_t>(),
                       indices.const_data_ptr<int64_t>(),
@@ -199,14 +183,6 @@ Tensor& max_unpooling2d_forward_kernel(
                       oheight,
                       owidth,
                       output.mutable_data_ptr<scalar_t>());
-                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups =
-                      xpuKernelLoopGroupRange(count, group_size);
-                  sycl_kernel_submit(
-                      num_groups * group_size,
-                      group_size,
-                      getCurrentSYCLQueue(),
-                      kfn);
                 }
               });
         }));
@@ -218,69 +194,41 @@ Tensor& max_unpooling2d_forward_kernel(
 }
 
 template <typename scalar_t, typename index_t>
-struct MaxUnpooling3dForwardKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto output_ptr = output_data_;
-    auto input_ptr = input_data_;
-    auto indices_ptr = indices_data_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void max_unpooling_3d_forward_kernel_impl(
+    const scalar_t* input_data,
+    const int64_t* indices_data,
+    scalar_t* output_data,
+    const index_t batchSize,
+    const index_t inputSlices,
+    const index_t iT,
+    const index_t iH,
+    const index_t iW,
+    const index_t oT,
+    const index_t oH,
+    const index_t oW,
+    const index_t offsetZ) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_ptr = output_data;
+  auto input_ptr = input_data;
+  auto indices_ptr = indices_data;
 
-    index_t iColumn = item.get_global_id(2);
-    index_t iRow = item.get_global_id(1);
-    index_t iFrame = (item.get_group()[0] + offsetZ_) % iT_; // input frame/time
-    index_t slice =
-        (item.get_group()[0] + offsetZ_) / iT_; // input slice/feature
-    index_t outputImageSize = oT_ * oH_ * oW_;
-    if (iRow < iH_ && iColumn < iW_) {
-      scalar_t val = input_ptr
-          [slice * iT_ * iH_ * iW_ + iFrame * iH_ * iW_ + iRow * iW_ +
-           iColumn] /*[slice][iFrame][iRow][iColumn]*/;
-      index_t index = indices_ptr
-          [slice * iT_ * iH_ * iW_ + iFrame * iH_ * iW_ + iRow * iW_ +
-           iColumn] /*[slice][iFrame][iRow][iColumn]*/;
-      SYCL_KERNEL_ASSERT(index >= 0 && index < outputImageSize);
-      output_ptr[slice * oT_ * oH_ * oW_ + index] = val;
-    }
+  index_t iColumn = item.get_global_id(2);
+  index_t iRow = item.get_global_id(1);
+  index_t iFrame = (item.get_group()[0] + offsetZ) % iT; // input frame/time
+  index_t slice = (item.get_group()[0] + offsetZ) / iT; // input slice/feature
+  index_t outputImageSize = oT * oH * oW;
+  if (iRow < iH && iColumn < iW) {
+    scalar_t val = input_ptr
+        [slice * iT * iH * iW + iFrame * iH * iW + iRow * iW +
+         iColumn] /*[slice][iFrame][iRow][iColumn]*/;
+    index_t index = indices_ptr
+        [slice * iT * iH * iW + iFrame * iH * iW + iRow * iW +
+         iColumn] /*[slice][iFrame][iRow][iColumn]*/;
+    SYCL_KERNEL_ASSERT(index >= 0 && index < outputImageSize);
+    output_ptr[slice * oT * oH * oW + index] = val;
   }
-  MaxUnpooling3dForwardKernelFunctor(
-      const scalar_t* input_data,
-      const int64_t* indices_data,
-      scalar_t* output_data,
-      const index_t batchSize,
-      const index_t inputSlices,
-      const index_t iT,
-      const index_t iH,
-      const index_t iW,
-      const index_t oT,
-      const index_t oH,
-      const index_t oW,
-      const index_t offsetZ)
-      : input_data_(input_data),
-        indices_data_(indices_data),
-        output_data_(output_data),
-        batchSize_(batchSize),
-        inputSlices_(inputSlices),
-        iT_(iT),
-        iH_(iH),
-        iW_(iW),
-        oT_(oT),
-        oH_(oH),
-        oW_(oW),
-        offsetZ_(offsetZ) {}
-
- private:
-  const scalar_t* input_data_;
-  const int64_t* indices_data_;
-  scalar_t* output_data_;
-  const index_t batchSize_;
-  const index_t inputSlices_;
-  const index_t iT_;
-  const index_t iH_;
-  const index_t iW_;
-  const index_t oT_;
-  const index_t oH_;
-  const index_t oW_;
-  const index_t offsetZ_;
-};
+}
 
 template <typename scalar_t, typename index_t>
 void max_unpooling3d_forward_template(
@@ -296,20 +244,6 @@ void max_unpooling3d_forward_template(
     const int64_t oH,
     const int64_t oW,
     const int64_t offsetZ) {
-  MaxUnpooling3dForwardKernelFunctor<scalar_t, index_t> kfn(
-      input,
-      indices,
-      output,
-      batchSize,
-      inputSlices,
-      iT,
-      iH,
-      iW,
-      oT,
-      oH,
-      oW,
-      offsetZ);
-
   int64_t work_group_size_w = 32;
   int64_t work_group_size_h = syclMaxWorkItemsPerSubSlice() / work_group_size_w;
   int64_t total_t = batchSize * inputSlices * iT;
@@ -324,65 +258,55 @@ void max_unpooling3d_forward_template(
       (size_t)total_t,
       (size_t)(work_group_size_h * num_groups_h),
       (size_t)(work_group_size_w * num_groups_w)};
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit<max_unpooling_3d_forward_kernel_impl<scalar_t, index_t>>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
+      input,
+      indices,
+      output,
+      batchSize,
+      inputSlices,
+      iT,
+      iH,
+      iW,
+      oT,
+      oH,
+      oW,
+      offsetZ);
 }
 
 template <typename scalar_t, typename index_t>
-struct MaxUnpooling3dClForwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto output_ptr = output_data_;
-    auto input_ptr = input_data_;
-    auto indices_ptr = indices_data_;
-    for (index_t linearIndex = item.get_global_id(0);
-         linearIndex < numInputElements_;
-         linearIndex += item.get_global_range()[0]) {
-      index_t c = linearIndex % numChannels_;
-      index_t n =
-          linearIndex / inputDepth_ / inputWidth_ / inputHeight_ / numChannels_;
-      index_t maxind = indices_ptr[linearIndex];
-      index_t offset =
-          n * numChannels_ * outputDepth_ * outputHeight_ * outputWidth_ + c;
-      output_ptr += offset;
-      output_ptr[maxind * numChannels_] = input_ptr[linearIndex];
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void max_unpooling_3d_cl_forward_kernel_impl(
+    const int64_t numInputElements,
+    const scalar_t* input_data,
+    const int64_t* indices_data,
+    const index_t numChannels,
+    const index_t inputDepth,
+    const index_t inputHeight,
+    const index_t inputWidth,
+    const index_t outputDepth,
+    const index_t outputHeight,
+    const index_t outputWidth,
+    scalar_t* output_data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto input_ptr = input_data;
+  auto indices_ptr = indices_data;
+  for (index_t linearIndex = item.get_global_id(0);
+       linearIndex < numInputElements;
+       linearIndex += item.get_global_range()[0]) {
+    index_t c = linearIndex % numChannels;
+    index_t n =
+        linearIndex / inputDepth / inputWidth / inputHeight / numChannels;
+    index_t maxind = indices_ptr[linearIndex];
+    index_t offset =
+        n * numChannels * outputDepth * outputHeight * outputWidth + c;
+    scalar_t* out = output_data + offset;
+    out[maxind * numChannels] = input_ptr[linearIndex];
   }
-  MaxUnpooling3dClForwardKernelFunctor(
-      const int64_t numInputElements,
-      const scalar_t* input_data,
-      const int64_t* indices_data,
-      const index_t numChannels,
-      const index_t inputDepth,
-      const index_t inputHeight,
-      const index_t inputWidth,
-      const index_t outputDepth,
-      const index_t outputHeight,
-      const index_t outputWidth,
-      scalar_t* output_data)
-      : numInputElements_(numInputElements),
-        input_data_(input_data),
-        indices_data_(indices_data),
-        numChannels_(numChannels),
-        inputDepth_(inputDepth),
-        inputHeight_(inputHeight),
-        inputWidth_(inputWidth),
-        outputDepth_(outputDepth),
-        outputHeight_(outputHeight),
-        outputWidth_(outputWidth),
-        output_data_(output_data) {}
-
- private:
-  const int64_t numInputElements_;
-  const scalar_t* input_data_;
-  const int64_t* indices_data_;
-  const index_t numChannels_;
-  const index_t inputDepth_;
-  const index_t inputHeight_;
-  const index_t inputWidth_;
-  const index_t outputDepth_;
-  const index_t outputHeight_;
-  const index_t outputWidth_;
-  scalar_t* output_data_;
-};
+}
 
 template <typename scalar_t, typename index_t>
 void max_unpooling3d_cl_forward_template(
@@ -397,7 +321,15 @@ void max_unpooling3d_cl_forward_template(
     const int64_t outputHeight,
     const int64_t outputWidth,
     scalar_t* output) {
-  MaxUnpooling3dClForwardKernelFunctor<scalar_t, index_t> kfn(
+  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t num_groups = xpuKernelLoopGroupRange(numInputElements, group_size);
+  int64_t total_items = num_groups * group_size;
+  sycl_kernel_submit<
+      max_unpooling_3d_cl_forward_kernel_impl<scalar_t, index_t>>(
+      total_items,
+      group_size,
+      getCurrentSYCLQueue(),
+      0,
       numInputElements,
       input,
       indices,
@@ -409,11 +341,6 @@ void max_unpooling3d_cl_forward_template(
       outputHeight,
       outputWidth,
       output);
-
-  int64_t group_size = syclMaxWorkItemsPerSubSlice();
-  int64_t num_groups = xpuKernelLoopGroupRange(numInputElements, group_size);
-  int64_t total_items = num_groups * group_size;
-  sycl_kernel_submit(total_items, group_size, getCurrentSYCLQueue(), kfn);
 }
 
 static void max_unpooling3d_shape_check(

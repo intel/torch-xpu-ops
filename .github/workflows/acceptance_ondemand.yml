@@ -4,7 +4,7 @@ name: OnDemand Acceptance Comparison
 # baseline) in the same workflow run, then compares their results.
 #
 # Test scope is fixed to the acceptance comparison scope:
-#   * UT  : p0 only
+#   * UT  : xpu_p0 (inductor/non-inductor/profiling in container, distributed in baremetal)
 #   * E2E : huggingface, timm_models, torchbench
 #           (training amp_fp16 + inference bfloat16, accuracy + performance)
 #
@@ -22,6 +22,13 @@ on:
         default: '3.10'
         description: Python version (e.g. 3.10, 3.11, 3.12)
 
+      # ----- Test scope (command pattern) -----
+      test_pattern:
+        type: choice
+        options: [test_pt, test_pt_ut, test_pt_e2e, test_pt_smoke]
+        default: test_pt
+        description: 'Command pattern: test_pt (UT+E2E), test_pt_ut (UT only), test_pt_e2e (E2E only), test_pt_smoke (smoke tests only).'
+
       # ----- Common base refs -----
       pytorch:
         type: string
@@ -29,7 +36,7 @@ on:
         description: 'Base PyTorch ref (commit/branch/tag, or `repo@ref`).'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: 'pinned'
         description: 'Base torch-xpu-ops ref, or `pinned`.'
 
       # ----- Component under test -----
@@ -47,10 +54,32 @@ on:
         required: true
         description: 'Baseline ref for the selected test_component.'
 
+      caller:
+        type: string
+        default: ''
+        description: 'Caller id (e.g. onednn-pr-2) for concurrency grouping; a new run cancels the previous one with the same caller.'
+
+      callback_repo:
+        type: string
+        default: ''
+        description: 'owner/name to post the result commit status back to (empty = no callback).'
+      callback_sha:
+        type: string
+        default: ''
+        description: 'Commit SHA in callback_repo to attach the result status to.'
+      callback_context:
+        type: string
+        default: ''
+        description: 'Commit status context to set in callback_repo on completion.'
+
 permissions: read-all
 
+concurrency:
+  group: acceptance-${{ github.event.inputs.caller || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
+  cancel-in-progress: true
+
 run-name: >-
-  Acceptance / ${{ inputs.test_component }} ${{ inputs.target_version }} vs ${{ inputs.baseline_version }}
+  Acceptance / ${{ inputs.test_component }} [${{ inputs.test_pattern }}] ${{ inputs.target_version }} vs ${{ inputs.baseline_version }} · caller:${{ inputs.caller }}
 
 jobs:
   # ==================================================================
@@ -71,6 +100,7 @@ jobs:
 
   target-ut:
     name: target / ut
+    if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_ut' || inputs.test_pattern == 'test_pt_smoke' }}
     needs: target-build
     secrets: inherit
     permissions:
@@ -83,27 +113,25 @@ jobs:
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
-      ut: p0
+      ut: ${{ inputs.test_pattern == 'test_pt_smoke' && 'op_regression' || 'xpu_p0'}}
       category: target
       skip_summary: true
 
   target-e2e:
     name: target / e2e
+    if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_e2e' || inputs.test_pattern == 'test_pt_smoke' }}
     needs: target-build
     secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
-      suite: ${{ matrix.suite }}
+      suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
       category: target
+      model: ${{ inputs.test_pattern == 'test_pt_smoke' && 'BertForMaskedLM' || ''}}
 
   # ==================================================================
   # BASELINE pipeline
@@ -123,6 +151,7 @@ jobs:
 
   baseline-ut:
     name: baseline / ut
+    if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_ut' || inputs.test_pattern == 'test_pt_smoke' }}
     needs: baseline-build
     secrets: inherit
     permissions:
@@ -135,27 +164,25 @@ jobs:
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
-      ut: p0
+      ut: ${{ inputs.test_pattern == 'test_pt_smoke' && 'op_regression' || 'xpu_p0'}}
       category: baseline
       skip_summary: true
 
   baseline-e2e:
     name: baseline / e2e
+    if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_e2e' || inputs.test_pattern == 'test_pt_smoke' }}
     needs: baseline-build
     secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
-      suite: ${{ matrix.suite }}
+      suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
       category: baseline
+      model: ${{ inputs.test_pattern == 'test_pt_smoke' && 'BertForMaskedLM' || ''}}
 
   # ==================================================================
   # Compare results
@@ -168,13 +195,13 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Setup python
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ inputs.python }}
-
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
 
       - name: Print configuration
         run: |
@@ -188,8 +215,10 @@ jobs:
             echo "| Baseline version | \`${{ inputs.baseline_version }}\` |"
             echo "| Base pytorch     | ${{ inputs.pytorch }} |"
             echo "| Base torch-xpu-ops | ${{ inputs.torch_xpu_ops }} |"
+            echo "| Test pattern     | ${{ inputs.test_pattern }} |"
+            echo "| Triggered by     | ${{ github.actor }} |"
             echo ""
-            echo "Scope: UT=\`p0\`; E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)"
+            echo "Scope: \`${{ inputs.test_pattern }}\` — smoke = op_regression UT + huggingface(BertForMaskedLM); otherwise UT=\`xpu_p0\`, E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)."
           } > "${GITHUB_STEP_SUMMARY}"
 
       - name: Download target E2E logs
@@ -235,71 +264,74 @@ jobs:
           mkdir -p "${{ github.workspace }}/results/baseline/e2e"
           mkdir -p "${{ github.workspace }}/results/baseline/ut"
 
-      - name: Install comparison dependencies
-        run: |
-          python -m pip install --quiet pandas numpy openpyxl PyGithub
-
-      - name: E2E comparison (compare-e2e.py)
-        id: e2e-cmp
-        continue-on-error: true
-        run: |
-          # Flatten per-suite artifact directories so compare-e2e.py finds csvs
-          for side in target baseline; do
-            base="${{ github.workspace }}/results/${side}/e2e"
-            if compgen -G "${base}/Inductor-*-LTS2-XPU-E2E-Data-*" > /dev/null; then
-              for d in "${base}"/Inductor-*-LTS2-XPU-E2E-Data-*; do
-                cp -r "${d}/." "${base}/"
-              done
-            fi
-          done
-          mkdir -p "${{ github.workspace }}/comparison"
-          python .github/scripts/compare-e2e.py \
-            -t "${{ github.workspace }}/results/target/e2e" \
-            -b "${{ github.workspace }}/results/baseline/e2e" \
-            -o "${{ github.workspace }}/comparison/e2e_comparison.xlsx" \
-            -m "${{ github.workspace }}/comparison/e2e_comparison.md"
-          {
-            echo ""
-            echo "### E2E (target vs baseline)"
-            echo ""
-            if [ -f "${{ github.workspace }}/comparison/e2e_comparison.md" ]; then
-              cat "${{ github.workspace }}/comparison/e2e_comparison.md"
-            else
-              echo "_compare-e2e.py produced no markdown report._"
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: UT comparison (compare-ut.py)
-        id: ut-cmp
-        continue-on-error: true
+      - name: Generate acceptance report
+        id: report
         env:
-          GH_TOKEN: ${{ github.token }}
+          ACC_BASE_DIR: ${{ github.workspace }}/results/baseline
+          ACC_TARGET_DIR: ${{ github.workspace }}/results/target
+          ACC_COMPONENT: ${{ inputs.test_component }}
+          ACC_BASE_LABEL: ${{ inputs.baseline_version }}
+          ACC_TARGET_LABEL: ${{ inputs.target_version }}
+          ACC_OUT_DIR: ${{ github.workspace }}/comparison
+          ACC_SECTIONS: ${{ (inputs.test_pattern == 'test_pt_ut' && 'ut') || (inputs.test_pattern == 'test_pt_e2e' && 'acc,perf') || 'ut,acc,perf' }}
         run: |
           mkdir -p "${{ github.workspace }}/comparison"
-          python .github/scripts/compare-ut.py \
-            -i "${{ github.workspace }}/results/target/ut" \
-               "${{ github.workspace }}/results/baseline/ut" \
-            -o "${{ github.workspace }}/comparison/ut_comparison.xlsx" \
-            -m \
-            --markdown-output "${{ github.workspace }}/comparison/ut_comparison.md" \
-            --no-github
-          {
-            echo ""
-            echo "### UT (target vs baseline)"
-            echo ""
-            if [ -f "${{ github.workspace }}/comparison/ut_comparison.md" ]; then
-              cat "${{ github.workspace }}/comparison/ut_comparison.md"
-            else
-              echo "_compare-ut.py produced no markdown report._"
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
+          python .github/scripts/acceptance-report/gen_report.py
 
-      - name: Upload comparison summary
+      - name: Upload acceptance report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: acceptance-comparison-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          name: acceptance-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ github.workspace }}/comparison/**
+            ${{ github.workspace }}/comparison/*.html
+            ${{ github.workspace }}/comparison/*.xlsx
           retention-days: 30
           if-no-files-found: warn
+
+  # ==================================================================
+  # Report result back to the caller (event-driven commit-status callback)
+  # ==================================================================
+  report-back:
+    name: report back
+    needs: [target-ut, target-e2e, baseline-ut, baseline-e2e, compare-results]
+    if: ${{ !cancelled() && inputs.callback_repo != '' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Post result commit status to caller
+        env:
+          GH_TOKEN: ${{ secrets.ONEDNN_DISPATCH_TOKEN }}
+          CB_REPO: ${{ inputs.callback_repo }}
+          CB_SHA: ${{ inputs.callback_sha }}
+          CB_CONTEXT: ${{ inputs.callback_context }}
+          CALLER: ${{ inputs.caller }}
+          COMPONENT: ${{ inputs.test_component }}
+          PATTERN: ${{ inputs.test_pattern }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          R_TUT: ${{ needs.target-ut.result }}
+          R_TE2E: ${{ needs.target-e2e.result }}
+          R_BUT: ${{ needs.baseline-ut.result }}
+          R_BE2E: ${{ needs.baseline-e2e.result }}
+          R_CMP: ${{ needs.compare-results.result }}
+        run: |
+          [ -n "$CB_SHA" ] && [ -n "$CB_CONTEXT" ] || { echo "No callback sha/context; skipping."; exit 0; }
+          # The concurrency group (caller) is the unique key: only the newest run
+          # for this caller owns the status, so an older/superseded run never
+          # clobbers the single active run per PR.
+          if [ -n "$CALLER" ]; then
+            newest=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow acceptance_ondemand.yml \
+              --json databaseId,displayTitle,createdAt \
+              --jq "[.[] | select((.displayTitle // \"\") | test(\"caller:${CALLER}$\"))] | sort_by(.createdAt) | last | .databaseId // empty" 2>/dev/null || echo "")
+            if [ -n "$newest" ] && [ "$newest" != "${GITHUB_RUN_ID}" ]; then
+              echo "Superseded: newest run for ${CALLER} is ${newest} (this ${GITHUB_RUN_ID}); skip."; exit 0
+            fi
+          fi
+          state=success
+          for r in "$R_TUT" "$R_TE2E" "$R_BUT" "$R_BE2E" "$R_CMP"; do
+            case "$r" in success|skipped) ;; *) state=failure ;; esac
+          done
+          gh api -X POST "repos/${CB_REPO}/statuses/${CB_SHA}" \
+            -f state="$state" \
+            -f context="$CB_CONTEXT" \
+            -f target_url="$RUN_URL" \
+            -f description="${COMPONENT} acceptance (${PATTERN}): ${state}"
