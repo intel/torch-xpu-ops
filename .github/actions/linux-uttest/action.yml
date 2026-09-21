@@ -241,6 +241,8 @@ runs:
         if [[ "${category}" == 'inductor' ]]; then
           cd "${GITHUB_WORKSPACE}/pytorch/"
           rm -rf test/test-reports
+          mkdir -p build/custom_test_artifacts
+          sed -i 's/ *install_torchvision *//g;s/ *install_torchaudio *//g' ./.ci/pytorch/test.sh
           IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
           num_shards=${#gpus[@]}
           start=${SECONDS}
