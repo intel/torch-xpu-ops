@@ -3061,7 +3061,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 input_ptr,
                 mean.const_data_ptr<accscalar_t>(),
                 inv_std.const_data_ptr<accscalar_t>(),
-                weight.const_data_ptr<scalar_t>(),
+                weight.const_data_ptr<accscalar_t>(),
                 sum_dy.const_data_ptr<accscalar_t>(),
                 sum_dy_xmu.const_data_ptr<accscalar_t>(),
                 grad_input_ptr,
