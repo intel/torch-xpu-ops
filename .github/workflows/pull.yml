@@ -262,7 +262,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [op_ut,basic]
+        ut_name: [op_ut,basic,xpu_profiling]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: bmg-test
