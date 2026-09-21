@@ -40,9 +40,11 @@
 #include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
 #include <ATen/ops/hspmm_native.h>
+#include <ATen/ops/mm.h>
 #include <ATen/ops/mul.h>
 #include <ATen/ops/result_type.h>
 #include <ATen/ops/scalar_tensor.h>
+#include <ATen/ops/zeros.h>
 #include <ATen/ops/zeros_like.h>
 #endif
 
@@ -688,6 +690,47 @@ Tensor _sparse_sum_backward_kernel(
         grad_input_values,
         grad.options());
   }
+}
+
+Tensor _sspaddmm_index_add(
+    const Tensor& row_indices,
+    const Tensor& col_indices,
+    const Tensor& values1,
+    const Tensor& mat2,
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& alpha,
+    int64_t dim_i,
+    int64_t dim_k) {
+  Tensor gathered = mat2.index_select(0, col_indices);
+  Tensor prod = gathered * values1.unsqueeze(1);
+
+  Tensor dense_result = at::zeros({dim_i, dim_k}, mat2.options());
+  dense_result.index_add_(0, row_indices, prod);
+
+  if (alpha.to<double>() != 1.0) {
+    dense_result.mul_(alpha);
+  }
+  if (beta.to<double>() != 0.0 && self._nnz() > 0) {
+    dense_result.add_(self.to_dense(), beta);
+  }
+  return dense_result;
+}
+
+Tensor _sspaddmm_fallback(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    int64_t dim_i,
+    int64_t dim_k) {
+  Tensor mat1_dense = mat1.to_dense();
+  Tensor self_dense = (beta.to<double>() != 0.0 && self._nnz() > 0)
+      ? self.to_dense()
+      : at::zeros({dim_i, dim_k}, mat2.options());
+  Tensor mm_result = at::mm(mat1_dense, mat2);
+  return self_dense * beta + mm_result * alpha;
 }
 
 } // namespace at::native::xpu
