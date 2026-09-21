@@ -28,8 +28,8 @@ def multiple_replace(text: str) -> str:
         Processed text with replacements applied
     """
     regex_replacements = [
-        (r".*inductor_", ""),
-        (r"_xpu_performance.csv", ""),
+        (r".*inductor-", ""),
+        (r"-[^-]+-performance\.csv", ""),
     ]
     for old_pattern, new_pattern in regex_replacements:
         text = re.sub(old_pattern, new_pattern, text, flags=re.IGNORECASE)
@@ -175,7 +175,7 @@ def process_comparison_data(args: argparse.Namespace) -> tuple[list[list[Any]], 
     output_data = []
 
     # Process target files
-    xpu_files = find_files("*_xpu_performance.csv", args.target)
+    xpu_files = find_files("*-performance.csv", args.target)
 
     for xpu_file in xpu_files:
         try:
@@ -248,7 +248,7 @@ def process_baseline_only_models(args: argparse.Namespace,
     """
     Process models that only exist in baseline data.
     """
-    refer_files = find_files("*_xpu_performance.csv", args.baseline)
+    refer_files = find_files("*-performance.csv", args.baseline)
 
     for refer_file in refer_files:
         try:
