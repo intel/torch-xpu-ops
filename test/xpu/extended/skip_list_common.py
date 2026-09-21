@@ -76,6 +76,8 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/281
         "test_cow_input_addr_xpu_float32",
         "test_cow_input_cdist_xpu_float32",
+        # https://github.com/intel/torch-xpu-ops/issues/5452
+        "test_cow_input_nn_functional_grid_sample_xpu_float32",
         "test_cow_input_nn_functional_multi_head_attention_forward_xpu_float32",
         # jiterator operators are CUDA-only in upstream OpInfo.
         "test_cow_input_jiterator_unary_xpu_float32",
