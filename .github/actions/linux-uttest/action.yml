@@ -237,6 +237,7 @@ runs:
         esac
         if [[ "${category}" == 'distributed' ]]; then
           sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends etcd-server
+          uv pip install python-etcd
           xpu-smi topology -m
           export ZE_AFFINITY_MASK="0,1,2,3"
           export BACKEND="xccl"
