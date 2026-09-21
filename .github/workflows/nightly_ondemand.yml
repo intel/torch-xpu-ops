@@ -50,6 +50,10 @@ on:
         type: string
         default: ''
         description: Model. Will only run this one mode if set
+      ut_auto_issue:
+        type: boolean
+        default: false
+        description: Analyse this run's UT failures. Evidence only - an on-demand run files no issues
 
 permissions: read-all
 
@@ -168,6 +172,33 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
+
+  Linux-Nightly-Ondemand-UT-Auto-Issue:
+    name: linux-ut-auto-issue
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
+    # Not success(): the UT job fails whenever there are new failures, which is
+    # precisely when this needs to run.
+    # `contains(inputs.ut, 'p')` mirrors the UT job's own gate: with no UT job
+    # there are no artifacts to analyse.
+    if: >-
+      ${{ !cancelled()
+          && (github.event_name == 'schedule'
+              || (inputs.ut_auto_issue && contains(inputs.ut, 'p')))
+          && needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel' }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_ut_auto_issue.yml
+    with:
+      run_id: ${{ github.run_id }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      # Off unless the repo variable is set to 'true'. Kept as a variable rather
+      # than hardcoded so filing can be stopped without merging a PR. Never on
+      # for an on-demand run: its torch commit is arbitrary, so the baseline
+      # comparison behind `regression` and `new_case_failure` means nothing.
+      create_issues: ${{ github.event_name == 'schedule' && vars.UT_AUTO_ISSUE_ENABLED == 'true' }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
     name: linux-e2e
