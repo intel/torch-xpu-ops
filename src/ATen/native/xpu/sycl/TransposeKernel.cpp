@@ -15,6 +15,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/TransposeKernel.h>
 
@@ -173,15 +174,13 @@ static void dispatch_transpose(
   constexpr int kMaxVec =
       sizeof(scalar_t) * 4 <= 16 ? 4 : (sizeof(scalar_t) * 2 <= 16 ? 2 : 1);
 
-  int vec_size = 1;
-  if constexpr (kMaxVec >= 4) {
-    if (cols % 4 == 0 && rows % 4 == 0)
-      vec_size = 4;
-    else if (cols % 2 == 0 && rows % 2 == 0)
-      vec_size = 2;
-  } else if constexpr (kMaxVec >= 2) {
-    if (cols % 2 == 0 && rows % 2 == 0)
-      vec_size = 2;
+  int vec_size = std::min(
+      {kMaxVec,
+       memory::can_vectorize_up_to<scalar_t>(
+           reinterpret_cast<const char*>(src)),
+       memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(dst))});
+  while (vec_size > 1 && (cols % vec_size != 0 || rows % vec_size != 0)) {
+    vec_size /= 2;
   }
 
 #define LAUNCH(VS, FT)                                \
