@@ -15932,6 +15932,48 @@ class TestNNDeviceType(NNTestCase):
                     )
                 )
 
+    # Ref: https://github.com/intel/torch-xpu-ops/issues/4723
+    # Ref: https://github.com/pytorch/pytorch/pull/190144
+    @onlyOn(["cuda", "xpu"])
+    @largeTensorTest("5GB", "cuda")
+    @largeTensorTest("5GB", "xpu")
+    def test_nll_loss2d_backward_large_sample_offset(self, device):
+        batch_size = 2**16 + 1
+        num_classes = 2**15
+        ignore_index = -100
+
+        # Reduced backward only uses input metadata. Expanding a scalar avoids
+        # materializing another four-GiB tensor.
+        input = torch.empty(
+            (),
+            device=device,
+            dtype=torch.float16,
+        ).expand(batch_size, num_classes, 1, 1)
+        target = torch.full(
+            (batch_size, 1, 1),
+            ignore_index,
+            dtype=torch.int64,
+            device=device,
+        )
+        target[-1] = 0
+        one = torch.ones((), dtype=torch.float16, device=device)
+
+        grad_input = torch.ops.aten.nll_loss2d_backward.default(
+            one,
+            input,
+            target,
+            None,
+            F._Reduction.get_enum("sum"),
+            ignore_index,
+            one,
+        )
+
+        if device == "cuda":
+            torch.cuda.synchronize()
+        else:
+            torch.xpu.synchronize()
+        self.assertEqual(grad_input[-1, 0, 0, 0], -1)
+
     # Ref: https://github.com/pytorch/pytorch/issues/108345
     @onlyOn(["cuda", "xpu"])
     @largeTensorTest("20GB", "cpu")
