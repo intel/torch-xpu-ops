@@ -104,7 +104,6 @@ class InductorSuite(BenchmarkSuite):
             "--cold-start-latency",
             "-n10",
             "--timeout=10800",
-            "--disable-cudagraphs",
             f"--output={output_csv}",
         ]
         return " ".join(p for p in parts if p)
