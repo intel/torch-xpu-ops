@@ -239,35 +239,36 @@ runs:
         esac
         # Inductor cases same as PyTorch, sharded across the visible GPUs
         if [[ "${category}" == 'inductor' ]]; then
+          cd "${GITHUB_WORKSPACE}/pytorch/"
+          rm -rf test/test-reports
           IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
           num_shards=${#gpus[@]}
-          run_inductor_shards() {
-            # $1 = part label, $2 = extra run_test.py flags, rest = --include args
-            local part="$1"; local extra="$2"; shift 2
-            local start=${SECONDS}
-            echo "::group::inductor ${part} (${num_shards} shards)"
-            for i in "${!gpus[@]}"; do
-              local shard_id=$((i + 1))
-              (
-                ZE_AFFINITY_MASK="${gpus[$i]}" \
-                PYTEST_ADDOPTS="" \
-                python pytorch/test/run_test.py --verbose ${extra} \
-                  --include "$@" \
-                  --shard ${shard_id} ${num_shards} \
-                  --junit-xml="${{ github.workspace }}/ut_log/upstream_inductor_${part}_shard${shard_id}.xml"
-              ) &
-            done
-            wait
-            echo "::endgroup::"
-            echo "[TIME] inductor ${part} ($(fmt_elapsed $((SECONDS - start))))"
-          }
-          # Part 1: eager to inductor cases (with --inductor)
-          run_inductor_shards part1 --inductor \
-            test_modules test_ops test_ops_gradients test_torch
-          # Part 2: inductor own tests (no --inductor, avoids nested dynamo state)
-          run_inductor_shards part2 "" \
-            inductor/test_torchinductor inductor/test_torchinductor_opinfo \
-            inductor/test_aot_inductor inductor/test_cpu_select_algorithm
+          start=${SECONDS}
+          echo "::group::inductor ${part} (${num_shards} shards)"
+          for i in "${!gpus[@]}"; do
+            shard_id=$((i + 1))
+            (
+              ZE_AFFINITY_MASK="${gpus[$i]}" \
+              PYTEST_ADDOPTS="" \
+              BUILD_ENVIRONMENT="linux-noble-xpu-n-py3.10-client" \
+              TEST_CONFIG="inductor_xpu" \
+              SHARD_NUMBER="${shard_id}" \
+              NUM_TEST_SHARDS="${num_shards}" \
+              PYTORCH_RETRY_TEST_CASES=1 \
+              PYTORCH_OVERRIDE_FLAKY_SIGNAL=1 \
+              CONTINUE_THROUGH_ERROR=True \
+              PYTORCH_TEST_RERUN_DISABLED_TESTS=0 \
+              NO_TEST_TIMEOUT=False \
+              VERBOSE_TEST_LOGS=False \
+              TEST_SHOWLOCALS=False \
+              ./.ci/pytorch/test.sh 2> ${log_dir}/${ut_name}_test_error.log | \
+              tee ${log_dir}/${ut_name}_test.log
+            ) &
+          done
+          wait
+          cp -r test/test-reports ${{ github.workspace }}/ut_log/
+          echo "::endgroup::"
+          echo "[TIME] inductor ${part} ($(fmt_elapsed $((SECONDS - start))))"
           exit 0
         fi
         # Distributed needs an etcd rendezvous and a multi-rank XCCL setup
@@ -302,11 +303,12 @@ runs:
           echo "::group::${test_file}"
           if python -m pytest -v "pytorch/${test_file}" \
               --junit-xml="${{ github.workspace }}/ut_log/${ut_name}_${log_name}.xml" \
-              2>&1 | tee "${log_dir}/${ut_name}_test_${log_name}.log"; then
+              2> ${log_dir}/${ut_name}_test_error.log | \
+              tee ${log_dir}/${ut_name}_test.log; then
             status="PASS"; passed=$((passed + 1))
           else
             status="FAIL"; failed=$((failed + 1))
-            echo "${test_file}" >> "${log_dir}/${ut_name}_failed.log"
+            echo "${test_file}" >> "${log_dir}/${ut_name}_error.log"
           fi
           echo "::endgroup::"
           echo "[${status}] ${test_file} ($(fmt_elapsed $((SECONDS - start))))"
@@ -319,7 +321,7 @@ runs:
       shell: timeout 180 bash -xe {0}
       run: |
         uv pip install junitparser
-        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i $(find ${{ github.workspace }}/ut_log/ -name "*.xml") >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs
         if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
           echo -e "Exist Failure logs"
