@@ -239,6 +239,17 @@ runs:
         esac
         # Inductor cases same as PyTorch, sharded across the visible GPUs
         if [[ "${category}" == 'inductor' ]]; then
+          export PYTEST_ADDOPTS=" --timeout 600 --timeout_method=thread "
+          export BUILD_ENVIRONMENT="linux-noble-xpu-n-py3.10-client"
+          export TEST_CONFIG="inductor_xpu"
+          export PYTORCH_RETRY_TEST_CASES=1
+          export PYTORCH_OVERRIDE_FLAKY_SIGNAL=1
+          export CONTINUE_THROUGH_ERROR=True
+          export PYTORCH_TEST_RERUN_DISABLED_TESTS=0
+          export NO_TEST_TIMEOUT=False
+          export VERBOSE_TEST_LOGS=False
+          export TEST_SHOWLOCALS=False
+          export NO_TD=False
           cd "${GITHUB_WORKSPACE}/pytorch/"
           rm -rf test/test-reports
           mkdir -p build/custom_test_artifacts
@@ -249,23 +260,9 @@ runs:
           echo "::group::inductor (${num_shards} shards)"
           for i in "${!gpus[@]}"; do
             shard_id=$((i + 1))
-            (
-              ZE_AFFINITY_MASK="${gpus[$i]}" \
-              PYTEST_ADDOPTS="" \
-              BUILD_ENVIRONMENT="linux-noble-xpu-n-py3.10-client" \
-              TEST_CONFIG="inductor_xpu" \
-              SHARD_NUMBER="${shard_id}" \
-              NUM_TEST_SHARDS="${num_shards}" \
-              PYTORCH_RETRY_TEST_CASES=1 \
-              PYTORCH_OVERRIDE_FLAKY_SIGNAL=1 \
-              CONTINUE_THROUGH_ERROR=True \
-              PYTORCH_TEST_RERUN_DISABLED_TESTS=0 \
-              NO_TEST_TIMEOUT=False \
-              VERBOSE_TEST_LOGS=False \
-              TEST_SHOWLOCALS=False \
-              ./.ci/pytorch/test.sh 2> ${log_dir}/${ut_name}_test_error.log | \
-              tee ${log_dir}/${ut_name}_test.log
-            ) &
+            ZE_AFFINITY_MASK="${gpus[$i]}" NUM_TEST_SHARDS="${num_shards}" SHARD_NUMBER="${shard_id}" \
+            .ci/pytorch/test.sh 2> ${log_dir}/${ut_name}_test_${shard_id}_error.log |\
+            tee ${log_dir}/${ut_name}_test_${shard_id}.log &
           done
           wait
           cp -r test/test-reports ${{ github.workspace }}/ut_log/
