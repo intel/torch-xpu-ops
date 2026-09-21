@@ -90,10 +90,14 @@ void load_store_cast(
     SrcT* src,
     int64_t dst_offset,
     int64_t src_offset) {
+  if constexpr (std::is_same_v<DstT, SrcT>) {
+    load_store(dst, src, dst_offset, src_offset);
+  } else {
 #pragma unroll
-  for (int ii = 0; ii < kILP; ++ii) {
-    dst[dst_offset * kILP + ii] =
-        static_cast<DstT>(src[src_offset * kILP + ii]);
+    for (int ii = 0; ii < kILP; ++ii) {
+      dst[dst_offset * kILP + ii] =
+          static_cast<DstT>(src[src_offset * kILP + ii]);
+    }
   }
 }
 
