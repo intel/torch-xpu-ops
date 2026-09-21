@@ -25,6 +25,7 @@
 #include <future>
 #include <list>
 #include <mutex>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -495,6 +496,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
+  // Both counters advance inside collective() / pointToPoint(), after the
+  // record is taken, so a record has to predict the id its own op will use.
+  // The flag is the isP2P half of the pair RECORD_PARAM_COMMS_DATA expects.
+  std::tuple<int64_t, bool> predictNextCollectiveSeqId() const;
+  std::tuple<int64_t, bool> predictNextP2PSeqId() const;
+
   std::unordered_map<std::string, at::xpu::XPUStream> xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<onecclComm_t>>
