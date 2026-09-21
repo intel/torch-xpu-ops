@@ -156,7 +156,7 @@ runs:
               python install.py $(echo $line |awk -F, '{printf $1}')
             done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
           else
-            python install.py --continue_on_fail
+            python install.py --continue_on_fail $(echo "${MODEL_ONLY_NAME}" |sed 's/,/ /g')
           fi
           echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
           # for dlrm
@@ -202,7 +202,7 @@ runs:
         if [ "${{ inputs.suite }}" != "None" ];then
           # To install numpy 1.x for benchmarks as CUDA
           # yolov requires numpy>=1.23
-          uv pip install -U numpy==1.26.4
+          uv pip install -U numpy==1.26.4 scipy==1.11.4
         fi
     - name: Update numpy
       shell: bash -xe {0}
