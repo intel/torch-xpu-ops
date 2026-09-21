@@ -29,4 +29,12 @@ Tensor& _philox_normal_xpu_(
   return xpu::_philox_normal_xpu_(self, key, mean, stddev);
 }
 
+Tensor& _philox_randint_xpu_(
+    Tensor& self,
+    const Tensor& key,
+    std::optional<int64_t> low,
+    std::optional<int64_t> high) {
+  return xpu::_philox_randint_xpu_(self, key, low, high);
+}
+
 } // namespace at::native
