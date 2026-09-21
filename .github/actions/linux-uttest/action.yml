@@ -222,7 +222,7 @@ runs:
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
 
     - name: upstream_ut
-      shell: timeout 72000 bash -xeu -o pipefail {0}
+      shell: timeout 72000 bash -xe -o pipefail {0}
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
