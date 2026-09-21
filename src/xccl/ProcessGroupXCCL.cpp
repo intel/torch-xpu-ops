@@ -1976,27 +1976,35 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_to_all_single(
     const AllToAllOptions& opts) {
   checkSingleTensor(outputTensor);
   checkSingleTensor(inputTensor);
-  if (outputSplitSizes.empty() && inputSplitSizes.empty()) {
-    RECORD_PARAM_COMMS_DATA_WITH_LOG(
-        static_cast<int>(
-            this->getSequenceNumberForGroup() +
-            1), // seq + 1 to match collective
-        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-        inputTensor, // inputTensor
-        outputTensor, // outputTensor
-        rank_, // rank
-        "all_to_all", // collective name
-        inputTensor.numel(), // inNelems
-        outputTensor.numel(), // outNelems
-        inputTensor.scalar_type(), // dType
-        std::vector<int64_t>(), // inSplitSizes
-        std::vector<int64_t>(), // outSplitSizes
-        globalRankStart_, // globalRankStart_
-        globalRankStride_, // globalRankStride_
-        this->getSize(), // worldSize
-        opts.asyncOp, // async_op
-        "N/A"); // reductionOp
-
+  // The record macro declares RAII objects that must outlive the launch below,
+  // so it has to sit at function scope rather than inside a branch.
+  const bool equalSplit = outputSplitSizes.empty() && inputSplitSizes.empty();
+  // Named rather than inlined as a ternary: the macro does not parenthesise its
+  // parameters, and `<<` binds tighter than `?:` inside its LOG(INFO) line.
+  const char* const collName = equalSplit ? "all_to_all" : "all_to_allv";
+  if (!equalSplit) {
+    c10d::checkSplitSizes(inputSplitSizes, inputTensor, size_);
+    c10d::checkSplitSizes(outputSplitSizes, outputTensor, size_);
+  }
+  RECORD_PARAM_COMMS_DATA_WITH_LOG(
+      static_cast<int>(
+          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+      inputTensor, // inputTensor
+      outputTensor, // outputTensor
+      rank_, // rank
+      collName, // collective name
+      inputTensor.numel(), // inNelems
+      outputTensor.numel(), // outNelems
+      inputTensor.scalar_type(), // dType
+      inputSplitSizes, // inSplitSizes, empty exactly when equalSplit
+      outputSplitSizes, // outSplitSizes, empty exactly when equalSplit
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
+  if (equalSplit) {
     TORCH_CHECK(
         outputTensor.numel() == inputTensor.numel() &&
             outputTensor.scalar_type() == inputTensor.scalar_type(),
@@ -2004,29 +2012,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_to_all_single(
     TORCH_CHECK(
         outputTensor.size(0) % size_ == 0,
         "xpu_alltoall_base: tensor's dim 0 does not divide equally across group size");
-  } else {
-    c10d::checkSplitSizes(inputSplitSizes, inputTensor, size_);
-    c10d::checkSplitSizes(outputSplitSizes, outputTensor, size_);
-
-    RECORD_PARAM_COMMS_DATA_WITH_LOG(
-        static_cast<int>(
-            this->getSequenceNumberForGroup() +
-            1), // seq + 1 to match collective
-        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-        inputTensor, // inputTensor
-        outputTensor, // outputTensor
-        rank_, // rank
-        "all_to_allv", // collective name
-        inputTensor.numel(), // inNelems
-        outputTensor.numel(), // outNelems
-        inputTensor.scalar_type(), // dType
-        inputSplitSizes, // inSplitSizes
-        outputSplitSizes, // outSplitSizes
-        globalRankStart_, // globalRankStart_
-        globalRankStride_, // globalRankStride_
-        this->getSize(), // worldSize
-        opts.asyncOp, // async_op
-        "N/A"); // reductionOp
   }
   return collective(
       inputTensor,
