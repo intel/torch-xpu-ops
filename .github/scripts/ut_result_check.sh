@@ -2,7 +2,7 @@
 # Test Suite Runner for Intel Torch-XPU-Ops
 # Usage: TEST_PLATFORM=linux ./script.sh <test_suite>
 
-# Available suites: op_regression, op_extended, op_ut, test_xpu, xpu_distributed, skipped_ut
+# Available suites: op_regression, op_extended, op_ut, test_xpu, upstream_default, upstream_inductor, xpu_distributed, upstream_distributed, skipped_ut
 readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
 readonly inputs_pytorch="${2:-nightly_wheel}"
 readonly REPO="intel/torch-xpu-ops"
@@ -44,18 +44,21 @@ unset _test_runner_normalized _issue_platform
 
 # Expected test case counts for op_ut between linux and windows(Focus scope)
 declare -A OP_UT_EXPECTED=(
-    ["linux"]=178548
+    ["linux"]=287444
     ["windows"]=105263
 )
 
 # Expected test case counts for each test suite category
 # Used to detect significant test case reductions (>5%)
 declare -A EXPECTED_CASES=(
-    ["op_extended"]=5349
-    ["op_regression"]=268
+    ["op_extended"]=5352
+    ["op_regression"]=353
     ["op_regression_dev1"]=1
     ["op_ut"]="${OP_UT_EXPECTED[$TEST_PLATFORM]}"
     ["test_xpu"]=69
+    ["upstream_default"]=83126
+    ["upstream_inductor"]=33999
+    ["upstream_distributed"]=3323
 )
 
 # Tests that are known to randomly pass and should be ignored when detecting new passes
@@ -307,9 +310,9 @@ run_distributed_tests() {
     echo "Running distributed tests for: ${suite}"
     echo "========================================================================="
     # Process distributed test logs (different format than main tests)
-    grep "FAILED" "${suite}_test.log" > "${suite}_failed.log"
+    grep -E "FAILED|ERROR" ${suite}_test*.log > "${suite}_failed.log"
     clean_file "${suite}_failed.log"
-    grep "PASSED" "${suite}_test.log" > "${suite}_passed.log"
+    grep "PASSED" ${suite}_test*.log > "${suite}_passed.log"
     clean_file "${suite}_passed.log"
     echo "📋 Failed Cases:"
     cat "${suite}_failed.log"
@@ -480,7 +483,7 @@ check_profiling_ut() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_ut|test_xpu)
+    op_regression|op_regression_dev1|op_extended|op_ut|test_xpu|upstream_default|upstream_inductor|upstream_distributed)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)
@@ -494,7 +497,7 @@ case "$ut_suite" in
         ;;
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2
-        printf "💡 Available: op_regression, op_regression_dev1, op_extended, " >&2
-        printf "op_ut, test_xpu, xpu_distributed, skipped_ut, xpu_profiling\n" >&2
+        printf "💡 Available: op_regression, op_regression_dev1, op_extended, op_ut, test_xpu, " >&2
+        printf "upstream_default, upstream_inductor, xpu_distributed, upstream_distributed, skipped_ut, xpu_profiling\n" >&2
         ;;
 esac
