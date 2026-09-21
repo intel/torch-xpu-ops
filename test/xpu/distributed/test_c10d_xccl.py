@@ -541,6 +541,11 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
                 f"launched; scopes were "
                 f"{[(s['args'].get('Collective name'), s['dur']) for s in scopes]}",
             )
+            # Sequence identity only reaches the trace when seq is recorded as a
+            # (number, isP2P) tuple; a bare int leaves sequenceNumber_ at -1 and
+            # the profiler drops both keys.
+            for key in ("Seq", "Comms Id"):
+                self.assertIn(key, covering[0]["args"], f"{launch['name']}: {key}")
 
 
 class CommTest(MultiProcessTestCase):

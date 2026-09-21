@@ -1069,8 +1069,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
   checkSingleTensor(tensor, true);
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqP2P_ + (coalescing_state_ & CoalP2P ? 0 : 1)),
+          true), // seq + 1 to match the p2p op
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       tensors, // inputTensors
       tensors, // outputTensors
@@ -1112,8 +1113,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
   checkSingleTensor(tensor, true);
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqP2P_ + (coalescing_state_ & CoalP2P ? 0 : 1)),
+          true), // seq + 1 to match the p2p op
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       tensors, // inputTensors
       tensors, // outputTensors
@@ -1191,8 +1193,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
   }
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       inputTensors, // inputTensors
       outputTensors, // outputTensors
@@ -1272,8 +1275,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
   }
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       inputTensors, // inputTensors
       outputTensors, // outputTensors
@@ -1352,8 +1356,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 
   // @lint-ignore CLANGTIDY
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       tensors, // inputTensors
       tensors, // outputTensors
@@ -1380,8 +1385,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
 
   // @lint-ignore CLANGTIDY
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       tensors, // inputTensors
       tensors, // outputTensors
@@ -1426,8 +1432,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
 
   // @lint-ignore CLANGTIDY
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       tensors, // inputTensors
       tensors, // outputTensors
@@ -1506,8 +1513,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
   checkSingleTensor(tensor);
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       tensors, // inputTensors
       tensors, // outputTensors
@@ -1576,8 +1584,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
   std::vector<at::Tensor>& outputTensors_ = outputTensors.back();
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       inputTensors, // inputTensors
       outputTensors, // outputTensors
@@ -1658,8 +1667,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single(
       "output tensor size must be equal to world_size times input tensor size");
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       input_tensor, // inputTensors
       output_tensor, // outputTensors
@@ -1743,8 +1753,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
   auto inputTensors_ = inputTensors.back();
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       inputTensors, // inputTensors
       outputTensors, // outputTensors
@@ -1825,8 +1836,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single(
       "input tensor must be the same size as output size times world size");
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       inputTensor, // inputTensor
       outputTensor, // outputTensor
@@ -1920,8 +1932,9 @@ c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   RECORD_PARAM_COMMS(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       rank_, // rank
       "barrier", // collective name
@@ -1987,8 +2000,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_to_all_single(
     c10d::checkSplitSizes(outputSplitSizes, outputTensor, size_);
   }
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       inputTensor, // inputTensor
       outputTensor, // outputTensor
@@ -2073,8 +2087,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
   }
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_ + 1),
+          false), // seq + 1 to match collective
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       inputTensors, // inputTensors
       outputTensors, // outputTensors
