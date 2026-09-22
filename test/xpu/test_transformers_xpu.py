@@ -7321,6 +7321,40 @@ class TestAttnBias(NNTestCase):
             )
 
 
+class TestTransformBiasRescaleQkvXpuOnly(NNTestCase):
+    @parametrize("dtype", [torch.half])
+    def test_transform_bias_rescale_qkv_unaligned_input(self, device, dtype):
+        batch_size, sequence_length, embed_dim, num_heads = 4, 17, 64, 4
+        storage = torch.randn(
+            batch_size * sequence_length * 3 * embed_dim + 1,
+            device=device,
+            dtype=dtype,
+        )
+        qkv = storage[1:].view(batch_size, sequence_length, 3 * embed_dim)
+        bias = torch.randn(3 * embed_dim, device=device, dtype=dtype)
+
+        query, key, value = torch._transform_bias_rescale_qkv(qkv, bias, num_heads)
+        query_ref, key_ref, value_ref = torch.split(qkv, embed_dim, dim=-1)
+
+        def reshape(tensor):
+            return tensor.view(
+                batch_size,
+                sequence_length,
+                num_heads,
+                embed_dim // num_heads,
+            ).transpose(1, 2)
+
+        self.assertEqual(
+            query,
+            reshape(
+                (query_ref + bias[:embed_dim])
+                / math.sqrt(embed_dim // num_heads)
+            ),
+        )
+        self.assertEqual(key, reshape(key_ref + bias[embed_dim : 2 * embed_dim]))
+        self.assertEqual(value, reshape(value_ref + bias[2 * embed_dim :]))
+
+
 if NOTEST_CPU:
     device_types = ("cuda", "mps", "mtia")
 else:
@@ -7351,6 +7385,9 @@ instantiate_device_type_tests(
 )
 instantiate_device_type_tests(
     TestSDPAXpuOnly, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestTransformBiasRescaleQkvXpuOnly, globals(), only_for="xpu", allow_xpu=True
 )
 
 if __name__ == "__main__":

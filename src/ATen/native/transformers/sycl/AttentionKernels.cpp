@@ -14,7 +14,6 @@
 #include <ATen/Dispatch.h>
 #include <ATen/NestedTensorImpl.h>
 #include <ATen/TensorOperators.h>
-#include <ATen/core/Array.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
@@ -83,7 +82,6 @@ void transform_bias_rescale_qkv_add_padding_kernel(
   const auto* sizes_i = input_sizes_ + b * input_dim;
 
   if (assume_aligned_) {
-    using LoadT = at::detail::Array<scalar_t, VEC>;
     for (int32_t d_v = local_id; d_v < D / VEC;
          d_v += item.get_local_range(0)) {
       auto d = d_v * VEC;
@@ -271,7 +269,6 @@ void transform_bias_rescale_qkv_kernel(
   const auto D = NH * DH;
 
   if (assume_aligned_) {
-    using LoadT = at::detail::Array<scalar_t, VEC>;
     // here is aligned, no more need ceiling for D / VEC
     for (int32_t d_v = local_id; d_v < D / VEC; d_v += local_range) {
       auto d = d_v * VEC;
@@ -419,6 +416,8 @@ void _transform_bias_rescale_qkv_kernel(
         const bool bias_and_shape_aligned =
             ((dim_per_head % TRANSFORM_BIAS_RESCALE_VEC) == 0) &&
             is_aligned_for_vec<scalar_t, TRANSFORM_BIAS_RESCALE_VEC>(
+                qkv.const_data_ptr()) &&
+            is_aligned_for_vec<scalar_t, TRANSFORM_BIAS_RESCALE_VEC>(
                 qkv_bias.const_data_ptr());
 
         if (bias_and_shape_aligned) {
@@ -444,9 +443,7 @@ void _transform_bias_rescale_qkv_kernel(
           const auto sizes_ptr = offsets_ptr + sizes.numel() + 1;
           // const auto input_dim = sizes.sizes()[1];
           auto qkv_acc = q_k_v.packed_accessor64<scalar_t, 5>();
-          if (bias_and_shape_aligned &&
-              ((reinterpret_cast<intptr_t>(qkv.const_data_ptr()) %
-                TRANSFORM_BIAS_RESCALE_VEC) == 0)) {
+          if (bias_and_shape_aligned) {
             sycl_kernel_submit<transform_bias_rescale_qkv_add_padding_kernel<
                 scalar_t,
                 accscalar_t,
