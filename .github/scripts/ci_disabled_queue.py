@@ -185,15 +185,16 @@ def one_problem(nums):
     return [n for n in nums if keys[n] == keys[nums[0]]]
 
 
-def closed_since(num, when):
-    """Was this issue closed after `when`?
+def reopened_since(num, when):
+    """Was this issue reopened after `when`?
 
-    Called only for issues that are open now, so a close after the last mirror
-    means it was reopened since -- a new breakage rather than SOURCE repeating
-    itself. `closed_at` cannot answer this: reopening clears it.
+    That is what starts a new episode: the test is blocking CI again, for a
+    reason the last fix did not settle, so it gets queued again. Read from the
+    events -- `closed_at` cannot answer it, since reopening clears the field
+    (verified on pytorch#194562: closed 09-03, reopened 09-16, `closed_at` null).
     """
     events = paged(f"/repos/pytorch/pytorch/issues/{num}/events")
-    return any(e["event"] == "closed" and e["created_at"] > when for e in events)
+    return any(e["event"] == "reopened" and e["created_at"] > when for e in events)
 
 
 def pending(comment, mirrored):
@@ -206,7 +207,7 @@ def pending(comment, mirrored):
         if since is not None and comment["created_at"] <= since:
             continue
         if upstream(num)["state"] == "open" and (
-            since is None or closed_since(num, since)
+            since is None or reopened_since(num, since)
         ):
             out.append(num)
     return out
@@ -330,10 +331,10 @@ def self_test():
     )
 
     # One stub for both readers of the upstream issue: everything stays open, and
-    # 197334 was closed once, after the first mirror.
-    global upstream, closed_since
+    # 197334 was reopened once, after the first mirror.
+    global upstream, reopened_since
     upstream = lambda num: {"state": "open", "title": titles.get(num, "")}  # noqa: E731
-    closed_since = lambda num, when: num == "197334" and when < "2026-09-30"  # noqa: E731
+    reopened_since = lambda num, when: num == "197334" and when < "2026-09-30"  # noqa: E731
 
     assert one_problem(["197521", "197334", "197523", "196247"]) == [
         "197521",
@@ -351,7 +352,7 @@ def self_test():
     assert pending(dict(old, body=batch), {}) == ["197334", "197335"], "never mirrored"
     assert pending(dict(old, body=batch), mirrored) == [], "the batch already mirrored"
     assert pending(dict(new, body=batch), mirrored) == ["197334"], (
-        "re-reported after a reopen is queued again; still-open is deduped"
+        "reopened since its trigger is queued again; still-open is deduped"
     )
 
     print("self-test ok")
