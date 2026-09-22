@@ -130,6 +130,12 @@ never a bare `pytorch/pytorch#197334`, a URL, or a markdown link. All three
 render as a reference, which back-links the comment onto the upstream issue;
 a code span is not linkified. Run and job log links are fine.
 
+**References to issues in this repo stay bare** — `intel/torch-xpu-ops#5476`,
+not backticked. The back-link is the point: a tracking issue you file has to be
+reachable from the session comment, and from itself back to the issue that
+caused it. Backticking one strands it — reachable only by reading this comment
+end to end. Only someone else's tracker needs protecting from the noise.
+
 The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
 already lives in the root-cause block above it.
