@@ -239,46 +239,33 @@ template <
     typename scalar2,
     typename IndexType,
     int step>
-struct PointwiseApply2Functor {
-  void operator()(sycl::nd_item<1> item) const {
-    // See Note [tensor_apply2 RNG state]
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(
-        std::get<0>(seeds),
-        item.get_global_linear_id(),
-        std::get<1>(seeds),
-        &state);
-    IndexType linearIndex = item.get_global_linear_id() * step;
-    if (linearIndex < totalElements_) {
-      ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
-          a_,
-          b_,
-          op_,
-          state,
-          std::min(step, static_cast<int>(totalElements_ - linearIndex)),
-          linearIndex);
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void pointwiseApply2Kernel(
+    TensorInfo<scalar1, IndexType> a,
+    TensorInfo<scalar2, IndexType> b,
+    IndexType totalElements,
+    PhiloxXpuState philox_args,
+    const Op op) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  // See Note [tensor_apply2 RNG state]
+  auto seeds = at::xpu::philox::unpack(philox_args);
+  randStatePhilox4_32_10_t state;
+  rand_init(
+      std::get<0>(seeds),
+      item.get_global_linear_id(),
+      std::get<1>(seeds),
+      &state);
+  IndexType linearIndex = item.get_global_linear_id() * step;
+  if (linearIndex < totalElements) {
+    ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
+        a,
+        b,
+        op,
+        state,
+        std::min(step, static_cast<int>(totalElements - linearIndex)),
+        linearIndex);
   }
-  PointwiseApply2Functor(
-      TensorInfo<scalar1, IndexType> a,
-      TensorInfo<scalar2, IndexType> b,
-      IndexType totalElements,
-      PhiloxXpuState philox_args,
-      const Op op)
-      : a_(a),
-        b_(b),
-        totalElements_(totalElements),
-        philox_args_(philox_args),
-        op_(op) {}
-
- private:
-  TensorInfo<scalar1, IndexType> a_;
-  TensorInfo<scalar2, IndexType> b_;
-  IndexType totalElements_;
-  PhiloxXpuState philox_args_;
-  const Op op_;
-};
+}
 
 template <int step = 1>
 inline uint64_t get_apply_group_count(
@@ -371,13 +358,18 @@ inline bool tensor_apply2(
     bInfo.collapseDims();
 
     using index_t = unsigned int;
-    auto fn = PointwiseApply2Functor<Op, scalar1, scalar2, index_t, step>(
-        aInfo, bInfo, static_cast<index_t>(totalElements), philox_args, op);
-    sycl_kernel_submit(
+    constexpr auto fn =
+        pointwiseApply2Kernel<Op, scalar1, scalar2, index_t, step>;
+    sycl_kernel_submit<fn>(
         group_count * threads_per_group,
         threads_per_group,
         getCurrentSYCLQueue(),
-        fn);
+        0,
+        aInfo,
+        bInfo,
+        static_cast<index_t>(totalElements),
+        philox_args,
+        op);
   } else {
     TensorInfo<scalar1, uint64_t> aInfo = getTensorInfo<scalar1, uint64_t>(a);
 
@@ -387,13 +379,18 @@ inline bool tensor_apply2(
     bInfo.collapseDims();
 
     using index_t = uint64_t;
-    auto fn = PointwiseApply2Functor<Op, scalar1, scalar2, index_t, step>(
-        aInfo, bInfo, static_cast<index_t>(totalElements), philox_args, op);
-    sycl_kernel_submit(
+    constexpr auto fn =
+        pointwiseApply2Kernel<Op, scalar1, scalar2, index_t, step>;
+    sycl_kernel_submit<fn>(
         group_count * threads_per_group,
         threads_per_group,
         getCurrentSYCLQueue(),
-        fn);
+        0,
+        aInfo,
+        bInfo,
+        static_cast<index_t>(totalElements),
+        philox_args,
+        op);
   }
 
   if (oldA.defined()) {
