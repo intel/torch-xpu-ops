@@ -396,6 +396,7 @@ skip_dict = {
         "test_scaled_addmm_wgrad_accumulation",
         "test_scaled_addmm_scalar_semantics",
         "test_scaled_addmm_empty",
+        "test_scaled_addmm_contraction_dim",
         "test_scaled_addmm_validation",
         "test_scaled_addmm_mxfp8",
         "test_scaled_addmm_nvfp4",

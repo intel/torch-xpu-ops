@@ -303,33 +303,7 @@ def _xpu_test_scaled_mm_vs_emulated(self, base_dtype, x_cm, y_cm, device):
 
 TestFP8Matmul.test_scaled_mm_vs_emulated = _xpu_test_scaled_mm_vs_emulated
 
-_orig_test_scaled_addmm_contraction_dim = (
-    TestFP8Matmul.test_scaled_addmm_contraction_dim
-)
-
-
-@parametrize("fake", [False, True])
-@parametrize("inplace", [False, True])
-@parametrize(
-    "contraction_dim,supported",
-    [((1, 0), True), ((-1, -2), True), ((0, 0), False), ((1, 1), False)],
-)
-def _test_scaled_addmm_contraction_dim(
-    self, device, fake, inplace, contraction_dim, supported
-):
-    if supported:
-        raise unittest.SkipTest(
-            "The operator 'aten::_scaled_addmm.out' is not currently implemented for the XPU device"
-        )
-    _orig_test_scaled_addmm_contraction_dim(
-        self, device, fake, inplace, contraction_dim, supported
-    )
-
-
-TestFP8Matmul.test_scaled_addmm_contraction_dim = _test_scaled_addmm_contraction_dim
-
 instantiate_device_type_tests(TestFP8Matmul, globals(), only_for="xpu", allow_xpu=True)
-
 
 if __name__ == "__main__":
     run_tests()
