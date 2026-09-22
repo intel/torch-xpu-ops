@@ -221,7 +221,7 @@ class BatchKernelConfig {
         wg_range_x_(0),
         wg_range_y_(0) {}
 
-  void build(size_t max_work_group_size) {
+  void build(int64_t max_work_group_size) {
     size_t wg_size;
     size_t sg_size = syclMaxSubGroupSize();
     // Caller takes responsibility of if work group size is valid or compatible.
