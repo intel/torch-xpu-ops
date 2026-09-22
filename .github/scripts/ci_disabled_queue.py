@@ -27,7 +27,7 @@ comment per batch, which is what a human posts by hand today.
 
 Every rule below is derived from GitHub state, so there is no local database to
 keep in sync: START (the cutoff), dedup, grouping and serialization each live in
-the function that applies them. One batch per invocation, newest first.
+the function that applies them. One batch per invocation, oldest first.
 
 A batch is one SOURCE comment, which is one failing xpu.yml run: its issues come
 from the same commit, so they are likelier to share a cause than any grouping
@@ -181,14 +181,12 @@ def pending(comment, mirrored):
 
 
 def next_batch(mirrored):
-    """Newest SOURCE comment since START that still has something to queue.
+    """Oldest SOURCE comment since START that still has something to queue.
 
-    Newest first because a batch's own timestamp is when CI actually broke -- the
-    comment carries the failing commit -- and a fresh disable is a regression from
-    recent commits, where the cause is still in reach and the skip is hiding a
-    live bug. A month-old one has already waited, and is waiting on something
-    harder. Nothing starves at the current rates: a night's window fits several
-    batches and SOURCE adds a few a week.
+    First in, first out. Dedup already makes a repeat impossible, so taking the
+    newest batch first would buy nothing and could starve the tail whenever
+    SOURCE reports faster than the queue drains; oldest-first cannot starve
+    anything, and the batch that has waited longest goes next.
     """
     try:
         comments = paged(f"/repos/{SOURCE_REPO}/issues/{SOURCE_ISSUE}/comments")
@@ -203,7 +201,7 @@ def next_batch(mirrored):
             f"repo owned by another personal account. Until the report issue moves "
             f"into {TARGET_REPO}, a human posts `@torchxpubot fix` by hand."
         )
-    for comment in reversed(comments):
+    for comment in comments:
         if comment["created_at"] < START:
             continue
         new = pending(comment, mirrored)
