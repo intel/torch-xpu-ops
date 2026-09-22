@@ -279,7 +279,7 @@ template <
     int RadixBits>
 void countRadixUsingMask(
     CountType counts[RadixSize],
-    const sycl_local_acc_t<int>& smem,
+    int* smem,
     bitwise_t desired,
     bitwise_t desiredMask,
     int radixDigitPos,
@@ -311,9 +311,7 @@ void countRadixUsingMask(
       counts[digitInRadix]++;
   }
 
-  auto smem_ptr = (sycl_local_ptr<int>)(smem.template get_multi_ptr<
-                                                sycl::access::decorated::no>()
-                                            .get());
+  auto smem_ptr = (sycl_local_ptr<int>)smem;
   for (uint32_t i = 0; i < RadixSize; ++i) {
     atomicAdd(smem_ptr + i, counts[i]);
   }
@@ -337,7 +335,7 @@ constexpr int RADIX_MASK = (RADIX_SIZE - 1);
 // ((v & desired) == desiredMask) in our sorted int format
 template <typename scalar_t, typename bitwise_t, typename index_t>
 scalar_t findPattern(
-    const sycl_local_acc_t<int>& smem,
+    int* smem,
     const scalar_t* data,
     index_t sliceSize,
     index_t withinSliceStride,
@@ -345,8 +343,7 @@ scalar_t findPattern(
     bitwise_t desiredMask,
     sycl::nd_item<1>& item_id) {
   auto local_id = item_id.get_local_id(0);
-  auto smem_ptr = static_cast<scalar_t*>(static_cast<void*>(
-      smem.template get_multi_ptr<sycl::access::decorated::no>().get()));
+  auto smem_ptr = reinterpret_cast<scalar_t*>(smem);
   // Zero slots 0/1 (found-flag, value); else stale from countRadixUsingMask.
   if (local_id < 2) {
     smem_ptr[local_id] = static_cast<scalar_t>(0);
@@ -396,7 +393,7 @@ void radixSelect(
     index_t k,
     index_t sliceSize,
     index_t withinSliceStride,
-    const sycl_local_acc_t<int>& smem,
+    int* smem,
     scalar_t* topK,
     sycl::nd_item<1>& item_id) {
   // Per-thread buckets into which we accumulate digit counts in our
