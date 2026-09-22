@@ -474,7 +474,7 @@ inline void loop_scan_with_indices_kernel_func(LSConfig_ cfg_) {
 
   auto item = syclext::this_work_item::get_nd_item<2>();
 
-  T* slm_ = (T*)syclexp::get_work_group_scratch_memory();
+  T* slm_ = static_cast<T*>(syclexp::get_work_group_scratch_memory());
   IndicesT* slm_idx_ =
       (IndicesT*)(slm_ + cfg_.wg_range_x_ * cfg_.wg_range_y_ * 2);
 
@@ -768,7 +768,7 @@ inline void segment_scan_kernel(SSConfig_ cfg_) {
   // Use SYCL work group static/scratch memory
   // instead of SYCL local accessor for SLM usage.
   // int slm_size = cfg.wg_range_x_ * cfg.wg_range_y_;
-  T* slm_ = (T*)syclexp::get_work_group_scratch_memory();
+  T* slm_ = static_cast<T*>(syclexp::get_work_group_scratch_memory());
 
   auto id = cfg_.get_item_desc(item);
   int64_t si, pi, bi, glb_ldr_off, glb_str_off, glb_str_off_0,
@@ -857,7 +857,7 @@ inline void segment_scan_with_indices_kernel(SSConfig_ cfg_) {
 
   auto item = syclext::this_work_item::get_nd_item<2>();
 
-  T* slm_ = (T*)syclexp::get_work_group_scratch_memory();
+  T* slm_ = static_cast<T*>(syclexp::get_work_group_scratch_memory());
   IndicesT* slm_idx_ = (IndicesT*)(slm_ + cfg_.wg_range_x_ * cfg_.wg_range_y_);
 
   auto id = cfg_.get_item_desc(item);
