@@ -172,6 +172,11 @@ def trigger_body(comment, issues):
     commit_line = [
         line for line in comment["body"].splitlines() if line.startswith("Commit ")
     ][:1]
+    # The issue URLs are wrapped in backticks on purpose. A bare URL makes GitHub
+    # file a cross-reference on the upstream issue, so every trigger would leave
+    # an `intel/torch-xpu-ops#5272` backlink on pytorch's tracker -- the nine
+    # already posted by hand each did. Code spans are not scanned for references,
+    # and ISSUE_RE still matches inside them, so dedup is unaffected.
     return "\n".join(
         [
             "@torchxpubot fix",
@@ -183,7 +188,7 @@ def trigger_body(comment, issues):
             "",
             *commit_line,
             "Disable issues:",
-            *(f"- https://github.com/pytorch/pytorch/issues/{n}" for n in issues),
+            *(f"- `https://github.com/pytorch/pytorch/issues/{n}`" for n in issues),
             "",
         ]
     )
@@ -198,7 +203,7 @@ def explicit_body(issues):
             "These tests are DISABLED upstream and still blocking XPU CI.",
             "",
             "Disable issues:",
-            *(f"- https://github.com/pytorch/pytorch/issues/{n}" for n in issues),
+            *(f"- `https://github.com/pytorch/pytorch/issues/{n}`" for n in issues),
             "",
         ]
     )
