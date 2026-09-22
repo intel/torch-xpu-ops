@@ -25,24 +25,12 @@ DISABLED issues, and the same issue is re-listed on every later failing commit.
 The tracking issue (TARGET) is the bot's work queue: one `@torchxpubot fix`
 comment per batch, which is what a human posts by hand today.
 
-The rules, all derived from GitHub state so there is no local database to keep
-in sync:
-
-- START: batches older than it are ignored. Whether a DISABLED test already has
-  a PR is not recorded anywhere GitHub can be asked, so the pre-START backlog is
-  triaged and triggered by hand; the queue only owns what arrives after it.
-- closed upstream: nothing to fix, never queued.
-- dedup: an issue that has stayed open since the last `@torchxpubot fix` comment
-  naming it on TARGET is not mirrored again, however many times SOURCE repeats
-  it. Dedup is per open episode, not forever: an issue that was closed and then
-  reopened is blocking CI for a fresh reason, so a later SOURCE report of it is
-  queued again.
-- serialization: nothing is posted while a `fix` job is queued or running, so
-  the previous trigger has always answered before the next one lands.
-
-One batch per invocation, oldest batch first.
+Every rule below is derived from GitHub state, so there is no local database to
+keep in sync: START (the cutoff), dedup, grouping and serialization each live in
+the function that applies them. One problem per invocation, oldest first.
 """
 
+import functools
 import json
 import os
 import re
@@ -82,9 +70,8 @@ def api(path, body=None):
 
 def paged(path):
     out, page = [], 1
-    sep = "&" if "?" in path else "?"
     while True:
-        chunk = api(f"{path}{sep}per_page=100&page={page}")
+        chunk = api(f"{path}?per_page=100&page={page}")
         out += chunk
         if len(chunk) < 100:
             return out
@@ -132,12 +119,12 @@ def fix_in_flight():
     return None
 
 
-def is_open_upstream(num):
-    return api(f"/repos/pytorch/pytorch/issues/{num}")["state"] == "open"
-
-
-def upstream_title(num):
-    return api(f"/repos/pytorch/pytorch/issues/{num}")["title"]
+@functools.cache
+def upstream(num):
+    """The upstream issue. Cached: `pending` reads its state, `one_problem` its
+    title, and a batch is small enough that one process-lifetime cache is the
+    whole story."""
+    return api(f"/repos/pytorch/pytorch/issues/{num}")
 
 
 def problem_key(title):
@@ -161,24 +148,18 @@ def problem_key(title):
 
 
 def one_problem(nums):
-    """The issues of the oldest problem in this batch, and its key.
+    """The oldest problem's issues, so a run has one root cause to find and its
+    patch is one thing to review. The rest waits for a later round.
 
-    One trigger per problem, so a run has one root cause to find and its patch
-    is one thing to review. The rest of the batch is queued by later rounds,
-    after `fix_in_flight` has seen this one answer.
-
-    This is batching, not a verdict on what shares a cause: /issue-handler
-    settles that by evidence, not by title (`One fix may cover several
-    sub-items` -- fix the first entry, re-run the others against the staged fix,
-    list whatever passes in `covers`). Grouping on the title only has to put the
-    entries that mechanism pays off on -- one test's dtype variants, one build
-    for all of them -- into the same run. Its ceiling is that a cause shared
-    across different tests costs one build per group; a model asked to group
-    here would be guessing from the same titles, before anything has been run.
+    Batching, not a verdict on what shares a cause: /issue-handler settles that
+    by evidence (fix one entry, re-run the others against the staged fix, list
+    what passes in `covers`). The title only has to put the entries that
+    mechanism pays off on -- one test's dtype variants, one build -- in the same
+    run. Do not replace this with a model: at queue time it would guess from
+    these same titles, before anything has been run.
     """
-    titles = {n: upstream_title(n) for n in nums}
-    key = problem_key(titles[nums[0]])
-    return [n for n in nums if problem_key(titles[n]) == key], key
+    keys = {n: problem_key(upstream(n)["title"]) for n in nums}
+    return [n for n in nums if keys[n] == keys[nums[0]]]
 
 
 def closed_since(num, when):
@@ -201,7 +182,9 @@ def pending(comment, mirrored):
         # predates it. Only a later report can open a new episode.
         if since is not None and comment["created_at"] <= since:
             continue
-        if is_open_upstream(num) and (since is None or closed_since(num, since)):
+        if upstream(num)["state"] == "open" and (
+            since is None or closed_since(num, since)
+        ):
             out.append(num)
     return out
 
@@ -226,12 +209,11 @@ def next_batch(mirrored):
             continue
         new = pending(comment, mirrored)
         if new:
-            group, key = one_problem(new)
-            return comment, group, key
-    return None, [], None
+            return comment, one_problem(new)
+    return None, []
 
 
-def trigger_body(comment, issues, key):
+def trigger_body(comment, issues):
     # The `Commit ... xpu.yml run` line carries the failing commit the batch came
     # from; the agent reads only this comment, so it has to travel with it.
     commit_line = [
@@ -242,11 +224,6 @@ def trigger_body(comment, issues, key):
     # an `intel/torch-xpu-ops#5272` backlink on pytorch's tracker -- the nine
     # already posted by hand each did. Code spans are not scanned for references,
     # and ISSUE_RE still matches inside them, so dedup is unaffected.
-    same = (
-        [f"All of these parametrise `{key[0]}::{key[1]}`, so expect one root cause.", ""]
-        if len(issues) > 1 and len(key) == 2
-        else []
-    )
     return "\n".join(
         [
             "@torchxpubot fix",
@@ -254,7 +231,6 @@ def trigger_body(comment, issues, key):
             f"Copied from [{SOURCE_REPO}#{SOURCE_ISSUE}]({comment['html_url']}) "
             f"({comment['created_at'][:10]}). These tests are DISABLED upstream.",
             "",
-            *same,
             "---",
             "",
             *commit_line,
@@ -290,12 +266,10 @@ def self_test():
             "created_at": "2026-09-16T22:36:24Z",
         },
         ["197334"],
-        ("TestTorchFunctionRedispatchOpsDeviceXPU", "test_redispatch_scatter"),
     )
     assert body.startswith("@torchxpubot fix\n"), "the command must be the first line"
     assert "Commit [`abc`]" in body and "(2026-09-16)" in body
     assert "197335" not in body, "only the issues this run mirrors"
-    assert "parametrise" not in body, "a single issue is not a parametrised family"
     assert disabled_issues(body) == ["197334"], "re-readable by the dedup scan"
 
     # One trigger per problem. The two families share a class, so the class alone
@@ -327,19 +301,18 @@ def self_test():
         "the device token in the tail is the parametrisation, not one mid-name"
     )
 
-    global upstream_title
-    upstream_title = titles.get  # noqa: E731
-    assert one_problem(["197521", "197334", "197523", "196247"])[0] == [
+    # One stub for both readers of the upstream issue: everything stays open, and
+    # 197334 was closed once, after the first mirror.
+    global upstream, closed_since
+    upstream = lambda num: {"state": "open", "title": titles.get(num, "")}  # noqa: E731
+    closed_since = lambda num, when: num == "197334" and when < "2026-09-30"  # noqa: E731
+
+    assert one_problem(["197521", "197334", "197523", "196247"]) == [
         "197521",
         "197523",
     ], "the oldest problem only, however the batch is ordered"
-    assert one_problem(["1", "197521"])[0] == ["1"], "unparseable goes alone"
+    assert one_problem(["1", "197521"]) == ["1"], "unparseable goes alone"
 
-    # Per-episode dedup. Stub the two upstream lookups: 197334 was closed once,
-    # after the first mirror; 197335 has never been closed.
-    global is_open_upstream, closed_since
-    is_open_upstream = lambda num: True  # noqa: E731
-    closed_since = lambda num, when: num == "197334" and when < "2026-09-30"  # noqa: E731
     old, new = (
         {"created_at": "2026-09-23T00:00:00Z"},
         {"created_at": "2026-10-02T00:00:00Z"},
@@ -366,11 +339,11 @@ def main():
         return
 
     mirrored = last_mirrored()
-    comment, issues, key = next_batch(mirrored)
+    comment, issues = next_batch(mirrored)
     if not comment:
         print(f"nothing to queue since {START}; {len(mirrored)} mirrored so far")
         return
-    body = trigger_body(comment, issues, key)
+    body = trigger_body(comment, issues)
 
     # Posting takes the exact string "false" and nothing else, so an unset or
     # misspelled DRY_RUN prints instead of commenting on a live issue.
