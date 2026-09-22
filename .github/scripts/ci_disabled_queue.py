@@ -49,6 +49,10 @@ BOT_WORKFLOW, FIX_JOB = "bot.yml", "fix"
 START = "2026-09-22"
 
 ISSUE_RE = re.compile(r"https://github\.com/pytorch/pytorch/issues/(\d+)")
+# What bot.yml itself accepts as the command (`startsWith(comment.body,
+# '@torchxpubot')` plus `/^@torchxpubot\s+(\S+)/i`): start-anchored, so a comment
+# that merely quotes the command is not a trigger.
+FIX_CMD_RE = re.compile(r"@torchxpubot\s+fix\b", re.I)
 # `DISABLED test_foo_xpu_float32 (__main__.TestBarXPU)` -- the shape every
 # upstream DISABLED issue's title has.
 TITLE_RE = re.compile(r"^DISABLED\s+(\S+)\s+\(__main__\.(\w+)\)")
@@ -89,10 +93,21 @@ def disabled_issues(body):
 
 
 def last_mirrored():
-    """Newest `@torchxpubot fix` timestamp on TARGET per pytorch issue it names."""
+    """Newest `@torchxpubot fix` timestamp on TARGET per pytorch issue it names.
+
+    Matched the way bot.yml matches it. Merely containing the command counted the
+    bot's own session comments as triggers, which both moved a timestamp later
+    than the real trigger and would have silenced any issue a session comment
+    happened to link but nobody had queued.
+
+    Ceiling: a comment that reads as a trigger but never ran one -- posted by
+    someone the permission gate rejects -- still counts. Asking "did a fix run
+    for this issue" instead means matching comments to runs by timestamp, which
+    is guesswork; the comment is the record.
+    """
     seen = {}
     for c in paged(f"/repos/{TARGET_REPO}/issues/{TARGET_ISSUE}/comments"):
-        if "@torchxpubot fix" not in c["body"]:
+        if not FIX_CMD_RE.match(c["body"]):
             continue
         for num in ISSUE_RE.findall(c["body"]):
             seen[num] = max(seen.get(num, ""), c["created_at"])
@@ -279,6 +294,11 @@ def self_test():
     assert "Commit [`abc`]" in body and "(2026-09-16)" in body
     assert "197335" not in body, "only the issues this run mirrors"
     assert disabled_issues(body) == ["197334"], "re-readable by the dedup scan"
+    assert FIX_CMD_RE.match(body), "the trigger this script posts is a trigger"
+    assert not FIX_CMD_RE.match(
+        "<!-- agent:session -->\n\nRunning `@torchxpubot fix` for "
+        "https://github.com/pytorch/pytorch/issues/196748"
+    ), "a session comment quoting the command is not a trigger"
 
     # One trigger per problem. The two families share a class, so the class alone
     # would have merged two unrelated failures into one run.
