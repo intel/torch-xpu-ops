@@ -7,6 +7,19 @@ on:
   # torchxpubot already a collaborator there. A cron would just 404 every hour.
   # Restore `- cron: '0 0,9-23 * * *'` (hourly, 17:00-08:00 Beijing) once the
   # report issue moves into this repo; nothing but SOURCE_* has to change.
+  #
+  # Add this alongside the cron, not before it: it chains the next trigger onto
+  # the run that just answered, instead of leaving the GPU idle until the next
+  # hour (a `fix` takes 1-5h, so that slack is 20-100% of the wall clock).
+  # Enabled while discovery still 404s it would only turn every bot.yml
+  # completion into a failed queue run.
+  #
+  #   workflow_run:
+  #     workflows: [bot]
+  #     types: [completed]
+  #
+  # It does not replace the script's own `fix_in_flight` gate: a human can start
+  # a `fix` on any issue at any time, and that one is not on the chain.
   workflow_dispatch:
     inputs:
       dry_run:
