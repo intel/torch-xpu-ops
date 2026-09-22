@@ -41,18 +41,30 @@ def slug_for(fix_result_path):
     return name[len("fix_result"):].lstrip("-").removesuffix(".json") or "single"
 
 
-def dest_name(branch, fix_result_path):
-    """Directory name for a unit's patch series: the branch, minus `agent/`.
+def dest_name(branch, fix_result_path, target_repo=""):
+    """Directory for a unit's patch series: the branch minus `agent/`, then the
+    repo it applies to.
 
     The branch is named after the issue that owns the bug
     (`fix-issue-<N>-...`, or `fix-pytorch-issue-<M>-...` when the bug is
     filed upstream), so the patch path tells a reviewer which issue a PR
     would close -- the tracking issue the command ran on is not it. Falls
     back to the fix_result slug when the record carries no usable branch.
+
+    The `target_repo` suffix says where that PR goes, and keeps a fix that spans
+    both repos from writing its halves into one directory: `issue-handler` names
+    the branch after the issue in EACH repo, so the two units arrive with the
+    same branch name, and `format-patch` numbers every series from 0001. Observed
+    on the 197521 grid_sample batch, where `0001-Implement-tricubic-...patch`
+    (torch-xpu-ops) and `0001-Enable-5D-bicubic-...patch` (pytorch) landed in one
+    directory and survived only because the two commit subjects differed. Equal
+    subjects would have overwritten one half, with the job still green.
     """
     leaf = str(branch or "").removeprefix("refs/heads/").removeprefix("agent/")
     leaf = leaf.strip().replace("/", "-")
-    return leaf or slug_for(fix_result_path)
+    name = leaf or slug_for(fix_result_path)
+    repo = str(target_repo or "").strip().replace("/", "-")
+    return f"{name}-{repo}" if repo else name
 
 
 def fix_branches(root_dir):
@@ -125,7 +137,8 @@ def export(agent_space, out, root_dir):
             if (repo and branch and base and os.path.isdir(repo)
                     and git(repo, "rev-parse", "--verify", branch).returncode == 0
                     and git(repo, "rev-parse", "--verify", base).returncode == 0):
-                dest = os.path.join(out, "unverified", dest_name(branch, fr))
+                dest = os.path.join(out, "unverified",
+                                    dest_name(branch, fr, d.get("target_repo")))
                 os.makedirs(dest, exist_ok=True)
                 git(repo, "format-patch", f"--base={base}", f"{base}..{branch}",
                     "-o", dest)
@@ -158,8 +171,16 @@ def export(agent_space, out, root_dir):
             errors.append(f"{fr}: base_sha not found in {repo}: {base}")
             continue
 
-        dest = os.path.join(out, dest_name(branch, fr))
-        os.makedirs(dest, exist_ok=True)
+        dest = os.path.join(out, dest_name(branch, fr, d.get("target_repo")))
+        # Two units must never share a directory: format-patch restarts at 0001
+        # in each, so the second would overwrite the first by subject collision
+        # and this function would still count both.
+        if os.path.exists(dest):
+            errors.append(f"{fr}: patch directory {dest} is already another "
+                          f"unit's -- two fix_results name the same branch and "
+                          f"target_repo")
+            continue
+        os.makedirs(dest)
         git(repo, "format-patch", f"--base={base}", f"{base}..{branch}", "-o", dest)
         if any(f.endswith(".patch") for f in os.listdir(dest)):
             made += 1
