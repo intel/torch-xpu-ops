@@ -131,8 +131,8 @@ first so the skip has a follow-up owner, then edit:
 issue_url=$(gh issue create \
   --repo intel/torch-xpu-ops \
   --title "[upstream_ut] <test name>: <one-line symptom>" \
-  --body "Auto-added by fix-implement (allow_skip=true), from <the
-  torch-xpu-ops issue this run was triggered on, bare so it back-links>.
+  --body "Auto-added by fix-implement (allow_skip=true) while handling
+  intel/torch-xpu-ops#<the issue number this run was triggered on>.
 
   Test: <test_id>
   Original failure: <one-line failure summary from triage_result>
@@ -161,9 +161,14 @@ The title prefix and the label are **fixed**: `[upstream_ut]` and
 `test: ut` are what this repo's existing UT tracking issues use (see
 intel/torch-xpu-ops#5305, #5374), so a human filtering for them finds
 yours too. Do not invent a prefix or a label; a label that does not
-exist in the repo makes `gh issue create` fail outright. In the body,
-`pytorch/pytorch` references go in backticks and this repo's stay bare,
-same rule as the session comment.
+exist in the repo makes `gh issue create` fail outright.
+
+Write the triggering issue as `intel/torch-xpu-ops#<N>` with no
+backticks. GitHub then files a cross-reference on it, so the tracking
+issue is reachable from the issue that caused it instead of only from
+this run's logs. `pytorch/pytorch` references in the body keep their
+backticks -- same rule as the session comment, and for the same reason:
+a rendered reference would put this repo's noise on pytorch's tracker.
 
 ## Step 3: Stage changes
 
