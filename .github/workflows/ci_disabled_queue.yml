@@ -1,16 +1,19 @@
 name: CI DISABLED Queue
 
 on:
-  schedule:
-    # Hourly outside Beijing (UTC+8) working hours, 17:00-08:00 CST. Each run
-    # queues at most one batch and only when no `fix` job is in flight, so a
-    # backlog drains a batch per completed fix instead of all at once.
-    - cron: '0 0,9-23 * * *'
-
+  # No `schedule` yet. Discovery reads chuanqi129/pytorch-xpu-ci#364, and
+  # MERGE_TOKEN is a fine-grained PAT, which cannot reach a repo owned by another
+  # personal account -- the token-access job below proves it with a 404, with
+  # torchxpubot already a collaborator there. A cron would just 404 every hour.
+  # Restore `- cron: '0 0,9-23 * * *'` (hourly, 17:00-08:00 Beijing) once the
+  # report issue moves into this repo; nothing but SOURCE_* has to change.
   workflow_dispatch:
     inputs:
+      issues:
+        description: 'pytorch issue numbers to queue now, space separated (empty = discover)'
+        default: ''
       dry_run:
-        description: 'Print the next batch instead of posting it'
+        description: 'Print the trigger instead of posting it'
         type: boolean
         default: true
 
@@ -34,11 +37,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Queue the next DISABLED batch
+        # Inputs go through the environment, never through the `run` string: a
+        # workflow_dispatch input interpolated into a shell command is an
+        # injection vector. The script keeps only the digits out of ISSUES.
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
-        run: |
-          python3 .github/scripts/ci_disabled_queue.py \
-            ${{ inputs.dry_run && '--dry-run' || '' }}
+          ISSUES: ${{ inputs.issues }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python3 .github/scripts/ci_disabled_queue.py
 
   self-test:
     runs-on: ubuntu-latest
@@ -47,15 +53,15 @@ jobs:
       - uses: actions/checkout@v7
       - run: python3 .github/scripts/ci_disabled_queue.py --self-test
 
-  # The one thing about this workflow a reviewer cannot check locally: it reads an
-  # issue in a private repo owned by a personal account, so MERGE_TOKEN's reach
-  # decides whether the queue works at all. Asserted here the way bot.yml's
-  # token-permission-test asserts its own token needs.
+  # Tracks when discovery becomes possible. Reading SOURCE is the one thing about
+  # this workflow that cannot be checked locally, and it does not work today, so
+  # this warns rather than fails -- it turns green by itself once the report issue
+  # moves into this repo, which is the signal to restore the cron above.
   token-access:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - name: "Test: MERGE_TOKEN can read the private CI report issue"
+      - name: "Probe: can MERGE_TOKEN read the private CI report issue?"
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -65,14 +71,15 @@ jobs:
                 owner: 'chuanqi129', repo: 'pytorch-xpu-ci',
                 issue_number: 364, per_page: 1
               });
-              console.log(`listComments OK - ${r.data.length} comment(s) readable`);
+              core.notice(`readable (${r.data.length} comment) -- discovery can be `
+                + `re-enabled: restore the cron and point SOURCE_* at the report issue.`);
             } catch (e) {
-              core.setFailed(
-                `cannot read chuanqi129/pytorch-xpu-ci#364: HTTP ${e.status}. `
-                + `A 404 here with torchxpubot already a collaborator means `
-                + `MERGE_TOKEN is a fine-grained PAT: those are scoped to one `
-                + `resource owner (your account, or an org that opted in), so a `
-                + `repo owned by another personal account is out of reach no `
-                + `matter what collaborator grant exists.`
+              core.warning(
+                `not readable: HTTP ${e.status}. Expected today. torchxpubot IS a `
+                + `collaborator there, so a 404 means MERGE_TOKEN is a fine-grained `
+                + `PAT: those are scoped to one resource owner (the token owner's `
+                + `account, or an org that opted in), and a repo owned by another `
+                + `personal account can never be selected. Use the ISSUES input `
+                + `until the report issue moves into this repo.`
               );
             }

