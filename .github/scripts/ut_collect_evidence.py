@@ -87,6 +87,7 @@ HEALTH_RATIO = 0.95
 UT_JOB_CATEGORIES = {
     "basic": ["op_regression", "op_regression_dev1", "op_extended"],
     "op_ut": ["op_ut"],
+    "xpu_profiling": ["xpu_profiling"],
 }
 CATEGORY_UT_JOB = {c: job for job, cats in UT_JOB_CATEGORIES.items() for c in cats}
 
