@@ -1308,9 +1308,8 @@ jobs:
             (`pytorch/pytorch#197334`), never bare, as a URL, or as a markdown
             link: a rendered reference back-links this comment onto the pytorch
             issue. References to issues in THIS repo stay bare
-            (intel/torch-xpu-ops#5476) -- a tracking issue you file is meant to
-            link back here, and backticking it strands it. Run and job log links
-            are fine.
+            (intel/torch-xpu-ops#5476) -- there the back-link is wanted. Run and
+            job log links are fine.
             End by appending your summary to it and reporting the branch name.
             Do not write a review block; the workflow appends the human
             review template itself.
