@@ -482,8 +482,7 @@ template <
     class Norm,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
-void fused_norm_kernel(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>)) void fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm> norm,
     NormConfig cfg) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
@@ -612,8 +611,7 @@ template <
     class Norm,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
-void row_wise_moments_kernel(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>)) void row_wise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm> norm,
     NormConfig cfg) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
