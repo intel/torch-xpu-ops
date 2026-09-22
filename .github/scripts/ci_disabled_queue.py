@@ -156,7 +156,11 @@ def problem_key(title):
     if not m:
         return (title,)
     test, cls = m.groups()
-    return cls, re.sub(r"_(cpu|cuda|xpu)(_.*)?$", "", test)
+    # Cut at the LAST device token, not a regex anchored on the first one: the
+    # parametrisation is always the tail, and `test_copy_xpu_to_cuda` /
+    # `test_copy_cpu_to_xpu` are two tests that cutting at the first would merge.
+    cut = max(test.rfind(d) for d in ("_xpu", "_cpu", "_cuda"))
+    return cls, test[:cut] if cut > 0 else test
 
 
 def one_problem(nums):
@@ -334,6 +338,11 @@ def self_test():
         "unrelated tests in one class stay apart"
     )
     assert problem_key(titles["1"]) == (titles["1"],), "an unparseable title is its own"
+    assert problem_key(
+        "DISABLED test_copy_xpu_to_cuda (__main__.TestXpu)"
+    ) != problem_key("DISABLED test_copy_cpu_to_xpu (__main__.TestXpu)"), (
+        "the device token in the tail is the parametrisation, not one mid-name"
+    )
 
     global upstream_title
     upstream_title = titles.get  # noqa: E731
