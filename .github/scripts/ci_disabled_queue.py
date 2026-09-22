@@ -100,13 +100,21 @@ def last_mirrored():
 
 
 def fix_in_flight():
-    """URL of a bot run whose `fix` job has not finished, else None."""
-    runs = api(
-        f"/repos/{TARGET_REPO}/actions/workflows/{BOT_WORKFLOW}/runs?per_page=30"
-    )["workflow_runs"]
+    """URL of a bot run whose `fix` job has not finished, else None.
+
+    Asked by status, not by reading the newest N runs: 30 runs of bot.yml span
+    about three hours and a `fix` takes one to five, so a long one slides out of
+    any fixed window and the queue would start a second GPU job on top of it.
+    """
+    runs = [
+        run
+        for status in ("queued", "in_progress")
+        for run in api(
+            f"/repos/{TARGET_REPO}/actions/workflows/{BOT_WORKFLOW}/runs"
+            f"?status={status}&per_page=100"
+        )["workflow_runs"]
+    ]
     for run in runs:
-        if run["status"] == "completed":
-            continue
         jobs = api(f"/repos/{TARGET_REPO}/actions/runs/{run['id']}/jobs?per_page=100")[
             "jobs"
         ]
