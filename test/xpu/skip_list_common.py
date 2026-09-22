@@ -388,7 +388,20 @@ skip_dict = {
     "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
     "test_python_dispatch_xpu.py": None,
-    "test_scaled_matmul_cuda_xpu.py": None,
+    "test_scaled_matmul_cuda_xpu.py": {
+        # https://github.com/intel/torch-xpu-ops/issues/5339
+        # The operator 'aten::_scaled_addmm.out' is not currently implemented for the XPU device
+        "test_scaled_addmm_tensorwise",
+        "test_scaled_addmm_inplace_tunableop",
+        "test_scaled_addmm_wgrad_accumulation",
+        "test_scaled_addmm_scalar_semantics",
+        "test_scaled_addmm_empty",
+        "test_scaled_addmm_validation",
+        "test_scaled_addmm_mxfp8",
+        "test_scaled_addmm_nvfp4",
+        "test_scaled_addmm_fullgraph",
+        "test_scaled_addmm_cudagraph",
+    },
     "test_serialization_xpu.py": None,
     "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
