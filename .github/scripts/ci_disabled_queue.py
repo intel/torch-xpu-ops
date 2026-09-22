@@ -64,6 +64,9 @@ BOT_WORKFLOW, FIX_JOB = "bot.yml", "fix"
 START = "2026-09-22"
 
 ISSUE_RE = re.compile(r"https://github\.com/pytorch/pytorch/issues/(\d+)")
+# `DISABLED test_foo_xpu_float32 (__main__.TestBarXPU)` -- the shape every
+# upstream DISABLED issue's title has.
+TITLE_RE = re.compile(r"^DISABLED\s+(\S+)\s+\(__main__\.(\w+)\)")
 
 
 def api(path, body=None):
@@ -136,6 +139,47 @@ def is_open_upstream(num):
     return api(f"/repos/pytorch/pytorch/issues/{num}")["state"] == "open"
 
 
+def upstream_title(num):
+    return api(f"/repos/pytorch/pytorch/issues/{num}")["title"]
+
+
+def problem_key(title):
+    """What makes two DISABLED issues the same problem: class + test name.
+
+    The name keeps its parametrization out of it, so the four dtype variants of
+    `test_redispatch_scatter` share a key. The class alone would not do: the
+    grid_sample and the scatter families live in the same
+    `TestTorchFunctionRedispatchOpsDeviceXPU` and are unrelated failures. A title
+    that does not parse gets a key of its own and is never grouped.
+    """
+    m = TITLE_RE.match(title)
+    if not m:
+        return (title,)
+    test, cls = m.groups()
+    return cls, re.sub(r"_(cpu|cuda|xpu)(_.*)?$", "", test)
+
+
+def one_problem(nums):
+    """The issues of the oldest problem in this batch, and its key.
+
+    One trigger per problem, so a run has one root cause to find and its patch
+    is one thing to review. The rest of the batch is queued by later rounds,
+    after `fix_in_flight` has seen this one answer.
+
+    This is batching, not a verdict on what shares a cause: /issue-handler
+    settles that by evidence, not by title (`One fix may cover several
+    sub-items` -- fix the first entry, re-run the others against the staged fix,
+    list whatever passes in `covers`). Grouping on the title only has to put the
+    entries that mechanism pays off on -- one test's dtype variants, one build
+    for all of them -- into the same run. Its ceiling is that a cause shared
+    across different tests costs one build per group; a model asked to group
+    here would be guessing from the same titles, before anything has been run.
+    """
+    titles = {n: upstream_title(n) for n in nums}
+    key = problem_key(titles[nums[0]])
+    return [n for n in nums if problem_key(titles[n]) == key], key
+
+
 def closed_since(num, when):
     """Was this issue closed after `when`?
 
@@ -181,11 +225,12 @@ def next_batch(mirrored):
             continue
         new = pending(comment, mirrored)
         if new:
-            return comment, new
-    return None, []
+            group, key = one_problem(new)
+            return comment, group, key
+    return None, [], None
 
 
-def trigger_body(comment, issues):
+def trigger_body(comment, issues, key):
     # The `Commit ... xpu.yml run` line carries the failing commit the batch came
     # from; the agent reads only this comment, so it has to travel with it.
     commit_line = [
@@ -196,6 +241,11 @@ def trigger_body(comment, issues):
     # an `intel/torch-xpu-ops#5272` backlink on pytorch's tracker -- the nine
     # already posted by hand each did. Code spans are not scanned for references,
     # and ISSUE_RE still matches inside them, so dedup is unaffected.
+    same = (
+        [f"All of these parametrise `{key[0]}::{key[1]}`, so expect one root cause.", ""]
+        if len(issues) > 1 and len(key) == 2
+        else []
+    )
     return "\n".join(
         [
             "@torchxpubot fix",
@@ -203,6 +253,7 @@ def trigger_body(comment, issues):
             f"Copied from [{SOURCE_REPO}#{SOURCE_ISSUE}]({comment['html_url']}) "
             f"({comment['created_at'][:10]}). These tests are DISABLED upstream.",
             "",
+            *same,
             "---",
             "",
             *commit_line,
@@ -252,11 +303,45 @@ def self_test():
             "created_at": "2026-09-16T22:36:24Z",
         },
         ["197334"],
+        ("TestTorchFunctionRedispatchOpsDeviceXPU", "test_redispatch_scatter"),
     )
     assert body.startswith("@torchxpubot fix\n"), "the command must be the first line"
     assert "Commit [`abc`]" in body and "(2026-09-16)" in body
     assert "197335" not in body, "only the issues this run mirrors"
+    assert "parametrise" not in body, "a single issue is not a parametrised family"
     assert disabled_issues(body) == ["197334"], "re-readable by the dedup scan"
+
+    # One trigger per problem. The two families share a class, so the class alone
+    # would have merged two unrelated failures into one run.
+    titles = {
+        "197521": "DISABLED test_redispatch_nn_functional_grid_sample_xpu_bfloat16 "
+        "(__main__.TestTorchFunctionRedispatchOpsDeviceXPU)",
+        "197523": "DISABLED test_redispatch_nn_functional_grid_sample_xpu_float32 "
+        "(__main__.TestTorchFunctionRedispatchOpsDeviceXPU)",
+        "197334": "DISABLED test_redispatch_scatter_xpu_float8_e4m3fn "
+        "(__main__.TestTorchFunctionRedispatchOpsDeviceXPU)",
+        "196247": "DISABLED test_1mb_allocation_uses_small_block (__main__.TestXpu)",
+        "196308": "DISABLED test_graph_checkpoint_preserve_rng_state (__main__.TestXpu)",
+        "1": "Something that is not a DISABLED title",
+    }
+    assert problem_key(titles["197521"]) == problem_key(titles["197523"]), (
+        "dtype variants of one test are one problem"
+    )
+    assert problem_key(titles["197521"]) != problem_key(titles["197334"]), (
+        "same class, different test: two problems"
+    )
+    assert problem_key(titles["196247"]) != problem_key(titles["196308"]), (
+        "unrelated tests in one class stay apart"
+    )
+    assert problem_key(titles["1"]) == (titles["1"],), "an unparseable title is its own"
+
+    global upstream_title
+    upstream_title = titles.get  # noqa: E731
+    assert one_problem(["197521", "197334", "197523", "196247"])[0] == [
+        "197521",
+        "197523",
+    ], "the oldest problem only, however the batch is ordered"
+    assert one_problem(["1", "197521"])[0] == ["1"], "unparseable goes alone"
 
     # Per-episode dedup. Stub the two upstream lookups: 197334 was closed once,
     # after the first mirror; 197335 has never been closed.
@@ -301,11 +386,11 @@ def main():
         body = explicit_body(issues)
     else:
         mirrored = last_mirrored()
-        comment, issues = next_batch(mirrored)
+        comment, issues, key = next_batch(mirrored)
         if not comment:
             print(f"nothing to queue since {START}; {len(mirrored)} mirrored so far")
             return
-        body = trigger_body(comment, issues)
+        body = trigger_body(comment, issues, key)
 
     # Posting takes the exact string "false" and nothing else, so an unset or
     # misspelled DRY_RUN prints instead of commenting on a live issue.
