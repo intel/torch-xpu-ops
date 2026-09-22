@@ -9,9 +9,6 @@ on:
   # report issue moves into this repo; nothing but SOURCE_* has to change.
   workflow_dispatch:
     inputs:
-      issues:
-        description: 'pytorch issue numbers to queue now, space separated (empty = discover)'
-        default: ''
       dry_run:
         description: 'Print the trigger instead of posting it'
         type: boolean
@@ -37,12 +34,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Queue the next DISABLED batch
-        # Inputs go through the environment, never through the `run` string: a
-        # workflow_dispatch input interpolated into a shell command is an
-        # injection vector. The script keeps only the digits out of ISSUES.
+        # The input goes through the environment, never through the `run` string:
+        # a workflow_dispatch input interpolated into a shell command is an
+        # injection vector.
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
-          ISSUES: ${{ inputs.issues }}
           # Only the exact string "false" posts, so a restored cron has to say so
           # outright instead of inheriting an empty input.
           DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
@@ -81,7 +77,7 @@ jobs:
                 + `collaborator there, so a 404 means MERGE_TOKEN is a fine-grained `
                 + `PAT: those are scoped to one resource owner (the token owner's `
                 + `account, or an org that opted in), and a repo owned by another `
-                + `personal account can never be selected. Use the ISSUES input `
-                + `until the report issue moves into this repo.`
+                + `personal account can never be selected. Until the report issue `
+                + `moves into this repo, a human posts \`@torchxpubot fix\` by hand.`
               );
             }
