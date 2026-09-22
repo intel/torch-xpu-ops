@@ -43,7 +43,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
           ISSUES: ${{ inputs.issues }}
-          DRY_RUN: ${{ inputs.dry_run }}
+          # Only the exact string "false" posts, so a restored cron has to say so
+          # outright instead of inheriting an empty input.
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
         run: python3 .github/scripts/ci_disabled_queue.py
 
   self-test:

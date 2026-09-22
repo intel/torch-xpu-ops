@@ -283,7 +283,9 @@ def main():
             return
         body = trigger_body(comment, issues)
 
-    if os.environ.get("DRY_RUN", "").lower() not in ("", "false", "0"):
+    # Posting takes the exact string "false" and nothing else, so an unset or
+    # misspelled DRY_RUN prints instead of commenting on a live issue.
+    if os.environ.get("DRY_RUN", "true").strip().lower() != "false":
         print(f"[dry run]\n\n{body}")
         return
 
