@@ -1,140 +1,30 @@
+# TEMPORARY -- only on the tmp/queue-probe branch, never merged.
+#
+# A new workflow file is not dispatchable until it sits on the default branch, so
+# this borrows an existing dispatch slot to run ci_disabled_queue.py from a
+# branch: `workflow_dispatch` decides the button from main but executes the file
+# from the ref you pick. Delete this branch once the probe has answered.
 name: UT Refactor Review
 
 on:
   workflow_dispatch:
     inputs:
       pytorch_pr:
-        description: "PyTorch PR number to review (pytorch/pytorch)"
+        description: "unused on this branch; kept so the dispatch matches main"
         required: true
-
-env:
-  BEDROCK_MODEL: global.anthropic.claude-opus-5
-  CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
-  COST_TRACKING_ISSUE: 4251
 
 permissions:
   contents: read
 
-concurrency:
-  group: ut-review-${{ github.event.inputs.pytorch_pr }}
-  cancel-in-progress: false
-
 jobs:
-  ut-review:
+  probe:
+    name: Queue pytorch#195876 as torchxpubot
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
-      - name: Checkout pytorch/pytorch (provides the /pr-review skill)
-        uses: actions/checkout@v7
-        with:
-          repository: pytorch/pytorch
-          path: pytorch
-          sparse-checkout: .claude/skills/pr-review
-      - name: Checkout intel/torch-xpu-ops (provides the /ut-refactor-review skill)
-        uses: actions/checkout@v7
-        with:
-          path: torch-xpu-ops
-          sparse-checkout: .claude/skills/ut-refactor-review
-      - name: Checkout KarhouTam/agent-skills (provides the /review-test-refactoring skill)
-        uses: actions/checkout@v7
-        with:
-          repository: KarhouTam/agent-skills
-          path: agent-skills
-          sparse-checkout: pytorch-test-refactoring
-      - name: Run AI review
-        id: ai-review
-        uses: anthropics/claude-code-action@v1
-        with:
-          use_bedrock: "true"
-          github_token: ${{ secrets.MERGE_TOKEN }}
-          settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
-          prompt: |
-            Use the skill pytorch/.claude/skills/pr-review/SKILL.md to review PR
-            https://github.com/pytorch/pytorch/pull/${{ github.event.inputs.pytorch_pr }}.
-            Load these two dedicated skills torch-xpu-ops/.claude/skills/ut-refactor-review/SKILL.md
-            and agent-skills/pytorch-test-refactoring/agent/skills/review-test-refactoring/SKILL.md as auxiliary.
-            The pr-review skill drives HOW you analyze the diff, but for the final
-            output format please follow Review Output Format defined in review-test-refactoring.
-            Every finding should be classified by the severity defined in review-test-refactoring
-            and ut-refactor-review skills (Blocker / Major / Minor / Info).
-            Group findings under these four severity headings.
-            Do NOT post any comment or review to the PyTorch PR. Only produce the
-            review text as your final result; it will be written to the job summary.
+      - uses: actions/checkout@v7
+      - name: Post the @torchxpubot fix trigger
         env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
-
-      - name: Write review to job summary
-        if: steps.ai-review.outputs.execution_file
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
-            if (!file || !fs.existsSync(file)) {
-              core.setFailed('No execution file produced by the AI review.');
-              return;
-            }
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const result = data.filter(e => e.type === 'result').pop();
-            if (!result || result.is_error || !result.result) {
-              core.setFailed('AI review returned an error or no output.');
-              return;
-            }
-            const pr = '${{ github.event.inputs.pytorch_pr }}';
-            const header = `## ut-review for pytorch/pytorch#${pr}\n\n`;
-            await core.summary.addRaw(header + result.result).write();
-
-      - name: "Verify: AI review succeeded"
-        uses: actions/github-script@v9
-        env:
-          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
-        with:
-          script: |
-            const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
-            let ok = false;
-            if (file && fs.existsSync(file)) {
-              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-              const result = data.filter(e => e.type === 'result').pop();
-              console.log('Result:', JSON.stringify(result, null, 2));
-              ok = result && !result.is_error && result.total_cost_usd > 0;
-            }
-            if (!ok) {
-              core.setFailed('AI review failed: Bedrock returned an error or no output.');
-            }
-
-      - name: Report usage cost
-        if: always()
-        uses: actions/github-script@v9
-        with:
-          github-token: ${{ secrets.MERGE_TOKEN }}
-          script: |
-            const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
-            if (!file || !fs.existsSync(file)) return;
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const result = data.filter(e => e.type === 'result').pop();
-            if (!result) return;
-
-            const jobs = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner, repo: context.repo.repo,
-              run_id: context.runId
-            });
-            const job = jobs.data.jobs.find(j => j.name === 'ut-review');
-            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-
-            const date = new Date().toISOString().split('T')[0];
-            const cost = (result.total_cost_usd || 0).toFixed(4);
-            const usage = Object.values(result.modelUsage || {})[0] || {};
-            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
-            const outTok = (usage.outputTokens || 0).toLocaleString();
-            const status = result.is_error ? 'error' : 'ok';
-            const pr = '${{ github.event.inputs.pytorch_pr }}';
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`ut-review\`](${jobUrl}) on **pytorch/pytorch[#${pr}]** — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
-            });
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          ISSUES: "195876"
+          DRY_RUN: "false"
+        run: python3 .github/scripts/ci_disabled_queue.py
