@@ -70,7 +70,7 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void renorm_rows_kernel(int64_t rows, int64_t cols, scalar_t* t_ptr) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   unsigned char* smem =
-      (unsigned char*)syclexp::get_work_group_scratch_memory();
+      static_cast<unsigned char*>(syclexp::get_work_group_scratch_memory());
   renormRowsL1<scalar_t>(item, t_ptr, rows, cols, smem);
 }
 
