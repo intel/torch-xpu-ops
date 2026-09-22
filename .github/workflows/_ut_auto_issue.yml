@@ -95,6 +95,11 @@ jobs:
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
+          # On a scheduled nightly github.actor is whoever pushed the last
+          # change to nightly_ondemand.yml, which is rarely a person: a merge
+          # queue landing, a workflow-authored commit or a Copilot PR all leave
+          # a bot there, and the action rejects any not listed here.
+          allowed_bots: github-merge-queue,github-actions,Copilot,copilot-swe-agent
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: >-
             --model ${{ env.BEDROCK_MODEL }} --max-turns 120
