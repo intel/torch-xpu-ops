@@ -229,7 +229,7 @@ void sample_multinomial_once_kernel(
     int group_size) {
   auto item = syclext::this_work_item::get_nd_item<1>();
 
-  char* scratch = (char*)syclexp::get_work_group_scratch_memory();
+  char* scratch = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   accscalar_t* smem = reinterpret_cast<accscalar_t*>(scratch);
   int* foundPos = (int*)(scratch + sizeof(accscalar_t) * group_size);
   bool* found = (bool*)(foundPos + 1);
