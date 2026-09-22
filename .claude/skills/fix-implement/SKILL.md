@@ -157,18 +157,9 @@ issue_url=$(gh issue create \
 Emit the resulting `issue_url` as `tracking_issue` in the JSON output
 (see Output section). `skip_added` becomes `true`.
 
-The title prefix and the label are **fixed**: `[upstream_ut]` and
-`test: ut` are what this repo's existing UT tracking issues use (see
-intel/torch-xpu-ops#5305, #5374), so a human filtering for them finds
-yours too. Do not invent a prefix or a label; a label that does not
-exist in the repo makes `gh issue create` fail outright.
-
-Write the triggering issue as `intel/torch-xpu-ops#<N>` with no
-backticks. GitHub then files a cross-reference on it, so the tracking
-issue is reachable from the issue that caused it instead of only from
-this run's logs. `pytorch/pytorch` references in the body keep their
-backticks -- same rule as the session comment, and for the same reason:
-a rendered reference would put this repo's noise on pytorch's tracker.
+Keep the title prefix, the label, and the bare `intel/torch-xpu-ops#<N>`
+exactly as above: a label this repo does not have fails the call, and
+backticking the issue number kills the cross-reference back to it.
 
 ## Step 3: Stage changes
 
