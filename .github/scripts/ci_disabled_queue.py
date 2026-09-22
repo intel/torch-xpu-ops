@@ -5,11 +5,16 @@
 """Queue upstream DISABLED-test batches onto the tracking issue as `@torchxpubot fix`.
 
 Usage:
-    GH_TOKEN=<read on SOURCE_REPO, write on TARGET_REPO> [DRY_RUN=1] \
-        python ci_disabled_queue.py                  # discover the next batch
-    GH_TOKEN=<...> ISSUES="195876 196392" [DRY_RUN=1] \
-        python ci_disabled_queue.py                  # queue exactly these
+    GH_TOKEN=<read on SOURCE_REPO, write on TARGET_REPO> \
+        python ci_disabled_queue.py                   # discover, print, post nothing
+    GH_TOKEN=<...> ISSUES="195876 196392" \
+        python ci_disabled_queue.py                   # print the trigger for these
+    GH_TOKEN=<...> DRY_RUN=false [ISSUES=...] \
+        python ci_disabled_queue.py                   # actually comment
     python ci_disabled_queue.py --self-test
+
+Printing is the default and `DRY_RUN=false` is the only value that posts, since
+the live side comments on a tracking issue and starts a multi-hour GPU job.
 
 `ISSUES` skips discovery entirely: no SOURCE read, no dedup, just the trigger the
 operator asked for. It is the only mode that works while SOURCE is a private repo
@@ -45,6 +50,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 
 SOURCE_REPO, SOURCE_ISSUE = "chuanqi129/pytorch-xpu-ci", 364
@@ -157,7 +163,20 @@ def pending(comment, mirrored):
 
 def next_batch(mirrored):
     """Oldest SOURCE comment since START that still has something to queue."""
-    for comment in paged(f"/repos/{SOURCE_REPO}/issues/{SOURCE_ISSUE}/comments"):
+    try:
+        comments = paged(f"/repos/{SOURCE_REPO}/issues/{SOURCE_ISSUE}/comments")
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+        # The expected failure today, and a traceback would bury the one thing
+        # the operator can act on.
+        sys.exit(
+            f"cannot read {SOURCE_REPO}#{SOURCE_ISSUE} (404), so discovery is not "
+            f"available: MERGE_TOKEN is a fine-grained PAT and those cannot reach a "
+            f"repo owned by another personal account. Pass ISSUES=<numbers> to queue "
+            f"a batch by hand until the report issue moves into {TARGET_REPO}."
+        )
+    for comment in comments:
         if comment["created_at"] < START:
             continue
         new = pending(comment, mirrored)
