@@ -46,3 +46,33 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 .github/scripts/ci_disabled_queue.py --self-test
+
+  # The one thing about this workflow a reviewer cannot check locally: it reads an
+  # issue in a private repo owned by a personal account, so MERGE_TOKEN's reach
+  # decides whether the queue works at all. Asserted here the way bot.yml's
+  # token-permission-test asserts its own token needs.
+  token-access:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: "Test: MERGE_TOKEN can read the private CI report issue"
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            try {
+              const r = await github.rest.issues.listComments({
+                owner: 'chuanqi129', repo: 'pytorch-xpu-ci',
+                issue_number: 364, per_page: 1
+              });
+              console.log(`listComments OK - ${r.data.length} comment(s) readable`);
+            } catch (e) {
+              core.setFailed(
+                `cannot read chuanqi129/pytorch-xpu-ci#364: HTTP ${e.status}. `
+                + `A 404 here with torchxpubot already a collaborator means `
+                + `MERGE_TOKEN is a fine-grained PAT: those are scoped to one `
+                + `resource owner (your account, or an org that opted in), so a `
+                + `repo owned by another personal account is out of reach no `
+                + `matter what collaborator grant exists.`
+              );
+            }
