@@ -26,95 +26,62 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 namespace at::native::xpu {
 
 template <typename scalar_t, typename index_t>
-struct AdaptiveMaxPool2dKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto desc = cfg_.get_item_desc(item);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void adaptive_max_pool2d_kernel_impl(
+    const scalar_t* input,
+    scalar_t* output,
+    index_t* indices,
+    int64_t sizeP,
+    int64_t isizeH,
+    int64_t isizeW,
+    int64_t osizeH,
+    int64_t osizeW,
+    int64_t istrideB,
+    int64_t istrideP,
+    int64_t istrideH,
+    int64_t istrideW,
+    BatchKernelConfig cfg) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  auto desc = cfg.get_item_desc(item);
 
-    do {
-      if (desc.glb_problem >= cfg_.problem_)
-        break;
+  auto ostrideH = osizeW;
+  auto ostrideP = osizeW * osizeH;
+  auto ostrideB = ostrideP * sizeP;
 
-      int64_t o_lid = desc.glb_problem;
-      int64_t ob = o_lid / ostrideB_;
-      int64_t op = (o_lid / ostrideP_) % sizeP_;
-      int64_t oh = (o_lid / ostrideH_) % osizeH_;
-      int64_t ow = o_lid % osizeW_;
-      int64_t o_off = o_lid;
+  do {
+    if (desc.glb_problem >= cfg.problem_)
+      break;
 
-      int64_t istartH = start_index(oh, osizeH_, isizeH_);
-      int64_t iendH = end_index(oh, osizeH_, isizeH_);
-      int64_t istartW = start_index(ow, osizeW_, isizeW_);
-      int64_t iendW = end_index(ow, osizeW_, isizeW_);
+    int64_t o_lid = desc.glb_problem;
+    int64_t ob = o_lid / ostrideB;
+    int64_t op = (o_lid / ostrideP) % sizeP;
+    int64_t oh = (o_lid / ostrideH) % osizeH;
+    int64_t ow = o_lid % osizeW;
+    int64_t o_off = o_lid;
 
-      scalar_t max = at::numeric_limits<scalar_t>::lower_bound();
-      index_t argmax = istartH * isizeW_ + istartW;
-      int64_t i_bp_off = ob * istrideB_ + op * istrideP_;
-      for (int64_t ih = istartH; ih < iendH; ih++) {
-        for (int64_t iw = istartW; iw < iendW; iw++) {
-          int64_t i_hw_off = ih * istrideH_ + iw * istrideW_;
-          int64_t i_hw_id = ih * isizeW_ + iw;
-          scalar_t val = input_[i_bp_off + i_hw_off];
-          if ((val > max) || at::_isnan(val)) {
-            max = val;
-            argmax = i_hw_id;
-          }
+    int64_t istartH = start_index(oh, osizeH, isizeH);
+    int64_t iendH = end_index(oh, osizeH, isizeH);
+    int64_t istartW = start_index(ow, osizeW, isizeW);
+    int64_t iendW = end_index(ow, osizeW, isizeW);
+
+    scalar_t max = at::numeric_limits<scalar_t>::lower_bound();
+    index_t argmax = istartH * isizeW + istartW;
+    int64_t i_bp_off = ob * istrideB + op * istrideP;
+    for (int64_t ih = istartH; ih < iendH; ih++) {
+      for (int64_t iw = istartW; iw < iendW; iw++) {
+        int64_t i_hw_off = ih * istrideH + iw * istrideW;
+        int64_t i_hw_id = ih * isizeW + iw;
+        scalar_t val = input[i_bp_off + i_hw_off];
+        if ((val > max) || at::_isnan(val)) {
+          max = val;
+          argmax = i_hw_id;
         }
       }
-      output_[o_off] = max;
-      indices_[o_off] = argmax;
-    } while (cfg_.next(item, desc));
-  }
-
-  AdaptiveMaxPool2dKernelFunctor(
-      const scalar_t* input,
-      scalar_t* output,
-      index_t* indices,
-      int64_t sizeP,
-      int64_t isizeH,
-      int64_t isizeW,
-      int64_t osizeH,
-      int64_t osizeW,
-      int64_t istrideB,
-      int64_t istrideP,
-      int64_t istrideH,
-      int64_t istrideW,
-      BatchKernelConfig cfg)
-      : input_(input),
-        output_(output),
-        indices_(indices),
-        sizeP_(sizeP),
-        isizeH_(isizeH),
-        isizeW_(isizeW),
-        osizeH_(osizeH),
-        osizeW_(osizeW),
-        istrideB_(istrideB),
-        istrideP_(istrideP),
-        istrideH_(istrideH),
-        istrideW_(istrideW),
-        cfg_(cfg),
-        // assume output tensor is in contiguous format
-        ostrideB_(osizeW * osizeH * sizeP),
-        ostrideP_(osizeW * osizeH),
-        ostrideH_(osizeW) {}
-
- private:
-  const scalar_t* input_;
-  scalar_t* output_;
-  index_t* indices_;
-  int64_t sizeP_;
-  int64_t isizeH_;
-  int64_t isizeW_;
-  int64_t osizeH_;
-  int64_t osizeW_;
-  int64_t istrideB_;
-  int64_t istrideP_;
-  int64_t istrideH_;
-  int64_t istrideW_;
-  BatchKernelConfig cfg_;
-  int64_t ostrideB_;
-  int64_t ostrideP_;
-  int64_t ostrideH_;
-};
+    }
+    output[o_off] = max;
+    indices[o_off] = argmax;
+  } while (cfg.next(item, desc));
+}
 
 template <typename scalar_t, typename index_t>
 void launch_adaptive_max_pool2d_kernel(
@@ -131,15 +98,18 @@ void launch_adaptive_max_pool2d_kernel(
     int64_t istrideP,
     int64_t istrideH,
     int64_t istrideW) {
-  using KernelClass = AdaptiveMaxPool2dKernelFunctor<scalar_t, index_t>;
-
   int64_t output_size = batch * plane * osizeH * osizeW;
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
-      1, output_size, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<
+      adaptive_max_pool2d_kernel_impl<scalar_t, index_t>>(
+      1, output_size, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
 
-  cfg.build<KernelClass>();
+  cfg.build<adaptive_max_pool2d_kernel_impl<scalar_t, index_t>>();
 
-  auto kfn = KernelClass(
+  sycl_kernel_submit<adaptive_max_pool2d_kernel_impl<scalar_t, index_t>>(
+      cfg.global_size(),
+      cfg.group_size(),
+      getCurrentSYCLQueue(),
+      0,
       input,
       output,
       indices,
@@ -153,9 +123,6 @@ void launch_adaptive_max_pool2d_kernel(
       istrideH,
       istrideW,
       cfg);
-
-  sycl_kernel_submit(
-      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
 
 void adaptive_max_pool2d_kernel(
@@ -246,57 +213,35 @@ void adaptive_max_pool2d_kernel(
 }
 
 template <typename scalar_t, typename index_t>
-struct AdaptiveMaxPool2dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto desc = cfg_.get_item_desc(item);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void adaptive_avg_pool2d_backward_kernel_impl(
+    const scalar_t* grad_output,
+    const index_t* indices,
+    scalar_t* grad_input,
+    int64_t istrideB,
+    int64_t istrideP,
+    int64_t ostrideB,
+    int64_t ostrideP,
+    int64_t sizeP,
+    BatchKernelConfig cfg) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  auto desc = cfg.get_item_desc(item);
 
-    do {
-      if (desc.glb_problem >= cfg_.problem_)
-        break;
+  do {
+    if (desc.glb_problem >= cfg.problem_)
+      break;
 
-      int64_t o_lid = desc.glb_problem;
-      int64_t ob = o_lid / ostrideB_;
-      int64_t op = (o_lid / ostrideP_) % sizeP_;
-      int64_t o_off = o_lid;
-      int64_t i_off = ob * istrideB_ + op * istrideP_;
+    int64_t o_lid = desc.glb_problem;
+    int64_t ob = o_lid / ostrideB;
+    int64_t op = (o_lid / ostrideP) % sizeP;
+    int64_t o_off = o_lid;
+    int64_t i_off = ob * istrideB + op * istrideP;
 
-      index_t idx = indices_[o_off];
-      auto target = sycl_global_ptr<scalar_t>(grad_input_ + i_off + idx);
-      atomicAdd(target, grad_output_[o_off]);
-    } while (cfg_.next(item, desc));
-  }
-
-  AdaptiveMaxPool2dBackwardKernelFunctor(
-      const scalar_t* grad_output,
-      const index_t* indices,
-      scalar_t* grad_input,
-      int64_t istrideB,
-      int64_t istrideP,
-      int64_t ostrideB,
-      int64_t ostrideP,
-      int64_t sizeP,
-      BatchKernelConfig cfg)
-      : grad_output_(grad_output),
-        indices_(indices),
-        grad_input_(grad_input),
-        istrideB_(istrideB),
-        istrideP_(istrideP),
-        ostrideB_(ostrideB),
-        ostrideP_(ostrideP),
-        sizeP_(sizeP),
-        cfg_(cfg) {}
-
- private:
-  const scalar_t* grad_output_;
-  const index_t* indices_;
-  scalar_t* grad_input_;
-  int64_t istrideB_;
-  int64_t istrideP_;
-  int64_t ostrideB_;
-  int64_t ostrideP_;
-  int64_t sizeP_;
-  BatchKernelConfig cfg_;
-};
+    index_t idx = indices[o_off];
+    auto target = sycl_global_ptr<scalar_t>(grad_input + i_off + idx);
+    atomicAdd(target, grad_output[o_off]);
+  } while (cfg.next(item, desc));
+}
 
 template <typename scalar_t, typename index_t>
 void launch_adaptive_max_pool2d_backward_kernel(
@@ -309,14 +254,18 @@ void launch_adaptive_max_pool2d_backward_kernel(
     int64_t ostrideB,
     int64_t ostrideP,
     int64_t sizeP) {
-  using KernelClass = AdaptiveMaxPool2dBackwardKernelFunctor<scalar_t, index_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<
+      adaptive_avg_pool2d_backward_kernel_impl<scalar_t, index_t>>(
+      1, osize, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
 
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
-      1, osize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
+  cfg.build<adaptive_avg_pool2d_backward_kernel_impl<scalar_t, index_t>>();
 
-  cfg.build<KernelClass>();
-
-  auto kfn = KernelClass(
+  sycl_kernel_submit<
+      adaptive_avg_pool2d_backward_kernel_impl<scalar_t, index_t>>(
+      cfg.global_size(),
+      cfg.group_size(),
+      getCurrentSYCLQueue(),
+      0,
       grad_output,
       indices,
       grad_input,
@@ -326,9 +275,6 @@ void launch_adaptive_max_pool2d_backward_kernel(
       ostrideP,
       sizeP,
       cfg);
-
-  sycl_kernel_submit(
-      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
 
 void adaptive_max_pool2d_backward_kernel(
