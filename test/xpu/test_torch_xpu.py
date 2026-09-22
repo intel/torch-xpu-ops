@@ -7772,6 +7772,30 @@ class TestDevicePrecision(TestCase):
         y = torch._efficientzerotensor(3, device=device)
         self.assertEqual(x.device, y.device)
 
+    @onlyNativeDeviceTypes
+    @dtypes(torch.uint16, torch.uint32, torch.uint64)
+    def test_where_barebones_unsigned(self, device, dtype):
+        # The barebones unsigned dtypes are excluded from the broader
+        # test_where_scalar_handcrafted_values because torch.result_type
+        # does not support promoting them. Cover the same-dtype path
+        # for where() against a CPU reference here.
+        for shape in ((5,), (1, 5), (4, 5)):
+            a = make_tensor(shape, dtype=dtype, device=device)
+            b = make_tensor(shape, dtype=dtype, device=device)
+            cond = torch.randint(0, 2, shape, dtype=torch.bool, device=device)
+            out = torch.where(cond, a, b)
+            expected = torch.where(cond.cpu(), a.cpu(), b.cpu()).to(device)
+            self.assertEqual(out, expected)
+
+        # Non-contiguous inputs.
+        big = make_tensor((8, 10), dtype=dtype, device=device)
+        a = big[::2]
+        b = big[1::2]
+        cond = torch.randint(0, 2, a.shape, dtype=torch.bool, device=device)
+        out = torch.where(cond, a, b)
+        expected = torch.where(cond.cpu(), a.cpu(), b.cpu()).to(device)
+        self.assertEqual(out, expected)
+
 
 # we implemented custom deallocation for subclasses, so it behooves
 # us to make sure all of these bits work.  We'll use __del__ to
