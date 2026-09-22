@@ -1,0 +1,48 @@
+name: CI DISABLED Queue
+
+on:
+  schedule:
+    # Hourly outside Beijing (UTC+8) working hours, 17:00-08:00 CST. Each run
+    # queues at most one batch and only when no `fix` job is in flight, so a
+    # backlog drains a batch per completed fix instead of all at once.
+    - cron: '0 0,9-23 * * *'
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print the next batch instead of posting it'
+        type: boolean
+        default: true
+
+  pull_request:
+    paths:
+      - '.github/workflows/ci_disabled_queue.yml'
+      - '.github/scripts/ci_disabled_queue.py'
+
+permissions:
+  contents: read
+
+# One queue keeper at a time: overlapping runs could mirror the same batch twice.
+concurrency:
+  group: ci-disabled-queue
+  cancel-in-progress: false
+
+jobs:
+  queue:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Queue the next DISABLED batch
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          python3 .github/scripts/ci_disabled_queue.py \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+  self-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 .github/scripts/ci_disabled_queue.py --self-test
