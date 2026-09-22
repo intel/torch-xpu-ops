@@ -130,8 +130,9 @@ first so the skip has a follow-up owner, then edit:
 # 1. Create the tracking issue and capture the URL.
 issue_url=$(gh issue create \
   --repo intel/torch-xpu-ops \
-  --title "[skip-added] <test_id> on XPU" \
-  --body "Auto-added by fix-implement (allow_skip=true).
+  --title "[upstream_ut] <test name>: <one-line symptom>" \
+  --body "Auto-added by fix-implement (allow_skip=true), from <the
+  torch-xpu-ops issue this run was triggered on, bare so it back-links>.
 
   Test: <test_id>
   Original failure: <one-line failure summary from triage_result>
@@ -139,7 +140,7 @@ issue_url=$(gh issue create \
   Reason for skip: <why the actual fix requires human follow-up>
   Base analyzed: <target_repo>@<short_sha from analyzed_sha>
   " \
-  --label "agent-added,module: xpu" \
+  --label "test: ut" \
   | tail -1)
 
 # 2. Add the decorator with a comment citing $issue_url so a human
@@ -154,8 +155,15 @@ issue_url=$(gh issue create \
 ```
 
 Emit the resulting `issue_url` as `tracking_issue` in the JSON output
-(see Output section). `skip_added` becomes `true`. The issue label
-`agent-added` lets a human filter for automated-triage tracking issues.
+(see Output section). `skip_added` becomes `true`.
+
+The title prefix and the label are **fixed**: `[upstream_ut]` and
+`test: ut` are what this repo's existing UT tracking issues use (see
+intel/torch-xpu-ops#5305, #5374), so a human filtering for them finds
+yours too. Do not invent a prefix or a label; a label that does not
+exist in the repo makes `gh issue create` fail outright. In the body,
+`pytorch/pytorch` references go in backticks and this repo's stay bare,
+same rule as the session comment.
 
 ## Step 3: Stage changes
 
