@@ -27,7 +27,13 @@ comment per batch, which is what a human posts by hand today.
 
 Every rule below is derived from GitHub state, so there is no local database to
 keep in sync: START (the cutoff), dedup, grouping and serialization each live in
-the function that applies them. One problem per invocation, newest batch first.
+the function that applies them. One batch per invocation, newest first.
+
+A batch is one SOURCE comment, which is one failing xpu.yml run: its issues come
+from the same commit, so they are likelier to share a cause than any grouping
+this script could infer from test names. Splitting them would also cost a build
+each -- /issue-handler fixes the first entry and re-runs the rest against the
+staged fix, listing what that covers.
 """
 
 import functools
@@ -53,9 +59,6 @@ ISSUE_RE = re.compile(r"https://github\.com/pytorch/pytorch/issues/(\d+)")
 # '@torchxpubot')` plus `/^@torchxpubot\s+(\S+)/i`): start-anchored, so a comment
 # that merely quotes the command is not a trigger.
 FIX_CMD_RE = re.compile(r"@torchxpubot\s+fix\b", re.I)
-# `DISABLED test_foo_xpu_float32 (__main__.TestBarXPU)` -- the shape every
-# upstream DISABLED issue's title has.
-TITLE_RE = re.compile(r"^DISABLED\s+(\S+)\s+\(__main__\.(\w+)\)")
 
 
 def api(path, body=None):
@@ -144,45 +147,9 @@ def fix_in_flight():
 
 @functools.cache
 def upstream(num):
-    """The upstream issue. Cached: `pending` reads its state, `one_problem` its
-    title, and a batch is small enough that one process-lifetime cache is the
-    whole story."""
+    """The upstream issue. Cached because a SOURCE comment can list the same
+    issue as an earlier one still being walked."""
     return api(f"/repos/pytorch/pytorch/issues/{num}")
-
-
-def problem_key(title):
-    """What makes two DISABLED issues the same problem: class + test name.
-
-    The name keeps its parametrization out of it, so the four dtype variants of
-    `test_redispatch_scatter` share a key. The class alone would not do: the
-    grid_sample and the scatter families live in the same
-    `TestTorchFunctionRedispatchOpsDeviceXPU` and are unrelated failures. A title
-    that does not parse gets a key of its own and is never grouped.
-    """
-    m = TITLE_RE.match(title)
-    if not m:
-        return (title,)
-    test, cls = m.groups()
-    # Cut at the LAST device token, not a regex anchored on the first one: the
-    # parametrisation is always the tail, and `test_copy_xpu_to_cuda` /
-    # `test_copy_cpu_to_xpu` are two tests that cutting at the first would merge.
-    cut = max(test.rfind(d) for d in ("_xpu", "_cpu", "_cuda"))
-    return cls, test[:cut] if cut > 0 else test
-
-
-def one_problem(nums):
-    """The oldest problem's issues, so a run has one root cause to find and its
-    patch is one thing to review. The rest waits for a later round.
-
-    Batching, not a verdict on what shares a cause: /issue-handler settles that
-    by evidence (fix one entry, re-run the others against the staged fix, list
-    what passes in `covers`). The title only has to put the entries that
-    mechanism pays off on -- one test's dtype variants, one build -- in the same
-    run. Do not replace this with a model: at queue time it would guess from
-    these same titles, before anything has been run.
-    """
-    keys = {n: problem_key(upstream(n)["title"]) for n in nums}
-    return [n for n in nums if keys[n] == keys[nums[0]]]
 
 
 def reopened_since(num, when):
@@ -241,7 +208,7 @@ def next_batch(mirrored):
             continue
         new = pending(comment, mirrored)
         if new:
-            return comment, one_problem(new)
+            return comment, new
     return None, []
 
 
@@ -309,47 +276,11 @@ def self_test():
         "https://github.com/pytorch/pytorch/issues/196748"
     ), "a session comment quoting the command is not a trigger"
 
-    # One trigger per problem. The two families share a class, so the class alone
-    # would have merged two unrelated failures into one run.
-    titles = {
-        "197521": "DISABLED test_redispatch_nn_functional_grid_sample_xpu_bfloat16 "
-        "(__main__.TestTorchFunctionRedispatchOpsDeviceXPU)",
-        "197523": "DISABLED test_redispatch_nn_functional_grid_sample_xpu_float32 "
-        "(__main__.TestTorchFunctionRedispatchOpsDeviceXPU)",
-        "197334": "DISABLED test_redispatch_scatter_xpu_float8_e4m3fn "
-        "(__main__.TestTorchFunctionRedispatchOpsDeviceXPU)",
-        "196247": "DISABLED test_1mb_allocation_uses_small_block (__main__.TestXpu)",
-        "196308": "DISABLED test_graph_checkpoint_preserve_rng_state (__main__.TestXpu)",
-        "1": "Something that is not a DISABLED title",
-    }
-    assert problem_key(titles["197521"]) == problem_key(titles["197523"]), (
-        "dtype variants of one test are one problem"
-    )
-    assert problem_key(titles["197521"]) != problem_key(titles["197334"]), (
-        "same class, different test: two problems"
-    )
-    assert problem_key(titles["196247"]) != problem_key(titles["196308"]), (
-        "unrelated tests in one class stay apart"
-    )
-    assert problem_key(titles["1"]) == (titles["1"],), "an unparseable title is its own"
-    assert problem_key(
-        "DISABLED test_copy_xpu_to_cuda (__main__.TestXpu)"
-    ) != problem_key("DISABLED test_copy_cpu_to_xpu (__main__.TestXpu)"), (
-        "the device token in the tail is the parametrisation, not one mid-name"
-    )
-
-    # One stub for both readers of the upstream issue: everything stays open, and
-    # 197334 was reopened once, after the first mirror.
+    # Per-episode dedup. 197334 was reopened once, after the first mirror;
+    # everything stays open.
     global upstream, reopened_since
-    upstream = lambda num: {"state": "open", "title": titles.get(num, "")}  # noqa: E731
+    upstream = lambda num: {"state": "open"}  # noqa: E731
     reopened_since = lambda num, when: num == "197334" and when < "2026-09-30"  # noqa: E731
-
-    assert one_problem(["197521", "197334", "197523", "196247"]) == [
-        "197521",
-        "197523",
-    ], "the oldest problem only, however the batch is ordered"
-    assert one_problem(["1", "197521"]) == ["1"], "unparseable goes alone"
-
     old, new = (
         {"created_at": "2026-09-23T00:00:00Z"},
         {"created_at": "2026-10-02T00:00:00Z"},
