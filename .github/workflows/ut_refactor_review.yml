@@ -10,7 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       pytorch_pr:
-        description: "unused on this branch; kept so the dispatch matches main"
+        # Reused as the issue list rather than renamed: dispatch inputs are
+        # validated against the default branch, where this one is required.
+        description: "pytorch issue numbers to queue, space separated"
         required: true
 
 permissions:
@@ -18,13 +20,13 @@ permissions:
 
 jobs:
   probe:
-    name: Queue pytorch#195876 as torchxpubot
+    name: Queue as torchxpubot
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Post the @torchxpubot fix trigger
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
-          ISSUES: "195876"
+          ISSUES: ${{ inputs.pytorch_pr }}
           DRY_RUN: "false"
         run: python3 .github/scripts/ci_disabled_queue.py
