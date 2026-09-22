@@ -1,5 +1,13 @@
-#include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <torch/csrc/xpu/XPUPluggableAllocator.h>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
+
+#include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 
 namespace {
 using namespace c10d::symmetric_memory;
