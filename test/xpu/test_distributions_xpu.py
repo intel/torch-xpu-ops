@@ -192,8 +192,13 @@ def _test_gamma_poisson_gpu_large_sample_independence(self):
     lam = 4.0
     p = torch.poisson(torch.full((n,), lam, device="xpu", dtype=torch.float64)).cpu()
     self.assertEqual(p.mean().item(), lam, atol=10 * (lam / n) ** 0.5, rtol=0)
-    k = torch.arange(16, dtype=torch.float64)
-    expected = n * Poisson(torch.tensor(lam, dtype=torch.float64)).log_prob(k).exp()
+    k = torch.arange(16, dtype=torch.float64, device="cpu")
+    expected = (
+        n
+        * Poisson(torch.tensor(lam, dtype=torch.float64, device="cpu"))
+        .log_prob(k)
+        .exp()
+    )
     counts = torch.bincount(p.long(), minlength=16)[:16].double()
     # ~14 once fixed, ~4000 under the bug at 40,960 work items.
     self.assertLess(_chi2(counts, expected), 100.0)
@@ -207,9 +212,11 @@ def _test_gamma_poisson_gpu_large_sample_independence(self):
     self.assertEqual(b.mean().item(), 0.5, atol=5 * (0.25 / n) ** 0.5, rtol=0)
     # Histogram of consecutive draws packed 8 to a byte: flat once fixed, skewed
     # by the repeated period under the bug.
-    codes = (b.view(-1, 8).long() * (2 ** torch.arange(8))).sum(1)
+    codes = (b.view(-1, 8).long() * (2 ** torch.arange(8, device="cpu"))).sum(1)
     byte_counts = torch.bincount(codes, minlength=256).double()
-    byte_expected = torch.full((256,), codes.numel() / 256, dtype=torch.float64)
+    byte_expected = torch.full(
+        (256,), codes.numel() / 256, dtype=torch.float64, device="cpu"
+    )
     # ~256 once fixed, ~62,000 under the bug at 40,960 work items.
     self.assertLess(_chi2(byte_counts, byte_expected), 500.0)
 
