@@ -8,15 +8,16 @@
 
 # Owner(s): ["module: intel"]
 """
-Regression tests for the noise shape/contiguity checks in the XPU
-rrelu_with_noise kernel.
+Regression tests for the noise shape check and non-contiguous noise
+handling in the XPU rrelu_with_noise kernel.
 
 The training kernel writes one noise value per element of self directly
 into the caller's noise tensor. Nothing used to check that noise had the
 same shape as self or was contiguous, so a non-contiguous noise (e.g. an
 expanded view) was silently written through a discarded contiguous
 temporary: the returned output was correct but the caller's noise kept
-its old values. These tests pin the error checks added for both cases.
+its old values. Non-contiguous noise now materializes, the same way the
+output does.
 """
 
 import torch
@@ -39,14 +40,14 @@ class TestRreluWithNoise(TestCase):
         x = torch.randn(4, 8, device=xpu_device)
         noise = torch.randn(4, 16, device=xpu_device)[:, ::2]
         self.assertFalse(noise.is_contiguous())
-        with self.assertRaisesRegex(RuntimeError, "Expected contiguous tensor"):
-            torch.rrelu_with_noise(x, noise, training=True)
+        out = torch.rrelu_with_noise(x, noise, training=True)
+        self.assertEqual(out, x * noise)
 
-        # An expanded view: same shape as x, but not a real buffer.
-        noise = torch.randn(1, 8, device=xpu_device).expand(4, 8)
-        self.assertFalse(noise.is_contiguous())
-        with self.assertRaisesRegex(RuntimeError, "Expected contiguous tensor"):
-            torch.rrelu_with_noise(x, noise, training=True)
+        # An expanded view: its storage holds one row; writing through its
+        # data pointer used to go past the storage. It materializes now.
+        noise = torch.zeros(1, 8, device=xpu_device).expand(4, 8)
+        out = torch.rrelu_with_noise(x, noise, training=True)
+        self.assertEqual(out, x * noise)
 
     def test_noise_written(self):
         # Positive path: the kernel must write into the caller's noise.
