@@ -2,7 +2,7 @@
 # Copyright 2026 Intel Corporation
 # Licensed under the Apache License, Version 2.0
 
-"""Ask the fix bot to fix the upstream DISABLED tests nobody has asked about yet.
+"""Post `@torchxpubot fix` on the tracking issue for each new batch of DISABLED tests.
 
     GH_TOKEN=<read SOURCE, write TARGET> python ci_disabled_queue.py  # print only
     GH_TOKEN=<...> DRY_RUN=false        python ci_disabled_queue.py  # post
