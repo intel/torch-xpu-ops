@@ -73,7 +73,8 @@ void nll_loss2d_forward_noreduce_kernel(
 
 template <typename scalar_t, typename accscalar_t, typename index_t, int SIMD>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void nll_loss2d_forward_kernel_(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
+void nll_loss2d_forward_kernel_(
     scalar_t* output,
     scalar_t* total_weight,
     const scalar_t* input,
