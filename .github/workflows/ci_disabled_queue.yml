@@ -6,9 +6,14 @@ on:
   # this repo (#5490) and MERGE_TOKEN could finally read it.
   #
   # Known gap, accepted for now: a `fix` run that never reaches a working GPU
-  # still counts as queued, so a dead card silently spends the entry. Driver
-  # deaths are handled by hand until the preflight-and-requeue gate lands; watch
-  # #5272 for a trigger whose run died early and re-post it.
+  # still counts as queued, so a dead card silently spends the entry. The cause is
+  # #5432 -- a Level Zero DEVICE_LOST / OUT_OF_RESOURCES state whose driver fix is
+  # not due before 2026.3 -- and in it `torch.xpu.is_available()` still returns
+  # True and xpu-smi still reports every device normal, so bot.yml's preflight does
+  # not catch it and the run either fails for hours or hangs into its 300min
+  # timeout. Until a preflight that runs a real kernel plus a requeue lands, watch
+  # #5272: a trigger whose run died early or timed out has to be re-posted by hand,
+  # because dedup counts it as answered.
   schedule:
     - cron: '0 0,9-23 * * *'
   #
