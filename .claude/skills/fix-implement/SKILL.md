@@ -110,9 +110,8 @@ pytorch test tree for upstream tests, `test/xpu/` inside torch-xpu-ops
 for its own tests.
 
 **The skip must live inside `target_repo_dir`.** One invocation produces
-one repo's diff, and the orchestrator commits (or reads) only
-`target_repo_dir` -- a fix needing both repos is two invocations, one per
-repo, which the orchestrator records as two units. If the skip would have to be added to a file
+one repo's diff (a two-repo fix is two invocations), and the orchestrator
+commits (or reads) only `target_repo_dir`. If the skip would have to be added to a file
 outside `target_repo_dir` — e.g. `target_repo == "torch-xpu-ops"` but
 the failing test is in pytorch's `test/` tree — do NOT edit it: that
 change would be left uncommitted and then wiped by the orchestrator's

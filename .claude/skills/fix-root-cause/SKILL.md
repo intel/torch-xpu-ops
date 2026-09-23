@@ -347,18 +347,10 @@ can be isolated to a single repo:
   `target_repo`; note in `root_cause` that the preliminary scope was
   `both` and why one side is not needed.
 - If both genuinely need changing (e.g. an XPU kernel plus the pytorch
-  meta/OpInfo registration that stops xfailing it) → this is **not**
-  `NEEDS_HUMAN`. Both trees are local — the pytorch clone carries
-  torch-xpu-ops as its submodule — so both halves can be committed and
-  verified in one build, which is how `pytorch#197521` was fixed. Return
-  `target_repo` = the half that must land **first** and carries the real
-  fix, `companion_repo` = the other, and say in `fix_strategy` what each
-  half does and why that order (a torch-xpu-ops kernel lands before the
-  pytorch side that depends on the `xpu.txt` pin bump).
-
-`NEEDS_HUMAN(cross_repo_coordinated)` is for a coordinated change in a
-repo this agent cannot build — oneDNN, IGC, a driver component — not for
-the two repos it already has checked out.
+  meta/OpInfo registration that stops xfailing it) → not `NEEDS_HUMAN`.
+  Both repos are in the one checkout, so return `target_repo` = the half
+  that must land **first**, `companion_repo` = the other, and put the
+  order and the reason for it in `fix_strategy`.
 
 See the matched `../domain-knowledge/domain-<name>.md` file(s) for path conventions.
 
@@ -384,8 +376,7 @@ Use `unresolvable_statically` only as a **fallback** — try the
 more specific codes first. Typical fits: needs live hardware
 measurement to confirm, needs a design decision that only a human
 maintainer can make, needs API-level architecture work too large to
-carry in one fix. Touching both pytorch and torch-xpu-ops is not a
-fit -- that is a normal fix with a `companion_repo` (Step 4).
+carry in one fix.
 
 ## Step 6: Sanity check
 
@@ -552,10 +543,9 @@ On `verdict=NEEDS_HUMAN`:
   reproduced by the agent.
 - `version_upgrade_no_repro` — version-upgrade breakage with no
   minimal script and no identifiable changed component.
-- `cross_repo_coordinated` — a coordinated change is required in a
-  repo the agent cannot build (oneDNN, IGC, a driver component), Step 4.
-  pytorch + torch-xpu-ops together is NOT this: both are checked out,
-  so a two-repo fix is a normal `IMPLEMENTING` with a `companion_repo`.
+- `cross_repo_coordinated` — a repo the agent cannot build needs a
+  coordinated change: oneDNN, IGC, a driver component. Not pytorch +
+  torch-xpu-ops, which is a normal fix with a `companion_repo` (Step 4).
 - `no_registered_domain` — none of the registered domains fits
   the failure (Step 1).
 - `unresolvable_statically` — requires hardware, complex redesign,
