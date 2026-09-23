@@ -44,10 +44,13 @@ class TestRreluWithNoise(TestCase):
         self.assertEqual(out, x * noise)
 
         # An expanded view: its storage holds one row; writing through its
-        # data pointer used to go past the storage. It materializes now.
+        # data pointer used to go past the storage. Distinct per-element
+        # noise values cannot land there, so the copy back rejects it.
         noise = torch.zeros(1, 8, device=xpu_device).expand(4, 8)
-        out = torch.rrelu_with_noise(x, noise, training=True)
-        self.assertEqual(out, x * noise)
+        with self.assertRaisesRegex(
+            RuntimeError, "refers to a single memory location"
+        ):
+            torch.rrelu_with_noise(x, noise, training=True)
 
     def test_noise_written(self):
         # Positive path: the kernel must write into the caller's noise.
