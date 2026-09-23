@@ -300,27 +300,28 @@ void conv_depthwise2d_backward_kernel(
 template <typename scalar_t, typename acc_t, typename index_t, int SIMD>
 [[sycl::reqd_sub_group_size(SIMD)]] SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (syclexp::nd_range_kernel<1>))
-    SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void conv_depthwise2d_grad_weight_kernel(
-        const PackedTensorAccessor32<const scalar_t, 4, DefaultPtrTraits>
-            grad_output,
-        const PackedTensorAccessor32<const scalar_t, 4, DefaultPtrTraits> input,
-        PackedTensorAccessor32<scalar_t, 4, DefaultPtrTraits> grad_weight,
-        const int batchSize,
-        const int inputChannels,
-        const int kernelChannels,
-        const int depthwiseMultiplier,
-        const int inputWidth,
-        const int inputHeight,
-        const int outputWidth,
-        const int outputHeight,
-        const int kernelWidth,
-        const int kernelHeight,
-        const int strideWidth,
-        const int strideHeight,
-        const int padWidth,
-        const int padHeight,
-        const int dilationWidth,
-        const int dilationHeight) {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
+void conv_depthwise2d_grad_weight_kernel(
+    const PackedTensorAccessor32<const scalar_t, 4, DefaultPtrTraits>
+        grad_output,
+    const PackedTensorAccessor32<const scalar_t, 4, DefaultPtrTraits> input,
+    PackedTensorAccessor32<scalar_t, 4, DefaultPtrTraits> grad_weight,
+    const int batchSize,
+    const int inputChannels,
+    const int kernelChannels,
+    const int depthwiseMultiplier,
+    const int inputWidth,
+    const int inputHeight,
+    const int outputWidth,
+    const int outputHeight,
+    const int kernelWidth,
+    const int kernelHeight,
+    const int strideWidth,
+    const int strideHeight,
+    const int padWidth,
+    const int padHeight,
+    const int dilationWidth,
+    const int dilationHeight) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   acc_t* smem = static_cast<acc_t*>(syclexp::get_work_group_scratch_memory());
 
