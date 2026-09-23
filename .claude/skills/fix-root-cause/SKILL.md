@@ -346,11 +346,19 @@ can be isolated to a single repo:
   change is optional or already present) → return that single
   `target_repo`; note in `root_cause` that the preliminary scope was
   `both` and why one side is not needed.
-- If both repos genuinely require coordinated changes (e.g. a new
-  pytorch API AND its XPU implementation, and neither can land
-  independently) → return `NEEDS_HUMAN`, reason:
-  `"Cross-repo coordinated fix (pytorch + torch-xpu-ops) required;
-  agent supports only single-repo fixes in this run."`
+- If both genuinely need changing (e.g. an XPU kernel plus the pytorch
+  meta/OpInfo registration that stops xfailing it) → this is **not**
+  `NEEDS_HUMAN`. Both trees are local — the pytorch clone carries
+  torch-xpu-ops as its submodule — so both halves can be committed and
+  verified in one build, which is how `pytorch#197521` was fixed. Return
+  `target_repo` = the half that must land **first** and carries the real
+  fix, `companion_repo` = the other, and say in `fix_strategy` what each
+  half does and why that order (a torch-xpu-ops kernel lands before the
+  pytorch side that depends on the `xpu.txt` pin bump).
+
+`NEEDS_HUMAN(cross_repo_coordinated)` is for a coordinated change in a
+repo this agent cannot build — oneDNN, IGC, a driver component — not for
+the two repos it already has checked out.
 
 See the matched `../domain-knowledge/domain-<name>.md` file(s) for path conventions.
 
@@ -368,16 +376,16 @@ prose:
 | Hardware-specific failure with no self-contained repro script | `hardware_specific` |
 | Depends on a non-public model / checkpoint / dataset, or a distributed setup that cannot be reproduced by the agent | `non_public_dependency` |
 | Version-upgrade breakage with no minimal script and no identifiable changed component | `version_upgrade_no_repro` |
-| Cross-repo coordinated changes required (Step 4) | `cross_repo_coordinated` |
+| Coordinated change needed in a repo the agent cannot build (oneDNN / IGC / driver), Step 4 | `cross_repo_coordinated` |
 | No registered domain fits (Step 1) | `no_registered_domain` |
 | None of the above fits but the failure still cannot be fixed from source alone | `unresolvable_statically` |
 
 Use `unresolvable_statically` only as a **fallback** — try the
 more specific codes first. Typical fits: needs live hardware
 measurement to confirm, needs a design decision that only a human
-maintainer can make, needs API-level architecture work that
-crosses the "single-repo fix" boundary without being a
-`cross_repo_coordinated` change in the Step 4 sense.
+maintainer can make, needs API-level architecture work too large to
+carry in one fix. Touching both pytorch and torch-xpu-ops is not a
+fit -- that is a normal fix with a `companion_repo` (Step 4).
 
 ## Step 6: Sanity check
 
@@ -464,7 +472,8 @@ this repo already has versus what is missing. This is the fix strategy.>
 {
   "root_cause": "2-3 sentences",
   "fix_strategy": "specific files/functions to change",
-  "target_repo": "pytorch or torch-xpu-ops",
+  "target_repo": "pytorch or torch-xpu-ops -- the half that lands first",
+  "companion_repo": "the other repo when both need changing, else null",
   "analyzed_sha": "<full 40-char sha of target_repo HEAD at analysis time>",
   "domains": ["<root-cause domain>", "<other applied domains>", "..."],
   "verdict": "IMPLEMENTING or NEEDS_HUMAN",
@@ -507,6 +516,7 @@ orchestrators. Keep them consistent:
 | `Fix repo: pytorch` | `"target_repo": "pytorch"` |
 | `Fix repo: torch-xpu-ops` | `"target_repo": "torch-xpu-ops"` |
 | `Fix repo: N/A` | `"target_repo": null` (only on `NEEDS_HUMAN`) |
+| `Fix repo: torch-xpu-ops + pytorch` | `"target_repo": "torch-xpu-ops"`, `"companion_repo": "pytorch"` (lands-first repo first) |
 | `Analyzed at: pytorch@abcdef1` | `"analyzed_sha": "abcdef1..."` (full 40 chars in JSON, short in markdown) |
 | `Analyzed at: N/A` | `"analyzed_sha": null` (only when `target_repo` is null) |
 | `Fix strategy: <text>` or `None` | `"fix_strategy": "<text>"` or `null` |
@@ -542,8 +552,10 @@ On `verdict=NEEDS_HUMAN`:
   reproduced by the agent.
 - `version_upgrade_no_repro` — version-upgrade breakage with no
   minimal script and no identifiable changed component.
-- `cross_repo_coordinated` — both repos genuinely require
-  coordinated changes and neither can land independently (Step 4).
+- `cross_repo_coordinated` — a coordinated change is required in a
+  repo the agent cannot build (oneDNN, IGC, a driver component), Step 4.
+  pytorch + torch-xpu-ops together is NOT this: both are checked out,
+  so a two-repo fix is a normal `IMPLEMENTING` with a `companion_repo`.
 - `no_registered_domain` — none of the registered domains fits
   the failure (Step 1).
 - `unresolvable_statically` — requires hardware, complex redesign,
