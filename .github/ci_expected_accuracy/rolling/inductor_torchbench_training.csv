@@ -12,7 +12,7 @@ basic_gnn_gin,pass,pass,pass,pass,pass
 basic_gnn_sage,pass,pass,pass,pass,pass
 cm3leon_generate,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 dcgan,pass,pass,pass,pass,pass
-demucs,fail_accuracy,eager_fail_to_run,eager_fail_to_run,fail_accuracy,fail_accuracy
+demucs,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
 densenet121,pass,pass,pass,pass,pass
 detectron2_fasterrcnn_r_101_c4,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 detectron2_fasterrcnn_r_101_dc5,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
@@ -63,7 +63,7 @@ mobilenet_v2,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1787
 mobilenet_v2_quantized_qat,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,model_fail_to_load,model_fail_to_load,eager_fail_to_run,model_fail_to_load,model_fail_to_load
+moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
@@ -106,6 +106,6 @@ timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
-vision_maskrcnn,pass,pass,pass,pass,fail_to_run
+vision_maskrcnn,pass,pass,pass,pass,pass
 yolov3,pass,pass,pass,pass,pass
 hf_Roberta_base,pass,pass,pass,pass,pass
