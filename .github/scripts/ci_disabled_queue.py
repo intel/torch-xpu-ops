@@ -86,9 +86,6 @@ def disabled_issues(body):
 def last_mirrored():
     """Newest `@torchxpubot fix` timestamp on TARGET per pytorch issue it names.
 
-    Start-anchored like bot.yml's own gate, or the bot's session comments -- which
-    quote the command they are reporting on -- would count as triggers.
-
     Ceiling: a comment that reads as a trigger but never ran one (its author
     failed the permission gate) still counts. The comment is the record; pairing
     comments with runs by timestamp would be guesswork.
@@ -289,8 +286,7 @@ def main():
         return
     body = trigger_body(comment, issues)
 
-    # Posting takes the exact string "false" and nothing else, so an unset or
-    # misspelled DRY_RUN prints instead of commenting on a live issue.
+    # Compared against the literal, so a typo or an unset value prints.
     if os.environ.get("DRY_RUN", "true").strip().lower() != "false":
         print(f"[dry run]\n\n{body}")
         return
