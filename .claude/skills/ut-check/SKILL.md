@@ -124,6 +124,8 @@ column), a New Test Coverage summary line with counts whenever the PR adds
 tests, and a Recommendation with an explicit safe-to-merge verdict.
 
 ```markdown
+VERDICT: <one sentence — safe to merge or not, and why>
+
 ## UT Result Check: PR #<number>
 
 ### New Failures
