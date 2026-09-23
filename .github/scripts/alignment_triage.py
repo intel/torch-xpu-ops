@@ -92,9 +92,11 @@ def render_draft(
     )
     prefix = "[DRY RUN] " if dry_run else ""
     scan_day = date.fromisoformat(scan_date)
+    title_text = title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()
+    title_text = re.sub(r"^(?:\[\d{2}(?:\d{2})?-\d{2}-\d{2}\]\s*)+", "", title_text)
     dated_title = (
         f"{ISSUE_TITLE_PREFIX} [{scan_day.strftime('%y-%m-%d')}] "
-        f"{title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()}"
+        f"{title_text}"
     )
     return (
         f"{marker}\n"
@@ -188,6 +190,11 @@ def filed_body(body: str, unit_id: str, issue_url: str) -> str:
     )
 
 
+def is_open_issue(repo: str, number: str) -> bool:
+    issue = json.loads(gh(["api", f"repos/{repo}/issues/{number}"]))
+    return issue.get("state") == "open"
+
+
 def find_published_issue(repo: str, unit_id: str) -> str | None:
     marker = PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)
     page = 1
@@ -201,7 +208,7 @@ def find_published_issue(repo: str, unit_id: str) -> str | None:
             )
         )
         for issue in issues:
-            if marker in (issue.get("body") or ""):
+            if issue.get("state") == "open" and marker in (issue.get("body") or ""):
                 return str(issue["html_url"])
         if len(issues) < 100:
             return None
