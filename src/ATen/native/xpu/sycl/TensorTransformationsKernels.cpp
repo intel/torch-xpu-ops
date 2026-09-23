@@ -100,9 +100,6 @@ struct FlipKernelImplLoopFunctor {
       const offset_calc_t offset_calc)
       : out_ptr(out_ptr), in_ptr(in_ptr), offset_calc(offset_calc) {}
 
-  FlipKernelImplLoopFunctor& operator=(const FlipKernelImplLoopFunctor&) =
-      delete;
-
  private:
   char* const RESTRICT out_ptr;
   const char* const RESTRICT in_ptr;
