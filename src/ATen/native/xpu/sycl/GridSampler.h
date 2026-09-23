@@ -16,8 +16,11 @@
 #include <ATen/OpMathType.h>
 #include <ATen/native/GridSampler.h>
 
+#include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/XPUMathCompat.h>
+
+#include <limits>
 
 namespace at::native::xpu {
 
@@ -181,6 +184,103 @@ static inline scalar_t grid_sampler_compute_source_index_set_grad(
 
   coord = safe_downgrade_to_int_range(coord);
   return coord;
+}
+
+// grid_sampler_unnormalize with the extent in index_t, for the kernels that
+// index with int64_t. It converts where the int-taking helper converts.
+template <typename scalar_t, typename index_t>
+static inline scalar_t grid_sampler_unnormalize_sized(
+    scalar_t coord,
+    index_t size,
+    bool align_corners) {
+  if (align_corners) {
+    return ((coord + 1) / 2) * static_cast<scalar_t>(size - 1);
+  } else {
+    return ((coord + 1) * static_cast<scalar_t>(size) - 1) / 2;
+  }
+}
+
+template <typename scalar_t, typename index_t>
+static inline scalar_t grid_sampler_unnormalize_set_grad_sized(
+    scalar_t coord,
+    index_t size,
+    bool align_corners,
+    scalar_t* grad_in) {
+  if (align_corners) {
+    *grad_in = static_cast<scalar_t>(size - 1) / 2;
+    return ((coord + 1) / 2) * static_cast<scalar_t>(size - 1);
+  } else {
+    *grad_in = static_cast<scalar_t>(size) / 2;
+    return ((coord + 1) * static_cast<scalar_t>(size) - 1) / 2;
+  }
+}
+
+// compute_coordinates with the extent in index_t, the reflection parity
+// taken with fmod and no downgrade: no float converts to an integer, and a
+// position past INT_MAX keeps its voxel.
+template <typename scalar_t, typename index_t>
+static inline scalar_t compute_coordinates_sized(
+    scalar_t coord,
+    index_t size,
+    GridSamplerPadding padding_mode,
+    bool align_corners) {
+  if (padding_mode == GridSamplerPadding::Border) {
+    coord = sycl::fmin(
+        static_cast<scalar_t>(size - 1),
+        sycl::fmax(coord, static_cast<scalar_t>(0)));
+  } else if (padding_mode == GridSamplerPadding::Reflection) {
+    // the bounds reflect_coordinates halves, formed without doubling the extent
+    const scalar_t low =
+        align_corners ? static_cast<scalar_t>(0) : static_cast<scalar_t>(-0.5);
+    const scalar_t span =
+        static_cast<scalar_t>(align_corners ? size - 1 : size);
+    if (span == 0) {
+      coord = 0;
+    } else {
+      const scalar_t in = sycl::fabs(coord - low);
+      const scalar_t extra = sycl::fmod(in, span);
+      const bool odd =
+          sycl::fmod(sycl::floor(in / span), static_cast<scalar_t>(2)) != 0;
+      coord = odd ? span - extra + low : extra + low;
+    }
+    coord = sycl::fmin(
+        static_cast<scalar_t>(size - 1),
+        sycl::fmax(coord, static_cast<scalar_t>(0)));
+  }
+  return coord;
+}
+
+// The four cubic taps one axis contributes at `coord`: the Keys coefficients
+// of its fractional part, the index each tap reads, and, when `coeffs_grad` is
+// given, the coefficient derivatives. The taps sit around the unclipped index.
+// A tap the padding drops takes a negative index, contributes a zero value and
+// keeps its coefficient, as get_value_bounded does in 4-D.
+template <typename scalar_t, typename index_t>
+static inline void resolve_cubic_taps(
+    scalar_t coord,
+    index_t size,
+    GridSamplerPadding padding_mode,
+    bool align_corners,
+    scalar_t coeffs[4],
+    scalar_t* coeffs_grad,
+    index_t indices[4]) {
+  const scalar_t base = sycl::floor(coord);
+  get_cubic_upsampling_coefficients<scalar_t>(coeffs, coord - base);
+  if (coeffs_grad != nullptr) {
+    get_cubic_coefficients_grad<scalar_t>(coeffs_grad, coord - base);
+  }
+  const scalar_t index_limit =
+      static_cast<scalar_t>(std::numeric_limits<index_t>::max());
+#pragma unroll 4
+  for (int i = 0; i < 4; ++i) {
+    const scalar_t tap = compute_coordinates_sized(
+        base - 1 + i, size, padding_mode, align_corners);
+    // a tap that is not finite, or past the index type, fails before the cast
+    const index_t index = (tap >= 0 && tap < index_limit)
+        ? static_cast<index_t>(tap)
+        : static_cast<index_t>(-1);
+    indices[i] = index < size ? index : static_cast<index_t>(-1);
+  }
 }
 
 } // namespace at::native::xpu
