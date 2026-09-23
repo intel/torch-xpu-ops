@@ -27,207 +27,159 @@ const int MULTILABELMARGIN_THREADS =
 using namespace at::xpu;
 
 template <typename scalar_t, typename accscalar_t>
-struct MultilabelMarginLossForwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(MULTILABELMARGIN_SUB_GROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    int k = item.get_group(0);
-    const scalar_t* input_k = input_ + k * dim_;
-    const int64_t* target_k = target_ + k * dim_;
-    scalar_t* output_k = output_ + k;
-    scalar_t* is_target_k = is_target_ + k * dim_;
-    for (int d = item.get_local_linear_id(); d < dim_;
-         d += item.get_local_range(0)) {
-      is_target_k[d] = static_cast<scalar_t>(0);
-    }
-    sycl::group_barrier(item.get_group());
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<MULTILABELMARGIN_SUB_GROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void multilabel_margin_loss_forward_kernel_impl(
+    scalar_t* output,
+    const scalar_t* input,
+    const int64_t* target,
+    scalar_t* is_target,
+    int nframe,
+    int dim,
+    bool size_average) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  accscalar_t* smem =
+      reinterpret_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
 
-    if (item.get_local_linear_id() == 0) {
-      for (int dt = 0; dt < dim_; dt++) {
-        int target_idx = target_k[dt];
-        if (target_idx < 0) {
-          break;
-        }
-        is_target_k[target_idx] = static_cast<scalar_t>(1);
-      }
-    }
-    sycl::group_barrier(item.get_group());
+  int k = item.get_group(0);
+  const scalar_t* input_k = input + k * dim;
+  const int64_t* target_k = target + k * dim;
+  scalar_t* output_k = output + k;
+  scalar_t* is_target_k = is_target + k * dim;
+  for (int d = item.get_local_linear_id(); d < dim;
+       d += item.get_local_range(0)) {
+    is_target_k[d] = static_cast<scalar_t>(0);
+  }
+  sycl::group_barrier(item.get_group());
 
-    accscalar_t sum = 0;
-    for (int dt = 0; dt < dim_; dt++) {
-      // next target:
+  if (item.get_local_linear_id() == 0) {
+    for (int dt = 0; dt < dim; dt++) {
       int target_idx = target_k[dt];
       if (target_idx < 0) {
         break;
       }
+      is_target_k[target_idx] = static_cast<scalar_t>(1);
+    }
+  }
+  sycl::group_barrier(item.get_group());
 
-      // current value for target
-      scalar_t input_target_k = input_k[target_idx];
+  accscalar_t sum = 0;
+  for (int dt = 0; dt < dim; dt++) {
+    // next target:
+    int target_idx = target_k[dt];
+    if (target_idx < 0) {
+      break;
+    }
 
-      // compare to all inputs (multithreaded):
-      for (int d = item.get_local_linear_id(); d < dim_;
-           d += item.get_local_range(0)) {
-        // contribute to loss only if not a target
-        if (!static_cast<int>(is_target_k[d])) {
-          scalar_t z = 1 - input_target_k + input_k[d];
-          if (z > 0) {
-            sum += z;
-          }
+    // current value for target
+    scalar_t input_target_k = input_k[target_idx];
+
+    // compare to all inputs (multithreaded):
+    for (int d = item.get_local_linear_id(); d < dim;
+         d += item.get_local_range(0)) {
+      // contribute to loss only if not a target
+      if (!static_cast<int>(is_target_k[d])) {
+        scalar_t z = 1 - input_target_k + input_k[d];
+        if (z > 0) {
+          sum += z;
         }
       }
     }
+  }
 
-    accscalar_t total_sum = GroupReduceSumWithoutBroadcast<
-        accscalar_t,
-        MULTILABELMARGIN_SUB_GROUP_SIZE>(item, sum, smem_);
+  accscalar_t total_sum = GroupReduceSumWithoutBroadcast<
+      accscalar_t,
+      MULTILABELMARGIN_SUB_GROUP_SIZE>(item, sum, smem);
 
-    if (item.get_local_linear_id() == 0) {
-      if (size_average_) {
-        *output_k = static_cast<scalar_t>((total_sum / dim_) / nframe_);
-      } else {
-        *output_k = static_cast<scalar_t>(total_sum / dim_);
-      }
+  if (item.get_local_linear_id() == 0) {
+    if (size_average) {
+      *output_k = static_cast<scalar_t>((total_sum / dim) / nframe);
+    } else {
+      *output_k = static_cast<scalar_t>(total_sum / dim);
     }
   }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_ = sycl_local_acc_t<accscalar_t>(smem_size_, cgh);
-  }
-  MultilabelMarginLossForwardKernelFunctor(
-      scalar_t* output,
-      const scalar_t* input,
-      const int64_t* target,
-      scalar_t* is_target,
-      int nframe,
-      int dim,
-      bool size_average,
-      int64_t smem_size)
-      : output_(output),
-        input_(input),
-        target_(target),
-        is_target_(is_target),
-        nframe_(nframe),
-        dim_(dim),
-        size_average_(size_average),
-        smem_size_(smem_size) {}
-
- private:
-  scalar_t* output_;
-  const scalar_t* input_;
-  const int64_t* target_;
-  const scalar_t* weights_;
-  scalar_t* is_target_;
-  int nframe_;
-  int dim_;
-  bool size_average_;
-  int64_t smem_size_;
-  sycl_local_acc_t<accscalar_t> smem_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t>
-struct MultilabelMarginLossBackwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(MULTILABELMARGIN_SUB_GROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    int k = item.get_group(0);
-    const scalar_t* input_k = input_ + k * dim_;
-    scalar_t* grad_input_k = grad_input_ + k * dim_;
-    const int64_t* target_k = target_ + k * dim_;
-    const scalar_t* is_target_k = is_target_ + k * dim_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<MULTILABELMARGIN_SUB_GROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void multilabel_margin_loss_backward_kernel_impl(
+    scalar_t* grad_input,
+    const scalar_t* grad_output,
+    const scalar_t* input,
+    const int64_t* target,
+    const scalar_t* is_target,
+    int nframe,
+    int dim,
+    bool size_average,
+    bool reduce) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  accscalar_t* smem =
+      reinterpret_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
 
-    const scalar_t* grad_output_k = grad_output_;
-    if (!reduce_) {
-      grad_output_k += k;
+  int k = item.get_group(0);
+  const scalar_t* input_k = input + k * dim;
+  scalar_t* grad_input_k = grad_input + k * dim;
+  const int64_t* target_k = target + k * dim;
+  const scalar_t* is_target_k = is_target + k * dim;
+
+  const scalar_t* grad_output_k = grad_output;
+  if (!reduce) {
+    grad_output_k += k;
+  }
+
+  // gain:
+  scalar_t g = static_cast<scalar_t>(
+      size_average && reduce
+          ? accscalar_t(1) / static_cast<accscalar_t>(nframe * dim)
+          : accscalar_t(1) / static_cast<accscalar_t>(dim));
+
+  // zero gradients:
+  for (int d = item.get_local_id(0); d < dim; d += item.get_local_range(0)) {
+    grad_input_k[d] = static_cast<scalar_t>(0);
+  }
+  sycl::group_barrier(item.get_group());
+
+  // iterate over targets
+  for (int dt = 0; dt < dim; dt++) {
+    // next target:
+    int target_idx = static_cast<int>(target_k[dt]);
+    if (target_idx < 0) {
+      break;
     }
 
-    // gain:
-    scalar_t g = static_cast<scalar_t>(
-        size_average_ && reduce_
-            ? accscalar_t(1) / static_cast<accscalar_t>(nframe_ * dim_)
-            : accscalar_t(1) / static_cast<accscalar_t>(dim_));
+    // current value for target
+    scalar_t input_target_k = input_k[target_idx];
 
-    // zero gradients:
-    for (int d = item.get_local_id(0); d < dim_; d += item.get_local_range(0)) {
-      grad_input_k[d] = static_cast<scalar_t>(0);
+    // compare to all inputs (multithreaded):
+    accscalar_t sum = 0;
+    for (int d = item.get_local_id(0); d < dim; d += item.get_local_range(0)) {
+      // contribute to loss only if not a target
+      if (!static_cast<int>(is_target_k[d])) {
+        scalar_t z = 1 - input_target_k + input_k[d];
+        if (z > 0) {
+          sum -= g;
+          grad_input_k[d] += g;
+        }
+      }
     }
     sycl::group_barrier(item.get_group());
 
-    // iterate over targets
-    for (int dt = 0; dt < dim_; dt++) {
-      // next target:
-      int target_idx = static_cast<int>(target_k[dt]);
-      if (target_idx < 0) {
-        break;
-      }
+    sum = GroupReduceSumWithoutBroadcast<
+        accscalar_t,
+        MULTILABELMARGIN_SUB_GROUP_SIZE>(item, sum, smem);
 
-      // current value for target
-      scalar_t input_target_k = input_k[target_idx];
-
-      // compare to all inputs (multithreaded):
-      accscalar_t sum = 0;
-      for (int d = item.get_local_id(0); d < dim_;
-           d += item.get_local_range(0)) {
-        // contribute to loss only if not a target
-        if (!static_cast<int>(is_target_k[d])) {
-          scalar_t z = 1 - input_target_k + input_k[d];
-          if (z > 0) {
-            sum -= g;
-            grad_input_k[d] += g;
-          }
-        }
-      }
-      sycl::group_barrier(item.get_group());
-
-      sum = GroupReduceSumWithoutBroadcast<
-          accscalar_t,
-          MULTILABELMARGIN_SUB_GROUP_SIZE>(item, sum, smem_);
-
-      if (item.get_local_id(0) == 0) {
-        grad_input_k[target_idx] += static_cast<scalar_t>(sum);
-      }
-    }
-
-    for (int d = item.get_local_id(0); d < dim_; d += item.get_local_range(0)) {
-      grad_input_k[d] *= *grad_output_k;
+    if (item.get_local_id(0) == 0) {
+      grad_input_k[target_idx] += static_cast<scalar_t>(sum);
     }
   }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_ = sycl_local_acc_t<accscalar_t>(smem_size_, cgh);
-  }
-  MultilabelMarginLossBackwardKernelFunctor(
-      scalar_t* grad_input,
-      const scalar_t* grad_output,
-      const scalar_t* input,
-      const int64_t* target,
-      const scalar_t* is_target,
-      int nframe,
-      int dim,
-      bool size_average,
-      bool reduce,
-      int64_t smem_size)
-      : grad_input_(grad_input),
-        grad_output_(grad_output),
-        input_(input),
-        target_(target),
-        is_target_(is_target),
-        nframe_(nframe),
-        dim_(dim),
-        size_average_(size_average),
-        reduce_(reduce),
-        smem_size_(smem_size) {}
 
- private:
-  scalar_t* grad_input_;
-  const scalar_t* grad_output_;
-  const scalar_t* input_;
-  const int64_t* target_;
-  const scalar_t* is_target_;
-  int nframe_;
-  int dim_;
-  bool size_average_;
-  bool reduce_;
-  int64_t smem_size_;
-  sycl_local_acc_t<accscalar_t> smem_;
-};
+  for (int d = item.get_local_id(0); d < dim; d += item.get_local_range(0)) {
+    grad_input_k[d] *= *grad_output_k;
+  }
+}
 
 void multilabel_margin_loss_kernel(
     const Tensor& input,
@@ -258,20 +210,22 @@ void multilabel_margin_loss_kernel(
         "multilabel_margin_loss_xpu",
         [&] {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
-          using KernelClass =
-              MultilabelMarginLossForwardKernelFunctor<scalar_t, accscalar_t>;
           int64_t local_size = MULTILABELMARGIN_THREADS;
-          auto kfn = KernelClass(
+          int slm_sz = sizeof(accscalar_t) * local_size;
+          sycl_kernel_submit<multilabel_margin_loss_forward_kernel_impl<
+              scalar_t,
+              accscalar_t>>(
+              local_size,
+              local_size,
+              getCurrentSYCLQueue(),
+              slm_sz,
               output.mutable_data_ptr<scalar_t>(),
               input_.const_data_ptr<scalar_t>(),
               target_.const_data_ptr<int64_t>(),
               is_target_.mutable_data_ptr<scalar_t>(),
               1,
               dim,
-              reduction == at::Reduction::Mean,
-              local_size);
-          sycl_kernel_submit(
-              local_size, local_size, getCurrentSYCLQueue(), kfn);
+              reduction == at::Reduction::Mean);
         });
   } else if (input.dim() == 2) {
     if (reduction != at::Reduction::None) {
@@ -284,23 +238,22 @@ void multilabel_margin_loss_kernel(
           "multilabel_margin_loss_xpu",
           [&] {
             using accscalar_t = acc_type_device<scalar_t, kXPU>;
-            using KernelClass =
-                MultilabelMarginLossForwardKernelFunctor<scalar_t, accscalar_t>;
             int64_t local_size = MULTILABELMARGIN_THREADS;
-            auto kfn = KernelClass(
+            int slm_sz = sizeof(accscalar_t) * local_size;
+            sycl_kernel_submit<multilabel_margin_loss_forward_kernel_impl<
+                scalar_t,
+                accscalar_t>>(
+                input.size(0) * local_size,
+                local_size,
+                getCurrentSYCLQueue(),
+                slm_sz,
                 output_tmp.mutable_data_ptr<scalar_t>(),
                 input_.const_data_ptr<scalar_t>(),
                 target_.const_data_ptr<int64_t>(),
                 is_target_.mutable_data_ptr<scalar_t>(),
                 nframe,
                 dim,
-                reduction == at::Reduction::Mean,
-                local_size);
-            sycl_kernel_submit(
-                input.size(0) * local_size,
-                local_size,
-                getCurrentSYCLQueue(),
-                kfn);
+                reduction == at::Reduction::Mean);
           });
       at::sum_out(
           output,
@@ -317,23 +270,22 @@ void multilabel_margin_loss_kernel(
           "multilabel_margin_loss_xpu",
           [&] {
             using accscalar_t = acc_type_device<scalar_t, kXPU>;
-            using KernelClass =
-                MultilabelMarginLossForwardKernelFunctor<scalar_t, accscalar_t>;
             int64_t local_size = MULTILABELMARGIN_THREADS;
-            auto kfn = KernelClass(
+            int slm_sz = sizeof(accscalar_t) * local_size;
+            sycl_kernel_submit<multilabel_margin_loss_forward_kernel_impl<
+                scalar_t,
+                accscalar_t>>(
+                input.size(0) * local_size,
+                local_size,
+                getCurrentSYCLQueue(),
+                slm_sz,
                 output.mutable_data_ptr<scalar_t>(),
                 input_.const_data_ptr<scalar_t>(),
                 target_.const_data_ptr<int64_t>(),
                 is_target_.mutable_data_ptr<scalar_t>(),
                 nframe,
                 dim,
-                false,
-                local_size);
-            sycl_kernel_submit(
-                input.size(0) * local_size,
-                local_size,
-                getCurrentSYCLQueue(),
-                kfn);
+                false);
           });
     }
 
@@ -382,20 +334,23 @@ void multilabel_margin_loss_backward_kernel(
         [&] {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
           int64_t local_size = MULTILABELMARGIN_THREADS;
-          auto kfn =
-              MultilabelMarginLossBackwardKernelFunctor<scalar_t, accscalar_t>(
-                  grad_input.mutable_data_ptr<scalar_t>(),
-                  grad_output_.const_data_ptr<scalar_t>(),
-                  input_.const_data_ptr<scalar_t>(),
-                  target_.const_data_ptr<int64_t>(),
-                  is_target_.const_data_ptr<scalar_t>(),
-                  1,
-                  dim,
-                  reduction == at::Reduction::Mean,
-                  reduction != at::Reduction::None,
-                  local_size);
-          sycl_kernel_submit(
-              local_size, local_size, getCurrentSYCLQueue(), kfn);
+          int slm_sz = sizeof(accscalar_t) * local_size;
+          sycl_kernel_submit<multilabel_margin_loss_backward_kernel_impl<
+              scalar_t,
+              accscalar_t>>(
+              local_size,
+              local_size,
+              getCurrentSYCLQueue(),
+              slm_sz,
+              grad_input.mutable_data_ptr<scalar_t>(),
+              grad_output_.const_data_ptr<scalar_t>(),
+              input_.const_data_ptr<scalar_t>(),
+              target_.const_data_ptr<int64_t>(),
+              is_target_.const_data_ptr<scalar_t>(),
+              1,
+              dim,
+              reduction == at::Reduction::Mean,
+              reduction != at::Reduction::None);
         });
   } else if (grad_input.dim() == 2) {
     TORCH_CHECK(
@@ -413,23 +368,23 @@ void multilabel_margin_loss_backward_kernel(
         [&] {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
           int64_t local_size = MULTILABELMARGIN_THREADS;
-          auto kfn =
-              MultilabelMarginLossBackwardKernelFunctor<scalar_t, accscalar_t>(
-                  grad_input.mutable_data_ptr<scalar_t>(),
-                  grad_output_.const_data_ptr<scalar_t>(),
-                  input_.const_data_ptr<scalar_t>(),
-                  target_.const_data_ptr<int64_t>(),
-                  is_target_.const_data_ptr<scalar_t>(),
-                  grad_input.size(0),
-                  grad_input.size(1),
-                  reduction == at::Reduction::Mean,
-                  reduction != at::Reduction::None,
-                  local_size);
-          sycl_kernel_submit(
+          int slm_sz = sizeof(accscalar_t) * local_size;
+          sycl_kernel_submit<multilabel_margin_loss_backward_kernel_impl<
+              scalar_t,
+              accscalar_t>>(
               grad_input.size(0) * local_size,
               local_size,
               getCurrentSYCLQueue(),
-              kfn);
+              slm_sz,
+              grad_input.mutable_data_ptr<scalar_t>(),
+              grad_output_.const_data_ptr<scalar_t>(),
+              input_.const_data_ptr<scalar_t>(),
+              target_.const_data_ptr<int64_t>(),
+              is_target_.const_data_ptr<scalar_t>(),
+              grad_input.size(0),
+              grad_input.size(1),
+              reduction == at::Reduction::Mean,
+              reduction != at::Reduction::None);
         });
   } else {
     TORCH_CHECK(
