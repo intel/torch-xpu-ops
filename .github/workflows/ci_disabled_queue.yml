@@ -1,26 +1,29 @@
 name: CI DISABLED Queue
 
 on:
-  # No `schedule` yet, but the token reason is gone: the CI report issue moved
-  # into this repo on 2026-09-22 (#5490), so MERGE_TOKEN reads it natively and
-  # SOURCE_* now points at it. What is left before a cron runs unattended is a
-  # dead GPU going unnoticed -- a `fix` run that never reaches a working card
-  # still counts as queued, so the entry is silently spent. Once that is handled,
-  # add `- cron: '0 0,9-23 * * *'` (hourly, 17:00-08:00 Beijing, when the
-  # xpu-agent runners are idle) here and nothing else changes.
+  # Hourly over 17:00-08:00 Beijing, the window where the xpu-agent runners are
+  # otherwise idle. Live since 2026-09-22, when the CI report issue moved into
+  # this repo (#5490) and MERGE_TOKEN could finally read it.
   #
-  # Add this alongside the cron, not before it: it chains the next trigger onto
-  # the run that just answered, instead of leaving the GPU idle until the next
-  # hour (a `fix` takes 1-5h, so that slack is 20-100% of the wall clock).
-  # Enabled while discovery still 404s it would only turn every bot.yml
-  # completion into a failed queue run.
+  # Known gap, accepted for now: a `fix` run that never reaches a working GPU
+  # still counts as queued, so a dead card silently spends the entry. Driver
+  # deaths are handled by hand until the preflight-and-requeue gate lands; watch
+  # #5272 for a trigger whose run died early and re-post it.
+  schedule:
+    - cron: '0 0,9-23 * * *'
+  #
+  # Left out on purpose: this would chain the next trigger onto the run that just
+  # answered, rather than waiting for the next tick above.
   #
   #   workflow_run:
   #     workflows: [bot]
   #     types: [completed]
   #
-  # It does not replace the script's own `fix_in_flight` gate: a human can start
-  # a `fix` on any issue at any time, and that one is not on the chain.
+  # The cron already bounds the idle gap at an hour against a 1-5h `fix`, and this
+  # fires on every bot.yml completion -- dozens a day, most with nothing to queue.
+  # Add it if the hour turns out to matter. It would not replace the script's own
+  # `fix_in_flight` gate either: a human can start a `fix` on any issue at any
+  # time, and that run is not on the chain.
   workflow_dispatch:
     inputs:
       dry_run:
