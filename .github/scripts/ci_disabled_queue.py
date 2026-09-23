@@ -44,14 +44,17 @@ import sys
 import urllib.error
 import urllib.request
 
-SOURCE_REPO, SOURCE_ISSUE = "chuanqi129/pytorch-xpu-ci", 364
+# Two issues in this repo, two roles: SOURCE is the CI report
+# ("XPU Periodic Run Auto Skip & Rerun", opened 2026-09-22 when it moved here
+# from chuanqi129/pytorch-xpu-ci#364), TARGET is the bot's work queue.
+SOURCE_REPO, SOURCE_ISSUE = "intel/torch-xpu-ops", 5490
 TARGET_REPO, TARGET_ISSUE = "intel/torch-xpu-ops", 5272
 # bot.yml serves every @torchxpubot command; only its `fix` job is exclusive.
 BOT_WORKFLOW, FIX_JOB = "bot.yml", "fix"
-# Where the queue takes over from the humans. SOURCE batches before this are the
-# hand-triaged backlog -- several of those issues already have a PR, and that is
-# tracked in a spreadsheet, not in anything GitHub can be asked for. Move it back
-# to hand the queue more history; it only ever needs to move once.
+# The day SOURCE moved into this repo, so the queue owns exactly what SOURCE has
+# reported since. What came before is the hand-triaged backlog, where "this one
+# already has a PR" is tracked in a spreadsheet and in nothing GitHub can be
+# asked for. Move it back only to hand the queue history it did not see.
 START = "2026-09-22"
 
 ISSUE_RE = re.compile(r"https://github\.com/pytorch/pytorch/issues/(\d+)")
@@ -193,13 +196,10 @@ def next_batch(mirrored):
     except urllib.error.HTTPError as e:
         if e.code != 404:
             raise
-        # The expected failure today, and a traceback would bury the one thing
-        # the operator can act on.
         sys.exit(
-            f"cannot read {SOURCE_REPO}#{SOURCE_ISSUE} (404), so discovery is not "
-            f"available: MERGE_TOKEN is a fine-grained PAT and those cannot reach a "
-            f"repo owned by another personal account. Until the report issue moves "
-            f"into {TARGET_REPO}, a human posts `@torchxpubot fix` by hand."
+            f"cannot read {SOURCE_REPO}#{SOURCE_ISSUE} (404) -- deleted, renumbered, "
+            f"or SOURCE_ISSUE is stale. Nothing can be queued until it points at the "
+            f"CI report issue again."
         )
     for comment in comments:
         if comment["created_at"] < START:

@@ -1,12 +1,13 @@
 name: CI DISABLED Queue
 
 on:
-  # No `schedule` yet. Discovery reads chuanqi129/pytorch-xpu-ci#364, and
-  # MERGE_TOKEN is a fine-grained PAT, which cannot reach a repo owned by another
-  # personal account -- the token-access job below proves it with a 404, with
-  # torchxpubot already a collaborator there. A cron would just 404 every hour.
-  # Restore `- cron: '0 0,9-23 * * *'` (hourly, 17:00-08:00 Beijing) once the
-  # report issue moves into this repo; nothing but SOURCE_* has to change.
+  # No `schedule` yet, but the token reason is gone: the CI report issue moved
+  # into this repo on 2026-09-22 (#5490), so MERGE_TOKEN reads it natively and
+  # SOURCE_* now points at it. What is left before a cron runs unattended is a
+  # dead GPU going unnoticed -- a `fix` run that never reaches a working card
+  # still counts as queued, so the entry is silently spent. Once that is handled,
+  # add `- cron: '0 0,9-23 * * *'` (hourly, 17:00-08:00 Beijing, when the
+  # xpu-agent runners are idle) here and nothing else changes.
   #
   # Add this alongside the cron, not before it: it chains the next trigger onto
   # the run that just answered, instead of leaving the GPU idle until the next
@@ -64,33 +65,3 @@ jobs:
       - uses: actions/checkout@v7
       - run: python3 .github/scripts/ci_disabled_queue.py --self-test
 
-  # Tracks when discovery becomes possible. Reading SOURCE is the one thing about
-  # this workflow that cannot be checked locally, and it does not work today, so
-  # this warns rather than fails -- it turns green by itself once the report issue
-  # moves into this repo, which is the signal to restore the cron above.
-  token-access:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: "Probe: can MERGE_TOKEN read the private CI report issue?"
-        uses: actions/github-script@v9
-        with:
-          github-token: ${{ secrets.MERGE_TOKEN }}
-          script: |
-            try {
-              const r = await github.rest.issues.listComments({
-                owner: 'chuanqi129', repo: 'pytorch-xpu-ci',
-                issue_number: 364, per_page: 1
-              });
-              core.notice(`readable (${r.data.length} comment) -- discovery can be `
-                + `re-enabled: restore the cron and point SOURCE_* at the report issue.`);
-            } catch (e) {
-              core.warning(
-                `not readable: HTTP ${e.status}. Expected today. torchxpubot IS a `
-                + `collaborator there, so a 404 means MERGE_TOKEN is a fine-grained `
-                + `PAT: those are scoped to one resource owner (the token owner's `
-                + `account, or an org that opted in), and a repo owned by another `
-                + `personal account can never be selected. Until the report issue `
-                + `moves into this repo, a human posts \`@torchxpubot fix\` by hand.`
-              );
-            }
