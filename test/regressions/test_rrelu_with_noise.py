@@ -57,8 +57,10 @@ class TestRreluWithNoise(TestCase):
         x = torch.randn(64, 64, device=xpu_device)
         noise = torch.zeros_like(x)
         out = torch.rrelu_with_noise(x, noise, 0.1, 0.9, training=True)
-        self.assertTrue(torch.all(noise[x > 0] == 1))
-        self.assertTrue(torch.all((noise >= 0.1) & (noise <= 0.9)))
+        pos, neg = x > 0, x <= 0
+        self.assertTrue(torch.all(noise[pos] == 1))
+        self.assertTrue(torch.all(noise[neg] >= 0.1))
+        self.assertTrue(torch.all(noise[neg] <= 0.9))
         self.assertTrue(torch.all(out >= 0))
 
 
