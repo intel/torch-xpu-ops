@@ -24,6 +24,9 @@
 #  SYCL_HOST_FLAGS
 #  -- SYCL compiler's 3rd party host compiler (e.g. gcc) arguments .
 #
+#  SYCL_HOST_FLAGS_DIRECT_TO_SYCL
+#  -- Host arguments that are SYCL driver options and must not use -Xarch_host.
+#
 #  SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
 #  -- Host arguments omitted when composing the SYCL compiler command line.
 #
