@@ -368,7 +368,7 @@ prose:
 | Hardware-specific failure with no self-contained repro script | `hardware_specific` |
 | Depends on a non-public model / checkpoint / dataset, or a distributed setup that cannot be reproduced by the agent | `non_public_dependency` |
 | Version-upgrade breakage with no minimal script and no identifiable changed component | `version_upgrade_no_repro` |
-| Coordinated change needed in a repo the agent cannot build (oneDNN / IGC / driver), Step 4 | `cross_repo_coordinated` |
+| Coordinated change needed in a component the agent cannot build (oneDNN / Triton / IGC / driver / ...), Step 4 | `cross_repo_coordinated` |
 | No registered domain fits (Step 1) | `no_registered_domain` |
 | None of the above fits but the failure still cannot be fixed from source alone | `unresolvable_statically` |
 
@@ -543,8 +543,9 @@ On `verdict=NEEDS_HUMAN`:
   reproduced by the agent.
 - `version_upgrade_no_repro` — version-upgrade breakage with no
   minimal script and no identifiable changed component.
-- `cross_repo_coordinated` — a repo the agent cannot build needs a
-  coordinated change: oneDNN, IGC, a driver component. Not pytorch +
+- `cross_repo_coordinated` — a component the agent cannot build needs a
+  coordinated change: oneDNN, Triton, IGC, the driver, and so on -- the
+  `dependency component: *` labels are the list. Not pytorch +
   torch-xpu-ops, which is a normal fix with a `companion_repo` (Step 4).
 - `no_registered_domain` — none of the registered domains fits
   the failure (Step 1).

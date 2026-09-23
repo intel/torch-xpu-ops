@@ -460,7 +460,7 @@ Base: <torch nightly version or base sha>
 | Sub-item | Outcome | Branch / Reason |
 |---|---|---|
 | test_bar_xpu_float32 | FIXED | agent/fix-issue-4321-1-test_bar |
-| test_baz | NEEDS_HUMAN | cross_repo_coordinated (needs a oneDNN change) |
+| test_baz | NEEDS_HUMAN | cross_repo_coordinated (needs a oneDNN/Triton/IGC/driver change) |
 | test_qux | NEEDS_HUMAN | attempts_exhausted |
 | test_new | ALREADY_FIXED | no longer reproduces on latest nightly |
 | test_old | STALE_SKIP | follow-up: remove skip decorator |
@@ -529,7 +529,7 @@ mkdir -p "$agent_space"
         "summary": "one-line what/why" },
       { "seq": 2, "slug": "test_baz", "outcome": "NEEDS_HUMAN",
         "branch": null, "reason": "cross_repo_coordinated",
-        "reason_detail": "needs a oneDNN change" },
+        "reason_detail": "needs a oneDNN/Triton/IGC/driver change" },
       { "seq": 3, "slug": "test_new", "outcome": "ALREADY_FIXED",
         "branch": null, "reason": "no longer reproduces on latest nightly" }
     ]
