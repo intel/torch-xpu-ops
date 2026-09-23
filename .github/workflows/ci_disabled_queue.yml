@@ -64,4 +64,3 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 .github/scripts/ci_disabled_queue.py --self-test
-
