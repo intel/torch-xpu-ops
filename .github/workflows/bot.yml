@@ -294,7 +294,9 @@ jobs:
 
             \`fix\` reproduces the issue on an XPU runner and, for C++/SYCL
             changes, source-builds and verifies the fix in the loop. The fix is
-            committed to a local \`agent/fix-issue-<N>\` branch and exported as a
+            committed to a local \`agent/fix-issue-<N>\` branch (or
+            \`agent/fix-pytorch-issue-<M>\` when the bug is filed upstream, e.g. a
+            mirrored DISABLED test) and exported as a
             downloadable **patch artifact** on the workflow run (it is not
             pushed); one comment here is updated live with each stage's report
             (triage, root cause, the diff, verification) as the run progresses.
@@ -953,7 +955,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
-          python .github/scripts/bot_ut_check.py \
+          python3 .github/scripts/bot_ut_check.py \
             --pr-number ${{ needs.parse-command.outputs.pr_number }} \
             --repo ${{ github.repository }} \
             --output /tmp/ut_data.json
@@ -1067,7 +1069,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
-          python .github/scripts/bot_ut_check.py \
+          python3 .github/scripts/bot_ut_check.py \
             --pr-number ${{ needs.parse-command.outputs.pr_number }} \
             --repo ${{ github.repository }} \
             --deterministic
@@ -1287,7 +1289,10 @@ jobs:
             Output contract (the pipeline already implements this; do not
             deviate): on a verified fix, /issue-handler commits it onto
             `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
-            (single bug) or per-sub-item branches (batch) and writes
+            (single bug) or per-sub-item branches (batch) -- named after the
+            *upstream* issue (`agent/fix-pytorch-issue-<M>`) when the bug is
+            filed in pytorch/pytorch and this issue is only the tracking queue,
+            per /issue-handler's Branch naming -- and writes
             `${{ env.AGENT_SPACE }}/fix_result*.json` recording `verdict`,
             `target_repo`, `fix_repo_dir`, `branch`, `base_sha`, `changed_files`.
             Do NOT push, fetch, or open a PR -- the workflow reads each
@@ -1299,6 +1304,10 @@ jobs:
             -F body=@file`) and never create a second comment. It is public and
             not retractable (edit history stays visible), so it carries your
             stage reports only -- never raw command output, env, or credentials.
+            Write every upstream issue or PR reference in backticks
+            (`pytorch/pytorch#197334`), never bare, as a URL, or as a markdown
+            link: a rendered reference back-links this comment onto the pytorch
+            issue. Run and job log links are fine.
             End by appending your summary to it and reporting the branch name.
             Do not write a review block; the workflow appends the human
             review template itself.
@@ -1419,7 +1428,8 @@ jobs:
 
           <!-- agent:review -->
 
-          ## Review
+          <details>
+          <summary><b>Review</b></summary>
 
           Copy into a new comment, keep ONE verdict, add a note. Two verdicts in
           one comment are dropped as ambiguous.
@@ -1433,6 +1443,37 @@ jobs:
 
           notes:
           ```
+
+          On a batch run add `item=<pytorch issue>` to say which sub-item the
+          verdict is about, **in the bold text and in the marker** -- the marker
+          is invisible, so the bold line is all a reader sees. One comment per
+          sub-item, since a bare verdict on a batch does not say which test it
+          means and is dropped. `run=<id>` only when judging a run other than the
+          newest, in both places too.
+
+          A CI DISABLED sub-item, `item=` from the fan-out table:
+
+          ```
+          **strong-accepted item=197334** <!-- review: strong-accepted item=197334 -->
+          notes: same TensorAssign overload as upstream CUDA, fp8 dispatch list matches
+          ```
+
+          Another sub-item of the same batch, judged on an earlier run:
+
+          ```
+          **weak-rejected run=35171979678 item=197335** <!-- review: weak-rejected run=35171979678 item=197335 -->
+          notes: green only because the test is skipped, the kernel still lacks fp8
+          ```
+
+          An `[xpu-alignment]` issue that should not have been filed -- one issue
+          per difference, so no `item=`:
+
+          ```
+          **issue-drop** <!-- review: issue-drop -->
+          notes: accepted XPU/CUDA numerics difference, nothing to repair
+          ```
+
+          </details>
           EOF
           gh api --method PATCH "$C" -F body=@body.md
 

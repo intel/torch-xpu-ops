@@ -135,15 +135,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
   TORCH_CHECK(
       out.stride(-1) == 1,
       "mha_bwd on xpu: out tensor must have contiguous last dimension");
-  TORCH_CHECK(
-      dout.stride(-1) == 1,
-      "mha_bwd on xpu: dout tensor must have contiguous last dimension");
-  TORCH_CHECK(
-      softmax_lse.stride(-1) == 1,
-      "mha_bwd on xpu: softmax_lse tensor must have contiguous last dimension");
-  TORCH_CHECK(
-      softmax_lse.is_contiguous(),
-      "mha_bwd on xpu: softmax_lse must be contiguous in [batch_size, numhead_qo, seqlen_qo]");
 
   const int batch_size = q.sizes()[0];
   const int seqlen_qo = q.sizes()[1];
@@ -152,10 +143,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
   const int numhead_kv = k.sizes()[2];
   const int headsize_qk = q.sizes()[3];
   const int headsize_vo = v.sizes()[3];
-
-  TORCH_CHECK(
-      headsize_qk == headsize_vo,
-      "mha_bwd on xpu: headsize_qk must be equal to headsize_vo");
 
   if (batch_size == 0) {
     auto opts = q.options();
@@ -166,6 +153,19 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
         at::empty({0, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));
     return {dq, dk, dv, softmax_d};
   }
+
+  TORCH_CHECK(
+      dout.stride(-1) == 1,
+      "mha_bwd on xpu: dout tensor must have contiguous last dimension");
+  TORCH_CHECK(
+      softmax_lse.stride(-1) == 1,
+      "mha_bwd on xpu: softmax_lse tensor must have contiguous last dimension");
+  TORCH_CHECK(
+      softmax_lse.is_contiguous(),
+      "mha_bwd on xpu: softmax_lse must be contiguous in [batch_size, numhead_qo, seqlen_qo]");
+  TORCH_CHECK(
+      headsize_qk == headsize_vo,
+      "mha_bwd on xpu: headsize_qk must be equal to headsize_vo");
   TORCH_CHECK(batch_size > 0, "mha_bwd on xpu: batch size must be positive");
   TORCH_CHECK(
       headsize_qk <= 256,
