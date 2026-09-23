@@ -16,6 +16,7 @@
 #include <ATen/detail/FunctionTraits.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TensorIteratorDynamicCasting.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/core/DeviceGuard.h>
 
 #include <ATen/native/xpu/sycl/ElementwiseInvoke.h>
@@ -340,7 +341,7 @@ static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
 
   int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
   int64_t num_wg = ceil_div<int64_t>(N, wg_sz);
-  int64_t hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
+  int64_t hw_max_num_wg = at::xpu::getDeviceMaxWorkItems() / wg_sz;
   num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }

@@ -69,8 +69,12 @@ Apply the matching GitHub label when advancing the marker:
 |----------|-------|
 | DISCOVERED, TRIAGING, REPRODUCING, IMPLEMENTING, VERIFYING | `agent:active` |
 | TRIAGED | `agent:triaged` |
-| DONE, SKIPPED | `agent:done` |
+| DONE | `agent:done` |
+| SKIPPED | `agent:skipped` |
 | NEEDS_HUMAN | `agent:needs-human` |
+
+Always exactly one of these five: swap the old one for the new one,
+never leave the issue with none.
 
 The `agent:active` label sticks across all in-progress stages so
 external filters (dashboards, CI monitors) can bucket "currently
@@ -96,7 +100,9 @@ stage completes, and never creates a second one:
   text it held.
 - Stages 3-5 (root-cause, implement, verify) each **append** their block
   to that same comment.
-- Stage 6 **appends** the closing summary: verdict, branch, caveats.
+- Stage 6 **appends** the closing summary: verdict, branch, caveats. Its
+  `**Outcome:**` line goes at the top instead, with the reason:
+  `SKIPPED(no_longer_reproduces)`, never bare `SKIPPED`.
 
 Edit in place by id — read the current body, append, PATCH it back:
 
@@ -119,23 +125,62 @@ The comment is public and editing does not retract anything (edit history
 stays visible), so it carries stage reports only — never raw command
 output, environment, or credentials.
 
+**Upstream issues and PRs go in backticks** — `` `pytorch/pytorch#197334` ``,
+never a bare `pytorch/pytorch#197334`, a URL, or a markdown link. All three
+render as a reference, which back-links the comment onto the upstream issue;
+a code span is not linkified. Run and job log links are fine.
+
 The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
 already lives in the root-cause block above it.
+
+### Collapse the stage blocks
+
+Append each stage block **collapsed**, so the session comment reads as a
+list of stage titles and the reader expands only the stage they care
+about. Drop the block's own `##` heading line (the `<summary>` replaces
+it) and keep the marker outside `<details>` so marker searches still
+work:
+
+```markdown
+<!-- agent:root-cause -->
+
+<details>
+<summary><b>Root Cause</b></summary>
+
+<the block body the leaf skill returned, unchanged>
+
+</details>
+```
+
+The blank line after `<summary>` and the one before `</details>` are
+required — without them GitHub renders the tables and fenced diffs inside
+as literal text.
+
+The `<summary>` titles are **fixed strings** — use the table below
+verbatim, do not reword them per run. The body keeps the shape defined by
+the producing skill's own `## Output` template.
 
 For re-run detection (Stage 0), locate the single session comment by
 its `<!-- agent:session -->` marker; the per-stage `<!-- agent:<name> -->`
 markers are sub-headings within that one comment.
 
-| Block within the session comment | Producing leaf skill |
-|---|---|
-| `<!-- agent:triage -->` | `issue-triage` |
-| `<!-- agent:reproduce -->` | `fix-reproduce` (only on standalone `@torchxpubot reproduce`; not on pipeline runs) |
-| `<!-- agent:root-cause -->` | `fix-root-cause` |
-| `<!-- agent:implement -->` | `fix-implement` (diff, not prose) |
-| `<!-- agent:verify -->` | `fix-verify` |
-| `<!-- agent:summary -->` | `issue-handler` (Stage 6 closing summary) |
-| `<!-- agent:batch-fanout -->` | `issue-handler` (batch fan-out summary, skip-list or heterogeneous) |
+Blocks in append order:
+
+| Block within the session comment | `<summary>` title | Producing skill |
+|---|---|---|
+| `<!-- agent:session -->` | expanded, no `<details>` | `issue-handler` (Stage 1 intro line) |
+| `<!-- agent:triage -->` | `Issue Triage` | `issue-triage` |
+| `<!-- agent:reproduce -->` | `Reproduce` | `fix-reproduce` |
+| `<!-- agent:root-cause -->` | `Root Cause` | `fix-root-cause` |
+| `<!-- agent:implement -->` | `Implement Result` | `fix-implement` (diff, not prose) |
+| `<!-- agent:verify -->` | `Verify` | `fix-verify` |
+| `<!-- agent:batch-fanout -->` | `Batch fan-out results` | `issue-handler` (batch runs only, skip-list or heterogeneous) |
+| `<!-- agent:summary -->` | `Summary` | `issue-handler` (Stage 6 closing summary) |
+| `<!-- agent:review -->` | `Review` | the `fix` workflow — the template a human fills in to review the fix |
+
+This skill produces `batch-fanout` and `summary` itself, so it writes those
+two collapsed directly — templates in `SKILL.md`, sign-off included.
 
 ### 4. Canonical section headings
 
@@ -154,12 +199,11 @@ Objective, Current Status`.
   report block (returned to the orchestrator, which fills the session
   comment with it); the `agent:status:DISCOVERED → TRIAGING`
   transition; section-heading skeleton.
-- **Stage 2** (`fix-reproduce`) owns: the `refined_command`
-  extracted for downstream stages; the
-  `agent:status:REPRODUCING → TRIAGED` transition (via the
-  orchestrator's reading of the reproduce verdict). Does NOT post a
-  comment on issue-handler pipeline runs (comments are for
-  standalone `@torchxpubot reproduce` invocations).
+- **Stage 2** (`fix-reproduce`) owns: the `<!-- agent:reproduce -->`
+  report block (returned to the orchestrator, which appends it to the
+  session comment); the `refined_command` extracted for downstream
+  stages; the `agent:status:REPRODUCING → TRIAGED` transition (via the
+  orchestrator's reading of the reproduce verdict).
 - **Stage 3** (`fix-root-cause`) owns: the `<!-- agent:root-cause -->`
   report block (returned to the orchestrator, which appends it to the
   session comment); `Root Cause Analysis`, `Proposed
@@ -177,12 +221,9 @@ Objective, Current Status`.
 
 ## Reset-between-entries recipe (batched fan-out)
 
-Both orchestrators run a fan-out loop over independent
-entries (`issue-handler`'s Stage 1u batch path, `xpu-nightly-ci-fix`'s
-nightly batch). Each entry is a separate sub-bug and can triage to a
-different `target_repo`, so a prior entry's staged diff must not
-bleed into the next. Both orchestrators use this identical recipe;
-it lives here so the two copies cannot drift.
+Stage 1u fans out over independent entries. Each entry is a separate
+sub-bug and can triage to a different `target_repo`, so a prior entry's
+staged diff must not bleed into the next.
 
 Capture the two independent base SHAs **once**, before entering the
 loop:
