@@ -43,7 +43,7 @@ runs:
           models_list_args=" -k '^(${model_re})\$' "
         fi
         if [ "${{ github.event_name }}" != "pull_request" ]; then
-          rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmark/ ./benchmarks/dynamo/
+          rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmarks/ ./benchmarks/dynamo/
         fi
 
         rm -rf inductor_log torch && mkdir -p inductor_log
