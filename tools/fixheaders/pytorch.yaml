@@ -82,7 +82,6 @@ custom_headers:
       - "src/xccl/reducer_xpu.cpp"
       - "test/xpu/distributed/test_c10d_ops_xccl.py"
       - "test/xpu/distributed/test_c10d_xccl.py"
-      - "test/xpu/nn/test_convolution_xpu.py"
       - "test/xpu/nn/test_dropout_xpu.py"
       - "test/xpu/nn/test_packed_sequence_xpu.py"
       - "test/xpu/nn/test_pooling_xpu.py"

@@ -22,9 +22,9 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/ScatterGatherChecks.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
-#include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <comm/SYCLContext.h>
 #include <bit>
 
@@ -674,6 +674,57 @@ struct ScatterFillBaseKernel {
                     iter, src_val, index_size, index_stride, self.numel(), f);
               });
         });
+  }
+
+  void operator()(
+      const Tensor& self,
+      int64_t dim,
+      const Tensor& index,
+      const Scalar& src,
+      const std::string& method_name,
+      const TensorAssign& f) {
+    at::assert_no_internal_overlap(self);
+
+    auto index_sizes = ensure_nonempty_vec(index.sizes().vec());
+
+    // restride self such that
+    // self.shape = index.shape and
+    // self.stride[dim] = 0
+    auto self_restrided = restride_dim(self, dim, index_sizes);
+
+    auto iter = TensorIteratorConfig()
+                    .set_check_mem_overlap(false)
+                    .check_all_same_dtype(false)
+                    .resize_outputs(false)
+                    .add_output(self_restrided)
+                    .add_const_input(index)
+                    .build();
+
+    auto index_size = ensure_nonempty_size(self, dim);
+    auto index_stride = ensure_nonempty_stride(self, dim);
+
+    AT_DISPATCH_V2(
+        iter.dtype(),
+        "scatter_fill_base_kernel_func",
+        AT_WRAP([&] {
+          using dtype = std::conditional_t<
+              cast_to_opaque,
+              OpaqueType<sizeof(scalar_t)>,
+              scalar_t>;
+
+          auto src_scalar_val = src.to<scalar_t>();
+          auto src_val = std::bit_cast<dtype>(src_scalar_val);
+          AT_DISPATCH_INDEX_TYPES(
+              index.scalar_type(), "scatter_fill_base_kernel_func", [&]() {
+                ScatterFillInternalKernel<dtype, index_t>()(
+                    iter, src_val, index_size, index_stride, self.numel(), f);
+              });
+        }),
+        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+        AT_EXPAND(AT_FLOAT8_TYPES),
+        kHalf,
+        kBool,
+        kBFloat16);
   }
 
   void operator()(
