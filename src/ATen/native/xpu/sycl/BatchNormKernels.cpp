@@ -429,7 +429,8 @@ template <
     typename stat_accscalar_t,
     typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>)) void batch_norm_collect_statistics_kernel(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void batch_norm_collect_statistics_kernel(
     VarTransformFunctor functor,
     const GenericPackedTensorAccessor<
         const input_scalar_t,
@@ -1748,7 +1749,8 @@ template <
     typename stat_accscalar_t,
     typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>)) void batch_norm_backward_reduce_sub_kernel(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void batch_norm_backward_reduce_sub_kernel(
     const GenericPackedTensorAccessor<
         input_scalar_t,
         3,
@@ -3839,7 +3841,8 @@ template <
     typename stat_accscalar_t,
     typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>)) void batch_norm_backward_non_vec_kernel(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void batch_norm_backward_non_vec_kernel(
     const GenericPackedTensorAccessor<
         const input_scalar_t,
         3,
@@ -3969,7 +3972,8 @@ template <
     typename stat_accscalar_t,
     typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>)) void batch_norm_backward_vectorized_kernel(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void batch_norm_backward_vectorized_kernel(
     const GenericPackedTensorAccessor<
         const input_scalar_t,
         3,
