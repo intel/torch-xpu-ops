@@ -4,23 +4,18 @@
 
 """Post `@torchxpubot fix` on the tracking issue for each new batch of DISABLED tests.
 
-    GH_TOKEN=<read SOURCE, write TARGET> python ci_disabled_queue.py  # print only
+    GH_TOKEN=<read SOURCE, write TARGET> python ci_disabled_queue.py  # print
     GH_TOKEN=<...> DRY_RUN=false        python ci_disabled_queue.py  # post
     python ci_disabled_queue.py --self-test
 
-Printing is the default, and only the literal `DRY_RUN=false` posts: the live side
-comments on a tracking issue and starts a multi-hour GPU job.
-
 SOURCE grows one comment per failing `xpu.yml` run; the ones that matter list the
-`pytorch/pytorch` DISABLED issues that run produced, and re-list them every time
-it fails again. TARGET is the bot's work queue -- one `@torchxpubot fix` comment
-per batch. A batch is kept whole: its issues come from a single commit, so they
-are likelier to share a cause than anything test names could group by.
+`pytorch/pytorch` DISABLED issues it produced, and re-list them every time it
+fails again. TARGET is the bot's work queue: one `@torchxpubot fix` comment per
+batch, batches kept whole.
 
-One batch per invocation, oldest first. Nothing is stored locally -- the cutoff,
-the dedup and the serialization each read their answer back out of GitHub, in the
-function that applies them. There is no by-hand mode: a human who wants one test
-fixed types the command on TARGET themselves.
+One batch per invocation, oldest first, never while a `fix` job is still running.
+No local state -- every rule reads its answer back out of GitHub. No by-hand mode:
+a human who wants one test fixed types the command on TARGET.
 """
 
 import functools
