@@ -9,7 +9,9 @@
  */
 
 #include <ATen/TensorOperators.h>
+#if defined(USE_ONEMKL_XPU)
 #include <ATen/native/sparse/xpu/mkl/SparseTensorMath.h>
+#endif // USE_ONEMKL_XPU
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
 #include <comm/Macros.h>
 DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
@@ -30,6 +32,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/ops/bmm.h>
 #include <ATen/ops/hspmm_native.h>
 #include <ATen/ops/matmul.h>
+#include <ATen/ops/mm.h>
 #include <ATen/ops/zeros.h>
 #endif
 
@@ -328,6 +331,47 @@ Tensor bmm_sparse_xpu(const SparseTensor& self, const Tensor& mat2) {
   return bmm_out_sparse_xpu(self, mat2, result);
 }
 
+Tensor _sspaddmm_index_add(
+    const Tensor& row_indices,
+    const Tensor& col_indices,
+    const Tensor& values1,
+    const Tensor& mat2,
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& alpha,
+    int64_t dim_i,
+    int64_t dim_k) {
+  Tensor gathered = mat2.index_select(0, col_indices);
+  Tensor prod = gathered * values1.unsqueeze(1);
+
+  Tensor dense_result = at::zeros({dim_i, dim_k}, mat2.options());
+  dense_result.index_add_(0, row_indices, prod);
+
+  if (alpha.to<double>() != 1.0) {
+    dense_result.mul_(alpha);
+  }
+  if (beta.to<double>() != 0.0 && self._nnz() > 0) {
+    dense_result.add_(self.to_dense(), beta);
+  }
+  return dense_result;
+}
+
+Tensor _sspaddmm_fallback(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    int64_t dim_i,
+    int64_t dim_k) {
+  Tensor mat1_dense = mat1.to_dense();
+  Tensor self_dense = (beta.to<double>() != 0.0 && self._nnz() > 0)
+      ? self.to_dense()
+      : at::zeros({dim_i, dim_k}, mat2.options());
+  Tensor mm_result = at::mm(mat1_dense, mat2);
+  return self_dense * beta + mm_result * alpha;
+}
+
 Tensor& _sspaddmm_out_only_sparse_xpu(
     const Tensor& self,
     const Tensor& mat1,
@@ -447,15 +491,17 @@ Tensor& _sspaddmm_out_xpu(
       result = self * beta;
     }
     return result;
+  }
 
-  } else if (use_sparse_path) {
+  if (use_sparse_path) {
     SparseTensor mat1_coalesced = mat1_is_coalesced ? mat1 : mat1.coalesce();
     Tensor row_indices = mat1_coalesced._indices()[0];
     Tensor col_indices = mat1_coalesced._indices()[1];
     Tensor values1 = mat1_coalesced._values();
 
-    bool is_onemkl_supported_dtype =
-        mat1.scalar_type() == kFloat || mat1.scalar_type() == kDouble;
+    bool is_onemkl_supported_dtype = mat1.scalar_type() == kFloat ||
+        mat1.scalar_type() == kDouble || mat1.scalar_type() == kComplexFloat ||
+        mat1.scalar_type() == kComplexDouble;
     if (is_onemkl_supported_dtype) {
       dense_result = xpu::_sspaddmm_mkl_out(
           row_indices,
@@ -470,7 +516,7 @@ Tensor& _sspaddmm_out_xpu(
           dim_k,
           nnz1);
     } else {
-      dense_result = xpu::_sspaddmm_index_add(
+      dense_result = _sspaddmm_index_add(
           row_indices,
           col_indices,
           values1,
@@ -483,7 +529,7 @@ Tensor& _sspaddmm_out_xpu(
     }
   } else {
     dense_result =
-        xpu::_sspaddmm_fallback(self, mat1, mat2, beta, alpha, dim_i, dim_k);
+        _sspaddmm_fallback(self, mat1, mat2, beta, alpha, dim_i, dim_k);
   }
 
   Tensor sparse_result = dense_result.to_sparse();

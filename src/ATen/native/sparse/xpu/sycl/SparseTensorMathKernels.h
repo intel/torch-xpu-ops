@@ -33,24 +33,4 @@ TORCH_XPU_API Tensor _sparse_sum_backward_kernel(
     const SparseTensor& input_,
     IntArrayRef dims_to_sum);
 
-TORCH_XPU_API Tensor _sspaddmm_index_add(
-    const Tensor& row_indices,
-    const Tensor& col_indices,
-    const Tensor& values1,
-    const Tensor& mat2,
-    const Tensor& self,
-    const Scalar& beta,
-    const Scalar& alpha,
-    int64_t dim_i,
-    int64_t dim_k);
-
-TORCH_XPU_API Tensor _sspaddmm_fallback(
-    const Tensor& self,
-    const Tensor& mat1,
-    const Tensor& mat2,
-    const Scalar& beta,
-    const Scalar& alpha,
-    int64_t dim_i,
-    int64_t dim_k);
-
 } // namespace at::native::xpu
