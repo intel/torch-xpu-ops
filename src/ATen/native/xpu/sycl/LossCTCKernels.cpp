@@ -1010,7 +1010,7 @@ Tensor ctc_loss_backward_kernel_template(
 
   int64_t max_target_length;
   auto tg_batch_offsets =
-      at::empty({batch_size}, TensorOptions(at::CPU(kLong)));
+      at::empty({batch_size}, TensorOptions().dtype(kLong));
   auto tg_batch_offsets_data = tg_batch_offsets.mutable_data_ptr<int64_t>();
   if (targets.dim() == 1) { // concatenated targets
     int64_t pos = 0;
