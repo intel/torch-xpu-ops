@@ -122,10 +122,10 @@ template <
     typename VarTransformFunctor,
     typename scalar_t,
     typename acc_t,
-    int VEC_SIZE = 2>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+    int VEC_SIZE>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (sycl::ext::oneapi::experimental::nd_range_kernel<2>))
 void welford_batch_norm_stat_channels_last_vec_kernel(
-    VarTransformFunctor functor,
     const scalar_t* input,
     acc_t* save_mean,
     acc_t* save_invstd,
@@ -133,13 +133,21 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     int n_channels,
     acc_t* staging_data,
     int* semaphores,
-    double epsilon,
-    size_t local_size) {
+    double epsilon) {
   using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
   using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
   using int_vec_t = memory::aligned_vector<int, VEC_SIZE>;
 
-  //  init private counter
+  auto item = sycl::ext::oneapi::this_work_item::get_nd_item<2>();
+  auto local_size = item.get_local_range(0) * item.get_local_range(1);
+
+  char* scratch = static_cast<char*>(
+      sycl::ext::oneapi::experimental::get_work_group_scratch_memory());
+  acc_vec_t* shmem_mean = reinterpret_cast<acc_vec_t*>(scratch);
+  acc_vec_t* shmem_m2n = shmem_mean + local_size;
+  int_vec_t* shmem_count = reinterpret_cast<int_vec_t*>(shmem_m2n + local_size);
+  bool* is_last_group_done = reinterpret_cast<bool*>(shmem_count + local_size);
+
   acc_vec_t mean;
   acc_vec_t m2n;
   int_vec_t count;
@@ -149,8 +157,6 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     m2n[v] = acc_t(0);
     count[v] = int(0);
   }
-
-  auto item = syclext::this_work_item::get_nd_item<2>();
 
   int gy = item.get_group(0);
   int gx = item.get_group(1);
@@ -176,20 +182,9 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     }
   }
 
-  char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
-  size_t offset = 0;
-  auto shmem_mean = reinterpret_cast<acc_vec_t*>(slm);
-  offset += local_size * sizeof(acc_vec_t);
-  auto shmem_m2n = reinterpret_cast<acc_vec_t*>(slm + offset);
-  offset += local_size * sizeof(acc_vec_t);
-  auto shmem_count = reinterpret_cast<int_vec_t*>(slm + offset);
-  offset += local_size * sizeof(int_vec_t);
-  auto is_last_group_done = reinterpret_cast<bool*>(slm + offset);
-
   welford_vertical_merge<VEC_SIZE>(
       item, count, mean, m2n, shmem_count, shmem_mean, shmem_m2n);
 
-  // welford vertical merge
   if (num_cooperative_groups > 1) {
     acc_t* staging_mean = staging_data;
     acc_t* staging_m2n = &staging_data[n_channels * num_cooperative_groups];
@@ -197,7 +192,6 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
         &staging_m2n[n_channels * num_cooperative_groups]);
     int address_vec_base = c_vec_offset + gy * n_channels;
 
-    // write data to staging_data;
     if (item.get_local_id(0) == 0 && c_vec_offset < n_channels) {
       *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]) = mean;
       *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]) = m2n;
@@ -205,17 +199,13 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     }
     sycl::group_barrier(item.get_group());
 
-    // mark group done
     if (item.get_local_linear_id() == 0) {
       sycl_atomic_ref_rlx_dev_global_t<int> atomic_count(semaphores[gx]);
-      int old = atomic_count.fetch_add(
-          1, sycl_mem_odr_acq_rel
-          /* , default memory scope is device */);
+      int old = atomic_count.fetch_add(1, sycl_mem_odr_acq_rel);
       is_last_group_done[0] = (old == (num_cooperative_groups - 1));
     }
     sycl::group_barrier(item.get_group());
 
-    // check that all data is now available in global memory
     if (is_last_group_done[0]) {
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
@@ -257,12 +247,98 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     acc_vec_t invstd_vec;
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      invstd_vec[v] = functor(m2n[v] / count[v], epsilon);
+      invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon);
     }
 
     *reinterpret_cast<acc_vec_t*>(&save_mean[c_vec_offset]) = mean;
     *reinterpret_cast<acc_vec_t*>(&save_invstd[c_vec_offset]) = invstd_vec;
   }
 }
+
+template <
+    typename VarTransform,
+    typename scalar_t,
+    typename acc_t,
+    int VEC_SIZE = 2>
+struct WelfordBatchNormStatChannelsLastVecKernelConfig {
+  using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
+  using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
+  using int_vec_t = memory::aligned_vector<int, VEC_SIZE>;
+
+  WelfordBatchNormStatChannelsLastVecKernelConfig(
+      int reduction_size,
+      int n_channels)
+      : reduction_size_(reduction_size), n_channels_(n_channels) {}
+
+  void init() {
+    constexpr auto kptr = welford_batch_norm_stat_channels_last_vec_kernel<
+        VarTransform,
+        scalar_t,
+        acc_t,
+        VEC_SIZE>;
+    int64_t max_group_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
+    std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_) =
+        get_adaptive_config(
+            reduction_size_, n_channels_, VEC_SIZE, max_group_size);
+  }
+
+  static bool valid(
+      int reduction_size,
+      int n_channels,
+      const scalar_t* input,
+      acc_t* save_mean,
+      acc_t* save_invstd) {
+    bool valid = sizeof(scalar_t) <= 2;
+    valid = valid && (n_channels % VEC_SIZE == 0);
+    valid = valid &&
+        (memory::can_vectorize_up_to<scalar_t>((char*)input) >= VEC_SIZE);
+    valid = valid &&
+        (memory::can_vectorize_up_to<acc_t>((char*)save_mean) >= VEC_SIZE);
+    valid = valid &&
+        (memory::can_vectorize_up_to<acc_t>((char*)save_invstd) >= VEC_SIZE);
+    return valid;
+  }
+
+  sycl::range<2> local_range() const {
+    return sycl::range<2>(group_size_y_, group_size_x_);
+  }
+
+  sycl::range<2> global_range() const {
+    return sycl::range<2>(
+        group_size_y_ * ngroups_y_, group_size_x_ * ngroups_x_);
+  }
+
+  int staging_size() const {
+    return ngroups_y_ * n_channels_ * 4;
+  }
+
+  int semaphores_size() const {
+    return ngroups_x_;
+  }
+
+  bool check_staging_data(acc_t* staging_data) const {
+    return (
+        (staging_data == nullptr) ||
+        (memory::can_vectorize_up_to<acc_t>((char*)staging_data) >= VEC_SIZE));
+  }
+
+  int num_cooperative_groups() const {
+    return ngroups_y_;
+  }
+
+  int scratch_size() const {
+    auto local_size = group_size_x_ * group_size_y_;
+    return local_size * (2 * sizeof(acc_vec_t) + sizeof(int_vec_t)) +
+        sizeof(bool);
+  }
+
+ private:
+  int reduction_size_;
+  int n_channels_;
+  size_t group_size_y_;
+  size_t group_size_x_;
+  size_t ngroups_y_;
+  size_t ngroups_x_;
+};
 
 } // namespace at::native::xpu

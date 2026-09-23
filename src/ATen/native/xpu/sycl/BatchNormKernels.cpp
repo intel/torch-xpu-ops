@@ -858,62 +858,44 @@ void batch_norm_stats_channels_last_template(
   at::Tensor staging_data;
   at::Tensor semaphores;
 
+  using VecConfig = WelfordBatchNormStatChannelsLastVecKernelConfig<
+      VarTransform,
+      scalar_t,
+      accscalar_t,
+      PREFERRED_VEC_SIZE>;
   auto input_ptr = input.const_data_ptr<scalar_t>();
   auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
   bool use_vec_kernel = false;
 
-  if (welford_batch_norm_stat_channels_last_vec_kernel_valid<
-          scalar_t,
-          accscalar_t,
-          PREFERRED_VEC_SIZE>(
+  if (VecConfig::valid(
           reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
-    constexpr auto kernelT = welford_batch_norm_stat_channels_last_vec_kernel<
-        VarTransformFunctor,
-        scalar_t,
-        accscalar_t,
-        PREFERRED_VEC_SIZE>;
-    // auto max_group_size = syclDeviceMaxWorkGroupSize();
-    auto max_group_size = syclMaxWorkGroupSize<kernelT>();
-    size_t group_size_y_;
-    size_t group_size_x_;
-    size_t ngroups_y_;
-    size_t ngroups_x_;
-    std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_) =
-        get_adaptive_config(
-            reduction_size, stride, PREFERRED_VEC_SIZE, max_group_size);
+    auto cfg = VecConfig(reduction_size, stride);
+    cfg.init();
 
-    auto staging_size = ngroups_y_ * stride * 4;
-    auto semaphores_size = ngroups_x_;
-    auto num_cooperative_groups = ngroups_y_;
-    staging_data = at::empty({(long)(staging_size)}, out_mean.options());
-    semaphores =
-        at::zeros({(long)(semaphores_size)}, input.options().dtype(at::kInt));
-    accscalar_t* staging_data_ptr = num_cooperative_groups > 1
+    staging_data = at::empty({(long)(cfg.staging_size())}, out_mean.options());
+    semaphores = at::zeros(
+        {(long)(cfg.semaphores_size())}, input.options().dtype(at::kInt));
+    accscalar_t* staging_data_ptr = cfg.num_cooperative_groups() > 1
         ? staging_data.mutable_data_ptr<accscalar_t>()
         : nullptr;
-    int* semaphores_ptr = num_cooperative_groups > 1
+    int* semaphores_ptr = cfg.num_cooperative_groups() > 1
         ? semaphores.mutable_data_ptr<int>()
         : nullptr;
 
-    use_vec_kernel = (staging_data_ptr == nullptr) ||
-        (memory::can_vectorize_up_to<accscalar_t>((char*)staging_data_ptr) >=
-         PREFERRED_VEC_SIZE);
+    use_vec_kernel = cfg.check_staging_data(staging_data_ptr);
 
     if (use_vec_kernel) {
-      auto local_sz = group_size_x_ * group_size_y_;
-      using acc_vec_t = memory::aligned_vector<accscalar_t, PREFERRED_VEC_SIZE>;
-      using int_vec_t = memory::aligned_vector<int, PREFERRED_VEC_SIZE>;
-
-      auto slm_sz = local_sz * (sizeof(acc_vec_t) * 2 + sizeof(int_vec_t)) +
-          1 * sizeof(bool);
-      sycl_kernel_submit<kernelT>(
-          sycl::range<2>(
-              group_size_y_ * ngroups_y_, group_size_x_ * ngroups_x_),
-          sycl::range<2>(group_size_y_, group_size_x_),
+      constexpr auto kptr = welford_batch_norm_stat_channels_last_vec_kernel<
+          VarTransform,
+          scalar_t,
+          accscalar_t,
+          PREFERRED_VEC_SIZE>;
+      sycl_kernel_submit<kptr, 2>(
+          cfg.global_range(),
+          cfg.local_range(),
           getCurrentSYCLQueue(),
-          slm_sz,
-          functor,
+          cfg.scratch_size(),
           input_ptr,
           out_mean_ptr,
           out_invstd_ptr,
@@ -921,8 +903,7 @@ void batch_norm_stats_channels_last_template(
           stride,
           staging_data_ptr,
           semaphores_ptr,
-          epsilon,
-          local_sz);
+          epsilon);
       return;
     }
   }
