@@ -100,26 +100,8 @@ inline void welford_vertical_merge(
   }
 }
 
-template <typename scalar_t, typename acc_t, int VEC_SIZE = 2>
-bool welford_batch_norm_stat_channels_last_vec_kernel_valid(
-    int reduction_size,
-    int n_channels,
-    const scalar_t* input,
-    acc_t* save_mean,
-    acc_t* save_invstd) {
-  bool valid = sizeof(scalar_t) <= 2;
-  valid = valid && (n_channels % VEC_SIZE == 0);
-  valid = valid &&
-      (memory::can_vectorize_up_to<scalar_t>((char*)input) >= VEC_SIZE);
-  valid = valid &&
-      (memory::can_vectorize_up_to<acc_t>((char*)save_mean) >= VEC_SIZE);
-  valid = valid &&
-      (memory::can_vectorize_up_to<acc_t>((char*)save_invstd) >= VEC_SIZE);
-  return valid;
-}
-
 template <
-    typename VarTransformFunctor,
+    typename VarTransform,
     typename scalar_t,
     typename acc_t,
     int VEC_SIZE>
