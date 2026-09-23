@@ -1,8 +1,7 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 # https://github.com/intel/torch-xpu-ops/issues/1221
 torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1768
-BERT_pytorch,pass,pass,pass,fail_accuracy,pass
+BERT_pytorch,pass,pass,pass,pass,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 LearningToPaint,pass,pass,pass,pass,pass
@@ -48,8 +47,7 @@ hf_GPT2_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_ski
 hf_Longformer,pass,pass,pass,pass,pass
 hf_Reformer,pass,pass,pass,pass,pass
 hf_T5,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1276
-hf_T5_base,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+hf_T5_base,pass,pass,pass,pass,pass
 hf_T5_generate,pass,pass,pass,pass,pass
 hf_T5_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 hf_Whisper,pass,pass,pass,pass,pass
@@ -67,7 +65,7 @@ mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 mobilenet_v2_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,eager_fail_to_run,eager_fail_to_run,model_fail_to_load,model_fail_to_load,model_fail_to_load
+moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
