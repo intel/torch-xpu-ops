@@ -9,7 +9,6 @@
  */
 
 #include <ATen/Dispatch.h>
-#include <ATen/TensorUtils.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
@@ -84,6 +83,7 @@ inline void _rrelu_with_noise_xpu_train(
     const std::optional<Generator>& generator) {
   auto input = input_.contiguous();
   Tensor tmp_output = output.contiguous();
+  Tensor tmp_noise = noise_.contiguous();
 
   int64_t numel = input.numel();
   constexpr int unroll_factor = std::is_same_v<scalar_t, double> ? 2 : 4;
@@ -103,7 +103,7 @@ inline void _rrelu_with_noise_xpu_train(
   }
 
   const scalar_t* input_data = input.const_data_ptr<scalar_t>();
-  scalar_t* noise_data = noise_.mutable_data_ptr<scalar_t>();
+  scalar_t* noise_data = tmp_noise.mutable_data_ptr<scalar_t>();
   scalar_t* output_data = tmp_output.mutable_data_ptr<scalar_t>();
 
   double lower = lower_.to<double>();
@@ -149,6 +149,9 @@ inline void _rrelu_with_noise_xpu_train(
   if (!output.is_contiguous()) {
     output.copy_(tmp_output);
   }
+  if (!noise_.is_contiguous()) {
+    noise_.copy_(tmp_noise);
+  }
 }
 
 Tensor& rrelu_with_noise_kernel(
@@ -177,8 +180,6 @@ Tensor& rrelu_with_noise_kernel(
       noise.sym_sizes());
 
   if (training) {
-    // The kernel writes noise directly, so it must be a real buffer.
-    checkContiguous("rrelu_with_noise_out_xpu", noise_arg);
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
