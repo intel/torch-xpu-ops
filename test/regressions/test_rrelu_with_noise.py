@@ -33,7 +33,9 @@ class TestRreluWithNoise(TestCase):
             torch.empty(2, 8, device=xpu_device),
             torch.empty(4, 1, device=xpu_device),
         ]:
-            with self.assertRaisesRegex(RuntimeError, "noise tensor shape must match self tensor shape"):
+            with self.assertRaisesRegex(
+                RuntimeError, "noise tensor shape must match self tensor shape"
+            ):
                 torch.rrelu_with_noise(x, noise, training=True)
 
     def test_noise_non_contiguous(self):
@@ -47,9 +49,7 @@ class TestRreluWithNoise(TestCase):
         # data pointer used to go past the storage. Distinct per-element
         # noise values cannot land there, so the copy back rejects it.
         noise = torch.zeros(1, 8, device=xpu_device).expand(4, 8)
-        with self.assertRaisesRegex(
-            RuntimeError, "refers to a single memory location"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "refers to a single memory location"):
             torch.rrelu_with_noise(x, noise, training=True)
 
     def test_noise_written(self):
