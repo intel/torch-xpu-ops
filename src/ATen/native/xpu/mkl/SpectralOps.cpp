@@ -502,6 +502,11 @@ static void _fft_c2r_mkl_out_impl(
   auto in_sizes = input.sizes();
   DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   out_sizes[dim.back()] = last_dim_size;
+  if (!out.defined()) {
+    out = at::empty(
+        out_sizes,
+        self.options().dtype(c10::toRealValueType(self.scalar_type())));
+  }
   const auto result_dtype = c10::toRealValueType(orig_self.scalar_type());
   const bool needs_result_conversion =
       c10::toRealValueType(self.scalar_type()) != result_dtype;
@@ -561,7 +566,7 @@ Tensor _fft_c2r_mkl(
   auto out_sizes = _fft_c2r_out_sizes(self, dim, last_dim_size);
   const auto fft_dtype =
       c10::toRealValueType(impl::promote_fft_dtype(self.scalar_type()));
-  auto out = at::empty(out_sizes, self.options().dtype(fft_dtype));
+  Tensor out;
   _fft_c2r_mkl_out_impl(
       self,
       dim,
