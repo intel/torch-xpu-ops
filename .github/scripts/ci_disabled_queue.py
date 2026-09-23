@@ -2,38 +2,25 @@
 # Copyright 2026 Intel Corporation
 # Licensed under the Apache License, Version 2.0
 
-"""Queue upstream DISABLED-test batches onto the tracking issue as `@torchxpubot fix`.
+"""Ask the fix bot to fix the upstream DISABLED tests nobody has asked about yet.
 
-Usage:
-    GH_TOKEN=<read on SOURCE_REPO, write on TARGET_REPO> \
-        python ci_disabled_queue.py                   # print the trigger, post nothing
-    GH_TOKEN=<...> DRY_RUN=false \
-        python ci_disabled_queue.py                   # actually comment
+    GH_TOKEN=<read SOURCE, write TARGET> python ci_disabled_queue.py  # print only
+    GH_TOKEN=<...> DRY_RUN=false        python ci_disabled_queue.py  # post
     python ci_disabled_queue.py --self-test
 
-Printing is the default and `DRY_RUN=false` is the only value that posts, since
-the live side comments on a tracking issue and starts a multi-hour GPU job.
+Printing is the default, and only the literal `DRY_RUN=false` posts: the live side
+comments on a tracking issue and starts a multi-hour GPU job.
 
-There is no by-hand mode. A human who wants a specific test fixed now says
-`@torchxpubot fix` on the tracking issue from their own account, which is fewer
-steps than dispatching a workflow. This script exists for the runs nobody
-triggers.
+SOURCE grows one comment per failing `xpu.yml` run; the ones that matter list the
+`pytorch/pytorch` DISABLED issues that run produced, and re-list them every time
+it fails again. TARGET is the bot's work queue -- one `@torchxpubot fix` comment
+per batch. A batch is kept whole: its issues come from a single commit, so they
+are likelier to share a cause than anything test names could group by.
 
-The XPU CI report issue (SOURCE) grows a comment per failing `xpu.yml` commit.
-The ones that matter here carry a `Disable issues:` list of `pytorch/pytorch`
-DISABLED issues, and the same issue is re-listed on every later failing commit.
-The tracking issue (TARGET) is the bot's work queue: one `@torchxpubot fix`
-comment per batch, which is what a human posts by hand today.
-
-Every rule below is derived from GitHub state, so there is no local database to
-keep in sync: START (the cutoff), dedup, grouping and serialization each live in
-the function that applies them. One batch per invocation, oldest first.
-
-A batch is one SOURCE comment, which is one failing xpu.yml run: its issues come
-from the same commit, so they are likelier to share a cause than any grouping
-this script could infer from test names. Splitting them would also cost a build
-each -- /issue-handler fixes the first entry and re-runs the rest against the
-staged fix, listing what that covers.
+One batch per invocation, oldest first. Nothing is stored locally -- the cutoff,
+the dedup and the serialization each read their answer back out of GitHub, in the
+function that applies them. There is no by-hand mode: a human who wants one test
+fixed types the command on TARGET themselves.
 """
 
 import functools
@@ -44,17 +31,15 @@ import sys
 import urllib.error
 import urllib.request
 
-# Two issues in this repo, two roles: SOURCE is the CI report
-# ("XPU Periodic Run Auto Skip & Rerun", opened 2026-09-22 when it moved here
-# from chuanqi129/pytorch-xpu-ci#364), TARGET is the bot's work queue.
+# Two issues in this repo: #5490 is the CI report ("XPU Periodic Run Auto Skip &
+# Rerun"), #5272 is the bot's work queue.
 SOURCE_REPO, SOURCE_ISSUE = "intel/torch-xpu-ops", 5490
 TARGET_REPO, TARGET_ISSUE = "intel/torch-xpu-ops", 5272
 # bot.yml serves every @torchxpubot command; only its `fix` job is exclusive.
 BOT_WORKFLOW, FIX_JOB = "bot.yml", "fix"
-# The day SOURCE moved into this repo, so the queue owns exactly what SOURCE has
-# reported since. What came before is the hand-triaged backlog, where "this one
-# already has a PR" is tracked in a spreadsheet and in nothing GitHub can be
-# asked for. Move it back only to hand the queue history it did not see.
+# The day SOURCE moved into this repo. Earlier batches are the hand-triaged
+# backlog: whether one of those already has a PR lives in a spreadsheet, not in
+# anything GitHub can be asked. Move START back only to hand over more history.
 START = "2026-09-22"
 
 ISSUE_RE = re.compile(r"https://github\.com/pytorch/pytorch/issues/(\d+)")
@@ -101,15 +86,12 @@ def disabled_issues(body):
 def last_mirrored():
     """Newest `@torchxpubot fix` timestamp on TARGET per pytorch issue it names.
 
-    Matched the way bot.yml matches it. Merely containing the command counted the
-    bot's own session comments as triggers, which both moved a timestamp later
-    than the real trigger and would have silenced any issue a session comment
-    happened to link but nobody had queued.
+    Start-anchored like bot.yml's own gate, or the bot's session comments -- which
+    quote the command they are reporting on -- would count as triggers.
 
-    Ceiling: a comment that reads as a trigger but never ran one -- posted by
-    someone the permission gate rejects -- still counts. Asking "did a fix run
-    for this issue" instead means matching comments to runs by timestamp, which
-    is guesswork; the comment is the record.
+    Ceiling: a comment that reads as a trigger but never ran one (its author
+    failed the permission gate) still counts. The comment is the record; pairing
+    comments with runs by timestamp would be guesswork.
     """
     seen = {}
     for c in paged(f"/repos/{TARGET_REPO}/issues/{TARGET_ISSUE}/comments"):
@@ -123,9 +105,9 @@ def last_mirrored():
 def fix_in_flight():
     """URL of a bot run whose `fix` job has not finished, else None.
 
-    Asked by status, not by reading the newest N runs: 30 runs of bot.yml span
-    about three hours and a `fix` takes one to five, so a long one slides out of
-    any fixed window and the queue would start a second GPU job on top of it.
+    By status, not by reading the newest N runs: 30 runs of bot.yml span about
+    three hours while a `fix` takes one to five, so a long one slides out of any
+    window and the queue starts a second GPU job on top of it.
     """
     runs = [
         run
@@ -156,12 +138,11 @@ def upstream(num):
 
 
 def reopened_since(num, when):
-    """Was this issue reopened after `when`?
+    """Was this issue reopened after `when`? That starts a new episode -- the test
+    is blocking CI again for a reason the last fix did not settle.
 
-    That is what starts a new episode: the test is blocking CI again, for a
-    reason the last fix did not settle, so it gets queued again. Read from the
-    events -- `closed_at` cannot answer it, since reopening clears the field
-    (verified on pytorch#194562: closed 09-03, reopened 09-16, `closed_at` null).
+    From the events, because reopening clears `closed_at` (pytorch#194562: closed
+    09-03, reopened 09-16, `closed_at` null today).
     """
     events = paged(f"/repos/pytorch/pytorch/issues/{num}/events")
     return any(e["event"] == "reopened" and e["created_at"] > when for e in events)
@@ -186,10 +167,9 @@ def pending(comment, mirrored):
 def next_batch(mirrored):
     """Oldest SOURCE comment since START that still has something to queue.
 
-    First in, first out. Dedup already makes a repeat impossible, so taking the
-    newest batch first would buy nothing and could starve the tail whenever
-    SOURCE reports faster than the queue drains; oldest-first cannot starve
-    anything, and the batch that has waited longest goes next.
+    First in, first out. Dedup already rules out repeats, so jumping the queue
+    buys nothing, while newest-first would starve the tail if SOURCE ever
+    reported faster than the queue drains.
     """
     try:
         comments = paged(f"/repos/{SOURCE_REPO}/issues/{SOURCE_ISSUE}/comments")
@@ -216,11 +196,9 @@ def trigger_body(comment, issues):
     commit_line = [
         line for line in comment["body"].splitlines() if line.startswith("Commit ")
     ][:1]
-    # The issue URLs are wrapped in backticks on purpose. A bare URL makes GitHub
-    # file a cross-reference on the upstream issue, so every trigger would leave
-    # an `intel/torch-xpu-ops#5272` backlink on pytorch's tracker -- the nine
-    # already posted by hand each did. Code spans are not scanned for references,
-    # and ISSUE_RE still matches inside them, so dedup is unaffected.
+    # Backticks on purpose: a bare URL makes GitHub file a cross-reference, so
+    # every trigger would leave a backlink on pytorch's tracker. Code spans are
+    # not scanned for references, and ISSUE_RE still matches inside them.
     return "\n".join(
         [
             "@torchxpubot fix",

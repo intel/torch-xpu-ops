@@ -42,23 +42,17 @@ def slug_for(fix_result_path):
 
 
 def dest_name(branch, fix_result_path, target_repo=""):
-    """Directory for a unit's patch series: the branch minus `agent/`, then the
-    repo it applies to.
+    """Directory for a unit's patch series: `<branch minus agent/>-<target_repo>`.
 
-    The branch is named after the issue that owns the bug
-    (`fix-issue-<N>-...`, or `fix-pytorch-issue-<M>-...` when the bug is
-    filed upstream), so the patch path tells a reviewer which issue a PR
-    would close -- the tracking issue the command ran on is not it. Falls
-    back to the fix_result slug when the record carries no usable branch.
+    The branch is named after the issue that owns the bug (`fix-issue-<N>-...`,
+    or `fix-pytorch-issue-<M>-...` when it is filed upstream), so the path says
+    which issue a PR would close -- the tracking issue the command ran on is not
+    it. Falls back to the fix_result slug when the record has no usable branch.
 
-    The `target_repo` suffix says where that PR goes, and keeps a fix that spans
-    both repos from writing its halves into one directory: `issue-handler` names
-    the branch after the issue in EACH repo, so the two units arrive with the
-    same branch name, and `format-patch` numbers every series from 0001. Observed
-    on the 197521 grid_sample batch, where `0001-Implement-tricubic-...patch`
-    (torch-xpu-ops) and `0001-Enable-5D-bicubic-...patch` (pytorch) landed in one
-    directory and survived only because the two commit subjects differed. Equal
-    subjects would have overwritten one half, with the job still green.
+    The repo suffix says where that PR goes, and keeps a two-repo fix from
+    writing both halves into one directory: the branch is named after the same
+    issue in each repo, and `format-patch` numbers every series from 0001, so
+    equal commit subjects would silently overwrite one half.
     """
     leaf = str(branch or "").removeprefix("refs/heads/").removeprefix("agent/")
     leaf = leaf.strip().replace("/", "-")
