@@ -666,6 +666,33 @@ REPRODUCED
   refined_command: <single shell-executable string>
 ```
 
+### Markdown block
+
+Emit this block with the output above; the orchestrator appends it to the
+session comment.
+
+```markdown
+<!-- agent:reproduce -->
+
+## Reproduce
+
+<one or two sentences: which build was used — nightly wheel version or
+source sha — and which device.>
+
+| Test case | Verdict | Observed |
+|---|---|---|
+| `test_foo_xpu_float8_e4m3fn` | REPRODUCED | `NotImplementedError: "bar_kernel" not implemented for 'Float8_e4m3fn'` |
+
+<optional: one paragraph tying the signature to the CI job log, with a
+link to the failing job; or naming what blocked a stage.>
+
+*Automated by fix-reproduce.*
+```
+
+One row per test case (for a batch, label rows by sub-item number:
+`4. \`test_foo...\``). `Observed` is the one-line failure signature,
+backticked — never a pasted traceback.
+
 **`refined_command` contract.** A single shell-executable string that,
 run by itself, reliably triggers the failure. A downstream skill (a
 fix-verifier, a skip-list per-entry runner, etc.) invokes it directly
