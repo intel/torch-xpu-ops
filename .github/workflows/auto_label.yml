@@ -63,12 +63,27 @@ jobs:
           echo "Changed files:"
           echo "$FILES"
 
+          # Removing a skip re-enables a test, so UT must run to validate it.
+          # The file list alone cannot express this, so derive it from per-file
+          # deletion counts.
+          DELETIONS=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files \
+            --paginate \
+            --jq '[.[] | select(.filename | test("^test/xpu/(skip_list_common\\.py|expect/|extended/skip_list_.*\\.py|test_decomp_xpu\\.py)$")) | .deletions] | add // 0')
+          if [ "${DELETIONS:-0}" -gt 0 ]; then
+            SKIP_LIST_DELETIONS=true
+          else
+            SKIP_LIST_DELETIONS=false
+          fi
+          echo "skip_list_deletions=${SKIP_LIST_DELETIONS}" >> "$GITHUB_OUTPUT"
+          echo "Skip-list deletions: ${SKIP_LIST_DELETIONS} (${DELETIONS:-0} lines)"
+
       - name: Determine labels
         id: determine-labels
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
           MODELS_TOKEN: ${{ secrets.MODELS_TOKEN }}
           PR_FILES: ${{ steps.changed-files.outputs.files }}
+          SKIP_LIST_DELETIONS: ${{ steps.changed-files.outputs.skip_list_deletions }}
         run: |
           SKILL_CONTENT=$(cat .claude/skills/auto-label/SKILL.md)
           FILES="$PR_FILES"
@@ -84,6 +99,8 @@ jobs:
           ---BEGIN FILE LIST---
           ${FILES}
           ---END FILE LIST---
+
+          Fact (computed from the diff, not from the file list): SKIP_LIST_DELETIONS=${SKIP_LIST_DELETIONS}
 
           Rules:
           ${SKILL_CONTENT}
@@ -140,12 +157,14 @@ jobs:
           HAS_GITHUB_META=false
           ONLY_SKIP_EXPECT=true
           HAS_WIN_TEST=false
+          HAS_E2E_CRITICAL=false
 
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
               src/xccl/*) HAS_SRC=true; HAS_XCCL=true ;;
               src/*.cmake|src/CMakeLists.txt|src/Build*.cmake) HAS_CMAKE=true ;;
+              src/ATen/native/*/sycl/*.h|src/ATen/native/transformers/*|src/comm/*) HAS_SRC=true; HAS_E2E_CRITICAL=true ;;
               src/*) HAS_SRC=true ;;
               CMakeLists.txt|cmake/*|tools/*) HAS_CMAKE=true ;;
               test/agentic/*) HAS_GITHUB_META=true ;;
@@ -175,9 +194,11 @@ jobs:
             fi
           elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_TEST" = true ]; then
             # Test-only changes
-            if [ "$ONLY_SKIP_EXPECT" = true ]; then
+            if [ "$ONLY_SKIP_EXPECT" = true ] && [ "$SKIP_LIST_DELETIONS" != "true" ]; then
+              # Skip entries only added — nothing to validate beyond lint
               LABELS="disable_all"
             else
+              # Skip entries removed means a test was re-enabled and UT must prove it passes
               LABELS="disable_e2e,disable_distributed,disable_build"
               if [ "$HAS_WIN_TEST" = false ] && [ "$HAS_TEST_INFRA" = false ]; then
                 LABELS="${LABELS},disable_win"
@@ -188,6 +209,10 @@ jobs:
             if [ "$HAS_XCCL" = true ]; then
               # xccl is distributed backend — must run distributed tests, Linux-only
               LABELS="disable_e2e,disable_win"
+            elif [ "$HAS_E2E_CRITICAL" = true ]; then
+              # Shared SYCL headers / transformers / comm affect every kernel the
+              # inductor benchmarks exercise, so e2e must run
+              LABELS="disable_distributed"
             else
               LABELS="disable_e2e,disable_distributed"
             fi
