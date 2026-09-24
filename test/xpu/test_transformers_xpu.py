@@ -6229,15 +6229,21 @@ class TestSDPAAccelerator(NNTestCase):
     ):
         is_efficient = kernel == SDPBackend.EFFICIENT_ATTENTION
         dtype = torch.float32 if is_efficient else torch.float16
-        rand_nested_tensor = partial(rand_sdpa_tensor, type="nested", device=device, dtype=dtype)
+        rand_nested_tensor = partial(
+            rand_sdpa_tensor, type="nested", device=device, dtype=dtype
+        )
         batch, num_heads, head_dim = 32, 8, 64
         head_dim_v = 32 if is_efficient else head_dim
-        seq_lens_q = (torch.randint(low=1, high=5, size=(1,)).item()
-                      if expand_q_batch
-                      else torch.randint(low=1, high=32, size=(batch,)).tolist())
-        seq_lens_kv = (torch.randint(low=1, high=5, size=(1,)).item()
-                       if (expand_k_batch or expand_v_batch)
-                       else torch.randint(low=1, high=32, size=(batch,)).tolist())
+        seq_lens_q = (
+            torch.randint(low=1, high=5, size=(1,)).item()
+            if expand_q_batch
+            else torch.randint(low=1, high=32, size=(batch,)).tolist()
+        )
+        seq_lens_kv = (
+            torch.randint(low=1, high=5, size=(1,)).item()
+            if (expand_k_batch or expand_v_batch)
+            else torch.randint(low=1, high=32, size=(batch,)).tolist()
+        )
 
         batch_q = 1 if expand_q_batch else batch
         batch_k = 1 if expand_k_batch else batch
@@ -6265,21 +6271,33 @@ class TestSDPAAccelerator(NNTestCase):
             if batch_broadcasted and num_heads_broadcasted:
                 # (1, seq_len, 1, head_dim) -> (batch, seq_len, num_heads, head_dim)
                 result = torch.nested.nested_tensor(
-                    [t[0].expand(-1, num_heads, t.size(-1)) for _ in range(batch)], dtype=torch.float32)
+                    [t[0].expand(-1, num_heads, t.size(-1)) for _ in range(batch)],
+                    dtype=torch.float32,
+                )
             elif batch_broadcasted:
                 # (1, seq_len, num_heads, head_dim) -> (batch, seq_len, num_heads, head_dim)
-                result = torch.nested.nested_tensor([t[0] for _ in range(batch)], dtype=torch.float32)
+                result = torch.nested.nested_tensor(
+                    [t[0] for _ in range(batch)], dtype=torch.float32
+                )
             elif num_heads_broadcasted:
                 # (batch, seq_len, 1, head_dim) -> (batch, seq_len, num_heads, head_dim)
-                result = torch.nested.nested_tensor([x.expand(-1, num_heads, t.size(-1))
-                                                    for x in t.unbind()], dtype=torch.float32)
+                result = torch.nested.nested_tensor(
+                    [x.expand(-1, num_heads, t.size(-1)) for x in t.unbind()],
+                    dtype=torch.float32,
+                )
             else:
                 result = t.to(torch.float32)
             return result
 
-        query_expanded = _broadcast(query, expand_q_batch, expand_q_num_heads).transpose(1, 2)
-        key_expanded = _broadcast(key, expand_k_batch, expand_k_num_heads).transpose(1, 2)
-        value_expanded = _broadcast(value, expand_v_batch, expand_v_num_heads).transpose(1, 2)
+        query_expanded = _broadcast(
+            query, expand_q_batch, expand_q_num_heads
+        ).transpose(1, 2)
+        key_expanded = _broadcast(key, expand_k_batch, expand_k_num_heads).transpose(
+            1, 2
+        )
+        value_expanded = _broadcast(
+            value, expand_v_batch, expand_v_num_heads
+        ).transpose(1, 2)
 
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
@@ -6287,18 +6305,33 @@ class TestSDPAAccelerator(NNTestCase):
 
         with sdpa_kernel(backends=[kernel]):
             actual = torch.nn.functional.scaled_dot_product_attention(
-                query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False)
+                query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False
+            )
         with sdpa_kernel(backends=[SDPBackend.MATH]):
             math_ref = torch.nn.functional.scaled_dot_product_attention(
-                query_expanded.contiguous(), key_expanded.contiguous(), value_expanded.contiguous(),
-                attn_mask=None, dropout_p=0.0, is_causal=False)
+                query_expanded.contiguous(),
+                key_expanded.contiguous(),
+                value_expanded.contiguous(),
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=False,
+            )
 
-        self.assertEqual(actual.contiguous(), math_ref.contiguous().to(dtype), atol=1.5e-3, rtol=1e-2)
+        self.assertEqual(
+            actual.contiguous(), math_ref.contiguous().to(dtype), atol=1.5e-3, rtol=1e-2
+        )
 
-    @unittest.skipIf(not PLATFORM_SUPPORTS_MEM_EFF_ATTENTION, "Fused SDPA was not built for this system")
-    @skipIfXpu(msg="XPU SDPA dispatch lacks nested broadcasting kernels; tracked in torch-xpu-ops")
+    @unittest.skipIf(
+        not PLATFORM_SUPPORTS_MEM_EFF_ATTENTION,
+        "Fused SDPA was not built for this system",
+    )
+    @skipIfXpu(
+        msg="XPU SDPA dispatch lacks nested broadcasting kernels; tracked in torch-xpu-ops"
+    )
     def test_fused_kernels_nested_broadcasting_query_dense(self, device):
-        rand_nested_tensor = partial(rand_sdpa_tensor, type="nested", device=device, dtype=torch.float32)
+        rand_nested_tensor = partial(
+            rand_sdpa_tensor, type="nested", device=device, dtype=torch.float32
+        )
         batch, num_heads, head_dim, head_dim_v = 32, 16, 64, 96
         seq_lens = torch.randint(low=1, high=32, size=(batch,)).tolist()
         q_shape = (1, 1, num_heads, head_dim)
@@ -6311,10 +6344,13 @@ class TestSDPAAccelerator(NNTestCase):
         value = rand_nested_tensor(v_shape)
 
         # (1, 1, num_heads, head_dim) -> (batch, 1, num_heads, head_dim)
-        query_expanded = torch.nested.nested_tensor([query.squeeze(0) for _ in range(batch)]).transpose(1, 2)
+        query_expanded = torch.nested.nested_tensor(
+            [query.squeeze(0) for _ in range(batch)]
+        ).transpose(1, 2)
         # (batch, seq_lens, 1, head_dim) -> (batch, seq_lens, num_heads, head_dim)
         value_expanded = torch.nested.nested_tensor(
-            [t.expand(-1, num_heads, head_dim_v) for t in value.unbind()]).transpose(1, 2)
+            [t.expand(-1, num_heads, head_dim_v) for t in value.unbind()]
+        ).transpose(1, 2)
 
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
@@ -6322,16 +6358,30 @@ class TestSDPAAccelerator(NNTestCase):
 
         with sdpa_kernel(backends=[SDPBackend.EFFICIENT_ATTENTION]):
             actual = torch.nn.functional.scaled_dot_product_attention(
-                query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False)
+                query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False
+            )
         with sdpa_kernel(backends=[SDPBackend.MATH]):
             math_ref = torch.nn.functional.scaled_dot_product_attention(
-                query_expanded.contiguous(), key.contiguous(), value_expanded.contiguous(),
-                attn_mask=None, dropout_p=0.0, is_causal=False)
+                query_expanded.contiguous(),
+                key.contiguous(),
+                value_expanded.contiguous(),
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=False,
+            )
 
-        self.assertEqual(actual.contiguous(), math_ref.contiguous(), atol=1e-3, rtol=1e-2)
+        self.assertEqual(
+            actual.contiguous(), math_ref.contiguous(), atol=1e-3, rtol=1e-2
+        )
 
-    @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
-    @unittest.skipIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION, "Does not support SDPA or pre-SM80 hardware")
+    @skipXPUIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU Flash Attention is not supported",
+    )
+    @unittest.skipIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION,
+        "Does not support SDPA or pre-SM80 hardware",
+    )
     @parametrize("batch_size", [8, 32])
     @parametrize("max_seq_len_q", [32, 256])
     @parametrize("max_seq_len_kv", [32, 256])
@@ -6340,13 +6390,27 @@ class TestSDPAAccelerator(NNTestCase):
     @parametrize("dtype", [torch.float16])
     @parametrize("scale", [None, "l1"])
     @parametrize("is_causal", [True, False])
-    @skipIfXpu(msg="Hardcoded CUDA padding-mask path on dropout>0 and CUDA-only flash NestedTensor; ported separately in torch-xpu-ops")
-    def test_flash_attention_vs_math_ref_grads_nestedtensor(self, device, batch_size: int, max_seq_len_q: int, max_seq_len_kv: int,
-                                                            head_dim: int, dropout_p: float, dtype: torch.dtype,
-                                                            scale: str, is_causal: bool):
+    @skipIfXpu(
+        msg="Hardcoded CUDA padding-mask path on dropout>0 and CUDA-only flash NestedTensor; ported separately in torch-xpu-ops"
+    )
+    def test_flash_attention_vs_math_ref_grads_nestedtensor(
+        self,
+        device,
+        batch_size: int,
+        max_seq_len_q: int,
+        max_seq_len_kv: int,
+        head_dim: int,
+        dropout_p: float,
+        dtype: torch.dtype,
+        scale: str,
+        is_causal: bool,
+    ):
         if is_causal:
             # TODO we should support this
-            self.assertRaisesRegex(RuntimeError, "Nested tensors for query / key are not supported when is_causal=True")
+            self.assertRaisesRegex(
+                RuntimeError,
+                "Nested tensors for query / key are not supported when is_causal=True",
+            )
             return
         scale = scale if scale is None else (1 / head_dim)
         n_heads = 4
@@ -6357,8 +6421,12 @@ class TestSDPAAccelerator(NNTestCase):
         seq_lens_kv[torch.randint(0, batch_size, size=(1,))] = max_seq_len_kv
 
         def rand_nt(sequence_list, num_heads, head_dim):
-            tensors = [torch.rand((num_heads, seq_len, head_dim)) for seq_len in sequence_list]
-            return torch.nested.nested_tensor(tensors, requires_grad=True, device=device, dtype=dtype)
+            tensors = [
+                torch.rand((num_heads, seq_len, head_dim)) for seq_len in sequence_list
+            ]
+            return torch.nested.nested_tensor(
+                tensors, requires_grad=True, device=device, dtype=dtype
+            )
 
         query = rand_nt(seq_lens_q, n_heads, head_dim)
         key = rand_nt(seq_lens_kv, n_heads, head_dim)
@@ -6377,20 +6445,39 @@ class TestSDPAAccelerator(NNTestCase):
 
         if not is_dropout:
             with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
-                out = F.scaled_dot_product_attention(query, key, value, dropout_p=dropout_p, is_causal=is_causal, scale=scale)
+                out = F.scaled_dot_product_attention(
+                    query,
+                    key,
+                    value,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    scale=scale,
+                )
             with sdpa_kernel(backends=[SDPBackend.MATH]):
                 # High Precision Math Reference
                 with tf32_off():
                     out_ref = F.scaled_dot_product_attention(
-                        query_ref, key_ref, value_ref, is_causal=is_causal, scale=scale)
+                        query_ref, key_ref, value_ref, is_causal=is_causal, scale=scale
+                    )
                 # Low Precision Math Reference
                 out_lp_ref = F.scaled_dot_product_attention(
-                    query_ref_lp, key_ref_lp, value_ref_lp, is_causal=is_causal, scale=scale)
+                    query_ref_lp,
+                    key_ref_lp,
+                    value_ref_lp,
+                    is_causal=is_causal,
+                    scale=scale,
+                )
         else:
             # Create real output
             output_tuple = torch.ops.aten._scaled_dot_product_flash_attention(
-                query, key, value, dropout_p=dropout_p, is_causal=is_causal,
-                scale=scale, return_debug_mask=is_dropout)
+                query,
+                key,
+                value,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                return_debug_mask=is_dropout,
+            )
             out = output_tuple[0]
             dbug_mask = output_tuple[-1]
 
@@ -6405,26 +6492,49 @@ class TestSDPAAccelerator(NNTestCase):
             key_padding_mask = key_padding_mask.to(GPU_TYPE)
 
             softmax_mask = self.convert_flash_attn_S_to_softmax(
-                dbug_mask, max_seq_len_q, max_seq_len_kv, query_padding_mask, key_padding_mask, causal=is_causal)
+                dbug_mask,
+                max_seq_len_q,
+                max_seq_len_kv,
+                query_padding_mask,
+                key_padding_mask,
+                causal=is_causal,
+            )
             dropout_mask = softmax_mask >= 0
             nt_stack = []
             for tensor_component in range(batch_size):
                 batch_stack = []
                 for head in range(n_heads):
-                    batch_stack.append(dropout_mask[tensor_component, head,
-                                                    0:seq_lens_q[tensor_component],
-                                                    0:seq_lens_kv[tensor_component]].unsqueeze(0))
+                    batch_stack.append(
+                        dropout_mask[
+                            tensor_component,
+                            head,
+                            0 : seq_lens_q[tensor_component],
+                            0 : seq_lens_kv[tensor_component],
+                        ].unsqueeze(0)
+                    )
                 nt_stack.append(torch.cat(batch_stack))
             nested_dropout_mask = torch.nested.nested_tensor(nt_stack)
             # High Precision Math Reference
             with tf32_off():
                 out_ref = torch.ops.aten._scaled_dot_product_attention_math(
-                    query_ref, key_ref, value_ref, dropout_p=dropout_p,
-                    is_causal=is_causal, scale=scale, dropout_mask=nested_dropout_mask)[0]
+                    query_ref,
+                    key_ref,
+                    value_ref,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    scale=scale,
+                    dropout_mask=nested_dropout_mask,
+                )[0]
             # Low Precision Math Reference
             out_lp_ref = torch.ops.aten._scaled_dot_product_attention_math(
-                query_ref_lp, key_ref_lp, value_ref_lp, dropout_p=dropout_p, is_causal=is_causal, scale=scale,
-                dropout_mask=nested_dropout_mask)[0]
+                query_ref_lp,
+                key_ref_lp,
+                value_ref_lp,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                dropout_mask=nested_dropout_mask,
+            )[0]
 
         upstream_grad = out.detach().clone().contiguous()
 
@@ -6440,33 +6550,42 @@ class TestSDPAAccelerator(NNTestCase):
             (key_ref, key_ref_lp, key),
             (value_ref, value_ref_lp, value),
             fudge_factors={
-                'out': 1.5 * dropout_fudge_factor,
-                'grad_query': 12.0 * dropout_fudge_factor,
-                'grad_key': 1.5 * dropout_fudge_factor,
-                'grad_value': 2.0 * dropout_fudge_factor,
+                "out": 1.5 * dropout_fudge_factor,
+                "grad_query": 12.0 * dropout_fudge_factor,
+                "grad_key": 1.5 * dropout_fudge_factor,
+                "grad_value": 2.0 * dropout_fudge_factor,
             }
         )
 
 class TestSDPAXpuOnly(NNTestCase):
-    """ Used to test XPU only functionality of scaled_dot_product_attention
+    """Used to test XPU only functionality of scaled_dot_product_attention
     Mostly migrate from TestSDPAAccelerator in test/test_transformers.py
     """
+
     hw_classification = HardwareClassification.XPU
 
     @parametrize("type", ["dense"])
     @parametrize("dropout", [0.0, 0.7])
     @parametrize("dtype", [torch.float64, torch.float32, torch.bfloat16, torch.half])
     @skipIfTorchDynamo()
-    def test_fused_sdp_choice_xpu(self, device, type: str, dropout: float, dtype: torch.dtype):
+    def test_fused_sdp_choice_xpu(
+        self, device, type: str, dropout: float, dtype: torch.dtype
+    ):
         # Migrate from test_fused_sdp_choice_cpu
         make_tensor = partial(rand_sdpa_tensor, type=type, device=device, dtype=dtype)
         size = SdpaShape(2, 8, 128, 64)
         q, k, v = make_tensor(size), make_tensor(size), make_tensor(size)
         if dropout > 0.0 or dtype not in [torch.float32, torch.bfloat16, torch.float16]:
-            if torch._fused_sdp_choice(q, k, v, dropout_p=dropout) != SDPBackend.MATH.value:
+            if (
+                torch._fused_sdp_choice(q, k, v, dropout_p=dropout)
+                != SDPBackend.MATH.value
+            ):
                 raise AssertionError("expected MATH backend")
         else:
-            if torch._fused_sdp_choice(q, k, v, dropout_p=dropout) != SDPBackend.OVERRIDEABLE.value:
+            if (
+                torch._fused_sdp_choice(q, k, v, dropout_p=dropout)
+                != SDPBackend.OVERRIDEABLE.value
+            ):
                 raise AssertionError("expected OVERRIDEABLE backend")
 
     def test_fused_inputs_dim_3_xpu(self, device):
@@ -6521,12 +6640,15 @@ class TestSDPAXpuOnly(NNTestCase):
         # run sdp_choice to make sure priority_order is set by XPU default priority_order
         torch._fused_sdp_choice(t, t, t)
         from torch.nn.attention import _cur_sdpa_kernel_backends
+
         default_priority = _cur_sdpa_kernel_backends(with_priority=True)
         flash_index = default_priority.index(SDPBackend.FLASH_ATTENTION)
         overrideable_index = default_priority.index(SDPBackend.OVERRIDEABLE)
         math_index = default_priority.index(SDPBackend.MATH)
-        self.assertTrue(overrideable_index < flash_index < math_index,
-                        lambda msg: f"{msg}\nExpected overrideable < flash < math, got {overrideable_index}, {flash_index}, {math_index}")
+        self.assertTrue(
+            overrideable_index < flash_index < math_index,
+            lambda msg: f"{msg}\nExpected overrideable < flash < math, got {overrideable_index}, {flash_index}, {math_index}",
+        )
 
     def test_onednn_attention_different_dk_dv(self, device):
         dtype = torch.bfloat16
@@ -6606,7 +6728,6 @@ class TestSDPAXpuOnly(NNTestCase):
         )
 
     def test_onednn_attention_preserves_query_layout(self, device):
-
         def test_attention(permute_order: list[list[int]]):
             BHSqD = [4, 16, 256, 64]
             BHSkvD = [4, 16, 512, 64]
