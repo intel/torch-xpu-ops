@@ -5450,27 +5450,51 @@ class TestSDPAAccelerator(NNTestCase):
 
         attn_mask = torch.rand(seq_len_q, seq_len_k, device=device, dtype=dtype, requires_grad=True)
 
-        higher_precision_dtype = torch.float64 if dtype == torch.float32 else torch.float32
-        query_ref, key_ref, value_ref = query_key_value_clones(query, key, value, dtype=higher_precision_dtype)
+        higher_precision_dtype = (
+            torch.float64 if dtype == torch.float32 else torch.float32
+        )
+        query_ref, key_ref, value_ref = query_key_value_clones(
+            query, key, value, dtype=higher_precision_dtype
+        )
         attn_mask_ref = attn_mask.detach().to(higher_precision_dtype).requires_grad_(True)
 
         # Create real output
         with sdpa_kernel(backends=[SDPBackend.EFFICIENT_ATTENTION]):
             # Set the seed and run the kernel
             torch.manual_seed(seed)
-            out = F.scaled_dot_product_attention(query, key, value, attn_mask, dropout_p=dropout_p,
-                                                 is_causal=is_causal, scale=scale)
+            out = F.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+            )
 
         if dropout_p == 0.0:
             with sdpa_kernel(backends=[SDPBackend.MATH]):
                 # High Precision Math Reference
                 with tf32_off():
                     out_ref = F.scaled_dot_product_attention(
-                        query_ref, key_ref, value_ref, attn_mask_ref,
-                        dropout_p=dropout_p, is_causal=is_causal, scale=scale)
+                        query_ref,
+                        key_ref,
+                        value_ref,
+                        attn_mask_ref,
+                        dropout_p=dropout_p,
+                        is_causal=is_causal,
+                        scale=scale,
+                    )
                 # Low Precision Math Reference
-                out_lp_ref = F.scaled_dot_product_attention(query, key, value, attn_mask,
-                                                            dropout_p=dropout_p, is_causal=is_causal, scale=scale)
+                out_lp_ref = F.scaled_dot_product_attention(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    scale=scale,
+                )
         else:
             if seq_len_q > 1024:
                 self.skipTest("Will call _fill_mem_eff_dropout_mask with too many threads!")
@@ -5481,13 +5505,26 @@ class TestSDPAAccelerator(NNTestCase):
             # High Precision Math Reference
             with tf32_off():
                 out_ref = torch.ops.aten._scaled_dot_product_attention_math(
-                    query_ref, key_ref, value_ref, attn_mask_ref, dropout_p=dropout_p, is_causal=is_causal,
-                    scale=scale, dropout_mask=dropout_mask)[0]
+                    query_ref,
+                    key_ref,
+                    value_ref,
+                    attn_mask_ref,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    scale=scale,
+                    dropout_mask=dropout_mask,
+                )[0]
             # Low Precision Math Reference
             out_lp_ref = torch.ops.aten._scaled_dot_product_attention_math(
-                query, key, value, attn_mask,
-                dropout_p=dropout_p, is_causal=is_causal, scale=scale,
-                dropout_mask=dropout_mask)[0]
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                dropout_mask=dropout_mask,
+            )[0]
 
         upstream_grad = torch.rand_like(out, requires_grad=False)
 
@@ -5885,23 +5922,46 @@ class TestSDPAAccelerator(NNTestCase):
         value = torch.rand(batch_size, num_heads_kv, seq_len_k, head_dim,
                            device=device, dtype=dtype, requires_grad=True)
 
-        higher_precision_dtype = torch.float64 if dtype == torch.float32 else torch.float32
-        query_ref, key_ref, value_ref = query_key_value_clones(query, key, value, dtype=higher_precision_dtype)
+        higher_precision_dtype = (
+            torch.float64 if dtype == torch.float32 else torch.float32
+        )
+        query_ref, key_ref, value_ref = query_key_value_clones(
+            query, key, value, dtype=higher_precision_dtype
+        )
 
         is_dropout = dropout_p > 0.0
 
         if not is_dropout:
             with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
                 out = F.scaled_dot_product_attention(
-                    query, key, value, dropout_p=dropout_p, is_causal=is_causal, scale=scale, enable_gqa=enable_gqa)
+                    query,
+                    key,
+                    value,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    scale=scale,
+                    enable_gqa=enable_gqa,
+                )
             with sdpa_kernel(backends=[SDPBackend.MATH]):
                 # High Precision Math Reference
                 with tf32_off():
                     out_ref = F.scaled_dot_product_attention(
-                        query_ref, key_ref, value_ref, is_causal=is_causal, scale=scale, enable_gqa=enable_gqa)
+                        query_ref,
+                        key_ref,
+                        value_ref,
+                        is_causal=is_causal,
+                        scale=scale,
+                        enable_gqa=enable_gqa,
+                    )
                 # Low Precision Math Reference
                 out_lp_ref = F.scaled_dot_product_attention(
-                    query, key, value, is_causal=is_causal, scale=scale, enable_gqa=enable_gqa)
+                    query,
+                    key,
+                    value,
+                    is_causal=is_causal,
+                    scale=scale,
+                    enable_gqa=enable_gqa,
+                )
         else:
             # Problem: We pad sizes in the composite region of the top level SDPA. But we need the
             # Debug mask when have dropout. So I am going to manually pad up here when testing dropout
@@ -5912,7 +5972,14 @@ class TestSDPAAccelerator(NNTestCase):
             if scale is None:
                 scale = 1 / math.sqrt(q_og_size)
             output_tuple = torch.ops.aten._scaled_dot_product_flash_attention(
-                q_padded, k_padded, v_padded, dropout_p=dropout_p, is_causal=is_causal, scale=scale, return_debug_mask=is_dropout)
+                q_padded,
+                k_padded,
+                v_padded,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                return_debug_mask=is_dropout,
+            )
             out = output_tuple[0]
             out = out[..., :v_og_size]
             # Build dropout_mask
@@ -6051,8 +6118,14 @@ class TestSDPAAccelerator(NNTestCase):
                 dropout_mask = softmax_mask >= 0
                 return dropout_mask
 
-        if fused_kernel == SDPBackend.FLASH_ATTENTION and is_causal and seq_len_q != seq_len_k:
-            self.skipTest("Flash V2 does not accept is_casual when seq_len_q != seq_len_k")
+        if (
+            fused_kernel == SDPBackend.FLASH_ATTENTION
+            and is_causal
+            and seq_len_q != seq_len_k
+        ):
+            self.skipTest(
+                "Flash V2 does not accept is_casual when seq_len_q != seq_len_k"
+            )
 
         if (
             torch.device(device).type == "xpu"
@@ -6102,8 +6175,12 @@ class TestSDPAAccelerator(NNTestCase):
             else torch.ops.aten._scaled_dot_product_cudnn_attention
         )
 
-        higher_precision_dtype = torch.float64 if dtype == torch.float32 else torch.float32
-        query_ref, key_ref, value_ref = query_key_value_clones(query, key, value, dtype=higher_precision_dtype)
+        higher_precision_dtype = (
+            torch.float64 if dtype == torch.float32 else torch.float32
+        )
+        query_ref, key_ref, value_ref = query_key_value_clones(
+            query, key, value, dtype=higher_precision_dtype
+        )
 
         # warmup
         s = torch.Stream()
