@@ -398,9 +398,11 @@ skip_dict = {
     "dynamo/test_cudagraphs_xpu.py": None,
     "dynamo/test_activation_checkpointing_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_debug_utils.py": None,
-    f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
+        # Worker crash on BMG; no dedicated tracking issue yet
+        "test_torch_size_tensor_index_scalar_constant_dynamic_shapes",
+    ),
     f"{PYTORCH_TEST_DIR}/dynamo/test_export.py": None,
-    "dynamo/test_logging_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_structured_trace.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_subclasses.py": None,
     f"{PYTORCH_TEST_DIR}/test_modes.py": None,
