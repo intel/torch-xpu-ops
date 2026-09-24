@@ -383,6 +383,7 @@ _cuda_xfail_xpu_pass = [
 # tests for ConvTranspose2d).
 _none_device_xfail_xpu_pass = [
     ("narrow_copy", "test_out"),
+    ("narrow_copy", "test_out_warning"),
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
     ("_refs.true_divide", "test_python_ref_executor"),
@@ -471,11 +472,6 @@ _xpu_tolerance_override = {
     "nn.ConvTranspose3d": {
         ("TestModule", "test_non_contiguous_tensors"): {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
-        }
-    },
-    "test_modules_xpu.py": {
-        ("TestModuleXPU", "test_non_contiguous_tensors_nn_LazyConv3d_xpu_float32"): {
-            torch.float32: tol(atol=2e-5, rtol=7e-5),
         }
     },
 }
