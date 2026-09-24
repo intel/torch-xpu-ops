@@ -44,6 +44,7 @@ from torch.testing._internal.common_utils import (
     skipIfMPS,
     HardwareClassification,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch._dynamo.testing import CompileCounterWithBackend
 
 
@@ -2007,11 +2008,11 @@ class TestSDPAFailureModes(NNTestCase):
             with ctxmgr:
                 torch.nn.functional.scaled_dot_product_attention(q, k, v, None, 0.0, False)
 
-    @onlyCUDA
+    @onlyAccelerator
     @unittest.skipIf(TEST_WITH_ROCM, "CUTLASS mem efficient attention alignment check is CUDA-only")
     @unittest.skipIf(not PLATFORM_SUPPORTS_MEM_EFF_ATTENTION, "Does not support mem efficient attention")
     def test_mem_efficient_attention_misaligned_data_ptr_sm80_or_later(self, device):
-        if torch.cuda.get_device_capability(device)[0] < 8:
+        if torch.accelerator.get_device_capability(device)[0] < 8:
             self.skipTest("sm80 or newer requires aligned mem efficient attention kernels")
 
         B, H, S, D = 6, 4, 64, 64
@@ -2309,11 +2310,11 @@ class TestSDPAFailureModes(NNTestCase):
                 scale=None,
             )
 
-    @largeTensorTest("15GB", "cuda")
-    @onlyCUDA
+    @largeTensorTest("15GB", GPU_TYPE)
+    @onlyAccelerator
     @unittest.skipIf(not PLATFORM_SUPPORTS_MEM_EFF_ATTENTION, "Does not support Efficient Attention")
     def test_mem_eff_attention_large_seq_len_uniform_attention(self):
-        device = torch.device("cuda")
+        device = torch.device(GPU_TYPE)
         dtype = torch.bfloat16
 
         num_queries = 49999
@@ -2344,15 +2345,15 @@ class TestSDPAFailureModes(NNTestCase):
             # for all ones grad_output, each value position receives grad of 1 (because sum of all softmax weights per row is 1)
             self.assertTrue(torch.allclose(value.grad, torch.ones_like(value)))
 
-    @largeTensorTest("12GB", "cuda")
-    @onlyCUDA
+    @largeTensorTest("12GB", GPU_TYPE)
+    @onlyAccelerator
     @unittest.skipIf(not PLATFORM_SUPPORTS_MEM_EFF_ATTENTION, "Does not support Efficient Attention")
     def test_mem_eff_attention_large_seq_len_attn_mask_index_overflow(self):
         # When an attn_mask is given and seq_len**2 > 2**32, the kernel used to
         # compute the per-row mask offset (query_start * bias_strideM) in
         # 32-bit arithmetic, which wraps around and silently corrupts the
         # output of all rows past 2**32 // seq_len.
-        device = torch.device("cuda")
+        device = torch.device(GPU_TYPE)
         dtype = torch.bfloat16
 
         seq_len = 66000  # seq_len**2 > 2**32
@@ -2383,7 +2384,7 @@ def _get_block_size_n(device, head_dim, is_dropout, is_causal):
     # This should match the block sizes in the CUDA kernel
     if head_dim > 256:
         raise AssertionError(f"head_dim should be <= 256, got {head_dim}")
-    major, minor = torch.cuda.get_device_capability(device)
+    major, minor = torch.accelerator.get_device_capability(device)
     is_sm8x = major == 8 and minor > 0  # Only include sm86 and sm89, exclude sm80 (A100)
     if head_dim <= 32:
         return 128
@@ -2922,7 +2923,7 @@ class TestSDPACPU(NNTestCase):
             grads = torch.autograd.grad(loss, [query, key, value])
             return masked_out, grads
 
-        if backend == SDPBackend.FLASH_ATTENTION and "cuda" in str(device):
+        if backend == SDPBackend.FLASH_ATTENTION and GPU_TYPE in str(device):
             self.skipTest("FlashAttention does not support masks on cuda")
         if backend == SDPBackend.EFFICIENT_ATTENTION and "cpu" in str(device):
             self.skipTest("EfficientAttention does not support masks on cpu")
@@ -3094,7 +3095,7 @@ class TestSDPAAccelerator(NNTestCase):
         # See #193893 and #194927 for reasoning
         # TODO: Remove this test when fixed and disable is no longer needed
         cudnn_version = torch.backends.cudnn.version() or 0
-        device_capability = torch.cuda.get_device_capability()
+        device_capability = torch.accelerator.get_device_capability()
         affected_arch = device_capability[0] in (10, 11)
         # cuDNN versions 9.19-9.25.0 (except 9.24.1) on SM 10.x and 11.x are disabled
         # This check also allows possible future 9.24 patch versions without a rewrite
@@ -5149,7 +5150,7 @@ class TestSDPAAccelerator(NNTestCase):
                     raise AssertionError("expected EFFICIENT_ATTENTION backend")
 
     @xfailIfNoAcceleratorTriton
-    @onlyCUDA
+    @onlyAccelerator
     @unittest.skipIf(not PLATFORM_SUPPORTS_CUDNN_ATTENTION, "cuDNN Attention is not supported on this system")
     @unittest.skipIf(not PLATFORM_SUPPORTS_MEM_EFF_ATTENTION, "Platform does not support fused SDPA")
     @parametrize("use_compile", [True, False])
@@ -5174,14 +5175,14 @@ class TestSDPAAccelerator(NNTestCase):
             else:
                 with sdpa_kernel(order, set_priority=True):
                     scaled_dot_product_attention(q, q, q)
-            torch.cuda.synchronize()
+            torch.accelerator.synchronize()
             t0 = time.perf_counter()
             if use_compile:
                 compiled_func(order)
             else:
                 with sdpa_kernel(order, set_priority=True):
                     scaled_dot_product_attention(q, q, q)
-            torch.cuda.synchronize()
+            torch.accelerator.synchronize()
             t1 = time.perf_counter()
             times.append(t1 - t0)
         self.assertTrue(times[0] < times[1], "expected cuDNN SDPA to be faster than Math backend.")
@@ -5385,7 +5386,7 @@ class TestSDPAAccelerator(NNTestCase):
                 fudge_factors['grad_query'] = 670.0
             if dtype == torch.float32:
                 fudge_factors['grad_key'] = 90.0
-            if "gfx95" in torch.cuda.get_device_properties(0).gcnArchName:
+            if "gfx95" in torch.get_device_module(GPU_TYPE).get_device_properties(0).gcnArchName:
                 fudge_factors['grad_value'] = 16.0
 
         check_out_and_grad(
@@ -5513,7 +5514,7 @@ class TestSDPAAccelerator(NNTestCase):
                 fudge_factors['grad_query'] = 670.0  # gfx90a
             if dtype == torch.float32:
                 fudge_factors['grad_key'] = 90.0
-                if "gfx95" in torch.cuda.get_device_properties(0).gcnArchName:
+                if "gfx95" in torch.get_device_module(GPU_TYPE).get_device_properties(0).gcnArchName:
                     fudge_factors['grad_value'] = 16.0
 
         check_out_and_grad(
@@ -5794,9 +5795,9 @@ class TestSDPAAccelerator(NNTestCase):
         ngroups = num_heads_q // num_heads_kv
         dtype = torch.float16
         # The fp32 reference materializes a [32, 2, 2000, 656] score matrix.
-        if torch.cuda.get_device_properties(device).total_memory < 16 * 2**30:
+        if torch.get_device_module(GPU_TYPE).get_device_properties(device).total_memory < 16 * 2**30:
             self.skipTest("Reference for the exact D108947199 shape needs ~1GB")
-        torch.cuda.empty_cache()
+        torch.accelerator.empty_cache()
 
         q = torch.rand(
             batch, num_heads_q, seqlen_q, head_dim, device=device, dtype=dtype
@@ -6102,9 +6103,9 @@ class TestSDPAAccelerator(NNTestCase):
             out.backward(upstream_grad)
         for x in (query, key, value):
             x.grad = None
-        g = torch.xpu.XPUGraph() if TEST_XPU else torch.cuda.CUDAGraph()
+        g = torch.xpu.XPUGraph() if TEST_XPU else torch.get_device_module(GPU_TYPE).CUDAGraph()
         # Create real output
-        with (torch.xpu.graph(g) if TEST_XPU else torch.cuda.graph(g)):
+        with (torch.xpu.graph(g) if TEST_XPU else torch.get_device_module(GPU_TYPE).graph(g)):
             torch.rand_like(query, device=query.device)  # test non-zero intragraph offset
             # Create real output
             output_tuple = fused_op(query, key, value, **kwargs)
@@ -6145,8 +6146,8 @@ class TestSDPAAccelerator(NNTestCase):
                     query, key, value, dropout_p=dropout_p, is_causal=is_causal,
                     dropout_mask=dropout_mask)[0]
 
-        g1 = torch.xpu.XPUGraph() if TEST_XPU else torch.cuda.CUDAGraph()
-        with (torch.xpu.graph(g1) if TEST_XPU else torch.cuda.graph(g1)):
+        g1 = torch.xpu.XPUGraph() if TEST_XPU else torch.get_device_module(GPU_TYPE).CUDAGraph()
+        with (torch.xpu.graph(g1) if TEST_XPU else torch.get_device_module(GPU_TYPE).graph(g1)):
             grads = torch.autograd.grad(out, (query, key, value), upstream_grad)
         g1.replay()
         if fused_kernel != SDPBackend.CUDNN_ATTENTION or dropout_p == 0.0:
@@ -6396,12 +6397,12 @@ class TestSDPAAccelerator(NNTestCase):
             query_padding_mask = torch.arange(max_seq_len_q).unsqueeze(0).expand(
                 batch_size, max_seq_len_q
             ) < seq_lens_q.unsqueeze(-1)
-            query_padding_mask = query_padding_mask.to("cuda")
+            query_padding_mask = query_padding_mask.to(GPU_TYPE)
 
             key_padding_mask = torch.arange(max_seq_len_kv).unsqueeze(0).expand(
                 batch_size, max_seq_len_kv
             ) < seq_lens_kv.unsqueeze(-1)
-            key_padding_mask = key_padding_mask.to("cuda")
+            key_padding_mask = key_padding_mask.to(GPU_TYPE)
 
             softmax_mask = self.convert_flash_attn_S_to_softmax(
                 dbug_mask, max_seq_len_q, max_seq_len_kv, query_padding_mask, key_padding_mask, causal=is_causal)

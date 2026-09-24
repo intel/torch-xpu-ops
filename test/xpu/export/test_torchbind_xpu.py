@@ -22,7 +22,7 @@ from torch.testing._internal.common_utils import (
     skipIfTorchDynamo,
     TestCase,
 )
-from torch.testing._internal.inductor_utils import requires_triton
+from torch.testing._internal.inductor_utils import GPU_TYPE, requires_triton
 from torch.testing._internal.torchbind_impls import (
     _empty_tensor_queue,
     init_torchbind_implementations,
@@ -932,7 +932,7 @@ def forward(self, token, safe_obj):
                 super().__init__()
 
             def forward(self, tq, x):
-                with torch.autocast("cuda", dtype=torch.bfloat16):
+                with torch.autocast(GPU_TYPE, dtype=torch.bfloat16):
                     torch.ops._TorchScriptTesting.queue_push(tq, x.cos())
                     torch.ops._TorchScriptTesting.queue_push(tq, x.sin())
                     x_sin = torch.ops._TorchScriptTesting.queue_pop(
