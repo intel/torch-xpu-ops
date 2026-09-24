@@ -6824,10 +6824,15 @@ class TestSDPAXpuOnly(NNTestCase):
             with self.assertRaisesRegex(RuntimeError, "No available kernel"):
                 F.scaled_dot_product_attention(q, k, v, dropout_p=0.1)
 
-    @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
+    @skipXPUIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU Flash Attention is not supported",
+    )
     def test_flash_attention_headdim_size(self, device):
         dtype = torch.bfloat16
-        make_tensor = partial(torch.rand, device=device, dtype=dtype, requires_grad=False)
+        make_tensor = partial(
+            torch.rand, device=device, dtype=dtype, requires_grad=False
+        )
         batch, num_heads, seqlen = 32, 2, 32
 
         max_supported_head_dim = 256
@@ -6848,7 +6853,10 @@ class TestSDPAXpuOnly(NNTestCase):
             with self.assertRaisesRegex(RuntimeError, "No available kernel"):
                 F.scaled_dot_product_attention(q, k, v)
 
-    @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
+    @skipXPUIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU Flash Attention is not supported",
+    )
     def test_flash_attention_fail_with_non_square_causal_attention(self, device):
         dtype = torch.bfloat16
         q_shape = SdpaShape(1, 1, 8, 16)
@@ -6859,8 +6867,12 @@ class TestSDPAXpuOnly(NNTestCase):
         warning_str = "Flash attention XPU does not support the is_causal flag when seqlen_q != seqlen_k."
         with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
             with self.assertWarnsRegex(UserWarning, warning_str):
-                self.assertRaises(RuntimeError, lambda: torch.nn.functional.scaled_dot_product_attention(
-                    q, k, v, None, 0.0, is_causal=True))
+                self.assertRaises(
+                    RuntimeError,
+                    lambda: torch.nn.functional.scaled_dot_product_attention(
+                        q, k, v, None, 0.0, is_causal=True
+                    ),
+                )
 
     @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
     @parametrize("fused_kernel", [SDPBackend.FLASH_ATTENTION])
@@ -6890,14 +6902,22 @@ class TestSDPAXpuOnly(NNTestCase):
         enable_gqa,
     ):
         if mask_type == "causal" and q_size != kv_size:
-            self.skipTest("Flash Attention V2 does not accept is_causal when seq_len_q != seq_len_k")
+            self.skipTest(
+                "Flash Attention V2 does not accept is_causal when seq_len_q != seq_len_k"
+            )
 
         tol = Tolerances(1e-5, 5e-6)
         if dtype is torch.bfloat16:
             tol = Tolerances(5e-2, 5e-2)
         if dtype is torch.float16:
             tol = Tolerances(1e-2, 1e-2)
-        make_tensor = partial(rand_sdpa_tensor, type="dense", device=device, dtype=dtype, requires_grad=False)
+        make_tensor = partial(
+            rand_sdpa_tensor,
+            type="dense",
+            device=device,
+            dtype=dtype,
+            requires_grad=False,
+        )
 
         if enable_gqa:
             n_head_q, n_head_kv = n_head[0], n_head[1]
@@ -6936,16 +6956,29 @@ class TestSDPAXpuOnly(NNTestCase):
 
         with sdpa_kernel(backends=[fused_kernel]):
             actual = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=0.0, is_causal=is_causal, enable_gqa=enable_gqa)
+                q, k, v, dropout_p=0.0, is_causal=is_causal, enable_gqa=enable_gqa
+            )
 
         with sdpa_kernel(backends=[SDPBackend.MATH]):
             if is_causal:
                 bottom_right_mask = causal_lower_right(q_size, kv_size)
                 math_ref = F.scaled_dot_product_attention(
-                    q2, k2, v2, dropout_p=0.0, attn_mask=bottom_right_mask, enable_gqa=enable_gqa)
+                    q2,
+                    k2,
+                    v2,
+                    dropout_p=0.0,
+                    attn_mask=bottom_right_mask,
+                    enable_gqa=enable_gqa,
+                )
             else:
                 math_ref = F.scaled_dot_product_attention(
-                    q2, k2, v2, dropout_p=0.0, is_causal=is_causal, enable_gqa=enable_gqa)
+                    q2,
+                    k2,
+                    v2,
+                    dropout_p=0.0,
+                    is_causal=is_causal,
+                    enable_gqa=enable_gqa,
+                )
 
         if dtype in [torch.float16, torch.bfloat16]:
             math_ref = math_ref.to(dtype)
@@ -6987,7 +7020,9 @@ class TestAttnBias(NNTestCase):
             torch._dynamo.reset()
 
         query, key, value = make_q(), make_kv(), make_kv()
-        query_prototype, key_prototype, value_prototype = query_key_value_clones(query, key, value)
+        query_prototype, key_prototype, value_prototype = query_key_value_clones(
+            query, key, value
+        )
 
         realized = attn_bias._materialize(device) if attn_bias is not None else None
         pytorch_output = scaled_dot_product_attention(
@@ -7019,24 +7054,60 @@ class TestAttnBias(NNTestCase):
         if grad_tolerances is None:
             grad_tolerances = Tolerances(atol=None, rtol=None)
 
-        torch.testing.assert_close(pytorch_output, sdpa_output, rtol=forw_tolerances.rtol, atol=forw_tolerances.atol)
-        torch.testing.assert_close(query.grad, query_prototype.grad, rtol=grad_tolerances.rtol, atol=grad_tolerances.atol)
-        torch.testing.assert_close(key.grad, key_prototype.grad, rtol=grad_tolerances.rtol, atol=grad_tolerances.atol)
-        torch.testing.assert_close(value.grad, value_prototype.grad, rtol=grad_tolerances.rtol, atol=grad_tolerances.atol)
+        torch.testing.assert_close(
+            pytorch_output,
+            sdpa_output,
+            rtol=forw_tolerances.rtol,
+            atol=forw_tolerances.atol,
+        )
+        torch.testing.assert_close(
+            query.grad,
+            query_prototype.grad,
+            rtol=grad_tolerances.rtol,
+            atol=grad_tolerances.atol,
+        )
+        torch.testing.assert_close(
+            key.grad,
+            key_prototype.grad,
+            rtol=grad_tolerances.rtol,
+            atol=grad_tolerances.atol,
+        )
+        torch.testing.assert_close(
+            value.grad,
+            value_prototype.grad,
+            rtol=grad_tolerances.rtol,
+            atol=grad_tolerances.atol,
+        )
 
-    @parametrize("causal_variant", [CausalVariant.UPPER_LEFT, CausalVariant.LOWER_RIGHT])
+    @parametrize(
+        "causal_variant", [CausalVariant.UPPER_LEFT, CausalVariant.LOWER_RIGHT]
+    )
     @parametrize(
         "shape",
-        [(16, 16, 128, 128, 16), (16, 16, 128, 256, 32), (16, 16, 256, 128, 32), (1, 1, 23, 56, 15)],
+        [
+            (16, 16, 128, 128, 16),
+            (16, 16, 128, 256, 32),
+            (16, 16, 256, 128, 32),
+            (1, 1, 23, 56, 15),
+        ],
     )
-    @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
-    def test_causal_variants(self, device, causal_variant: CausalVariant, shape: list[tuple[int]]):
+    @skipXPUIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU Flash Attention is not supported",
+    )
+    def test_causal_variants(
+        self, device, causal_variant: CausalVariant, shape: list[tuple[int]]
+    ):
         make_tensor = partial(
             torch.rand, device=device, dtype=torch.float16, requires_grad=True
         )
         bsz, num_heads, seq_len_q, seq_len_kv, head_dim = shape
-        make_q_tensor = partial(make_tensor, SdpaShape(bsz, num_heads, seq_len_q, head_dim))
-        make_kv_tensor = partial(make_tensor, SdpaShape(bsz, num_heads, seq_len_kv, head_dim))
+        make_q_tensor = partial(
+            make_tensor, SdpaShape(bsz, num_heads, seq_len_q, head_dim)
+        )
+        make_kv_tensor = partial(
+            make_tensor, SdpaShape(bsz, num_heads, seq_len_kv, head_dim)
+        )
         if causal_variant == CausalVariant.LOWER_RIGHT and seq_len_q > seq_len_kv:
             self.skipTest(
                 "Lower right causal mask will produce NaNs in the output when seq_len_q > seq_len_kv!"
@@ -7050,28 +7121,56 @@ class TestAttnBias(NNTestCase):
         else:
             attn_bias = causal_lower_right(seq_len_q, seq_len_kv)
 
-        with sdpa_kernel(backends=[SDPBackend.EFFICIENT_ATTENTION,
-                                   SDPBackend.FLASH_ATTENTION,
-                                   SDPBackend.MATH,
-                                   SDPBackend.CUDNN_ATTENTION]):
-            self.run_test(device, make_q_tensor, make_kv_tensor, attn_bias, forw_tol, grad_tol, backend=None)
+        with sdpa_kernel(
+            backends=[
+                SDPBackend.EFFICIENT_ATTENTION,
+                SDPBackend.FLASH_ATTENTION,
+                SDPBackend.MATH,
+                SDPBackend.CUDNN_ATTENTION,
+            ]
+        ):
+            self.run_test(
+                device,
+                make_q_tensor,
+                make_kv_tensor,
+                attn_bias,
+                forw_tol,
+                grad_tol,
+                backend=None,
+            )
 
-    @parametrize("causal_variant", [CausalVariant.UPPER_LEFT, CausalVariant.LOWER_RIGHT])
+    @parametrize(
+        "causal_variant", [CausalVariant.UPPER_LEFT, CausalVariant.LOWER_RIGHT]
+    )
     @parametrize(
         "shape",
-        [(16, 16, 128, 128, 16), (16, 16, 128, 256, 32), (16, 16, 256, 128, 32), (1, 1, 23, 56, 15)],
+        [
+            (16, 16, 128, 128, 16),
+            (16, 16, 128, 256, 32),
+            (16, 16, 256, 128, 32),
+            (1, 1, 23, 56, 15),
+        ],
     )
     @skipIfTorchDynamo("This function already calls torch.compile.")
-    @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
-    def test_causal_variants_compile(self, device, causal_variant: CausalVariant, shape: list[tuple[int]]):
+    @skipXPUIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU Flash Attention is not supported",
+    )
+    def test_causal_variants_compile(
+        self, device, causal_variant: CausalVariant, shape: list[tuple[int]]
+    ):
         cnts = CompileCounterWithBackend("aot_eager")
         make_tensor = partial(
             torch.rand, device=device, dtype=torch.float16, requires_grad=True
         )
 
         bsz, num_heads, seq_len_q, seq_len_kv, head_dim = shape
-        make_q_tensor = partial(make_tensor, SdpaShape(bsz, num_heads, seq_len_q, head_dim))
-        make_kv_tensor = partial(make_tensor, SdpaShape(bsz, num_heads, seq_len_kv, head_dim))
+        make_q_tensor = partial(
+            make_tensor, SdpaShape(bsz, num_heads, seq_len_q, head_dim)
+        )
+        make_kv_tensor = partial(
+            make_tensor, SdpaShape(bsz, num_heads, seq_len_kv, head_dim)
+        )
         if causal_variant == CausalVariant.LOWER_RIGHT and seq_len_q > seq_len_kv:
             self.skipTest(
                 "Lower right causal mask will produce NaNs in the output when seq_len_q > seq_len_kv!"
@@ -7084,22 +7183,46 @@ class TestAttnBias(NNTestCase):
         else:
             attn_bias = causal_lower_right(seq_len_q, seq_len_kv)
 
-        with sdpa_kernel(backends=[SDPBackend.EFFICIENT_ATTENTION,
-                                   SDPBackend.FLASH_ATTENTION,
-                                   SDPBackend.MATH,
-                                   SDPBackend.CUDNN_ATTENTION]):
-            self.run_test(device, make_q_tensor, make_kv_tensor, attn_bias, forw_tol, grad_tol, backend=cnts)
+        with sdpa_kernel(
+            backends=[
+                SDPBackend.EFFICIENT_ATTENTION,
+                SDPBackend.FLASH_ATTENTION,
+                SDPBackend.MATH,
+                SDPBackend.CUDNN_ATTENTION,
+            ]
+        ):
+            self.run_test(
+                device,
+                make_q_tensor,
+                make_kv_tensor,
+                attn_bias,
+                forw_tol,
+                grad_tol,
+                backend=cnts,
+            )
         self.assertEqual(cnts.frame_count, 1, "Compiled graph should have 1 frame!")
 
-    @parametrize("shape", [(16, 16, 128, 128, 16), (16, 16, 128, 256, 32), (16, 16, 256, 128, 32), (1, 1, 23, 56, 15)])
+    @parametrize(
+        "shape",
+        [
+            (16, 16, 128, 128, 16),
+            (16, 16, 128, 256, 32),
+            (16, 16, 256, 128, 32),
+            (1, 1, 23, 56, 15),
+        ],
+    )
     def test_is_causal_equals_upper_left(self, device, shape: list[tuple[int]]):
         make_tensor = partial(
             torch.rand, device=device, dtype=torch.float16, requires_grad=True
         )
 
         bsz, num_heads, seq_len_q, seq_len_kv, head_dim = shape
-        make_q_tensor = partial(make_tensor, SdpaShape(bsz, num_heads, seq_len_q, head_dim))
-        make_kv_tensor = partial(make_tensor, SdpaShape(bsz, num_heads, seq_len_kv, head_dim))
+        make_q_tensor = partial(
+            make_tensor, SdpaShape(bsz, num_heads, seq_len_q, head_dim)
+        )
+        make_kv_tensor = partial(
+            make_tensor, SdpaShape(bsz, num_heads, seq_len_kv, head_dim)
+        )
 
         forw_tol = Tolerances(1e-3, 1e-3)
 
@@ -7108,9 +7231,15 @@ class TestAttnBias(NNTestCase):
         value = make_kv_tensor()
         attn_bias = causal_upper_left(seq_len_q, seq_len_kv)
 
-        out_attn_bias = scaled_dot_product_attention(query, key, value, attn_mask=attn_bias, dropout_p=0.0)
-        out_is_causal = scaled_dot_product_attention(query, key, value, is_causal=True, dropout_p=0.0)
-        torch.testing.assert_close(out_attn_bias, out_is_causal, rtol=forw_tol.rtol, atol=forw_tol.atol)
+        out_attn_bias = scaled_dot_product_attention(
+            query, key, value, attn_mask=attn_bias, dropout_p=0.0
+        )
+        out_is_causal = scaled_dot_product_attention(
+            query, key, value, is_causal=True, dropout_p=0.0
+        )
+        torch.testing.assert_close(
+            out_attn_bias, out_is_causal, rtol=forw_tol.rtol, atol=forw_tol.atol
+        )
 
     def test_is_causal_and_mask_fails(self, device):
         make_tensor = partial(
@@ -7124,8 +7253,17 @@ class TestAttnBias(NNTestCase):
         value = make_kv_tensor()
         attn_bias = causal_upper_left(128, 128)
 
-        with self.assertRaisesRegex(ValueError, "CausalBias should not be used with causal=True"):
-            scaled_dot_product_attention(query, key, value, attn_mask=attn_bias, is_causal=True, dropout_p=0.0)
+        with self.assertRaisesRegex(
+            ValueError, "CausalBias should not be used with causal=True"
+        ):
+            scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                attn_mask=attn_bias,
+                is_causal=True,
+                dropout_p=0.0,
+            )
 
 if NOTEST_CPU:
     device_types = ("cuda", "mps", "mtia")
@@ -7133,16 +7271,32 @@ else:
     device_types = ("cpu", "cuda", "mps", "mtia")
 
 if TEST_XPU:
-    device_types += ("xpu", )
+    device_types += ("xpu",)
 
 
-instantiate_device_type_tests(TestTransformersAccelerator, globals(), only_for=device_types, allow_xpu=True)
-instantiate_device_type_tests(TestSDPAFailureModes, globals(), only_for=device_types, allow_mps=True, allow_xpu=True)
-instantiate_device_type_tests(TestSDPAGeneric, globals(), only_for=device_types, allow_mps=True, allow_xpu=True)
-instantiate_device_type_tests(TestSDPAAccelerator, globals(), only_for=("cuda", "xpu"), allow_xpu=True)
+instantiate_device_type_tests(
+    TestTransformersAccelerator, globals(), only_for=device_types, allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestSDPAFailureModes,
+    globals(),
+    only_for=device_types,
+    allow_mps=True,
+    allow_xpu=True,
+)
+instantiate_device_type_tests(
+    TestSDPAGeneric, globals(), only_for=device_types, allow_mps=True, allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestSDPAAccelerator, globals(), only_for=("cuda", "xpu"), allow_xpu=True
+)
 instantiate_device_type_tests(TestSDPACPU, globals(), only_for=("cpu"))
-instantiate_device_type_tests(TestAttnBias, globals(), only_for=device_types, allow_xpu=True)
-instantiate_device_type_tests(TestSDPAXpuOnly, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestAttnBias, globals(), only_for=device_types, allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestSDPAXpuOnly, globals(), only_for="xpu", allow_xpu=True
+)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_tests()
