@@ -95,6 +95,9 @@ jobs:
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
+          # Scheduled runs get the merge queue as github.actor, which the action
+          # otherwise rejects as a non-human actor.
+          allowed_bots: github-merge-queue
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: >-
             --model ${{ env.BEDROCK_MODEL }} --max-turns 120

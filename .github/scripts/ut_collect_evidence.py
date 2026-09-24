@@ -83,10 +83,15 @@ HEALTH_RATIO = 0.95
 # Covered UT jobs. xpu_distributed is deliberately excluded: it reports through
 # run_distributed_tests in ut_result_check.sh, which produces neither the
 # per-category passed/failed logs nor a case count, so neither the health
-# gate nor the baseline comparison has anything to read.
+# gate nor the baseline comparison has anything to read. The upstream_* jobs
+# run weekly only; upstream_distributed goes through run_main_tests like the rest.
 UT_JOB_CATEGORIES = {
     "basic": ["op_regression", "op_regression_dev1", "op_extended"],
     "op_ut": ["op_ut"],
+    "xpu_profiling": ["xpu_profiling"],
+    "upstream_default": ["upstream_default"],
+    "upstream_inductor": ["upstream_inductor"],
+    "upstream_distributed": ["upstream_distributed"],
 }
 CATEGORY_UT_JOB = {c: job for job, cats in UT_JOB_CATEGORIES.items() for c in cats}
 
@@ -97,6 +102,9 @@ EXPECTED_CASES = {
     "op_regression": 268,
     "op_regression_dev1": 1,
     "op_ut": 178548,
+    "upstream_default": 83126,
+    "upstream_inductor": 33999,
+    "upstream_distributed": 3323,
 }
 
 
@@ -401,10 +409,11 @@ def resolve_jobs(run_id: int) -> list[tuple[int, str, str, str]]:
 
 
 def jobs_for(jobs: list[tuple[int, str, str, str]], ut_job: str) -> list[tuple]:
-    """The workflow jobs of one UT job, the container one first when there is
-    one."""
+    """The workflow jobs of one UT job: ones that ran before skipped ones (a
+    distributed job skips its container half), then the container one first."""
     cands = [j for j in jobs if f"({ut_job})" in j[1]]
-    return sorted(cands, key=lambda j: (not j[1].endswith("test-in-container"), j[0]))
+    return sorted(cands, key=lambda j: (j[2] == "skipped",
+                                        not j[1].endswith("test-in-container"), j[0]))
 
 
 def job_url(run_id: int, jobs: list[tuple[int, str, str, str]], ut_job: str) -> str:
