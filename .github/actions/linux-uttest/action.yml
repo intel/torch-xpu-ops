@@ -184,7 +184,7 @@ runs:
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
 
     - name: xpu_p0
-      shell: timeout 72000 bash -eo pipefail {0}
+      shell: timeout 72000 bash -xe -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_p0' }}
       env:
         PYTORCH_TEST_WITH_SLOW: 1
@@ -203,7 +203,7 @@ runs:
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
 
     - name: xpu_p0_distributed
-      shell: timeout 72000 bash -eo pipefail {0}
+      shell: timeout 72000 bash -xe -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_p0_distributed' }}
       env:
         PYTORCH_TEST_WITH_SLOW: 1
@@ -222,7 +222,7 @@ runs:
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
 
     - name: upstream_ut
-      shell: timeout 72000 bash -eu -o pipefail {0}
+      shell: timeout 172000 bash -xe -o pipefail {0}
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -230,11 +230,49 @@ runs:
         ut_name="${{ inputs.ut_name }}"
         log_dir="${{ github.workspace }}/ut_log/${ut_name}"
         mkdir -p ${log_dir}
+        # Format a number of seconds as "MmSSs" for the per-run elapsed lines
+        fmt_elapsed() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }
         case "${ut_name}" in
           upstream_distributed) category="distributed" ;;
           upstream_inductor) category="inductor" ;;
           *) category="default" ;;
         esac
+        # Inductor cases same as PyTorch, sharded across the visible GPUs
+        if [[ "${category}" == 'inductor' ]]; then
+          IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
+          num_shards=${#gpus[@]}
+          run_inductor_shards() {
+            # $1 = part label, $2 = extra run_test.py flags, rest = --include args
+            local part="$1"; local extra="$2"; shift 2
+            local start=${SECONDS}
+            echo "::group::inductor ${part} (${num_shards} shards)"
+            for i in "${!gpus[@]}"; do
+              local shard_id=$((i + 1))
+              (
+                ZE_AFFINITY_MASK="${gpus[$i]}" \
+                PYTEST_ADDOPTS="" \
+                python pytorch/test/run_test.py --verbose ${extra} \
+                  --include "$@" \
+                  --shard ${shard_id} ${num_shards} \
+                  --junit-xml="${{ github.workspace }}/ut_log/upstream_inductor_${part}_shard${shard_id}.xml"
+              ) &
+            done
+            wait
+            echo "::endgroup::"
+            echo "[TIME] inductor ${part} ($(fmt_elapsed $((SECONDS - start))))"
+          }
+          # Part 1: eager to inductor cases (with --inductor)
+          run_inductor_shards part1 --inductor \
+            test_modules test_ops test_ops_gradients test_torch \
+            2> "${log_dir}/${ut_name}_test_error1.log" | tee "${log_dir}/${ut_name}_test1.log"
+          # Part 2: inductor own tests (no --inductor, avoids nested dynamo state)
+          run_inductor_shards part2 "" \
+            inductor/test_torchinductor inductor/test_torchinductor_opinfo \
+            inductor/test_aot_inductor inductor/test_cpu_select_algorithm \
+            2> "${log_dir}/${ut_name}_test_error2.log" | tee "${log_dir}/${ut_name}_test2.log"
+          exit 0
+        fi
+        # Distributed needs an etcd rendezvous and a multi-rank XCCL setup
         if [[ "${category}" == 'distributed' ]]; then
           sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends etcd-server
           uv pip install python-etcd
@@ -252,40 +290,31 @@ runs:
           fi
         fi
         # Get the list of done test files for the current category
+        files_list="${log_dir}/${ut_name}_files.txt"
         python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
-          --category ${category} --${category}-output ${log_dir}/${ut_name}_files.txt > /dev/null
-        # do eager to inductor cases
-        if [[ "${category}" == 'inductor' ]]; then
-          # test_torch not in the done list
-          echo "::group::eager to inductor cases (pytorch/test/run_test.py --inductor xxx)"
-          # Distribute tests across the GPUs listed in ZE_AFFINITY_MASK (e.g. 0,1,2,3,4,5,6,7)
-          IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
-          num_shards=${#gpus[@]}
-          for i in "${!gpus[@]}"; do
-            shard_id=$((i + 1))
-            (
-              ZE_AFFINITY_MASK="${gpus[$i]}" \
-              PYTEST_ADDOPTS="" \
-              python pytorch/test/run_test.py --inductor \
-                --include test_modules test_ops test_ops_gradients \
-                --shard ${shard_id} ${num_shards} \
-                --junit-xml="${{ github.workspace }}/ut_log/upstream_inductor_eager_to_inductor_shard${shard_id}.xml"
-            ) &
-          done
-          wait
-          echo "::endgroup::"
-        fi
-        # loop files
+          --category ${category} --${category}-output ${files_list} > /dev/null
+        # Run each file in its own collapsible group, tracking status + elapsed
+        run_start=${SECONDS}
+        total=0 passed=0 failed=0
         while IFS= read -r test_file; do
           [ -z "${test_file}" ] && continue
+          total=$((total + 1))
           log_name="${test_file//\//_}"
+          start=${SECONDS}
           echo "::group::${test_file}"
-          python -m pytest -v "pytorch/${test_file}" \
-            --junit-xml="${{ github.workspace }}/ut_log/${ut_name}_${log_name}.xml" \
-            2>&1 | tee "${log_dir}/${ut_name}_test_${log_name}.log" \
-            || echo -e "${test_file}" >> "${log_dir}/${ut_name}_failed.log"
+          if python -m pytest -v "pytorch/${test_file}" \
+              --junit-xml="${{ github.workspace }}/ut_log/${ut_name}_${log_name}.xml" \
+              2> ${log_dir}/${ut_name}_test_error_${log_name}.log | \
+              tee ${log_dir}/${ut_name}_test_${log_name}.log; then
+            status="PASS"; passed=$((passed + 1))
+          else
+            status="FAIL"; failed=$((failed + 1))
+            echo "${test_file}" >> "${log_dir}/${ut_name}_test_error_${log_name}.log"
+          fi
           echo "::endgroup::"
-        done < ${log_dir}/${ut_name}_files.txt
+          echo "[${status}] ${test_file} ($(fmt_elapsed $((SECONDS - start))))"
+        done < ${files_list}
+        echo "[SUMMARY] ${ut_name}: ${total} files, ${passed} passed, ${failed} failed in $(fmt_elapsed $((SECONDS - run_start)))"
 
     # Summary
     - name: UT Test Results Summary
