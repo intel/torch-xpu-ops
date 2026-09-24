@@ -382,6 +382,7 @@ _cuda_xfail_xpu_pass = [
 # unscoped xfails that genuinely fail on XPU (e.g. complex-dtype memory-format
 # tests for ConvTranspose2d).
 _none_device_xfail_xpu_pass = [
+    ("narrow_copy", "test_out"),
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
     ("_refs.true_divide", "test_python_ref_executor"),
