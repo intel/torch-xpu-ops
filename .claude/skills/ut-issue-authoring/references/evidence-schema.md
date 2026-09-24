@@ -12,7 +12,7 @@ is a judgement.
     // drafts written against a different night's failures.
     "digest": "9f2a...",
 
-    // Keyed by UT job - `basic` or `op_ut` - because a bisect range is per
+    // Keyed by UT job - `basic`, `op_ut`, `upstream_default`, ... - because a bisect range is per
     // job: the baseline commit and tonight's must come from the same one.
     "job_urls":      { "basic": "https://github.com/.../job/123" },
     "torch":         { "basic": "abc1234..." },
