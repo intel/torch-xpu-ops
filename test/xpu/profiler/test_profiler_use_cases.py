@@ -13,6 +13,7 @@
 # Guide.
 
 import json
+import re
 import unittest
 
 import torch
@@ -37,6 +38,22 @@ def _kernel_events_from_trace(trace_path):
 def _filter_gemm_kernels(kernels):
     """Filter kernel events to only include GEMM kernels."""
     return [k for k in kernels if "gemm" in k.get("name", "").lower()]
+
+
+# PTI SDK version below which per-kernel trace events are not reliably
+# reported for kernels launched via a captured/replayed XPUGraph.
+_PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION = (0, 17)
+
+
+def _pti_version_from_trace(trace_path):
+    """Return the (major, minor) PTI SDK version recorded in a trace's
+    ``xpupti_version`` metadata (see XpuptiActivityProfilerSession in
+    kineto), or None if it is missing or unparseable.
+    """
+    with open(trace_path) as f:
+        data = json.load(f)
+    match = re.search(r"(\d+)\.(\d+)", str(data.get("xpupti_version", "")))
+    return (int(match.group(1)), int(match.group(2))) if match else None
 
 
 class XpuProfilerUseCasesTest(TestCase):
@@ -144,7 +161,6 @@ class XpuProfilerUseCasesTest(TestCase):
         )
 
     @unittest.skipIf(not TEST_XPU, "test requires XPU")
-    @unittest.expectedFailure
     def test_profiler_xpu_graph(self):
         """Profile XPUGraph capture and replay.
 
@@ -177,7 +193,15 @@ class XpuProfilerUseCasesTest(TestCase):
 
         with TemporaryFileName(mode="w+") as fname:
             prof.export_chrome_trace(fname)
+            pti_version = _pti_version_from_trace(fname)
             kernels = _kernel_events_from_trace(fname)
+
+        if pti_version is None or pti_version < _PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION:
+            self.skipTest(
+                "XPUGraph kernel-event capture requires PTI >= "
+                f"{'.'.join(map(str, _PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION))}; "
+                f"trace reports PTI {pti_version}"
+            )
 
         gemm_kernels = _filter_gemm_kernels(kernels)
         self.assertGreaterEqual(
@@ -185,7 +209,7 @@ class XpuProfilerUseCasesTest(TestCase):
             iterations,
             f"Expected at least {iterations} GEMM kernel events from "
             f"XPUGraph replay, got {len(gemm_kernels)}; trace kernels: "
-            f"{[k.get('name') for k in kernels]} (requires PTI >= 0.17)",
+            f"{[k.get('name') for k in kernels]}",
         )
 
     @unittest.skipIf(not TEST_XPU, "test requires XPU")
