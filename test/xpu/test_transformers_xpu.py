@@ -6054,23 +6054,53 @@ class TestSDPAAccelerator(NNTestCase):
         if fused_kernel == SDPBackend.FLASH_ATTENTION and is_causal and seq_len_q != seq_len_k:
             self.skipTest("Flash V2 does not accept is_casual when seq_len_q != seq_len_k")
 
-        if torch.device(device).type == "xpu" and fused_kernel == SDPBackend.FLASH_ATTENTION:
+        if (
+            torch.device(device).type == "xpu"
+            and fused_kernel == SDPBackend.FLASH_ATTENTION
+        ):
             # XPU flash kernel: head_dim restricted to {64,96,128,192}, dropout > 0 unsupported,
             # and work_group_scratch_memory unavailable under SYCL Graph extension (XPUGraph).
-            self.skipTest("XPU flash kernel limits (head_dim/dropout/graph-capture) not supported")
+            self.skipTest(
+                "XPU flash kernel limits (head_dim/dropout/graph-capture) not supported"
+            )
 
         seed = 42
         n_heads = 4
-        query = torch.rand(batch_size, n_heads, seq_len_q, head_dim,
-                           device=device, dtype=dtype, requires_grad=True)
-        key = torch.rand(batch_size, n_heads, seq_len_k, head_dim, device=device,
-                         dtype=dtype, requires_grad=True)
-        value = torch.rand(batch_size, n_heads, seq_len_k, head_dim,
-                           device=device, dtype=dtype, requires_grad=True)
+        query = torch.rand(
+            batch_size,
+            n_heads,
+            seq_len_q,
+            head_dim,
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        key = torch.rand(
+            batch_size,
+            n_heads,
+            seq_len_k,
+            head_dim,
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        value = torch.rand(
+            batch_size,
+            n_heads,
+            seq_len_k,
+            head_dim,
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
 
-        fused_op = (torch.ops.aten._scaled_dot_product_efficient_attention
-                    if fused_kernel == SDPBackend.EFFICIENT_ATTENTION else torch.ops.aten._scaled_dot_product_flash_attention
-                    if fused_kernel == SDPBackend.FLASH_ATTENTION else torch.ops.aten._scaled_dot_product_cudnn_attention)
+        fused_op = (
+            torch.ops.aten._scaled_dot_product_efficient_attention
+            if fused_kernel == SDPBackend.EFFICIENT_ATTENTION
+            else torch.ops.aten._scaled_dot_product_flash_attention
+            if fused_kernel == SDPBackend.FLASH_ATTENTION
+            else torch.ops.aten._scaled_dot_product_cudnn_attention
+        )
 
         higher_precision_dtype = torch.float64 if dtype == torch.float32 else torch.float32
         query_ref, key_ref, value_ref = query_key_value_clones(query, key, value, dtype=higher_precision_dtype)
@@ -6085,7 +6115,7 @@ class TestSDPAAccelerator(NNTestCase):
             kwargs["compute_log_sumexp"] = True
             kwargs["attn_bias"] = None
         if fused_kernel == SDPBackend.FLASH_ATTENTION:
-            kwargs['return_debug_mask'] = dropout_p > 0.0
+            kwargs["return_debug_mask"] = dropout_p > 0.0
         if fused_kernel == SDPBackend.CUDNN_ATTENTION:
             kwargs["compute_log_sumexp"] = True
             kwargs["attn_bias"] = None
@@ -6105,11 +6135,16 @@ class TestSDPAAccelerator(NNTestCase):
             x.grad = None
         g = torch.xpu.XPUGraph() if TEST_XPU else torch.cuda.CUDAGraph()
         # Create real output
-        with (torch.xpu.graph(g) if TEST_XPU else torch.cuda.graph(g)):
-            torch.rand_like(query, device=query.device)  # test non-zero intragraph offset
+        with torch.xpu.graph(g) if TEST_XPU else torch.cuda.graph(g):
+            torch.rand_like(
+                query, device=query.device
+            )  # test non-zero intragraph offset
             # Create real output
             output_tuple = fused_op(query, key, value, **kwargs)
-            if not all(not isinstance(o, torch.Tensor) or o.is_cuda or o.is_xpu for o in output_tuple):
+            if not all(
+                not isinstance(o, torch.Tensor) or o.is_cuda or o.is_xpu
+                for o in output_tuple
+            ):
                 raise AssertionError("expected all tensor outputs to be on cuda or xpu")
         g.replay()
         out_first = output_tuple[0].clone()
@@ -6126,57 +6161,98 @@ class TestSDPAAccelerator(NNTestCase):
                 # High Precision Math Reference
                 with tf32_off():
                     out_ref = F.scaled_dot_product_attention(
-                        query_ref, key_ref, value_ref,
-                        dropout_p=dropout_p, is_causal=is_causal)
+                        query_ref,
+                        key_ref,
+                        value_ref,
+                        dropout_p=dropout_p,
+                        is_causal=is_causal,
+                    )
                 # Low Precision Math Reference
-                out_lp_ref = F.scaled_dot_product_attention(query, key, value,
-                                                            dropout_p=dropout_p, is_causal=is_causal)
+                out_lp_ref = F.scaled_dot_product_attention(
+                    query, key, value, dropout_p=dropout_p, is_causal=is_causal
+                )
             # cuDNN attention doesn't support returning dropout mask
             elif fused_kernel != SDPBackend.CUDNN_ATTENTION:
                 # Create the dropout_mask
-                dropout_mask = get_dropout_mask(output_tuple, fused_kernel, batch_size,
-                                                n_heads, seq_len_q, seq_len_k, dropout_p, device)
+                dropout_mask = get_dropout_mask(
+                    output_tuple,
+                    fused_kernel,
+                    batch_size,
+                    n_heads,
+                    seq_len_q,
+                    seq_len_k,
+                    dropout_p,
+                    device,
+                )
                 # High Precision Math Reference
                 with tf32_off():
                     out_ref = torch.ops.aten._scaled_dot_product_attention_math(
-                        query_ref, key_ref, value_ref, dropout_p=dropout_p, is_causal=is_causal,
-                        dropout_mask=dropout_mask)[0]
+                        query_ref,
+                        key_ref,
+                        value_ref,
+                        dropout_p=dropout_p,
+                        is_causal=is_causal,
+                        dropout_mask=dropout_mask,
+                    )[0]
                 # Low Precision Math Reference
                 out_lp_ref = torch.ops.aten._scaled_dot_product_attention_math(
-                    query, key, value, dropout_p=dropout_p, is_causal=is_causal,
-                    dropout_mask=dropout_mask)[0]
+                    query,
+                    key,
+                    value,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    dropout_mask=dropout_mask,
+                )[0]
 
         g1 = torch.xpu.XPUGraph() if TEST_XPU else torch.cuda.CUDAGraph()
-        with (torch.xpu.graph(g1) if TEST_XPU else torch.cuda.graph(g1)):
+        with torch.xpu.graph(g1) if TEST_XPU else torch.cuda.graph(g1):
             grads = torch.autograd.grad(out, (query, key, value), upstream_grad)
         g1.replay()
         if fused_kernel != SDPBackend.CUDNN_ATTENTION or dropout_p == 0.0:
-            grads_ref_lp = torch.autograd.grad(out_lp_ref, (query, key, value), upstream_grad)
+            grads_ref_lp = torch.autograd.grad(
+                out_lp_ref, (query, key, value), upstream_grad
+            )
             with tf32_off():
-                grads_ref = torch.autograd.grad(out_ref, (query_ref, key_ref, value_ref), upstream_grad)
+                grads_ref = torch.autograd.grad(
+                    out_ref, (query_ref, key_ref, value_ref), upstream_grad
+                )
 
             fudge_factors = {
-                'out': 3.0,
-                'grad_query': 110.0,
-                'grad_key': 8.0,
-                'grad_value': 3.0,
+                "out": 3.0,
+                "grad_query": 110.0,
+                "grad_key": 8.0,
+                "grad_value": 3.0,
             }
             if TEST_WITH_ROCM:
-                fudge_factors['out'] = 6.0
-                fudge_factors['grad_value'] = 6.0
+                fudge_factors["out"] = 6.0
+                fudge_factors["grad_value"] = 6.0
             check_out_and_grad(
                 (out_ref, out_lp_ref, out),
                 *zip(grads_ref, grads_ref_lp, grads),
-                fudge_factors=fudge_factors
+                fudge_factors=fudge_factors,
             )
 
-    @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
-    @unittest.skipIf(not PLATFORM_SUPPORTS_FUSED_ATTENTION, "Fused SDPA was not built for this system")
-    @parametrize("fused_kernel", [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION] if
-                 PLATFORM_SUPPORTS_FLASH_ATTENTION else [SDPBackend.EFFICIENT_ATTENTION])
-    @skipIfXpu(msg="XPU SDPA dispatch rejects seq_len_1 nested inputs as non-contiguous; tracked in torch-xpu-ops")
+    @skipXPUIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU Flash Attention is not supported",
+    )
+    @unittest.skipIf(
+        not PLATFORM_SUPPORTS_FUSED_ATTENTION,
+        "Fused SDPA was not built for this system",
+    )
+    @parametrize(
+        "fused_kernel",
+        [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]
+        if PLATFORM_SUPPORTS_FLASH_ATTENTION
+        else [SDPBackend.EFFICIENT_ATTENTION],
+    )
+    @skipIfXpu(
+        msg="XPU SDPA dispatch rejects seq_len_1 nested inputs as non-contiguous; tracked in torch-xpu-ops"
+    )
     def test_fused_kernels_seq_len_1_inputs(self, device, fused_kernel):
-        rand_nested_tensor = partial(rand_sdpa_tensor, type="nested", device=device, dtype=torch.float16)
+        rand_nested_tensor = partial(
+            rand_sdpa_tensor, type="nested", device=device, dtype=torch.float16
+        )
         batch, num_heads, head_dim = 32, 16, 64
         seq_lens = torch.randint(low=1, high=32, size=(batch,))
         # make sure some seq_lens are 1
@@ -6195,27 +6271,48 @@ class TestSDPAAccelerator(NNTestCase):
 
         with sdpa_kernel(backends=[fused_kernel]):
             actual = torch.nn.functional.scaled_dot_product_attention(
-                query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False)
+                query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False
+            )
         with sdpa_kernel(backends=[SDPBackend.MATH]):
             math_ref = torch.nn.functional.scaled_dot_product_attention(
                 query.contiguous().to(torch.float32),
                 key.contiguous().to(torch.float32),
                 value.contiguous().to(torch.float32),
-                attn_mask=None, dropout_p=0.0, is_causal=False)
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=False,
+            )
 
-        self.assertEqual(actual.contiguous(), math_ref.contiguous().to(torch.float16), atol=1e-3, rtol=1e-2)
+        self.assertEqual(
+            actual.contiguous(),
+            math_ref.contiguous().to(torch.float16),
+            atol=1e-3,
+            rtol=1e-2,
+        )
 
-    @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
-    @unittest.skipIf(not PLATFORM_SUPPORTS_FUSED_ATTENTION, "Fused SDPA was not built for this system")
-    @parametrize("kernel", [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION] if
-                 PLATFORM_SUPPORTS_FLASH_ATTENTION else [SDPBackend.EFFICIENT_ATTENTION])
+    @skipXPUIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU Flash Attention is not supported",
+    )
+    @unittest.skipIf(
+        not PLATFORM_SUPPORTS_FUSED_ATTENTION,
+        "Fused SDPA was not built for this system",
+    )
+    @parametrize(
+        "kernel",
+        [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]
+        if PLATFORM_SUPPORTS_FLASH_ATTENTION
+        else [SDPBackend.EFFICIENT_ATTENTION],
+    )
     @parametrize("expand_q_batch", [True, False])
     @parametrize("expand_k_batch", [True, False])
     @parametrize("expand_v_batch", [True, False])
     @parametrize("expand_q_num_heads", [True, False])
     @parametrize("expand_k_num_heads", [True, False])
     @parametrize("expand_v_num_heads", [True, False])
-    @skipIfXpu(msg="XPU SDPA dispatch lacks nested broadcasting kernels; tracked in torch-xpu-ops")
+    @skipIfXpu(
+        msg="XPU SDPA dispatch lacks nested broadcasting kernels; tracked in torch-xpu-ops"
+    )
     def test_fused_kernels_nested_broadcasting(
         self,
         device,
@@ -6554,8 +6651,9 @@ class TestSDPAAccelerator(NNTestCase):
                 "grad_query": 12.0 * dropout_fudge_factor,
                 "grad_key": 1.5 * dropout_fudge_factor,
                 "grad_value": 2.0 * dropout_fudge_factor,
-            }
+            },
         )
+
 
 class TestSDPAXpuOnly(NNTestCase):
     """Used to test XPU only functionality of scaled_dot_product_attention
@@ -7113,7 +7211,10 @@ class TestSDPAXpuOnly(NNTestCase):
                     ),
                 )
 
-    @skipXPUIf(not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU Flash Attention is not supported")
+    @skipXPUIf(
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU Flash Attention is not supported",
+    )
     @parametrize("fused_kernel", [SDPBackend.FLASH_ATTENTION])
     @parametrize("dtype", [torch.half, torch.bfloat16])
     @parametrize("batch_size", [1, 2, 4])
