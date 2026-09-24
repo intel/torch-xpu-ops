@@ -3095,7 +3095,7 @@ class TestSDPAAccelerator(NNTestCase):
         # See #193893 and #194927 for reasoning
         # TODO: Remove this test when fixed and disable is no longer needed
         cudnn_version = torch.backends.cudnn.version() or 0
-        device_capability = torch.accelerator.get_device_capability()
+        device_capability = torch.cuda.get_device_capability()
         affected_arch = device_capability[0] in (10, 11)
         # cuDNN versions 9.19-9.25.0 (except 9.24.1) on SM 10.x and 11.x are disabled
         # This check also allows possible future 9.24 patch versions without a rewrite
@@ -6103,9 +6103,9 @@ class TestSDPAAccelerator(NNTestCase):
             out.backward(upstream_grad)
         for x in (query, key, value):
             x.grad = None
-        g = torch.xpu.XPUGraph() if TEST_XPU else torch.get_device_module(GPU_TYPE).CUDAGraph()
+        g = torch.xpu.XPUGraph() if TEST_XPU else torch.cuda.CUDAGraph()
         # Create real output
-        with (torch.xpu.graph(g) if TEST_XPU else torch.get_device_module(GPU_TYPE).graph(g)):
+        with (torch.xpu.graph(g) if TEST_XPU else torch.cuda.graph(g)):
             torch.rand_like(query, device=query.device)  # test non-zero intragraph offset
             # Create real output
             output_tuple = fused_op(query, key, value, **kwargs)
@@ -6146,8 +6146,8 @@ class TestSDPAAccelerator(NNTestCase):
                     query, key, value, dropout_p=dropout_p, is_causal=is_causal,
                     dropout_mask=dropout_mask)[0]
 
-        g1 = torch.xpu.XPUGraph() if TEST_XPU else torch.get_device_module(GPU_TYPE).CUDAGraph()
-        with (torch.xpu.graph(g1) if TEST_XPU else torch.get_device_module(GPU_TYPE).graph(g1)):
+        g1 = torch.xpu.XPUGraph() if TEST_XPU else torch.cuda.CUDAGraph()
+        with (torch.xpu.graph(g1) if TEST_XPU else torch.cuda.graph(g1)):
             grads = torch.autograd.grad(out, (query, key, value), upstream_grad)
         g1.replay()
         if fused_kernel != SDPBackend.CUDNN_ATTENTION or dropout_p == 0.0:
