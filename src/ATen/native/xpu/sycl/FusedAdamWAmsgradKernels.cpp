@@ -53,7 +53,7 @@ void fused_adamw_amsgrad_kernel(
         multi_tensor_apply_for_fused_optimizer<5>(
             tensor_lists,
             state_steps,
-            FusedAdamMathFunctor<scalar_t, 5, ADAM_MODE::ADAMW, true>(),
+            FusedAdamMathFunctor<scalar_t, 5, ADAM_MODE_ADAMW, true>(),
             lr_ptr, // unused
             lr,
             beta1,
@@ -104,7 +104,7 @@ void fused_adamw_amsgrad_kernel(
         multi_tensor_apply_for_fused_optimizer<5>(
             tensor_lists,
             state_steps,
-            FusedAdamMathFunctor<scalar_t, 5, ADAM_MODE::ADAMW, true>(),
+            FusedAdamMathFunctor<scalar_t, 5, ADAM_MODE_ADAMW, true>(),
             lr_ptr,
             1.0f, // unused
             beta1,
