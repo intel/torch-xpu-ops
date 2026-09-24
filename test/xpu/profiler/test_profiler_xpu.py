@@ -2305,17 +2305,13 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
         torch.randn(1, 3, 224, 224)
         prof.step()
 
-    def _partial_overlap(self, prof_step, step_helper_func):
+    def _has_overlap(self, prof_step, step_helper_func):
         p_start = prof_step["ts"]
         p_end = prof_step["ts"] + prof_step["dur"]
         h_start = step_helper_func["ts"]
         h_end = step_helper_func["ts"] + step_helper_func["dur"]
 
-        if p_start < h_start and p_end < h_end and p_end > h_start:
-            return True
-        if p_start > h_start and p_start < h_end and p_end > h_end:
-            return True
-        return False
+        return p_start < h_end and h_start < p_end
 
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
     def test_cpu_annotation_overlap(self):
@@ -2341,13 +2337,21 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                         prof_steps.append(event)
                     if "step_helper_func" in event["name"]:
                         step_helper_funcs.append(event)
+            prof_steps.sort(key=lambda e: e["ts"])
+            step_helper_funcs.sort(key=lambda e: e["ts"])
+
             self.assertEqual(len(prof_steps), 5)
             self.assertEqual(len(step_helper_funcs), 5)
-            for i in range(len(step_helper_funcs)):
-                for j in range(len(step_helper_funcs)):
-                    self.assertTrue(
-                        not self._partial_overlap(prof_steps[i], step_helper_funcs[j])
-                    )
+            for helper_idx, step_helper_func in enumerate(step_helper_funcs):
+                overlapping_prof_steps = {
+                    step_idx
+                    for step_idx, prof_step in enumerate(prof_steps)
+                    if self._has_overlap(prof_step, step_helper_func)
+                }
+                self.assertTrue(overlapping_prof_steps)
+                self.assertTrue(
+                    all(abs(step_idx - helper_idx) <= 1 for step_idx in overlapping_prof_steps)
+                )
 
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
     def test_user_annotation(self):
