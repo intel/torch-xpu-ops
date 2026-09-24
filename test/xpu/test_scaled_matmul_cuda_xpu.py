@@ -305,5 +305,6 @@ TestFP8Matmul.test_scaled_mm_vs_emulated = _xpu_test_scaled_mm_vs_emulated
 
 instantiate_device_type_tests(TestFP8Matmul, globals(), only_for="xpu", allow_xpu=True)
 
+
 if __name__ == "__main__":
     run_tests()
