@@ -263,13 +263,13 @@ runs:
           }
           # Part 1: eager to inductor cases (with --inductor)
           run_inductor_shards part1 --inductor \
-            test_modules test_ops test_ops_gradients test_torch |\
-            2> "${log_dir}/${ut_name}_test_error1.log" |tee "${log_dir}/${ut_name}_test1.log"
+            test_modules test_ops test_ops_gradients test_torch \
+            2> "${log_dir}/${ut_name}_test_error1.log" | tee "${log_dir}/${ut_name}_test1.log"
           # Part 2: inductor own tests (no --inductor, avoids nested dynamo state)
           run_inductor_shards part2 "" \
             inductor/test_torchinductor inductor/test_torchinductor_opinfo \
-            inductor/test_aot_inductor inductor/test_cpu_select_algorithm |\
-            2> "${log_dir}/${ut_name}_test_error2.log" |tee "${log_dir}/${ut_name}_test2.log"
+            inductor/test_aot_inductor inductor/test_cpu_select_algorithm \
+            2> "${log_dir}/${ut_name}_test_error2.log" | tee "${log_dir}/${ut_name}_test2.log"
           exit 0
         fi
         # Distributed needs an etcd rendezvous and a multi-rank XCCL setup
