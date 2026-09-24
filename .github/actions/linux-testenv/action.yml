@@ -65,10 +65,10 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v4
       with:
-        name: Torch-XPU-Wheel-db587d171b01fd296df2f006765d37278d28512c-35823696434-2
+        name: Torch-XPU-Wheel-db587d171b01fd296df2f006765d37278d28512c-35838108318-1
         github-token: ${{ github.token }}
         repository: intel/torch-xpu-ops
-        run-id: 35823696434
+        run-id: 35838108318
         path: ${{ github.workspace }}/wheels
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
