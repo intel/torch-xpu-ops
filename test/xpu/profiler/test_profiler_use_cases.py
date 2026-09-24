@@ -40,9 +40,10 @@ def _filter_gemm_kernels(kernels):
     return [k for k in kernels if "gemm" in k.get("name", "").lower()]
 
 
-# PTI SDK version below which per-kernel trace events are not reliably
-# reported for kernels launched via a captured/replayed XPUGraph.
-_PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION = (0, 17)
+# Per-kernel trace events for a captured/replayed XPUGraph are unreliable
+# below PTI 1.1 (bisected against nightly xpu wheels: 1.0.1 drops events,
+# 1.1.0 does not).
+_PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION = (1, 1)
 
 
 def _pti_version_from_trace(trace_path):
@@ -167,7 +168,7 @@ class XpuProfilerUseCasesTest(TestCase):
         Graph creation must happen inside the profile context (Level Zero
         limitation). Deliberately no ``schedule=``: ``export_chrome_trace``
         only writes the last cycle, so a schedule would hide all but one
-        replay. Requires PTI >= 0.17.
+        replay. Requires PTI >= 1.1.0.
         """
         x, weight = self._gemm_inputs()
 
