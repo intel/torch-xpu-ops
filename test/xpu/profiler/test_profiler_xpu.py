@@ -2350,7 +2350,10 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                 }
                 self.assertTrue(overlapping_prof_steps)
                 self.assertTrue(
-                    all(abs(step_idx - helper_idx) <= 1 for step_idx in overlapping_prof_steps)
+                    all(
+                        abs(step_idx - helper_idx) <= 1
+                        for step_idx in overlapping_prof_steps
+                    )
                 )
 
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
