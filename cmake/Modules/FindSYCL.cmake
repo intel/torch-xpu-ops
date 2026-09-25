@@ -60,9 +60,8 @@ endif()
 # ccache versions before 4.12.1 do not correctly pass -Xarch_host flags to
 # DPC++ (icx): they can strip -Xarch_host -fPIC, producing objects without
 # -fPIC that fail the PIE link. ccache 4.12.1 includes the fix for
-# ccache/ccache#1632. Keep the original launcher for the device-link step. For
-# object compiles, keep only a verified ccache 4.12.1+ or a recognized
-# non-ccache launcher, and bypass unknown wrappers.
+# ccache/ccache#1632. Keep the original launcher for the device-link step, and
+# only apply the ccache version gate when a ccache launcher is identified.
 set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
 if(_SYCL_COMPILER_LAUNCHER)
   set(_sycl_launcher_uses_ccache FALSE)
@@ -70,6 +69,22 @@ if(_SYCL_COMPILER_LAUNCHER)
     get_filename_component(_sycl_launcher_arg_name "${_sycl_launcher_arg}" NAME)
     if(_sycl_launcher_arg_name MATCHES "^[Cc][Cc]ache")
       set(_sycl_launcher_uses_ccache TRUE)
+    endif()
+
+    set(_sycl_launcher_path "${_sycl_launcher_arg}")
+    if(NOT IS_ABSOLUTE "${_sycl_launcher_path}" AND
+       "${_sycl_launcher_path}" MATCHES "^[A-Za-z0-9_.-]+$")
+      find_program(_sycl_launcher_path NAMES "${_sycl_launcher_path}" NO_CACHE)
+    endif()
+    if(_sycl_launcher_path AND EXISTS "${_sycl_launcher_path}")
+      file(READ "${_sycl_launcher_path}" _sycl_launcher_file_header LIMIT 2)
+      if(_sycl_launcher_file_header MATCHES "^#!")
+        file(STRINGS "${_sycl_launcher_path}" _sycl_launcher_file_strings
+          LIMIT_COUNT 1 REGEX "(^|[^A-Za-z])ccache")
+        if(_sycl_launcher_file_strings)
+          set(_sycl_launcher_uses_ccache TRUE)
+        endif()
+      endif()
     endif()
   endforeach()
 
@@ -96,12 +111,6 @@ if(_SYCL_COMPILER_LAUNCHER)
   if(_sycl_launcher_uses_ccache)
     if(NOT _sycl_launcher_version_result EQUAL 0 OR
        NOT _ccache_version VERSION_GREATER_EQUAL "4.12.1")
-      set(_SYCL_COMPILER_LAUNCHER "")
-    endif()
-  else()
-    if(NOT _sycl_launcher_version_result EQUAL 0 OR
-       NOT _sycl_launcher_version_output MATCHES
-         "(^|[^a-z])(sccache|distcc|icecream|icecc|buildcache|cachepot|pccache)([^a-z]|$)")
       set(_SYCL_COMPILER_LAUNCHER "")
     endif()
   endif()
