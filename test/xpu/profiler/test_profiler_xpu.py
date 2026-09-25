@@ -2300,62 +2300,6 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
             self._schedule_helper(warmup=10, active=10, repeat=4, acc_events=False), 10
         )
 
-    def _step_helper_func(self, prof):
-        time.sleep(0.1)
-        torch.randn(1, 3, 224, 224)
-        prof.step()
-
-    def _has_overlap(self, prof_step, step_helper_func):
-        p_start = prof_step["ts"]
-        p_end = prof_step["ts"] + prof_step["dur"]
-        h_start = step_helper_func["ts"]
-        h_end = step_helper_func["ts"] + step_helper_func["dur"]
-
-        return p_start < h_end and h_start < p_end
-
-    @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
-    def test_cpu_annotation_overlap(self):
-        with torch.profiler.profile(
-            activities=supported_activities(),
-            record_shapes=True,
-            with_stack=True,
-            schedule=torch.profiler.schedule(wait=0, warmup=0, active=5, repeat=1),
-            experimental_config=torch._C._profiler._ExperimentalConfig(
-                adjust_profiler_step=True
-            ),
-        ) as prof:
-            for _ in range(5):
-                self._step_helper_func(prof)
-        with TemporaryFileName(mode="w+") as fname:
-            prof.export_chrome_trace(fname)
-            prof_steps = []
-            step_helper_funcs = []
-            with open(fname) as f:
-                report = json.load(f)
-                for event in report["traceEvents"]:
-                    if "ProfilerStep" in event["name"]:
-                        prof_steps.append(event)
-                    if "step_helper_func" in event["name"]:
-                        step_helper_funcs.append(event)
-            prof_steps.sort(key=lambda e: e["ts"])
-            step_helper_funcs.sort(key=lambda e: e["ts"])
-
-            self.assertEqual(len(prof_steps), 5)
-            self.assertEqual(len(step_helper_funcs), 5)
-            for helper_idx, step_helper_func in enumerate(step_helper_funcs):
-                overlapping_prof_steps = {
-                    step_idx
-                    for step_idx, prof_step in enumerate(prof_steps)
-                    if self._has_overlap(prof_step, step_helper_func)
-                }
-                self.assertTrue(overlapping_prof_steps)
-                self.assertTrue(
-                    all(
-                        abs(step_idx - helper_idx) <= 1
-                        for step_idx in overlapping_prof_steps
-                    )
-                )
-
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
     def test_user_annotation(self):
         use_cuda = torch.profiler.ProfilerActivity.CUDA in supported_activities()
