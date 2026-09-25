@@ -174,7 +174,7 @@ class XpuProfilerUseCasesTest(TestCase):
     @unittest.skipIf(not TEST_XPU, "test requires XPU")
     @unittest.skipUnless(
         _driver_version_at_least(_XE_DRIVER_GRAPH_KERNEL_CAPTURE_MIN_VERSION),
-        "XPUGraph kernel-event capture requires a compute-runtime driver >= "
+        "XPUGraph kernel-event capture requires a Level Zero driver >= "
         f"{'.'.join(map(str, _XE_DRIVER_GRAPH_KERNEL_CAPTURE_MIN_VERSION))}",
     )
     def test_profiler_xpu_graph(self):
