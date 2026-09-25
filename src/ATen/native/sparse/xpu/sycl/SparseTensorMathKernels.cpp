@@ -40,9 +40,11 @@
 #include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
 #include <ATen/ops/hspmm_native.h>
+#include <ATen/ops/mm.h>
 #include <ATen/ops/mul.h>
 #include <ATen/ops/result_type.h>
 #include <ATen/ops/scalar_tensor.h>
+#include <ATen/ops/zeros.h>
 #include <ATen/ops/zeros_like.h>
 #endif
 
