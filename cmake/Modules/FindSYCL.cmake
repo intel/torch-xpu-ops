@@ -74,7 +74,12 @@ if(_SYCL_COMPILER_LAUNCHER)
     set(_sycl_launcher_path "${_sycl_launcher_arg}")
     if(NOT IS_ABSOLUTE "${_sycl_launcher_path}" AND
        "${_sycl_launcher_path}" MATCHES "^[A-Za-z0-9_.-]+$")
-      find_program(_sycl_launcher_path NAMES "${_sycl_launcher_path}" NO_CACHE)
+      unset(_sycl_launcher_resolved)
+      find_program(_sycl_launcher_resolved
+        NAMES "${_sycl_launcher_path}" NO_CACHE)
+      if(_sycl_launcher_resolved)
+        set(_sycl_launcher_path "${_sycl_launcher_resolved}")
+      endif()
     endif()
     if(_sycl_launcher_path AND EXISTS "${_sycl_launcher_path}")
       file(READ "${_sycl_launcher_path}" _sycl_launcher_file_header LIMIT 2)
