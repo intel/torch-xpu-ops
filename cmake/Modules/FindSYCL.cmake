@@ -80,7 +80,7 @@ if(_SYCL_COMPILER_LAUNCHER)
       file(READ "${_sycl_launcher_path}" _sycl_launcher_file_header LIMIT 2)
       if(_sycl_launcher_file_header MATCHES "^#!")
         file(STRINGS "${_sycl_launcher_path}" _sycl_launcher_file_strings
-          LIMIT_COUNT 1 REGEX "(^|[^A-Za-z])ccache")
+          LIMIT_COUNT 1 REGEX "^(ccache|[^#]*[^#A-Za-z0-9_]ccache)")
         if(_sycl_launcher_file_strings)
           set(_sycl_launcher_uses_ccache TRUE)
         endif()
