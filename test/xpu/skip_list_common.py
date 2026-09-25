@@ -325,7 +325,7 @@ skip_dict = {
         "test_backward_impl_on_existing_op",
     ),
     "test_flop_counter_xpu.py": None,
-    "test_legacy_vmap_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     "test_utils_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
     "dynamo/test_ctx_manager_xpu.py": (
