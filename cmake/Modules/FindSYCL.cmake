@@ -57,6 +57,32 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
+# ccache versions before 4.12.1 do not correctly pass -Xarch_host flags to
+# DPC++ (icx): they can strip -Xarch_host -fPIC, producing objects without
+# -fPIC that fail the PIE link. ccache 4.12.1 includes the fix for
+# ccache/ccache#1632. Keep the original launcher for the device-link step,
+# but do not use an unsafe ccache version for individual SYCL object compiles.
+set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
+if(_SYCL_COMPILER_LAUNCHER)
+  list(GET _SYCL_COMPILER_LAUNCHER 0 _sycl_launcher_executable)
+  get_filename_component(_sycl_launcher_name "${_sycl_launcher_executable}" NAME)
+  if(_sycl_launcher_name MATCHES "^ccache")
+    execute_process(
+      COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
+      OUTPUT_VARIABLE _ccache_version_output
+      RESULT_VARIABLE _ccache_version_result
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+    )
+    string(REGEX MATCH "[0-9]+\\.[0-9]+(\\.[0-9]+)?" _ccache_version
+      "${_ccache_version_output}")
+    if(NOT _ccache_version_result EQUAL 0 OR
+       NOT _ccache_version VERSION_GREATER_EQUAL "4.12.1")
+      set(_SYCL_COMPILER_LAUNCHER "")
+    endif()
+  endif()
+endif()
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
@@ -216,9 +242,9 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       set(SYCL_build_type "Device")
 
-      # Apply the compiler launcher (e.g. ccache) to the individual SYCL object
-      # compile, mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
-      set(SYCL_compiler_launcher ${CMAKE_SYCL_COMPILER_LAUNCHER})
+      # Apply the compiler launcher to the individual SYCL object compile,
+      # mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
+      set(SYCL_compiler_launcher ${_SYCL_COMPILER_LAUNCHER})
 
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
