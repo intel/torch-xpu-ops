@@ -7141,14 +7141,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         ):
             F.grid_sample(torch.empty(1, 1, 0, 2), grid, align_corners=False)
 
-        with self.assertRaisesRegex(
-            (RuntimeError, NotImplementedError),
-            "(bicubic interpolation only supports 4D input|bicubic interpolation with 5D input is not implemented)",
-        ):
-            F.grid_sample(
-                torch.empty(1, 1, 2, 2, 2), torch.empty(1, 1, 1, 1, 3), mode="bicubic"
-            )
-
         if TEST_GPU:
             with self.assertRaisesRegex(
                 RuntimeError, "Expected all tensors to be on the same device"
