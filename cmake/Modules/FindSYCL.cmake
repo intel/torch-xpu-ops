@@ -57,66 +57,47 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
-# ccache versions before 4.12.1 do not correctly pass -Xarch_host flags to
-# DPC++ (icx): they can strip -Xarch_host -fPIC, producing objects without
-# -fPIC that fail the PIE link. ccache 4.12.1 includes the fix for
-# ccache/ccache#1632. Keep the original launcher for the device-link step, and
-# only apply the ccache version gate when a ccache launcher is identified.
+# ccache versions before 4.11 do not support DPC++ (icx) compiler. Additionally,
+# versions before 4.12 do not correctly pass -Xarch_host flags to LLVM compilers
+# family in general: they can strip -Xarch_host -fPIC, producing objects without
+# -fPIC that fail the PIE link. ccache 4.12 includes the fix for that, see:
+#
+# * https://github.com/ccache/ccache/issues/1632
+#
+# Below we keep the original launcher for the device-link step, and only apply
+# the ccache version gate for kernel code compilation step.
 set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
 if(_SYCL_COMPILER_LAUNCHER)
-  set(_sycl_launcher_uses_ccache FALSE)
-  foreach(_sycl_launcher_arg IN LISTS _SYCL_COMPILER_LAUNCHER)
-    get_filename_component(_sycl_launcher_arg_name "${_sycl_launcher_arg}" NAME)
-    if(_sycl_launcher_arg_name MATCHES "^[Cc][Cc]ache")
-      set(_sycl_launcher_uses_ccache TRUE)
-    endif()
-
-    set(_sycl_launcher_path "${_sycl_launcher_arg}")
-    if(NOT IS_ABSOLUTE "${_sycl_launcher_path}" AND
-       "${_sycl_launcher_path}" MATCHES "^[A-Za-z0-9_.-]+$")
-      unset(_sycl_launcher_resolved)
-      find_program(_sycl_launcher_resolved
-        NAMES "${_sycl_launcher_path}" NO_CACHE)
-      if(_sycl_launcher_resolved)
-        set(_sycl_launcher_path "${_sycl_launcher_resolved}")
-      endif()
-    endif()
-    if(_sycl_launcher_path AND EXISTS "${_sycl_launcher_path}")
-      file(READ "${_sycl_launcher_path}" _sycl_launcher_file_header LIMIT 2)
-      if(_sycl_launcher_file_header MATCHES "^#!")
-        file(STRINGS "${_sycl_launcher_path}" _sycl_launcher_file_strings
-          LIMIT_COUNT 1 REGEX "^(ccache|[^#]*[^#A-Za-z0-9_]ccache)")
-        if(_sycl_launcher_file_strings)
-          set(_sycl_launcher_uses_ccache TRUE)
-        endif()
-      endif()
-    endif()
-  endforeach()
-
-  execute_process(
-    COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
-    OUTPUT_VARIABLE _sycl_launcher_version_stdout
-    ERROR_VARIABLE _sycl_launcher_version_stderr
-    RESULT_VARIABLE _sycl_launcher_version_result
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    TIMEOUT 5
-  )
-  string(TOLOWER
-    "${_sycl_launcher_version_stdout}\n${_sycl_launcher_version_stderr}"
-    _sycl_launcher_version_output)
-  set(_ccache_version "")
-  string(REGEX MATCH
-    "(^|[^a-z])ccache[ \t]+version[ \t]+([0-9]+\\.[0-9]+(\\.[0-9]+)?)"
-    _ccache_version_match "${_sycl_launcher_version_output}")
-  if(_ccache_version_match)
+  get_filename_component(_sycl_launcher_name "${_SYCL_COMPILER_LAUNCHER}" NAME)
+  if(_sycl_launcher_name MATCHES "^[Cc][Cc]ache")
     set(_sycl_launcher_uses_ccache TRUE)
-    set(_ccache_version "${CMAKE_MATCH_2}")
   endif()
 
   if(_sycl_launcher_uses_ccache)
-    if(NOT _sycl_launcher_version_result EQUAL 0 OR
-       NOT _ccache_version VERSION_GREATER_EQUAL "4.12.1")
-      set(_SYCL_COMPILER_LAUNCHER "")
+    execute_process(
+      COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
+      OUTPUT_VARIABLE _sycl_launcher_version_raw
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    if(_sycl_launcher_version_raw MATCHES "ccache version ([0-9]+\\.[0-9]+(\\.[0-9]+)?)")
+      set(_sycl_ccache_version "${CMAKE_MATCH_1}")
+
+      if(_sycl_ccache_version VERSION_GREATER_EQUAL "4.12")
+        message(STATUS "Found compatible ccache: ${CCACHE_PROGRAM} (version ${CCACHE_VERSION} >= 4.12)")
+      else()
+        message(WARNING
+          "  Found ccache ${_sycl_ccache_version}, which is older than 4.12.\n"
+          "  Versions older than 4.12 do not support Intel SYCL compiler offloading flags\n"
+          "  (e.g. -Xarch_host) and will lead to critical compilation or linkage failures.\n"
+          "  Disabled ccache compiler launcher for SYCL compiler targets.\n"
+          "  RECOMMENDATION: Upgrade to ccache >= 4.12.\n"
+        )
+        set(_SYCL_COMPILER_LAUNCHER "")
+      endif()
+    else()
+      message(WARNING "Found ccache but could not parse its version string.")
     endif()
   endif()
 endif()
