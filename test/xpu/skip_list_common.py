@@ -420,4 +420,13 @@ skip_dict = {
     "test_cuda_trace_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
     "test_mkldnn_fusion_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_compile_to_python.py": None,
+    f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
+    f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
+    f"{PYTORCH_TEST_DIR}/lazy/test_reuse_ir.py": None,
+    f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
+    f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
+    f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
+    f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
 }
