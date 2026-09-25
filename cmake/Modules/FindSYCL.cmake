@@ -60,24 +60,48 @@ endif()
 # ccache versions before 4.12.1 do not correctly pass -Xarch_host flags to
 # DPC++ (icx): they can strip -Xarch_host -fPIC, producing objects without
 # -fPIC that fail the PIE link. ccache 4.12.1 includes the fix for
-# ccache/ccache#1632. Keep the original launcher for the device-link step,
-# but do not use an unsafe ccache version for individual SYCL object compiles.
+# ccache/ccache#1632. Keep the original launcher for the device-link step. For
+# object compiles, keep only a verified ccache 4.12.1+ or a recognized
+# non-ccache launcher, and bypass unknown wrappers.
 set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
 if(_SYCL_COMPILER_LAUNCHER)
-  list(GET _SYCL_COMPILER_LAUNCHER 0 _sycl_launcher_executable)
-  get_filename_component(_sycl_launcher_name "${_sycl_launcher_executable}" NAME)
-  if(_sycl_launcher_name MATCHES "^ccache")
-    execute_process(
-      COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
-      OUTPUT_VARIABLE _ccache_version_output
-      RESULT_VARIABLE _ccache_version_result
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      ERROR_QUIET
-    )
-    string(REGEX MATCH "[0-9]+\\.[0-9]+(\\.[0-9]+)?" _ccache_version
-      "${_ccache_version_output}")
-    if(NOT _ccache_version_result EQUAL 0 OR
+  set(_sycl_launcher_uses_ccache FALSE)
+  foreach(_sycl_launcher_arg IN LISTS _SYCL_COMPILER_LAUNCHER)
+    get_filename_component(_sycl_launcher_arg_name "${_sycl_launcher_arg}" NAME)
+    if(_sycl_launcher_arg_name MATCHES "^[Cc][Cc]ache")
+      set(_sycl_launcher_uses_ccache TRUE)
+    endif()
+  endforeach()
+
+  execute_process(
+    COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
+    OUTPUT_VARIABLE _sycl_launcher_version_stdout
+    ERROR_VARIABLE _sycl_launcher_version_stderr
+    RESULT_VARIABLE _sycl_launcher_version_result
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    TIMEOUT 5
+  )
+  string(TOLOWER
+    "${_sycl_launcher_version_stdout}\n${_sycl_launcher_version_stderr}"
+    _sycl_launcher_version_output)
+  set(_ccache_version "")
+  string(REGEX MATCH
+    "(^|[^a-z])ccache[ \t]+version[ \t]+([0-9]+\\.[0-9]+(\\.[0-9]+)?)"
+    _ccache_version_match "${_sycl_launcher_version_output}")
+  if(_ccache_version_match)
+    set(_sycl_launcher_uses_ccache TRUE)
+    set(_ccache_version "${CMAKE_MATCH_2}")
+  endif()
+
+  if(_sycl_launcher_uses_ccache)
+    if(NOT _sycl_launcher_version_result EQUAL 0 OR
        NOT _ccache_version VERSION_GREATER_EQUAL "4.12.1")
+      set(_SYCL_COMPILER_LAUNCHER "")
+    endif()
+  else()
+    if(NOT _sycl_launcher_version_result EQUAL 0 OR
+       NOT _sycl_launcher_version_output MATCHES
+         "(^|[^a-z])(sccache|distcc|icecream|icecc|buildcache|cachepot|pccache)([^a-z]|$)")
       set(_SYCL_COMPILER_LAUNCHER "")
     endif()
   endif()
