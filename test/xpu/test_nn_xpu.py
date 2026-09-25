@@ -7154,6 +7154,39 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             ):
                 F.grid_sample(input.to(device_type), grid, align_corners=False)
 
+    def test_grid_sample_backward_error_checking(self):
+        input = torch.empty(1, 1, 2, 2, device=device_type)
+        grid = torch.empty(1, 1, 1, 2, device=device_type)
+        with self.assertRaisesRegex(ValueError, "expected grad_output to have sizes"):
+            torch.ops.aten.grid_sampler_2d_backward(
+                torch.empty(1, 2, 1, 1, device=device_type),
+                input,
+                grid,
+                0,
+                0,
+                False,
+                [True, True],
+            )
+
+        input_3d = torch.empty(1, 1, 2, 2, 2, device=device_type)
+        grid_3d = torch.empty(1, 1, 1, 1, 3, device=device_type)
+        with self.assertRaisesRegex(ValueError, "expected grad_output to have sizes"):
+            torch.ops.aten.grid_sampler_3d_backward(
+                torch.empty(1, 2, 1, 1, 1, device=device_type),
+                input_3d,
+                grid_3d,
+                0,
+                0,
+                False,
+                [True, True],
+            )
+
+    def test_Pad_backward_channel_mismatch(self):
+        inp = torch.ones(2, 2, 4, 4, device=device_type)
+        grad_output = torch.ones(2, 0, 6, 8, device=device_type)
+        with self.assertRaisesRegex(RuntimeError, "grad_output channel unexpected"):
+            torch.ops.aten.replication_pad2d_backward(grad_output, inp, [2, 2, 1, 1])
+
     def test_affine_grid_error_checking(self):
         # 2D affine
         theta = torch.empty(1, 2, 3, dtype=torch.double)
