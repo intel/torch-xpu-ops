@@ -12,6 +12,7 @@
 # XPU profiler use-case tests, one per workflow, based on the Kineto Profiler User
 # Guide.
 
+import importlib.metadata
 import json
 import re
 import unittest
@@ -40,21 +41,33 @@ def _filter_gemm_kernels(kernels):
     return [k for k in kernels if "gemm" in k.get("name", "").lower()]
 
 
-# Per-kernel trace events for a captured/replayed XPUGraph are unreliable
-# below PTI 1.1 (bisected against nightly xpu wheels: 1.0.1 drops events,
-# 1.1.0 does not).
 _PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION = (1, 1)
 
 
-def _pti_version_from_trace(trace_path):
-    """Return the (major, minor) PTI SDK version recorded in a trace's
-    ``xpupti_version`` metadata (see XpuptiActivityProfilerSession in
-    kineto), or None if it is missing or unparseable.
+def _pti_version_at_least(min_version):
+    """Whether the installed ``intel-pti`` package version is at least
+    ``min_version`` (major, minor).
     """
-    with open(trace_path) as f:
-        data = json.load(f)
-    match = re.search(r"(\d+)\.(\d+)", str(data.get("xpupti_version", "")))
-    return (int(match.group(1)), int(match.group(2))) if match else None
+    try:
+        version = importlib.metadata.version("intel-pti")
+    except importlib.metadata.PackageNotFoundError:
+        return False
+    match = re.match(r"(\d+)\.(\d+)", version)
+    return bool(match) and (int(match.group(1)), int(match.group(2))) >= min_version
+
+
+_XE_DRIVER_GRAPH_KERNEL_CAPTURE_MIN_VERSION = (1, 15, 39122)
+
+
+def _driver_version_at_least(min_version):
+    """Whether the XPU device's Level Zero driver version tuple, e.g. (1, 15, 39122)
+    from "1.15.39122+14", is at least ``min_version``. False if no XPU device.
+    """
+    if not TEST_XPU:
+        return False
+    driver_version = torch.xpu.get_device_properties().driver_version
+    match = re.match(r"(\d+)\.(\d+)\.(\d+)", driver_version or "")
+    return bool(match) and tuple(int(g) for g in match.groups()) >= min_version
 
 
 class XpuProfilerUseCasesTest(TestCase):
@@ -162,13 +175,23 @@ class XpuProfilerUseCasesTest(TestCase):
         )
 
     @unittest.skipIf(not TEST_XPU, "test requires XPU")
+    @unittest.skipUnless(
+        _pti_version_at_least(_PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION),
+        "XPUGraph kernel-event capture requires PTI >= "
+        f"{'.'.join(map(str, _PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION))}",
+    )
+    @unittest.skipUnless(
+        _driver_version_at_least(_XE_DRIVER_GRAPH_KERNEL_CAPTURE_MIN_VERSION),
+        "XPUGraph kernel-event capture requires a compute-runtime driver >= "
+        f"{'.'.join(map(str, _XE_DRIVER_GRAPH_KERNEL_CAPTURE_MIN_VERSION))}",
+    )
     def test_profiler_xpu_graph(self):
         """Profile XPUGraph capture and replay.
 
         Graph creation must happen inside the profile context (Level Zero
         limitation). Deliberately no ``schedule=``: ``export_chrome_trace``
         only writes the last cycle, so a schedule would hide all but one
-        replay. Requires PTI >= 1.1.0.
+        replay.
         """
         x, weight = self._gemm_inputs()
 
@@ -194,15 +217,7 @@ class XpuProfilerUseCasesTest(TestCase):
 
         with TemporaryFileName(mode="w+") as fname:
             prof.export_chrome_trace(fname)
-            pti_version = _pti_version_from_trace(fname)
             kernels = _kernel_events_from_trace(fname)
-
-        if pti_version is None or pti_version < _PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION:
-            self.skipTest(
-                "XPUGraph kernel-event capture requires PTI >= "
-                f"{'.'.join(map(str, _PTI_GRAPH_KERNEL_CAPTURE_MIN_VERSION))}; "
-                f"trace reports PTI {pti_version}"
-            )
 
         gemm_kernels = _filter_gemm_kernels(kernels)
         self.assertGreaterEqual(
