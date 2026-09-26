@@ -17,7 +17,7 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 with XPUPatchForImport(False):
-    from test_optim import TestOptimRenewed
+    from test_optim import _bf16_state_init_hook, TestOptimRenewed
 
 from copy import deepcopy
 
@@ -25,7 +25,7 @@ import torch
 from torch.testing._internal.common_device_type import TEST_WITH_ROCM
 from torch.testing._internal.common_dtype import floating_types_and
 from torch.testing._internal.common_optimizers import optim_db, optims
-from torch.testing._internal.common_utils import TEST_WITH_TORCHDYNAMO
+from torch.testing._internal.common_utils import parametrize, TEST_WITH_TORCHDYNAMO
 
 for optim in optim_db:
     for c in [
@@ -189,6 +189,183 @@ def _test_peak_memory_foreach(self, device, dtype, optim_info):
 
 
 TestOptimRenewed.test_peak_memory_foreach = _test_peak_memory_foreach
+
+
+_MP_REJECT_CASES = {
+    "param_f16": (
+        {
+            "param": torch.float16,
+            "grad": torch.float32,
+            "exp_avg": torch.bfloat16,
+            "exp_avg_sq": torch.bfloat16,
+        },
+        "requires float32 params",
+    ),
+    "param_bf16": (
+        {
+            "param": torch.bfloat16,
+            "grad": torch.float32,
+            "exp_avg": torch.float32,
+            "exp_avg_sq": torch.float32,
+        },
+        "requires float32 params",
+    ),
+    "grad_bf16": (
+        {
+            "param": torch.float32,
+            "grad": torch.bfloat16,
+            "exp_avg": torch.bfloat16,
+            "exp_avg_sq": torch.bfloat16,
+        },
+        "requires float32 grads",
+    ),
+    "exp_avg_f16": (
+        {
+            "param": torch.float32,
+            "grad": torch.float32,
+            "exp_avg": torch.float16,
+            "exp_avg_sq": torch.bfloat16,
+        },
+        "requires bfloat16 optimizer states",
+    ),
+    "exp_avg_sq_f16": (
+        {
+            "param": torch.float32,
+            "grad": torch.float32,
+            "exp_avg": torch.bfloat16,
+            "exp_avg_sq": torch.float16,
+        },
+        "requires bfloat16 optimizer states",
+    ),
+    "max_exp_avg_sq_f16": (
+        {
+            "param": torch.float32,
+            "grad": torch.float32,
+            "exp_avg": torch.bfloat16,
+            "exp_avg_sq": torch.bfloat16,
+            "max_exp_avg_sq": torch.float16,
+        },
+        "requires bfloat16 max_exp_avg_sqs",
+    ),
+}
+
+
+@parametrize("case", list(_MP_REJECT_CASES))
+@optims(
+    [o for o in optim_db if o.optim_cls.__name__ in ["Adam", "AdamW"]],
+    dtypes=[torch.float32],
+)
+def _test_fused_mixed_precision_rejects_unsupported_dtypes(
+    self, device, dtype, optim_info, case
+):
+    dtypes, expected = _MP_REJECT_CASES[case]
+    amsgrad = "max_exp_avg_sq" in dtypes
+    is_adamw = optim_info.optim_cls.__name__ == "AdamW"
+    op = torch._fused_adamw_ if is_adamw else torch._fused_adam_
+    op_name = "_fused_adamw" if is_adamw else "_fused_adam"
+
+    param = torch.rand(20, 7, device=device, dtype=dtypes["param"])
+    grad = torch.rand(20, 7, device=device, dtype=dtypes["grad"])
+    exp_avg = torch.zeros(20, 7, device=device, dtype=dtypes["exp_avg"])
+    exp_avg_sq = torch.zeros(20, 7, device=device, dtype=dtypes["exp_avg_sq"])
+    max_exp_avg_sqs = (
+        [torch.zeros(20, 7, device=device, dtype=dtypes["max_exp_avg_sq"])]
+        if amsgrad
+        else []
+    )
+    state_step = torch.zeros((), device=device, dtype=torch.float32)
+
+    msg = f"{op_name} with mixed dtypes {expected}"
+    with self.assertRaisesRegex(RuntimeError, msg):
+        op(
+            [param],
+            [grad],
+            [exp_avg],
+            [exp_avg_sq],
+            max_exp_avg_sqs,
+            [state_step],
+            amsgrad=amsgrad,
+            lr=1e-3,
+            beta1=0.9,
+            beta2=0.999,
+            weight_decay=0.0,
+            eps=1e-8,
+            maximize=False,
+        )
+
+
+TestOptimRenewed.test_fused_mixed_precision_rejects_unsupported_dtypes = (
+    _test_fused_mixed_precision_rejects_unsupported_dtypes
+)
+
+
+# 20*7 = 140 is a multiple of kILP, so it takes the vectorized aligned path;
+# 21*7 = 147 is not and exercises the unaligned tail, which writes grads back
+# through its own store path.
+@parametrize("rows", [20, 21])
+@parametrize("amsgrad", [False, True])
+@optims(
+    [o for o in optim_db if o.optim_cls.__name__ in ["Adam", "AdamW"]],
+    dtypes=[torch.float32],
+)
+def _test_fused_mixed_precision_grad_scale(
+    self, device, dtype, optim_info, amsgrad, rows
+):
+    # fp32 params + bf16 states is the AMP scenario, so exercise the
+    # grad_scale/found_inf path of the mixed-precision kernel. The scale is a
+    # power of two so unscaling is exact and the comparison can be strict.
+    optim_cls = optim_info.optim_cls
+    scale_value = 128.0
+
+    params = [torch.rand(rows, 7, device=device, dtype=dtype) for _ in range(5)]
+    unscaled_grads = [torch.rand_like(p) for p in params]
+    for p, g in zip(params, unscaled_grads):
+        p.grad = g * scale_value
+
+    ref_params = [p.detach().clone() for p in params]
+    for rp, g in zip(ref_params, unscaled_grads):
+        rp.grad = g.clone()
+
+    optim = optim_cls(params, lr=1e-3, fused=True, amsgrad=amsgrad)
+    optim.register_step_pre_hook(_bf16_state_init_hook)
+    optim.grad_scale = torch.full((1,), scale_value, dtype=dtype, device=device)
+    optim.found_inf = torch.zeros((), dtype=dtype, device=device)
+
+    ref_optim = optim_cls(ref_params, lr=1e-3, fused=True, amsgrad=amsgrad)
+    ref_optim.register_step_pre_hook(_bf16_state_init_hook)
+
+    optim.step()
+    ref_optim.step()
+
+    for p, g in zip(params, unscaled_grads):
+        self.assertEqual(p.grad, g)
+    for p, rp in zip(params, ref_params):
+        self.assertEqual(p, rp)
+    for p in params:
+        self.assertEqual(optim.state[p]["exp_avg"].dtype, torch.bfloat16)
+        self.assertEqual(optim.state[p]["exp_avg_sq"].dtype, torch.bfloat16)
+        if amsgrad:
+            self.assertEqual(optim.state[p]["max_exp_avg_sq"].dtype, torch.bfloat16)
+
+    frozen_params = [p.detach().clone() for p in params]
+    frozen_states = [
+        {k: v.clone() for k, v in optim.state[p].items() if k != "step"} for p in params
+    ]
+    for p, g in zip(params, unscaled_grads):
+        p.grad = g * scale_value
+    optim.found_inf = torch.ones((), dtype=dtype, device=device)
+    optim.step()
+
+    for p, fp in zip(params, frozen_params):
+        self.assertEqual(p, fp)
+    for p, fs in zip(params, frozen_states):
+        for k, v in fs.items():
+            self.assertEqual(optim.state[p][k], v)
+
+
+TestOptimRenewed.test_fused_mixed_precision_grad_scale = (
+    _test_fused_mixed_precision_grad_scale
+)
 
 
 instantiate_device_type_tests(
