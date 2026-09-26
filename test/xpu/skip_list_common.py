@@ -117,16 +117,6 @@ skip_dict = {
     "test_cuda_nvml_based_avail_xpu.py": None,
     "test_cuda_primary_ctx_xpu.py": None,
     "test_cuda_sanitizer_xpu.py": None,
-    "test_custom_ops_xpu.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/3644
-        # CPU-only tests, flaky under pytest-xdist worksteal scheduling
-        "test_backward_dict_grad_for_nontensor",
-        "test_backward_dict_invalid_keys",
-        "test_backward_dict_requires_keys_for_input_optional_tensors",
-        "test_backward_dict_requires_keys_for_input_tensors",
-        "test_backward_grads_are_tensor_or_none",
-        "test_backward_impl_on_existing_op",
-    ),
     "test_dataloader_xpu.py": None,
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
@@ -427,4 +417,9 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
+    f"{PYTORCH_TEST_DIR}/backends/xeon/test_launch.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_custom_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_infer_schema_annotation.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_inplace_tag.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_out_variant.py": None,
 }
