@@ -59,61 +59,62 @@ endif()
 
 # ccache versions before 4.12.1 can strip -Xarch_host -fPIC from DPC++ (icx)
 # object compiles, causing shared-library link failures (ccache/ccache#1632).
-# Keep the original launcher for device linking; gate only identified ccache
-# launchers for SYCL object compilation.
+# Keep the original launcher for device linking; gate direct ccache and ccache
+# selected by env for SYCL object compilation. Other launchers pass through.
 set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
 if(_SYCL_COMPILER_LAUNCHER)
-  set(_sycl_launcher_uses_ccache FALSE)
-  foreach(_sycl_launcher_arg IN LISTS _SYCL_COMPILER_LAUNCHER)
-    get_filename_component(_sycl_launcher_arg_name "${_sycl_launcher_arg}" NAME)
-    if(_sycl_launcher_arg_name MATCHES "^[Cc][Cc]ache")
-      set(_sycl_launcher_uses_ccache TRUE)
-    endif()
-
-    set(_sycl_launcher_path "${_sycl_launcher_arg}")
-    if(NOT IS_ABSOLUTE "${_sycl_launcher_path}" AND
-       "${_sycl_launcher_path}" MATCHES "^[A-Za-z0-9_.-]+$")
-      unset(_sycl_launcher_resolved)
-      find_program(_sycl_launcher_resolved
-        NAMES "${_sycl_launcher_path}" NO_CACHE)
-      if(_sycl_launcher_resolved)
-        set(_sycl_launcher_path "${_sycl_launcher_resolved}")
+  set(_sycl_launcher_command ${_SYCL_COMPILER_LAUNCHER})
+  list(POP_FRONT _sycl_launcher_command _sycl_launcher_program)
+  get_filename_component(_sycl_launcher_name "${_sycl_launcher_program}" NAME)
+  if(_sycl_launcher_name STREQUAL "env")
+    set(_sycl_env_option_value FALSE)
+    set(_sycl_env_options_done FALSE)
+    foreach(_sycl_launcher_arg IN LISTS _sycl_launcher_command)
+      if(_sycl_env_option_value)
+        set(_sycl_env_option_value FALSE)
+        continue()
       endif()
-    endif()
-    if(_sycl_launcher_path AND EXISTS "${_sycl_launcher_path}" AND
-       NOT IS_DIRECTORY "${_sycl_launcher_path}")
-      file(READ "${_sycl_launcher_path}" _sycl_launcher_file_header LIMIT 2)
-      if(_sycl_launcher_file_header MATCHES "^#!")
-        file(STRINGS "${_sycl_launcher_path}" _sycl_launcher_file_strings
-          LIMIT_COUNT 1 REGEX "^[ \t]*((exec|env|command)[ \t]+)*([^# \t]*[/])?ccache([ \t]|$)")
-        if(_sycl_launcher_file_strings)
-          set(_sycl_launcher_uses_ccache TRUE)
+      if(NOT _sycl_env_options_done)
+        if(_sycl_launcher_arg STREQUAL "--")
+          set(_sycl_env_options_done TRUE)
+          continue()
+        endif()
+        if(_sycl_launcher_arg STREQUAL "-u" OR
+           _sycl_launcher_arg STREQUAL "--unset" OR
+           _sycl_launcher_arg STREQUAL "-C" OR
+           _sycl_launcher_arg STREQUAL "--chdir")
+          set(_sycl_env_option_value TRUE)
+          continue()
+        endif()
+        if(_sycl_launcher_arg MATCHES "^-")
+          continue()
         endif()
       endif()
-    endif()
-  endforeach()
-
-  execute_process(
-    COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
-    OUTPUT_VARIABLE _sycl_launcher_version_stdout
-    ERROR_VARIABLE _sycl_launcher_version_stderr
-    RESULT_VARIABLE _sycl_launcher_version_result
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    TIMEOUT 5
-  )
-  string(TOLOWER
-    "${_sycl_launcher_version_stdout}\n${_sycl_launcher_version_stderr}"
-    _sycl_launcher_version_output)
-  set(_sycl_ccache_version "")
-  string(REGEX MATCH
-    "(^|[^a-z])ccache[ \t]+version[ \t]+([0-9]+\\.[0-9]+(\\.[0-9]+)?)"
-    _ccache_version_match "${_sycl_launcher_version_output}")
-  if(_ccache_version_match)
-    set(_sycl_launcher_uses_ccache TRUE)
-    set(_sycl_ccache_version "${CMAKE_MATCH_2}")
+      if(_sycl_launcher_arg MATCHES "^[A-Za-z_][A-Za-z_0-9]*=")
+        continue()
+      endif()
+      set(_sycl_launcher_program "${_sycl_launcher_arg}")
+      break()
+    endforeach()
   endif()
-
-  if(_sycl_launcher_uses_ccache)
+  get_filename_component(_sycl_launcher_name "${_sycl_launcher_program}" NAME)
+  if(_sycl_launcher_name STREQUAL "ccache" OR
+     _sycl_launcher_name STREQUAL "ccache.exe")
+    execute_process(
+      COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
+      OUTPUT_VARIABLE _sycl_launcher_version_stdout
+      ERROR_VARIABLE _sycl_launcher_version_stderr
+      RESULT_VARIABLE _sycl_launcher_version_result
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      TIMEOUT 5
+    )
+    string(TOLOWER
+      "${_sycl_launcher_version_stdout}\n${_sycl_launcher_version_stderr}"
+      _sycl_launcher_version_output)
+    string(REGEX MATCH
+      "(^|[^a-z])ccache[ \t]+version[ \t]+([0-9]+\\.[0-9]+(\\.[0-9]+)?)"
+      _ccache_version_match "${_sycl_launcher_version_output}")
+    set(_sycl_ccache_version "${CMAKE_MATCH_2}")
     if(NOT _sycl_launcher_version_result EQUAL 0 OR
        NOT _sycl_ccache_version VERSION_GREATER_EQUAL "4.12.1")
       message(WARNING
