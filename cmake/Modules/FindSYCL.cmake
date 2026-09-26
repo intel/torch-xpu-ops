@@ -57,6 +57,77 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
+# ccache versions before 4.12.1 can strip -Xarch_host -fPIC from DPC++ (icx)
+# object compiles, causing shared-library link failures (ccache/ccache#1632).
+# Keep the original launcher for device linking; gate direct ccache and ccache
+# selected by env for SYCL object compilation. Other launchers pass through.
+set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
+if(_SYCL_COMPILER_LAUNCHER)
+  set(_sycl_launcher_command ${_SYCL_COMPILER_LAUNCHER})
+  list(POP_FRONT _sycl_launcher_command _sycl_launcher_program)
+  get_filename_component(_sycl_launcher_name "${_sycl_launcher_program}" NAME)
+  if(_sycl_launcher_name STREQUAL "env")
+    set(_sycl_env_option_value FALSE)
+    set(_sycl_env_options_done FALSE)
+    foreach(_sycl_launcher_arg IN LISTS _sycl_launcher_command)
+      if(_sycl_env_option_value)
+        set(_sycl_env_option_value FALSE)
+        continue()
+      endif()
+      if(NOT _sycl_env_options_done)
+        if(_sycl_launcher_arg STREQUAL "--")
+          set(_sycl_env_options_done TRUE)
+          continue()
+        endif()
+        if(_sycl_launcher_arg STREQUAL "-u" OR
+           _sycl_launcher_arg STREQUAL "--unset" OR
+           _sycl_launcher_arg STREQUAL "-C" OR
+           _sycl_launcher_arg STREQUAL "--chdir")
+          set(_sycl_env_option_value TRUE)
+          continue()
+        endif()
+        if(_sycl_launcher_arg MATCHES "^-")
+          continue()
+        endif()
+      endif()
+      if(_sycl_launcher_arg MATCHES "^[A-Za-z_][A-Za-z_0-9]*=")
+        continue()
+      endif()
+      set(_sycl_launcher_program "${_sycl_launcher_arg}")
+      break()
+    endforeach()
+  endif()
+  get_filename_component(_sycl_launcher_name "${_sycl_launcher_program}" NAME)
+  if(_sycl_launcher_name STREQUAL "ccache" OR
+     _sycl_launcher_name STREQUAL "ccache.exe")
+    execute_process(
+      COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
+      OUTPUT_VARIABLE _sycl_launcher_version_stdout
+      ERROR_VARIABLE _sycl_launcher_version_stderr
+      RESULT_VARIABLE _sycl_launcher_version_result
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      TIMEOUT 5
+    )
+    string(TOLOWER
+      "${_sycl_launcher_version_stdout}\n${_sycl_launcher_version_stderr}"
+      _sycl_launcher_version_output)
+    string(REGEX MATCH
+      "(^|[^a-z])ccache[ \t]+version[ \t]+([0-9]+\\.[0-9]+(\\.[0-9]+)?)"
+      _ccache_version_match "${_sycl_launcher_version_output}")
+    set(_sycl_ccache_version "${CMAKE_MATCH_2}")
+    if(NOT _sycl_launcher_version_result EQUAL 0 OR
+       NOT _sycl_ccache_version VERSION_GREATER_EQUAL "4.12.1")
+      message(WARNING
+        "ccache launcher '${CMAKE_SYCL_COMPILER_LAUNCHER}' has version "
+        "'${_sycl_ccache_version}' (or its version could not be determined); "
+        "disabling it for SYCL object compiles. Upgrade to ccache >= 4.12.1.")
+      set(_SYCL_COMPILER_LAUNCHER "")
+    else()
+      message(STATUS "Found compatible ccache ${_sycl_ccache_version} for SYCL object compiles")
+    endif()
+  endif()
+endif()
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
@@ -216,9 +287,9 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       set(SYCL_build_type "Device")
 
-      # Apply the compiler launcher (e.g. ccache) to the individual SYCL object
-      # compile, mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
-      set(SYCL_compiler_launcher ${CMAKE_SYCL_COMPILER_LAUNCHER})
+      # Apply the compiler launcher to the individual SYCL object compile,
+      # mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
+      set(SYCL_compiler_launcher ${_SYCL_COMPILER_LAUNCHER})
 
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
