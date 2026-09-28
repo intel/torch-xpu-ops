@@ -57,4 +57,4 @@ runs:
             --dtype "${{ inputs.dt }}" --scenario "${{ inputs.scenario }}" \
             --dataset-dir "${dataset_dir}" "${model_list_args[@]}" \
             2>&1 | tee inductor_log/run_pt2e.log || true
-        rsync -avz --delete inductor_log/ "${GITHUB_WORKSPACE}/pytorch/inductor_log/"
+        rsync -avz inductor_log/ "${GITHUB_WORKSPACE}/pytorch/inductor_log/"

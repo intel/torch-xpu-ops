@@ -32,25 +32,24 @@ runs:
       run: |
         set -o pipefail
         cd ./pytorch
-        model_list_args=()
 
         # Stage the merged benchmark runner inside the pytorch checkout so it
         # can see benchmarks/dynamo and run from the expected working tree.
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_e2e/
 
+        model_list_args=""
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
-          model_re=$(echo "${MODEL_ONLY_NAME}" |sed 's/,/|/g')
-          models_list_args=" -k '^(${model_re})\$' "
+          model_list_args=" --model-only ${MODEL_ONLY_NAME} "
         fi
         if [ "${{ github.event_name }}" != "pull_request" ]; then
           rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmark/ ./benchmarks/dynamo/
         fi
 
-        rm -rf inductor_log torch && mkdir -p inductor_log
+        rm -rf torch && mkdir -p inductor_log
         python -m run_e2e \
             --suite "${{ inputs.suite }}" \
             --dtype "${{ inputs.dt }}" \
             --mode "${{ inputs.mode }}" \
             --scenario "${{ inputs.scenario }}" \
-            "${model_list_args[@]}" \
+            "${model_list_args}" \
             2>&1 | tee inductor_log/run_e2e.log || true
