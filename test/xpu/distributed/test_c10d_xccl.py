@@ -479,6 +479,74 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
             torch.xpu.max_memory_reserved() * 2,
         )
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_record_param_comms_scope_covers_launch(self):
+        # `record_param_comms` carries a collective's metadata, and a profiler
+        # attributes the communication kernel to whichever CPU op is open when
+        # the kernel is launched. So the event has to still be open at launch
+        # time; if its scope closes first the kernel is attributed to the
+        # generic `c10d::<op>_` instead and the metadata never reaches it.
+        # Checked on the CPU side only, so the test does not depend on device
+        # activity records being available.
+        self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        tensor = torch.ones(8, 16, device=device)
+        chunked = torch.ones(8 * self.world_size, device=device)
+        splits = [8] * self.world_size
+
+        # Warm up, so lazy communicator setup stays out of the captured region.
+        dist.all_reduce(tensor)
+        torch.xpu.synchronize()
+
+        with torch.profiler.profile(
+            activities=[torch.profiler.ProfilerActivity.CPU]
+        ) as prof:
+            dist.all_reduce(tensor)
+            # Both branches of all_to_all_single: equal split and explicit sizes.
+            dist.all_to_all_single(torch.empty_like(chunked), chunked)
+            dist.all_to_all_single(
+                torch.empty_like(chunked),
+                chunked,
+                output_split_sizes=splits,
+                input_split_sizes=splits,
+            )
+            torch.xpu.synchronize()
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as trace_file:
+            trace_path = trace_file.name
+        try:
+            prof.export_chrome_trace(trace_path)
+            with open(trace_path) as trace:
+                events = json.load(trace)["traceEvents"]
+        finally:
+            os.remove(trace_path)
+
+        slices = [e for e in events if e.get("ph") == "X" and "dur" in e]
+        scopes = [e for e in slices if e["name"] == "record_param_comms"]
+        launches = [e for e in slices if e["name"].startswith("xccl:")]
+        self.assertEqual(len(launches), 3, f"expected 3 launches, got {launches}")
+
+        for launch in launches:
+            covering = [
+                s
+                for s in scopes
+                if s["tid"] == launch["tid"]
+                and s["ts"] <= launch["ts"] <= s["ts"] + s["dur"]
+            ]
+            self.assertTrue(
+                covering,
+                f"no record_param_comms scope was open when {launch['name']} was "
+                f"launched; scopes were "
+                f"{[(s['args'].get('Collective name'), s['dur']) for s in scopes]}",
+            )
+            # Sequence identity only reaches the trace when seq is recorded as a
+            # (number, isP2P) tuple; a bare int leaves sequenceNumber_ at -1 and
+            # the profiler drops both keys.
+            for key in ("Seq", "Comms Id"):
+                self.assertIn(key, covering[0]["args"], f"{launch['name']}: {key}")
+
 
 class CommTest(MultiProcessTestCase):
     @property
@@ -1723,6 +1791,64 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
 
         torch.testing.assert_close(output_0, output_1)
         self.assertEqual(output_0.stride(), output_1.stride())
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_mempool_alloc_and_rendezvous(self) -> None:
+        """A tensor allocated inside the symmetric MemPool must be usable as
+        symmetric memory: rendezvous → write → barrier → read peer buffer."""
+        self._init_process()
+
+        numel = 1024
+        dtype = torch.float32
+        group_name = dist.group.WORLD.group_name
+
+        # Registered by src/xccl/XPUMemPool.cpp.
+        self.assertIsNotNone(symm_mem.get_mempool_allocator(self.device))
+
+        pool = symm_mem.get_mem_pool(self.device)
+        self.assertIsInstance(pool, torch.xpu.MemPool)
+        # The pool is cached per device.
+        self.assertIs(pool, symm_mem.get_mem_pool(self.device))
+
+        with torch.xpu.use_mem_pool(pool):
+            t = torch.empty(numel, dtype=dtype, device=self.device)
+
+        hdl = symm_mem.rendezvous(t, group=group_name)
+        t.fill_(float(self.rank))
+        hdl.barrier()
+
+        for peer in range(self.world_size):
+            buf = hdl.get_buffer(peer, (numel,), dtype)
+            self.assertTrue(
+                buf.eq(float(peer)).all().item(),
+                f"peer {peer} buffer != {peer} (seen from rank {self.rank})",
+            )
+        hdl.barrier()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_mempool_no_split_and_implicit_pool(self) -> None:
+        """The symmetric pool is created with no_split=True, so a same-sized
+        re-allocation must land on the exact same address. symm_mem.empty()
+        routes through that same pool implicitly."""
+        self._init_process()
+
+        numel = 1024
+        dtype = torch.float32
+        pool = symm_mem.get_mem_pool(self.device)
+
+        with torch.xpu.use_mem_pool(pool):
+            t1 = torch.empty(numel, dtype=dtype, device=self.device)
+        ptr1 = t1.data_ptr()
+        del t1
+
+        with torch.xpu.use_mem_pool(pool):
+            t2 = torch.empty(numel, dtype=dtype, device=self.device)
+        self.assertEqual(ptr1, t2.data_ptr())
+
+        t = symm_mem.empty(numel, dtype=dtype, device=self.device)
+        symm_mem.rendezvous(t, group=dist.group.WORLD.group_name)
 
 
 # ------------------------------------------------------------------
