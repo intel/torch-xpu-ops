@@ -239,6 +239,20 @@ runs:
         esac
         # Inductor cases same as PyTorch, sharded across the visible GPUs
         if [[ "${category}" == 'inductor' ]]; then
+          # configs for pytorch cases
+          export BUILD_ENVIRONMENT="linux-noble-xpu-n-py3.10-client"
+          export TEST_CONFIG="inductor_xpu"
+          export PYTORCH_RETRY_TEST_CASES=1
+          export PYTORCH_OVERRIDE_FLAKY_SIGNAL=1
+          export CONTINUE_THROUGH_ERROR=True
+          export PYTORCH_TEST_RERUN_DISABLED_TESTS=0
+          export NO_TEST_TIMEOUT=False
+          export VERBOSE_TEST_LOGS=False
+          export TEST_SHOWLOCALS=False
+          export NO_TD=False
+          # CI="" makes IS_CI false, disabling run_test.py's S3/TD/metrics/artifact upload paths
+          export PYTEST_ADDOPTS=" --timeout 3600 --timeout_method=thread -v "
+          export CI=""
           IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
           num_shards=${#gpus[@]}
           run_inductor_shards() {
@@ -249,11 +263,7 @@ runs:
             for i in "${!gpus[@]}"; do
               local shard_id=$((i + 1))
               (
-                # CI="" makes IS_CI false, disabling run_test.py's S3/TD/metrics/artifact upload paths
-                CI="" \
-                ZE_AFFINITY_MASK="${gpus[$i]}" \
-                PYTEST_ADDOPTS=" --timeout 3600 --timeout_method=thread -v " \
-                python pytorch/test/run_test.py --verbose ${extra} \
+                ZE_AFFINITY_MASK="${gpus[$i]}" python pytorch/test/run_test.py --verbose ${extra} \
                   --include "$@" \
                   --shard ${shard_id} ${num_shards} \
                   --save-xml "${log_dir}/xml/${part}_shard${shard_id}"
