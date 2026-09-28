@@ -13,6 +13,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Copy.h>
 #include <ATen/native/xpu/sycl/IndexUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <cmath>
@@ -224,36 +225,28 @@ template <
     typename scalar2,
     typename IndexType,
     int step>
-struct PointwiseApply2Functor {
-  void operator()(sycl::nd_item<1> item) const {
-    for (IndexType linearIndex = (item.get_group(0) * item.get_local_range(0) +
-                                  item.get_local_id(0)) *
-             step;
-         linearIndex < totalElements_;
-         linearIndex +=
-         item.get_group_range(0) * item.get_local_range(0) * step) {
-      ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
-          item,
-          a_,
-          b_,
-          op_,
-          std::min(step, static_cast<int>(totalElements_ - linearIndex)),
-          linearIndex);
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void pointwiseApply2Kernel(
+    TensorInfo<scalar1, IndexType> a,
+    TensorInfo<scalar2, IndexType> b,
+    IndexType totalElements,
+    const Op op) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  for (IndexType linearIndex = (item.get_group(0) * item.get_local_range(0) +
+                                item.get_local_id(0)) *
+           step;
+       linearIndex < totalElements;
+       linearIndex +=
+       item.get_group_range(0) * item.get_local_range(0) * step) {
+    ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
+        item,
+        a,
+        b,
+        op,
+        std::min(step, static_cast<int>(totalElements - linearIndex)),
+        linearIndex);
   }
-  PointwiseApply2Functor(
-      TensorInfo<scalar1, IndexType> a,
-      TensorInfo<scalar2, IndexType> b,
-      IndexType totalElements,
-      const Op op)
-      : a_(a), b_(b), totalElements_(totalElements), op_(op) {}
-
- private:
-  TensorInfo<scalar1, IndexType> a_;
-  TensorInfo<scalar2, IndexType> b_;
-  IndexType totalElements_;
-  const Op op_;
-};
+}
 
 template <int step = 1>
 inline uint64_t get_apply_group_count(
@@ -264,7 +257,7 @@ inline uint64_t get_apply_group_count(
   uint64_t num_groups =
       (total_elements + numel_per_thread - 1) / numel_per_thread;
   uint64_t estimated_max_groups_per_tile =
-      syclMaxWorkItemsPerTile() / threads_per_group;
+      at::xpu::getDeviceMaxWorkItems() / threads_per_group;
   if (num_groups > estimated_max_groups_per_tile)
     num_groups = estimated_max_groups_per_tile;
   return num_groups;
@@ -337,13 +330,17 @@ inline bool tensor_apply2(
     bInfo.collapseDims();
 
     using index_t = unsigned int;
-    auto fn = PointwiseApply2Functor<Op, scalar1, scalar2, index_t, step>(
-        aInfo, bInfo, static_cast<index_t>(totalElements), op);
-    sycl_kernel_submit(
+    constexpr auto fn =
+        pointwiseApply2Kernel<Op, scalar1, scalar2, index_t, step>;
+    sycl_kernel_submit<fn>(
         group_count * threads_per_group,
         threads_per_group,
         getCurrentSYCLQueue(),
-        fn);
+        0,
+        aInfo,
+        bInfo,
+        static_cast<index_t>(totalElements),
+        op);
   } else {
     TensorInfo<scalar1, uint64_t> aInfo = getTensorInfo<scalar1, uint64_t>(a);
 
@@ -353,13 +350,17 @@ inline bool tensor_apply2(
     bInfo.collapseDims();
 
     using index_t = uint64_t;
-    auto fn = PointwiseApply2Functor<Op, scalar1, scalar2, index_t, step>(
-        aInfo, bInfo, static_cast<index_t>(totalElements), op);
-    sycl_kernel_submit(
+    constexpr auto fn =
+        pointwiseApply2Kernel<Op, scalar1, scalar2, index_t, step>;
+    sycl_kernel_submit<fn>(
         group_count * threads_per_group,
         threads_per_group,
         getCurrentSYCLQueue(),
-        fn);
+        0,
+        aInfo,
+        bInfo,
+        static_cast<index_t>(totalElements),
+        op);
   }
 
   if (oldA.defined()) {

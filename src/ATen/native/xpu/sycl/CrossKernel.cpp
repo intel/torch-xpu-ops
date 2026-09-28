@@ -11,6 +11,7 @@
 #include <ATen/ATen.h>
 #include <ATen/TensorIterator.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/core/WrapDimMinimal.h>
 #include <comm/SYCLContext.h>
 
@@ -74,7 +75,7 @@ void launch_cross_kernel(
       "cross_xpu",
       [&]() {
         int64_t work_group_size =
-            syclMaxWorkGroupSize<cross_ff_kernel<scalar_t>>();
+            at::xpu::getKernelMaxWorkGroupSize<cross_ff_kernel<scalar_t>>();
         int64_t work_group_num = (N + work_group_size - 1) / work_group_size;
         auto out = static_cast<scalar_t*>(iter.data_ptr(0));
         auto x1 = static_cast<const scalar_t*>(iter.data_ptr(1));

@@ -20,36 +20,41 @@ constexpr int n_elems_per_work_item = 4; // UNROLLED_ELEM_PER_WORK_ITEM;
 namespace at::native::xpu {
 
 template <int n_elems_per_work_item, typename func_t>
-struct _ElemwiseKernelFunctor {
-  void operator()(sycl::item<1> itemId) const {
-    int idx = itemId.get_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void elem_wise_kernel_impl(int total_n_elems, func_t f, int total_work_items) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto idx = item.get_global_id(0);
+  if (idx >= total_work_items)
+    return;
+
 #pragma unroll
-    for (int i = 0; i < n_elems_per_work_item; ++i) {
-      if (idx < total_n_elems_) {
-        f_(idx);
-        idx += total_work_items_;
-      }
+  for (int i = 0; i < n_elems_per_work_item; ++i) {
+    if (idx < total_n_elems) {
+      f(idx);
+      idx += total_work_items;
     }
   }
-  _ElemwiseKernelFunctor(int total_n_elems, func_t f, int total_work_items)
-      : total_n_elems_(total_n_elems),
-        f_(f),
-        total_work_items_(total_work_items) {}
-
- private:
-  int total_n_elems_;
-  func_t f_;
-  int total_work_items_;
-};
+}
 
 template <int n_elems_per_work_item, typename func_t>
 void _elemwise_kernel(int total_n_elems, func_t f) {
   int total_work_items =
       (total_n_elems + n_elems_per_work_item - 1) / n_elems_per_work_item;
-  _ElemwiseKernelFunctor<n_elems_per_work_item, func_t> kfn(
-      total_n_elems, f, total_work_items);
-  sycl_kernel_submit(
-      sycl::range<1>(total_work_items), getCurrentSYCLQueue(), kfn);
+  int64_t max_work_group_size = syclMaxWorkGroupSize<
+      elem_wise_kernel_impl<n_elems_per_work_item, func_t>>();
+
+  int local_range = max_work_group_size;
+  int global_range =
+      ((total_work_items + local_range - 1) / local_range) * local_range;
+
+  sycl_kernel_submit<elem_wise_kernel_impl<n_elems_per_work_item, func_t>>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
+      total_n_elems,
+      f,
+      total_work_items);
 }
 
 template <int n_elems_per_work_item, typename func_t>

@@ -23,8 +23,8 @@ def main():
     pytorch_root = workspace / "pytorch"
     os.chdir(pytorch_root)
 
-    win_ci_dir = pytorch_root / ".ci" / "pytorch" / "windows"
-    sys.path.insert(0, str(win_ci_dir))
+    win_wheel_dir = pytorch_root / ".ci" / "wheel" / "windows"
+    sys.path.insert(0, str(win_wheel_dir))
 
     # Set required env vars for XPU build
     os.environ["GPU_ARCH_TYPE"] = "xpu"
@@ -32,7 +32,7 @@ def main():
     os.environ["CUDA_VERSION"] = "xpu"
     os.environ["USE_SCCACHE"] = "0"
     os.environ["USE_XCCL"] = "0"
-    os.environ["TORCH_XPU_ARCH_LIST"] = "mtl-h,bmg,lnl-m"
+    os.environ["TORCH_XPU_ARCH_LIST"] = "bmg,ptl"
     os.environ["SKIP_SETUP_CLEAN"] = "1"
     os.environ["WERROR"] = "1"
 
@@ -74,8 +74,9 @@ def main():
     print("=== Step 2: build_install_deps ===", flush=True)
     import build_install_deps
 
-    build_install_deps.pip_install("-q", f"numpy=={build_install_deps.numpy_pin()}")
-    build_install_deps.pip_install("-q", *build_install_deps.PIP_PACKAGES)
+    build_flags = build_install_deps.preinstall_cp315_build_deps()
+    build_install_deps.install_numpy(*build_flags)
+    build_install_deps.pip_install("-q", *build_flags, *build_install_deps.PIP_PACKAGES)
     # Install libuv via conda (upstream uses 7z which may not be on our runners)
     conda_exe = os.environ.get("CONDA_EXE", "conda")
     subprocess.run([conda_exe, "install", "-y", "libuv"], check=True)

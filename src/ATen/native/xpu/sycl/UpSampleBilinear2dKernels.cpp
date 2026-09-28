@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -93,8 +94,8 @@ void launch_upsample_bilinear2d_kernel(
     int64_t output_width,
     int64_t nbatch,
     int64_t channels) {
-  int64_t wg_size =
-      syclMaxWorkGroupSize<upsample_bilinear2d_kernel<scalar_t, accscalar_t>>();
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      upsample_bilinear2d_kernel<scalar_t, accscalar_t>>();
   int num_group = at::ceil_div(n, (int)wg_size);
   auto queue = getCurrentSYCLQueue();
 
@@ -199,7 +200,7 @@ void launch_upsample_bilinear2d_nhwc_kernel(
     const scalar_t* idata,
     scalar_t* odata,
     const int out_numel) {
-  int64_t wg_size = syclMaxWorkGroupSize<
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
       upsample_bilinear2d_nhwc_kernel<scalar_t, accscalar_t>>();
   int num_group = at::ceil_div(out_numel, (int)wg_size);
   auto queue = getCurrentSYCLQueue();
@@ -507,8 +508,8 @@ void launch_upsample_bilinear2d_backward_kernel(
       !std::is_same_v<scalar_t, double>;
   if (can_optimize) {
     if (align_corners) {
-      int64_t wg_size =
-          syclMaxWorkGroupSize<upsample_bilinear2d_backward_align_kernel<
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+          upsample_bilinear2d_backward_align_kernel<
               scalar_t,
               accscalar_t,
               false>>();
@@ -532,8 +533,8 @@ void launch_upsample_bilinear2d_backward_kernel(
           (int)channels,
           i_numel);
     } else {
-      int64_t wg_size =
-          syclMaxWorkGroupSize<upsample_bilinear2d_backward_not_align_kernel<
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+          upsample_bilinear2d_backward_not_align_kernel<
               scalar_t,
               accscalar_t,
               false>>();
@@ -561,7 +562,7 @@ void launch_upsample_bilinear2d_backward_kernel(
   } else {
     const size_t num_kernels = nc * output_width * output_height;
 
-    int64_t wg_size = syclMaxWorkGroupSize<
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
         upsample_bilinear2d_backward_kernel<scalar_t, accscalar_t>>();
     int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
     auto queue = getCurrentSYCLQueue();
@@ -692,8 +693,8 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
       !std::is_same_v<scalar_t, double>;
   if (can_optimize) {
     if (align_corners) {
-      int64_t wg_size =
-          syclMaxWorkGroupSize<upsample_bilinear2d_backward_align_kernel<
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+          upsample_bilinear2d_backward_align_kernel<
               scalar_t,
               accscalar_t,
               true>>();
@@ -718,8 +719,8 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
           i_numel);
 
     } else {
-      int64_t wg_size =
-          syclMaxWorkGroupSize<upsample_bilinear2d_backward_not_align_kernel<
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+          upsample_bilinear2d_backward_not_align_kernel<
               scalar_t,
               accscalar_t,
               true>>();
@@ -745,7 +746,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
     }
 
   } else {
-    int64_t wg_size = syclMaxWorkGroupSize<
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
         upsample_bilinear2d_backward_nhwc_kernel<scalar_t, accscalar_t>>();
     int num_group = at::ceil_div((int64_t)o_numel, (int64_t)wg_size);
     auto queue = getCurrentSYCLQueue();
@@ -1280,12 +1281,12 @@ void launch_upsample_gen2d_aa_kernel(
   const int interp_height = (int)ceilf(support_h) * 2 + 1;
   const int interp_width = (int)ceilf(support_w) * 2 + 1;
 
-  auto sharedMemPerBlock = syclLocalMemSize();
+  int64_t sharedMemPerBlock = at::xpu::getDeviceLocalMemSize();
   int maxThreadsPerBlock = std::min<int>(
-      syclMaxWorkGroupSize<
+      at::xpu::getKernelMaxWorkGroupSize<
           UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
       256); // 256 performs better
-  int block_x = syclMaxSubGroupSize();
+  int block_x = at::xpu::getDeviceMaxSubGroupSize();
 
   int numer =
       sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
@@ -1348,12 +1349,12 @@ void launch_upsample_gen2d_aa_backward_kernel(
     const accscalar_t support_w) {
   auto queue = getCurrentSYCLQueue();
 
-  auto sharedMemPerBlock = syclLocalMemSize();
+  int64_t sharedMemPerBlock = at::xpu::getDeviceLocalMemSize();
   int maxThreadsPerBlock = std::min<int>(
-      syclMaxWorkGroupSize<
+      at::xpu::getKernelMaxWorkGroupSize<
           UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
       256); // 256 performs better
-  int block_x = syclMaxSubGroupSize();
+  int block_x = at::xpu::getDeviceMaxSubGroupSize();
   int block_y = maxThreadsPerBlock / block_x;
 
   int grid_x = (output_width + block_x - 1) / block_x * block_x;
