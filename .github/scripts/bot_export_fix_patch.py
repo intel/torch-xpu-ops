@@ -41,8 +41,22 @@ def slug_for(fix_result_path):
     return name[len("fix_result"):].lstrip("-").removesuffix(".json") or "single"
 
 
+def dest_name(branch, fix_result_path):
+    """Directory name for a unit's patch series: the branch, minus `agent/`.
+
+    The branch is named after the issue that owns the bug
+    (`fix-issue-<N>-...`, or `fix-pytorch-issue-<M>-...` when the bug is
+    filed upstream), so the patch path tells a reviewer which issue a PR
+    would close -- the tracking issue the command ran on is not it. Falls
+    back to the fix_result slug when the record carries no usable branch.
+    """
+    leaf = str(branch or "").removeprefix("refs/heads/").removeprefix("agent/")
+    leaf = leaf.strip().replace("/", "-")
+    return leaf or slug_for(fix_result_path)
+
+
 def fix_branches(root_dir):
-    """List every agent/fix-issue-* branch in any git repo under `root_dir`.
+    """List every agent/fix-* branch in any git repo under `root_dir`.
 
     Cross-checks the agent's own claim against a fact the workflow can observe:
     such a branch means a fix was committed. If one exists but no
@@ -64,7 +78,7 @@ def fix_branches(root_dir):
     for root, dirs, files in os.walk(root_dir):
         if ".git" in dirs or ".git" in files:
             r = git(root, "for-each-ref", "--format=%(refname:short)",
-                    "refs/heads/agent/fix-issue-*")
+                    "refs/heads/agent/fix-*")
             if r.returncode == 0:
                 found += [f"{root}:{b}" for b in r.stdout.split() if b]
             dirs[:] = [d for d in dirs if d != ".git"]
@@ -111,7 +125,7 @@ def export(agent_space, out, root_dir):
             if (repo and branch and base and os.path.isdir(repo)
                     and git(repo, "rev-parse", "--verify", branch).returncode == 0
                     and git(repo, "rev-parse", "--verify", base).returncode == 0):
-                dest = os.path.join(out, "unverified", slug_for(fr))
+                dest = os.path.join(out, "unverified", dest_name(branch, fr))
                 os.makedirs(dest, exist_ok=True)
                 git(repo, "format-patch", f"--base={base}", f"{base}..{branch}",
                     "-o", dest)
@@ -144,7 +158,7 @@ def export(agent_space, out, root_dir):
             errors.append(f"{fr}: base_sha not found in {repo}: {base}")
             continue
 
-        dest = os.path.join(out, slug_for(fr))
+        dest = os.path.join(out, dest_name(branch, fr))
         os.makedirs(dest, exist_ok=True)
         git(repo, "format-patch", f"--base={base}", f"{base}..{branch}", "-o", dest)
         if any(f.endswith(".patch") for f in os.listdir(dest)):

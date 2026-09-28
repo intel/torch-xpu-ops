@@ -19,6 +19,7 @@
 #include <c10/core/ScalarType.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 
@@ -29,30 +30,25 @@ namespace at::native::xpu {
 constexpr int n_elems_per_work_item = 4; // UNROLLED_ELEM_PER_WORK_ITEM;
 
 template <int n_elems_per_work_item, typename func_t>
-struct UnfoldBackwardElementwiseKernelFunctor {
-  void operator()(sycl::item<1> item) const {
-    int idx = item.get_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void unfold_backward_elementwise_kernel(
+    int total_work_items,
+    int total_n_elems,
+    func_t f) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int idx = item.get_global_linear_id();
+  int stride = item.get_global_range(0);
+  for (; idx < total_work_items; idx += stride) {
+    int elem_idx = idx;
 #pragma unroll
     for (int i = 0; i < n_elems_per_work_item; ++i) {
-      if (idx < total_n_elems_) {
-        f_(idx);
-        idx += total_work_items_;
+      if (elem_idx < total_n_elems) {
+        f(elem_idx);
+        elem_idx += total_work_items;
       }
     }
   }
-  UnfoldBackwardElementwiseKernelFunctor(
-      int total_work_items,
-      int total_n_elems,
-      func_t f)
-      : total_work_items_(total_work_items),
-        total_n_elems_(total_n_elems),
-        f_(f) {}
-
- private:
-  int total_work_items_;
-  int total_n_elems_;
-  func_t f_;
-};
+}
 
 template <int n_elems_per_work_item, typename func_t>
 static void _launch_unfold_backward_kernel(int total_n_elems, func_t f) {
@@ -63,11 +59,23 @@ static void _launch_unfold_backward_kernel(int total_n_elems, func_t f) {
 
   int total_work_items =
       (total_n_elems + n_elems_per_work_item - 1) / n_elems_per_work_item;
-  UnfoldBackwardElementwiseKernelFunctor<n_elems_per_work_item, func_t> kfn(
-      total_work_items, total_n_elems, f);
+  constexpr auto kfn =
+      unfold_backward_elementwise_kernel<n_elems_per_work_item, func_t>;
+  int work_group_size = std::min<int>(
+      total_work_items, at::xpu::getKernelMaxWorkGroupSize<kfn>());
+  int64_t global_range =
+      xpuKernelLoopGroupRange(total_work_items, work_group_size) *
+      work_group_size;
   auto& queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit(sycl::range<1>(total_work_items), queue, kfn);
+  sycl_kernel_submit<kfn>(
+      sycl::range<1>(global_range),
+      sycl::range<1>(work_group_size),
+      queue,
+      0,
+      total_work_items,
+      total_n_elems,
+      f);
 }
 
 template <typename scalar_t, typename offset_calc_t>
