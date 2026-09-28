@@ -350,10 +350,20 @@ void max_pool2d_backward_deterministic_kernel_impl(
       }
       index_t inputW = input_hw_index % gradInputSizeW;
       index_t inputH = input_hw_index / gradInputSizeW;
-      int phstart = p_start(static_cast<int>(inputH), pad_h, kernel_h, dilation_h, stride_h);
-      int phend = p_end(static_cast<int>(inputH), pad_h, static_cast<int>(gradOutputSizeH), stride_h);
-      int pwstart = p_start(static_cast<int>(inputW), pad_w, kernel_w, dilation_w, stride_w);
-      int pwend = p_end(static_cast<int>(inputW), pad_w, static_cast<int>(gradOutputSizeW), stride_w);
+      int phstart = p_start(
+          static_cast<int>(inputH), pad_h, kernel_h, dilation_h, stride_h);
+      int phend = p_end(
+          static_cast<int>(inputH),
+          pad_h,
+          static_cast<int>(gradOutputSizeH),
+          stride_h);
+      int pwstart = p_start(
+          static_cast<int>(inputW), pad_w, kernel_w, dilation_w, stride_w);
+      int pwend = p_end(
+          static_cast<int>(inputW),
+          pad_w,
+          static_cast<int>(gradOutputSizeW),
+          stride_w);
       accscalar_t grad = accscalar_t(0);
       if constexpr (is_channels_last) {
         index_t offset = batch * out_n_stride + plane;
@@ -424,10 +434,20 @@ void max_pool2d_backward_channel_last_vec_kernel_impl(
 
     index_t inputW = input_hw_index % gradInputSizeW;
     index_t inputH = input_hw_index / gradInputSizeW;
-    int phstart = p_start(static_cast<int>(inputH), pad_h, kernel_h, dilation_h, stride_h);
-    int phend = p_end(static_cast<int>(inputH), pad_h, static_cast<int>(gradOutputSizeH), stride_h);
-    int pwstart = p_start(static_cast<int>(inputW), pad_w, kernel_w, dilation_w, stride_w);
-    int pwend = p_end(static_cast<int>(inputW), pad_w, static_cast<int>(gradOutputSizeW), stride_w);
+    int phstart = p_start(
+        static_cast<int>(inputH), pad_h, kernel_h, dilation_h, stride_h);
+    int phend = p_end(
+        static_cast<int>(inputH),
+        pad_h,
+        static_cast<int>(gradOutputSizeH),
+        stride_h);
+    int pwstart = p_start(
+        static_cast<int>(inputW), pad_w, kernel_w, dilation_w, stride_w);
+    int pwend = p_end(
+        static_cast<int>(inputW),
+        pad_w,
+        static_cast<int>(gradOutputSizeW),
+        stride_w);
     accscalar_t grad_acc[vec_size];
 #pragma unroll
     for (int i = 0; i < vec_size; i++) {
