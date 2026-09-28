@@ -63,6 +63,7 @@ maml_omniglot,pass,pass,pass,pass,pass
 microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
 mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
+# NotImplementedError: The eval test only supports CPU
 mobilenet_v2_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 mobilenet_v3_large,pass,pass,pass,pass,pass
 moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
@@ -80,6 +81,7 @@ pytorch_unet,pass,pass,pass,pass,pass
 resnet152,pass,pass,pass,pass,pass
 resnet18,pass,pass,pass,pass,pass
 resnet50,pass,pass,pass,pass,pass
+# NotImplementedError: The eval test only supports CPU
 resnet50_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 resnext50_32x4d,pass,pass,pass,pass,pass
 sam,pass,pass,pass,pass,pass
