@@ -223,7 +223,7 @@ runs:
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
 
     - name: upstream_ut
-      shell: timeout 86400 bash -xe -o pipefail {0}
+      shell: timeout 86400 bash -e -o pipefail {0}
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -252,8 +252,8 @@ runs:
           export TEST_SHOWLOCALS=False
           export NO_TD=False
           # CI="" makes IS_CI false, disabling run_test.py's S3/TD/metrics/artifact upload paths
-          export PYTEST_ADDOPTS=" --timeout 3600 --timeout_method=thread -v "
           export CI=""
+          export PYTEST_ADDOPTS=" --timeout 3600 --timeout_method=thread -v "
           IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
           num_shards=${#gpus[@]}
           run_inductor_shards() {
