@@ -93,7 +93,7 @@ def test_passed_exports_a_patch(tmp_path, space):
 
     assert (made, salvaged, errors) == (1, 0, [])
     assert len(patches(out)) == 1
-    assert patches(out)[0].startswith("single" + os.sep)
+    assert patches(out)[0].startswith("fix-issue-1" + os.sep)
 
 
 def test_passed_missing_base_sha_is_an_error(tmp_path, space):
@@ -182,7 +182,7 @@ def test_pending_verify_is_salvaged_as_unverified(tmp_path, space):
 
     assert (made, salvaged, errors) == (0, 1, [])
     assert len(patches(out)) == 1
-    assert patches(out)[0].startswith(os.path.join("unverified", "single"))
+    assert patches(out)[0].startswith(os.path.join("unverified", "fix-issue-1"))
 
 
 def test_non_passed_with_unusable_contract_is_not_fatal(tmp_path, space):
@@ -197,6 +197,26 @@ def test_non_passed_with_unusable_contract_is_not_fatal(tmp_path, space):
     assert patches(out) == []
 
 
+def test_upstream_filed_bug_is_named_after_the_upstream_issue(tmp_path, space):
+    """A CI DISABLED test is filed upstream, so the patch carries THAT number.
+
+    The bot command runs on the torch-xpu-ops tracking issue, which is only a
+    queue: naming the patch after it tells a reviewer nothing about which issue
+    a PR would close.
+    """
+    agent_space, out = space
+    base, branch = make_repo(tmp_path / "repo",
+                             branch="agent/fix-pytorch-issue-197334-test_foo")
+    write_result(agent_space, tmp_path / "repo", base, branch, slug="test_foo")
+
+    made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
+
+    assert (made, salvaged, errors) == (1, 0, [])
+    assert patches(out)[0].startswith("fix-pytorch-issue-197334-test_foo" + os.sep)
+    # the lost-fix trap must still see the non-`fix-issue-` name
+    assert any(branch in b for b in ex.fix_branches(str(tmp_path)))
+
+
 def test_batch_exports_one_series_per_slug(tmp_path, space):
     agent_space, out = space
     base_a, branch_a = make_repo(tmp_path / "a", branch="agent/fix-issue-1-1-aa")
@@ -207,7 +227,8 @@ def test_batch_exports_one_series_per_slug(tmp_path, space):
     made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
 
     assert (made, salvaged, errors) == (2, 0, [])
-    assert [p.split(os.sep)[0] for p in patches(out)] == ["aa", "bb"]
+    assert [p.split(os.sep)[0] for p in patches(out)] == ["fix-issue-1-1-aa",
+                                                          "fix-issue-1-2-bb"]
 
 
 def test_unparseable_fix_result_is_an_error(tmp_path, space):

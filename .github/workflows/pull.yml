@@ -149,9 +149,12 @@ jobs:
             fi
           fi
 
-          # Check if PR description contains pytest commands (lines starting with "pytest")
+          # Check if PR description contains pytest commands. A leading
+          # VAR=value prefix is kept: the reproducer step evals the line, so
+          # "ZE_AFFINITY_MASK=0,1 pytest ..." runs as written.
           PR_BODY=$(gh pr view ${{ github.event.pull_request.number }} --json body -q '.body' 2>/dev/null || true)
-          PR_CMD=$(echo "$PR_BODY" | tr -d '\r' | grep -E '^pytest ' || true)
+          PR_CMD=$(echo "$PR_BODY" | tr -d '\r' \
+            | grep -E '^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]* +)*pytest ' || true)
           if [ -n "$PR_CMD" ]; then
             HAS_PR_CMD=true
             echo "Found reproducer commands in PR description:"
@@ -168,7 +171,7 @@ jobs:
 
           # Fail only if neither source is available
           if [ "$HAS_REPRO_FILES" = false ] && [ "$HAS_PR_CMD" = false ] && [ -z "$FAIL_MSG" ]; then
-            FAIL_MSG="No reproducer found. AI-generated PRs must include either reproducer files in \`test/repro/test_*.py\` or pytest commands in the PR description (lines starting with \`pytest\`)."
+            FAIL_MSG="No reproducer found. AI-generated PRs must include either reproducer files in \`test/repro/test_*.py\` or pytest commands in the PR description (lines starting with \`pytest\`, optionally preceded by \`VAR=value\` assignments)."
           fi
 
           if [ -n "$FAIL_MSG" ]; then
@@ -178,7 +181,7 @@ jobs:
               "" \
               "Please provide a reproducer using one of these methods:" \
               "- Add reproducer files: \`test/repro/test_<description>.py\` (pytest format)" \
-              "- Add pytest commands in the PR description (lines starting with \`pytest\`, e.g. \`pytest test/xpu/test_ops.py -k test_foo -v\`)"
+              "- Add pytest commands in the PR description (lines starting with \`pytest\`, optionally preceded by \`VAR=value\` assignments, e.g. \`pytest test/xpu/test_ops.py -k test_foo -v\` or \`ZE_AFFINITY_MASK=0,1 pytest test/xpu/distributed/test_foo.py\`)"
             gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
             echo "::error::${FAIL_MSG}"
             exit 1
