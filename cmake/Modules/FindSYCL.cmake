@@ -57,73 +57,39 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
-# ccache versions before 4.12.1 can strip -Xarch_host -fPIC from DPC++ (icx)
-# object compiles, causing shared-library link failures (ccache/ccache#1632).
-# Keep the original launcher for device linking; gate direct ccache and ccache
-# selected by env for SYCL object compilation. Other launchers pass through.
+# ccache versions before 4.11 do not support DPC++ (icx) compiler. Additionally,
+# versions before 4.12.1 do not correctly pass -Xarch_host flags to LLVM compilers
+# family in general: they can strip -Xarch_host -fPIC, producing objects without
+# -fPIC that fail the PIE link. ccache 4.12.1 includes the fix for that, see:
+#
+# * https://github.com/ccache/ccache/issues/1632
+#
+# Below we keep the original launcher for the device-link step, and only apply
+# the ccache version gate for kernel code compilation step.
 set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
 if(_SYCL_COMPILER_LAUNCHER)
-  set(_sycl_launcher_command ${_SYCL_COMPILER_LAUNCHER})
-  list(POP_FRONT _sycl_launcher_command _sycl_launcher_program)
-  get_filename_component(_sycl_launcher_name "${_sycl_launcher_program}" NAME)
-  if(_sycl_launcher_name STREQUAL "env")
-    set(_sycl_env_option_value FALSE)
-    set(_sycl_env_options_done FALSE)
-    foreach(_sycl_launcher_arg IN LISTS _sycl_launcher_command)
-      if(_sycl_env_option_value)
-        set(_sycl_env_option_value FALSE)
-        continue()
-      endif()
-      if(NOT _sycl_env_options_done)
-        if(_sycl_launcher_arg STREQUAL "--")
-          set(_sycl_env_options_done TRUE)
-          continue()
-        endif()
-        if(_sycl_launcher_arg STREQUAL "-u" OR
-           _sycl_launcher_arg STREQUAL "--unset" OR
-           _sycl_launcher_arg STREQUAL "-C" OR
-           _sycl_launcher_arg STREQUAL "--chdir")
-          set(_sycl_env_option_value TRUE)
-          continue()
-        endif()
-        if(_sycl_launcher_arg MATCHES "^-")
-          continue()
-        endif()
-      endif()
-      if(_sycl_launcher_arg MATCHES "^[A-Za-z_][A-Za-z_0-9]*=")
-        continue()
-      endif()
-      set(_sycl_launcher_program "${_sycl_launcher_arg}")
-      break()
-    endforeach()
-  endif()
-  get_filename_component(_sycl_launcher_name "${_sycl_launcher_program}" NAME)
-  if(_sycl_launcher_name STREQUAL "ccache" OR
-     _sycl_launcher_name STREQUAL "ccache.exe")
+  get_filename_component(_sycl_launcher_name "${_SYCL_COMPILER_LAUNCHER}" NAME)
+  if(_sycl_launcher_name MATCHES "^[Cc][Cc]ache")
     execute_process(
       COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
-      OUTPUT_VARIABLE _sycl_launcher_version_stdout
-      ERROR_VARIABLE _sycl_launcher_version_stderr
-      RESULT_VARIABLE _sycl_launcher_version_result
+      OUTPUT_VARIABLE _sycl_launcher_version
+      ERROR_QUIET
       OUTPUT_STRIP_TRAILING_WHITESPACE
       TIMEOUT 5
     )
-    string(TOLOWER
-      "${_sycl_launcher_version_stdout}\n${_sycl_launcher_version_stderr}"
-      _sycl_launcher_version_output)
-    string(REGEX MATCH
-      "(^|[^a-z])ccache[ \t]+version[ \t]+([0-9]+\\.[0-9]+(\\.[0-9]+)?)"
-      _ccache_version_match "${_sycl_launcher_version_output}")
-    set(_sycl_ccache_version "${CMAKE_MATCH_2}")
-    if(NOT _sycl_launcher_version_result EQUAL 0 OR
-       NOT _sycl_ccache_version VERSION_GREATER_EQUAL "4.12.1")
-      message(WARNING
-        "ccache launcher '${CMAKE_SYCL_COMPILER_LAUNCHER}' has version "
-        "'${_sycl_ccache_version}' (or its version could not be determined); "
-        "disabling it for SYCL object compiles. Upgrade to ccache >= 4.12.1.")
-      set(_SYCL_COMPILER_LAUNCHER "")
+    if(_sycl_launcher_version MATCHES "ccache version ([0-9]+\\.[0-9]+(\\.[0-9]+)?)")
+      set(_sycl_ccache_version "${CMAKE_MATCH_1}")
+      if(_sycl_ccache_version VERSION_GREATER_EQUAL "4.12.1")
+        message(STATUS "Found compatible ccache ${_sycl_ccache_version} for SYCL object compilation")
+      else()
+        message(WARNING
+          "ccache launcher '${CMAKE_SYCL_COMPILER_LAUNCHER}' has version "
+          "'${_sycl_ccache_version}' which is older than 4.12.1; "
+          "disabling it for SYCL object compilation. Upgrade to ccache >= 4.12.1.")
+        set(_SYCL_COMPILER_LAUNCHER "")
+      endif()
     else()
-      message(STATUS "Found compatible ccache ${_sycl_ccache_version} for SYCL object compiles")
+      message(WARNING "Found ccache but could not parse its version string.")
     endif()
   endif()
 endif()
