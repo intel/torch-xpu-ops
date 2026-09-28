@@ -59,7 +59,8 @@ void count_nonzeros_kernel_impl(
   const auto local_id = item.get_local_linear_id();
   const auto global_id = item.get_global_linear_id();
 
-  int64_t* local_buf = static_cast<int64_t*>(syclexp::get_work_group_scratch_memory());
+  int64_t* local_buf =
+      static_cast<int64_t*>(syclexp::get_work_group_scratch_memory());
 
   if constexpr (std::is_same_v<scalar_t, bool>) {
     int64_t val = 0;
