@@ -17,6 +17,7 @@ runs:
       run: |
         which python && python -V
         uv pip list
+        rm -rf ${{ github.workspace }}/ut_log
     - name: Install pytest XPU custom plugin
       shell: bash -xe {0}
       run: |
@@ -259,6 +260,7 @@ runs:
             # $1 = part label, $2 = extra run_test.py flags, rest = --include args
             local part="$1"; local extra="$2"; shift 2
             local start=${SECONDS}
+            local pids=() shard_failed=0
             echo "::group::inductor ${part} (${num_shards} shards)"
             for i in "${!gpus[@]}"; do
               local shard_id=$((i + 1))
@@ -266,24 +268,29 @@ runs:
                 ZE_AFFINITY_MASK="${gpus[$i]}" python pytorch/test/run_test.py --verbose ${extra} \
                   --include "$@" \
                   --shard ${shard_id} ${num_shards} \
-                  --save-xml "${log_dir}/xml/${part}_shard${shard_id}"
+                  --save-xml "${log_dir}/xml/${part}_shard${shard_id}" \
+                  2> "${log_dir}/${ut_name}_test_error_part${part}_shard${shard_id}.log" | \
+                  tee "${log_dir}/${ut_name}_test_part${part}_shard${shard_id}.log"
               ) &
+              pids+=("$!")
             done
-            wait
-            find "${log_dir}/xml/${part}_shard"* -type f -name "*.xml" \
-              -exec cp {} "${{ github.workspace }}/ut_log/" \; || true
+            for pid in "${pids[@]}"; do
+              wait "${pid}" || shard_failed=1
+            done
             echo "::endgroup::"
             echo "[TIME] inductor ${part} ($(fmt_elapsed $((SECONDS - start))))"
+            return ${shard_failed}
           }
+          inductor_failed=0
           # Part 1: eager to inductor cases (with --inductor)
           run_inductor_shards part1 --inductor \
-            test_modules test_ops test_ops_gradients test_torch \
-            2> "${log_dir}/${ut_name}_test_error1.log" | tee "${log_dir}/${ut_name}_test1.log"
+            test_modules test_ops test_ops_gradients test_torch || inductor_failed=1
           # Part 2: inductor own tests (no --inductor, avoids nested dynamo state)
           run_inductor_shards part2 "" \
             inductor/test_torchinductor inductor/test_torchinductor_opinfo \
-            inductor/test_aot_inductor inductor/test_cpu_select_algorithm \
-            2> "${log_dir}/${ut_name}_test_error2.log" | tee "${log_dir}/${ut_name}_test2.log"
+            inductor/test_aot_inductor inductor/test_cpu_select_algorithm || inductor_failed=1
+          [ "${inductor_failed}" -eq 0 ] && echo "[SUMMARY] ${ut_name}: all shards passed" \
+            || echo "[SUMMARY] ${ut_name}: one or more shards failed"
           exit 0
         fi
         # Distributed needs an etcd rendezvous and a multi-rank XCCL setup
@@ -336,7 +343,7 @@ runs:
       shell: timeout 180 bash -xe {0}
       run: |
         uv pip install junitparser
-        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i $(find ${{ github.workspace }}/ut_log/ -name "*.xml") >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs
         if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
           echo -e "Exist Failure logs"
