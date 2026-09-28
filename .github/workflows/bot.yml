@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
+      - '.github/scripts/bot_*.js'
       - '.github/scripts/test_bot_*.py'
 
 env:
