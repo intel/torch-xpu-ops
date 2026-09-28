@@ -93,11 +93,14 @@ void load_store_cast(
   if constexpr (std::is_same_v<DstT, SrcT>) {
     load_store(dst, src, dst_offset, src_offset);
   } else {
+    alignas(sizeof(SrcT) * kILP) SrcT src_buf[kILP];
+    alignas(sizeof(DstT) * kILP) DstT dst_buf[kILP];
+    load_store(src_buf, src, 0, src_offset);
 #pragma unroll
     for (int ii = 0; ii < kILP; ++ii) {
-      dst[dst_offset * kILP + ii] =
-          static_cast<DstT>(src[src_offset * kILP + ii]);
+      dst_buf[ii] = static_cast<DstT>(src_buf[ii]);
     }
+    load_store(dst, dst_buf, dst_offset, 0);
   }
 }
 

@@ -262,7 +262,9 @@ def _test_fused_mixed_precision_rejects_unsupported_dtypes(
     amsgrad = "max_exp_avg_sq" in dtypes
     is_adamw = optim_info.optim_cls.__name__ == "AdamW"
     op = torch._fused_adamw_ if is_adamw else torch._fused_adam_
-    op_name = "_fused_adamw" if is_adamw else "_fused_adam"
+    validate_msg = (
+        "Mixed-precision fused AdamW" if is_adamw else "Mixed-precision fused Adam"
+    )
 
     param = torch.rand(20, 7, device=device, dtype=dtypes["param"])
     grad = torch.rand(20, 7, device=device, dtype=dtypes["grad"])
@@ -275,7 +277,7 @@ def _test_fused_mixed_precision_rejects_unsupported_dtypes(
     )
     state_step = torch.zeros((), device=device, dtype=torch.float32)
 
-    msg = f"{op_name} with mixed dtypes {expected}"
+    msg = f"{validate_msg} {expected}"
     with self.assertRaisesRegex(RuntimeError, msg):
         op(
             [param],

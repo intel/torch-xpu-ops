@@ -43,7 +43,7 @@ void fused_adam_kernel(
 
   if (params[0].scalar_type() != exp_avgs[0].scalar_type()) {
     validate_fused_mixed_precision_dtypes(
-        params, grads, exp_avgs, exp_avg_sqs, "_fused_adam");
+        params, grads, exp_avgs, exp_avg_sqs, "Mixed-precision fused Adam");
     AT_DISPATCH_V2(
         exp_avgs[0].scalar_type(),
         "fused_adam_mp_kernel_xpu",
@@ -122,7 +122,7 @@ void fused_adam_kernel(
 
   if (params[0].scalar_type() != exp_avgs[0].scalar_type()) {
     validate_fused_mixed_precision_dtypes(
-        params, grads, exp_avgs, exp_avg_sqs, "_fused_adam");
+        params, grads, exp_avgs, exp_avg_sqs, "Mixed-precision fused Adam");
     AT_DISPATCH_V2(
         exp_avgs[0].scalar_type(),
         "fused_adam_mp_kernel_xpu",
