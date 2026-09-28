@@ -29,9 +29,13 @@ template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void is_nonzero_kernel_impl(
     const scalar_t* data_ptr,
-    int64_t* global_mask_ptr) {
+    int64_t* global_mask_ptr,
+    int64_t valid_length) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   const auto item_id = item.get_global_linear_id();
+  if (item_id >= static_cast<size_t>(valid_length)) {
+    return;
+  }
 
   if constexpr (std::is_same_v<scalar_t, bool>) {
     volatile int in = static_cast<int>(data_ptr[item_id]);
@@ -93,6 +97,7 @@ void scatter_to_out_kernel_impl(
     const int64_t* global_mask_ptr,
     const int64_t* target_pos_ptr,
     int64_t* out_ptr,
+    int64_t valid_length,
     int64_t chunk_start,
     int64_t global_offset,
     int64_t num_nonzeros,
@@ -100,6 +105,9 @@ void scatter_to_out_kernel_impl(
     DivisorSizes divisor_sizes) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   const auto item_id = item.get_global_linear_id();
+  if (item_id >= static_cast<size_t>(valid_length)) {
+    return;
+  }
   if (global_mask_ptr[item_id] != 0) {
     // target_pos is the inclusive prefix sum of global_mask, so
     // target_pos[i]-1 is this element's rank among nonzeros in the chunk.
@@ -334,7 +342,8 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           queue,
           0,
           self_data + start,
-          global_mask_ptr);
+          global_mask_ptr,
+          this_chunk);
 
       // Inclusive prefix sum of global_mask to target_pos[i] = number of
       // nonzeros in [0..i] of this chunk. Used by
@@ -348,7 +357,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
       const int64_t count_wg_size1 =
           syclMaxWorkGroupSize<scatter_to_out_kernel_impl>();
-      const int64_t num_wgs1 = at::ceil_div(this_chunk, count_wg_size);
+      const int64_t num_wgs1 = at::ceil_div(this_chunk, count_wg_size1);
 
       sycl_kernel_submit<scatter_to_out_kernel_impl>(
           num_wgs1 * count_wg_size1,
@@ -358,6 +367,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           global_mask_ptr,
           target_pos_ptr,
           out_ptr,
+          this_chunk,
           start,
           chunk_offsets[ci],
           num_nonzeros,
