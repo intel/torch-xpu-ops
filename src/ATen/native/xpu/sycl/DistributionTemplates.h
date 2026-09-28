@@ -707,14 +707,10 @@ void uniform_kernel(
 
 // ====================== Bernoulli ======================
 
-// One `rand_uniform4` draw feeds four elements per op invocation.
-constexpr int bernoulli_tensor_step = 4;
-constexpr int bernoulli_threads_per_group = 512;
-
 template <typename scalar_t, typename prob_t>
 struct BernoulliTensorApplyFunctor {
   void operator()(
-      randStatePhilox4_32_10_t& state,
+      sycl::nd_item<1> item,
       int n,
       scalar_t& v1,
       scalar_t& v2,
@@ -724,6 +720,13 @@ struct BernoulliTensorApplyFunctor {
       const prob_t& p2,
       const prob_t& p3,
       const prob_t& p4) const {
+    auto seeds = at::xpu::philox::unpack(philox_args_);
+    randStatePhilox4_32_10_t state;
+    rand_init(
+        std::get<0>(seeds),
+        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
+        std::get<1>(seeds),
+        &state);
     auto rand = rand_uniform4(&state);
     switch (n) {
       case 4: {
@@ -747,22 +750,38 @@ struct BernoulliTensorApplyFunctor {
       }
     }
   }
+  BernoulliTensorApplyFunctor(PhiloxXpuState rng_engine_inputs)
+      : philox_args_(rng_engine_inputs) {}
+
+ private:
+  PhiloxXpuState philox_args_;
 };
 
-template <typename scalar_t, typename prob_t, typename RNG>
-void bernoulli_tensor_kernel(TensorBase& ret, TensorBase& p, RNG gen) {
-  BernoulliTensorApplyFunctor<scalar_t, prob_t> functor;
+template <typename scalar_t, typename prob_t>
+void bernoulli_tensor_kernel(
+    TensorBase& ret,
+    TensorBase& p,
+    PhiloxXpuState rng_engine_inputs) {
+  auto functor =
+      BernoulliTensorApplyFunctor<scalar_t, prob_t>(rng_engine_inputs);
+  // The template argument `4` below indicates that we want to operate on four
+  // element at each time.
   at::native::xpu::tensor_apply2<
       scalar_t,
       const prob_t,
-      bernoulli_tensor_step,
+      4,
       decltype(functor),
-      bernoulli_threads_per_group>(
-      ret, p, gen, /*offsets_per_op=*/rand4_engine_calls, functor);
+      /*threads_per_group=*/512>(ret, p, functor);
 }
 
 template <typename RNG>
 void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
+  PhiloxXpuState rng_engine_inputs;
+  {
+    // See Note [Acquire lock when using random generators]
+    std::lock_guard<std::mutex> lock(gen->mutex_);
+    rng_engine_inputs = gen->philox_xpu_state(10);
+  }
   TORCH_CHECK(
       at::isFloatingType(p_.scalar_type()),
       "expected probabilities tensor to have floating type, got ",
@@ -781,10 +800,14 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
       [&] {
         if constexpr (std::same_as<scalar_t, double>) {
           return bernoulli_tensor_kernel<double, double>(
-              const_cast<TensorBase&>(self), const_cast<TensorBase&>(*p), gen);
+              const_cast<TensorBase&>(self),
+              const_cast<TensorBase&>(*p),
+              rng_engine_inputs);
         } else {
           return bernoulli_tensor_kernel<scalar_t, float>(
-              const_cast<TensorBase&>(self), const_cast<TensorBase&>(*p), gen);
+              const_cast<TensorBase&>(self),
+              const_cast<TensorBase&>(*p),
+              rng_engine_inputs);
         }
       });
 }
