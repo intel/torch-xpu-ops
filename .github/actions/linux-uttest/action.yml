@@ -222,7 +222,7 @@ runs:
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
 
     - name: upstream_ut
-      shell: timeout 172000 bash -xe -o pipefail {0}
+      shell: timeout 86400 bash -xe -o pipefail {0}
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -250,7 +250,7 @@ runs:
               local shard_id=$((i + 1))
               (
                 ZE_AFFINITY_MASK="${gpus[$i]}" \
-                PYTEST_ADDOPTS="" \
+                PYTEST_ADDOPTS=" --timeout 3600 --timeout_method=thread -v " \
                 python pytorch/test/run_test.py --verbose ${extra} \
                   --include "$@" \
                   --shard ${shard_id} ${num_shards} \
