@@ -460,7 +460,7 @@ Base: <torch nightly version or base sha>
 | Sub-item | Outcome | Branch / Reason |
 |---|---|---|
 | test_bar_xpu_float32 | FIXED | agent/fix-issue-4321-1-test_bar |
-| test_baz | NEEDS_HUMAN | cross_repo_coordinated (needs a oneDNN/Triton/IGC/driver change) |
+| test_baz | NEEDS_HUMAN | needs a oneDNN change (`dependency component: oneDNN`) |
 | test_qux | NEEDS_HUMAN | attempts_exhausted |
 | test_new | ALREADY_FIXED | no longer reproduces on latest nightly |
 | test_old | STALE_SKIP | follow-up: remove skip decorator |
@@ -528,8 +528,8 @@ mkdir -p "$agent_space"
         "companion": "fix_result-test_bar-pytorch.json",
         "summary": "one-line what/why" },
       { "seq": 2, "slug": "test_baz", "outcome": "NEEDS_HUMAN",
-        "branch": null, "reason": "cross_repo_coordinated",
-        "reason_detail": "needs a oneDNN/Triton/IGC/driver change" },
+        "branch": null, "reason": "other",
+        "reason_detail": "needs a oneDNN change (dependency component: oneDNN)" },
       { "seq": 3, "slug": "test_new", "outcome": "ALREADY_FIXED",
         "branch": null, "reason": "no longer reproduces on latest nightly" }
     ]
@@ -591,11 +591,12 @@ Branch on its `verdict`:
   branch="agent/fix-issue-${N}"
   git -C "$target_repo_dir" checkout -B "$branch" "$base"
   ```
-- `NEEDS_HUMAN` → Stage 6 Report with the specific
-  `reason` (`task_or_feature` / `feature_gap` / `hardware_specific` /
-  `cross_repo_coordinated` / `no_registered_domain` / etc.). Each
-  reason maps to a different final `agent:status` value; see
-  [execution-modes.md](references/execution-modes.md).
+- `NEEDS_HUMAN` → Stage 6 Report, carrying the leaf's one-line
+  `reason_detail` as the justification — that is what a maintainer
+  reads. Every reason lands on the same terminal status
+  (`NEEDS_HUMAN` / `agent:needs-human`), so do not shop for a code:
+  the two worth branching on are `no_registered_domain` (do not retry,
+  see Retry policy) and `invalid_reproduction` (re-run Stage 2 first).
 
 ## Stage 4 — Implement (`fix-implement`)
 
@@ -640,9 +641,10 @@ Branch on the verdict:
   `fix-implement` again with `target_repo_dir` set to the companion
   checkout, branch off that repo's HEAD, commit, and write its record per
   "Machine-readable outputs".
-- `NEEDS_HUMAN` → Stage 6 Report. The specific `reason`
-  (`skip_outside_target_repo` / `skip_guard_rejected` /
-  `no_fix_possible` / etc.) drives the final label.
+- `NEEDS_HUMAN` → Stage 6 Report, carrying the leaf's `reason_detail`
+  as the justification. The label is `agent:needs-human` whatever the
+  `reason` (`skip_outside_target_repo` / `skip_guard_rejected` /
+  `no_fix_possible` / etc.).
 
 ## Stage 5 — Verify (`fix-verify`)
 
