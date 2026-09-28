@@ -290,7 +290,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
       ? Tensor(at::detail::empty_xpu({num_dim, num_nonzeros}, out.options()))
       : out.resize_({num_dim, num_nonzeros});
 
-  // Precompute per-dimension sizes and divisors for flatâ†’multi-dim
+  // Precompute per-dimension sizes and divisors for flat-to-multi-dim
   // conversion.
   struct DivisorSizes divisor_sizes;
   if (num_dim > 0) {
