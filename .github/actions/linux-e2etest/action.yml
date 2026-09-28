@@ -44,6 +44,7 @@ runs:
         fi
         if [ "${{ github.event_name }}" != "pull_request" ]; then
           rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmarks/ ./benchmarks/dynamo/
+          model_list_args=(--model-only benchmarks/dynamo/model_list.csv)
         fi
 
         rm -rf inductor_log torch && mkdir -p inductor_log
