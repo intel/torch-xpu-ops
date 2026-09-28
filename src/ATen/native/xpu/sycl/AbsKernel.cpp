@@ -48,7 +48,11 @@ void abs_kernel(TensorIteratorBase& iter) {
         AT_EXPAND(AT_ALL_TYPES),
         ScalarType::Half,
         ScalarType::BFloat16,
-        ScalarType::Bool);
+        ScalarType::Bool,
+        // Upstream isinf/isfinite dispatch over Float8_e5m2 and both call
+        // self.abs(), so abs has to cover the only float8 dtype that encodes
+        // infinity.
+        ScalarType::Float8_e5m2);
   }
 }
 
