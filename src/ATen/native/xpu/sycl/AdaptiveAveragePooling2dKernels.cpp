@@ -252,7 +252,7 @@ void adaptive_avg_pool2d_bwd_slm_kernel_impl(
 
 template <typename index_t, typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
-void adaptive_avg_pool2d_bwd_slm_channe_is_last_kernel_impl(
+void adaptive_avg_pool2d_bwd_slm_channels_last_kernel_impl(
     scalar_t* gradInput_,
     const scalar_t* gradOutput_,
     int sizeB,
@@ -461,7 +461,7 @@ void adaptive_avg_pool2d_backward_kernel(
                 2 * isizeW * sizeof(int32_t);
             if (shmem_size <= sharedMemPerGroup) {
               sycl_kernel_submit<
-                  adaptive_avg_pool2d_bwd_slm_channe_is_last_kernel_impl<
+                  adaptive_avg_pool2d_bwd_slm_channels_last_kernel_impl<
                       int32_t,
                       scalar_t>>(
                   global_range,
