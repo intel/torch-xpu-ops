@@ -1655,7 +1655,8 @@ void batch_norm_elemt_channels_last_template(
               : nullptr;
 
           int64_t total_elems = (int64_t)reduction_size * stride;
-          if (VEC_SIZE == 2 && stride < 1024) {
+                    size_t lm_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+          if (VEC_SIZE == 2 && stride < 1024 && (4 * stride * sizeof(float)) <= lm_size) {
             // SLM path: load BN params into per-WG SLM, always VEC=2.
             // Eliminates irregular gather (odd C) and non-monotone
             // gather (small even C) by absorbing param accesses into SLM.
@@ -1756,7 +1757,8 @@ void batch_norm_elemt_channels_last_template(
               : nullptr;
 
           int64_t total_elems = (int64_t)reduction_size * stride;
-          if (VEC_SIZE == 2 && stride < 1024) {
+                    size_t lm_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+          if (VEC_SIZE == 2 && stride < 1024 && (4 * stride * sizeof(float)) <= lm_size) {
             // SLM path: load BN params into per-WG SLM, always VEC=2.
             // Eliminates irregular gather (odd C) and non-monotone
             // gather (small even C) by absorbing param accesses into SLM.
