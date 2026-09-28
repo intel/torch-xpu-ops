@@ -336,7 +336,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           self_data + start,
           global_mask_ptr);
 
-      // Inclusive prefix sum of global_mask â†’ target_pos[i] = number of
+      // Inclusive prefix sum of global_mask to target_pos[i] = number of
       // nonzeros in [0..i] of this chunk. Used by
       // scatter_to_out_kernel_impl to compute each nonzero's output slot:
       // slot = global_offset + target_pos[i] - 1.
