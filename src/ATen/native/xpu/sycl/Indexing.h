@@ -696,10 +696,15 @@ void index_kernel_impl(
   auto offset_calc = make_offset_calculator<3>(iter);
   using offset_calc_type = decltype(offset_calc);
   sycl_kernel_submit<
+  int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+      index_functor_kernel_impl<func_t, index_buf_type, offset_calc_type>>();
+  int64_t global_size =
+      ((numel + wgroup_size - 1) / wgroup_size) * wgroup_size;
+  sycl_kernel_submit<
       index_functor_kernel_impl<func_t, index_buf_type, offset_calc_type>,
       1>(
-      sycl::range<1>(numel),
-      sycl::range<1>(1),
+      sycl::range<1>(global_size),
+      sycl::range<1>(wgroup_size),
       queue,
       0,
       f,
@@ -710,7 +715,8 @@ void index_kernel_impl(
       num_indices,
       index_ptrs,
       sizes,
-      strides);
+      strides,
+      numel);
 }
 
 template <typename func_t>
