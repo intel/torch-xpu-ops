@@ -1640,8 +1640,9 @@ void batch_norm_elemt_channels_last_template(
       ? weight.scalar_type()
       : (shift.defined() ? shift.scalar_type() : input.scalar_type());
 
-  int64_t wg_size =
-      std::min((int64_t)1024, syclDeviceMaxWorkGroupSize());
+  int64_t wg_size = std::min(
+      (int64_t)1024, syclDeviceMaxWorkGroupSize());
+  // wg_size refined per-kernel below where possible.
 
   if (input.scalar_type() != second_dtype) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -1663,7 +1664,17 @@ void batch_norm_elemt_channels_last_template(
 
           int64_t total_elems = (int64_t)reduction_size * stride;
                     size_t lm_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-          if (VEC_SIZE == 2 && stride < 1024 && (4 * stride * sizeof(float)) <= lm_size) {
+                    bool can_vec = (memory::can_vectorize_up_to<scalar_t>((char*)input_data_ptr) >= VEC_SIZE) &&
+                      (memory::can_vectorize_up_to<scalar_t>((char*)output_data_ptr) >= VEC_SIZE) &&
+                      (!z_data_ptr || memory::can_vectorize_up_to<scalar_t>((char*)z_data_ptr) >= VEC_SIZE);
+          if (VEC_SIZE == 2) {
+            can_vec = can_vec &&
+                (memory::can_vectorize_up_to<accscalar_t>((char*)weight_data_ptr) >= VEC_SIZE) &&
+                (memory::can_vectorize_up_to<accscalar_t>((char*)shift_data_ptr) >= VEC_SIZE) &&
+                (memory::can_vectorize_up_to<accscalar_t>((char*)mean.const_data_ptr<accscalar_t>()) >= VEC_SIZE) &&
+                (memory::can_vectorize_up_to<accscalar_t>((char*)inv_std.const_data_ptr<accscalar_t>()) >= VEC_SIZE);
+          }
+          if (VEC_SIZE == 2 && can_vec && stride < 1024) {
             // SLM path: load BN params into per-WG SLM, always VEC=2.
             // Eliminates irregular gather (odd C) and non-monotone
             // gather (small even C) by absorbing param accesses into SLM.
@@ -1731,7 +1742,7 @@ void batch_norm_elemt_channels_last_template(
                       weight_data_ptr, shift_data_ptr,
                       output_data_ptr, reduction_size,
                       stride, fuse_relu,
-                      at::detail::IntDivider<unsigned int>(1));
+                      at::detail::IntDivider<unsigned int>(stride_));
               sycl_kernel_submit(
                   num_wg * wg_size, wg_size, queue, kfn);
             }
@@ -1765,7 +1776,17 @@ void batch_norm_elemt_channels_last_template(
 
           int64_t total_elems = (int64_t)reduction_size * stride;
                     size_t lm_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-          if (VEC_SIZE == 2 && stride < 1024 && (4 * stride * sizeof(float)) <= lm_size) {
+                    bool can_vec = (memory::can_vectorize_up_to<scalar_t>((char*)input_data_ptr) >= VEC_SIZE) &&
+                      (memory::can_vectorize_up_to<scalar_t>((char*)output_data_ptr) >= VEC_SIZE) &&
+                      (!z_data_ptr || memory::can_vectorize_up_to<scalar_t>((char*)z_data_ptr) >= VEC_SIZE);
+          if (VEC_SIZE == 2) {
+            can_vec = can_vec &&
+                (memory::can_vectorize_up_to<accscalar_t>((char*)weight_data_ptr) >= VEC_SIZE) &&
+                (memory::can_vectorize_up_to<accscalar_t>((char*)shift_data_ptr) >= VEC_SIZE) &&
+                (memory::can_vectorize_up_to<accscalar_t>((char*)mean.const_data_ptr<accscalar_t>()) >= VEC_SIZE) &&
+                (memory::can_vectorize_up_to<accscalar_t>((char*)inv_std.const_data_ptr<accscalar_t>()) >= VEC_SIZE);
+          }
+          if (VEC_SIZE == 2 && can_vec && stride < 1024) {
             // SLM path: load BN params into per-WG SLM, always VEC=2.
             // Eliminates irregular gather (odd C) and non-monotone
             // gather (small even C) by absorbing param accesses into SLM.
@@ -1833,7 +1854,7 @@ void batch_norm_elemt_channels_last_template(
                       weight_data_ptr, shift_data_ptr,
                       output_data_ptr, reduction_size,
                       stride, fuse_relu,
-                      at::detail::IntDivider<unsigned int>(1));
+                      at::detail::IntDivider<unsigned int>(stride_));
               sycl_kernel_submit(
                   num_wg * wg_size, wg_size, queue, kfn);
             }
