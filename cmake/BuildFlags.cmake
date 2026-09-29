@@ -223,6 +223,7 @@ macro(set_build_flags)
   list(APPEND SYCL_DEVICE_LINK_FLAGS --offload-compress)
   list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-sqrt)
   list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-div)
+  list(APPEND SYCL_DEVICE_LINK_FLAGS -fno-sycl-id-queries-fit-in-int)
 
   string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-poison-unsupported-fp64-kernels")
   string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-intel-enable-auto-large-GRF-mode")
