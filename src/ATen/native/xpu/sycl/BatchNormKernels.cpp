@@ -1369,10 +1369,27 @@ template <
     typename scalar_t,
     typename accscalar_t,
     typename layerscalar_t,
-    int VEC_SIZE = 1>
+    int VEC_SIZE = 1,
+    bool USE_SLM = false>
 struct BatchNormTransformInputChannelsLast1DKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int global_stride = item.get_global_range(0);
+
+    if constexpr (USE_SLM) {
+      int lid   = static_cast<int>(item.get_local_id(0));
+      int lsize = static_cast<int>(item.get_local_range(0));
+      for (int c = lid; c < stride_; c += lsize) {
+        slm_mean_[c]    = mean_[c];
+        slm_inv_std_[c] = inv_std_[c];
+        slm_weight_[c]  = weight_ == nullptr
+                              ? accscalar_t(1.0)
+                              : static_cast<accscalar_t>(weight_[c]);
+        slm_shift_[c]   = shift_ == nullptr
+                              ? accscalar_t(0.0)
+                              : static_cast<accscalar_t>(shift_[c]);
+      }
+      sycl::group_barrier(item.get_group());
+    }
 
     if constexpr (VEC_SIZE == 1) {
       int total = reduction_size_ * stride_;
@@ -1460,7 +1477,11 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
       const int reduction_size,
       const int stride,
       const bool fuse_relu,
-      const at::detail::IntDivider<unsigned int> vec_divider)
+      const at::detail::IntDivider<unsigned int> vec_divider,
+      local_acc_t slm_mean = local_acc_t{},
+      local_acc_t slm_inv_std = local_acc_t{},
+      local_acc_t slm_weight = local_acc_t{},
+      local_acc_t slm_shift = local_acc_t{})
       : input_(input),
         z_(z),
         mean_(mean),
@@ -1471,7 +1492,11 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
         reduction_size_(reduction_size),
         stride_(stride),
         fuse_relu_(fuse_relu),
-        vec_divider_(vec_divider) {}
+        vec_divider_(vec_divider),
+        slm_mean_(slm_mean),
+        slm_inv_std_(slm_inv_std),
+        slm_weight_(slm_weight),
+        slm_shift_(slm_shift) {}
 
  private:
   inline void load_params(
@@ -1480,133 +1505,24 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
       accscalar_t& inv_std_c,
       accscalar_t& w_c,
       accscalar_t& s_c) const {
-    m_c = mean_[c];
-    inv_std_c = static_cast<accscalar_t>(inv_std_[c]);
-    w_c = weight_ == nullptr
-        ? accscalar_t(1.0)
-        : static_cast<accscalar_t>(weight_[c]);
-    s_c = shift_ == nullptr
-        ? accscalar_t(0.0)
-        : static_cast<accscalar_t>(shift_[c]);
+    if constexpr (USE_SLM) {
+      m_c = slm_mean_[c];
+      inv_std_c = slm_inv_std_[c];
+      w_c = slm_weight_[c];
+      s_c = slm_shift_[c];
+    } else {
+      m_c = mean_[c];
+      inv_std_c = static_cast<accscalar_t>(inv_std_[c]);
+      w_c = weight_ == nullptr
+          ? accscalar_t(1.0)
+          : static_cast<accscalar_t>(weight_[c]);
+      s_c = shift_ == nullptr
+          ? accscalar_t(0.0)
+          : static_cast<accscalar_t>(shift_[c]);
+    }
   }
 
-  const scalar_t* RESTRICT input_;
-  const scalar_t* RESTRICT z_;
-  const accscalar_t* RESTRICT mean_;
-  const accscalar_t* RESTRICT inv_std_;
-  const layerscalar_t* RESTRICT weight_;
-  const layerscalar_t* RESTRICT shift_;
-  scalar_t* RESTRICT out_;
-  const int reduction_size_;
-  const int stride_;
-  const bool fuse_relu_;
-  const at::detail::IntDivider<unsigned int> vec_divider_;
-};
-
-
-// SLM variant: loads BN parameters (mean, inv_std, weight, shift) into
-// shared local memory once per work-group, then processes data in VEC=2
-// pairs.  Eliminates irregular gather / write-allocate penalties that
-// occur for small C (odd C and non-monotone even C < 1024).
-template <typename scalar_t, typename accscalar_t, typename layerscalar_t>
-struct BatchNormTransformInputChannelsLast1DSLMKernelFunctor {
   using local_acc_t = sycl::local_accessor<accscalar_t, 1>;
-
-  void operator()(sycl::nd_item<1> item) const {
-    int lid   = static_cast<int>(item.get_local_id(0));
-    int lsize = static_cast<int>(item.get_local_range(0));
-
-    // Phase 1: cooperatively load BN params into SLM.
-    for (int c = lid; c < stride_; c += lsize) {
-      slm_mean_[c]    = mean_[c];
-      slm_inv_std_[c] = inv_std_[c];
-      slm_weight_[c]  = weight_ == nullptr
-                            ? accscalar_t(1.0)
-                            : static_cast<accscalar_t>(weight_[c]);
-      slm_shift_[c]   = shift_ == nullptr
-                            ? accscalar_t(0.0)
-                            : static_cast<accscalar_t>(shift_[c]);
-    }
-    sycl::group_barrier(item.get_group());
-
-    // Phase 2: VEC=2 main loop (reads params from SLM).
-    int global_stride = static_cast<int>(item.get_global_range(0));
-    int total_elems   = reduction_size_ * stride_;
-    int total_vecs    = total_elems / 2;
-
-    for (int id = static_cast<int>(item.get_global_id(0));
-         id < total_vecs; id += global_stride) {
-      int flat_pos = id * 2; // always even -> always 4-byte aligned
-
-      auto dm = vec_divider_.divmod(static_cast<unsigned int>(flat_pos));
-      int channel_0 = static_cast<int>(dm.mod);
-      int channel_1 = (channel_0 + 1 < stride_) ? channel_0 + 1 : 0;
-
-      using vec2_t = memory::aligned_vector<scalar_t, 2>;
-      auto in_vec = *reinterpret_cast<const vec2_t*>(&input_[flat_pos]);
-      scalar_t in0 = in_vec[0], in1 = in_vec[1];
-
-      scalar_t vz0{}, vz1{};
-      if (z_ != nullptr) {
-        auto vz_vec = *reinterpret_cast<const vec2_t*>(&z_[flat_pos]);
-        vz0 = vz_vec[0]; vz1 = vz_vec[1];
-      }
-
-      accscalar_t m0   = slm_mean_[channel_0], inv0 = slm_inv_std_[channel_0];
-      accscalar_t w0   = slm_weight_[channel_0], s0  = slm_shift_[channel_0];
-      accscalar_t m1   = slm_mean_[channel_1], inv1 = slm_inv_std_[channel_1];
-      accscalar_t w1   = slm_weight_[channel_1], s1  = slm_shift_[channel_1];
-
-      auto tmp0 = w0 * (static_cast<accscalar_t>(in0) - m0) * inv0 + s0;
-      auto tmp1 = w1 * (static_cast<accscalar_t>(in1) - m1) * inv1 + s1;
-      if (z_ != nullptr) { tmp0 += vz0; tmp1 += vz1; }
-
-      vec2_t out_vec;
-      out_vec[0] = (fuse_relu_ && tmp0 <= accscalar_t(0.0)
-          ? scalar_t(0.0) : static_cast<scalar_t>(tmp0));
-      out_vec[1] = (fuse_relu_ && tmp1 <= accscalar_t(0.0)
-          ? scalar_t(0.0) : static_cast<scalar_t>(tmp1));
-      *reinterpret_cast<vec2_t*>(&out_[flat_pos]) = out_vec;
-    }
-
-    // Phase 3: scalar tail when total element count is odd.
-    if ((total_elems & 1) && item.get_global_id(0) == 0) {
-      int fp  = total_elems - 1;
-      auto dm = vec_divider_.divmod(static_cast<unsigned int>(fp));
-      int c   = static_cast<int>(dm.mod);
-      accscalar_t m_c   = slm_mean_[c], inv_c = slm_inv_std_[c];
-      accscalar_t w_c   = slm_weight_[c], s_c  = slm_shift_[c];
-      auto tmp = w_c * (static_cast<accscalar_t>(input_[fp]) - m_c) * inv_c + s_c;
-      if (z_ != nullptr) tmp += z_[fp];
-      out_[fp] = (fuse_relu_ && tmp <= accscalar_t(0.0)
-          ? scalar_t(0.0) : static_cast<scalar_t>(tmp));
-    }
-  }
-
-  BatchNormTransformInputChannelsLast1DSLMKernelFunctor(
-      const scalar_t* RESTRICT input,
-      const scalar_t* RESTRICT z,
-      const accscalar_t* RESTRICT mean,
-      const accscalar_t* RESTRICT inv_std,
-      const layerscalar_t* RESTRICT weight,
-      const layerscalar_t* RESTRICT shift,
-      scalar_t* RESTRICT out,
-      const int reduction_size,
-      const int stride,
-      const bool fuse_relu,
-      const at::detail::IntDivider<unsigned int> vec_divider,
-      local_acc_t slm_mean,
-      local_acc_t slm_inv_std,
-      local_acc_t slm_weight,
-      local_acc_t slm_shift)
-      : input_(input), z_(z), mean_(mean), inv_std_(inv_std),
-        weight_(weight), shift_(shift), out_(out),
-        reduction_size_(reduction_size), stride_(stride),
-        fuse_relu_(fuse_relu), vec_divider_(vec_divider),
-        slm_mean_(slm_mean), slm_inv_std_(slm_inv_std),
-        slm_weight_(slm_weight), slm_shift_(slm_shift) {}
-
- private:
   const scalar_t* RESTRICT input_;
   const scalar_t* RESTRICT z_;
   const accscalar_t* RESTRICT mean_;
@@ -1623,6 +1539,7 @@ struct BatchNormTransformInputChannelsLast1DSLMKernelFunctor {
   local_acc_t slm_weight_;
   local_acc_t slm_shift_;
 };
+
 
 void batch_norm_elemt_channels_last_template(
     const at::Tensor& output,
@@ -1689,8 +1606,8 @@ void batch_norm_elemt_channels_last_template(
               local_acc_t slm_inv_std(static_cast<size_t>(stride), cgh);
               local_acc_t slm_weight(static_cast<size_t>(stride), cgh);
               local_acc_t slm_shift(static_cast<size_t>(stride), cgh);
-              auto kfn = BatchNormTransformInputChannelsLast1DSLMKernelFunctor<
-                  scalar_t, accscalar_t, accscalar_t>(
+              auto kfn = BatchNormTransformInputChannelsLast1DKernelFunctor<
+                  scalar_t, accscalar_t, accscalar_t, VEC_SIZE, true>(
                   input_data_ptr, z_data_ptr,
                   mean.const_data_ptr<accscalar_t>(),
                   inv_std.const_data_ptr<accscalar_t>(),
@@ -1801,8 +1718,8 @@ void batch_norm_elemt_channels_last_template(
               local_acc_t slm_inv_std(static_cast<size_t>(stride), cgh);
               local_acc_t slm_weight(static_cast<size_t>(stride), cgh);
               local_acc_t slm_shift(static_cast<size_t>(stride), cgh);
-              auto kfn = BatchNormTransformInputChannelsLast1DSLMKernelFunctor<
-                  scalar_t, accscalar_t, scalar_t>(
+              auto kfn = BatchNormTransformInputChannelsLast1DKernelFunctor<
+                  scalar_t, accscalar_t, scalar_t, VEC_SIZE, true>(
                   input_data_ptr, z_data_ptr,
                   mean.const_data_ptr<accscalar_t>(),
                   inv_std.const_data_ptr<accscalar_t>(),
