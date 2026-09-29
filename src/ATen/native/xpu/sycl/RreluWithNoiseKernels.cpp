@@ -23,7 +23,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t, int unroll_factor, typename transform_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void rrelu_with_noise_kernel_fn(
+void rrelu_with_noise_kernel_impl(
     int numel,
     PhiloxXpuState philox_args,
     scalar_t* output,
@@ -112,7 +112,7 @@ inline void _rrelu_with_noise_xpu_train(
   if constexpr (std::same_as<scalar_t, double>) {
     templates::xpu::Uniform2DistributionFunctor tfn;
     constexpr auto kptr =
-        rrelu_with_noise_kernel_fn<scalar_t, 2, decltype(tfn)>;
+        rrelu_with_noise_kernel_impl<scalar_t, 2, decltype(tfn)>;
     sycl_kernel_submit<kptr>(
         num_groups * group_size,
         group_size,
@@ -130,7 +130,7 @@ inline void _rrelu_with_noise_xpu_train(
     // half and float
     templates::xpu::Uniform4DistributionFunctor tfn;
     constexpr auto kptr =
-        rrelu_with_noise_kernel_fn<scalar_t, 4, decltype(tfn)>;
+        rrelu_with_noise_kernel_impl<scalar_t, 4, decltype(tfn)>;
     sycl_kernel_submit<kptr>(
         num_groups * group_size,
         group_size,
