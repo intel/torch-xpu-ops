@@ -8,6 +8,8 @@ on:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
       - '.github/scripts/test_bot_*.py'
+      - '.github/scripts/fold_details.js'
+      - '.github/scripts/test_fold_details.js'
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
@@ -39,6 +41,7 @@ jobs:
       onto_branch: ${{ steps.parse.outputs.onto_branch }}
       classification: ${{ steps.parse.outputs.classification }}
       fixes: ${{ steps.parse.outputs.fixes }}
+      dry_run: ${{ steps.parse.outputs.dry_run }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
       issue_number: ${{ steps.parse.outputs.issue_number }}
       is_pr: ${{ steps.parse.outputs.is_pr }}
@@ -91,7 +94,7 @@ jobs:
 
             const command = match[1].toLowerCase();
             const args = (match[2] || '').trim();
-            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'triage', 'help'];
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'triage', 'label', 'help'];
 
             if (!validCommands.includes(command)) {
               reject('Unknown command. Use `@torchxpubot help` to see available commands.');
@@ -103,9 +106,10 @@ jobs:
               : (command === 'check-ut' || command === 'ut') ? 'ut-check'
               : command;
 
-            // Context check: fix and triage are issue-only, help works on both,
-            // and the rest are PR-only.
-            if (normalizedCommand === 'fix' || normalizedCommand === 'triage') {
+            // Context check: fix, triage and label are issue-only, help works on
+            // both, and the rest are PR-only.
+            const issueOnly = ['fix', 'triage', 'label'];
+            if (issueOnly.includes(normalizedCommand)) {
               if (isPR) {
                 reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on issue comments, not on pull requests.`);
                 return;
@@ -139,6 +143,7 @@ jobs:
             let rerunMode = 'all';
             let pytorchRef = '';
             let revertReason = '';
+            let dryRun = 'false';
             let ontoBranch = '';
             let classification = '';
             let fixes = '';
@@ -190,6 +195,17 @@ jobs:
               if (fixesMatch) {
                 fixes = fixesMatch[1];
               }
+            } else if (command === 'label') {
+              // The skill asks callers to start in dry run, so a mistyped
+              // `--dryrun` must not silently fall through to a live write.
+              const rest = args.replace(/--dry-run\b/, '').trim();
+              if (rest) {
+                reject(`\`label\` does not take \`${rest}\`. Use \`@torchxpubot label\` or \`@torchxpubot label --dry-run\`.`);
+                return;
+              }
+              if (/--dry-run\b/.test(args)) {
+                dryRun = 'true';
+              }
             }
 
             core.setOutput('command', normalizedCommand);
@@ -197,6 +213,7 @@ jobs:
             core.setOutput('rerun_mode', rerunMode);
             core.setOutput('pytorch_ref', pytorchRef);
             core.setOutput('revert_reason', revertReason);
+            core.setOutput('dry_run', dryRun);
             core.setOutput('onto_branch', ontoBranch);
             core.setOutput('classification', classification);
             core.setOutput('fixes', fixes);
@@ -282,7 +299,7 @@ jobs:
             | \`@torchxpubot cherry-pick --onto release/x.xx -c <class>\` | Cherry-pick this merged PR onto a release branch |
             | \`@torchxpubot help\` | Show this help message |
 
-            \`@torchxpubot fix\` is only available on issue comments.`;
+            \`@torchxpubot fix\`, \`triage\` and \`label\` are only available on issue comments.`;
 
             const issueCommands = `## @torchxpubot Commands (issue)
 
@@ -290,6 +307,8 @@ jobs:
             |---------|-------------|
             | \`@torchxpubot fix\` | Reproduce this issue on an XPU host and attempt a fix (OWNER/MEMBER only) |
             | \`@torchxpubot triage\` | Shallow text-only triage: classify, detect reproducer, apply agent labels |
+            | \`@torchxpubot label\` | Derive and apply this issue's labels, type, and priority |
+            | \`@torchxpubot label --dry-run\` | Same, but only report what it would apply |
             | \`@torchxpubot help\` | Show this help message |
 
             \`fix\` reproduces the issue on an XPU runner and, for C++/SYCL
@@ -849,6 +868,10 @@ jobs:
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
             in the ${{ github.repository }} repository.
+
+            Start your output with a single line `VERDICT: <one sentence>`
+            summarising the outcome. Everything after it is folded behind a
+            summary in the posted comment, so that line has to stand alone.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -873,11 +896,21 @@ jobs:
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
             const footer = `\n\n---\n_Generated by [\`review\` job](${jobUrl})._`;
+            // The checkout carries no ref, so this resolves against the default
+            // branch rather than the PR under review: the helper is only live
+            // once it has landed. Losing the whole comment to a missing file
+            // would be worse than not folding, so fall back to the raw text.
+            let foldDetails = (text) => text;
+            try {
+              ({ foldDetails } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/fold_details.js`));
+            } catch (error) {
+              core.warning(`fold_details.js unavailable (${error.message}); posting unfolded`);
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ needs.parse-command.outputs.pr_number }},
-              body: header + result.result + footer
+              body: header + foldDetails(result.result, core.warning) + footer
             });
 
       - name: "Verify: AI review succeeded"
@@ -973,6 +1006,10 @@ jobs:
             Use the /ut-check skill to analyze UT results for
             PR #${{ needs.parse-command.outputs.pr_number }} on ${{ github.repository }}.
             The UT data JSON file is at /tmp/ut_data.json.
+
+            Start your output with a single line `VERDICT: <one sentence>`
+            summarising the outcome. Everything after it is folded behind a
+            summary in the posted comment, so that line has to stand alone.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -997,11 +1034,21 @@ jobs:
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
             const footer = `\n\n---\n_Generated by [\`ut-check\` job](${jobUrl})._`;
+            // The checkout carries no ref, so this resolves against the default
+            // branch rather than the PR under review: the helper is only live
+            // once it has landed. Losing the whole comment to a missing file
+            // would be worse than not folding, so fall back to the raw text.
+            let foldDetails = (text) => text;
+            try {
+              ({ foldDetails } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/fold_details.js`));
+            } catch (error) {
+              core.warning(`fold_details.js unavailable (${error.message}); posting unfolded`);
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ needs.parse-command.outputs.pr_number }},
-              body: header + result.result + footer
+              body: header + foldDetails(result.result, core.warning) + footer
             });
 
       - name: "Verify: AI analysis succeeded"
@@ -1629,6 +1676,225 @@ jobs:
         if: ${{ always() }}
         run: chown 1000:1000 /__w /github ./ -R
 
+  label:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Read-only on purpose. The agent reads attacker-authored issue text and
+      # has Bash, so a write scope here would let it edit or close issues
+      # directly. Every write in this job runs through MERGE_TOKEN on a later
+      # step, which does not consult these permissions.
+      issues: read
+    if: >-
+      needs.parse-command.outputs.command == 'label'
+      && needs.parse-command.outputs.authorized == 'true'
+    env:
+      ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run AI labeler
+        id: ai-label
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 40 --allowedTools Bash,Read,Glob,Grep,Write,Skill"
+          prompt: |
+            Use the /label-issue skill with issue_ref=${{ needs.parse-command.outputs.issue_number }}
+            on ${{ github.repository }}. Write its labels.md and stop there: do not
+            apply anything, and do not run apply_labels.py. A later step applies it.
+            If the skill produced no labels.md, say so and do not invent one.
+
+            Start your output with a single line `VERDICT: <one sentence>`
+            summarising the labels you propose. Everything after it is folded
+            behind a summary in the posted comment, so that line has to stand alone.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Apply the labels
+        id: apply
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          DRY_RUN: ${{ needs.parse-command.outputs.dry_run }}
+        run: |
+          labels_md=$(find agent_space/label_issue -name labels.md -print -quit 2>/dev/null || true)
+          if [ -z "$labels_md" ]; then
+            echo "::error::the label-issue skill produced no labels.md; nothing was applied"
+            exit 1
+          fi
+          echo "labels_md=$labels_md" >> "$GITHUB_OUTPUT"
+
+          # --expect pins the write to the issue the command ran on. The
+          # target inside labels.md comes from an agent that read issue text
+          # anyone can author, and the check has to be on the value the script
+          # resolves rather than on "a matching header exists": the parse binds
+          # to the first header, so a grep over the file would pass a labels.md
+          # carrying an injected header above the real one.
+          args=(--no-comment --expect "${GITHUB_REPOSITORY}#${ISSUE_NUMBER}")
+          if [ "$DRY_RUN" != "true" ]; then
+            args+=(--apply)
+          fi
+          # Run outside the agent so a non-zero exit fails the job. apply_labels.py
+          # exits 2 when setting Priority cleared the issue's other native fields,
+          # and documents that a wrapping workflow must fail loudly rather than
+          # bury that in a log.
+          python .github/scripts/apply_labels.py "$labels_md" "${args[@]}" \
+            2>&1 | tee /tmp/apply_labels.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Upload labels.md
+        if: always() && steps.apply.outputs.labels_md
+        uses: actions/upload-artifact@v4
+        with:
+          name: labels-${{ needs.parse-command.outputs.issue_number }}
+          path: ${{ steps.apply.outputs.labels_md }}
+
+      - name: Post label comment
+        # always(), so a refused or failed apply still delivers the analysis --
+        # that is the run where the proposed labels are most worth reading.
+        if: always() && steps.ai-label.outputs.execution_file
+        uses: actions/github-script@v9
+        env:
+          DRY_RUN: ${{ needs.parse-command.outputs.dry_run }}
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-label.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) return;
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'label');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const trigger = context.payload.comment;
+            const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+
+            // The model reports what it proposed; the script decides what was
+            // written, dropping anything outside the allowlist or past the cap.
+            // Without its output the comment can list labels that never landed.
+            const dryRun = process.env.DRY_RUN === 'true';
+            const outcome = process.env.APPLY_OUTCOME || 'skipped';
+            let applied = '';
+            try {
+              applied = fs.readFileSync('/tmp/apply_labels.log', 'utf8').trim();
+            } catch (error) {
+              applied = '';
+            }
+            const mode = dryRun
+              ? 'Dry run: nothing was written.'
+              : outcome === 'success'
+                ? 'Applied to this issue.'
+                : `Nothing was written -- the apply step ${outcome}.`;
+            const applyBlock = applied
+              ? `\n\n<details><summary>apply_labels.py output</summary>\n\n\`\`\`\n${applied}\n\`\`\`\n\n</details>`
+              : '';
+            const footer = `\n\n---\n${mode} _Generated by [\`label\` job](${jobUrl})._`;
+
+            // label-issue already wraps its artifact in a <details>, so folding
+            // here would bury the table two clicks deep. Post it as-is.
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: header + result.result + applyBlock + footer
+            });
+
+      - name: "Verify: AI labeling succeeded"
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          AI_LABEL_OUTCOME: ${{ steps.ai-label.outcome }}
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const outcome = process.env.AI_LABEL_OUTCOME || 'skipped';
+            const file = '${{ steps.ai-label.outputs.execution_file }}';
+
+            let result = null;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+            }
+            if (outcome === 'success' && result && !result.is_error && result.total_cost_usd > 0) {
+              return;
+            }
+
+            let reason;
+            if (outcome === 'cancelled') {
+              reason = 'the run was cancelled.';
+            } else if (outcome === 'skipped') {
+              reason = 'the environment setup failed before the agent started -- checkout or claude-code-action itself.';
+            } else if (result && result.is_error) {
+              reason = 'the agent returned an error. This is usually a Bedrock or model failure; check AWS token validity.';
+            } else if (!result) {
+              reason = 'the agent produced no output. This is usually a Bedrock connectivity or credential failure; check AWS token validity.';
+            } else {
+              reason = 'the agent exited without a usable result.';
+            }
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'label');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot label\` failed: ${reason}\n\nSee the [\`label\` job](${jobUrl}) for details.`
+            });
+            if (outcome !== 'cancelled') {
+              core.setFailed(`AI labeling failed: ${reason}`);
+            }
+
+      - name: Report usage cost
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-label.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'label');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`label\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
+
   triage:
     needs: parse-command
     runs-on: ubuntu-latest
@@ -1862,6 +2128,7 @@ jobs:
         run: |
           pip install pytest
           python -m pytest .github/scripts/test_bot_*.py -v
+          node .github/scripts/test_fold_details.js
 
   token-permission-test:
     runs-on: ubuntu-latest
