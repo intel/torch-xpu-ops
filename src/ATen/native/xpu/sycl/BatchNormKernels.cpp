@@ -1372,6 +1372,8 @@ template <
     int VEC_SIZE = 1,
     bool USE_SLM = false>
 struct BatchNormTransformInputChannelsLast1DKernelFunctor {
+  using local_acc_t = sycl::local_accessor<accscalar_t, 1>;
+
   void operator()(sycl::nd_item<1> item) const {
     int global_stride = item.get_global_range(0);
 
@@ -1522,7 +1524,6 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
     }
   }
 
-  using local_acc_t = sycl::local_accessor<accscalar_t, 1>;
   const scalar_t* RESTRICT input_;
   const scalar_t* RESTRICT z_;
   const accscalar_t* RESTRICT mean_;
@@ -1659,7 +1660,7 @@ void batch_norm_elemt_channels_last_template(
                       weight_data_ptr, shift_data_ptr,
                       output_data_ptr, reduction_size,
                       stride, fuse_relu,
-                      at::detail::IntDivider<unsigned int>(stride_));
+                      at::detail::IntDivider<unsigned int>(stride));
               sycl_kernel_submit(
                   num_wg * wg_size, wg_size, queue, kfn);
             }
@@ -1771,7 +1772,7 @@ void batch_norm_elemt_channels_last_template(
                       weight_data_ptr, shift_data_ptr,
                       output_data_ptr, reduction_size,
                       stride, fuse_relu,
-                      at::detail::IntDivider<unsigned int>(stride_));
+                      at::detail::IntDivider<unsigned int>(stride));
               sycl_kernel_submit(
                   num_wg * wg_size, wg_size, queue, kfn);
             }
