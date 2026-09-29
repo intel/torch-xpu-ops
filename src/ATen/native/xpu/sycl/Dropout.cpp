@@ -434,6 +434,43 @@ std::tuple<Tensor, Tensor> fused_dropout_kernel(
   return dropout<uint8_t>(gen, self, p);
 }
 
+Tensor mem_eff_attention_dropout_mask_kernel(
+    const Tensor& self,
+    double dropout_p,
+    PhiloxXpuState philox_state) {
+  Tensor mask = at::empty_like(self, self.options().dtype(at::kByte));
+  const int64_t nelem = self.numel();
+  if (nelem == 0)
+    return mask;
+
+  Tensor ret = at::empty_like(self);
+  double keep_prob = 1.0 - dropout_p;
+  auto [counter_offset, num_groups, group_size] = calc_execution_policy(nelem);
+
+  if (canUse32BitIndexMath(self)) {
+    launcher<unsigned int, uint8_t>(
+        self,
+        ret,
+        mask,
+        keep_prob,
+        nelem,
+        philox_state,
+        num_groups,
+        group_size);
+  } else {
+    launcher<uint64_t, uint8_t>(
+        self,
+        ret,
+        mask,
+        keep_prob,
+        nelem,
+        philox_state,
+        num_groups,
+        group_size);
+  }
+  return mask;
+}
+
 template <typename mask_t>
 Tensor dropout_backward(const Tensor& grad, const Tensor& mask, double scale) {
   Tensor ret = at::empty_like(grad, grad.suggest_memory_format());

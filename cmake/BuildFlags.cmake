@@ -31,12 +31,13 @@ function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
 endfunction()
 
 macro(set_build_flags)
- set(_TORCH_XPU_OPS_SUPPORTED_COMPILERS "GNU" "MSVC")
+ set(_TORCH_XPU_OPS_SUPPORTED_COMPILERS "GNU" "Clang" "MSVC")
   if(NOT CMAKE_CXX_COMPILER_ID IN_LIST _TORCH_XPU_OPS_SUPPORTED_COMPILERS)
-    message(WARNING "Not compiling with XPU. Currently only support GCC compiler on Linux and MSVC compiler on Windows as CXX compiler.")
+    message(WARNING "Not compiling with XPU. Currently only support GCC/Clang compiler on Linux and MSVC compiler on Windows as CXX compiler.")
     return()
   endif()
   set(SYCL_HOST_FLAGS)
+  set(SYCL_HOST_FLAGS_DIRECT_TO_SYCL)
   set(SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL)
   set(SYCL_HOST_FLAGS_ONLY_FOR_SYCL)
   set(SYCL_DEVICE_COMPILE_DEFINITIONS)
@@ -54,7 +55,9 @@ macro(set_build_flags)
       "Ensure SYCLToolkit is found before building torch-xpu-ops.")
   endif()
   list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS SYCL_COMPILER_VERSION=${SYCL_COMPILER_VERSION})
-  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU=${USE_XPU})
+  # Keep the bare spelling: it must match PyTorch's add_compile_definitions(USE_XPU)
+  # so FindSYCL's exact-string dedup drops it instead of redefining the macro.
+  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU)
 
   set(CPP_STD c++20)
   # -- Host flags (SYCL_CXX_FLAGS)
@@ -71,9 +74,13 @@ macro(set_build_flags)
     set(SYCL_HOST_PER_CONFIG_FLAGS
       $<$<CONFIG:Debug>:/Od;/Z7>
       $<$<CONFIG:RelWithDebInfo>:/O2;/Z7>)
-  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+      # This is a driver option and cannot be forwarded with -Xarch_host.
+      list(APPEND SYCL_HOST_FLAGS_DIRECT_TO_SYCL -Qunused-arguments)
+    endif()
     # These GCC warning options remain available to regular host compilation,
     # but are not supported by the Intel SYCL/Clang host frontend.
     list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
@@ -151,7 +158,7 @@ macro(set_build_flags)
     list(APPEND SYCL_COMPILE_FLAGS /Qftz-)
     # Suppress warnings about dllexport.
     list(APPEND SYCL_COMPILE_FLAGS -Wno-ignored-attributes)
-  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     list(APPEND SYCL_COMPILE_FLAGS -std=${CPP_STD})
     list(APPEND SYCL_COMPILE_FLAGS -Wno-absolute-value)
     # -fma which we used before is an alias used for -ffp-contract=fast for compatibility reasons
@@ -218,6 +225,7 @@ macro(set_build_flags)
   list(APPEND SYCL_DEVICE_LINK_FLAGS --offload-compress)
   list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-sqrt)
   list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-div)
+  list(APPEND SYCL_DEVICE_LINK_FLAGS -fno-sycl-id-queries-fit-in-int)
 
   string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-poison-unsupported-fp64-kernels")
   string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-intel-enable-auto-large-GRF-mode")
