@@ -3,8 +3,9 @@
 
 Categories:
   inductor     Fixed inductor test set, run via pytorch/test/run_test.py.
-               Both parts are oversharded into one queue; each GPU runs one
-               shard at a time and picks the next one as soon as it is free.
+               Each test file is split into --shards-per-file shards, all put
+               into one queue; each GPU runs one shard at a time and picks
+               the next one as soon as it is free.
   default      "Done" non-distributed files from the tracking issue, one
                pytest run per file.
   distributed  "Done" test/distributed/ files from the tracking issue, one
@@ -18,7 +19,7 @@ files under "Done test files" minus those under "Not Applicable test files".
 Examples (from the directory that contains pytorch/):
   run_upstream_ut.py default --list
   run_upstream_ut.py default --files test/test_nn.py test/test_ops.py
-  run_upstream_ut.py inductor --gpus 0,1 --shards-per-gpu 2
+  run_upstream_ut.py inductor --gpus 0,1 --shards-per-file 2
   run_upstream_ut.py inductor --dry-run
 
 Exit code: 0 all passed, 1 some tests failed, 2 setup error.
@@ -36,6 +37,7 @@ import sys
 import threading
 import time
 import urllib.request
+from typing import NamedTuple
 
 API_URL = "https://api.github.com/repos/{owner}/{repo}/issues/{number}"
 DISTRIBUTED_PREFIX = "test/distributed/"
@@ -157,12 +159,32 @@ def get_issue_files(repo, issue, category):
 # ---------------------------------------------------------------- inductor
 
 
+class Job(NamedTuple):
+    shard: int  # global id, 1..len(jobs)
+    part: str
+    test: str  # single run_test.py --include target
+    file_shard: int  # 1..shards_per_file within this test file
+    shards_per_file: int
+
+    @property
+    def tag(self):
+        return f"shard{self.shard}_{self.part}_{self.test.replace('/', '_')}_{self.file_shard}of{self.shards_per_file}"
+
+
+def build_jobs(shards_per_file):
+    """Split every test file into shards_per_file shards, numbered globally in order."""
+    jobs = []
+    for part, (_, tests) in INDUCTOR_PARTS.items():
+        for test in tests:
+            for i in range(1, shards_per_file + 1):
+                jobs.append(Job(len(jobs) + 1, part, test, i, shards_per_file))
+    return jobs
+
+
 def run_shard(job, gpu, args, env):
     """Run one shard in its own process group; return its exit code."""
-    part, shard_id, num_shards = job
-    extra, tests = INDUCTOR_PARTS[part]
-    tag = f"{part}_shard{shard_id}"
-    xml_dir = os.path.join(args.log_dir, "xml", tag)
+    extra, _ = INDUCTOR_PARTS[job.part]
+    xml_dir = os.path.join(args.log_dir, "xml", job.tag)
     shutil.rmtree(xml_dir, ignore_errors=True)
     cmd = [
         sys.executable,
@@ -170,17 +192,19 @@ def run_shard(job, gpu, args, env):
         "--verbose",
         *extra,
         "--include",
-        *tests,
+        job.test,
         "--shard",
-        str(shard_id),
-        str(num_shards),
+        str(job.file_shard),
+        str(job.shards_per_file),
         "--save-xml",
         xml_dir,
     ]
     with (
-        open(os.path.join(args.log_dir, f"{args.ut_name}_test_{tag}.log"), "w") as out,
         open(
-            os.path.join(args.log_dir, f"{args.ut_name}_test_error_{tag}.log"), "w"
+            os.path.join(args.log_dir, f"{args.ut_name}_test_{job.tag}.log"), "w"
+        ) as out,
+        open(
+            os.path.join(args.log_dir, f"{args.ut_name}_test_error_{job.tag}.log"), "w"
         ) as err,
     ):
         proc = subprocess.Popen(
@@ -205,30 +229,25 @@ def gpu_worker(gpu, jobs, results, args, env):
             job = jobs.get_nowait()
         except queue.Empty:
             return
-        part, shard_id, num_shards = job
-        tag = f"{part}_shard{shard_id}"
         start = time.time()
-        log(f"[START] gpu {gpu}: {tag}/{num_shards}")
+        log(f"[START] gpu {gpu}: {job.tag}")
         try:
             rc = run_shard(job, gpu, args, env)
         except Exception as e:  # noqa: BLE001 - record and keep draining the queue
-            log(f"[ERROR] gpu {gpu}: {tag}: {e}")
+            log(f"[ERROR] gpu {gpu}: {job.tag}: {e}")
             rc = 255
-        results[tag] = rc
-        log(f"[DONE] gpu {gpu}: {tag} rc={rc} ({fmt_elapsed(time.time() - start)})")
+        results[job.tag] = rc
+        log(f"[DONE] gpu {gpu}: {job.tag} rc={rc} ({fmt_elapsed(time.time() - start)})")
 
 
 def run_inductor(args, env):
-    num_shards = len(args.gpus) * args.shards_per_gpu
-    # Interleave parts so neither waits on the other
-    all_jobs = [
-        (part, i, num_shards)
-        for i in range(1, num_shards + 1)
-        for part in INDUCTOR_PARTS
-    ]
+    all_jobs = build_jobs(args.shards_per_file)
     if args.dry_run:
-        for part, i, n in all_jobs:
-            print(f"{part} shard {i}/{n}")
+        for j in all_jobs:
+            extra, _ = INDUCTOR_PARTS[j.part]
+            print(
+                f"shard{j.shard}: {j.part} {' '.join(extra + [j.test])} --shard {j.file_shard} {j.shards_per_file}"
+            )
         return 0
     shutil.rmtree(os.path.join(args.log_dir, "xml"), ignore_errors=True)
     log(
@@ -250,7 +269,7 @@ def run_inductor(args, env):
             t.start()
         for t in threads:
             t.join()
-        pending = [j for j in all_jobs if f"{j[0]}_shard{j[1]}" not in results]
+        pending = [j for j in all_jobs if j.tag not in results]
         if not pending:
             break
         log(f"[RETRY] round {round_id}: requeue {len(pending)} shards without result")
@@ -317,7 +336,9 @@ def run_files(args, env, files):
 
 def setup_distributed_env(env, pytorch_dir):
     env.update(DISTRIBUTED_ENV)
-    pipelining = os.path.abspath(os.path.join(pytorch_dir, "test", "distributed", "pipelining"))
+    pipelining = os.path.abspath(
+        os.path.join(pytorch_dir, "test", "distributed", "pipelining")
+    )
     env["PYTHONPATH"] = os.pathsep.join(
         p for p in (env.get("PYTHONPATH"), pipelining) if p
     )
@@ -362,7 +383,10 @@ def main():
         "(default: $ZE_AFFINITY_MASK or 0; distributed: 0,1,2,3)",
     )
     parser.add_argument(
-        "--shards-per-gpu", type=int, default=4, help="inductor oversharding factor"
+        "--shards-per-file",
+        type=int,
+        default=2,
+        help="inductor: run_test.py shards per test file",
     )
     parser.add_argument(
         "--files",
