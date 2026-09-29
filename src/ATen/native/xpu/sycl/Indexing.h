@@ -630,9 +630,13 @@ void index_functor_kernel_impl(
     size_t num_indices,
     at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs,
     at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes,
-    at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides) {
+    at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides,
+    int64_t numel) {
   auto item_id = syclext::this_work_item::get_nd_item<1>();
   auto linear_idx = item_id.get_global_linear_id();
+  if (linear_idx >= static_cast<size_t>(numel)) {
+    return;
+  }
   auto offsets = offset_calc.get(linear_idx);
   auto out_ptr = out_data + offsets[0];
   auto in_ptr = in_data + offsets[1];
