@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
-"""Run upstream PyTorch unit tests on XPU.
+"""Run upstream PyTorch unit tests on XPU, in one of two modes.
 
-Categories:
-  inductor     Fixed inductor test set, run via pytorch/test/run_test.py.
-               Each test file is split into --shards-per-file shards, all put
-               into one queue; each GPU runs one shard at a time and picks
-               the next one as soon as it is free.
-  default      "Done" non-distributed files from the tracking issue, one
-               pytest run per file.
-  distributed  "Done" test/distributed/ files from the tracking issue, one
-               pytest run per file, with the XCCL environment set up.
+run_test.py shards (category: inductor)
+    Each file in INDUCTOR_PARTS is split into --shards-per-file shards via
+    `run_test.py --shard`. Shards are queued in order and each GPU runs one
+    shard at a time, taking the next one as soon as it is free.
 
-The file list for default/distributed comes from the tracking issue
-(default: intel/torch-xpu-ops#5205), between the
-``<!-- auto-file-lists:begin -->`` / ``<!-- auto-file-lists:end -->`` markers:
-files under "Done test files" minus those under "Not Applicable test files".
+pytest per file (categories: default, distributed)
+    One pytest run per test file, sequentially. Files come from --files or
+    from the "Done test files" minus "Not Applicable test files" sections of
+    the tracking issue (default: intel/torch-xpu-ops#5205). distributed takes
+    files under test/distributed/ and sets up XCCL; default takes the rest.
 
 Examples (from the directory that contains pytorch/):
   run_upstream_ut.py default --list
@@ -37,19 +33,21 @@ import sys
 import threading
 import time
 import urllib.request
-from typing import NamedTuple
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from pathlib import Path
 
-API_URL = "https://api.github.com/repos/{owner}/{repo}/issues/{number}"
+ISSUE_API = "https://api.github.com/repos/{repo}/issues/{number}"
 DISTRIBUTED_PREFIX = "test/distributed/"
 
-# name -> (extra run_test.py flags, --include tests)
+# part -> (extra run_test.py flags, test files)
 INDUCTOR_PARTS = {
-    # Eager to inductor cases
+    # Eager tests run through inductor
     "part1": (
         ["--inductor"],
         ["test_modules", "test_ops", "test_ops_gradients", "test_torch"],
     ),
-    # Inductor own tests; no --inductor to avoid nested dynamo state
+    # Inductor's own tests; no --inductor to avoid nested dynamo state
     "part2": (
         [],
         [
@@ -96,54 +94,42 @@ def log(msg):
         print(msg, flush=True)
 
 
-def fmt_elapsed(seconds):
-    seconds = int(seconds)
+def elapsed(start):
+    seconds = int(time.monotonic() - start)
     return f"{seconds // 60}m{seconds % 60:02d}s"
 
 
-# ---------------------------------------------------------------- file list
+# ---------------------------------------------------------------- issue list
 
 
-def fetch_issue_body(repo, number):
-    owner, _, name = repo.partition("/")
-    req = urllib.request.Request(API_URL.format(owner=owner, repo=name, number=number))
-    req.add_header("Accept", "application/vnd.github+json")
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if token:
-        req.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.load(resp).get("body") or ""
-
-
-def extract_section(body, heading):
-    begin = body.find("auto-file-lists:begin")
-    if begin != -1:
-        body = body[begin:]
+def parse_files(body, heading):
+    """Backticked *.py paths in the <details> block that starts at heading."""
+    body = body[max(body.find("auto-file-lists:begin"), 0) :]
     start = body.find(heading)
     if start == -1:
-        return ""
+        return []
     end = body.find("</details>", start)
-    return body[start:] if end == -1 else body[start:end]
-
-
-def parse_files(section):
-    files = []
-    for match in re.findall(r"`([^`]+?\.py)`", section):
-        path = re.sub(r"\s+", "", match)
-        if path and path not in files:
-            files.append(path)
-    return files
+    section = body[start : end if end != -1 else None]
+    # Paths may be wrapped across lines inside the backticks
+    paths = (re.sub(r"\s+", "", m) for m in re.findall(r"`([^`]+?\.py)`", section))
+    return list(dict.fromkeys(p for p in paths if p))
 
 
 def get_issue_files(repo, issue, category):
-    body = fetch_issue_body(repo, issue)
-    done = parse_files(extract_section(body, "Done test files"))
+    req = urllib.request.Request(
+        ISSUE_API.format(repo=repo, number=issue),
+        headers={"Accept": "application/vnd.github+json"},
+    )
+    if token := os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN"):
+        req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        body = json.load(resp).get("body") or ""
+
+    done = parse_files(body, "Done test files")
     if not done:
         raise RuntimeError(f"No Done test files found in {repo}#{issue}")
-    not_applicable = set(
-        parse_files(extract_section(body, "Not Applicable test files"))
-    )
-    files = [f for f in done if f not in not_applicable]
+    excluded = set(parse_files(body, "Not Applicable test files"))
+    files = [f for f in done if f not in excluded]
     distributed = [f for f in files if f.startswith(DISTRIBUTED_PREFIX)]
     print(
         f"Done test files: {len(files)} (distributed: {len(distributed)}, "
@@ -156,56 +142,56 @@ def get_issue_files(repo, issue, category):
     return [f for f in files if not f.startswith(DISTRIBUTED_PREFIX)]
 
 
-# ---------------------------------------------------------------- inductor
+# ---------------------------------------------------------------- run_test.py shards
 
 
-class Job(NamedTuple):
-    shard: int  # global id, 1..len(jobs)
+@dataclass(frozen=True)
+class Shard:
+    id: int  # global, 1..N in queue order
     part: str
-    test: str  # single run_test.py --include target
-    file_shard: int  # 1..shards_per_file within this test file
-    shards_per_file: int
+    test: str
+    index: int  # 1..total within this test file
+    total: int
 
     @property
     def tag(self):
-        return f"shard{self.shard}_{self.part}_{self.test.replace('/', '_')}_{self.file_shard}of{self.shards_per_file}"
+        return f"shard{self.id}_{self.part}_{self.test.replace('/', '_')}_{self.index}of{self.total}"
+
+    @property
+    def args(self):
+        extra, _ = INDUCTOR_PARTS[self.part]
+        return [
+            *extra,
+            "--include",
+            self.test,
+            "--shard",
+            str(self.index),
+            str(self.total),
+        ]
 
 
-def build_jobs(shards_per_file):
-    """Split every test file into shards_per_file shards, numbered globally in order."""
-    jobs = []
-    for part, (_, tests) in INDUCTOR_PARTS.items():
-        for test in tests:
-            for i in range(1, shards_per_file + 1):
-                jobs.append(Job(len(jobs) + 1, part, test, i, shards_per_file))
-    return jobs
+def build_shards(per_file):
+    tests = [(part, t) for part, (_, ts) in INDUCTOR_PARTS.items() for t in ts]
+    return [
+        Shard(n * per_file + i, part, test, i, per_file)
+        for n, (part, test) in enumerate(tests)
+        for i in range(1, per_file + 1)
+    ]
 
 
-def run_shard(job, gpu, args, env):
-    """Run one shard in its own process group; return its exit code."""
-    extra, _ = INDUCTOR_PARTS[job.part]
-    xml_dir = os.path.join(args.log_dir, "xml", job.tag)
-    shutil.rmtree(xml_dir, ignore_errors=True)
+def run_shard(shard, gpu, args, env):
+    xml_dir = args.log_dir / "xml" / shard.tag
     cmd = [
         sys.executable,
-        os.path.join(args.pytorch_dir, "test", "run_test.py"),
+        str(args.pytorch_dir / "test" / "run_test.py"),
         "--verbose",
-        *extra,
-        "--include",
-        job.test,
-        "--shard",
-        str(job.file_shard),
-        str(job.shards_per_file),
+        *shard.args,
         "--save-xml",
-        xml_dir,
+        str(xml_dir),
     ]
     with (
-        open(
-            os.path.join(args.log_dir, f"{args.ut_name}_test_{job.tag}.log"), "w"
-        ) as out,
-        open(
-            os.path.join(args.log_dir, f"{args.ut_name}_test_error_{job.tag}.log"), "w"
-        ) as err,
+        open(args.log_dir / f"{args.ut_name}_test_{shard.tag}.log", "w") as out,
+        open(args.log_dir / f"{args.ut_name}_test_error_{shard.tag}.log", "w") as err,
     ):
         proc = subprocess.Popen(
             cmd,
@@ -215,7 +201,7 @@ def run_shard(job, gpu, args, env):
             start_new_session=True,
         )
         rc = proc.wait()
-    # Reap leftover children so the GPU is free before the next shard starts
+    # Kill leftover children so the GPU is free before the next shard starts
     try:
         os.killpg(proc.pid, signal.SIGKILL)
     except ProcessLookupError:
@@ -223,127 +209,70 @@ def run_shard(job, gpu, args, env):
     return rc
 
 
-def gpu_worker(gpu, jobs, results, args, env):
-    while True:
-        try:
-            job = jobs.get_nowait()
-        except queue.Empty:
-            return
-        start = time.time()
-        log(f"[START] gpu {gpu}: {job.tag}")
-        try:
-            rc = run_shard(job, gpu, args, env)
-        except Exception as e:  # noqa: BLE001 - record and keep draining the queue
-            log(f"[ERROR] gpu {gpu}: {job.tag}: {e}")
-            rc = 255
-        results[job.tag] = rc
-        log(f"[DONE] gpu {gpu}: {job.tag} rc={rc} ({fmt_elapsed(time.time() - start)})")
-
-
-def run_inductor(args, env):
-    all_jobs = build_jobs(args.shards_per_file)
+def run_shards(args, env):
+    shards = build_shards(args.shards_per_file)
     if args.dry_run:
-        for j in all_jobs:
-            extra, _ = INDUCTOR_PARTS[j.part]
-            print(
-                f"shard{j.shard}: {j.part} {' '.join(extra + [j.test])} --shard {j.file_shard} {j.shards_per_file}"
-            )
+        for s in shards:
+            print(f"shard{s.id}: {s.part} {' '.join(s.args).replace('--include ', '')}")
         return 0
-    shutil.rmtree(os.path.join(args.log_dir, "xml"), ignore_errors=True)
+
+    shutil.rmtree(args.log_dir / "xml", ignore_errors=True)
     log(
-        f"[INFO] inductor: {len(all_jobs)} shards on {len(args.gpus)} GPUs ({' '.join(args.gpus)})"
+        f"[INFO] inductor: {len(shards)} shards on {len(args.gpus)} GPUs ({' '.join(args.gpus)})"
     )
-    start = time.time()
-    results = {}
-    pending = all_jobs
-    # A shard only lacks a result if its worker thread died; requeue those
-    for round_id in range(1, 4):
-        jobs = queue.Queue()
-        for job in pending:
-            jobs.put(job)
-        threads = [
-            threading.Thread(target=gpu_worker, args=(gpu, jobs, results, args, env))
-            for gpu in args.gpus
-        ]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        pending = [j for j in all_jobs if j.tag not in results]
-        if not pending:
-            break
-        log(f"[RETRY] round {round_id}: requeue {len(pending)} shards without result")
-    log(f"[TIME] inductor all ({fmt_elapsed(time.time() - start)})")
-    failed = sorted(tag for tag, rc in results.items() if rc != 0)
-    missing = len(all_jobs) - len(results)
-    if not failed and not missing:
-        log(f"[SUMMARY] {args.ut_name}: all {len(all_jobs)} shards passed")
+    free_gpus = queue.SimpleQueue()
+    for gpu in args.gpus:
+        free_gpus.put(gpu)
+    failed = []
+    finished = 0
+
+    def task(shard):
+        nonlocal finished
+        gpu = free_gpus.get()  # never blocks: one pool worker per GPU
+        start = time.monotonic()
+        log(f"[START] gpu {gpu}: {shard.tag}")
+        try:
+            rc = run_shard(shard, gpu, args, env)
+        except Exception as e:  # noqa: BLE001 - count as failed, keep going
+            log(f"[ERROR] gpu {gpu}: {shard.tag}: {e}")
+            rc = 255
+        finally:
+            free_gpus.put(gpu)
+        with _print_lock:
+            finished += 1
+            if rc != 0:
+                failed.append(shard.tag)
+            print(
+                f"[{finished}/{len(shards)}] [{'PASS' if rc == 0 else 'FAIL'}] "
+                f"{shard.test} shard{shard.id} ({shard.index}of{shard.total}) "
+                f"{shard.part} ({elapsed(start)})",
+                flush=True,
+            )
+
+    start = time.monotonic()
+    with ThreadPoolExecutor(max_workers=len(args.gpus)) as pool:
+        list(pool.map(task, shards))
+    log(f"[TIME] inductor all ({elapsed(start)})")
+    if not failed:
+        log(f"[SUMMARY] {args.ut_name}: all {len(shards)} shards passed")
         return 0
     log(
-        f"[SUMMARY] {args.ut_name}: {len(results)}/{len(all_jobs)} shards finished, "
-        f"failed: {' '.join(failed)}"
+        f"[SUMMARY] {args.ut_name}: {len(failed)}/{len(shards)} shards failed: {' '.join(sorted(failed))}"
     )
     return 1
 
 
-# ---------------------------------------------------------------- per-file
-
-
-def run_files(args, env, files):
-    if args.dry_run:
-        print("\n".join(files))
-        return 0
-    start_all = time.time()
-    passed = failed = 0
-    for test_file in files:
-        log_name = test_file.replace("/", "_")
-        err_log = os.path.join(
-            args.log_dir, f"{args.ut_name}_test_error_{log_name}.log"
-        )
-        out_log = os.path.join(args.log_dir, f"{args.ut_name}_test_{log_name}.log")
-        cmd = [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-v",
-            os.path.join(args.pytorch_dir, test_file),
-            f"--junit-xml={os.path.join(args.xml_dir, f'{args.ut_name}_{log_name}.xml')}",
-        ]
-        start = time.time()
-        print(f"::group::{test_file}", flush=True)
-        with open(out_log, "w") as out, open(err_log, "w") as err:
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=err, env=env, text=True
-            )
-            for line in proc.stdout:
-                sys.stdout.write(line)
-                out.write(line)
-            rc = proc.wait()
-        print("::endgroup::", flush=True)
-        if rc == 0:
-            status, passed = "PASS", passed + 1
-        else:
-            status, failed = "FAIL", failed + 1
-            with open(err_log, "a") as err:
-                err.write(test_file + "\n")
-        log(f"[{status}] {test_file} ({fmt_elapsed(time.time() - start)})")
-    log(
-        f"[SUMMARY] {args.ut_name}: {len(files)} files, {passed} passed, {failed} failed "
-        f"in {fmt_elapsed(time.time() - start_all)}"
-    )
-    return 1 if failed else 0
+# ---------------------------------------------------------------- pytest per file
 
 
 def setup_distributed_env(env, pytorch_dir):
     env.update(DISTRIBUTED_ENV)
-    pipelining = os.path.abspath(
-        os.path.join(pytorch_dir, "test", "distributed", "pipelining")
-    )
+    pipelining = (pytorch_dir / "test" / "distributed" / "pipelining").resolve()
     env["PYTHONPATH"] = os.pathsep.join(
-        p for p in (env.get("PYTHONPATH"), pipelining) if p
+        p for p in (env.get("PYTHONPATH"), str(pipelining)) if p
     )
-    if env.get("VENV_ROOT"):
-        env["PATH"] = f"{env['VENV_ROOT']}/bin/libfabric{os.pathsep}{env['PATH']}"
+    if venv := env.get("VENV_ROOT"):
+        env["PATH"] = f"{venv}/bin/libfabric{os.pathsep}{env['PATH']}"
     out = subprocess.run(
         [
             sys.executable,
@@ -359,10 +288,56 @@ def setup_distributed_env(env, pytorch_dir):
         raise RuntimeError("XCCL is not enabled")
 
 
+def run_files(args, env, files):
+    if args.dry_run:
+        print("\n".join(files))
+        return 0
+
+    start_all = time.monotonic()
+    failed = 0
+    for i, test_file in enumerate(files, 1):
+        name = test_file.replace("/", "_")
+        err_log = args.log_dir / f"{args.ut_name}_test_error_{name}.log"
+        cmd = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-v",
+            str(args.pytorch_dir / test_file),
+            f"--junit-xml={args.xml_dir / f'{args.ut_name}_{name}.xml'}",
+        ]
+        start = time.monotonic()
+        print(f"::group::{test_file}", flush=True)
+        with (
+            open(args.log_dir / f"{args.ut_name}_test_{name}.log", "w") as out,
+            open(err_log, "w") as err,
+        ):
+            # Tee stdout to the console and the log
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=err, env=env, text=True
+            )
+            for line in proc.stdout:
+                sys.stdout.write(line)
+                out.write(line)
+            rc = proc.wait()
+            if rc != 0:
+                err.write(test_file + "\n")
+        print("::endgroup::", flush=True)
+        failed += rc != 0
+        log(
+            f"[{i}/{len(files)}] [{'PASS' if rc == 0 else 'FAIL'}] {test_file} ({elapsed(start)})"
+        )
+    log(
+        f"[SUMMARY] {args.ut_name}: {len(files)} files, {len(files) - failed} passed, "
+        f"{failed} failed in {elapsed(start_all)}"
+    )
+    return 1 if failed else 0
+
+
 # ---------------------------------------------------------------- main
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -371,16 +346,21 @@ def main():
         "--ut-name", help="log/xml name prefix (default: upstream_<category>)"
     )
     parser.add_argument(
-        "--pytorch-dir", default="pytorch", help="PyTorch source checkout"
+        "--pytorch-dir",
+        type=Path,
+        default=Path("pytorch"),
+        help="PyTorch source checkout",
     )
-    parser.add_argument("--log-dir", help="default: ut_log/<ut-name>")
+    parser.add_argument("--log-dir", type=Path, help="default: ut_log/<ut-name>")
     parser.add_argument(
-        "--xml-dir", default="ut_log", help="junit xml dir for default/distributed"
+        "--xml-dir",
+        type=Path,
+        default=Path("ut_log"),
+        help="junit xml dir for default/distributed",
     )
     parser.add_argument(
         "--gpus",
-        help="comma-separated GPU ids "
-        "(default: $ZE_AFFINITY_MASK or 0; distributed: 0,1,2,3)",
+        help="comma-separated GPU ids (default: $ZE_AFFINITY_MASK or 0; distributed: 0,1,2,3)",
     )
     parser.add_argument(
         "--shards-per-file",
@@ -406,7 +386,7 @@ def main():
     args = parser.parse_args()
 
     args.ut_name = args.ut_name or f"upstream_{args.category}"
-    args.log_dir = args.log_dir or os.path.join("ut_log", args.ut_name)
+    args.log_dir = args.log_dir or Path("ut_log") / args.ut_name
     default_gpus = (
         "0,1,2,3"
         if args.category == "distributed"
@@ -418,25 +398,28 @@ def main():
             g.strip() for g in (args.gpus or default_gpus).split(",") if g.strip()
         )
     )
+    return args
 
+
+def main():
+    args = parse_args()
     try:
-        if args.category != "inductor":
+        if args.category == "inductor":
+            if args.list:
+                for part, (extra, tests) in INDUCTOR_PARTS.items():
+                    print(f"{part}: {' '.join(extra + tests)}")
+                return 0
+        else:
             files = args.files or get_issue_files(args.repo, args.issue, args.category)
-        if args.list:
-            print(
-                "\n".join(files)
-                if args.category != "inductor"
-                else "\n".join(
-                    f"{p}: {' '.join(e + t)}" for p, (e, t) in INDUCTOR_PARTS.items()
-                )
-            )
-            return 0
-        os.makedirs(args.log_dir, exist_ok=True)
-        os.makedirs(args.xml_dir, exist_ok=True)
+            if args.list:
+                print("\n".join(files))
+                return 0
+
+        args.log_dir.mkdir(parents=True, exist_ok=True)
+        args.xml_dir.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, **COMMON_ENV}
         if args.category == "inductor":
-            env.update(INDUCTOR_ENV)
-            return run_inductor(args, env)
+            return run_shards(args, {**env, **INDUCTOR_ENV})
         if args.category == "distributed":
             env["ZE_AFFINITY_MASK"] = ",".join(args.gpus)
             if not args.dry_run:
