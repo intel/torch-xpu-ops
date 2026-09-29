@@ -214,7 +214,7 @@ void adaptive_max_pool2d_kernel(
 
 template <typename scalar_t, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void adaptive_avg_pool2d_backward_kernel_impl(
+void adaptive_max_pool2d_backward_kernel_impl(
     const scalar_t* grad_output,
     const index_t* indices,
     scalar_t* grad_input,
@@ -255,13 +255,13 @@ void launch_adaptive_max_pool2d_backward_kernel(
     int64_t ostrideP,
     int64_t sizeP) {
   BatchKernelConfig cfg = BatchKernelConfig::make_config<
-      adaptive_avg_pool2d_backward_kernel_impl<scalar_t, index_t>>(
+      adaptive_max_pool2d_backward_kernel_impl<scalar_t, index_t>>(
       1, osize, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
 
-  cfg.build<adaptive_avg_pool2d_backward_kernel_impl<scalar_t, index_t>>();
+  cfg.build<adaptive_max_pool2d_backward_kernel_impl<scalar_t, index_t>>();
 
   sycl_kernel_submit<
-      adaptive_avg_pool2d_backward_kernel_impl<scalar_t, index_t>>(
+      adaptive_max_pool2d_backward_kernel_impl<scalar_t, index_t>>(
       cfg.global_size(),
       cfg.group_size(),
       getCurrentSYCLQueue(),
