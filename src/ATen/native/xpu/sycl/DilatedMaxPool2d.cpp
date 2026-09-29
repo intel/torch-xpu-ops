@@ -957,7 +957,7 @@ void launch_max_pool2d_backward_kernel(
       numBatch * numPlane * gradOutputSizeH * gradOutputSizeW;
   BatchKernelConfig cfg = BatchKernelConfig::make_config<
       max_pool2d_backward_kernel_impl<scalar_t, is_channels_last, index_t>>(
-      1, gradOutputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
+      1, gradOutputSize, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
   cfg.template build<
       max_pool2d_backward_kernel_impl<scalar_t, is_channels_last, index_t>>();
   sycl_kernel_submit<
