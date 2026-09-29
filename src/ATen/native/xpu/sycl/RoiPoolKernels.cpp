@@ -29,7 +29,7 @@ namespace at::native::xpu {
 
 template <typename T>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void roi_pool_forward_kernel_fn(
+void roi_pool_forward_kernel_impl(
     int nthreads,
     const T* input,
     const T spatial_scale,
@@ -128,7 +128,7 @@ std::tuple<Tensor, Tensor> roi_pool_kernel(
   auto rois_ = rois.contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(
       input.scalar_type(), "roi_pool_forward_kernel_xpu", [&] {
-        constexpr auto kptr = roi_pool_forward_kernel_fn<scalar_t>;
+        constexpr auto kptr = roi_pool_forward_kernel_impl<scalar_t>;
         sycl_kernel_submit<kptr>(
             global_range * local_range,
             local_range,
@@ -151,7 +151,7 @@ std::tuple<Tensor, Tensor> roi_pool_kernel(
 
 template <typename T>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void roi_pool_backward_kernel_fn(
+void roi_pool_backward_kernel_impl(
     int nthreads,
     const T* grad_output,
     const int* argmax_data,
@@ -226,7 +226,7 @@ Tensor roi_pool_backward_kernel(
   auto rois_ = rois.contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(
       grad.scalar_type(), "roi_pool_backward_kernel_xpu", [&] {
-        constexpr auto kptr = roi_pool_backward_kernel_fn<scalar_t>;
+        constexpr auto kptr = roi_pool_backward_kernel_impl<scalar_t>;
         sycl_kernel_submit<kptr>(
             global_range * local_range,
             local_range,
