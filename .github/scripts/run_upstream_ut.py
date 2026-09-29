@@ -33,12 +33,14 @@ import sys
 import threading
 import time
 import urllib.request
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 ISSUE_API = "https://api.github.com/repos/{repo}/issues/{number}"
 DISTRIBUTED_PREFIX = "test/distributed/"
+PASS_LOG_TAIL = 200  # lines of a passing inductor shard's log echoed to the console
 
 # part -> (extra run_test.py flags, test files)
 INDUCTOR_PARTS = {
@@ -179,7 +181,7 @@ def build_shards(per_file):
     ]
 
 
-def run_shard(shard, gpu, args, env):
+def run_shard(shard, gpu, args, env, out_log, err_log):
     xml_dir = args.log_dir / "xml" / shard.tag
     cmd = [
         sys.executable,
@@ -189,10 +191,7 @@ def run_shard(shard, gpu, args, env):
         "--save-xml",
         str(xml_dir),
     ]
-    with (
-        open(args.log_dir / f"{args.ut_name}_test_{shard.tag}.log", "w") as out,
-        open(args.log_dir / f"{args.ut_name}_test_error_{shard.tag}.log", "w") as err,
-    ):
+    with open(out_log, "w") as out, open(err_log, "w") as err:
         proc = subprocess.Popen(
             cmd,
             stdout=out,
@@ -230,24 +229,40 @@ def run_shards(args, env):
         nonlocal finished
         gpu = free_gpus.get()  # never blocks: one pool worker per GPU
         start = time.monotonic()
+        out_log = args.log_dir / f"{args.ut_name}_test_{shard.tag}.log"
+        err_log = args.log_dir / f"{args.ut_name}_test_error_{shard.tag}.log"
         log(f"[START] gpu {gpu}: {shard.tag}")
         try:
-            rc = run_shard(shard, gpu, args, env)
+            rc = run_shard(shard, gpu, args, env, out_log, err_log)
         except Exception as e:  # noqa: BLE001 - count as failed, keep going
             log(f"[ERROR] gpu {gpu}: {shard.tag}: {e}")
             rc = 255
         finally:
             free_gpus.put(gpu)
+        # Dump the finished shard's logs in one block so parallel shards don't interleave.
+        # Passing shards only show the tail to stay under the CI log size limit.
         with _print_lock:
             finished += 1
             if rc != 0:
                 failed.append(shard.tag)
-            print(
-                f"[{finished}/{len(shards)}] [{'PASS' if rc == 0 else 'FAIL'}] "
-                f"{shard.test} shard{shard.id} ({shard.index}of{shard.total}) "
-                f"{shard.part} ({elapsed(start)})",
-                flush=True,
+            result = (
+                f"[{'PASS' if rc == 0 else 'FAIL'}] [{finished}/{len(shards)}] "
+                f"run_test.py {' '.join(shard.args)} ({elapsed(start)})"
             )
+            print(f"::group::{result}", flush=True)
+            for path in (out_log, err_log):
+                if not path.exists():
+                    continue
+                with open(path, errors="replace") as f:
+                    if rc != 0:
+                        shutil.copyfileobj(f, sys.stdout)
+                        continue
+                    tail = deque(enumerate(f, 1), maxlen=PASS_LOG_TAIL)
+                    if tail and tail[0][0] > 1:
+                        print(f"... last {len(tail)} lines, full log: {path}")
+                    sys.stdout.writelines(line for _, line in tail)
+            print("::endgroup::", flush=True)
+            print(result, flush=True)
 
     start = time.monotonic()
     with ThreadPoolExecutor(max_workers=len(args.gpus)) as pool:
