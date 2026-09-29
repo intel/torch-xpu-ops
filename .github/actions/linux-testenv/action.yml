@@ -212,6 +212,7 @@ runs:
           # To install numpy 1.x for benchmarks as CUDA
           # yolov requires numpy>=1.23
           pip install -U numpy==1.26.4
+          pip install scipy==1.17.1
         fi
     - name: Update numpy
       shell: bash -xe {0}
