@@ -95,11 +95,23 @@ def _test_reference_1d(self, device, dtype, op):
         input = args[0]
         args = args[1:]
 
+        n, dim = args[0], args[1]
+        fft_len = n if n is not None else input.shape[dim]
+        is_pow2 = fft_len > 0 and (fft_len & (fft_len - 1)) == 0
+
+        base_atol = 2.38e-7  # 2ULP when n is power of 2
+        if not is_pow2:
+            base_atol = 24 * 1.2e-7  # 24ULP if not
+
         expected = op.ref(input.cpu().numpy(), *args)
         exact_dtype = dtype in (torch.double, torch.complex128)
         actual = op(input, *args)
+
+        # absolute error depends on largest element
+        scale = np.max(np.abs(expected))
+
         self.assertEqual(
-            actual, expected, exact_dtype=exact_dtype, atol=1e-4, rtol=1e-5
+            actual, expected, exact_dtype=exact_dtype, atol=scale * base_atol, rtol=0
         )
 
 
