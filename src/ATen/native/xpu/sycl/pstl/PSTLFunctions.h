@@ -80,18 +80,14 @@ struct LSFunctor {
 };
 
 template <class T, class InputIt>
-struct GetItemFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::item<1> item_id) const {
-    d_first_[item_id] = first_[item_id];
-  }
-  GetItemFunctor(InputIt first, T index, InputIt d_first)
-      : first_(first), index_(index), d_first_(d_first) {}
-
- private:
-  InputIt first_;
-  T index_;
-  InputIt d_first_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void get_item_fn(InputIt first, T index, InputIt d_first, int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  d_first[item_id] = first[item_id];
+}
 
 template <class T, class InputIt>
 static inline T get_item(InputIt first, InputIt last, T index) {
@@ -107,164 +103,134 @@ static inline T get_item(InputIt first, InputIt last, T index) {
   Tensor d_tensor = at::empty({N}, options);
   T* d_tensor_ptr = d_tensor.data_ptr<T>();
 
-  GetItemFunctor<T, InputIt> kfn1(first, index, d_tensor_ptr);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
+  int64_t wg_size =
+      at::xpu::getKernelMaxWorkGroupSize<get_item_fn<T, InputIt>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<get_item_fn<T, InputIt>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      first,
+      index,
+      d_tensor_ptr,
+      (int64_t)N);
   res = d_tensor[index].template item<T>();
 
   return res;
 }
 
 template <int scan_type, class InputIt, class OutputIt, class T>
-struct KSScanKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto local_id = item_id.get_local_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void ks_scan_kernel_fn(
+    InputIt first,
+    T init,
+    int64_t N,
+    OutputIt d_first) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto local_id = item_id.get_local_linear_id();
+  T* local_scan = static_cast<T*>(syclexp::get_work_group_scratch_memory());
 
-    // initialize local_input
-    auto cur_init = init_;
-    if (scan_type == 1) {
-      local_scan_[local_id] = c10::load(&first_[local_id]);
-    } else {
-      if (local_id > 0)
-        local_scan_[local_id] = c10::load(&first_[local_id - 1]);
-      else
-        local_scan_[local_id] = 0;
-    }
-    if (local_id == 0)
-      local_scan_[local_id] += cur_init;
+  // initialize local_input
+  auto cur_init = init;
+  if (scan_type == 1) {
+    local_scan[local_id] = c10::load(&first[local_id]);
+  } else {
+    if (local_id > 0)
+      local_scan[local_id] = c10::load(&first[local_id - 1]);
+    else
+      local_scan[local_id] = 0;
+  }
+  if (local_id == 0)
+    local_scan[local_id] += cur_init;
+  sycl::group_barrier(item_id.get_group());
+
+  // body of KS algo
+  for (auto __k = 1; __k < N; __k <<= 1) {
+    auto tmp = (local_id >= __k) ? local_scan[local_id - __k] : 0;
     sycl::group_barrier(item_id.get_group());
-
-    // body of KS algo
-    for (auto __k = 1; __k < N_; __k <<= 1) {
-      auto tmp = (local_id >= __k) ? local_scan_[local_id - __k] : 0;
-      sycl::group_barrier(item_id.get_group());
-      local_scan_[local_id] += tmp;
-      sycl::group_barrier(item_id.get_group());
-    }
-
-    // flush result into dst
-    d_first_[local_id] = local_scan_[local_id];
+    local_scan[local_id] += tmp;
+    sycl::group_barrier(item_id.get_group());
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_scan_ = sycl_local_acc_t<T>(N_, cgh);
-  }
-
-  KSScanKernelFunctor(InputIt first, T init, int64_t N, OutputIt d_first)
-      : first_(first), init_(init), N_(N), d_first_(d_first), local_scan_() {}
-
- private:
-  InputIt first_;
-  T init_;
-  int64_t N_;
-  OutputIt d_first_;
-  sycl_local_acc_t<T> local_scan_;
-};
+  // flush result into dst
+  d_first[local_id] = local_scan[local_id];
+}
 
 template <int scan_type, class InputIt, class OutputIt, class T>
-struct KSScanWithCarrierKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto local_id = item_id.get_local_linear_id();
-    auto global_id = item_id.get_global_linear_id();
-    auto group_id = item_id.get_group_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void ks_scan_with_carrier_kernel_fn(
+    InputIt first,
+    T init,
+    int64_t N,
+    T* carry_ptr,
+    int64_t wgroup_size,
+    OutputIt d_first) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto local_id = item_id.get_local_linear_id();
+  auto global_id = item_id.get_global_linear_id();
+  auto group_id = item_id.get_group_linear_id();
+  T* local_scan = static_cast<T*>(syclexp::get_work_group_scratch_memory());
 
-    // initialize local_input
-    auto cur_init = (group_id == 0 ? init_ : 0);
-    if (global_id < N_) {
-      if (scan_type == 1) {
-        local_scan_[local_id] = c10::load(&first_[global_id]);
-      } else {
-        if (local_id > 0)
-          local_scan_[local_id] = c10::load(&first_[global_id - 1]);
-        else
-          local_scan_[local_id] = 0;
-      }
-      if (local_id == 0)
-        local_scan_[local_id] += cur_init;
-      if (local_id == wgroup_size_ - 1) {
-        carry_ptr_[group_id] = c10::load(&first_[global_id]);
-      }
-    }
-    sycl::group_barrier(item_id.get_group());
-
-    // body of KS algo
-    for (auto __k = 1; __k < wgroup_size_; __k <<= 1) {
-      auto tmp = (local_id >= __k) ? local_scan_[local_id - __k] : 0;
-      sycl::group_barrier(item_id.get_group());
-      local_scan_[local_id] += tmp;
-      sycl::group_barrier(item_id.get_group());
-    }
-
-    // flush result into dst
-    if (global_id < N_) {
-      d_first_[global_id] = local_scan_[local_id];
-    }
-    if (local_id == wgroup_size_ - 1) {
-      if (scan_type == 1)
-        carry_ptr_[group_id] = local_scan_[local_id];
+  // initialize local_input
+  auto cur_init = (group_id == 0 ? init : 0);
+  if (global_id < N) {
+    if (scan_type == 1) {
+      local_scan[local_id] = c10::load(&first[global_id]);
+    } else {
+      if (local_id > 0)
+        local_scan[local_id] = c10::load(&first[global_id - 1]);
       else
-        carry_ptr_[group_id] += local_scan_[local_id];
+        local_scan[local_id] = 0;
+    }
+    if (local_id == 0)
+      local_scan[local_id] += cur_init;
+    if (local_id == wgroup_size - 1) {
+      carry_ptr[group_id] = c10::load(&first[global_id]);
     }
   }
+  sycl::group_barrier(item_id.get_group());
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_scan_ = sycl_local_acc_t<T>(wgroup_size_, cgh);
+  // body of KS algo
+  for (auto __k = 1; __k < wgroup_size; __k <<= 1) {
+    auto tmp = (local_id >= __k) ? local_scan[local_id - __k] : 0;
+    sycl::group_barrier(item_id.get_group());
+    local_scan[local_id] += tmp;
+    sycl::group_barrier(item_id.get_group());
   }
 
-  KSScanWithCarrierKernelFunctor(
-      InputIt first,
-      T init,
-      int64_t N,
-      T* carry_ptr,
-      int64_t wgroup_size,
-      OutputIt d_first)
-      : first_(first),
-        init_(init),
-        N_(N),
-        carry_ptr_(carry_ptr),
-        wgroup_size_(wgroup_size),
-        d_first_(d_first),
-        local_scan_() {}
-
- private:
-  InputIt first_;
-  T init_;
-  int64_t N_;
-  T* carry_ptr_;
-  int64_t wgroup_size_;
-  OutputIt d_first_;
-  sycl_local_acc_t<T> local_scan_;
-};
+  // flush result into dst
+  if (global_id < N) {
+    d_first[global_id] = local_scan[local_id];
+  }
+  if (local_id == wgroup_size - 1) {
+    if (scan_type == 1)
+      carry_ptr[group_id] = local_scan[local_id];
+    else
+      carry_ptr[group_id] += local_scan[local_id];
+  }
+}
 
 template <class OutputIt, class T>
-struct ScanAccumulateKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto local_id = item_id.get_local_linear_id();
-    auto global_id = item_id.get_global_linear_id();
-    auto group_id = item_id.get_group_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void scan_accumulate_kernel_fn(
+    OutputIt d_first,
+    T* carry_ptr,
+    int64_t N) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto local_id = item_id.get_local_linear_id();
+  auto global_id = item_id.get_global_linear_id();
+  auto group_id = item_id.get_group_linear_id();
+  T* local_carry = static_cast<T*>(syclexp::get_work_group_scratch_memory());
 
-    if (local_id == 0)
-      local_carry_[0] = carry_ptr_[group_id];
-    sycl::group_barrier(item_id.get_group());
+  if (local_id == 0)
+    local_carry[0] = carry_ptr[group_id];
+  sycl::group_barrier(item_id.get_group());
 
-    if (global_id < N_) {
-      d_first_[global_id] += local_carry_[0];
-    }
+  if (global_id < N) {
+    d_first[global_id] += local_carry[0];
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_carry_ = sycl_local_acc_t<T>(1, cgh);
-    return;
-  }
-
-  ScanAccumulateKernelFunctor(OutputIt d_first, T* carry_ptr, int64_t N)
-      : local_carry_(), d_first_(d_first), carry_ptr_(carry_ptr), N_(N) {}
-
- private:
-  sycl_local_acc_t<T> local_carry_;
-  OutputIt d_first_;
-  T* carry_ptr_;
-  int64_t N_;
-};
+}
 
 template <int scan_type, class InputIt, class OutputIt, class T>
 static inline OutputIt _scan_kernel(
@@ -272,57 +238,63 @@ static inline OutputIt _scan_kernel(
     InputIt last,
     OutputIt d_first,
     T init) {
-  using KSScanKernel = KSScanKernelFunctor<scan_type, InputIt, OutputIt, T>;
-  using KSScanWithCarrierKernel =
-      KSScanWithCarrierKernelFunctor<scan_type, InputIt, OutputIt, T>;
-
   const auto N = std::distance(first, last);
   auto& q = getCurrentSYCLQueue();
-  const int64_t kss_wgroup_size =
-      at::xpu::getKernelMaxWorkGroupSize<KSScanKernel>();
+  const int64_t kss_wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+      ks_scan_kernel_fn<scan_type, InputIt, OutputIt, T>>();
 
   auto options = map_options<T>();
 
   if (N <= kss_wgroup_size) {
     // Kogge-Stone addr algorithm;
-    KSScanKernel kfn1(first, init, N, d_first);
-    sycl_kernel_submit(sycl::range<1>(N), sycl::range<1>(N), q, kfn1);
+    int slm_sz = N * sizeof(T);
+    sycl_kernel_submit<ks_scan_kernel_fn<scan_type, InputIt, OutputIt, T>>(
+        N, N, q, slm_sz, first, init, (int64_t)N, d_first);
 
     return d_first + N;
   }
 
-  const int64_t kssc_wgroup_size =
-      at::xpu::getKernelMaxWorkGroupSize<KSScanWithCarrierKernel>();
+  const int64_t kssc_wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+      ks_scan_with_carrier_kernel_fn<scan_type, InputIt, OutputIt, T>>();
   const auto ngroups = (N + kssc_wgroup_size - 1) / kssc_wgroup_size;
   Tensor carry = at::empty({ngroups}, options);
   T* carry_ptr = carry.data_ptr<T>();
 
   // 1. do exclusive_scan on each workgroups
-  KSScanWithCarrierKernel kfn2(
-      first, init, N, carry_ptr, kssc_wgroup_size, d_first);
-  sycl_kernel_submit(
-      sycl::range<1>(ngroups * kssc_wgroup_size),
-      sycl::range<1>(kssc_wgroup_size),
+  int slm_sz = kssc_wgroup_size * sizeof(T);
+  sycl_kernel_submit<
+      ks_scan_with_carrier_kernel_fn<scan_type, InputIt, OutputIt, T>>(
+      ngroups * kssc_wgroup_size,
+      kssc_wgroup_size,
       q,
-      kfn2);
+      slm_sz,
+      first,
+      init,
+      (int64_t)N,
+      carry_ptr,
+      (int64_t)kssc_wgroup_size,
+      d_first);
 
   // 2. recursion for carry
   _scan_kernel<0>(carry_ptr, carry_ptr + ngroups, carry_ptr, (T)0);
 
   // 3. reduce among all work groups and flush data to dst
   // Same work-group size as step 1: each item finds its carry by group id.
-  ScanAccumulateKernelFunctor<OutputIt, T> kfn3(d_first, carry_ptr, N);
-
-  const int64_t sa_wgroup_size = at::xpu::getKernelMaxWorkGroupSize(kfn3);
+  const int64_t sa_wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+      scan_accumulate_kernel_fn<OutputIt, T>>();
   TORCH_INTERNAL_ASSERT(
       kssc_wgroup_size <= sa_wgroup_size,
       "_scan_kernel: work group size doesn't match!");
 
-  sycl_kernel_submit(
-      sycl::range<1>(ngroups * kssc_wgroup_size),
-      sycl::range<1>(kssc_wgroup_size),
+  int sa_slm_sz = 1 * sizeof(T);
+  sycl_kernel_submit<scan_accumulate_kernel_fn<OutputIt, T>>(
+      ngroups * kssc_wgroup_size,
+      kssc_wgroup_size,
       q,
-      kfn3);
+      sa_slm_sz,
+      d_first,
+      carry_ptr,
+      (int64_t)N);
 
   return d_first + N;
 }
@@ -348,53 +320,47 @@ static inline OutputIt inclusive_scan(
 }
 
 template <typename index_t, class InputIt, class OutputIt, class UnaryPredicate>
-struct PredictKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if (first_) {
-      gmask_ptr_[item_id] =
-          static_cast<index_t>(static_cast<bool>(pred_(first_[item_id])));
-    } else {
-      gmask_ptr_[item_id] =
-          static_cast<index_t>(static_cast<bool>(pred_(item_id)));
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void predict_kernel_fn(
+    InputIt first,
+    UnaryPredicate pred,
+    index_t* gmask_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  if (first) {
+    gmask_ptr[item_id] =
+        static_cast<index_t>(static_cast<bool>(pred(first[item_id])));
+  } else {
+    gmask_ptr[item_id] = static_cast<index_t>(static_cast<bool>(pred(item_id)));
   }
-  PredictKernelFunctor(InputIt first, UnaryPredicate pred, index_t* gmask_ptr)
-      : first_(first), pred_(pred), gmask_ptr_(gmask_ptr) {}
-
- private:
-  InputIt first_;
-  UnaryPredicate pred_;
-  index_t* gmask_ptr_;
-};
+}
 
 template <typename T, class InputIt, class OutputIt, class BinaryPredicate>
-struct InclusiveScanIfKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    d_first_[item_id] = static_cast<T>(first_[item_id]);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void inclusive_scan_if_kernel_fn(
+    InputIt first,
+    InputIt mask_ptr,
+    OutputIt d_first,
+    BinaryPredicate p,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  d_first[item_id] = static_cast<T>(first[item_id]);
 
-    if (mask_ptr_[item_id] == 0) {
-      for (int64_t _k = 1; (int64_t)item_id - _k >= 0; _k++) {
-        auto tmp = first_[item_id - _k];
-        d_first_[item_id] = static_cast<T>(p_(d_first_[item_id], tmp));
-        if (mask_ptr_[item_id - _k] != 0)
-          break;
-      }
+  if (mask_ptr[item_id] == 0) {
+    for (int64_t _k = 1; (int64_t)item_id - _k >= 0; _k++) {
+      auto tmp = first[item_id - _k];
+      d_first[item_id] = static_cast<T>(p(d_first[item_id], tmp));
+      if (mask_ptr[item_id - _k] != 0)
+        break;
     }
   }
-
-  InclusiveScanIfKernelFunctor(
-      InputIt first,
-      InputIt mask_ptr,
-      OutputIt d_first,
-      BinaryPredicate p)
-      : first_(first), mask_ptr_(mask_ptr), d_first_(d_first), p_(p) {}
-
- private:
-  InputIt first_;
-  InputIt mask_ptr_;
-  OutputIt d_first_;
-  BinaryPredicate p_;
-};
+}
 
 template <typename T, class InputIt, class OutputIt, class BinaryPredicate>
 OutputIt inclusive_scan_if(
@@ -407,32 +373,37 @@ OutputIt inclusive_scan_if(
   const auto N = std::distance(first, last);
   auto& q = getCurrentSYCLQueue();
 
-  InclusiveScanIfKernelFunctor<T, InputIt, OutputIt, BinaryPredicate> ifn(
-      first, mask_ptr, d_first, p);
-  sycl_kernel_submit(sycl::range<1>(N), q, ifn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      inclusive_scan_if_kernel_fn<T, InputIt, OutputIt, BinaryPredicate>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<
+      inclusive_scan_if_kernel_fn<T, InputIt, OutputIt, BinaryPredicate>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      first,
+      mask_ptr,
+      d_first,
+      p,
+      (int64_t)N);
 
   return d_first;
 }
 
 template <typename index_t, class InputIt, class OutputIt>
-struct ReverseCopyKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    d_first_[N_ - tpos_ptr_[item_id]] = first_[item_id];
-  }
-
-  ReverseCopyKernelFunctor(
-      InputIt first,
-      OutputIt d_first,
-      index_t* tpos_ptr,
-      index_t N)
-      : first_(first), d_first_(d_first), tpos_ptr_(tpos_ptr), N_(N) {}
-
- private:
-  InputIt first_;
-  OutputIt d_first_;
-  index_t* tpos_ptr_;
-  index_t N_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void reverse_copy_kernel_fn(
+    InputIt first,
+    OutputIt d_first,
+    index_t* tpos_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  d_first[N - tpos_ptr[item_id]] = first[item_id];
+}
 
 template <typename index_t, class InputIt, class OutputIt>
 static inline OutputIt reverse_copy(
@@ -453,41 +424,43 @@ static inline OutputIt reverse_copy(
   inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
 
   // copy selected data into dst
-  ReverseCopyKernelFunctor<index_t, InputIt, OutputIt> kfn(
-      first, d_first, tpos_ptr, static_cast<index_t>(N));
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      reverse_copy_kernel_fn<index_t, InputIt, OutputIt>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<reverse_copy_kernel_fn<index_t, InputIt, OutputIt>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      first,
+      d_first,
+      tpos_ptr,
+      static_cast<int64_t>(N));
 
   index_t M = target_pos[N - 1].template item<index_t>();
   return d_first + M;
 }
 
 template <typename index_t, class InputIt, class OutputIt>
-struct CopyIfKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if (gmask_ptr_[item_id] != 0) {
-      if (first_) {
-        d_first_[tpos_ptr_[item_id] - /*inclusive shift*/ 1] = first_[item_id];
-      } else {
-        d_first_[tpos_ptr_[item_id] - /*inclusive shift*/ 1] = item_id;
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void copy_if_kernel_fn(
+    InputIt first,
+    OutputIt d_first,
+    index_t* gmask_ptr,
+    index_t* tpos_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  if (gmask_ptr[item_id] != 0) {
+    if (first) {
+      d_first[tpos_ptr[item_id] - /*inclusive shift*/ 1] = first[item_id];
+    } else {
+      d_first[tpos_ptr[item_id] - /*inclusive shift*/ 1] = item_id;
     }
   }
-  CopyIfKernelFunctor(
-      InputIt first,
-      OutputIt d_first,
-      index_t* gmask_ptr,
-      index_t* tpos_ptr)
-      : first_(first),
-        d_first_(d_first),
-        gmask_ptr_(gmask_ptr),
-        tpos_ptr_(tpos_ptr) {}
-
- private:
-  InputIt first_;
-  OutputIt d_first_;
-  index_t* gmask_ptr_;
-  index_t* tpos_ptr_;
-};
+}
 
 template <typename index_t, class InputIt, class OutputIt, class UnaryPredicate>
 static inline OutputIt copy_if(
@@ -507,17 +480,30 @@ static inline OutputIt copy_if(
   index_t* tpos_ptr = target_pos.data_ptr<index_t>();
 
   // 1. get mask for `if` positions
-  PredictKernelFunctor<index_t, InputIt, OutputIt, UnaryPredicate> kfn1(
-      first, pred, gmask_ptr);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      predict_kernel_fn<index_t, InputIt, OutputIt, UnaryPredicate>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<
+      predict_kernel_fn<index_t, InputIt, OutputIt, UnaryPredicate>>(
+      num_groups * wg_size, wg_size, q, 0, first, pred, gmask_ptr, (int64_t)N);
 
   // 2. get target positions(with shift -1) using inclusive_scan
   inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
 
   // 3. copy selected data into dst
-  CopyIfKernelFunctor<index_t, InputIt, OutputIt> kfn2(
-      first, d_first, gmask_ptr, tpos_ptr);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn2);
+  int64_t wg_size2 = at::xpu::getKernelMaxWorkGroupSize<
+      copy_if_kernel_fn<index_t, InputIt, OutputIt>>();
+  int64_t num_groups2 = (N + wg_size2 - 1) / wg_size2;
+  sycl_kernel_submit<copy_if_kernel_fn<index_t, InputIt, OutputIt>>(
+      num_groups2 * wg_size2,
+      wg_size2,
+      q,
+      0,
+      first,
+      d_first,
+      gmask_ptr,
+      tpos_ptr,
+      (int64_t)N);
 
   index_t M = target_pos[N - 1].template item<index_t>();
   return d_first + M;
@@ -528,21 +514,18 @@ template <
     class InputIt,
     class OutputIt,
     class UnaryOperation>
-struct TransformUnaryKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    d_first_[item_id] = static_cast<output_t>(unary_op_(first1_[item_id]));
-  }
-  TransformUnaryKernelFunctor(
-      InputIt first1,
-      OutputIt d_first,
-      UnaryOperation unary_op)
-      : first1_(first1), d_first_(d_first), unary_op_(unary_op) {}
-
- private:
-  InputIt first1_;
-  OutputIt d_first_;
-  UnaryOperation unary_op_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void transform_unary_kernel_fn(
+    InputIt first1,
+    OutputIt d_first,
+    UnaryOperation unary_op,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  d_first[item_id] = static_cast<output_t>(unary_op(first1[item_id]));
+}
 
 template <
     typename output_t,
@@ -558,9 +541,19 @@ static inline OutputIt transform(
   const auto N = std::distance(first1, last1);
   auto& q = getCurrentSYCLQueue();
 
-  TransformUnaryKernelFunctor<output_t, InputIt, OutputIt, UnaryOperation> kfn(
-      first1, d_first, unary_op);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      transform_unary_kernel_fn<output_t, InputIt, OutputIt, UnaryOperation>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<
+      transform_unary_kernel_fn<output_t, InputIt, OutputIt, UnaryOperation>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      first1,
+      d_first,
+      unary_op,
+      (int64_t)N);
 
   return d_first + N;
 }
@@ -571,27 +564,20 @@ template <
     class InputIt2,
     class OutputIt,
     class BinaryOperation>
-struct TransformBinaryKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    d_first_[item_id] =
-        static_cast<output_t>(binary_op_(first1_[item_id], first2_[item_id]));
-  }
-  TransformBinaryKernelFunctor(
-      InputIt1 first1,
-      InputIt2 first2,
-      OutputIt d_first,
-      BinaryOperation binary_op)
-      : first1_(first1),
-        first2_(first2),
-        d_first_(d_first),
-        binary_op_(binary_op) {}
-
- private:
-  InputIt1 first1_;
-  InputIt2 first2_;
-  OutputIt d_first_;
-  BinaryOperation binary_op_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void transform_binary_kernel_fn(
+    InputIt1 first1,
+    InputIt2 first2,
+    OutputIt d_first,
+    BinaryOperation binary_op,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  d_first[item_id] =
+      static_cast<output_t>(binary_op(first1[item_id], first2[item_id]));
+}
 
 template <
     typename output_t,
@@ -609,14 +595,29 @@ static inline OutputIt transform(
   const auto N = std::distance(first1, last1);
   auto& q = getCurrentSYCLQueue();
 
-  TransformBinaryKernelFunctor<
+  int64_t wg_size =
+      at::xpu::getKernelMaxWorkGroupSize<transform_binary_kernel_fn<
+          output_t,
+          InputIt1,
+          InputIt2,
+          OutputIt,
+          BinaryOperation>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<transform_binary_kernel_fn<
       output_t,
       InputIt1,
       InputIt2,
       OutputIt,
-      BinaryOperation>
-      kfn(first1, first2, d_first, binary_op);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+      BinaryOperation>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      first1,
+      first2,
+      d_first,
+      binary_op,
+      (int64_t)N);
 
   return d_first + N;
 }
@@ -627,28 +628,21 @@ template <
     class InputIt2,
     class OutputIt,
     class BinaryOperation>
-struct TransformFirstTrueKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    first1_[0] = 1;
-    d_first_[item_id] =
-        static_cast<output_t>(binary_op_(first1_[item_id], first2_[item_id]));
-  }
-  TransformFirstTrueKernelFunctor(
-      InputIt1 first1,
-      InputIt2 first2,
-      OutputIt d_first,
-      BinaryOperation binary_op)
-      : first1_(first1),
-        first2_(first2),
-        d_first_(d_first),
-        binary_op_(binary_op) {}
-
- private:
-  InputIt1 first1_;
-  InputIt2 first2_;
-  OutputIt d_first_;
-  BinaryOperation binary_op_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void transform_first_true_kernel_fn(
+    InputIt1 first1,
+    InputIt2 first2,
+    OutputIt d_first,
+    BinaryOperation binary_op,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  first1[0] = 1;
+  d_first[item_id] =
+      static_cast<output_t>(binary_op(first1[item_id], first2[item_id]));
+}
 
 template <
     typename output_t,
@@ -666,29 +660,42 @@ static inline OutputIt transform_first_true(
   const auto N = std::distance(first1, last1);
   auto& q = getCurrentSYCLQueue();
 
-  TransformFirstTrueKernelFunctor<
+  int64_t wg_size =
+      at::xpu::getKernelMaxWorkGroupSize<transform_first_true_kernel_fn<
+          output_t,
+          InputIt1,
+          InputIt2,
+          OutputIt,
+          BinaryOperation>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<transform_first_true_kernel_fn<
       output_t,
       InputIt1,
       InputIt2,
       OutputIt,
-      BinaryOperation>
-      kfn(first1, first2, d_first, binary_op);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+      BinaryOperation>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      first1,
+      first2,
+      d_first,
+      binary_op,
+      (int64_t)N);
 
   return d_first + N;
 }
 
 template <class T, class ForwardIt>
-struct ItoAKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    first_[item_id] = value_ + static_cast<T>(item_id);
-  }
-  ItoAKernelFunctor(ForwardIt first, T value) : first_(first), value_(value) {}
-
- private:
-  ForwardIt first_;
-  T value_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void ito_a_kernel_fn(ForwardIt first, T value, int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  first[item_id] = value + static_cast<T>(item_id);
+}
 
 template <class T, class ForwardIt>
 static inline void itoa(ForwardIt first, ForwardIt last, T value) {
@@ -696,44 +703,35 @@ static inline void itoa(ForwardIt first, ForwardIt last, T value) {
   const auto N = std::distance(first, last);
   auto& q = getCurrentSYCLQueue();
 
-  ItoAKernelFunctor<T, ForwardIt> kfn(first, value);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+  int64_t wg_size =
+      at::xpu::getKernelMaxWorkGroupSize<ito_a_kernel_fn<T, ForwardIt>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<ito_a_kernel_fn<T, ForwardIt>>(
+      num_groups * wg_size, wg_size, q, 0, first, value, (int64_t)N);
 }
 
 template <class T, class InputIt1, class InputIt2, class OutputIt>
-struct PiecewiseKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto start = cnt_start_first[item_id];
-    auto end = cnt_end_first[item_id];
-    pstl::inclusive_scan(
-        first + static_cast<T>(start),
-        first + static_cast<T>(start) + static_cast<T>(end) + 1,
-        d_first,
-        static_cast<T>(0));
-  }
-
-  PiecewiseKernelFunctor(
-      InputIt1 first,
-      InputIt1 last,
-      InputIt1 cnt_start_first,
-      InputIt1 cnt_end_first,
-      InputIt2 flag_first,
-      OutputIt d_first)
-      : first(first),
-        last(last),
-        cnt_start_first(cnt_start_first),
-        cnt_end_first(cnt_end_first),
-        flag_first(flag_first),
-        d_first(d_first) {}
-
- private:
-  InputIt1 first;
-  InputIt1 last;
-  InputIt1 cnt_start_first;
-  InputIt1 cnt_end_first;
-  InputIt2 flag_first;
-  OutputIt d_first;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void piecewise_kernel_fn(
+    InputIt1 first,
+    InputIt1 last,
+    InputIt1 cnt_start_first,
+    InputIt1 cnt_end_first,
+    InputIt2 flag_first,
+    OutputIt d_first,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  auto start = cnt_start_first[item_id];
+  auto end = cnt_end_first[item_id];
+  pstl::inclusive_scan(
+      first + static_cast<T>(start),
+      first + static_cast<T>(start) + static_cast<T>(end) + 1,
+      d_first,
+      static_cast<T>(0));
+}
 
 template <class T, class InputIt1, class InputIt2, class OutputIt>
 static inline void piecewise_sum(
@@ -747,67 +745,69 @@ static inline void piecewise_sum(
   const auto N = std::distance(first, last);
   auto& q = getCurrentSYCLQueue();
 
-  PiecewiseKernelFunctor<T, InputIt1, InputIt2, OutputIt> kfn(
-      first, last, cnt_start_first, cnt_end_first, flag_first, d_first);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      piecewise_kernel_fn<T, InputIt1, InputIt2, OutputIt>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<piecewise_kernel_fn<T, InputIt1, InputIt2, OutputIt>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      first,
+      last,
+      cnt_start_first,
+      cnt_end_first,
+      flag_first,
+      d_first,
+      (int64_t)N);
 }
 
 template <typename index_t, class ForwardIt, class BinaryPredicate>
-struct ExclusiveAdjacentDifferenceKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if (item_id > 0)
-      gmask_ptr_[item_id] = static_cast<index_t>(
-          static_cast<bool>(!p_(first_[item_id - 1], first_[item_id])));
-    else
-      gmask_ptr_[item_id] = static_cast<index_t>(1); // Exclude first_[0]
-  }
-  ExclusiveAdjacentDifferenceKernelFunctor(
-      ForwardIt first,
-      index_t* gmask_ptr,
-      BinaryPredicate p)
-      : first_(first), gmask_ptr_(gmask_ptr), p_(p) {}
-
- private:
-  ForwardIt first_;
-  index_t* gmask_ptr_;
-  BinaryPredicate p_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void exclusive_adjacent_difference_kernel_fn(
+    ForwardIt first,
+    index_t* gmask_ptr,
+    BinaryPredicate p,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  if (item_id > 0)
+    gmask_ptr[item_id] = static_cast<index_t>(
+        static_cast<bool>(!p(first[item_id - 1], first[item_id])));
+  else
+    gmask_ptr[item_id] = static_cast<index_t>(1); // Exclude first[0]
+}
 
 template <typename T, typename index_t, class ForwardIt, class BinaryPredicate>
-struct ExclusiveCopyIfKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if (gmask_ptr_[item_id] != 0)
-      scratchpad_ptr_[tpos_ptr_[item_id]] = first_[item_id];
-  }
-  ExclusiveCopyIfKernelFunctor(
-      ForwardIt first,
-      index_t* gmask_ptr,
-      index_t* tpos_ptr,
-      T* scratchpad_ptr)
-      : first_(first),
-        gmask_ptr_(gmask_ptr),
-        tpos_ptr_(tpos_ptr),
-        scratchpad_ptr_(scratchpad_ptr) {}
-
- private:
-  ForwardIt first_;
-  index_t* gmask_ptr_;
-  index_t* tpos_ptr_;
-  T* scratchpad_ptr_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void exclusive_copy_if_kernel_fn(
+    ForwardIt first,
+    index_t* gmask_ptr,
+    index_t* tpos_ptr,
+    T* scratchpad_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  if (gmask_ptr[item_id] != 0)
+    scratchpad_ptr[tpos_ptr[item_id]] = first[item_id];
+}
 
 template <typename T, class ForwardIt>
-struct SimpleCopyKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    first_[item_id] = scratchpad_ptr_[item_id];
-  }
-  SimpleCopyKernelFunctor(ForwardIt first, T* scratchpad_ptr)
-      : first_(first), scratchpad_ptr_(scratchpad_ptr) {}
-
- private:
-  ForwardIt first_;
-  T* scratchpad_ptr_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void simple_copy_kernel_fn(
+    ForwardIt first,
+    T* scratchpad_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  first[item_id] = scratchpad_ptr[item_id];
+}
 
 template <typename T, typename index_t, class ForwardIt, class BinaryPredicate>
 ForwardIt unique(ForwardIt first, ForwardIt last, BinaryPredicate p) {
@@ -824,9 +824,19 @@ ForwardIt unique(ForwardIt first, ForwardIt last, BinaryPredicate p) {
   index_t* tpos_ptr = target_pos.data_ptr<index_t>();
 
   // 1. get mask for `if` positions
-  ExclusiveAdjacentDifferenceKernelFunctor<index_t, ForwardIt, BinaryPredicate>
-      kfn1(first, gmask_ptr, p);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        exclusive_adjacent_difference_kernel_fn<
+            index_t,
+            ForwardIt,
+            BinaryPredicate>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<exclusive_adjacent_difference_kernel_fn<
+        index_t,
+        ForwardIt,
+        BinaryPredicate>>(
+        num_groups * wg_size, wg_size, q, 0, first, gmask_ptr, p, (int64_t)N);
+  }
 
   // 2. get target positions with exclusive_scan
   exclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
@@ -835,15 +845,33 @@ ForwardIt unique(ForwardIt first, ForwardIt last, BinaryPredicate p) {
   Tensor scratchpad = at::empty({N}, options);
   T* scratchpad_ptr = scratchpad.data_ptr<T>();
 
-  ExclusiveCopyIfKernelFunctor<T, index_t, ForwardIt, BinaryPredicate> kfn2(
-      first, gmask_ptr, tpos_ptr, scratchpad_ptr);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn2);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        exclusive_copy_if_kernel_fn<T, index_t, ForwardIt, BinaryPredicate>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<
+        exclusive_copy_if_kernel_fn<T, index_t, ForwardIt, BinaryPredicate>>(
+        num_groups * wg_size,
+        wg_size,
+        q,
+        0,
+        first,
+        gmask_ptr,
+        tpos_ptr,
+        scratchpad_ptr,
+        (int64_t)N);
+  }
 
   index_t M = global_mask[N - 1].template item<index_t>() +
       target_pos[N - 1].template item<index_t>();
 
-  SimpleCopyKernelFunctor<T, ForwardIt> kfn3(first, scratchpad_ptr);
-  sycl_kernel_submit(sycl::range<1>(M), q, kfn3);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        simple_copy_kernel_fn<T, ForwardIt>>();
+    int64_t num_groups = (M + wg_size - 1) / wg_size;
+    sycl_kernel_submit<simple_copy_kernel_fn<T, ForwardIt>>(
+        num_groups * wg_size, wg_size, q, 0, first, scratchpad_ptr, (int64_t)M);
+  }
 
   return first + M;
 }
@@ -855,58 +883,40 @@ template <
     class ForwardIt,
     class ZipForwardIt,
     class BinaryPredicate>
-struct ExclusiveCopyIfWithZipKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if (gmask_ptr_[item_id] != 0) {
-      scratchpad_ptr_[tpos_ptr_[item_id]] = first_[item_id];
-      z_scratchpad_ptr_[tpos_ptr_[item_id]] = z_first_[item_id];
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void exclusive_copy_if_with_zip_kernel_fn(
+    ForwardIt first,
+    ZipForwardIt z_first,
+    index_t* gmask_ptr,
+    index_t* tpos_ptr,
+    T* scratchpad_ptr,
+    zT* z_scratchpad_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  if (gmask_ptr[item_id] != 0) {
+    scratchpad_ptr[tpos_ptr[item_id]] = first[item_id];
+    z_scratchpad_ptr[tpos_ptr[item_id]] = z_first[item_id];
   }
-  ExclusiveCopyIfWithZipKernelFunctor(
-      ForwardIt first,
-      ZipForwardIt z_first,
-      index_t* gmask_ptr,
-      index_t* tpos_ptr,
-      T* scratchpad_ptr,
-      zT* z_scratchpad_ptr)
-      : first_(first),
-        z_first_(z_first),
-        gmask_ptr_(gmask_ptr),
-        tpos_ptr_(tpos_ptr),
-        scratchpad_ptr_(scratchpad_ptr),
-        z_scratchpad_ptr_(z_scratchpad_ptr) {}
-
- private:
-  ForwardIt first_;
-  ZipForwardIt z_first_;
-  index_t* gmask_ptr_;
-  index_t* tpos_ptr_;
-  T* scratchpad_ptr_;
-  zT* z_scratchpad_ptr_;
-};
+}
 
 template <typename T, typename zT, class ForwardIt, class ZipForwardIt>
-struct SimpleCopyWithZipKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    first_[item_id] = scratchpad_ptr_[item_id];
-    z_first_[item_id] = z_scratchpad_ptr_[item_id];
-  }
-  SimpleCopyWithZipKernelFunctor(
-      ForwardIt first,
-      ZipForwardIt z_first,
-      T* scratchpad_ptr,
-      zT* z_scratchpad_ptr)
-      : first_(first),
-        z_first_(z_first),
-        scratchpad_ptr_(scratchpad_ptr),
-        z_scratchpad_ptr_(z_scratchpad_ptr) {}
-
- private:
-  ForwardIt first_;
-  ZipForwardIt z_first_;
-  T* scratchpad_ptr_;
-  zT* z_scratchpad_ptr_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void simple_copy_with_zip_kernel_fn(
+    ForwardIt first,
+    ZipForwardIt z_first,
+    T* scratchpad_ptr,
+    zT* z_scratchpad_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  first[item_id] = scratchpad_ptr[item_id];
+  z_first[item_id] = z_scratchpad_ptr[item_id];
+}
 
 template <
     typename T,
@@ -934,9 +944,19 @@ std::tuple<ForwardIt, ZipForwardIt> unique_with_zip(
   index_t* tpos_ptr = target_pos.data_ptr<index_t>();
 
   // 1. get mask for `if` positions
-  ExclusiveAdjacentDifferenceKernelFunctor<index_t, ForwardIt, BinaryPredicate>
-      kfn1(first, gmask_ptr, p);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        exclusive_adjacent_difference_kernel_fn<
+            index_t,
+            ForwardIt,
+            BinaryPredicate>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<exclusive_adjacent_difference_kernel_fn<
+        index_t,
+        ForwardIt,
+        BinaryPredicate>>(
+        num_groups * wg_size, wg_size, q, 0, first, gmask_ptr, p, (int64_t)N);
+  }
 
   // 2. get target positions with exclusive_scan
   exclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
@@ -947,28 +967,55 @@ std::tuple<ForwardIt, ZipForwardIt> unique_with_zip(
   T* scratchpad_ptr = scratchpad.data_ptr<T>();
   zT* z_scratchpad_ptr = z_scratchpad.data_ptr<zT>();
 
-  ExclusiveCopyIfWithZipKernelFunctor<
-      T,
-      zT,
-      index_t,
-      ForwardIt,
-      ZipForwardIt,
-      BinaryPredicate>
-      kfn2(
-          first,
-          z_first,
-          gmask_ptr,
-          tpos_ptr,
-          scratchpad_ptr,
-          z_scratchpad_ptr);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn2);
+  {
+    int64_t wg_size =
+        at::xpu::getKernelMaxWorkGroupSize<exclusive_copy_if_with_zip_kernel_fn<
+            T,
+            zT,
+            index_t,
+            ForwardIt,
+            ZipForwardIt,
+            BinaryPredicate>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<exclusive_copy_if_with_zip_kernel_fn<
+        T,
+        zT,
+        index_t,
+        ForwardIt,
+        ZipForwardIt,
+        BinaryPredicate>>(
+        num_groups * wg_size,
+        wg_size,
+        q,
+        0,
+        first,
+        z_first,
+        gmask_ptr,
+        tpos_ptr,
+        scratchpad_ptr,
+        z_scratchpad_ptr,
+        (int64_t)N);
+  }
 
   index_t M = global_mask[N - 1].template item<index_t>() +
       target_pos[N - 1].template item<index_t>();
 
-  SimpleCopyWithZipKernelFunctor<T, zT, ForwardIt, ZipForwardIt> kfn3(
-      first, z_first, scratchpad_ptr, z_scratchpad_ptr);
-  sycl_kernel_submit(sycl::range<1>(M), q, kfn3);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        simple_copy_with_zip_kernel_fn<T, zT, ForwardIt, ZipForwardIt>>();
+    int64_t num_groups = (M + wg_size - 1) / wg_size;
+    sycl_kernel_submit<
+        simple_copy_with_zip_kernel_fn<T, zT, ForwardIt, ZipForwardIt>>(
+        num_groups * wg_size,
+        wg_size,
+        q,
+        0,
+        first,
+        z_first,
+        scratchpad_ptr,
+        z_scratchpad_ptr,
+        (int64_t)M);
+  }
 
   return std::make_tuple<ForwardIt, ZipForwardIt>(first + M, z_first + M);
 }
@@ -978,25 +1025,22 @@ template <
     class InputIt,
     class OutputIt,
     class BinaryOperation>
-struct AdjacentDifferenceKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if (item_id > 0)
-      adiff_[item_id] =
-          static_cast<output_t>(op_(first_[item_id - 1], first_[item_id]));
-    else
-      adiff_[item_id] = static_cast<output_t>(first_[item_id]);
-  }
-  AdjacentDifferenceKernelFunctor(
-      InputIt first,
-      BinaryOperation op,
-      OutputIt adiff)
-      : first_(first), op_(op), adiff_(adiff) {}
-
- private:
-  InputIt first_;
-  BinaryOperation op_;
-  OutputIt adiff_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void adjacent_difference_kernel_fn(
+    InputIt first,
+    BinaryOperation op,
+    OutputIt adiff,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  if (item_id > 0)
+    adiff[item_id] =
+        static_cast<output_t>(op(first[item_id - 1], first[item_id]));
+  else
+    adiff[item_id] = static_cast<output_t>(first[item_id]);
+}
 
 template <
     typename output_t,
@@ -1020,13 +1064,28 @@ OutputIt adjacent_difference(
     adiff = scratchpad.data_ptr<output_t>();
   }
 
-  AdjacentDifferenceKernelFunctor<output_t, InputIt, OutputIt, BinaryOperation>
-      kfn1(first, op, adiff);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
+  {
+    int64_t wg_size =
+        at::xpu::getKernelMaxWorkGroupSize<adjacent_difference_kernel_fn<
+            output_t,
+            InputIt,
+            OutputIt,
+            BinaryOperation>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<adjacent_difference_kernel_fn<
+        output_t,
+        InputIt,
+        OutputIt,
+        BinaryOperation>>(
+        num_groups * wg_size, wg_size, q, 0, first, op, adiff, (int64_t)N);
+  }
 
   if (is_inplace) {
-    SimpleCopyKernelFunctor<output_t, OutputIt> kfn2(d_first, adiff);
-    sycl_kernel_submit(sycl::range<1>(N), q, kfn2);
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        simple_copy_kernel_fn<output_t, OutputIt>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<simple_copy_kernel_fn<output_t, OutputIt>>(
+        num_groups * wg_size, wg_size, q, 0, d_first, adiff, (int64_t)N);
   }
 
   return d_first + N;
@@ -1046,21 +1105,18 @@ OutputIt adjacent_difference(InputIt first, InputIt last, OutputIt d_first) {
 }
 
 template <typename output_t, typename index_t, class OutputIt>
-struct IndexCopyKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    d_first_[item_id] = range_ptr_[tpos_ptr_[item_id]];
-  }
-  IndexCopyKernelFunctor(
-      OutputIt d_first,
-      output_t* range_ptr,
-      index_t* tpos_ptr)
-      : d_first_(d_first), range_ptr_(range_ptr), tpos_ptr_(tpos_ptr) {}
-
- private:
-  OutputIt d_first_;
-  output_t* range_ptr_;
-  index_t* tpos_ptr_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void index_copy_kernel_fn(
+    OutputIt d_first,
+    output_t* range_ptr,
+    index_t* tpos_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  d_first[item_id] = range_ptr[tpos_ptr[item_id]];
+}
 
 template <typename output_t, typename index_t>
 struct CountBySegmentCopyIfKernelFunctor {
@@ -1099,9 +1155,19 @@ OutputIt count_by_segment(
   index_t* tpos_ptr = target_pos.data_ptr<index_t>();
 
   // 1. get mask for `if` positions
-  ExclusiveAdjacentDifferenceKernelFunctor<index_t, InputIt, BinaryPredicate>
-      kfn1(first, gmask_ptr, p);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        exclusive_adjacent_difference_kernel_fn<
+            index_t,
+            InputIt,
+            BinaryPredicate>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<exclusive_adjacent_difference_kernel_fn<
+        index_t,
+        InputIt,
+        BinaryPredicate>>(
+        num_groups * wg_size, wg_size, q, 0, first, gmask_ptr, p, (int64_t)N);
+  }
 
   // 2. get target positions with inclusive_scan
   constexpr index_t ZERO_BASED_INDEX_OFFSET = static_cast<index_t>(-1);
@@ -1127,9 +1193,20 @@ OutputIt count_by_segment(
       picked_range_begin + 1, picked_range_begin + num_out + 1, range_begin);
 
   // 4. flush range to every elements of counts
-  IndexCopyKernelFunctor<output_t, index_t, OutputIt> kfn2(
-      d_first, range_ptr, tpos_ptr);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn2);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        index_copy_kernel_fn<output_t, index_t, OutputIt>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<index_copy_kernel_fn<output_t, index_t, OutputIt>>(
+        num_groups * wg_size,
+        wg_size,
+        q,
+        0,
+        d_first,
+        range_ptr,
+        tpos_ptr,
+        (int64_t)N);
+  }
 
   return d_first + N;
 }
@@ -1158,13 +1235,13 @@ inline void compare_and_swap(
 // bubble sort for the first round sorting
 template <typename KeyType, typename ValueType, typename CompFunc>
 inline void leaf_sort(
-    const sycl::item<1>& item,
+    size_t item_id,
     KeyType* key,
     ValueType* val,
     size_t n,
     size_t sorted_sz,
     const CompFunc& comp_t) {
-  auto start = item.get_linear_id() * n;
+  auto start = item_id * n;
   auto end = std::min(start + n, sorted_sz);
   for (size_t i = start; i < end; ++i) {
     for (size_t j = start + 1; j < start + end - i; ++j) {
@@ -1203,40 +1280,35 @@ inline size_t lower_bound(
 }
 
 template <class T, class ForwardIt, class InputIt, class OutputIt>
-struct LowerBoundTenFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto pilot = values_begin[item_id];
-    auto N = std::distance(begin, end);
-    auto cur = N;
-    T first = 0;
-    T it;
-    while (N > 0) {
-      it = first;
-      cur = N / 2;
-      it += cur;
-      if (begin[it] < pilot) {
-        N -= cur + 1;
-        first = ++it;
-      } else {
-        N = cur;
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void lower_bound_ten_fn(
+    ForwardIt begin,
+    ForwardIt end,
+    InputIt values_begin,
+    OutputIt d_ptr,
+    int64_t num_values) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= num_values)
+    return;
+  auto pilot = values_begin[item_id];
+  auto N = std::distance(begin, end);
+  auto cur = N;
+  T first = 0;
+  T it;
+  while (N > 0) {
+    it = first;
+    cur = N / 2;
+    it += cur;
+    if (begin[it] < pilot) {
+      N -= cur + 1;
+      first = ++it;
+    } else {
+      N = cur;
     }
-    d_ptr[item_id] = first;
   }
-
-  LowerBoundTenFunctor(
-      ForwardIt begin,
-      ForwardIt end,
-      InputIt values_begin,
-      OutputIt d_ptr)
-      : begin(begin), end(end), values_begin(values_begin), d_ptr(d_ptr) {}
-
- private:
-  ForwardIt begin;
-  ForwardIt end;
-  InputIt values_begin;
-  OutputIt d_ptr;
-};
+  d_ptr[item_id] = first;
+}
 
 template <class T, class ForwardIt, class InputIt, class OutputIt>
 OutputIt lower_bound_tensor(
@@ -1250,9 +1322,19 @@ OutputIt lower_bound_tensor(
   const auto val_N = std::distance(values_begin, values_end);
   auto& q = getCurrentSYCLQueue();
 
-  LowerBoundTenFunctor<T, ForwardIt, InputIt, OutputIt> kfn(
-      begin, end, values_begin, output);
-  sycl_kernel_submit(sycl::range<1>(val_N), q, kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      lower_bound_ten_fn<T, ForwardIt, InputIt, OutputIt>>();
+  int64_t num_groups = (val_N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<lower_bound_ten_fn<T, ForwardIt, InputIt, OutputIt>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      begin,
+      end,
+      values_begin,
+      output,
+      (int64_t)val_N);
 
   return output + val_N;
 }
@@ -1405,55 +1487,37 @@ template <
     typename ValueType,
     typename key_vec_t,
     typename val_vec_t>
-struct VecCopyKernelImplFunctor {
-  void operator()(sycl::item<1> item) const {
-    auto item_id = item.get_linear_id();
-    int remaining = sort_sz_ - item_id * vec_size;
-    if (remaining < vec_size) {
-      for (int index = 0; index < remaining; index++) {
-        auto offset = item_id * vec_size + index;
-        key_[offset] = tmp_key_data_[offset];
-        val_[offset] = tmp_val_data_[offset];
-      }
-    } else {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void vec_copy_kernel_impl_fn(
+    KeyType* key,
+    KeyType* tmp_key_data,
+    ValueType* val,
+    ValueType* tmp_val_data,
+    const size_t sort_sz,
+    key_vec_t* key_vec_ptr,
+    key_vec_t* tmp_key_vec_ptr,
+    val_vec_t* val_vec_ptr,
+    val_vec_t* tmp_val_vec_ptr,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  int remaining = sort_sz - item_id * vec_size;
+  if (remaining < vec_size) {
+    for (int index = 0; index < remaining; index++) {
+      auto offset = item_id * vec_size + index;
+      key[offset] = tmp_key_data[offset];
+      val[offset] = tmp_val_data[offset];
+    }
+  } else {
 #pragma unroll
-      for (int index = 0; index < vec_size; index++) {
-        key_vec_ptr_[item_id][index] = tmp_key_vec_ptr_[item_id][index];
-        val_vec_ptr_[item_id][index] = tmp_val_vec_ptr_[item_id][index];
-      }
+    for (int index = 0; index < vec_size; index++) {
+      key_vec_ptr[item_id][index] = tmp_key_vec_ptr[item_id][index];
+      val_vec_ptr[item_id][index] = tmp_val_vec_ptr[item_id][index];
     }
   }
-  VecCopyKernelImplFunctor(
-      KeyType* key,
-      KeyType* tmp_key_data,
-      ValueType* val,
-      ValueType* tmp_val_data,
-      const size_t sort_sz,
-      key_vec_t* key_vec_ptr,
-      key_vec_t* tmp_key_vec_ptr,
-      val_vec_t* val_vec_ptr,
-      val_vec_t* tmp_val_vec_ptr)
-      : key_(key),
-        tmp_key_data_(tmp_key_data),
-        val_(val),
-        tmp_val_data_(tmp_val_data),
-        sort_sz_(sort_sz),
-        key_vec_ptr_(key_vec_ptr),
-        tmp_key_vec_ptr_(tmp_key_vec_ptr),
-        val_vec_ptr_(val_vec_ptr),
-        tmp_val_vec_ptr_(tmp_val_vec_ptr) {}
-
- private:
-  KeyType* key_;
-  KeyType* tmp_key_data_;
-  ValueType* val_;
-  ValueType* tmp_val_data_;
-  const size_t sort_sz_;
-  key_vec_t* key_vec_ptr_;
-  key_vec_t* tmp_key_vec_ptr_;
-  val_vec_t* val_vec_ptr_;
-  val_vec_t* tmp_val_vec_ptr_;
-};
+}
 
 template <int vec_size, typename KeyType, typename ValueType>
 void vec_copy_kernel_impl(
@@ -1470,17 +1534,33 @@ void vec_copy_kernel_impl(
   val_vec_t* val_vec_ptr = reinterpret_cast<val_vec_t*>(val);
   val_vec_t* tmp_val_vec_ptr = reinterpret_cast<val_vec_t*>(tmp_val_data);
   auto num_work_item = ceil_div(sort_sz, (size_t)vec_size);
-  VecCopyKernelImplFunctor<vec_size, KeyType, ValueType, key_vec_t, val_vec_t>
-      kfn(key,
-          tmp_key_data,
-          val,
-          tmp_val_data,
-          sort_sz,
-          key_vec_ptr,
-          tmp_key_vec_ptr,
-          val_vec_ptr,
-          tmp_val_vec_ptr);
-  sycl_kernel_submit(sycl::range<1>(num_work_item), q, kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<vec_copy_kernel_impl_fn<
+      vec_size,
+      KeyType,
+      ValueType,
+      key_vec_t,
+      val_vec_t>>();
+  int64_t num_groups = (num_work_item + wg_size - 1) / wg_size;
+  sycl_kernel_submit<vec_copy_kernel_impl_fn<
+      vec_size,
+      KeyType,
+      ValueType,
+      key_vec_t,
+      val_vec_t>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      key,
+      tmp_key_data,
+      val,
+      tmp_val_data,
+      sort_sz,
+      key_vec_ptr,
+      tmp_key_vec_ptr,
+      val_vec_ptr,
+      tmp_val_vec_ptr,
+      (int64_t)num_work_item);
 }
 
 template <typename KeyType, typename ValueType>
@@ -1526,103 +1606,77 @@ void copy_to_dst(
 }
 
 template <typename KeyType, typename ValueType, typename CompFunc>
-struct LeafSortKernelFunctor {
-  void operator()(sycl::item<1> item) const {
-    leaf_sort<KeyType, ValueType>(item, key_, val_, leaf_, sort_sz_, comp_t_);
-  }
-  LeafSortKernelFunctor(
-      KeyType* key,
-      ValueType* val,
-      const size_t leaf,
-      const size_t sort_sz,
-      const CompFunc comp_t)
-      : key_(key), val_(val), leaf_(leaf), sort_sz_(sort_sz), comp_t_(comp_t) {}
-
- private:
-  KeyType* key_;
-  ValueType* val_;
-  const size_t leaf_;
-  const size_t sort_sz_;
-  const CompFunc comp_t_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void leaf_sort_kernel_fn(
+    KeyType* key,
+    ValueType* val,
+    const size_t leaf,
+    const size_t sort_sz,
+    const CompFunc comp_t,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  leaf_sort<KeyType, ValueType>(item_id, key, val, leaf, sort_sz, comp_t);
+}
 
 template <typename KeyType, typename ValueType, typename CompFunc>
-struct MergeSortKernelFunctor {
-  void operator()(sycl::item<1> item) const {
-    const size_t idx = item.get_linear_id();
-    const size_t sq1_start =
-        std::min(sorted_pair_ * ((idx * chunk_) / sorted_), sort_sz_);
-    const size_t sq1_end = std::min(sq1_start + sorted_, sort_sz_);
-    const size_t sq2_start = sq1_end;
-    const size_t sq2_end = std::min(sq2_start + sorted_, sort_sz_);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void merge_sort_kernel_fn(
+    size_t sorted_pair,
+    size_t chunk_num_per_sorted,
+    size_t chunk,
+    size_t sorted,
+    KeyType* key,
+    ValueType* val,
+    KeyType* tmp_key_data,
+    ValueType* tmp_val_data,
+    const size_t sort_sz,
+    const CompFunc comp_t,
+    bool data_in_tmp,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  const size_t idx = item_id;
+  const size_t sq1_start =
+      std::min(sorted_pair * ((idx * chunk) / sorted), sort_sz);
+  const size_t sq1_end = std::min(sq1_start + sorted, sort_sz);
+  const size_t sq2_start = sq1_end;
+  const size_t sq2_end = std::min(sq2_start + sorted, sort_sz);
 
-    const size_t offset_in_sq = chunk_ * (idx % chunk_num_per_sorted_);
+  const size_t offset_in_sq = chunk * (idx % chunk_num_per_sorted);
 
-    if (!data_in_tmp_) {
-      merge(
-          offset_in_sq,
-          key_,
-          val_,
-          tmp_key_data_,
-          tmp_val_data_,
-          sq1_start,
-          sq1_end,
-          sq2_start,
-          sq2_end,
-          chunk_,
-          comp_t_);
-    } else {
-      merge(
-          offset_in_sq,
-          tmp_key_data_,
-          tmp_val_data_,
-          key_,
-          val_,
-          sq1_start,
-          sq1_end,
-          sq2_start,
-          sq2_end,
-          chunk_,
-          comp_t_);
-    }
+  if (!data_in_tmp) {
+    merge(
+        offset_in_sq,
+        key,
+        val,
+        tmp_key_data,
+        tmp_val_data,
+        sq1_start,
+        sq1_end,
+        sq2_start,
+        sq2_end,
+        chunk,
+        comp_t);
+  } else {
+    merge(
+        offset_in_sq,
+        tmp_key_data,
+        tmp_val_data,
+        key,
+        val,
+        sq1_start,
+        sq1_end,
+        sq2_start,
+        sq2_end,
+        chunk,
+        comp_t);
   }
-  MergeSortKernelFunctor(
-      size_t sorted_pair,
-      size_t chunk_num_per_sorted,
-      size_t chunk,
-      size_t sorted,
-      KeyType* key,
-      ValueType* val,
-      KeyType* tmp_key_data,
-      ValueType* tmp_val_data,
-      const size_t sort_sz,
-      const CompFunc comp_t,
-      bool data_in_tmp)
-      : sorted_pair_(sorted_pair),
-        chunk_num_per_sorted_(chunk_num_per_sorted),
-        chunk_(chunk),
-        sorted_(sorted),
-        key_(key),
-        val_(val),
-        tmp_key_data_(tmp_key_data),
-        tmp_val_data_(tmp_val_data),
-        sort_sz_(sort_sz),
-        comp_t_(comp_t),
-        data_in_tmp_(data_in_tmp) {}
-
- private:
-  size_t sorted_pair_;
-  size_t chunk_num_per_sorted_;
-  size_t chunk_;
-  size_t sorted_;
-  KeyType* key_;
-  ValueType* val_;
-  KeyType* tmp_key_data_;
-  ValueType* tmp_val_data_;
-  const size_t sort_sz_;
-  const CompFunc comp_t_;
-  bool data_in_tmp_;
-};
+}
 
 // merge sort: only for 1d (single batch) tensor sort
 template <typename KeyType, typename ValueType, typename CompFunc>
@@ -1639,9 +1693,22 @@ void merge_sort(
   auto& q = getCurrentSYCLQueue();
 
   // 1, leaf sort
-  LeafSortKernelFunctor<KeyType, ValueType, CompFunc> kfn1(
-      key, val, leaf, sort_sz, comp_t);
-  sycl_kernel_submit(sycl::range<1>(leaf_step), q, kfn1);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        leaf_sort_kernel_fn<KeyType, ValueType, CompFunc>>();
+    int64_t num_groups = (leaf_step + wg_size - 1) / wg_size;
+    sycl_kernel_submit<leaf_sort_kernel_fn<KeyType, ValueType, CompFunc>>(
+        num_groups * wg_size,
+        wg_size,
+        q,
+        0,
+        key,
+        val,
+        leaf,
+        sort_sz,
+        comp_t,
+        (int64_t)leaf_step);
+  }
 
   auto key_options = map_options<KeyType>();
   auto val_options = map_options<ValueType>();
@@ -1668,7 +1735,14 @@ void merge_sort(
     size_t full_pair_steps = full_pairs * chunk_num_per_sorted;
     size_t steps = full_pair_steps + incomplete_pair_steps;
 
-    MergeSortKernelFunctor<KeyType, ValueType, CompFunc> kfn2(
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        merge_sort_kernel_fn<KeyType, ValueType, CompFunc>>();
+    int64_t num_groups = (steps + wg_size - 1) / wg_size;
+    sycl_kernel_submit<merge_sort_kernel_fn<KeyType, ValueType, CompFunc>>(
+        num_groups * wg_size,
+        wg_size,
+        q,
+        0,
         sorted_pair,
         chunk_num_per_sorted,
         chunk,
@@ -1679,8 +1753,8 @@ void merge_sort(
         tmp_val_data,
         sort_sz,
         comp_t,
-        data_in_tmp);
-    sycl_kernel_submit(sycl::range<1>(steps), q, kfn2);
+        data_in_tmp,
+        (int64_t)steps);
 
     data_in_tmp = !data_in_tmp;
     sorted = sorted_pair;
@@ -1732,24 +1806,26 @@ void sort(
 }
 
 template <class T, class ForwardIt>
-struct IotaKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    first_[item_id] = value_ + static_cast<T>(item_id);
-  }
-  IotaKernelFunctor(ForwardIt first, T value) : first_(first), value_(value) {}
-
- private:
-  ForwardIt first_;
-  T value_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void iota_kernel_fn(ForwardIt first, T value, int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  first[item_id] = value + static_cast<T>(item_id);
+}
 
 template <class T, class ForwardIt>
 static inline void iota(ForwardIt first, ForwardIt last, T value) {
   RECORD_FUNCTION("iota_xpu", {});
   const auto N = std::distance(first, last);
+  auto& q = getCurrentSYCLQueue();
 
-  IotaKernelFunctor<T, ForwardIt> kfn(first, value);
-  sycl_kernel_submit(sycl::range<1>(N), getCurrentSYCLQueue(), kfn);
+  int64_t wg_size =
+      at::xpu::getKernelMaxWorkGroupSize<iota_kernel_fn<T, ForwardIt>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<iota_kernel_fn<T, ForwardIt>>(
+      num_groups * wg_size, wg_size, q, 0, first, value, (int64_t)N);
 }
 
 template <
@@ -1760,34 +1836,22 @@ template <
     class ForwardIt,
     typename UnaryFunction,
     typename Predicate>
-struct UnaryTransformIfWithStencilFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    if (pred(stencil[item_id]))
-      result[map[item_id]] = static_cast<output_t>(unary_op(first[item_id]));
-  }
-
-  UnaryTransformIfWithStencilFunctor(
-      InputIt1 first,
-      InputIt2 stencil,
-      InputIt3 map,
-      ForwardIt result,
-      UnaryFunction unary_op,
-      Predicate pred)
-      : first{first},
-        stencil(stencil),
-        map(map),
-        result(result),
-        unary_op(unary_op),
-        pred(pred) {}
-
- private:
-  InputIt1 first;
-  InputIt2 stencil;
-  InputIt3 map;
-  ForwardIt result;
-  UnaryFunction unary_op;
-  Predicate pred;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void unary_transform_if_with_stencil_fn(
+    InputIt1 first,
+    InputIt2 stencil,
+    InputIt3 map,
+    ForwardIt result,
+    UnaryFunction unary_op,
+    Predicate pred,
+    int64_t N) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t item_id = item.get_global_linear_id();
+  if (item_id >= N)
+    return;
+  if (pred(stencil[item_id]))
+    result[map[item_id]] = static_cast<output_t>(unary_op(first[item_id]));
+}
 
 template <
     typename output_t,
@@ -1809,16 +1873,35 @@ ForwardIt transform_if(
   const auto N = std::distance(first, last);
   auto& q = getCurrentSYCLQueue();
 
-  UnaryTransformIfWithStencilFunctor<
+  int64_t wg_size =
+      at::xpu::getKernelMaxWorkGroupSize<unary_transform_if_with_stencil_fn<
+          output_t,
+          InputIt1,
+          InputIt2,
+          InputIt3,
+          ForwardIt,
+          UnaryFunction,
+          Predicate>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<unary_transform_if_with_stencil_fn<
       output_t,
       InputIt1,
       InputIt2,
       InputIt3,
       ForwardIt,
       UnaryFunction,
-      Predicate>
-      kfn(first, stencil, map, result, unary_op, pred);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+      Predicate>>(
+      num_groups * wg_size,
+      wg_size,
+      q,
+      0,
+      first,
+      stencil,
+      map,
+      result,
+      unary_op,
+      pred,
+      (int64_t)N);
 
   return result + N;
 }
