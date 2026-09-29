@@ -450,22 +450,69 @@ jobs:
             const prNumber = ${{ needs.parse-command.outputs.pr_number }};
             const actor = '${{ needs.parse-command.outputs.actor }}';
             const force = '${{ needs.parse-command.outputs.force }}' === 'true';
+            const headSha = '${{ steps.prinfo.outputs.head_sha }}';
+            const common = { owner: context.repo.owner, repo: context.repo.repo };
+            const say = (body) =>
+              github.rest.issues.createComment({ ...common, issue_number: prNumber, body });
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+            // The synchronous merge endpoint refuses a pull request that is part of
+            // a stack; the asynchronous one is the only path for those and handles
+            // ordinary pull requests too. It enqueues and reports back by uuid.
+            let uuid;
             try {
-              await github.rest.pulls.merge({
-                owner: context.repo.owner, repo: context.repo.repo,
-                pull_number: prNumber, merge_method: 'squash'
-              });
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
-                body: `PR has been successfully merged by @${actor}${force ? ' (force merge)' : ''}.`
-              });
+              const res = await github.request(
+                'PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge-async',
+                { ...common, pull_number: prNumber, sha: headSha,
+                  merge_method: 'squash', merge_action: 'default',
+                  headers: { 'X-GitHub-Api-Version': '2026-03-10' } }
+              );
+              if (res.data.status === 'merged') {
+                await say(`PR has been successfully merged by @${actor}${force ? ' (force merge)' : ''}.`);
+                return;
+              }
+              uuid = res.data.details && res.data.details.uuid;
             } catch (e) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
-                body: `Failed to merge PR: ${e.message}`
-              });
-              core.setFailed(`Failed to merge PR: ${e.message}`);
+              // 409 means a merge request is already enqueued; follow that one.
+              uuid = e.status === 409 && e.response && e.response.data.details
+                ? e.response.data.details.uuid
+                : undefined;
+              if (!uuid) {
+                await say(`Failed to merge PR: ${e.message}`);
+                core.setFailed(`Failed to merge PR: ${e.message}`);
+                return;
+              }
             }
+
+            if (!uuid) {
+              await say('Failed to merge PR: the merge request returned no uuid to track.');
+              core.setFailed('Merge request returned no uuid');
+              return;
+            }
+
+            // Branch protection and repository rules are only evaluated once the
+            // request runs, so the outcome arrives here rather than above.
+            for (let i = 0; i < 60; i++) {
+              await sleep(5000);
+              const { data } = await github.request(
+                'GET /repos/{owner}/{repo}/pulls/{pull_number}/merge-async/{uuid}',
+                { ...common, pull_number: prNumber, uuid,
+                  headers: { 'X-GitHub-Api-Version': '2026-03-10' } }
+              );
+              if (data.status === 'pending') continue;
+              const detail = (data.details && data.details.message) || data.status;
+              if (data.status === 'merged') {
+                await say(`PR has been successfully merged by @${actor}${force ? ' (force merge)' : ''}.`);
+              } else if (data.status === 'enqueued') {
+                await say(`Merge queued by @${actor}; GitHub will merge it when the queue lets it through. ${detail}`);
+              } else {
+                await say(`Failed to merge PR: ${detail}`);
+                core.setFailed(`Failed to merge PR: ${detail}`);
+              }
+              return;
+            }
+            await say('Merge request is still pending after five minutes; check the pull request for the outcome.');
+            core.setFailed('Merge request did not settle in time');
 
   revert:
     needs: parse-command
