@@ -303,7 +303,9 @@ TestOptimRenewed.test_fused_mixed_precision_rejects_unsupported_dtypes = (
 
 # 20*7 = 140 is a multiple of kILP, so it takes the vectorized aligned path;
 # 21*7 = 147 is not and exercises the unaligned tail, which writes grads back
-# through its own store path.
+# through its own store path. A device-resident Tensor lr takes the kernels'
+# lr_ptr overloads; a float (or a CPU tensor) takes the double one.
+@parametrize("tensor_lr", [False, True])
 @parametrize("rows", [20, 21])
 @parametrize("amsgrad", [False, True])
 @optims(
@@ -311,7 +313,7 @@ TestOptimRenewed.test_fused_mixed_precision_rejects_unsupported_dtypes = (
     dtypes=[torch.float32],
 )
 def _test_fused_mixed_precision_grad_scale(
-    self, device, dtype, optim_info, amsgrad, rows
+    self, device, dtype, optim_info, amsgrad, rows, tensor_lr
 ):
     # fp32 params + bf16 states is the AMP scenario, so exercise the
     # grad_scale/found_inf path of the mixed-precision kernel. The scale is a
@@ -328,7 +330,8 @@ def _test_fused_mixed_precision_grad_scale(
     for rp, g in zip(ref_params, unscaled_grads):
         rp.grad = g.clone()
 
-    optim = optim_cls(params, lr=1e-3, fused=True, amsgrad=amsgrad)
+    lr = torch.tensor(1e-3, device=device) if tensor_lr else 1e-3
+    optim = optim_cls(params, lr=lr, fused=True, amsgrad=amsgrad)
     optim.register_step_pre_hook(_bf16_state_init_hook)
     optim.grad_scale = torch.full((1,), scale_value, dtype=dtype, device=device)
     optim.found_inf = torch.zeros((), dtype=dtype, device=device)

@@ -52,8 +52,7 @@ void _fused_adamw_kernel_xpu_(
             /*scalarList=*/{},
             /*does_op_promote_integer_inputs_to_float=*/false,
             /*skip_cross_list_dtype_check=*/is_mixed_precision),
-        "_fused_adamw: params, grads, exp_avgs, exp_avg_sqs, and "
-        "max_exp_avg_sqs must have same dtype, device, and layout");
+        "params, grads, exp_avgs, exp_avg_sqs, and max_exp_avg_sqs must have same dtype, device, and layout");
     xpu::fused_adamw_amsgrad_kernel(
         params,
         grads,
@@ -76,8 +75,7 @@ void _fused_adamw_kernel_xpu_(
             /*scalarList=*/{},
             /*does_op_promote_integer_inputs_to_float=*/false,
             /*skip_cross_list_dtype_check=*/is_mixed_precision),
-        "_fused_adamw: params, grads, exp_avgs, and exp_avg_sqs "
-        "must have same dtype, device, and layout");
+        "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device, and layout");
     xpu::fused_adamw_kernel(
         params,
         grads,
@@ -136,6 +134,8 @@ void _fused_adamw_kernel_xpu_(
     return;
   }
 
+  // Manually check devices since we specify no device check in
+  // native_functions.yaml
   Device param_device = params[0].device();
   TORCH_CHECK(
       lr.device() == param_device,
@@ -161,8 +161,7 @@ void _fused_adamw_kernel_xpu_(
             /*scalarList=*/{},
             /*does_op_promote_integer_inputs_to_float=*/false,
             /*skip_cross_list_dtype_check=*/is_mixed_precision),
-        "_fused_adamw: params, grads, exp_avgs, exp_avg_sqs, and "
-        "max_exp_avg_sqs must have same dtype, device, and layout");
+        "params, grads, exp_avgs, exp_avg_sqs, and max_exp_avg_sqs must have same dtype, device, and layout");
     xpu::fused_adamw_amsgrad_kernel(
         params,
         grads,
@@ -185,8 +184,7 @@ void _fused_adamw_kernel_xpu_(
             /*scalarList=*/{},
             /*does_op_promote_integer_inputs_to_float=*/false,
             /*skip_cross_list_dtype_check=*/is_mixed_precision),
-        "_fused_adamw: params, grads, exp_avgs, and exp_avg_sqs "
-        "must have same dtype, device, and layout");
+        "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device, and layout");
     xpu::fused_adamw_kernel(
         params,
         grads,
