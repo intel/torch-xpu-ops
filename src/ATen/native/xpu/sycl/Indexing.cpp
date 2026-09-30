@@ -969,7 +969,8 @@ template <
     bool IndexIsMajor,
     typename func_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>)) void index_func_large_index_kernel_impl(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void index_func_large_index_kernel_impl(
     TensorInfo<T, IndexType> dst_,
     TensorInfo<const T, IndexType> src_,
     TensorInfo<const IndicesType, IndexType> indices_,
