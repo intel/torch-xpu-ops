@@ -10,6 +10,11 @@
 
 #include <ATen/native/sparse/xpu/mkl/SparseTensorMath.h>
 
+#include <complex>
+#include <type_traits>
+
+#include <c10/util/complex.h>
+
 #include <ATen/ops/_convert_indices_from_coo_to_csr.h>
 #include <ATen/ops/zeros.h>
 
@@ -44,7 +49,23 @@ Tensor _sspaddmm_mkl_out(
 
   auto run_mkl = [&](auto scalar) {
     using scalar_t = decltype(scalar);
-    (void)scalar;
+    auto* values_ptr = static_cast<scalar_t*>(values1.data_ptr());
+    auto* mat2_ptr = static_cast<scalar_t*>(mat2_contiguous.data_ptr());
+    auto* dense_result_ptr = static_cast<scalar_t*>(dense_result.data_ptr());
+    scalar_t alpha_value;
+    scalar_t beta_value;
+    if constexpr (
+        std::is_same_v<scalar_t, std::complex<float>> ||
+        std::is_same_v<scalar_t, std::complex<double>>) {
+      using real_t = typename scalar_t::value_type;
+      using tensor_scalar_t = c10::complex<real_t>;
+      alpha_value = static_cast<scalar_t>(alpha.to<tensor_scalar_t>());
+      beta_value = static_cast<scalar_t>(beta.to<tensor_scalar_t>());
+    } else {
+      alpha_value = alpha.to<scalar_t>();
+      beta_value = beta.to<scalar_t>();
+    }
+
     auto set_data_event = oneapi::mkl::sparse::set_csr_data(
         queue,
         handle,
@@ -54,7 +75,7 @@ Tensor _sspaddmm_mkl_out(
         oneapi::mkl::index_base::zero,
         crow_indices.data_ptr<int64_t>(),
         col_indices.data_ptr<int64_t>(),
-        values1.data_ptr<scalar_t>());
+        values_ptr);
     auto optimize_event = oneapi::mkl::sparse::optimize_gemm(
         queue,
         oneapi::mkl::layout::row_major,
@@ -68,21 +89,25 @@ Tensor _sspaddmm_mkl_out(
         oneapi::mkl::layout::row_major,
         oneapi::mkl::transpose::nontrans,
         oneapi::mkl::transpose::nontrans,
-        alpha.to<scalar_t>(),
+        alpha_value,
         handle,
-        mat2_contiguous.data_ptr<scalar_t>(),
+        mat2_ptr,
         dim_k,
         dim_k,
-        beta.to<scalar_t>(),
-        dense_result.data_ptr<scalar_t>(),
+        beta_value,
+        dense_result_ptr,
         dim_k,
         {optimize_event});
     gemm_event.wait();
   };
   if (values1.scalar_type() == at::kFloat) {
     run_mkl(float{});
-  } else {
+  } else if (values1.scalar_type() == at::kDouble) {
     run_mkl(double{});
+  } else if (values1.scalar_type() == at::kComplexFloat) {
+    run_mkl(std::complex<float>{});
+  } else {
+    run_mkl(std::complex<double>{});
   }
   oneapi::mkl::sparse::release_matrix_handle(queue, &handle);
 

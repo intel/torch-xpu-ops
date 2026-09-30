@@ -486,50 +486,53 @@ Tensor& _sspaddmm_out_xpu(
   Tensor dense_result;
   if (nnz1 == 0) {
     if (beta.to<double>() == 0.0 || self._nnz() == 0) {
-      result = at::zeros({dim_i, dim_k}, mat2.options()).to_sparse();
+      dense_result = at::zeros({dim_i, dim_k}, mat2.options());
     } else {
-      result = self * beta;
-    }
-    return result;
-  }
-
-  if (use_sparse_path) {
-    SparseTensor mat1_coalesced = mat1_is_coalesced ? mat1 : mat1.coalesce();
-    Tensor row_indices = mat1_coalesced._indices()[0];
-    Tensor col_indices = mat1_coalesced._indices()[1];
-    Tensor values1 = mat1_coalesced._values();
-
-    bool is_onemkl_supported_dtype = mat1.scalar_type() == kFloat ||
-        mat1.scalar_type() == kDouble || mat1.scalar_type() == kComplexFloat ||
-        mat1.scalar_type() == kComplexDouble;
-    if (is_onemkl_supported_dtype) {
-      dense_result = xpu::_sspaddmm_mkl_out(
-          row_indices,
-          col_indices,
-          values1,
-          mat2,
-          self,
-          beta,
-          alpha,
-          dim_i,
-          dim_j,
-          dim_k,
-          nnz1);
-    } else {
-      dense_result = _sspaddmm_index_add(
-          row_indices,
-          col_indices,
-          values1,
-          mat2,
-          self,
-          beta,
-          alpha,
-          dim_i,
-          dim_k);
+      dense_result = self.to_dense() * beta;
     }
   } else {
-    dense_result =
-        _sspaddmm_fallback(self, mat1, mat2, beta, alpha, dim_i, dim_k);
+#if defined(USE_ONEMKL_XPU)
+    if (use_sparse_path) {
+      SparseTensor mat1_coalesced = mat1_is_coalesced ? mat1 : mat1.coalesce();
+      Tensor row_indices = mat1_coalesced._indices()[0];
+      Tensor col_indices = mat1_coalesced._indices()[1];
+      Tensor values1 = mat1_coalesced._values();
+
+      bool is_onemkl_supported_dtype = mat1.scalar_type() == kFloat ||
+          mat1.scalar_type() == kDouble ||
+          mat1.scalar_type() == kComplexFloat ||
+          mat1.scalar_type() == kComplexDouble;
+      if (is_onemkl_supported_dtype) {
+        dense_result = xpu::_sspaddmm_mkl_out(
+            row_indices,
+            col_indices,
+            values1,
+            mat2,
+            self,
+            beta,
+            alpha,
+            dim_i,
+            dim_j,
+            dim_k,
+            nnz1);
+      } else {
+        dense_result = _sspaddmm_index_add(
+            row_indices,
+            col_indices,
+            values1,
+            mat2,
+            self,
+            beta,
+            alpha,
+            dim_i,
+            dim_k);
+      }
+    } else
+#endif // USE_ONEMKL_XPU
+    {
+      dense_result =
+          _sspaddmm_fallback(self, mat1, mat2, beta, alpha, dim_i, dim_k);
+    }
   }
 
   Tensor sparse_result = dense_result.to_sparse();
