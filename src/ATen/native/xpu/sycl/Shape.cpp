@@ -153,7 +153,7 @@ template <
     int batch_size,
     int stride_size>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void cat_array_batched_copy(
+void cat_array_batched_copy_kernel_impl(
     T* output,
     CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
     TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os,
@@ -199,7 +199,7 @@ template <
     int batch_size,
     int stride_size>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void cat_array_batched_copy_contig(
+void cat_array_batched_copy_contig_kernel_impl(
     T* output,
     CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
     TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os,
@@ -241,16 +241,17 @@ template <
     int stride_size,
     int aligned_vec_load_bytes>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void cat_array_batched_copy_aligned_k_contig(
+void cat_array_batched_copy_aligned_k_contig_kernel_impl(
     T* output,
     CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
     TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os,
     const int concatDim,
     IndexType dimStride) {
   auto item = syclext::this_work_item::get_nd_item<2>();
-  // Use 8-byte vector loads for 2-byte element types to reduce register pressure.
-  // Fall back to 16-byte loads so kILP stays positive for supported element
-  // types wider than the requested load width (for example, ComplexDouble).
+  // Use 8-byte vector loads for 2-byte element types to reduce register
+  // pressure. Fall back to 16-byte loads so kILP stays positive for supported
+  // element types wider than the requested load width (for example,
+  // ComplexDouble).
   constexpr int kILP = aligned_vec_load_bytes / sizeof(T) > 0
       ? aligned_vec_load_bytes / sizeof(T)
       : ALIGNED_VEC_LOAD_BYTES_16 / sizeof(T);
@@ -611,79 +612,79 @@ void parallel_cat(
     }
 
 // Template Declarations for dim = 1, 2, 3, 4
-#define HANDLE_CASE(DIMS)                                                  \
-  if (isContig && isAligned && isOutputAligned && sizeof(scalar_t) > 2 &&  \
-      sizeof(scalar_t) <= 8) {                                             \
-    auto& q = getCurrentSYCLQueue();                                       \
-    sycl_kernel_submit<cat_array_batched_copy_aligned_k_contig<            \
-        scalar_t,                                                          \
-        unsigned int,                                                      \
-        DIMS,                                                              \
-        batch_size,                                                        \
-        stride_size,                                                       \
-        ALIGNED_VEC_LOAD_BYTES_16>>(                                       \
-        catRange,                                                          \
-        applyGroup,                                                        \
-        q,                                                                 \
-        0,                                                                 \
-        data,                                                              \
-        catMetaData,                                                       \
-        outputParam,                                                       \
-        mapped_dimension,                                                  \
-        outputParam.tensorStride[mapped_dimension]);                       \
-  } else if (                                                              \
-      isContig && isAligned && isOutputAligned && sizeof(scalar_t) == 2) { \
-    auto& q = getCurrentSYCLQueue();                                       \
-    sycl_kernel_submit<cat_array_batched_copy_aligned_k_contig<            \
-        scalar_t,                                                          \
-        unsigned int,                                                      \
-        DIMS,                                                              \
-        batch_size,                                                        \
-        stride_size,                                                       \
-        ALIGNED_VEC_LOAD_BYTES_8>>(                                        \
-        catRange,                                                          \
-        applyGroup,                                                        \
-        q,                                                                 \
-        0,                                                                 \
-        data,                                                              \
-        catMetaData,                                                       \
-        outputParam,                                                       \
-        mapped_dimension,                                                  \
-        outputParam.tensorStride[mapped_dimension]);                       \
-  } else if (isContig) {                                                   \
-    auto& q = getCurrentSYCLQueue();                                       \
-    sycl_kernel_submit<cat_array_batched_copy_contig<                      \
-        scalar_t,                                                          \
-        unsigned int,                                                      \
-        DIMS,                                                              \
-        batch_size,                                                        \
-        stride_size>>(                                                     \
-        catRange,                                                          \
-        applyGroup,                                                        \
-        q,                                                                 \
-        0,                                                                 \
-        data,                                                              \
-        catMetaData,                                                       \
-        outputParam,                                                       \
-        mapped_dimension,                                                  \
-        outputParam.tensorStride[mapped_dimension]);                       \
-  } else {                                                                 \
-    auto& q = getCurrentSYCLQueue();                                       \
-    sycl_kernel_submit<cat_array_batched_copy<                             \
-        scalar_t,                                                          \
-        unsigned int,                                                      \
-        DIMS,                                                              \
-        batch_size,                                                        \
-        stride_size>>(                                                     \
-        catRange,                                                          \
-        applyGroup,                                                        \
-        q,                                                                 \
-        0,                                                                 \
-        data,                                                              \
-        catMetaData,                                                       \
-        outputParam,                                                       \
-        mapped_dimension,                                                  \
-        outputParam.tensorStride[mapped_dimension]);                       \
+#define HANDLE_CASE(DIMS)                                                   \
+  if (isContig && isAligned && isOutputAligned && sizeof(scalar_t) > 2 &&   \
+      sizeof(scalar_t) <= 8) {                                              \
+    auto& q = getCurrentSYCLQueue();                                        \
+    sycl_kernel_submit<cat_array_batched_copy_aligned_k_contig_kernel_impl< \
+        scalar_t,                                                           \
+        unsigned int,                                                       \
+        DIMS,                                                               \
+        batch_size,                                                         \
+        stride_size,                                                        \
+        ALIGNED_VEC_LOAD_BYTES_16>>(                                        \
+        catRange,                                                           \
+        applyGroup,                                                         \
+        q,                                                                  \
+        0,                                                                  \
+        data,                                                               \
+        catMetaData,                                                        \
+        outputParam,                                                        \
+        mapped_dimension,                                                   \
+        outputParam.tensorStride[mapped_dimension]);                        \
+  } else if (                                                               \
+      isContig && isAligned && isOutputAligned && sizeof(scalar_t) == 2) {  \
+    auto& q = getCurrentSYCLQueue();                                        \
+    sycl_kernel_submit<cat_array_batched_copy_aligned_k_contig_kernel_impl< \
+        scalar_t,                                                           \
+        unsigned int,                                                       \
+        DIMS,                                                               \
+        batch_size,                                                         \
+        stride_size,                                                        \
+        ALIGNED_VEC_LOAD_BYTES_8>>(                                         \
+        catRange,                                                           \
+        applyGroup,                                                         \
+        q,                                                                  \
+        0,                                                                  \
+        data,                                                               \
+        catMetaData,                                                        \
+        outputParam,                                                        \
+        mapped_dimension,                                                   \
+        outputParam.tensorStride[mapped_dimension]);                        \
+  } else if (isContig) {                                                    \
+    auto& q = getCurrentSYCLQueue();                                        \
+    sycl_kernel_submit<cat_array_batched_copy_contig_kernel_impl<           \
+        scalar_t,                                                           \
+        unsigned int,                                                       \
+        DIMS,                                                               \
+        batch_size,                                                         \
+        stride_size>>(                                                      \
+        catRange,                                                           \
+        applyGroup,                                                         \
+        q,                                                                  \
+        0,                                                                  \
+        data,                                                               \
+        catMetaData,                                                        \
+        outputParam,                                                        \
+        mapped_dimension,                                                   \
+        outputParam.tensorStride[mapped_dimension]);                        \
+  } else {                                                                  \
+    auto& q = getCurrentSYCLQueue();                                        \
+    sycl_kernel_submit<cat_array_batched_copy_kernel_impl<                  \
+        scalar_t,                                                           \
+        unsigned int,                                                       \
+        DIMS,                                                               \
+        batch_size,                                                         \
+        stride_size>>(                                                      \
+        catRange,                                                           \
+        applyGroup,                                                         \
+        q,                                                                  \
+        0,                                                                  \
+        data,                                                               \
+        catMetaData,                                                        \
+        outputParam,                                                        \
+        mapped_dimension,                                                   \
+        outputParam.tensorStride[mapped_dimension]);                        \
   }
 
     switch (nDims) {
