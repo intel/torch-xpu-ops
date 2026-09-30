@@ -38,9 +38,10 @@ class TestLayerNorm(TestCase):
         """Cover the sub-group-0 shuffle fast path in the forward kernel.
 
         The fast path is selected when the row spans a full 32-subgroup
-        work-group, i.e. N / vec_size leaves a 1024-item group. N=8192 with
-        SIMD 32 hits it. The original large test only exercised float32, so
-        add the claimed fp16/bf16 [1024, 8192] cases against a CPU reference.
+        work-group, i.e. N / vec_size leaves a 1024-item group.
+        N=8192 with a subgroup size of 32 hits it. The original large test
+        only exercised float32, so add the claimed fp16/bf16 [1024, 8192]
+        cases against a CPU reference.
         """
         torch.manual_seed(0)
         rows, norm = 1024, 8192
