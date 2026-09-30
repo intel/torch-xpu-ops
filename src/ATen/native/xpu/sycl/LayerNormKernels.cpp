@@ -592,7 +592,10 @@ struct VectorizedLayerNormKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 3, cgh);
+    const int64_t num_sg = wg_size_ / SIMD;
+    const size_t buf_size = (num_sg == SIMD) ? num_sg * 3 : num_sg * 2;
+    // Only the fast path of tree-reduce fills three num_sg wide SLM
+    buf_ = sycl_local_acc_t<T_ACC>(buf_size, cgh);
   }
 
   VectorizedLayerNormKernelFunctor(
