@@ -128,7 +128,7 @@ static inline void norm_group_reduce_row(
 #pragma unroll(vec_size)
   for (int j = 0; j < vec_size; ++j) {
     const size_t local_index =
-       (local_row_id * workgroup_size  + local_col_id) * vec_size + j;
+        (local_row_id * workgroup_size + local_col_id) * vec_size + j;
     local_data1[local_index] = input1[j];
     if constexpr (!rms_norm) {
       local_data2[local_index] = input2[j];
@@ -484,7 +484,8 @@ template <
     typename index_t,
     typename accscalar_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
@@ -526,7 +527,8 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void launch_vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -555,7 +557,8 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -611,7 +614,8 @@ template <
     typename index_t,
     typename accscalar_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
@@ -675,7 +679,8 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void launch_rowwise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -705,7 +710,8 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void rowwise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -759,7 +765,8 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
 void norm_update_kernel_impl(
@@ -777,7 +784,8 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void launch_norm_update_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -807,7 +815,8 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void norm_update_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
