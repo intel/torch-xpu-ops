@@ -248,10 +248,9 @@ void cat_array_batched_copy_aligned_k_contig(
     const int concatDim,
     IndexType dimStride) {
   auto item = syclext::this_work_item::get_nd_item<2>();
-  // This kernel tries to use aligned_vec_load_bytes*8 bit loads
-  // Special case 2-byte types to use 8-byte vec loads to reduce register
-  // pressure The below lambda is to allow cc compiler to pass kILP>0 checks
-  // for large types (e.g. ComplexDouble, 16 bytes)
+  // Use 8-byte vector loads for 2-byte element types to reduce register pressure.
+  // Fall back to 16-byte loads so kILP stays positive for supported element
+  // types wider than the requested load width (for example, ComplexDouble).
   constexpr int kILP = aligned_vec_load_bytes / sizeof(T) > 0
       ? aligned_vec_load_bytes / sizeof(T)
       : ALIGNED_VEC_LOAD_BYTES_16 / sizeof(T);
