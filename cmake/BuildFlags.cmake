@@ -55,7 +55,9 @@ macro(set_build_flags)
       "Ensure SYCLToolkit is found before building torch-xpu-ops.")
   endif()
   list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS SYCL_COMPILER_VERSION=${SYCL_COMPILER_VERSION})
-  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU=${USE_XPU})
+  # Keep the bare spelling: it must match PyTorch's add_compile_definitions(USE_XPU)
+  # so FindSYCL's exact-string dedup drops it instead of redefining the macro.
+  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU)
 
   set(CPP_STD c++20)
   # -- Host flags (SYCL_CXX_FLAGS)
