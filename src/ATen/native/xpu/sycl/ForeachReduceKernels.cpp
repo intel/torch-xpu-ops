@@ -23,18 +23,13 @@
 
 namespace at::native::xpu {
 
-// WA (replace enum class) due to
-// enum not well supported in sycl free function
-const int NormType_L1 = 0;
-const int NormType_L2 = 1;
-const int NormType_LInf = 2;
-
+enum class NormType { L1, L2, LInf };
 #define SIMD16 16
 #define SIMD32 32
 
 template <
     typename T,
-    int norm_type,
+    NormType norm_type,
     typename opmath_t,
     int SIMD,
     int depth = 1,
@@ -75,9 +70,9 @@ struct LpNormFunctor {
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
           opmath_t next = static_cast<opmath_t>(r_x[ii]);
-          if constexpr (norm_type == NormType_LInf) {
+          if constexpr (norm_type == NormType::LInf) {
             vals[ii] = max_impl(vals[ii], sycl::fabs((opmath_t)next));
-          } else if constexpr (norm_type == NormType_L1) {
+          } else if constexpr (norm_type == NormType::L1) {
             vals[ii] += static_cast<opmath_t>(sycl::fabs((opmath_t)next));
           } else {
             vals[ii] += static_cast<opmath_t>(next * next);
@@ -92,10 +87,10 @@ struct LpNormFunctor {
           int i = i_start + item_idx + ii * item_range;
           if (i < n && i < chunk_size) {
             opmath_t next = static_cast<opmath_t>(x[i]);
-            if constexpr (norm_type == NormType_LInf) {
+            if constexpr (norm_type == NormType::LInf) {
               vals[ii] =
                   max_impl(vals[ii], sycl::fabs(sycl::fabs((opmath_t)next)));
-            } else if constexpr (norm_type == NormType_L1) {
+            } else if constexpr (norm_type == NormType::L1) {
               vals[ii] += static_cast<opmath_t>(sycl::fabs((opmath_t)next));
             } else {
               vals[ii] += static_cast<opmath_t>(next * next);
@@ -107,7 +102,7 @@ struct LpNormFunctor {
 
     auto val = opmath_t(0);
     for (int i = 0; i < kILP; i++) {
-      if constexpr (norm_type == NormType_LInf) {
+      if constexpr (norm_type == NormType::LInf) {
         val = max_impl(val, vals[i]);
       } else {
         val += vals[i];
@@ -117,7 +112,7 @@ struct LpNormFunctor {
     constexpr int slm_size = get_group_reduce_group_size(SIMD);
     syclexp::work_group_static<opmath_t[slm_size]> shared_;
 
-    auto sum_val = norm_type == NormType_L1 || norm_type == NormType_L2
+    auto sum_val = norm_type == NormType::L1 || norm_type == NormType::L2
         ? GroupReduceSumWithoutBroadcast_StaticSlm<opmath_t, SIMD, slm_size>(
               item_id, val, shared_)
         : GroupReduceMaxWithoutBroadcast_StaticSlm<opmath_t, SIMD, slm_size>(
@@ -132,7 +127,7 @@ struct LpNormFunctor {
 
 template <
     typename out_t,
-    int norm_type,
+    NormType norm_type,
     typename opmath_t,
     int SIMD,
     bool apply_root = true>
@@ -146,14 +141,14 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         output_per_tensor_ + group_id * max_chunks_per_tensor_;
     opmath_t val = 0;
     for (int i = lid; i < max_chunks_per_tensor_; i += wg_size_) {
-      if constexpr (norm_type == NormType_LInf) {
+      if constexpr (norm_type == NormType::LInf) {
         val = max_impl(val, output_this_tensor[i]);
       } else {
         val += output_this_tensor[i];
       }
     }
     opmath_t sum_val;
-    if constexpr (norm_type == NormType_L1 || norm_type == NormType_L2) {
+    if constexpr (norm_type == NormType::L1 || norm_type == NormType::L2) {
       sum_val =
           GroupReduceSumWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
     } else {
@@ -163,7 +158,7 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (lid == 0) {
       // L2 norm applies the final sqrt; powsum (apply_root == false) keeps the
       // raw sum of squares. L1 and LInf never apply a root.
-      if constexpr (norm_type == NormType_L2 && apply_root) {
+      if constexpr (norm_type == NormType::L2 && apply_root) {
         *(ret_per_tensor_[group_id]) = sycl::sqrt((opmath_t)sum_val);
       } else {
         *(ret_per_tensor_[group_id]) = sum_val;
@@ -196,7 +191,7 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 template <
     typename out_t,
-    int norm_type,
+    NormType norm_type,
     typename out_opmath_t,
     int SIMD,
     bool apply_root = true>
@@ -319,7 +314,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       tensor_lists,
                       LpNormFunctor<
                           scalar_t,
-                          NormType_L1,
+                          NormType::L1,
                           out_opmath_t,
                           SIMD32>(),
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
@@ -329,7 +324,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       tensor_lists,
                       LpNormFunctor<
                           scalar_t,
-                          NormType_L1,
+                          NormType::L1,
                           out_opmath_t,
                           SIMD16>(),
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
@@ -351,7 +346,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                 if (simd == SIMD32) {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
-                      NormType_L1,
+                      NormType::L1,
                       out_opmath_t,
                       SIMD32,
                       apply_root>(
@@ -363,7 +358,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                 } else {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
-                      NormType_L1,
+                      NormType::L1,
                       out_opmath_t,
                       SIMD16,
                       apply_root>(
@@ -390,7 +385,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       tensor_lists,
                       LpNormFunctor<
                           scalar_t,
-                          NormType_L2,
+                          NormType::L2,
                           out_opmath_t,
                           SIMD32>(),
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
@@ -400,7 +395,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       tensor_lists,
                       LpNormFunctor<
                           scalar_t,
-                          NormType_L2,
+                          NormType::L2,
                           out_opmath_t,
                           SIMD16>(),
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
@@ -422,7 +417,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                 if (simd == SIMD32) {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
-                      NormType_L2,
+                      NormType::L2,
                       out_opmath_t,
                       SIMD32,
                       apply_root>(
@@ -434,7 +429,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                 } else {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
-                      NormType_L2,
+                      NormType::L2,
                       out_opmath_t,
                       SIMD16,
                       apply_root>(
@@ -461,7 +456,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       tensor_lists,
                       LpNormFunctor<
                           scalar_t,
-                          NormType_LInf,
+                          NormType::LInf,
                           out_opmath_t,
                           SIMD32>(),
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
@@ -471,7 +466,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       tensor_lists,
                       LpNormFunctor<
                           scalar_t,
-                          NormType_LInf,
+                          NormType::LInf,
                           out_opmath_t,
                           SIMD16>(),
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
@@ -493,7 +488,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                 if (simd == SIMD32) {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
-                      NormType_LInf,
+                      NormType::LInf,
                       out_opmath_t,
                       SIMD32,
                       apply_root>(
@@ -505,7 +500,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                 } else {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
-                      NormType_LInf,
+                      NormType::LInf,
                       out_opmath_t,
                       SIMD16,
                       apply_root>(
