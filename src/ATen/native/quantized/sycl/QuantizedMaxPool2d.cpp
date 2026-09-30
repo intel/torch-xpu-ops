@@ -53,108 +53,70 @@ void check_maxpool2d_params(
 } // anonymous namespace
 
 template <typename scalar_t>
-struct QuantizedMaxPool2dKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto desc = cfg_.get_item_desc(item);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void quantized_max_pool2d_kernel_impl(
+    scalar_t* output,
+    const scalar_t* input,
+    int64_t iC,
+    int64_t iH,
+    int64_t iW,
+    int64_t oH,
+    int64_t oW,
+    int64_t kH,
+    int64_t kW,
+    int64_t sH,
+    int64_t sW,
+    int64_t pH,
+    int64_t pW,
+    int64_t dH,
+    int64_t dW,
+    int64_t stride,
+    BatchKernelConfig cfg) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  auto desc = cfg.get_item_desc(item);
 
-    do {
-      if (desc.glb_problem < cfg_.problem_) {
-        int idx = desc.glb_problem;
-        int64_t b{0}, row{0}, col{0};
-        b = idx / stride_;
-        col = idx % oW_;
-        row = idx / oW_ % oH_;
+  do {
+    if (desc.glb_problem < cfg.problem_) {
+      int idx = desc.glb_problem;
+      int64_t b{0}, row{0}, col{0};
+      b = idx / stride;
+      col = idx % oW;
+      row = idx / oW % oH;
 
-        int64_t output_base_offset = (b * oW_ * oH_ + row * oW_ + col) * iC_;
+      int64_t output_base_offset = (b * oW * oH + row * oW + col) * iC;
 
-        // Get the boundary.
-        int64_t h_start = row * sH_ - pH_;
-        int64_t w_start = col * sW_ - pW_;
-        int64_t h_end = std::min(h_start + (kH_ - 1) * dH_ + 1, iH_);
-        int64_t w_end = std::min(w_start + (kW_ - 1) * dW_ + 1, iW_);
-        while (h_start < 0)
-          h_start += dH_;
-        while (w_start < 0)
-          w_start += dW_;
+      // Get the boundary.
+      int64_t h_start = row * sH - pH;
+      int64_t w_start = col * sW - pW;
+      int64_t h_end = std::min(h_start + (kH - 1) * dH + 1, iH);
+      int64_t w_end = std::min(w_start + (kW - 1) * dW + 1, iW);
+      while (h_start < 0)
+        h_start += dH;
+      while (w_start < 0)
+        w_start += dW;
 
-        // Stock pytorch's cpu implementation use vectorized instructions
-        // through channels such as AVX-512. We use for-loop directly.
-        int64_t w, h, c;
+      // Stock pytorch's cpu implementation use vectorized instructions
+      // through channels such as AVX-512. We use for-loop directly.
+      int64_t w, h, c;
 #pragma unroll
-        for (c = 0; c < iC_; c++) {
-          scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
+      for (c = 0; c < iC; c++) {
+        scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
 #pragma unroll
-          for (h = h_start; h < h_end; h += dH_) {
+        for (h = h_start; h < h_end; h += dH) {
 #pragma unroll
-            for (w = w_start; w < w_end; w += dW_) {
-              int64_t input_base_offset = (b * iW_ * iH_ + h * iW_ + w) * iC_;
-              scalar_t val = input_[input_base_offset + c];
-              if ((static_cast<scalar_t>(val) > maxVal) || at::_isnan(val)) {
-                maxVal = static_cast<scalar_t>(val);
-              }
+          for (w = w_start; w < w_end; w += dW) {
+            int64_t input_base_offset = (b * iW * iH + h * iW + w) * iC;
+            scalar_t val = input[input_base_offset + c];
+            if ((static_cast<scalar_t>(val) > maxVal) || at::_isnan(val)) {
+              maxVal = static_cast<scalar_t>(val);
             }
           }
-          output_[output_base_offset + c] = static_cast<scalar_t>(maxVal);
         }
+        output[output_base_offset + c] = static_cast<scalar_t>(maxVal);
       }
-    } while (cfg_.next(item, desc));
-  }
-
-  QuantizedMaxPool2dKernelFunctor(
-      scalar_t* output,
-      const scalar_t* input,
-      int64_t iC,
-      int64_t iH,
-      int64_t iW,
-      int64_t oH,
-      int64_t oW,
-      int64_t kH,
-      int64_t kW,
-      int64_t sH,
-      int64_t sW,
-      int64_t pH,
-      int64_t pW,
-      int64_t dH,
-      int64_t dW,
-      int64_t stride,
-      BatchKernelConfig cfg)
-      : output_(output),
-        input_(input),
-        iC_(iC),
-        iH_(iH),
-        iW_(iW),
-        oH_(oH),
-        oW_(oW),
-        kH_(kH),
-        kW_(kW),
-        sH_(sH),
-        sW_(sW),
-        pH_(pH),
-        pW_(pW),
-        dH_(dH),
-        dW_(dW),
-        stride_(stride),
-        cfg_(cfg) {}
-
- private:
-  scalar_t* output_;
-  const scalar_t* input_;
-  int64_t iC_; // input/output channels
-  int64_t iH_;
-  int64_t iW_; // input sizes
-  int64_t oH_;
-  int64_t oW_; // output sizes
-  int64_t kH_;
-  int64_t kW_; // kernel size
-  int64_t sH_;
-  int64_t sW_; // strides
-  int64_t pH_;
-  int64_t pW_; // padding
-  int64_t dH_;
-  int64_t dW_; // dilation
-  int64_t stride_;
-  BatchKernelConfig cfg_;
-};
+    }
+  } while (cfg.next(item, desc));
+}
 
 template <typename scalar_t>
 void launch_quantized_max_pool2d_kernel(
@@ -174,14 +136,17 @@ void launch_quantized_max_pool2d_kernel(
     int64_t pW,
     int64_t dH,
     int64_t dW) {
-  using KernelClass = QuantizedMaxPool2dKernelFunctor<scalar_t>;
-
   auto& queue = at::xpu::getCurrentSYCLQueue();
   int outputSize = nBatch * oH * oW;
   int stride = oH * oW;
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
-      1, outputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
-  auto kfn = KernelClass(
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<
+      quantized_max_pool2d_kernel_impl<scalar_t>>(
+      1, outputSize, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
+  sycl_kernel_submit<quantized_max_pool2d_kernel_impl<scalar_t>>(
+      cfg.global_size(),
+      cfg.group_size(),
+      queue,
+      0,
       output,
       input,
       iC,
@@ -199,7 +164,6 @@ void launch_quantized_max_pool2d_kernel(
       dW,
       stride,
       cfg);
-  sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
 }
 
 Tensor quantized_max_pool2d_kernel(
