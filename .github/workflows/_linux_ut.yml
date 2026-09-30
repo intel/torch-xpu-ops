@@ -22,7 +22,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
+        description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1,xpu_distributed,upstream_distributed,upstream_inductor,upstream_default`
       category:
         type: string
         default: ''
@@ -70,6 +70,7 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
+          skip_summary: ${{ inputs.skip_summary }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
@@ -91,10 +92,12 @@ jobs:
 
   test-in-baremetal:
     timeout-minutes: 600
-    if: ${{ contains(inputs.ut, 'distributed') }}
+    if: ${{ contains(inputs.ut, 'distributed') || inputs.ut == 'xpu_p0' }}
     runs-on: ${{ inputs.runner }}
     env:
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      # xpu_p0 is split: the distributed group runs here (baremetal), the rest in the container job.
+      UT_LABEL: ${{ inputs.ut == 'xpu_p0' && 'xpu_p0_distributed' || inputs.ut }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -108,19 +111,20 @@ jobs:
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
-          ut_name: ${{ inputs.ut }}
+          ut_name: ${{ env.UT_LABEL }}
+          skip_summary: ${{ inputs.skip_summary }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 
@@ -187,6 +191,11 @@ jobs:
             ut_list="${{ inputs.ut }}"
           fi
           # Check every ut in the list; do not stop at the first failure.
+          # ut_result_check.sh appends one health record per category here. The
+          # loop's CWD is inside ut_log/<artifact_dir>/<ut_job>/, so the path must
+          # be absolute for the file to land in the re-uploaded artifact.
+          export UT_RUN_HEALTH_FILE="${{ github.workspace }}/ut_log/run_health.jsonl"
+          : > "${UT_RUN_HEALTH_FILE}"
           check_ret=0
           for ut_name in ${ut_list}
           do
