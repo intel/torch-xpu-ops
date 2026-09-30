@@ -395,10 +395,6 @@ skip_dict = {
         "test_scaled_addmm_nvfp4",
         "test_scaled_addmm_fullgraph",
         "test_scaled_addmm_cudagraph",
-        # https://github.com/intel/torch-xpu-ops/issues/5425
-        # ROCm only tests
-        "test_mxfp8_tn_only_on_rocm",
-        "test_rowwise_tn_only_on_rocm",
     },
     "test_serialization_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_memory_efficient_fusion.py": None,
