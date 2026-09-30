@@ -415,7 +415,7 @@ WelfordDataLN compute_stats(
           static_cast<acc_t>(data.val[ii]), wd);
     }
   }
-  // intra-warp reduction
+  // intra-subgroup reduction
   auto sg = item_id.get_sub_group();
   for (int offset = (SIMD >> 1); offset > 0; offset >>= 1) {
     WelfordDataLN wdB{
@@ -428,10 +428,10 @@ WelfordDataLN compute_stats(
   const int num_sg = item_id.get_local_range(0);
   const int sg_id = item_id.get_local_id(0);
   const int lane_id = item_id.get_local_id(1);
-  // threadIdx.x == 0 has correct values for each warp
-  // inter-warp reductions
+  // lane 0 of each subgroup holds that subgroup's reduced value
+  // inter-subgroup reductions
   if (num_sg == SIMD) {
-    // fast path: sub-group 0 reduces all SIMD partials via shuffles
+    // fast path: subgroup 0 reduces all subgroup partials via shuffles
 
     if (lane_id == 0) {
       buf[sg_id] = wd.mean;
@@ -466,7 +466,7 @@ WelfordDataLN compute_stats(
     // Tree reduce via SLM
     auto addr_offset = num_sg;
     for (int offset = addr_offset / 2; offset > 0; offset /= 2) {
-      // upper half of warps write to shared
+      // upper half of subgroups write to shared
       if (lane_id == 0 && sg_id >= offset && sg_id < 2 * offset) {
         const int wrt_y = sg_id - offset;
         buf[2 * wrt_y] = wd.mean;
