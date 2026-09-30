@@ -15,6 +15,7 @@
 #include <ATen/core/Scalar.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReductionType.h>
+#include <ATen/xpu/XPUContext.h>
 #include <optional>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -172,7 +173,7 @@ void segment_reduce_forward_kernel(
     const int64_t lengths_cumsum_stride_axis) {
   const int64_t size = outer_offset * segment_count * inner_offset;
   using Kernel = SegmentReduceForwardKernelFunctor<scalar_t, index_t>;
-  const int64_t work_group_size = syclMaxWorkGroupSize<Kernel>();
+  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
   const int64_t work_group_num = (size + work_group_size - 1) / work_group_size;
   Kernel kfn(
       reduction,
@@ -269,7 +270,7 @@ Tensor _segment_reduce_lengths_offsets_xpu_kernel(
               auto* output_data_ptr = output.mutable_data_ptr<scalar_t>();
 
               // initialize starting value
-              scalar_t initial_value;
+              scalar_t initial_value = 0;
               if (initial.has_value()) {
                 initial_value = initial.value().to<scalar_t>();
               } else if (reduction == native::ReductionType::MAX) {
@@ -504,7 +505,7 @@ void segment_reduce_backward_kernel(
     const int64_t lengths_cumsum_stride_axis) {
   const int64_t size = outer_offset * segment_count * inner_offset;
   using Kernel = SegmentReduceBackwardKernelFunctor<scalar_t, index_t>;
-  const int64_t work_group_size = syclMaxWorkGroupSize<Kernel>();
+  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
   const int64_t work_group_num = (size + work_group_size - 1) / work_group_size;
 
   Kernel kfn(

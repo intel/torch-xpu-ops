@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -59,8 +60,8 @@ void parallel_replication_pad1d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2);
 
-  int64_t work_group_size =
-      syclMaxWorkGroupSize<parallel_replication_pad_1d_kernel_func<
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      parallel_replication_pad_1d_kernel_func<
           input_scalar_t,
           output_scalar_t,
           F>>();
@@ -179,8 +180,8 @@ void parallel_replication_pad2d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3);
 
-  int64_t work_group_size =
-      syclMaxWorkGroupSize<parallel_replication_pad_2d_kernel_func<
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      parallel_replication_pad_2d_kernel_func<
           input_scalar_t,
           output_scalar_t,
           F>>();
@@ -316,8 +317,8 @@ void parallel_replication_pad3d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3) * output.size(4);
 
-  int64_t work_group_size =
-      syclMaxWorkGroupSize<parallel_replication_pad_3d_kernel_func<
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      parallel_replication_pad_3d_kernel_func<
           input_scalar_t,
           output_scalar_t,
           F>>();

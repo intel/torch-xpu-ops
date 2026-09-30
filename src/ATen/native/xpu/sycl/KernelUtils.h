@@ -12,6 +12,9 @@
 
 #include <ATen/ceil_div.h>
 #include <comm/DeviceProperties.h>
+
+// Keep XPUContext after the existing host-only SYCL warning suppression.
+#include <ATen/xpu/XPUContext.h>
 #include <algorithm>
 
 #define XPU_KERNEL_LOOP_TYPE(item, i, n, index_type)                      \
@@ -26,11 +29,12 @@
 // Returns the number of work groups needed to cover `nelem` elements with the
 // given work-group size, capped so grid-strided loop kernels (XPU_KERNEL_LOOP)
 // do not launch more work items than the device can keep resident. The default
-// cap is syclMaxWorkItemsPerTile(); pass a custom `candidate` to override.
+// cap is at::xpu::getDeviceMaxWorkItems(); pass a custom `candidate` to
+// override.
 inline int64_t xpuKernelLoopGroupRange(
     int64_t nelem,
-    int64_t group_size = xpu::sycl::syclDeviceMaxWorkGroupSize(),
-    int64_t candidate = xpu::sycl::syclMaxWorkItemsPerTile()) {
+    int64_t group_size = at::xpu::getDeviceMaxWorkGroupSize(),
+    int64_t candidate = at::xpu::getDeviceMaxWorkItems()) {
   int64_t work_items = std::min(nelem, candidate);
   return at::ceil_div(work_items, group_size);
 }
