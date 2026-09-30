@@ -594,7 +594,7 @@ void small_index_kernel(
       sycl::range<1>(global_size),
       sycl::range<1>(wgroup_size),
       queue,
-      indices_size,
+      indices_size * sizeof(int64_t),
       f,
       indices_size,
       group_num_tail,
@@ -695,11 +695,9 @@ void index_kernel_impl(
 
   auto offset_calc = make_offset_calculator<3>(iter);
   using offset_calc_type = decltype(offset_calc);
-  sycl_kernel_submit<
   int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
       index_functor_kernel_impl<func_t, index_buf_type, offset_calc_type>>();
-  int64_t global_size =
-      ((numel + wgroup_size - 1) / wgroup_size) * wgroup_size;
+  int64_t global_size = ((numel + wgroup_size - 1) / wgroup_size) * wgroup_size;
   sycl_kernel_submit<
       index_functor_kernel_impl<func_t, index_buf_type, offset_calc_type>,
       1>(
