@@ -80,7 +80,7 @@ T bilinear_interpolate(
 }
 template <typename T>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void roi_align_forward_kernel_fn(
+void roi_align_forward_kernel_impl(
     const T* input,
     const T spatial_scale,
     int items_per_roi,
@@ -249,7 +249,7 @@ void bilinear_interpolate_gradient(
 
 template <typename T>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void roi_align_backward_kernel_fn(
+void roi_align_backward_kernel_impl(
     int nthreads,
     const T* grad_output,
     const T spatial_scale,
@@ -407,7 +407,7 @@ Tensor roi_align_kernel(
       "roi_align_forward_kernel_xpu",
       [&] {
         int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<
-            roi_align_forward_kernel_fn<scalar_t>>();
+            roi_align_forward_kernel_impl<scalar_t>>();
         int items_per_roi = pooled_height * pooled_width * channels;
         if (items_per_roi < local_range) {
           constexpr int simd_len = 32;
@@ -417,7 +417,7 @@ Tensor roi_align_kernel(
         }
         int wgs_per_roi = (items_per_roi + local_range - 1) / local_range;
         int64_t global_range = wgs_per_roi * num_rois;
-        sycl_kernel_submit<roi_align_forward_kernel_fn<scalar_t>>(
+        sycl_kernel_submit<roi_align_forward_kernel_impl<scalar_t>>(
             global_range * local_range,
             local_range,
             at::xpu::getCurrentSYCLQueue(),
@@ -476,7 +476,7 @@ Tensor roi_align_backward_kernel(
       grad.scalar_type(),
       "roi_align_backward_kernel_xpu",
       [&] {
-        sycl_kernel_submit<roi_align_backward_kernel_fn<scalar_t>>(
+        sycl_kernel_submit<roi_align_backward_kernel_impl<scalar_t>>(
             global_range * local_range,
             local_range,
             at::xpu::getCurrentSYCLQueue(),
