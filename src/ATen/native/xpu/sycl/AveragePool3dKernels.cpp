@@ -127,8 +127,8 @@ void avg_pool3d_out_template(
   auto input_acc = work_input.packed_accessor64<const scalar_t, 4>();
   auto output_acc = work_output.packed_accessor64<scalar_t, 4>();
 
-// Width size is fixed at 32; height group size is the kernel's
-// max work-group size divided by width_group_size.
+  // Width size is fixed at 32; height group size is the kernel's
+  // max work-group size divided by width_group_size.
   index_t width_group_size = 32;
   index_t height_group_size =
       at::xpu::getKernelMaxWorkGroupSize<
