@@ -204,7 +204,7 @@ bool can_vectorize(const T* ptr, int alignment) {
 template <typename T, typename T_ACC, bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-void row_wise_moments_kernel(
+void row_wise_moments_kernel_impl(
     int64_t N,
     T_ACC eps,
     const T* X,
@@ -256,7 +256,7 @@ void launch_rowwise_moments_kernel(
   auto queue = getCurrentSYCLQueue();
 
   int slm_sz = sizeof(WelfordType) * SIMD;
-  sycl_kernel_submit<row_wise_moments_kernel<T, T_ACC, rms_norm>>(
+  sycl_kernel_submit<row_wise_moments_kernel_impl<T, T_ACC, rms_norm>>(
       global_range,
       local_range,
       queue,
@@ -270,7 +270,7 @@ void launch_rowwise_moments_kernel(
 
 template <typename T, typename T_ACC, bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void layer_norm_forward_kernel(
+void layer_norm_forward_kernel_impl(
     int64_t N,
     const T* X,
     const T_ACC* mean,
@@ -314,7 +314,7 @@ void launch_layer_norm_forward_kernel(
   sycl::range<1> global_range(M * size_t(wg_size));
   auto queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit<layer_norm_forward_kernel<T, T_ACC, rms_norm>>(
+  sycl_kernel_submit<layer_norm_forward_kernel_impl<T, T_ACC, rms_norm>>(
       global_range,
       local_range,
       queue,
@@ -491,7 +491,7 @@ WelfordDataLN compute_stats(
 template <typename T, typename T_ACC, bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-void vectorized_layer_norm_kernel(
+void vectorized_layer_norm_kernel_impl(
     const int N,
     T_ACC eps,
     const T* RESTRICT X,
@@ -640,7 +640,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* rstd_data) {
   auto wg_size = layer_norm_wg_size_select(
       at::xpu::getKernelMaxWorkGroupSize<
-          vectorized_layer_norm_kernel<T, T_ACC, rms_norm>>(),
+          vectorized_layer_norm_kernel_impl<T, T_ACC, rms_norm>>(),
       M,
       N / vec_size);
   sycl::range<2> local_range{size_t(wg_size / SIMD), SIMD};
@@ -648,7 +648,7 @@ void launch_vectorized_layer_norm_kernel(
   auto queue = getCurrentSYCLQueue();
   size_t slm_sz = sizeof(T_ACC) * (wg_size / SIMD) * 2;
 
-  sycl_kernel_submit<vectorized_layer_norm_kernel<T, T_ACC, rms_norm>>(
+  sycl_kernel_submit<vectorized_layer_norm_kernel_impl<T, T_ACC, rms_norm>>(
       global_range,
       local_range,
       queue,
@@ -725,7 +725,7 @@ template <
     bool have_beta = true,
     bool rms_norm = false>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
-void gamma_beta_reduce_kernel(
+void gamma_beta_reduce_kernel_impl(
     const mean_t* mean_data,
     const mean_t* var_data,
     const scalar_t* dY_data,
@@ -860,7 +860,7 @@ template <
     int vec_size,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
-void gamma_beta_backward_simple_kernel(
+void gamma_beta_backward_simple_kernel_impl(
     const mean_t* mean_data,
     const mean_t* var_data,
     NormConfig cfg,
@@ -1006,7 +1006,7 @@ void vec_gamma_beta_bwd_simple_kernel(
   size_t lsm_size =
       2 * cfg.block_row * cfg.workgroup_size * vec_size * sizeof(accscalar_t);
 
-  sycl_kernel_submit<gamma_beta_backward_simple_kernel<
+  sycl_kernel_submit<gamma_beta_backward_simple_kernel_impl<
       scalar_t,
       accscalar_t,
       mean_t,
@@ -1230,7 +1230,7 @@ void layer_norm_backward_kernel_impl(
       size_t lsm_size = 2 * tile_size_n * tile_size_m / elements_per_thread *
           sizeof(accscalar_t);
 
-      sycl_kernel_submit<gamma_beta_reduce_kernel<
+      sycl_kernel_submit<gamma_beta_reduce_kernel_impl<
           scalar_t,
           accscalar_t,
           mean_t,
@@ -1269,7 +1269,7 @@ void layer_norm_backward_kernel_impl(
     } else if (dgamma->defined() && !dbeta->defined()) {
       size_t lsm_size = 2 * tile_size_n * tile_size_m / elements_per_thread *
           sizeof(accscalar_t);
-      sycl_kernel_submit<gamma_beta_reduce_kernel<
+      sycl_kernel_submit<gamma_beta_reduce_kernel_impl<
           scalar_t,
           accscalar_t,
           mean_t,
@@ -1305,7 +1305,7 @@ void layer_norm_backward_kernel_impl(
     } else if (!dgamma->defined() && dbeta->defined()) {
       size_t lsm_size = 2 * tile_size_n * tile_size_m / elements_per_thread *
           sizeof(accscalar_t);
-      sycl_kernel_submit<gamma_beta_reduce_kernel<
+      sycl_kernel_submit<gamma_beta_reduce_kernel_impl<
           scalar_t,
           accscalar_t,
           mean_t,
