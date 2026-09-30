@@ -267,9 +267,7 @@ class TestCompositeCompliance(TestCase):
         {
             skip("nn.functional.max_unpool2d"),
             skip("nn.functional.max_unpool3d"),
-            skip(
-                "nn.functional.multi_head_attention_forward"
-            ),
+            skip("nn.functional.multi_head_attention_forward"),
         }
     )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
