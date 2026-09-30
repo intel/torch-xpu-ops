@@ -1257,39 +1257,45 @@ void index_reduce_add_xpu_template(
       func,                                                                 \
       alpha_value);
 
-#define LARGE_INDEX(                                     \
-    TENSOR_TYPE,                                         \
-    INDICES_TYPE,                                        \
-    TYPE,                                                \
-    SELF_DIM,                                            \
-    SOURCE_DIM,                                          \
-    IDX_DIM,                                             \
-    IDX_IS_MAJOR,                                        \
-    FUNC_T)                                              \
-  sycl_kernel_submit<index_func_large_index_kernel_impl< \
-      TENSOR_TYPE,                                       \
-      INDICES_TYPE,                                      \
-      TYPE,                                              \
-      SELF_DIM,                                          \
-      SOURCE_DIM,                                        \
-      IDX_DIM,                                           \
-      IDX_IS_MAJOR,                                      \
-      FUNC_T>>(                                          \
-      num_wg * wg_size,                                  \
-      wg_size,                                           \
-      getCurrentSYCLQueue(),                             \
-      (sizeof(TYPE) + sizeof(TENSOR_TYPE)) * SMEM_SIZE,  \
-      selfInfo,                                          \
-      sourceInfo,                                        \
-      indexInfo,                                         \
-      selfAddDim,                                        \
-      sourceAddDim,                                      \
-      static_cast<TYPE>(sourceTotalSize),                \
-      (IDX_IS_MAJOR) ? sliceSize : numIndex,             \
-      selfAddDimSize,                                    \
-      selfNumel,                                         \
-      func,                                              \
-      alpha_value);
+#define LARGE_INDEX(                                                  \
+    TENSOR_TYPE,                                                      \
+    INDICES_TYPE,                                                     \
+    TYPE,                                                             \
+    SELF_DIM,                                                         \
+    SOURCE_DIM,                                                       \
+    IDX_DIM,                                                          \
+    IDX_IS_MAJOR,                                                     \
+    FUNC_T)                                                           \
+  do {                                                                \
+    constexpr bool use_smem_coalescing =                              \
+        !(std::is_same_v<TENSOR_TYPE, double> ||                      \
+          std::is_same_v<TENSOR_TYPE, c10::complex<double>>);         \
+    constexpr size_t smem_size = use_smem_coalescing ? SMEM_SIZE : 1; \
+    sycl_kernel_submit<index_func_large_index_kernel_impl<            \
+        TENSOR_TYPE,                                                  \
+        INDICES_TYPE,                                                 \
+        TYPE,                                                         \
+        SELF_DIM,                                                     \
+        SOURCE_DIM,                                                   \
+        IDX_DIM,                                                      \
+        IDX_IS_MAJOR,                                                 \
+        FUNC_T>>(                                                     \
+        num_wg * wg_size,                                             \
+        wg_size,                                                      \
+        getCurrentSYCLQueue(),                                        \
+        (sizeof(TYPE) + sizeof(TENSOR_TYPE)) * smem_size,             \
+        selfInfo,                                                     \
+        sourceInfo,                                                   \
+        indexInfo,                                                    \
+        selfAddDim,                                                   \
+        sourceAddDim,                                                 \
+        static_cast<TYPE>(sourceTotalSize),                           \
+        (IDX_IS_MAJOR) ? sliceSize : numIndex,                        \
+        selfAddDimSize,                                               \
+        selfNumel,                                                    \
+        func,                                                         \
+        alpha_value);                                                 \
+  } while (0)
 
   if (canUse32BitIndexMath(result) && canUse32BitIndexMath(source) &&
       canUse32BitIndexMath(index)) {
@@ -1524,39 +1530,45 @@ void index_reduce_func_xpu_template(
       reduce_func,                                                          \
       alpha_value);
 
-#define LARGE_INDEX(                                     \
-    TENSOR_TYPE,                                         \
-    INDICES_TYPE,                                        \
-    TYPE,                                                \
-    SELF_DIM,                                            \
-    SOURCE_DIM,                                          \
-    IDX_DIM,                                             \
-    IDX_IS_MAJOR,                                        \
-    FUNC_T)                                              \
-  sycl_kernel_submit<index_func_large_index_kernel_impl< \
-      TENSOR_TYPE,                                       \
-      INDICES_TYPE,                                      \
-      TYPE,                                              \
-      SELF_DIM,                                          \
-      SOURCE_DIM,                                        \
-      IDX_DIM,                                           \
-      IDX_IS_MAJOR,                                      \
-      FUNC_T>>(                                          \
-      num_wg * wg_size,                                  \
-      wg_size,                                           \
-      getCurrentSYCLQueue(),                             \
-      (sizeof(TYPE) + sizeof(TENSOR_TYPE)) * SMEM_SIZE,  \
-      selfInfo,                                          \
-      sourceInfo,                                        \
-      indexInfo,                                         \
-      selfReduceDim,                                     \
-      sourceReduceDim,                                   \
-      static_cast<TYPE>(sourceTotalSize),                \
-      (IDX_IS_MAJOR) ? sliceSize : numIndex,             \
-      selfReduceDimSize,                                 \
-      selfNumel,                                         \
-      reduce_func,                                       \
-      alpha_value);
+#define LARGE_INDEX(                                                  \
+    TENSOR_TYPE,                                                      \
+    INDICES_TYPE,                                                     \
+    TYPE,                                                             \
+    SELF_DIM,                                                         \
+    SOURCE_DIM,                                                       \
+    IDX_DIM,                                                          \
+    IDX_IS_MAJOR,                                                     \
+    FUNC_T)                                                           \
+  do {                                                                \
+    constexpr bool use_smem_coalescing =                              \
+        !(std::is_same_v<TENSOR_TYPE, double> ||                      \
+          std::is_same_v<TENSOR_TYPE, c10::complex<double>>);         \
+    constexpr size_t smem_size = use_smem_coalescing ? SMEM_SIZE : 1; \
+    sycl_kernel_submit<index_func_large_index_kernel_impl<            \
+        TENSOR_TYPE,                                                  \
+        INDICES_TYPE,                                                 \
+        TYPE,                                                         \
+        SELF_DIM,                                                     \
+        SOURCE_DIM,                                                   \
+        IDX_DIM,                                                      \
+        IDX_IS_MAJOR,                                                 \
+        FUNC_T>>(                                                     \
+        num_wg * wg_size,                                             \
+        wg_size,                                                      \
+        getCurrentSYCLQueue(),                                        \
+        (sizeof(TYPE) + sizeof(TENSOR_TYPE)) * smem_size,             \
+        selfInfo,                                                     \
+        sourceInfo,                                                   \
+        indexInfo,                                                    \
+        selfReduceDim,                                                \
+        sourceReduceDim,                                              \
+        static_cast<TYPE>(sourceTotalSize),                           \
+        (IDX_IS_MAJOR) ? sliceSize : numIndex,                        \
+        selfReduceDimSize,                                            \
+        selfNumel,                                                    \
+        reduce_func,                                                  \
+        alpha_value);                                                 \
+  } while (0);
 
   int ssc = syclMaxDSSNum();
 
