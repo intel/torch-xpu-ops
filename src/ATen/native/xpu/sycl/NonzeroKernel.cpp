@@ -11,6 +11,7 @@
 #include <ATen/Dispatch_v2.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/xpu/XPUContext.h>
 
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/Memory.h>
@@ -184,7 +185,6 @@ struct FlattenIdxtoRealIdxKernelFunctor {
       int64_t* divisor,
       int64_t* sizes)
       : N_(N),
-        num_dim_(num_dim),
         num_nonzeros_(num_nonzeros),
         out_begin_(out_begin),
         idx_flat_begin_(idx_flat_begin) {
@@ -196,7 +196,6 @@ struct FlattenIdxtoRealIdxKernelFunctor {
 
  private:
   int64_t N_;
-  const int64_t num_dim_;
   const int64_t num_nonzeros_;
   int64_t* out_begin_;
   int64_t* idx_flat_begin_;
@@ -258,7 +257,8 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           idx_flat_begin,
           divisor,
           sizes);
-      const auto wg_sz = std::min(syclMaxWorkGroupSize(kfn), total);
+      const auto wg_sz =
+          std::min<int64_t>(at::xpu::getKernelMaxWorkGroupSize(kfn), total);
       const auto num_wg = at::ceil_div(total, wg_sz);
       sycl_kernel_submit(wg_sz * num_wg, wg_sz, queue, kfn);
     }
@@ -276,7 +276,8 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
   // ---- Pass 1: count nonzeros per chunk via work-group reduction ----
   using CountFunctor = CountNonzerosKernelFunctor<scalar_t>;
-  const auto count_wg_size = syclMaxWorkGroupSize<CountFunctor>();
+  const int64_t count_wg_size =
+      at::xpu::getKernelMaxWorkGroupSize<CountFunctor>();
 
   // Pre-allocate a single device buffer wide enough to hold every WG's partial
   // sum for every chunk. All count kernels are enqueued without blocking so

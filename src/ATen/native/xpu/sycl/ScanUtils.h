@@ -16,6 +16,7 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <comm/TensorOptions.h>
@@ -348,7 +349,7 @@ class LoopScanConfig {
         wg_range_y_(0) {
     size_t wg_size = syclMaxWorkItemsPerSubSlice();
     wg_range_y_ = wg_size / wg_range_x_;
-    const auto target_global_size = syclMaxWorkItemsPerTile();
+    const int64_t target_global_size = at::xpu::getDeviceMaxWorkItems();
     ;
     const size_t max_work_group_num = target_global_size / wg_size;
     const size_t wg_number =

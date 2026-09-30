@@ -6,8 +6,7 @@ description: >
   bug still reproduces before an orchestrator commits time to a fix.
   Runs a three-stage fallback (nightly wheel -> source build -> CI
   environment alignment) and returns REPRODUCED / NOT_REPRODUCED /
-  NO_REPRODUCER / CANNOT_VERIFY. Called by both issue-handler and
-  xpu-nightly-ci-fix orchestrators.
+  NO_REPRODUCER / CANNOT_VERIFY. Called by the issue-handler orchestrator.
 ---
 
 # Reproduce — Verify the Bug Exists
@@ -38,8 +37,8 @@ the result.
   Providers (set by the orchestrator, not this skill):
   - **Issue body** — extracted by `issue-triage` from the reproducer section
     (via `issue-handler`).
-  - **CI failure log** — the failing pytest node id from the nightly CI report
-    (via `xpu-nightly-ci-fix`).
+  - **CI failure log** — the failing pytest node id from the nightly CI report,
+    passed through as a batch sub-item.
 - `stage` — which reproduction path to run. Default `auto`.
   - `auto` — run the full three-stage fallback chain (nightly → source_build →
     ci_env). Used by orchestrators that need a definitive verdict.
@@ -418,9 +417,8 @@ Pick which CI to align against based on the reproducer:
 | Path is `pytorch/test/...` or absolute path inside a pytorch tree | `pytorch` |
 | Ambiguous / `python -c` snippet with no path | try `torch-xpu-ops` first, fall back to `pytorch` |
 
-The orchestrator (`issue-handler` for issues from either repo,
-`xpu-nightly-ci-fix` for torch-xpu-ops nightly failures) may also
-pass `ci_repo` explicitly; when set, use it and skip the heuristic.
+The orchestrator may also pass `ci_repo` explicitly; when set, use it
+and skip the heuristic.
 
 ### Path A — `ci_repo=torch-xpu-ops`
 
@@ -667,6 +665,33 @@ REPRODUCED
   base: origin/main | <ci_commit_sha>    # base for downstream build. Default origin/main (also for stage=ci_env). ci_commit_sha only when stage=source_build fell back to ci_commit. Stage 3's TORCH_COMMIT_ID wheel-alignment checkout is never returned as base.
   refined_command: <single shell-executable string>
 ```
+
+### Markdown block
+
+Emit this block with the output above; the orchestrator appends it to the
+session comment.
+
+```markdown
+<!-- agent:reproduce -->
+
+## Reproduce
+
+<one or two sentences: which build was used — nightly wheel version or
+source sha — and which device.>
+
+| Test case | Verdict | Observed |
+|---|---|---|
+| `test_foo_xpu_float8_e4m3fn` | REPRODUCED | `NotImplementedError: "bar_kernel" not implemented for 'Float8_e4m3fn'` |
+
+<optional: one paragraph tying the signature to the CI job log, with a
+link to the failing job; or naming what blocked a stage.>
+
+*Automated by fix-reproduce.*
+```
+
+One row per test case (for a batch, label rows by sub-item number:
+`4. \`test_foo...\``). `Observed` is the one-line failure signature,
+backticked — never a pasted traceback.
 
 **`refined_command` contract.** A single shell-executable string that,
 run by itself, reliably triggers the failure. A downstream skill (a

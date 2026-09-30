@@ -20,6 +20,7 @@ from torch.testing._internal.common_device_type import (
     ops,
     skip,
     skipOps,
+    xfail,
 )
 from torch.testing._internal.common_methods_invocations import ops_and_refs
 from torch.testing._internal.common_utils import (
@@ -279,6 +280,11 @@ class TestCompositeCompliance(TestCase):
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
+    @skipOps(
+        {
+            xfail("nn.functional.grid_sample"),
+        }
+    )
     def test_cow_input(self, device, dtype, op):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()

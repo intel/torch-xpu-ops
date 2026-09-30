@@ -18,9 +18,9 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/core/Allocator.h>
 #include <c10/macros/Macros.h>
-#include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUPair.h>
 #include <comm/xpu_aten.h>
@@ -288,14 +288,15 @@ struct ReduceConfig {
 
   template <typename T, class KernelClass>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
-    auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
+    int64_t max_wg_sz = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     // Bypass reduction on SLM by sparing workload to other SGs. As the
     // result, reduction of small shape input only requires some shift
     // operations in side of SG. It is functional WA. We got case failures on
     // some platforms supporting SIMD8.
     // https://github.com/intel/torch-xpu-ops/issues/698
-    auto max_sg_sz = syclMinSubGroupSize() == 8 ? syclMinSubGroupSize()
-                                                : syclMaxSubGroupSize();
+    int64_t max_sg_sz = at::xpu::getDeviceMinSubGroupSize() == 8
+        ? at::xpu::getDeviceMinSubGroupSize()
+        : at::xpu::getDeviceMaxSubGroupSize();
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
@@ -1407,8 +1408,8 @@ inline void gpu_reduce_kernel(
   constexpr int min_values_per_item = 16;
   constexpr int max_values_per_item = 256;
 
-  const auto target_group_range =
-      syclMaxWorkItemsPerTile() / (group_height * group_width);
+  const int64_t target_group_range =
+      at::xpu::getDeviceMaxWorkItems() / (group_height * group_width);
   // outputs after spliting to work group
   int reset_output = config.n_groups()[1];
   if (config.input_mult[1] != 0 &&

@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -82,7 +83,7 @@ void embedding_bag(
   vec_idx_t* max_idx_vec = reinterpret_cast<vec_idx_t*>(max_index);
 
   int vectorized_feature_dim = feature_dim / vec_size;
-  int64_t work_group_size = syclDeviceMaxWorkGroupSize();
+  int64_t work_group_size = at::xpu::getDeviceMaxWorkGroupSize();
   // TODO: we can set a smaller num_work_group and add for loop in kernel
   int64_t num_work_group = ceil_div(
       static_cast<int64_t>(bag_num * vectorized_feature_dim),
@@ -351,9 +352,9 @@ void embedding_bag_sum_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              int num_sub_wg =
-                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
-              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              int num_sub_wg = bag_num * feature_dim / vec_size /
+                  at::xpu::getDeviceMaxSubGroupSize();
+              int thread_slots = at::xpu::getDeviceHWThreads();
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
@@ -431,9 +432,9 @@ void embedding_bag_mean_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              int num_sub_wg =
-                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
-              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              int num_sub_wg = bag_num * feature_dim / vec_size /
+                  at::xpu::getDeviceMaxSubGroupSize();
+              int thread_slots = at::xpu::getDeviceHWThreads();
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
@@ -510,9 +511,9 @@ void embedding_bag_max_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              int num_sub_wg =
-                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
-              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              int num_sub_wg = bag_num * feature_dim / vec_size /
+                  at::xpu::getDeviceMaxSubGroupSize();
+              int thread_slots = at::xpu::getDeviceHWThreads();
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
@@ -726,7 +727,7 @@ void _embedding_bag_per_sample_weights_backward_impl(
       index_t,
       accscalar_t>;
 
-  int64_t max_group_size = syclMaxWorkGroupSize<kfn>();
+  int64_t max_group_size = at::xpu::getKernelMaxWorkGroupSize<kfn>();
 
   int64_t num_group = (num_samples + max_group_size - 1) / max_group_size;
   auto global_range{num_group * max_group_size};
