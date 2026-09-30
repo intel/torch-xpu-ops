@@ -51,6 +51,8 @@ const Tensor& _fft_apply_normalization(
     IntArrayRef norm_sizes,
     IntArrayRef dims);
 
+ScalarType promote_fft_dtype(ScalarType dtype);
+
 Tensor promote_fft_input(const Tensor& input);
 
 } // namespace impl
