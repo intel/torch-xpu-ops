@@ -682,8 +682,7 @@ void grid_sampler_2d_backward_kernel(
     int64_t padding_mode,
     bool align_corners,
     std::array<bool, 2> output_mask) {
-  check_grid_sampler_common(input, grid);
-  check_grid_sampler_2d(input, grid);
+  check_grid_sampler_2d_backward(input, grid, grad_output);
 
   globalContext().alertNotDeterministic("grid_sampler_2d_backward_xpu");
   auto N = input.size(0);
@@ -1491,8 +1490,13 @@ void grid_sampler_3d_backward_kernel(
     std::array<bool, 2> output_mask) {
   // See NOTE [ grid_sampler Native Functions ].
   // Add checks here in case this is called instead of grid_sampler.
-  check_grid_sampler_common(input, grid);
-  check_grid_sampler_3d(input, grid, interpolation_mode);
+  check_grid_sampler_3d_backward(input, grid, grad_output);
+  TORCH_CHECK_NOT_IMPLEMENTED(
+      static_cast<GridSamplerInterpolation>(interpolation_mode) !=
+          GridSamplerInterpolation::Bicubic,
+      "grid_sampler(): bicubic interpolation with 5D input is not "
+      "implemented for ",
+      input.device().type());
 
   globalContext().alertNotDeterministic("grid_sampler_3d_backward_xpu");
   auto input_requires_grad = output_mask[0];
