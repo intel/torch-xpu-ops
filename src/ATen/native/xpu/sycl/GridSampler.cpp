@@ -1037,7 +1037,7 @@ void grid_sampler_3d_bicubic_kernel_func(
   opmath_t x_coeffs[4], y_coeffs[4], z_coeffs[4];
   index_t x_taps[4], y_taps[4], z_taps[4];
   resolve_cubic_taps(
-      grid_sampler_unnormalize_sized(x, inp_W, align_corners),
+      grid_sampler_unnormalize(x, inp_W, align_corners),
       inp_W,
       padding_mode,
       align_corners,
@@ -1045,7 +1045,7 @@ void grid_sampler_3d_bicubic_kernel_func(
       static_cast<opmath_t*>(nullptr),
       x_taps);
   resolve_cubic_taps(
-      grid_sampler_unnormalize_sized(y, inp_H, align_corners),
+      grid_sampler_unnormalize(y, inp_H, align_corners),
       inp_H,
       padding_mode,
       align_corners,
@@ -1053,7 +1053,7 @@ void grid_sampler_3d_bicubic_kernel_func(
       static_cast<opmath_t*>(nullptr),
       y_taps);
   resolve_cubic_taps(
-      grid_sampler_unnormalize_sized(z, inp_D, align_corners),
+      grid_sampler_unnormalize(z, inp_D, align_corners),
       inp_D,
       padding_mode,
       align_corners,
@@ -1743,7 +1743,7 @@ void grid_sampler_3d_bicubic_backward_kernel_func(
   index_t x_taps[4], y_taps[4], z_taps[4];
   opmath_t x_mult, y_mult, z_mult;
   resolve_cubic_taps(
-      grid_sampler_unnormalize_set_grad_sized(x, inp_W, align_corners, &x_mult),
+      grid_sampler_unnormalize_set_grad(x, inp_W, align_corners, &x_mult),
       inp_W,
       padding_mode,
       align_corners,
@@ -1751,7 +1751,7 @@ void grid_sampler_3d_bicubic_backward_kernel_func(
       x_coeffs_grad,
       x_taps);
   resolve_cubic_taps(
-      grid_sampler_unnormalize_set_grad_sized(y, inp_H, align_corners, &y_mult),
+      grid_sampler_unnormalize_set_grad(y, inp_H, align_corners, &y_mult),
       inp_H,
       padding_mode,
       align_corners,
@@ -1759,7 +1759,7 @@ void grid_sampler_3d_bicubic_backward_kernel_func(
       y_coeffs_grad,
       y_taps);
   resolve_cubic_taps(
-      grid_sampler_unnormalize_set_grad_sized(z, inp_D, align_corners, &z_mult),
+      grid_sampler_unnormalize_set_grad(z, inp_D, align_corners, &z_mult),
       inp_D,
       padding_mode,
       align_corners,
