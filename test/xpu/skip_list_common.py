@@ -336,7 +336,7 @@ skip_dict = {
     ),
     "functorch/test_control_flow_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_aot_joint_with_descriptors.py": None,
-    "profiler/test_memory_profiler.py": None,
+    f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_execution_trace_xpu.py": None,
     "profiler/test_profiler_xpu.py": None,
