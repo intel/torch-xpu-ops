@@ -186,35 +186,6 @@ static inline scalar_t grid_sampler_compute_source_index_set_grad(
   return coord;
 }
 
-// grid_sampler_unnormalize with the extent in index_t, for the kernels that
-// index with int64_t. It converts where the int-taking helper converts.
-template <typename scalar_t, typename index_t>
-static inline scalar_t grid_sampler_unnormalize_sized(
-    scalar_t coord,
-    index_t size,
-    bool align_corners) {
-  if (align_corners) {
-    return ((coord + 1) / 2) * static_cast<scalar_t>(size - 1);
-  } else {
-    return ((coord + 1) * static_cast<scalar_t>(size) - 1) / 2;
-  }
-}
-
-template <typename scalar_t, typename index_t>
-static inline scalar_t grid_sampler_unnormalize_set_grad_sized(
-    scalar_t coord,
-    index_t size,
-    bool align_corners,
-    scalar_t* grad_in) {
-  if (align_corners) {
-    *grad_in = static_cast<scalar_t>(size - 1) / 2;
-    return ((coord + 1) / 2) * static_cast<scalar_t>(size - 1);
-  } else {
-    *grad_in = static_cast<scalar_t>(size) / 2;
-    return ((coord + 1) * static_cast<scalar_t>(size) - 1) / 2;
-  }
-}
-
 // compute_coordinates with the extent in index_t, the reflection parity
 // taken with fmod and no downgrade: no float converts to an integer, and a
 // position past INT_MAX keeps its voxel.
