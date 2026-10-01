@@ -35,6 +35,7 @@ import torch.distributed._functional_collectives as _functional_collectives
 import torch.distributed._symmetric_memory as symm_mem
 import torch.testing._internal.common_utils as common
 from torch.profiler import profile, ProfilerActivity
+from torch.profiler._trace_validator import validate_trace
 from torch.testing._internal.common_distributed import (
     MultiProcContinuousTest,
     MultiProcessTestCase,
@@ -2010,7 +2011,8 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
 
             # Warm up so first-iteration setup costs stay out of the profiled region.
             for _ in range(2):
-                _ = x @ weight
+                output = x @ weight
+                dist.all_reduce(output)
             torch.xpu.synchronize()
 
             with profile(
@@ -2018,24 +2020,30 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
             ) as prof:
                 output = x @ weight
                 dist.all_reduce(output)
-                prof.step()
                 # Sync before export so async XPU kernels are recorded.
                 torch.xpu.synchronize()
 
             with TemporaryFileName(mode="w+") as fname:
                 prof.export_chrome_trace(fname)
+                passed, violations = validate_trace(fname)
                 with open(fname) as f:
-                    data = json.load(f)
-                kernels = [
-                    e for e in data.get("traceEvents", []) if e.get("cat") == "kernel"
-                ]
+                    events = json.load(f).get("traceEvents", [])
 
+            self.assertTrue(
+                passed,
+                f"[Rank {self.rank}] Invalid trace: {[str(v) for v in violations]}",
+            )
+            kernels = [e for e in events if e.get("cat") == "kernel"]
             gemm_kernels = [k for k in kernels if "gemm" in k.get("name", "").lower()]
             self.assertGreater(
                 len(gemm_kernels),
                 0,
                 f"[Rank {self.rank}] No GEMM kernel in trace; saw kernels: "
                 f"{[k.get('name') for k in kernels]}",
+            )
+            self.assertTrue(
+                any(e.get("name") == "xccl:all_reduce" for e in events),
+                f"[Rank {self.rank}] No xccl:all_reduce event in trace",
             )
         finally:
             dist.destroy_process_group()
