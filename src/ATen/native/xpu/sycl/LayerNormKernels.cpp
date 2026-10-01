@@ -367,29 +367,24 @@ WelfordDataLN WelfordOnlineSum(const U val, const WelfordDataLN& curr_sum) {
   }
 }
 
-template <bool rms_norm>
 WelfordDataLN WelfordCombine(
     const WelfordDataLN dataB,
     const WelfordDataLN dataA) {
-  if constexpr (!rms_norm) {
-    using U = decltype(dataB.count);
-    U delta = dataB.mean - dataA.mean;
-    U count = dataA.count + dataB.count;
-    U mean, sigma2;
-    if (count > decltype(dataB.count){0}) {
-      auto coef = sycl::native::recip(count);
-      auto nA = dataA.count * coef;
-      auto nB = dataB.count * coef;
-      mean = nA * dataA.mean + nB * dataB.mean;
-      sigma2 = dataA.sigma2 + dataB.sigma2 + delta * delta * dataA.count * nB;
-    } else {
-      mean = U(0);
-      sigma2 = U(0);
-    }
-    return {mean, sigma2, count};
+  using U = decltype(dataB.count);
+  U delta = dataB.mean - dataA.mean;
+  U count = dataA.count + dataB.count;
+  U mean, sigma2;
+  if (count > decltype(dataB.count){0}) {
+    auto coef = sycl::native::recip(count);
+    auto nA = dataA.count * coef;
+    auto nB = dataB.count * coef;
+    mean = nA * dataA.mean + nB * dataB.mean;
+    sigma2 = dataA.sigma2 + dataB.sigma2 + delta * delta * dataA.count * nB;
   } else {
-    return {0.f, dataB.sigma2 + dataA.sigma2, 0.f};
+    mean = U(0);
+    sigma2 = U(0);
   }
+  return {mean, sigma2, count};
 }
 
 template <typename T, typename T_ACC, bool rms_norm>
@@ -415,6 +410,11 @@ WelfordDataLN compute_stats(
           static_cast<acc_t>(data.val[ii]), wd);
     }
   }
+  if constexpr (rms_norm) {
+    float sum_sq =
+        sycl::reduce_over_group(item_id.get_group(), wd.sigma2, sycl::plus<>());
+    return WelfordDataLN{0.f, sum_sq / float(N), 0.f};
+  }
   // intra-warp reduction
   auto sg = item_id.get_sub_group();
   for (int offset = (SIMD >> 1); offset > 0; offset >>= 1) {
@@ -422,18 +422,53 @@ WelfordDataLN compute_stats(
         sycl::shift_group_left(sg, wd.mean, offset),
         sycl::shift_group_left(sg, wd.sigma2, offset),
         sycl::shift_group_left(sg, wd.count, offset)};
-    wd = WelfordCombine<rms_norm>(wd, wdB);
+    wd = WelfordCombine(wd, wdB);
   }
 
+  const int num_sg = item_id.get_local_range(0);
+  const int sg_id = item_id.get_local_id(0);
+  const int lane_id = item_id.get_local_id(1);
   // threadIdx.x == 0 has correct values for each warp
   // inter-warp reductions
-  if (item_id.get_local_range(0) > 1) {
-    auto addr_offset = item_id.get_local_range(0);
-    for (int offset = item_id.get_local_range(0) / 2; offset > 0; offset /= 2) {
+  if (num_sg == SIMD) {
+    // fast path: sub-group 0 reduces all SIMD partials via shuffles
+
+    if (lane_id == 0) {
+      buf[sg_id] = wd.mean;
+      buf[sg_id + num_sg] = wd.sigma2;
+      buf[sg_id + 2 * num_sg] = wd.count;
+    }
+    sycl::group_barrier(item_id.get_group());
+
+    if (sg_id == 0) {
+      WelfordDataLN w{
+          static_cast<float>(buf[lane_id]),
+          static_cast<float>(buf[lane_id + num_sg]),
+          static_cast<float>(buf[lane_id + 2 * num_sg])};
+      for (int offset = (SIMD >> 1); offset > 0; offset >>= 1) {
+        WelfordDataLN other{
+            sycl::shift_group_left(sg, w.mean, offset),
+            sycl::shift_group_left(sg, w.sigma2, offset),
+            sycl::shift_group_left(sg, w.count, offset)};
+        w = WelfordCombine(w, other);
+      }
+      wd = w;
+    }
+
+    if (sg_id == 0 && lane_id == 0) {
+      buf[0] = wd.mean;
+      buf[1] = wd.sigma2 / float(N);
+    }
+    sycl::group_barrier(item_id.get_group());
+    return WelfordDataLN{
+        static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
+  } else if (num_sg > 1) {
+    // Tree reduce via SLM
+    auto addr_offset = num_sg;
+    for (int offset = addr_offset / 2; offset > 0; offset /= 2) {
       // upper half of warps write to shared
-      if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) >= offset &&
-          item_id.get_local_id(0) < 2 * offset) {
-        const int wrt_y = item_id.get_local_id(0) - offset;
+      if (lane_id == 0 && sg_id >= offset && sg_id < 2 * offset) {
+        const int wrt_y = sg_id - offset;
         buf[2 * wrt_y] = wd.mean;
         buf[2 * wrt_y + 1] = wd.sigma2;
         buf[wrt_y + addr_offset] = wd.count;
@@ -441,18 +476,18 @@ WelfordDataLN compute_stats(
       sycl::group_barrier(item_id.get_group());
 
       // lower half merges
-      if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) < offset) {
-        const int rd_y = item_id.get_local_id(0);
+      if (lane_id == 0 && sg_id < offset) {
+        const int rd_y = sg_id;
         WelfordDataLN wdB{
             static_cast<float>(buf[2 * rd_y]),
             static_cast<float>(buf[2 * rd_y + 1]),
             static_cast<float>(buf[rd_y + addr_offset])};
-        wd = WelfordCombine<rms_norm>(wd, wdB);
+        wd = WelfordCombine(wd, wdB);
       }
       sycl::group_barrier(item_id.get_group());
     }
 
-    if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) == 0) {
+    if (lane_id == 0 && sg_id == 0) {
       buf[0] = wd.mean;
       buf[1] = wd.sigma2 / float(N);
     }
@@ -557,7 +592,7 @@ struct VectorizedLayerNormKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 2, cgh);
+    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 3, cgh);
   }
 
   VectorizedLayerNormKernelFunctor(
