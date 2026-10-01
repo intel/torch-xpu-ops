@@ -399,7 +399,7 @@ skip_dict = {
     "test_serialization_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_memory_efficient_fusion.py": None,
     f"{PYTORCH_TEST_DIR}/higher_order_ops/test_invoke_subgraph.py": None,
-    "higher_order_ops/test_with_effects_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/higher_order_ops/test_with_effects.py": None,
     "test_fx_experimental_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_callback.py": None,
     "dynamo/test_cudagraphs_xpu.py": None,
