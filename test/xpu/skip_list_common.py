@@ -429,4 +429,12 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
     f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
+    f"{PYTORCH_TEST_DIR}/backends/xeon/test_launch.py": None,
+    f"{PYTORCH_TEST_DIR}/benchmark_utils/test_benchmark_utils.py": None,
+    f"{PYTORCH_TEST_DIR}/complex_tensor/test_complex_tensor.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_backend/test_custom_backend.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_custom_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_infer_schema_annotation.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_inplace_tag.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_out_variant.py": None,
 }
