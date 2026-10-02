@@ -14,11 +14,11 @@ namespace c10d {
 namespace xccl {
 
 void oneccl_group_start() {
-  onecclGroupStart();
+  C10D_XCCL_CHECK(onecclGroupStart(), nullptr);
 }
 
 void oneccl_group_end() {
-  onecclGroupEnd();
+  C10D_XCCL_CHECK(onecclGroupEnd(), nullptr);
 }
 
 void onecclAllReduce(
@@ -29,14 +29,16 @@ void onecclAllReduce(
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), true);
   auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
-  onecclAllReduce(
-      input.data_ptr(),
-      output.data_ptr(),
-      (size_t)input.numel(),
-      xcclDataType,
-      xcclReduceOp,
-      comm,
-      &stream.queue());
+  C10D_XCCL_CHECK(
+      onecclAllReduce(
+          input.data_ptr(),
+          output.data_ptr(),
+          (size_t)input.numel(),
+          xcclDataType,
+          xcclReduceOp,
+          comm,
+          &stream.queue()),
+      comm);
 }
 
 void onecclReduce(
@@ -48,15 +50,17 @@ void onecclReduce(
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), true);
   auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
-  onecclReduce(
-      input.data_ptr(),
-      output.data_ptr(),
-      (size_t)input.numel(),
-      xcclDataType,
-      xcclReduceOp,
-      root,
-      comm,
-      &stream.queue());
+  C10D_XCCL_CHECK(
+      onecclReduce(
+          input.data_ptr(),
+          output.data_ptr(),
+          (size_t)input.numel(),
+          xcclDataType,
+          xcclReduceOp,
+          root,
+          comm,
+          &stream.queue()),
+      comm);
 }
 
 void onecclBroadcast(
@@ -66,14 +70,16 @@ void onecclBroadcast(
     const int root,
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), false);
-  onecclBroadcast(
-      input.data_ptr(),
-      output.data_ptr(),
-      (size_t)input.numel(),
-      xcclDataType,
-      root,
-      comm,
-      &stream.queue());
+  C10D_XCCL_CHECK(
+      onecclBroadcast(
+          input.data_ptr(),
+          output.data_ptr(),
+          (size_t)input.numel(),
+          xcclDataType,
+          root,
+          comm,
+          &stream.queue()),
+      comm);
 }
 
 void onecclReduceScatter(
@@ -84,14 +90,16 @@ void onecclReduceScatter(
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), true);
   auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
-  onecclReduceScatter(
-      input.data_ptr(),
-      output.data_ptr(),
-      (size_t)output.numel(),
-      xcclDataType,
-      xcclReduceOp,
-      comm,
-      &stream.queue());
+  C10D_XCCL_CHECK(
+      onecclReduceScatter(
+          input.data_ptr(),
+          output.data_ptr(),
+          (size_t)output.numel(),
+          xcclDataType,
+          xcclReduceOp,
+          comm,
+          &stream.queue()),
+      comm);
 }
 
 void onecclAllGather(
@@ -100,13 +108,15 @@ void onecclAllGather(
     onecclComm_t& comm,
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), false);
-  onecclAllGather(
-      input.data_ptr(),
-      output.data_ptr(),
-      (size_t)input.numel(),
-      xcclDataType,
-      comm,
-      &stream.queue());
+  C10D_XCCL_CHECK(
+      onecclAllGather(
+          input.data_ptr(),
+          output.data_ptr(),
+          (size_t)input.numel(),
+          xcclDataType,
+          comm,
+          &stream.queue()),
+      comm);
 }
 
 void onecclSend(
@@ -115,13 +125,15 @@ void onecclSend(
     const int dstRank,
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), false);
-  onecclSend(
-      input.data_ptr(),
-      (size_t)input.numel(),
-      xcclDataType,
-      dstRank,
-      comm,
-      &stream.queue());
+  C10D_XCCL_CHECK(
+      onecclSend(
+          input.data_ptr(),
+          (size_t)input.numel(),
+          xcclDataType,
+          dstRank,
+          comm,
+          &stream.queue()),
+      comm);
 }
 
 void onecclRecv(
@@ -130,13 +142,15 @@ void onecclRecv(
     const int srcRank,
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(output.scalar_type(), false);
-  onecclRecv(
-      output.data_ptr(),
-      (size_t)output.numel(),
-      xcclDataType,
-      srcRank,
-      comm,
-      &stream.queue());
+  C10D_XCCL_CHECK(
+      onecclRecv(
+          output.data_ptr(),
+          (size_t)output.numel(),
+          xcclDataType,
+          srcRank,
+          comm,
+          &stream.queue()),
+      comm);
 }
 
 void onecclGather(
@@ -148,24 +162,32 @@ void onecclGather(
   size_t count = inputs.numel();
   auto xcclDataType = getXcclDataType(inputs.scalar_type(), false);
   int numranks = 0, cur_rank = 0;
-  onecclCommCount(comm, &numranks);
-  onecclCommUserRank(comm, &cur_rank);
-  onecclGroupStart();
+  C10D_XCCL_CHECK(onecclCommCount(comm, &numranks), comm);
+  C10D_XCCL_CHECK(onecclCommUserRank(comm, &cur_rank), comm);
+  OnecclGroupGuard group_guard;
   if (cur_rank == root) {
     for (const auto r : c10::irange(numranks)) {
       if (r != root) {
         auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
-        onecclRecv(recvbuff, count, xcclDataType, r, comm, &stream.queue());
+        C10D_XCCL_CHECK(
+            onecclRecv(recvbuff, count, xcclDataType, r, comm, &stream.queue()),
+            comm);
       } else {
         // on its own rank, simply copy from the input
         outputs[r].copy_(inputs);
       }
     }
   } else {
-    onecclSend(
-        inputs.data_ptr(), count, xcclDataType, root, comm, &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclSend(
+            inputs.data_ptr(),
+            count,
+            xcclDataType,
+            root,
+            comm,
+            &stream.queue()),
+        comm);
   }
-  onecclGroupEnd();
 }
 
 void onecclScatter(
@@ -176,20 +198,22 @@ void onecclScatter(
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(outputs.scalar_type(), false);
   int numranks = 0, cur_rank = 0;
-  onecclCommCount(comm, &numranks);
-  onecclCommUserRank(comm, &cur_rank);
-  onecclGroupStart();
+  C10D_XCCL_CHECK(onecclCommCount(comm, &numranks), comm);
+  C10D_XCCL_CHECK(onecclCommUserRank(comm, &cur_rank), comm);
+  OnecclGroupGuard group_guard;
   if (cur_rank == root) {
     for (const auto r : c10::irange(numranks)) {
       if (r != root) {
         size_t send_count = inputs[r].numel();
-        onecclSend(
-            inputs[r].data_ptr(),
-            send_count,
-            xcclDataType,
-            r,
-            comm,
-            &stream.queue());
+        C10D_XCCL_CHECK(
+            onecclSend(
+                inputs[r].data_ptr(),
+                send_count,
+                xcclDataType,
+                r,
+                comm,
+                &stream.queue()),
+            comm);
       } else {
         // on its own rank, simply copy from the input
         outputs.copy_(inputs[r]);
@@ -197,15 +221,16 @@ void onecclScatter(
     }
   } else {
     size_t recv_count = outputs.numel();
-    onecclRecv(
-        outputs.data_ptr(),
-        recv_count,
-        xcclDataType,
-        root,
-        comm,
-        &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclRecv(
+            outputs.data_ptr(),
+            recv_count,
+            xcclDataType,
+            root,
+            comm,
+            &stream.queue()),
+        comm);
   }
-  onecclGroupEnd();
 }
 
 static std::pair<bool, size_t> checkUniformAllToAll(
@@ -244,41 +269,51 @@ void onecclAllToAll(
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(dataType, false);
   int numranks = 0;
-  onecclCommCount(comm, &numranks);
+  C10D_XCCL_CHECK(onecclCommCount(comm, &numranks), comm);
 
   auto [isUniform, uniformCount] = checkUniformAllToAll(
       sendcounts, senddispls, recvcounts, recvdispls, numranks);
 
   if (isUniform) {
     // Use native onecclAllToAll for uniform case
-    onecclAllToAll(
-        sendbuff, recvbuff, uniformCount, xcclDataType, comm, &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclAllToAll(
+            sendbuff,
+            recvbuff,
+            uniformCount,
+            xcclDataType,
+            comm,
+            &stream.queue()),
+        comm);
     return;
   }
 
   // Fallback to send/recv based implementation for non-uniform case
-  xccl::oneccl_group_start();
+  OnecclGroupGuard group_guard;
   for (const auto r : c10::irange(numranks)) {
     if (sendcounts[r] != 0) {
-      onecclSend(
-          ((char*)sendbuff) + senddispls[r] * size,
-          sendcounts[r],
-          xcclDataType,
-          r,
-          comm,
-          &stream.queue());
+      C10D_XCCL_CHECK(
+          onecclSend(
+              ((char*)sendbuff) + senddispls[r] * size,
+              sendcounts[r],
+              xcclDataType,
+              r,
+              comm,
+              &stream.queue()),
+          comm);
     }
     if (recvcounts[r] != 0) {
-      onecclRecv(
-          ((char*)recvbuff) + recvdispls[r] * size,
-          recvcounts[r],
-          xcclDataType,
-          r,
-          comm,
-          &stream.queue());
+      C10D_XCCL_CHECK(
+          onecclRecv(
+              ((char*)recvbuff) + recvdispls[r] * size,
+              recvcounts[r],
+              xcclDataType,
+              r,
+              comm,
+              &stream.queue()),
+          comm);
     }
   }
-  xccl::oneccl_group_end();
 }
 
 } // namespace xccl
