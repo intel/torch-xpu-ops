@@ -1510,7 +1510,7 @@ void grid_sampler_3d_backward_kernel(
         at::ScalarType::BFloat16,
         at::ScalarType::Half,
         input.scalar_type(),
-        "grid_sampler_2d_backward_xpu",
+        "grid_sampler_3d_backward_xpu",
         [&] {
           if (canUse32BitIndexMath(input) && canUse32BitIndexMath(grid) &&
               canUse32BitIndexMath(grad_output)) {
