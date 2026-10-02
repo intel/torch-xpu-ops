@@ -862,7 +862,8 @@ struct PutFunctor {
 template <typename scalar_t, typename index_t>
 struct PutAccumulateFunctor {
   void operator()(scalar_t& iterated, const index_t offset) const {
-    atomicAdd(sycl_global_ptr<scalar_t>(indexed_ptr_ + offset), iterated);
+    atomicAdd(
+        sycl_global_ptr<scalar_t>(indexed_ptr_ + offset), c10::load(&iterated));
   }
   PutAccumulateFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
 
@@ -944,7 +945,7 @@ struct IndexFuncSmallIndexFunctor {
 
         T val;
         if constexpr (std::is_same_v<T, bool>) {
-          val = src_.data[srcOffset] && alpha_;
+          val = c10::load(&src_.data[srcOffset]) && alpha_;
         } else {
           val = src_.data[srcOffset] * alpha_;
         }
@@ -1052,7 +1053,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
       T val;
       if constexpr (std::is_same_v<T, bool>) {
-        val = src_.data[srcOffset] && alpha_;
+        val = c10::load(&src_.data[srcOffset]) && alpha_;
       } else {
         val = src_.data[srcOffset] * alpha_;
       }
