@@ -349,7 +349,6 @@ _cuda_xfail_xpu_pass = [
     ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
     ("_native_batch_norm_legit", "test_out"),
     ("native_batch_norm", "test_out"),
-    ("histc", "test_out"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
@@ -1065,23 +1064,6 @@ class XPUPatchForImport(XPUImportCtx):
                         else:
                             wrapper.device_type = "xpu"
                             replaced = True
-                    elif (
-                        isinstance(wrapper.device_type, (list, tuple))
-                        and "xpu" in wrapper.device_type
-                        and unittest.expectedFailure in wrapper.decorators
-                        and (op_name, wrapper.test_name) in _cuda_xfail_xpu_pass
-                    ):
-                        # Upstream may scope one xfail to several devices at
-                        # once (device_type=("cuda", "xpu")). Drop XPU from
-                        # the scope so a test that now passes on XPU does
-                        # not report an unexpected success.
-                        replaced = True
-                        new_wrapper = copy.copy(wrapper)
-                        new_wrapper.device_type = tuple(
-                            d for d in wrapper.device_type if d != "xpu"
-                        )
-                        wrapper_xpu.append(new_wrapper)
-                        continue
                     elif (
                         wrapper.device_type is None
                         and unittest.expectedFailure in wrapper.decorators
