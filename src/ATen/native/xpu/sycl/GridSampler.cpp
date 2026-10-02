@@ -684,6 +684,7 @@ void grid_sampler_2d_backward_kernel(
     std::array<bool, 2> output_mask) {
   check_grid_sampler_common(input, grid);
   check_grid_sampler_2d(input, grid);
+  check_grid_sampler_backward(input, grid, grad_output);
 
   globalContext().alertNotDeterministic("grid_sampler_2d_backward_xpu");
   auto N = input.size(0);
@@ -1493,6 +1494,7 @@ void grid_sampler_3d_backward_kernel(
   // Add checks here in case this is called instead of grid_sampler.
   check_grid_sampler_common(input, grid);
   check_grid_sampler_3d(input, grid, interpolation_mode);
+  check_grid_sampler_backward(input, grid, grad_output);
 
   globalContext().alertNotDeterministic("grid_sampler_3d_backward_xpu");
   auto input_requires_grad = output_mask[0];

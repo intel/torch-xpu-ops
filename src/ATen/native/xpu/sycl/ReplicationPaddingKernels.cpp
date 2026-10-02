@@ -530,19 +530,28 @@ void replication_pad2d_backward_kernel(
   const auto padR = padding[1];
   const auto padT = padding[2];
   const auto padB = padding[3];
+  int dimc = 0;
   int dimh = 1;
   int dimw = 2;
 
   int numInputDims = input.dim();
   if (numInputDims == 4) {
+    dimc++;
     dimh++;
     dimw++;
   }
+  const auto ichannel = input.size(dimc);
   const auto iheight = input.size(dimh);
   const auto iwidth = input.size(dimw);
   const auto oheight = iheight + padT + padB;
   const auto owidth = iwidth + padL + padR;
 
+  TORCH_CHECK(
+      ichannel == grad_output.size(dimc),
+      "grad_output channel unexpected. Expected: ",
+      ichannel,
+      ", Got: ",
+      grad_output.size(dimc));
   TORCH_CHECK(
       owidth == grad_output.size(dimw),
       "grad_output width unexpected. Expected: ",
