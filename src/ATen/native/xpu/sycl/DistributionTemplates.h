@@ -780,7 +780,8 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(10);
+    // Each work-item consumes one rand_uniform4 draw, including partial blocks.
+    rng_engine_inputs = gen->philox_xpu_state(rand4_engine_calls);
   }
   TORCH_CHECK(
       at::isFloatingType(p_.scalar_type()),
