@@ -60,7 +60,7 @@ cleanup_temp_files() {
 process_accuracy() {
     local results_dir="$1"
 
-    if ! find "$results_dir" -name "*_xpu_accuracy.csv" -quit; then
+    if ! find "$results_dir" -name "*-accuracy.csv" -quit; then
         return
     fi
 
@@ -91,7 +91,7 @@ EOF
 
     while IFS= read -r csv_file; do
         process_csv_file "$check_file" "$csv_file"
-    done < <(find "$results_dir" -name "*_xpu_accuracy.csv" | sort)
+    done < <(find "$results_dir" -name "*-accuracy.csv" | sort)
     echo -e "\n\n" >> accuracy.summary.html
 }
 
@@ -99,10 +99,10 @@ process_csv_file() {
     local check_file="$1" csv_file="$2"
     local category suite mode dtype
 
-    category=$(basename "$csv_file" | sed 's/inductor_//;s/_xpu_accuracy.*//')
-    suite=$(echo "$csv_file" | sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')
-    mode=$(echo "$csv_file" | sed 's/_xpu_accuracy.*//;s/.*_//')
-    dtype=$(echo "$csv_file" | sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')
+    # suite, dtype, mode are columns 3-5 of every data row (run_benchmarks CSV_PREFIX).
+    IFS=, read -r suite dtype mode < <(awk -F, 'NR==2{print $3","$4","$5; exit}' "$csv_file")
+    [[ -z "$suite" ]] && return
+    category="${suite}_${dtype}_${mode}"
 
     local tmp_file="/tmp/tmp-${suite}-${mode}-${dtype}.txt"
 
@@ -174,8 +174,7 @@ EOF
     # Process all test suites
     while IFS= read -r suite; do
         process_suite "$results_dir" "$suite"
-    done < <(find "$results_dir" -name "*_xpu_accuracy.csv" | \
-        sed 's/.*inductor_//;s/_[abf].*//' | sort | uniq)
+    done < <(find "$results_dir" -name "*-accuracy.csv" -exec awk -F, 'NR==2{print $3; exit}' {} \; | sort | uniq)
 
     echo -e "</tbody></table>\n\n" >> accuracy.details.html
     echo -e "</tbody></table>\n\n" >> accuracy.regression.html
@@ -196,8 +195,8 @@ process_suite() {
 
 get_models_for_suite() {
     local results_dir="$1" suite="$2"
-    find "$results_dir" -name "*${suite}*_xpu_accuracy.csv" -exec cat {} \; | \
-        grep "^xpu," | cut -d, -f2 | sort | uniq
+    find "$results_dir" -name "*-${suite}-*-accuracy.csv" -exec cat {} \; | \
+        grep "^xpu," | cut -d, -f6 | sort | uniq
 }
 
 process_model() {
@@ -235,8 +234,9 @@ get_model_result() {
     fi
 
     local value
-    value=$(find "$results_dir" -name "*${suite}_${dtype}_${mode}_xpu_accuracy.csv" -type f | \
-        head -1 | xargs grep -h ",${model}," 2>/dev/null | cut -d, -f4 | head -1)
+    # shellcheck disable=SC2016  # $6 and $NF are awk fields, not shell variables
+    value=$(find "$results_dir" -name "*-${suite}-${dtype}-${mode}-*-accuracy.csv" -type f | \
+        head -1 | xargs awk -F, -v m="${model}" '$6==m{print $NF; exit}' 2>/dev/null | head -1)
 
     if [[ "$color" != "black" ]]; then
         echo "${color}${value}"
@@ -280,7 +280,7 @@ EOF
 process_performance() {
     local results_dir="$1" reference_dir="$2"
 
-    if ! find "$results_dir" -name "*_xpu_performance.csv" -quit; then
+    if ! find "$results_dir" -name "*-performance.csv" -quit; then
         return
     fi
 
