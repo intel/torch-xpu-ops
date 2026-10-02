@@ -1983,7 +1983,20 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
 
     def setUp(self):
         super().setUp()
-        self._spawn_processes()
+        env = {"TORCH_PROFILER_ENABLE_COLLECTIVE_PROFILING": "1"}
+        pti_library = self._loaded_pti_library()
+        if pti_library is not None:
+            env["INTEL_LIBITTNOTIFY64"] = pti_library
+        with mock.patch.dict(os.environ, env):
+            self._spawn_processes()
+
+    def _loaded_pti_library(self):
+        with open("/proc/self/maps") as maps:
+            for line in maps:
+                path = line.split()[-1]
+                if "libpti_view.so" in path:
+                    return path
+        return None
 
     def tearDown(self):
         super().tearDown()
@@ -2044,6 +2057,14 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
             self.assertTrue(
                 any(e.get("name") == "xccl:all_reduce" for e in events),
                 f"[Rank {self.rank}] No xccl:all_reduce event in trace",
+            )
+            self.assertTrue(
+                any(
+                    e.get("cat") == "collective_comm"
+                    and e.get("name", "").startswith("xccl::allreduce")
+                    for e in events
+                ),
+                f"[Rank {self.rank}] No collective_comm xccl::allreduce event in trace",
             )
         finally:
             dist.destroy_process_group()
