@@ -327,7 +327,7 @@ skip_dict = {
     "test_flop_counter_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     "test_utils_xpu.py": None,
-    "functorch/test_vmap_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_vmap.py": None,
     "dynamo/test_ctx_manager_xpu.py": (
         # Autocast to float64 is CUDA-specific and not supported on XPU.
         # More details in https://github.com/pytorch/pytorch/pull/179141
