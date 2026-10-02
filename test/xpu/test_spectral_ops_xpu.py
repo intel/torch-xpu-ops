@@ -8,12 +8,8 @@
 
 # Owner(s): ["module: intel"]
 
-import unittest
-from itertools import product
 
-import numpy as np
 import torch
-from packaging import version
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     ops,
@@ -33,14 +29,6 @@ except Exception as e:
 
 with XPUPatchForImport(False):
     from test_spectral_ops import TestFFT
-
-has_scipy_fft = False
-try:
-    import scipy.fft
-
-    has_scipy_fft = True
-except ModuleNotFoundError:
-    pass
 
 
 @ops(spectral_funcs, allowed_dtypes=(torch.half, torch.chalf))
