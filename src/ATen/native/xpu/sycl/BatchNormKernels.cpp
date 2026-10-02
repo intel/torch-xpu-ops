@@ -229,8 +229,7 @@ struct Float2 {
   accscalar_t v1, v2;
   Float2() = default;
 
-  Float2(scalar_t v1, scalar_t v2)
-      : v1(static_cast<accscalar_t>(v1)), v2(static_cast<accscalar_t>(v2)) {}
+  Float2(accscalar_t v1, accscalar_t v2) : v1(v1), v2(v2) {}
   Float2(int v)
       : v1(static_cast<accscalar_t>(v)), v2(static_cast<accscalar_t>(v)) {}
   Float2& operator+=(const Float2& a) {
@@ -4857,8 +4856,8 @@ Tensor batch_norm_elementwise_backward_train(
           "batch_norm_eval_backward_xpu",
           [&] {
             using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-            auto norm_fct =
-                static_cast<accscalar_t>(1.0 / (input.numel() / input.size(1)));
+            auto norm_fct = static_cast<accscalar_t>(1) /
+                static_cast<accscalar_t>(input.numel() / input.size(1));
             BatchNormElementwiseBackwardTrainFunctor<scalar_t, accscalar_t> f(
                 norm_fct);
             gpu_kernel(iter, f);
