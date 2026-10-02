@@ -18,7 +18,7 @@ skip_dict = {
         "test_conv3d_vs_scipy_mode_same_cpu_float32",
         "test_conv3d_vs_scipy_mode_valid_cpu_float32",
     ),
-    "nn/test_dropout_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_dropout.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_init.py": None,
     "nn/test_lazy_modules_xpu.py": None,
