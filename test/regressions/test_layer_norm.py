@@ -9,12 +9,18 @@
 # Owner(s): ["module: intel"]
 import torch
 import torch.nn as nn
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    parametrize,
+    run_tests,
+    TestCase,
+)
 
 cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 
+@instantiate_parametrized_tests
 class TestLayerNorm(TestCase):
     def test_layer_norm_no_nan(self, dtype=torch.float):
         dim = [5]
@@ -26,3 +32,47 @@ class TestLayerNorm(TestCase):
         layernorm_xpu = nn.LayerNorm(dim).to(xpu_device)
         y_xpu = layernorm_xpu(x_xpu)
         self.assertEqual(y_cpu, y_xpu.to(cpu_device))
+
+    @parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_layer_norm_fast_path_forward(self, dtype):
+        """Cover the sub-group-0 shuffle fast path in the forward kernel.
+
+        The fast path is selected when the row spans a full 32-subgroup
+        work-group, i.e. N / vec_size leaves a 1024-item group.
+        N=8192 with a subgroup size of 32 hits it. The original large test
+        only exercised float32, so add the claimed fp16/bf16 [1024, 8192]
+        cases against a CPU reference.
+        """
+        torch.manual_seed(0)
+        rows, norm = 1024, 8192
+        x_cpu = torch.randn(rows, norm, dtype=torch.float32)
+
+        layer_cpu = nn.LayerNorm(norm, dtype=torch.float32)
+        y_cpu = layer_cpu(x_cpu)
+
+        layer_xpu = nn.LayerNorm(norm, dtype=dtype).to(xpu_device)
+        layer_xpu.weight.data.copy_(layer_cpu.weight.data)
+        layer_xpu.bias.data.copy_(layer_cpu.bias.data)
+        y_xpu = layer_xpu(x_cpu.to(dtype).to(xpu_device))
+
+        self.assertEqual(y_xpu.float().cpu(), y_cpu, atol=1e-2, rtol=1e-2)
+
+    @parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_rms_norm_fast_path_forward(self, dtype):
+        """Same fast path, rms_norm instantiation, [1024, 8192] fp16/bf16."""
+        torch.manual_seed(0)
+        rows, norm = 1024, 8192
+        x_cpu = torch.randn(rows, norm, dtype=torch.float32)
+
+        layer_cpu = nn.RMSNorm(norm, eps=1e-6, dtype=torch.float32)
+        y_cpu = layer_cpu(x_cpu)
+
+        layer_xpu = nn.RMSNorm(norm, eps=1e-6, dtype=dtype).to(xpu_device)
+        layer_xpu.weight.data.copy_(layer_cpu.weight.data)
+        y_xpu = layer_xpu(x_cpu.to(dtype).to(xpu_device))
+
+        self.assertEqual(y_xpu.float().cpu(), y_cpu, atol=1e-2, rtol=1e-2)
+
+
+if __name__ == "__main__":
+    run_tests()
