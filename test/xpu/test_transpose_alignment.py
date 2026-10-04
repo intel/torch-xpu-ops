@@ -3,9 +3,7 @@
 import math
 
 import torch
-from torch.testing._internal.common_device_type import (
-    instantiate_device_type_tests,
-)
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import parametrize, run_tests, TestCase
 
 
@@ -15,9 +13,7 @@ class TestXpuTransposeAlignment(TestCase):
         shape = (16, 64, 32, 32)
 
         def offset_view(offset, view_shape):
-            base = torch.empty(
-                offset + math.prod(shape), device=device, dtype=dtype
-            )
+            base = torch.empty(offset + math.prod(shape), device=device, dtype=dtype)
             return base[offset:].view(view_shape)
 
         src = offset_view(1, (16, 32, 32, 64)).permute(0, 3, 1, 2)
