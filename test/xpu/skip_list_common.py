@@ -74,7 +74,7 @@ skip_dict = {
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
     f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
-    "test_autograd_fallback_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
     "test_autograd_xpu.py": (
         # skipped due to #2536, torch._C._scatter or torch._C._gather
         "test_profiler_emit_nvtx_xpu",
