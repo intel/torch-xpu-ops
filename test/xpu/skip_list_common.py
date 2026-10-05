@@ -87,7 +87,7 @@ skip_dict = {
         "test_foward_mode_AD_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
-    "test_comparison_utils_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_comparison_utils.py": None,
     "test_complex_xpu.py": None,
     "test_content_store_xpu.py": None,
     "test_dataloader_xpu.py": None,
