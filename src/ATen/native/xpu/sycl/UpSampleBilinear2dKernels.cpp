@@ -29,6 +29,8 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 
 #include <ATen/native/xpu/sycl/UpSampleBilinear2dKernels.h>
 
+#include <limits>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>
@@ -204,7 +206,7 @@ void launch_upsample_bilinear2d_nhwc_kernel(
     const index_t out_numel) {
   int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
       upsample_bilinear2d_nhwc_kernel<scalar_t, accscalar_t, index_t>>();
-  int64_t num_group = at::ceil_div(static_cast<int64_t>(out_numel), wg_size);
+  int64_t num_group = at::ceil_div<int64_t>(out_numel, wg_size);
   auto queue = getCurrentSYCLQueue();
 
   sycl_kernel_submit<
@@ -290,7 +292,7 @@ void upsample_bilinear2d_backward_align_kernel(
             static_cast<accscalar_t>((output_width - 1) * (output_height - 1));
         if constexpr (is_channel_last) {
           tmp += scale *
-              static_cast<accscalar_t>(odata[idx_cl(
+              static_cast<accscalar_t>(odata[idx_cl<size_t>(
                   n,
                   point_h / (input_height - 1),
                   point_w / (input_width - 1),
@@ -385,7 +387,7 @@ void upsample_bilinear2d_backward_not_align_kernel(
 
         if constexpr (is_channel_last) {
           tmp += scale *
-              static_cast<accscalar_t>(odata[idx_cl(
+              static_cast<accscalar_t>(odata[idx_cl<size_t>(
                   n,
                   (point_h - input_height) / (2 * input_height),
                   (point_w - input_width) / (2 * input_width),
@@ -757,7 +759,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
             scalar_t,
             accscalar_t,
             index_t>>();
-    int64_t num_group = at::ceil_div((int64_t)o_numel, (int64_t)wg_size);
+    int64_t num_group = at::ceil_div<int64_t>(o_numel, wg_size);
     auto queue = getCurrentSYCLQueue();
 
     sycl_kernel_submit<upsample_bilinear2d_backward_nhwc_kernel<

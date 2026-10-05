@@ -105,7 +105,7 @@ namespace at::native::xpu {
 
   return {nbatch, channels, output_depth, output_height, output_width};
 }
-template <typename index_t = size_t>
+template <typename index_t>
 inline index_t idx_cl(
     const index_t n,
     const index_t h,
