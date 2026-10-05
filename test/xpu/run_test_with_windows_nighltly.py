@@ -56,7 +56,7 @@ skip_files_list = [
     # "test_binary_ufuncs_xpu.py",
     f"{PYTORCH_TEST_DIR}/test_comparison_utils.py",
     "test_complex_xpu.py",
-    "test_content_store_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_content_store.py",
     "test_dataloader_xpu.py",
     "test_decomp.py",
     "test_decomp_xpu.py",

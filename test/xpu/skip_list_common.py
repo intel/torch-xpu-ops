@@ -89,7 +89,7 @@ skip_dict = {
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     f"{PYTORCH_TEST_DIR}/test_comparison_utils.py": None,
     "test_complex_xpu.py": None,
-    "test_content_store_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
     "test_dataloader_xpu.py": None,
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
