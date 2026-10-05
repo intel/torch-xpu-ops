@@ -297,6 +297,139 @@ void reflection_pad2d_backward_template(
       output_dim_y);
 }
 
+// Deterministic ReflectionPad2d backward: one work-item per input element
+// accumulates all reflected grad_output contributions locally, so no atomicAdd
+// is needed. Mirrors the CUDA deterministic implementation.
+template <typename scalar_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void reflection_pad2d_backward_det_kernel(
+    scalar_t* grad_input,
+    const scalar_t* grad_output,
+    int64_t input_dim_x,
+    int64_t input_dim_y,
+    int64_t pad_top,
+    int64_t pad_bottom,
+    int64_t pad_left,
+    int64_t pad_right,
+    int64_t nbatch,
+    int64_t nplane) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const int64_t tid = static_cast<int64_t>(item.get_global_id(0));
+
+  const int64_t width = input_dim_x + pad_left + pad_right;
+  const int64_t height = input_dim_y + pad_top + pad_bottom;
+  const int64_t N = height * width;
+
+  const int64_t end = nbatch * nplane * input_dim_y * input_dim_x;
+
+  if (tid >= end) {
+    return;
+  }
+  // linear index over B*C*H*W (contiguous)
+  const int64_t pos_xy = tid % (input_dim_x * input_dim_y);
+  const int64_t inp_row = pos_xy / input_dim_x;
+  const int64_t inp_col = pos_xy % input_dim_x;
+
+  const int64_t bottom_row = input_dim_y - 1;
+  const int64_t rightmost_col = input_dim_x - 1;
+  const int64_t dist_from_bottom = sycl::abs(inp_row - bottom_row);
+  const int64_t dist_from_right = sycl::abs(inp_col - rightmost_col);
+
+  const bool is_top = (inp_row >= 1) && (inp_row <= pad_top);
+  const bool is_bottom =
+      (inp_row < bottom_row) && (inp_row >= bottom_row - pad_bottom);
+  const bool is_left = (inp_col >= 1) && (inp_col <= pad_left);
+  const bool is_right =
+      (inp_col < rightmost_col) && (inp_col >= rightmost_col - pad_right);
+
+  scalar_t partial = static_cast<scalar_t>(0);
+
+  const int64_t batch_idx = tid / (nplane * input_dim_x * input_dim_y);
+  const int64_t channel_idx = (tid / (input_dim_x * input_dim_y)) % nplane;
+  const int64_t grad_output_base_offset =
+      batch_idx * (nplane * N) + channel_idx * N;
+
+  auto accum_grad_at = [&](int64_t row, int64_t col) {
+    const int64_t idx = row * width + col;
+    if (idx >= 0 && idx < N) {
+      partial += grad_output[grad_output_base_offset + idx];
+    }
+  };
+
+  if (is_top) {
+    accum_grad_at(pad_top - inp_row, pad_left + inp_col);
+
+    if (is_left) { // top-left corner
+      accum_grad_at(pad_top - inp_row, pad_left - inp_col);
+    } else if (is_right) { // top-right corner
+      accum_grad_at(
+          pad_top - inp_row, pad_left + rightmost_col + dist_from_right);
+    }
+  }
+
+  if (is_bottom) {
+    accum_grad_at(pad_top + bottom_row + dist_from_bottom, pad_left + inp_col);
+
+    if (is_left) { // bottom-left corner
+      accum_grad_at(
+          pad_top + bottom_row + dist_from_bottom, pad_left - inp_col);
+    } else if (is_right) { // bottom-right corner
+      accum_grad_at(
+          pad_top + bottom_row + dist_from_bottom,
+          pad_left + rightmost_col + dist_from_right);
+    }
+  }
+
+  if (is_left) {
+    accum_grad_at(inp_row + pad_top, pad_left - inp_col);
+  }
+
+  if (is_right) {
+    accum_grad_at(
+        inp_row + pad_top, pad_left + rightmost_col + dist_from_right);
+  }
+
+  // Center (always): direct padded position, no reflection.
+  accum_grad_at(inp_row + pad_top, inp_col + pad_left);
+
+  grad_input[tid] = partial;
+}
+
+template <typename scalar_t>
+void reflection_pad2d_backward_det_template(
+    scalar_t* grad_input,
+    const scalar_t* grad_output,
+    int64_t input_dim_x,
+    int64_t input_dim_y,
+    int64_t pad_t,
+    int64_t pad_b,
+    int64_t pad_l,
+    int64_t pad_r,
+    int64_t nbatch,
+    int64_t nplane) {
+  auto queue = getCurrentSYCLQueue();
+  const int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+
+  const int64_t total_elements = nbatch * nplane * input_dim_x * input_dim_y;
+  const int64_t work_group_num = at::ceil_div(total_elements, work_group_size);
+
+  sycl_kernel_submit<reflection_pad2d_backward_det_kernel<scalar_t>>(
+      work_group_size * work_group_num,
+      work_group_size,
+      queue,
+      0,
+      grad_input,
+      grad_output,
+      input_dim_x,
+      input_dim_y,
+      pad_t,
+      pad_b,
+      pad_l,
+      pad_r,
+      nbatch,
+      nplane);
+}
+
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
 void parallel_reflection_pad3d_kernel(
@@ -698,17 +831,31 @@ void reflection_pad2d_backward_kernel(
       input.scalar_type(),
       "reflection_pad2d_backward_xpu",
       [&] {
-        reflection_pad2d_backward_template<scalar_t>(
-            grad_input.mutable_data_ptr<scalar_t>(),
-            grad_output.const_data_ptr<scalar_t>(),
-            input_w,
-            input_h,
-            pad_t,
-            pad_b,
-            pad_l,
-            pad_r,
-            nbatch,
-            nplane);
+        if (at::globalContext().deterministicAlgorithms()) {
+          reflection_pad2d_backward_det_template<scalar_t>(
+              grad_input.mutable_data_ptr<scalar_t>(),
+              grad_output.const_data_ptr<scalar_t>(),
+              input_w,
+              input_h,
+              pad_t,
+              pad_b,
+              pad_l,
+              pad_r,
+              nbatch,
+              nplane);
+        } else {
+          reflection_pad2d_backward_template<scalar_t>(
+              grad_input.mutable_data_ptr<scalar_t>(),
+              grad_output.const_data_ptr<scalar_t>(),
+              input_w,
+              input_h,
+              pad_t,
+              pad_b,
+              pad_l,
+              pad_r,
+              nbatch,
+              nplane);
+        }
       });
 }
 
