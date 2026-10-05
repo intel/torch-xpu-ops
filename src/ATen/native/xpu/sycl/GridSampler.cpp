@@ -983,8 +983,8 @@ void grid_sampler_3d_forward_template(
       out_sW);
 }
 
-// Bicubic has a kernel of its own: a kernel is allocated for its worst branch,
-// and the 64 taps need twice the registers of a trilinear sample.
+// Bicubic lives in its own kernel, as in CUDA (pytorch/pytorch#194787), to keep
+// grid_sampler_3d_kernel_func free of extra branching.
 template <typename scalar_t, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void grid_sampler_3d_bicubic_kernel_func(
