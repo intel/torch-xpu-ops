@@ -768,9 +768,8 @@ void launch_adaptive_avg_pool2d_kernel_cl(const Tensor& input, Tensor& output) {
            {8,
             memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(
                 output.mutable_data_ptr<scalar_t>())),
-            memory::can_vectorize_up_to<scalar_t>(
-                reinterpret_cast<const char*>(
-                    input.const_data_ptr<scalar_t>()))});
+            memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(
+                input.const_data_ptr<scalar_t>()))});
        vec_size > 1;
        vec_size /= 2) {
     if (oc % vec_size != 0)
