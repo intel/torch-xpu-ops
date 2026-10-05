@@ -102,12 +102,19 @@ void dequant_int4_kernel(
   int nsg_n = n / GroupN;
   sycl::range<1> global_range{static_cast<size_t>(nsg_n) * nsg_k * SgSize};
   sycl::range<1> local_range{SgSize};
-  AT_DISPATCH_REDUCED_FLOATING_TYPES(
-      weight.scalar_type(), "dequant_int4_kernel", [&]() {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      weight.scalar_type(),
+      "dequant_int4_kernel",
+      [&]() {
         using scalar_sycl_t = std::conditional_t<
             std::is_same_v<scalar_t, at::Half>,
             sycl::half,
-            sycl::ext::oneapi::bfloat16>;
+            std::conditional_t<
+                std::is_same_v<scalar_t, at::BFloat16>,
+                sycl::ext::oneapi::bfloat16,
+                float>>;
         switch (qGroupSize) {
           case 16: {
             constexpr auto kptr =

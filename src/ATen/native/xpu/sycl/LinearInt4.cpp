@@ -229,12 +229,19 @@ void linear_int4_kernel(
   int constexpr SgSize = 16;
   sycl::range<1> local_range{SgSize};
   sycl::range<1> global_range{static_cast<size_t>(n) * SgSize};
-  AT_DISPATCH_REDUCED_FLOATING_TYPES(
-      A.scalar_type(), "linear_int4_kernel", [&]() {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      A.scalar_type(),
+      "linear_int4_kernel",
+      [&]() {
         using scalar_sycl_t = std::conditional_t<
             std::is_same_v<scalar_t, at::Half>,
             sycl::half,
-            sycl::ext::oneapi::bfloat16>;
+            std::conditional_t<
+                std::is_same_v<scalar_t, at::BFloat16>,
+                sycl::ext::oneapi::bfloat16,
+                float>>;
         const scalar_sycl_t* input_data =
             reinterpret_cast<const scalar_sycl_t*>(
                 A.const_data_ptr<scalar_t>());
