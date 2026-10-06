@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/MemoryOverlap.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
@@ -162,6 +163,7 @@ inline void _rrelu_with_noise_xpu_train(
     output.copy_(tmp_output);
   }
   if (!noise_.is_contiguous()) {
+    at::assert_no_internal_overlap(noise_);
     noise_.copy_(tmp_noise);
   }
 }
