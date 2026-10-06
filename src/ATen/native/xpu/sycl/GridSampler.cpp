@@ -983,8 +983,9 @@ void grid_sampler_3d_forward_template(
       out_sW);
 }
 
-// Bicubic lives in its own kernel, as in CUDA (pytorch/pytorch#194787), to keep
+// Bicubic lives in its own kernel, as in CUDA [1], to keep
 // grid_sampler_3d_kernel_func free of extra branching.
+// See[1]: https://github.com/pytorch/pytorch/pull/194787
 template <typename scalar_t, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void grid_sampler_3d_bicubic_kernel_func(
