@@ -18,10 +18,10 @@ skip_dict = {
         "test_conv3d_vs_scipy_mode_same_cpu_float32",
         "test_conv3d_vs_scipy_mode_valid_cpu_float32",
     ),
-    "nn/test_dropout_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_dropout.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_init.py": None,
-    "nn/test_lazy_modules_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_lazy_modules.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     "nn/test_multihead_attention_xpu.py": None,
@@ -74,7 +74,7 @@ skip_dict = {
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
     f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
-    "test_autograd_fallback_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
     "test_autograd_xpu.py": (
         # skipped due to #2536, torch._C._scatter or torch._C._gather
         "test_profiler_emit_nvtx_xpu",
@@ -87,9 +87,9 @@ skip_dict = {
         "test_foward_mode_AD_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
-    "test_comparison_utils_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_comparison_utils.py": None,
     "test_complex_xpu.py": None,
-    "test_content_store_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
     "test_dataloader_xpu.py": None,
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
@@ -326,7 +326,7 @@ skip_dict = {
     "test_flop_counter_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     "test_utils_xpu.py": None,
-    "functorch/test_vmap_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_vmap.py": None,
     "dynamo/test_ctx_manager_xpu.py": (
         # Autocast to float64 is CUDA-specific and not supported on XPU.
         # More details in https://github.com/pytorch/pytorch/pull/179141
