@@ -319,7 +319,7 @@ skip_dict = {
         "test_backward_grads_are_tensor_or_none",
         "test_backward_impl_on_existing_op",
     ),
-    "test_flop_counter_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_flop_counter.py": None,
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     "test_utils_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_vmap.py": None,
