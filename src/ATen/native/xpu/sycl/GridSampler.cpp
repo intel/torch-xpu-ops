@@ -19,6 +19,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
 
 #include <ATen/OpMathType.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/GridSamplerUtils.h>
 #include <comm/SYCLContext.h>
@@ -1020,8 +1021,9 @@ void grid_sampler_3d_bicubic_kernel_func(
   using opmath_t = at::opmath_type<scalar_t>;
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto index = item.get_global_linear_id();
-  if (index >= nthreads)
+  if (index >= nthreads) {
     return;
+  }
 
   const index_t w = index % out_W;
   const index_t h = (index / out_W) % out_H;
@@ -1123,7 +1125,7 @@ void grid_sampler_3d_bicubic_forward_template(
 
   const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
       grid_sampler_3d_bicubic_kernel_func<scalar_t, index_t>>();
-  const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
+  const auto ngroups = ceil_div<int64_t>(nthreads, wgroup_size);
   auto& queue = getCurrentSYCLQueue();
 
   sycl_kernel_submit<grid_sampler_3d_bicubic_kernel_func<scalar_t, index_t>>(
@@ -1723,8 +1725,9 @@ void grid_sampler_3d_bicubic_backward_kernel_func(
   using opmath_t = at::opmath_type<scalar_t>;
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto index = item.get_global_linear_id();
-  if (index >= nthreads)
+  if (index >= nthreads) {
     return;
+  }
 
   const index_t w = index % out_W;
   const index_t h = (index / out_W) % out_H;
@@ -1870,7 +1873,7 @@ void grid_sampler_3d_bicubic_backward_template(
 
   const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
       grid_sampler_3d_bicubic_backward_kernel_func<scalar_t, index_t>>();
-  const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
+  const auto ngroups = ceil_div<int64_t>(nthreads, wgroup_size);
   auto& queue = getCurrentSYCLQueue();
 
   sycl_kernel_submit<
