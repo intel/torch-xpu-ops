@@ -295,11 +295,7 @@ skip_dict = {
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
-    "test_view_ops_xpu.py": (
-        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
-        "test_ravel_xpu",
-        "test_flatten_xpu",
-    ),
+    f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     "test_schema_check.py": None,
     "test_nestedtensor_xpu.py": None,
     "functorch/test_eager_transforms_xpu.py": None,
