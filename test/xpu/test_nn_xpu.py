@@ -15379,6 +15379,48 @@ class TestNNDeviceType(NNTestCase):
         tolerance = {} if dtype == torch.double else {"atol": 1e-4, "rtol": 1e-4}
         self.assertEqual(out_3d.squeeze(2), out_2d, **tolerance)
 
+    @parametrize_test("dual_inputs", ["grid", "input_and_grid"])
+    @expectedFailureMPS  # 5-D bicubic is CPU, XPU and CUDA only
+    @onlyNativeDeviceTypes
+    @dtypes(torch.double)
+    def test_grid_sample_3d_bicubic_forward_ad(self, device, dtype, dual_inputs):
+        input = torch.randn(1, 1, 3, 3, 3, device=device, dtype=dtype)
+        grid = torch.rand(1, 1, 2, 2, 3, device=device, dtype=dtype) - 0.5
+        input.requires_grad_(dual_inputs == "input_and_grid")
+        grid.requires_grad_()
+
+        def sample(input, grid):
+            return F.grid_sample(input, grid, mode="bicubic", align_corners=False)
+
+        self.assertTrue(
+            gradcheck(
+                sample,
+                (input, grid),
+                check_batched_grad=False,
+                check_backward_ad=False,
+                check_forward_ad=True,
+            )
+        )
+
+    @parametrize_test("dim", [2, 3])
+    @expectedFailureMPS  # TypeError: the MPS framework doesn't support float64
+    @onlyNativeDeviceTypes
+    @dtypes(torch.double)
+    def test_grid_sample_nearest_grid_forward_ad(self, device, dtype, dim):
+        input_shape = (1, 2, 4, 5) if dim == 2 else (1, 2, 3, 4, 5)
+        grid_shape = (1, 3, 2, 2) if dim == 2 else (1, 2, 3, 2, 3)
+        input = torch.randn(input_shape, device=device, dtype=dtype)
+        grid = torch.rand(grid_shape, device=device, dtype=dtype) - 0.5
+        output, tangent = torch.func.jvp(
+            lambda grid: F.grid_sample(
+                input, grid, mode="nearest", align_corners=False
+            ),
+            (grid,),
+            (torch.randn_like(grid),),
+            strict=True,
+        )
+        self.assertEqual(tangent, torch.zeros_like(output))
+
     @parametrize_test("padding_mode", ["zeros", "border", "reflection"])
     @expectedFailureMPS  # TypeError: the MPS framework doesn't support float64
     @onlyNativeDeviceTypes
