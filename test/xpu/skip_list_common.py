@@ -461,4 +461,9 @@ skip_dict = {
         "test_env_vars_exist",
         "test_env_vars_exist_slow",
     },
+    f"{PYTORCH_TEST_DIR}/test_kernel_launch_checks.py": {
+        # CUDA only tests
+        "test_check_code",
+        "test_check_cuda_launches",
+    },
 }
