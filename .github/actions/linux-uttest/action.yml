@@ -192,6 +192,7 @@ runs:
         PYTORCH_ROOT_DIR: ${{ github.workspace }}/pytorch
         XML_OUTPUT_DIR: ${{ github.workspace }}/ut_log
         XML_PREFIX: xpu_p0_with_
+        TORCH_SERIALIZATION_DEBUG: '1'
       run: |
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"

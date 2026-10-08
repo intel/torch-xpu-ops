@@ -98,6 +98,7 @@ jobs:
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
       # xpu_p0 is split: the distributed group runs here (baremetal), the rest in the container job.
       UT_LABEL: ${{ inputs.ut == 'xpu_p0' && 'xpu_p0_distributed' || inputs.ut }}
+      TORCH_SERIALIZATION_DEBUG: '1'
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
