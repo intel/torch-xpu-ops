@@ -7,7 +7,6 @@ on:
     paths:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
-      - '.github/scripts/*bot_*.js'
       - '.github/scripts/test_bot_*.py'
 
 env:
@@ -1386,10 +1385,10 @@ jobs:
 
       # The prompt cannot guarantee the pipeline actually updated its session
       # comment -- an earlier run left the issue with nothing but the "Starting"
-      # placeholder. The rules live in bot_session_comment.js: stage blocks the
-      # agent wrote are always kept, and its closing message only fills what is
-      # missing (the whole comment, or the summary). Runs after redaction
-      # because result.result is agent free text going to a public issue.
+      # placeholder. Stage blocks the agent wrote are always kept; its closing
+      # message only fills what is missing (the whole comment, or the summary).
+      # Runs after redaction because result.result is agent free text going to
+      # a public issue.
       - name: Backfill session comment
         if: always() && steps.redact.outcome == 'success' && steps.ai-fix.outputs.execution_file
         uses: actions/github-script@v9
@@ -1403,20 +1402,33 @@ jobs:
             const current = await github.rest.issues.getComment({
               owner: context.repo.owner, repo: context.repo.repo, comment_id: id
             });
+            const old = current.data.body || '';
+            // Finished: the agent's own summary is in, keep the comment as is.
+            if (old.includes('<!-- agent:summary -->')) return;
             const fs = require('fs');
             const file = '${{ steps.ai-fix.outputs.execution_file }}';
             if (!fs.existsSync(file)) return;
             const result = JSON.parse(fs.readFileSync(file, 'utf8'))
               .filter(e => e.type === 'result').pop();
-            if (!result || result.is_error) return;
+            if (!result || result.is_error || !result.result) return;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            // From the commit, not the working tree, which the agent could have edited.
-            const src = require('child_process').execFileSync('git', ['-C', process.env.GITHUB_WORKSPACE,
-              'show', `${context.sha}:.github/scripts/bot_session_comment.js`]);
-            fs.writeFileSync('/tmp/bot_session_comment.js', src);
-            const { backfill } = require('/tmp/bot_session_comment.js');
-            const body = backfill(current.data.body, result.result, runUrl);
-            if (!body) return;
+            // Never written: the closing message becomes the whole comment.
+            // Stopped mid-pipeline: keep the stage blocks, append it as the summary.
+            // Must match the "Post starting message" step.
+            const untouched = old.startsWith('Starting automated fix on this issue.');
+            const head = untouched
+              ? '<!-- agent:session -->\n\n'
+              : `${old}\n\n<!-- agent:summary -->\n\n**Summary** _(the agent's closing message; the run stopped before writing its own)_\n\n`;
+            const tail = untouched
+              ? `\n\n---\n_The [\`fix\` job](${runUrl}) did not update this comment itself, so this is the agent's closing summary only._`
+              : '';
+            // Truncate the closing message only, never the stage blocks; GitHub caps a comment at 65536.
+            const note = '\n\n_(truncated -- full output in the job artifacts)_';
+            const room = 65000 - head.length - tail.length;
+            const text = result.result.length <= room
+              ? result.result
+              : result.result.slice(0, Math.max(0, room - note.length)) + note;
+            const body = head + text + tail;
             await github.rest.issues.updateComment({
               owner: context.repo.owner, repo: context.repo.repo, comment_id: id, body
             });
@@ -1871,7 +1883,6 @@ jobs:
         run: |
           pip install pytest
           python -m pytest .github/scripts/test_bot_*.py -v
-          node .github/scripts/test_bot_session_comment.js
 
   token-permission-test:
     runs-on: ubuntu-latest
