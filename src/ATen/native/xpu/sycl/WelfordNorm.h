@@ -13,9 +13,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
-#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
-#include <comm/SYCLHelpers.h>
 #include <comm/XPUMathCompat.h>
 
 namespace at::native::xpu {
@@ -39,8 +37,7 @@ std::tuple<int, int, int, int> get_adaptive_config(
   int nwg_x = at::ceil_div(n_channels, group_size_x * vec_size);
   int nwg_y = std::min(
       at::ceil_div(reduction, group_size_y * loops_per_item),
-      int(at::xpu::getDeviceMaxWorkItems()) / (nwg_x * group_size_x) /
-          (group_size_y));
+      int(syclMaxWorkItemsPerTile()) / (nwg_x * group_size_x) / (group_size_y));
   nwg_y = std::max(nwg_y, 1);
 
   return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x);
@@ -109,18 +106,9 @@ template <
     typename VarTransform,
     typename scalar_t,
     typename acc_t,
-    int VEC_SIZE>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
-    (sycl::ext::oneapi::experimental::nd_range_kernel<2>))
-void welford_batch_norm_stat_channels_last_vec_kernel(
-    const scalar_t* input,
-    acc_t* save_mean,
-    acc_t* save_invstd,
-    int reduction_size,
-    int n_channels,
-    acc_t* staging_data,
-    int* semaphores,
-    double epsilon) {
+    int VEC_SIZE = 2>
+struct WelfordBatchNormStatChannelsLastVecKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
   using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
   using int_vec_t = memory::aligned_vector<int, VEC_SIZE>;
@@ -141,11 +129,11 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
       }
     }
 
-  int gy = item.get_group(0);
-  int gx = item.get_group(1);
-  int c_vec_offset = item.get_global_id(1) * VEC_SIZE;
-  int num_cooperative_groups = item.get_group_range(0);
-  int inner_loop_stride = item.get_local_range(0) * num_cooperative_groups;
+    int gy = item.get_group(0);
+    int gx = item.get_group(1);
+    int c_vec_offset = item.get_global_id(1) * VEC_SIZE;
+    int num_cooperative_groups = item.get_group_range(0);
+    int inner_loop_stride = item.get_local_range(0) * num_cooperative_groups;
 
     if (c_vec_offset < n_channels_) {
       int m_offset = item.get_global_id(0);
@@ -277,13 +265,11 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
       acc_vec_t invstd_vec;
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
-        auto x = input_vec[v];
-        count[v]++;
-        acc_t delta0 = x - mean[v];
-        mean[v] += delta0 / count[v];
-        acc_t delta1 = x - mean[v];
-        m2n[v] += delta0 * delta1;
+        invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon_);
       }
+
+      *reinterpret_cast<acc_vec_t*>(&save_mean_[c_vec_offset]) = mean;
+      *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_vec_offset]) = invstd_vec;
     }
   }
 
@@ -297,34 +283,23 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     is_last_group_done_ = sycl_local_acc_t<bool>(sycl::range<1>(1), cgh);
   }
 
-  if (item.get_local_id(0) == 0 &&
-      (num_cooperative_groups == 1 || is_last_group_done[0]) &&
-      c_vec_offset < n_channels) {
-    acc_vec_t invstd_vec;
-#pragma unroll
-    for (int v = 0; v < VEC_SIZE; ++v) {
-      invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon);
-    }
-
-    *reinterpret_cast<acc_vec_t*>(&save_mean[c_vec_offset]) = mean;
-    *reinterpret_cast<acc_vec_t*>(&save_invstd[c_vec_offset]) = invstd_vec;
-  }
-}
-
-template <
-    typename VarTransform,
-    typename scalar_t,
-    typename acc_t,
-    int VEC_SIZE = 2>
-struct WelfordBatchNormStatChannelsLastVecKernelConfig {
-  using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
-  using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
-  using int_vec_t = memory::aligned_vector<int, VEC_SIZE>;
-
-  WelfordBatchNormStatChannelsLastVecKernelConfig(
+  WelfordBatchNormStatChannelsLastVecKernelFunctor(
+      const scalar_t* input,
+      acc_t* save_mean,
+      acc_t* save_invstd,
       int reduction_size,
-      int n_channels)
-      : reduction_size_(reduction_size), n_channels_(n_channels) {}
+      int n_channels,
+      acc_t* staging_data,
+      int* semaphores,
+      double epsilon)
+      : input_(input),
+        save_mean_(save_mean),
+        save_invstd_(save_invstd),
+        reduction_size_(reduction_size),
+        n_channels_(n_channels),
+        staging_data_(staging_data),
+        semaphores_(semaphores),
+        epsilon_(epsilon) {}
 
   void init() {
     using KernelT = WelfordBatchNormStatChannelsLastVecKernelFunctor<
@@ -367,13 +342,10 @@ struct WelfordBatchNormStatChannelsLastVecKernelConfig {
   void set_semaphores(int* semaphores) { semaphores_ = semaphores; }
   int num_cooperative_groups() const { return ngroups_y_; }
 
-  int scratch_size() const {
-    auto local_size = group_size_x_ * group_size_y_;
-    return local_size * (2 * sizeof(acc_vec_t) + sizeof(int_vec_t)) +
-        sizeof(bool);
-  }
-
  private:
+  const scalar_t* input_;
+  acc_t* save_mean_;
+  acc_t* save_invstd_;
   int reduction_size_;
   int n_channels_;
   acc_t* staging_data_;
