@@ -522,14 +522,13 @@ jobs:
             Independently cover every scan candidate whose local result is
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
-            existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
-            If an existing intel/torch-xpu-ops tracker covers the same work,
-            record it as `canonical_tracker`; do not create a payload or comment
-            on it.
+            existing trackers. Apply the ownership, tracker, verdict, and citation
+            rules in .claude/skills/xpu-alignment/references/evidence.md. Use
+            .claude/skills/xpu-alignment/references/automation-contract.md for
+            review.json fields. Do not sample rejected inventory.
 
             Write only alignment-run/review/review.json and optional
-            review_report.md. Include a payload only for reviewed `needs-xpu-fix`
-            without a canonical tracker. Do not execute code or modify GitHub.
+            review_report.md. Do not execute code or modify GitHub.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}

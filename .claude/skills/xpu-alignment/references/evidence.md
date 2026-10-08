@@ -111,13 +111,27 @@ a later default-branch commit scan re-evaluates the change after it lands.
 `non-issue` only when runner and source evidence establish that the observed
 behavior is not a current XPU defect. Otherwise use `verification-gap`.
 
+### Tracker ownership and reuse
+
 Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
 explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
 canonical tracker. The current source, a generic related issue, or an XPU mention
 alone does not establish upstream ownership. When upstream explicitly owns the
-XPU work, use `track-upstream`. When an existing ops tracker covers the work,
-record its URL as `canonical_tracker`; do not create a new payload or
-automatically comment on the existing tracker.
+XPU work, use `track-upstream` and emit no payload.
+
+Record any existing GitHub issue covering the same work as `canonical_tracker`
+with its `canonical_tracker_state` (`open` or `closed`), regardless of repository.
+Use its canonical `https://github.com/<owner>/<repo>/issues/<number>` URL without
+a fragment, query, or trailing slash. For current, confirmed independent XPU
+work, only an open `intel/torch-xpu-ops` issue replaces a new payload: use
+`duplicate`, emit no payload, and do not automatically comment on that issue.
+A closed local issue cannot receive the work; an issue in another repository
+does not by itself replace a local payload. For such work in either case, use
+`needs-xpu-fix` and emit a new payload that cites the exact
+`canonical_tracker` URL in its body. With no tracker, `needs-xpu-fix` also needs
+a payload. Cite related upstream or XPU issue, PR, and commit URLs in the payload
+or review report as context. PR and commit URLs are not `canonical_tracker`, and
+related links alone do not suppress a payload.
 
 Use exactly one verdict:
 
@@ -131,7 +145,8 @@ Use exactly one verdict:
 - `fixed`: the relevant change is already present and verified;
 - `non-issue`: evidence establishes that the observed behavior is not a current
   XPU defect;
-- `duplicate`: a canonical tracker already covers the same work;
+- `duplicate`: an existing tracker replaces a new payload under the tracker
+  policy above;
 - `verification-gap`: available evidence cannot support another verdict.
 
 Prefer `verification-gap` over a forced conclusion. A `needs-xpu-fix` payload has

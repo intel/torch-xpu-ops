@@ -287,6 +287,7 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
     "verdict": "needs-xpu-fix",
     "implementation_repository": "pytorch/pytorch",
     "canonical_tracker": null,
+    "canonical_tracker_state": null,
     "payload": {
       "title": "[xpu-alignment] ...",
       "body": "...",
@@ -297,14 +298,19 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 }
 ```
 
-`units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without a canonical tracker has a payload, and every payload
-targets `intel/torch-xpu-ops`. `implementation_repository` is required for
+`units` covers the provisional actionable set exactly once. The
+[tracker policy](evidence.md#tracker-ownership-and-reuse) defines which verdicts
+need a payload; every payload targets `intel/torch-xpu-ops`. The gate checks
+payload presence and exact tracker citation against that policy.
+`implementation_repository` is required for
 `needs-xpu-fix` and `track-upstream` and unused otherwise; the
 [evidence reference](evidence.md) defines which repository to name.
-`status: blocked` lists blockers and contains no payloads. When an existing
-`intel/torch-xpu-ops` issue covers the same work, record its URL as
-`canonical_tracker`; do not create a payload or comment on that tracker.
+`status: blocked` lists blockers and contains no payloads. `canonical_tracker`
+and `canonical_tracker_state` are set together or both null. The tracker field
+accepts only a canonical `https://github.com/<owner>/<repo>/issues/<number>` URL
+without a trailing slash, query, or fragment; the state is `open` or `closed`.
+Previously retained review artifacts that name a tracker without its state must
+be reviewed again before this gate can replay them.
 
 This role requires read-only GitHub access to refresh source and tracker state,
 but it does not require an XPU runtime.
