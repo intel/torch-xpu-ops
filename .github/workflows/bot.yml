@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
+      - '.github/scripts/*bot_*.js'
       - '.github/scripts/test_bot_*.py'
 
 env:
@@ -1310,7 +1311,11 @@ jobs:
             issue. References to issues in THIS repo stay bare
             (intel/torch-xpu-ops#5476) -- there the back-link is wanted. Run and
             job log links are fine.
-            End by appending your summary to it and reporting the branch name.
+            End by appending your summary to it, under a
+            `<!-- agent:summary -->` line, and reporting the branch name. The
+            workflow keeps whatever you wrote; without that marker it treats
+            the run as unfinished and appends your closing message as the
+            summary.
             Do not write a review block; the workflow appends the human
             review template itself.
             Keep this as the comment's last line, so a reader can reach the
@@ -1381,11 +1386,10 @@ jobs:
 
       # The prompt cannot guarantee the pipeline actually updated its session
       # comment -- an earlier run left the issue with nothing but the "Starting"
-      # placeholder. Backfill only when the comment carries no
-      # `<!-- agent:session -->` marker (never written, or written wrong): a
-      # partially filled comment is the pipeline's and is left alone. Runs after
-      # redaction because result.result is agent free text going to a public
-      # issue.
+      # placeholder. The rules live in bot_session_comment.js: stage blocks the
+      # agent wrote are always kept, and its closing message only fills what is
+      # missing (the whole comment, or the summary). Runs after redaction
+      # because result.result is agent free text going to a public issue.
       - name: Backfill session comment
         if: always() && steps.redact.outcome == 'success' && steps.ai-fix.outputs.execution_file
         uses: actions/github-script@v9
@@ -1399,17 +1403,20 @@ jobs:
             const current = await github.rest.issues.getComment({
               owner: context.repo.owner, repo: context.repo.repo, comment_id: id
             });
-            if ((current.data.body || '').includes('<!-- agent:session -->')) return;
             const fs = require('fs');
             const file = '${{ steps.ai-fix.outputs.execution_file }}';
             if (!fs.existsSync(file)) return;
             const result = JSON.parse(fs.readFileSync(file, 'utf8'))
               .filter(e => e.type === 'result').pop();
-            if (!result || result.is_error || !result.result) return;
+            if (!result || result.is_error) return;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const footer = `\n\n---\n_The [\`fix\` job](${runUrl}) did not update this comment itself, so this is the agent's closing summary only._`;
-            let body = `<!-- agent:session -->\n\n${result.result}${footer}`;
-            if (body.length > 65000) body = body.slice(0, 64800 - footer.length) + `\n\n_(truncated -- full output in the job artifacts)_` + footer;
+            // From the commit, not the working tree, which the agent could have edited.
+            const src = require('child_process').execFileSync('git', ['-C', process.env.GITHUB_WORKSPACE,
+              'show', `${context.sha}:.github/scripts/bot_session_comment.js`]);
+            fs.writeFileSync('/tmp/bot_session_comment.js', src);
+            const { backfill } = require('/tmp/bot_session_comment.js');
+            const body = backfill(current.data.body, result.result, runUrl);
+            if (!body) return;
             await github.rest.issues.updateComment({
               owner: context.repo.owner, repo: context.repo.repo, comment_id: id, body
             });
@@ -1864,6 +1871,7 @@ jobs:
         run: |
           pip install pytest
           python -m pytest .github/scripts/test_bot_*.py -v
+          node .github/scripts/test_bot_session_comment.js
 
   token-permission-test:
     runs-on: ubuntu-latest
