@@ -16,8 +16,8 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
-#include <ATen/xpu/XPUContext.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
@@ -314,7 +314,6 @@ template <typename LSConfig_, bool TrivialOffCal = false>
 class LoopScanKernel {
   using LSConfig = LSConfig_;
   using T = typename LSConfig::arg_t;
-  using BinaryFunction = typename LSConfig::func_t;
 
  public:
   LoopScanKernel(const LSConfig& cfg) : cfg_(cfg) {}
