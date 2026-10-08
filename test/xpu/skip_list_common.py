@@ -428,4 +428,37 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
     f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_backend/test_custom_backend.py": {
+        # Requires "custom_backend" target to be build
+        "test_execute",
+        "test_save_load",
+    },
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_custom_ops.py": {
+        # Required "custom_operator" target to be build
+        "test_custom_library_is_loaded",
+        "test_op_with_no_abstract_impl_pystub",
+        "test_dynamo_pystub_suggestion",
+        "test_abstract_impl_pystub_faketensor",
+        "test_abstract_impl_pystub_meta",
+        "test_calling_custom_op_string",
+        "test_calling_custom_op",
+        "test_calling_custom_op_with_autograd",
+        "test_calling_custom_op_with_autograd_in_nograd_mode",
+        "test_calling_custom_op_inside_script_module",
+        "test_saving_and_loading_script_module_with_custom_op",
+    },
+    f"{PYTORCH_TEST_DIR}/test_bundled_images.py": {
+        # This is a "Facebook" test requiring torch.ops.fb
+        # and OpenCV. When run it raises:
+        # raise RuntimeError(
+        #   "This test is not currently used and should be "
+        #   "enabled in discover_tests.py if required."
+        "test_single_tensors",
+    },
+    f"{PYTORCH_TEST_DIR}/test_ci_sanity_check_fail.py": {
+        # Comment above both cases:
+        # "This check should fail and trigger reruns.  If it passes, something is wrong"
+        "test_env_vars_exist",
+        "test_env_vars_exist_slow",
+    },
 }
