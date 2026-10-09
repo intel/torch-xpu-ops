@@ -55,6 +55,13 @@ Tensor& _histc_out_xpu(
     const Scalar& min,
     const Scalar& max,
     Tensor& result) {
+  TORCH_CHECK(
+      self.dtype() == result.dtype(),
+      "torch.histogram: input tensor and hist tensor should",
+      " have the same dtype, but got input ",
+      self.dtype(),
+      " and hist ",
+      result.dtype());
   auto ret = _histc_xpu(self, bins, min, max);
   at::native::resize_output(result, ret.sizes());
   result.copy_(ret);
