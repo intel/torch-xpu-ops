@@ -427,4 +427,8 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
+    "dynamo/test_activation_checkpointing_xpu.py": None,
+    "dynamo/test_after_aot_xpu.py": None,
+    "dynamo/test_aot_compile_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_callback.py": None,
 }
