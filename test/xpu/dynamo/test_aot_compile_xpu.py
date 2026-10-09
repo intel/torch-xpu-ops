@@ -10801,7 +10801,7 @@ from user code:
         shape_env = ShapeEnv()
         with FakeTensorMode(shape_env=shape_env):
             x = torch.empty(2, device=GPU_TYPE)
-            s0 = shape_env.create_unbacked_symint()
+            s0 = shape_env.create_unbacked_symint() # noqa: META_NO_CREATE_UNBACKED
         graph = torch.fx.Graph()
         graph.placeholder("s0").meta["val"] = s0
         x_node = graph.placeholder("x")
