@@ -88,7 +88,7 @@ skip_files_list = [
     # "test_transformers_xpu.py",
     "test_type_promotion_xpu.py",
     # "test_unary_ufuncs_xpu.py",
-    # "test_view_ops_xpu.py",
+    # f"{PYTORCH_TEST_DIR}/test_view_ops.py",
     "functorch/test_ops_xpu.py",
 ]
 
