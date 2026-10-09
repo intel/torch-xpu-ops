@@ -396,7 +396,6 @@ skip_dict = {
     "test_fx_experimental_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_callback.py": None,
     "dynamo/test_cudagraphs_xpu.py": None,
-    "dynamo/test_activation_checkpointing_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_debug_utils.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
         # Worker crash on BMG; no dedicated tracking issue yet
