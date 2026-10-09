@@ -25,7 +25,16 @@ for skip_case in skip_list[1:]:
 original_stdout = sys.stdout
 sys.stdout = StringIO()
 
-test_command = ["-k", skip_options, "../../../../test/test_xpu.py", "-v"]
+gemm_options = (
+    "test__int_mm or test__int4_mm or test_compile_int4_mm or test__int_mm_errors"
+)
+test_command = [
+    "-k",
+    f"(test_xpu.py and ({skip_options})) or (test_linalg_xpu.py and ({gemm_options}))",
+    "../../../../test/test_xpu.py",
+    "test_linalg_xpu.py",
+    "-v",
+]
 test_command.extend(["--junit-xml", "./test_xpu.xml"])
 res = pytest.main(test_command)
 
