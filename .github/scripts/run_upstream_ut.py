@@ -79,6 +79,10 @@ INDUCTOR_ENV = {
     "NO_TD": "False",
     # Empty CI makes IS_CI false, disabling run_test.py's S3/TD/metrics/upload paths
     "CI": "",
+    # One test process per shard: NUM_PROCS is 3 on XPU and, unlike ROCm, is never
+    # clamped to the GPU count, so the default would put 3 workers on the one GPU
+    # this shard is pinned to via ZE_AFFINITY_MASK.
+    "PYTORCH_TEST_RUN_EVERYTHING_IN_SERIAL": "1",
     "PYTEST_ADDOPTS": " --timeout 3600 --timeout_method=thread -v ",
 }
 
@@ -435,10 +439,9 @@ def main():
         env = {**os.environ, **COMMON_ENV}
         if args.category == "inductor":
             return run_shards(args, {**env, **INDUCTOR_ENV})
-        if args.category == "distributed":
-            env["ZE_AFFINITY_MASK"] = ",".join(args.gpus)
-            if not args.dry_run:
-                setup_distributed_env(env, args.pytorch_dir)
+        env["ZE_AFFINITY_MASK"] = ",".join(args.gpus)
+        if args.category == "distributed" and not args.dry_run:
+            setup_distributed_env(env, args.pytorch_dir)
         return run_files(args, env, files)
     except Exception as e:  # noqa: BLE001
         print(f"[ERROR] {e}", file=sys.stderr)
