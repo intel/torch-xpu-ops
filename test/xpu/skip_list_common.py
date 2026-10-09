@@ -18,10 +18,10 @@ skip_dict = {
         "test_conv3d_vs_scipy_mode_same_cpu_float32",
         "test_conv3d_vs_scipy_mode_valid_cpu_float32",
     ),
-    "nn/test_dropout_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_dropout.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_init.py": None,
-    "nn/test_lazy_modules_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_lazy_modules.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     "nn/test_multihead_attention_xpu.py": None,
@@ -74,7 +74,7 @@ skip_dict = {
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
     f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
-    "test_autograd_fallback_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
     "test_autograd_xpu.py": (
         # skipped due to #2536, torch._C._scatter or torch._C._gather
         "test_profiler_emit_nvtx_xpu",
@@ -87,9 +87,9 @@ skip_dict = {
         "test_foward_mode_AD_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
-    "test_comparison_utils_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_comparison_utils.py": None,
     "test_complex_xpu.py": None,
-    "test_content_store_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
     "test_dataloader_xpu.py": None,
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
@@ -183,7 +183,6 @@ skip_dict = {
         # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
         "test_dtypes_linalg_multi_dot_xpu",
         # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
-        "test_out_histc_xpu_float32",
         "test_out_mean_xpu_float32",
         # FakeTensor mismatch in outputs_alias_inputs for aten.view.default
         # Known upstream issue: https://github.com/pytorch/pytorch/issues/159150
@@ -327,7 +326,7 @@ skip_dict = {
     "test_flop_counter_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     "test_utils_xpu.py": None,
-    "functorch/test_vmap_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_vmap.py": None,
     "dynamo/test_ctx_manager_xpu.py": (
         # Autocast to float64 is CUDA-specific and not supported on XPU.
         # More details in https://github.com/pytorch/pytorch/pull/179141
@@ -335,8 +334,8 @@ skip_dict = {
         "test_cuda_amp_autocast",
     ),
     "functorch/test_control_flow_xpu.py": None,
-    "functorch/test_aot_joint_with_descriptors_xpu.py": None,
-    "profiler/test_memory_profiler.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_aot_joint_with_descriptors.py": None,
+    f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_execution_trace_xpu.py": None,
     "profiler/test_profiler_xpu.py": None,
@@ -395,15 +394,11 @@ skip_dict = {
         "test_scaled_addmm_nvfp4",
         "test_scaled_addmm_fullgraph",
         "test_scaled_addmm_cudagraph",
-        # https://github.com/intel/torch-xpu-ops/issues/5425
-        # ROCm only tests
-        "test_mxfp8_tn_only_on_rocm",
-        "test_rowwise_tn_only_on_rocm",
     },
     "test_serialization_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_memory_efficient_fusion.py": None,
     f"{PYTORCH_TEST_DIR}/higher_order_ops/test_invoke_subgraph.py": None,
-    "higher_order_ops/test_with_effects_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/higher_order_ops/test_with_effects.py": None,
     "test_fx_experimental_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_callback.py": None,
     "dynamo/test_cudagraphs_xpu.py": None,
