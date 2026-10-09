@@ -289,7 +289,7 @@ jobs:
     with:
       runner: distributed
       pytorch: nightly_wheel
-      torch_xpu_ops: daisyden/distributed_2.13
+      torch_xpu_ops: daisyden/distributed_2.15
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
