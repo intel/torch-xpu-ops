@@ -643,7 +643,7 @@ struct IndexCopyLoopFunctor {
         self_dim_stride_(self_dim_stride) {}
 
  private:
-  offset_cal_t offset_calc_;
+  std::remove_cv_t<offset_cal_t> offset_calc_;
   char* self_ptr_;
   char* idx_ptr_;
   char* source_ptr_;
@@ -751,12 +751,12 @@ struct TakePutLoopFunctor {
         f_(f) {}
 
  private:
-  offset_cal_t offset_calc_;
+  std::remove_cv_t<offset_cal_t> offset_calc_;
   char* iterated_ptr_;
   char* idx_ptr_;
   int64_t numel_;
   bool is_contiguous_;
-  idx_offset_cal_t offset_indexed_;
+  std::remove_cv_t<idx_offset_cal_t> offset_indexed_;
   func_t f_;
 };
 
