@@ -45,7 +45,7 @@ from torch.testing._internal.common_utils import (
     skipIfXpu,
     TEST_CUDA,
 )
-from torch.testing._internal.inductor_utils import HAS_GPU_AND_TRITON, GPU_TYPE
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU_AND_TRITON
 from torch.testing._internal.triton_utils import requires_gpu_and_triton
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils.checkpoint import (
@@ -53,7 +53,6 @@ from torch.utils.checkpoint import (
     CheckpointPolicy,
     create_selective_checkpoint_contexts,
 )
-
 
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
 
@@ -2529,7 +2528,8 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
             start_mem = torch.accelerator.memory_stats()["requested_bytes.all.current"]
             out = f()
             act_mem = (
-                torch.accelerator.memory_stats()["requested_bytes.all.current"] - start_mem
+                torch.accelerator.memory_stats()["requested_bytes.all.current"]
+                - start_mem
             )
             out.backward()
             return act_mem
@@ -2541,7 +2541,9 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         self.assertGreater(get_act_mem(lambda: compiled(x)), 0)
 
         torch._dynamo.reset()
-        compiled = torch.compile(Model(budget=0.0).to(device=GPU_TYPE), backend="aot_eager")
+        compiled = torch.compile(
+            Model(budget=0.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         self.assertEqual(get_act_mem(lambda: compiled(x)), 0)
 
     @torch._dynamo.config.patch(automatic_dynamic_shapes=False)
@@ -2672,7 +2674,8 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
             start_mem = torch.accelerator.memory_stats()["requested_bytes.all.current"]
             out = f()
             act_mem = (
-                torch.accelerator.memory_stats()["requested_bytes.all.current"] - start_mem
+                torch.accelerator.memory_stats()["requested_bytes.all.current"]
+                - start_mem
             )
             out.backward()
             return act_mem
@@ -2680,19 +2683,27 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         x = torch.randn(N, N, device=GPU_TYPE)
 
         torch._dynamo.reset()
-        both_save = torch.compile(Model(1.0, 1.0).to(device=GPU_TYPE), backend="aot_eager")
+        both_save = torch.compile(
+            Model(1.0, 1.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         mem_both_save = get_act_mem(lambda: both_save(x))
 
         torch._dynamo.reset()
-        a_recomp = torch.compile(Model(0.0, 1.0).to(device=GPU_TYPE), backend="aot_eager")
+        a_recomp = torch.compile(
+            Model(0.0, 1.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         mem_a_recomp = get_act_mem(lambda: a_recomp(x))
 
         torch._dynamo.reset()
-        b_recomp = torch.compile(Model(1.0, 0.0).to(device=GPU_TYPE), backend="aot_eager")
+        b_recomp = torch.compile(
+            Model(1.0, 0.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         mem_b_recomp = get_act_mem(lambda: b_recomp(x))
 
         torch._dynamo.reset()
-        both_recomp = torch.compile(Model(0.0, 0.0).to(device=GPU_TYPE), backend="aot_eager")
+        both_recomp = torch.compile(
+            Model(0.0, 0.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         mem_both_recomp = get_act_mem(lambda: both_recomp(x))
 
         # Both save > either one recomputing > both recomputing
@@ -2861,7 +2872,8 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
             start_mem = torch.accelerator.memory_stats()["requested_bytes.all.current"]
             out = f()
             act_mem = (
-                torch.accelerator.memory_stats()["requested_bytes.all.current"] - start_mem
+                torch.accelerator.memory_stats()["requested_bytes.all.current"]
+                - start_mem
             )
             out.backward()
             return act_mem

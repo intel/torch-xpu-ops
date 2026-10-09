@@ -87,7 +87,6 @@ from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils.checkpoint import checkpoint
 
-
 MY_LAMBDA = lambda x: x + 1  # noqa: E731
 
 EPS = torch.tensor(1e-7)
@@ -172,7 +171,6 @@ class CustomCompiledFunction(torch._dynamo.aot_compile.SerializableCallable):
     @classmethod
     def serialize_compile_artifacts(cls, fn) -> bytes:
         import sympy
-
         from torch._subclasses import FakeTensorMode
         from torch.fx._graph_pickler import Options
 
@@ -10953,7 +10951,9 @@ from user code:
         compiled_fn = torch.compile(fn, fullgraph=True, backend="aot_eager")
         artifacts = compiled_fn.aot_compile(((torch.randn(3),), {}))._artifacts
         artifacts = dataclasses.replace(artifacts, device_type=GPU_TYPE)
-        with patch.object(torch.get_device_module(GPU_TYPE), "is_available", return_value=False):
+        with patch.object(
+            torch.get_device_module(GPU_TYPE), "is_available", return_value=False
+        ):
             with self.assertRaisesRegex(RuntimeError, f"{GPU_TYPE} is not available"):
                 AOTCompiledFunction(artifacts)
 
