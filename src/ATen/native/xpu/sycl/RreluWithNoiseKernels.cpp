@@ -9,6 +9,8 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/MemoryOverlap.h>
+#include <ATen/TensorUtils.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
@@ -101,8 +103,8 @@ inline void _rrelu_with_noise_xpu_train(
     const Scalar& upper_,
     const std::optional<Generator>& generator) {
   auto input = input_.contiguous();
-  auto noise = noise_.contiguous();
   Tensor tmp_output = output.contiguous();
+  Tensor tmp_noise = noise_.contiguous();
 
   int64_t numel = input.numel();
   constexpr int unroll_factor = std::is_same_v<scalar_t, double> ? 2 : 4;
@@ -122,7 +124,7 @@ inline void _rrelu_with_noise_xpu_train(
   }
 
   const scalar_t* input_data = input.const_data_ptr<scalar_t>();
-  scalar_t* noise_data = noise.mutable_data_ptr<scalar_t>();
+  scalar_t* noise_data = tmp_noise.mutable_data_ptr<scalar_t>();
   scalar_t* output_data = tmp_output.mutable_data_ptr<scalar_t>();
 
   double lower = lower_.to<double>();
@@ -160,6 +162,10 @@ inline void _rrelu_with_noise_xpu_train(
   if (!output.is_contiguous()) {
     output.copy_(tmp_output);
   }
+  if (!noise_.is_contiguous()) {
+    at::assert_no_internal_overlap(noise_);
+    noise_.copy_(tmp_noise);
+  }
 }
 
 Tensor& rrelu_with_noise_kernel(
@@ -180,6 +186,12 @@ Tensor& rrelu_with_noise_kernel(
       output_arg{output, "output", 3};
   checkAllSameGPU(
       "rrelu_with_noise_out_xpu", {self_arg, noise_arg, output_arg});
+  TORCH_CHECK(
+      self.sym_sizes() == noise.sym_sizes(),
+      "noise tensor shape must match self tensor shape. Got self.shape = ",
+      self.sym_sizes(),
+      " noise.shape = ",
+      noise.sym_sizes());
 
   if (training) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
