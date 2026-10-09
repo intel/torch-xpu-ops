@@ -109,7 +109,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: acceptance
+      runner: BMG-818840
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
@@ -124,7 +124,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: acceptance
+      runner: BMG-818840
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
@@ -160,7 +160,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: acceptance
+      runner: BMG-818840
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
@@ -175,7 +175,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: acceptance
+      runner: BMG-818840
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
