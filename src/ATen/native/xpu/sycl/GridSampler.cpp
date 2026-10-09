@@ -911,79 +911,6 @@ void grid_sampler_3d_kernel_func(
   }
 }
 
-template <typename scalar_t, typename index_t>
-void grid_sampler_3d_forward_template(
-    const index_t nthreads,
-    TensorInfo<const scalar_t, index_t> input,
-    TensorInfo<const scalar_t, index_t> grid,
-    TensorInfo<scalar_t, index_t> output,
-    const GridSamplerInterpolation interpolation_mode,
-    const GridSamplerPadding padding_mode,
-    bool align_corners) {
-  index_t C = input.sizes[1];
-  index_t inp_D = input.sizes[2];
-  index_t inp_H = input.sizes[3];
-  index_t inp_W = input.sizes[4];
-  index_t out_D = grid.sizes[1];
-  index_t out_H = grid.sizes[2];
-  index_t out_W = grid.sizes[3];
-  index_t inp_sN = input.strides[0];
-  index_t inp_sC = input.strides[1];
-  index_t inp_sD = input.strides[2];
-  index_t inp_sH = input.strides[3];
-  index_t inp_sW = input.strides[4];
-  index_t grid_sN = grid.strides[0];
-  index_t grid_sD = grid.strides[1];
-  index_t grid_sH = grid.strides[2];
-  index_t grid_sW = grid.strides[3];
-  index_t grid_sCoor = grid.strides[4];
-  index_t out_sN = output.strides[0];
-  index_t out_sC = output.strides[1];
-  index_t out_sD = output.strides[2];
-  index_t out_sH = output.strides[3];
-  index_t out_sW = output.strides[4];
-
-  const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
-      grid_sampler_3d_kernel_func<scalar_t, index_t>>();
-  const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
-  auto& queue = getCurrentSYCLQueue();
-
-  sycl_kernel_submit<grid_sampler_3d_kernel_func<scalar_t, index_t>>(
-      sycl::range<1>(ngroups * wgroup_size),
-      sycl::range<1>(wgroup_size),
-      queue,
-      0,
-      nthreads,
-      input,
-      grid,
-      output,
-      interpolation_mode,
-      padding_mode,
-      align_corners,
-      C,
-      inp_D,
-      inp_H,
-      inp_W,
-      out_D,
-      out_H,
-      out_W,
-      inp_sN,
-      inp_sC,
-      inp_sD,
-      inp_sH,
-      inp_sW,
-      grid_sN,
-      grid_sD,
-      grid_sH,
-      grid_sW,
-      grid_sCoor,
-      out_sN,
-      out_sC,
-      out_sD,
-      out_sH,
-      out_sW);
-}
-
 // Bicubic lives in its own kernel, as in CUDA [1], to keep
 // grid_sampler_3d_kernel_func free of extra branching.
 // See[1]: https://github.com/pytorch/pytorch/pull/194787
@@ -1093,11 +1020,12 @@ void grid_sampler_3d_bicubic_kernel_func(
 }
 
 template <typename scalar_t, typename index_t>
-void grid_sampler_3d_bicubic_forward_template(
+void grid_sampler_3d_forward_template(
     const index_t nthreads,
     TensorInfo<const scalar_t, index_t> input,
     TensorInfo<const scalar_t, index_t> grid,
     TensorInfo<scalar_t, index_t> output,
+    const GridSamplerInterpolation interpolation_mode,
     const GridSamplerPadding padding_mode,
     bool align_corners) {
   index_t C = input.sizes[1];
@@ -1123,44 +1051,84 @@ void grid_sampler_3d_bicubic_forward_template(
   index_t out_sH = output.strides[3];
   index_t out_sW = output.strides[4];
 
-  const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
-      grid_sampler_3d_bicubic_kernel_func<scalar_t, index_t>>();
-  const auto ngroups = ceil_div<int64_t>(nthreads, wgroup_size);
   auto& queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit<grid_sampler_3d_bicubic_kernel_func<scalar_t, index_t>>(
-      sycl::range<1>(ngroups * wgroup_size),
-      sycl::range<1>(wgroup_size),
-      queue,
-      0,
-      nthreads,
-      input,
-      grid,
-      output,
-      padding_mode,
-      align_corners,
-      C,
-      inp_D,
-      inp_H,
-      inp_W,
-      out_D,
-      out_H,
-      out_W,
-      inp_sN,
-      inp_sC,
-      inp_sD,
-      inp_sH,
-      inp_sW,
-      grid_sN,
-      grid_sD,
-      grid_sH,
-      grid_sW,
-      grid_sCoor,
-      out_sN,
-      out_sC,
-      out_sD,
-      out_sH,
-      out_sW);
+  if (interpolation_mode == GridSamplerInterpolation::Bicubic) {
+    const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+        grid_sampler_3d_bicubic_kernel_func<scalar_t, index_t>>();
+    const auto ngroups = ceil_div<int64_t>(nthreads, wgroup_size);
+    sycl_kernel_submit<grid_sampler_3d_bicubic_kernel_func<scalar_t, index_t>>(
+        sycl::range<1>(ngroups * wgroup_size),
+        sycl::range<1>(wgroup_size),
+        queue,
+        0,
+        nthreads,
+        input,
+        grid,
+        output,
+        padding_mode,
+        align_corners,
+        C,
+        inp_D,
+        inp_H,
+        inp_W,
+        out_D,
+        out_H,
+        out_W,
+        inp_sN,
+        inp_sC,
+        inp_sD,
+        inp_sH,
+        inp_sW,
+        grid_sN,
+        grid_sD,
+        grid_sH,
+        grid_sW,
+        grid_sCoor,
+        out_sN,
+        out_sC,
+        out_sD,
+        out_sH,
+        out_sW);
+  } else {
+    const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+        grid_sampler_3d_kernel_func<scalar_t, index_t>>();
+    const auto ngroups = ceil_div<int64_t>(nthreads, wgroup_size);
+    sycl_kernel_submit<grid_sampler_3d_kernel_func<scalar_t, index_t>>(
+        sycl::range<1>(ngroups * wgroup_size),
+        sycl::range<1>(wgroup_size),
+        queue,
+        0,
+        nthreads,
+        input,
+        grid,
+        output,
+        interpolation_mode,
+        padding_mode,
+        align_corners,
+        C,
+        inp_D,
+        inp_H,
+        inp_W,
+        out_D,
+        out_H,
+        out_W,
+        inp_sN,
+        inp_sC,
+        inp_sD,
+        inp_sH,
+        inp_sW,
+        grid_sN,
+        grid_sD,
+        grid_sH,
+        grid_sW,
+        grid_sCoor,
+        out_sN,
+        out_sC,
+        out_sD,
+        out_sH,
+        out_sW);
+  }
 }
 
 Tensor grid_sampler_3d_kernel(
@@ -1181,9 +1149,6 @@ Tensor grid_sampler_3d_kernel(
   auto output = at::empty({N, input.size(1), D, H, W}, input.options());
   int64_t count = N * D * H * W;
   if (count > 0) {
-    const bool bicubic =
-        static_cast<GridSamplerInterpolation>(interpolation_mode) ==
-        GridSamplerInterpolation::Bicubic;
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::BFloat16,
         at::ScalarType::Half,
@@ -1192,43 +1157,23 @@ Tensor grid_sampler_3d_kernel(
         [&] {
           if (canUse32BitIndexMath(input) && canUse32BitIndexMath(grid) &&
               canUse32BitIndexMath(output)) {
-            if (bicubic) {
-              grid_sampler_3d_bicubic_forward_template<scalar_t>(
-                  static_cast<int>(count),
-                  getTensorInfo<const scalar_t, int>(input),
-                  getTensorInfo<const scalar_t, int>(grid),
-                  getTensorInfo<scalar_t, int>(output),
-                  static_cast<GridSamplerPadding>(padding_mode),
-                  align_corners);
-            } else {
-              grid_sampler_3d_forward_template<scalar_t>(
-                  static_cast<int>(count),
-                  getTensorInfo<const scalar_t, int>(input),
-                  getTensorInfo<const scalar_t, int>(grid),
-                  getTensorInfo<scalar_t, int>(output),
-                  static_cast<GridSamplerInterpolation>(interpolation_mode),
-                  static_cast<GridSamplerPadding>(padding_mode),
-                  align_corners);
-            }
+            grid_sampler_3d_forward_template<scalar_t>(
+                static_cast<int>(count),
+                getTensorInfo<const scalar_t, int>(input),
+                getTensorInfo<const scalar_t, int>(grid),
+                getTensorInfo<scalar_t, int>(output),
+                static_cast<GridSamplerInterpolation>(interpolation_mode),
+                static_cast<GridSamplerPadding>(padding_mode),
+                align_corners);
           } else {
-            if (bicubic) {
-              grid_sampler_3d_bicubic_forward_template<scalar_t>(
-                  count,
-                  getTensorInfo<const scalar_t, int64_t>(input),
-                  getTensorInfo<const scalar_t, int64_t>(grid),
-                  getTensorInfo<scalar_t, int64_t>(output),
-                  static_cast<GridSamplerPadding>(padding_mode),
-                  align_corners);
-            } else {
-              grid_sampler_3d_forward_template<scalar_t>(
-                  count,
-                  getTensorInfo<const scalar_t, int64_t>(input),
-                  getTensorInfo<const scalar_t, int64_t>(grid),
-                  getTensorInfo<scalar_t, int64_t>(output),
-                  static_cast<GridSamplerInterpolation>(interpolation_mode),
-                  static_cast<GridSamplerPadding>(padding_mode),
-                  align_corners);
-            }
+            grid_sampler_3d_forward_template<scalar_t>(
+                count,
+                getTensorInfo<const scalar_t, int64_t>(input),
+                getTensorInfo<const scalar_t, int64_t>(grid),
+                getTensorInfo<scalar_t, int64_t>(output),
+                static_cast<GridSamplerInterpolation>(interpolation_mode),
+                static_cast<GridSamplerPadding>(padding_mode),
+                align_corners);
           }
         });
   }
@@ -1581,106 +1526,6 @@ void grid_sampler_3d_backward_kernel_func(
   }
 }
 
-template <typename scalar_t, typename index_t>
-void grid_sampler_3d_backward_template(
-    const index_t nthreads,
-    TensorInfo<const scalar_t, index_t> grad_output,
-    TensorInfo<const scalar_t, index_t> input,
-    TensorInfo<const scalar_t, index_t> grid,
-    TensorInfo<scalar_t, index_t> grad_input, // initialized to zeros
-    // (or unused if input_requires_grad is false)
-    TensorInfo<scalar_t, index_t> grad_grid, // initialized to empty
-    const GridSamplerInterpolation interpolation_mode,
-    const GridSamplerPadding padding_mode,
-    bool align_corners,
-    const bool input_requires_grad) {
-  index_t C = input.sizes[1];
-  index_t inp_D = input.sizes[2];
-  index_t inp_H = input.sizes[3];
-  index_t inp_W = input.sizes[4];
-  index_t out_D = grid.sizes[1];
-  index_t out_H = grid.sizes[2];
-  index_t out_W = grid.sizes[3];
-  index_t inp_sN = input.strides[0];
-  index_t inp_sC = input.strides[1];
-  index_t inp_sD = input.strides[2];
-  index_t inp_sH = input.strides[3];
-  index_t inp_sW = input.strides[4];
-  index_t grid_sN = grid.strides[0];
-  index_t grid_sD = grid.strides[1];
-  index_t grid_sH = grid.strides[2];
-  index_t grid_sW = grid.strides[3];
-  index_t grid_sCoor = grid.strides[4];
-  index_t gOut_sN = grad_output.strides[0];
-  index_t gOut_sC = grad_output.strides[1];
-  index_t gOut_sD = grad_output.strides[2];
-  index_t gOut_sH = grad_output.strides[3];
-  index_t gOut_sW = grad_output.strides[4];
-  // gInp_* are not really needed if input_requires_grad is false.
-  int64_t gInp_sN = 0;
-  int64_t gInp_sC = 0;
-  int64_t gInp_sD = 0;
-  int64_t gInp_sH = 0;
-  int64_t gInp_sW = 0;
-  if (input_requires_grad) {
-    gInp_sN = grad_input.strides[0];
-    gInp_sC = grad_input.strides[1];
-    gInp_sD = grad_input.strides[2];
-    gInp_sH = grad_input.strides[3];
-    gInp_sW = grad_input.strides[4];
-  }
-  index_t gGrid_sW = grad_grid.strides[3];
-
-  const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
-      grid_sampler_3d_backward_kernel_func<scalar_t, index_t>>();
-  const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
-  auto& queue = getCurrentSYCLQueue();
-
-  sycl_kernel_submit<grid_sampler_3d_backward_kernel_func<scalar_t, index_t>>(
-      sycl::range<1>(ngroups * wgroup_size),
-      sycl::range<1>(wgroup_size),
-      queue,
-      0,
-      nthreads,
-      grad_output,
-      input,
-      grid,
-      grad_input,
-      grad_grid,
-      interpolation_mode,
-      padding_mode,
-      align_corners,
-      input_requires_grad,
-      C,
-      inp_D,
-      inp_H,
-      inp_W,
-      out_D,
-      out_H,
-      out_W,
-      inp_sN,
-      inp_sC,
-      inp_sD,
-      inp_sH,
-      inp_sW,
-      grid_sN,
-      grid_sD,
-      grid_sH,
-      grid_sW,
-      grid_sCoor,
-      gOut_sN,
-      gOut_sC,
-      gOut_sD,
-      gOut_sH,
-      gOut_sW,
-      gInp_sN,
-      gInp_sC,
-      gInp_sD,
-      gInp_sH,
-      gInp_sW,
-      gGrid_sW);
-}
-
 // Bicubic's own backward kernel, for the reason given on its forward kernel.
 template <typename scalar_t, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
@@ -1823,7 +1668,7 @@ void grid_sampler_3d_bicubic_backward_kernel_func(
 }
 
 template <typename scalar_t, typename index_t>
-void grid_sampler_3d_bicubic_backward_template(
+void grid_sampler_3d_backward_template(
     const index_t nthreads,
     TensorInfo<const scalar_t, index_t> grad_output,
     TensorInfo<const scalar_t, index_t> input,
@@ -1831,6 +1676,7 @@ void grid_sampler_3d_bicubic_backward_template(
     TensorInfo<scalar_t, index_t> grad_input, // initialized to zeros
     // (or unused if input_requires_grad is false)
     TensorInfo<scalar_t, index_t> grad_grid, // initialized to empty
+    const GridSamplerInterpolation interpolation_mode,
     const GridSamplerPadding padding_mode,
     bool align_corners,
     const bool input_requires_grad) {
@@ -1871,54 +1717,103 @@ void grid_sampler_3d_bicubic_backward_template(
   }
   index_t gGrid_sW = grad_grid.strides[3];
 
-  const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
-      grid_sampler_3d_bicubic_backward_kernel_func<scalar_t, index_t>>();
-  const auto ngroups = ceil_div<int64_t>(nthreads, wgroup_size);
   auto& queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit<
-      grid_sampler_3d_bicubic_backward_kernel_func<scalar_t, index_t>>(
-      sycl::range<1>(ngroups * wgroup_size),
-      sycl::range<1>(wgroup_size),
-      queue,
-      0,
-      nthreads,
-      grad_output,
-      input,
-      grid,
-      grad_input,
-      grad_grid,
-      padding_mode,
-      align_corners,
-      input_requires_grad,
-      C,
-      inp_D,
-      inp_H,
-      inp_W,
-      out_D,
-      out_H,
-      out_W,
-      inp_sN,
-      inp_sC,
-      inp_sD,
-      inp_sH,
-      inp_sW,
-      grid_sN,
-      grid_sD,
-      grid_sH,
-      grid_sW,
-      grid_sCoor,
-      gOut_sN,
-      gOut_sC,
-      gOut_sD,
-      gOut_sH,
-      gOut_sW,
-      gInp_sN,
-      gInp_sC,
-      gInp_sD,
-      gInp_sH,
-      gInp_sW,
-      gGrid_sW);
+  if (interpolation_mode == GridSamplerInterpolation::Bicubic) {
+    const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+        grid_sampler_3d_bicubic_backward_kernel_func<scalar_t, index_t>>();
+    const auto ngroups = ceil_div<int64_t>(nthreads, wgroup_size);
+    sycl_kernel_submit<
+        grid_sampler_3d_bicubic_backward_kernel_func<scalar_t, index_t>>(
+        sycl::range<1>(ngroups * wgroup_size),
+        sycl::range<1>(wgroup_size),
+        queue,
+        0,
+        nthreads,
+        grad_output,
+        input,
+        grid,
+        grad_input,
+        grad_grid,
+        padding_mode,
+        align_corners,
+        input_requires_grad,
+        C,
+        inp_D,
+        inp_H,
+        inp_W,
+        out_D,
+        out_H,
+        out_W,
+        inp_sN,
+        inp_sC,
+        inp_sD,
+        inp_sH,
+        inp_sW,
+        grid_sN,
+        grid_sD,
+        grid_sH,
+        grid_sW,
+        grid_sCoor,
+        gOut_sN,
+        gOut_sC,
+        gOut_sD,
+        gOut_sH,
+        gOut_sW,
+        gInp_sN,
+        gInp_sC,
+        gInp_sD,
+        gInp_sH,
+        gInp_sW,
+        gGrid_sW);
+  } else {
+    const int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+        grid_sampler_3d_backward_kernel_func<scalar_t, index_t>>();
+    const auto ngroups = ceil_div<int64_t>(nthreads, wgroup_size);
+    sycl_kernel_submit<grid_sampler_3d_backward_kernel_func<scalar_t, index_t>>(
+        sycl::range<1>(ngroups * wgroup_size),
+        sycl::range<1>(wgroup_size),
+        queue,
+        0,
+        nthreads,
+        grad_output,
+        input,
+        grid,
+        grad_input,
+        grad_grid,
+        interpolation_mode,
+        padding_mode,
+        align_corners,
+        input_requires_grad,
+        C,
+        inp_D,
+        inp_H,
+        inp_W,
+        out_D,
+        out_H,
+        out_W,
+        inp_sN,
+        inp_sC,
+        inp_sD,
+        inp_sH,
+        inp_sW,
+        grid_sN,
+        grid_sD,
+        grid_sH,
+        grid_sW,
+        grid_sCoor,
+        gOut_sN,
+        gOut_sC,
+        gOut_sD,
+        gOut_sH,
+        gOut_sW,
+        gInp_sN,
+        gInp_sC,
+        gInp_sD,
+        gInp_sH,
+        gInp_sW,
+        gGrid_sW);
+  }
 }
 
 void grid_sampler_3d_backward_kernel(
@@ -1943,9 +1838,6 @@ void grid_sampler_3d_backward_kernel(
   auto W = grid.size(3);
   int64_t count = N * D * H * W;
   if (count > 0) {
-    const bool bicubic =
-        static_cast<GridSamplerInterpolation>(interpolation_mode) ==
-        GridSamplerInterpolation::Bicubic;
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::BFloat16,
         at::ScalarType::Half,
@@ -1954,61 +1846,32 @@ void grid_sampler_3d_backward_kernel(
         [&] {
           if (canUse32BitIndexMath(input) && canUse32BitIndexMath(grid) &&
               canUse32BitIndexMath(grad_output)) {
-            if (bicubic) {
-              grid_sampler_3d_bicubic_backward_template<scalar_t>(
-                  static_cast<int>(count),
-                  getTensorInfo<const scalar_t, int>(grad_output),
-                  getTensorInfo<const scalar_t, int>(input),
-                  getTensorInfo<const scalar_t, int>(grid),
-                  input_requires_grad ? getTensorInfo<scalar_t, int>(grad_input)
-                                      : TensorInfo<scalar_t, int>(),
-                  getTensorInfo<scalar_t, int>(grad_grid),
-                  static_cast<GridSamplerPadding>(padding_mode),
-                  align_corners,
-                  input_requires_grad);
-            } else {
-              grid_sampler_3d_backward_template<scalar_t>(
-                  static_cast<int>(count),
-                  getTensorInfo<const scalar_t, int>(grad_output),
-                  getTensorInfo<const scalar_t, int>(input),
-                  getTensorInfo<const scalar_t, int>(grid),
-                  input_requires_grad ? getTensorInfo<scalar_t, int>(grad_input)
-                                      : TensorInfo<scalar_t, int>(),
-                  getTensorInfo<scalar_t, int>(grad_grid),
-                  static_cast<GridSamplerInterpolation>(interpolation_mode),
-                  static_cast<GridSamplerPadding>(padding_mode),
-                  align_corners,
-                  input_requires_grad);
-            }
+            grid_sampler_3d_backward_template<scalar_t>(
+                static_cast<int>(count),
+                getTensorInfo<const scalar_t, int>(grad_output),
+                getTensorInfo<const scalar_t, int>(input),
+                getTensorInfo<const scalar_t, int>(grid),
+                input_requires_grad ? getTensorInfo<scalar_t, int>(grad_input)
+                                    : TensorInfo<scalar_t, int>(),
+                getTensorInfo<scalar_t, int>(grad_grid),
+                static_cast<GridSamplerInterpolation>(interpolation_mode),
+                static_cast<GridSamplerPadding>(padding_mode),
+                align_corners,
+                input_requires_grad);
           } else {
-            if (bicubic) {
-              grid_sampler_3d_bicubic_backward_template<scalar_t>(
-                  count,
-                  getTensorInfo<const scalar_t, int64_t>(grad_output),
-                  getTensorInfo<const scalar_t, int64_t>(input),
-                  getTensorInfo<const scalar_t, int64_t>(grid),
-                  input_requires_grad
-                      ? getTensorInfo<scalar_t, int64_t>(grad_input)
-                      : TensorInfo<scalar_t, int64_t>(),
-                  getTensorInfo<scalar_t, int64_t>(grad_grid),
-                  static_cast<GridSamplerPadding>(padding_mode),
-                  align_corners,
-                  input_requires_grad);
-            } else {
-              grid_sampler_3d_backward_template<scalar_t>(
-                  count,
-                  getTensorInfo<const scalar_t, int64_t>(grad_output),
-                  getTensorInfo<const scalar_t, int64_t>(input),
-                  getTensorInfo<const scalar_t, int64_t>(grid),
-                  input_requires_grad
-                      ? getTensorInfo<scalar_t, int64_t>(grad_input)
-                      : TensorInfo<scalar_t, int64_t>(),
-                  getTensorInfo<scalar_t, int64_t>(grad_grid),
-                  static_cast<GridSamplerInterpolation>(interpolation_mode),
-                  static_cast<GridSamplerPadding>(padding_mode),
-                  align_corners,
-                  input_requires_grad);
-            }
+            grid_sampler_3d_backward_template<scalar_t>(
+                count,
+                getTensorInfo<const scalar_t, int64_t>(grad_output),
+                getTensorInfo<const scalar_t, int64_t>(input),
+                getTensorInfo<const scalar_t, int64_t>(grid),
+                input_requires_grad
+                    ? getTensorInfo<scalar_t, int64_t>(grad_input)
+                    : TensorInfo<scalar_t, int64_t>(),
+                getTensorInfo<scalar_t, int64_t>(grad_grid),
+                static_cast<GridSamplerInterpolation>(interpolation_mode),
+                static_cast<GridSamplerPadding>(padding_mode),
+                align_corners,
+                input_requires_grad);
           }
         });
   }
