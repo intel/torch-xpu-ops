@@ -1310,7 +1310,11 @@ jobs:
             issue. References to issues in THIS repo stay bare
             (intel/torch-xpu-ops#5476) -- there the back-link is wanted. Run and
             job log links are fine.
-            End by appending your summary to it and reporting the branch name.
+            End by appending your summary to it, under a
+            `<!-- agent:summary -->` line, and reporting the branch name. The
+            workflow keeps whatever you wrote; without that marker it treats
+            the run as unfinished and appends your closing message as the
+            summary.
             Do not write a review block; the workflow appends the human
             review template itself.
             Keep this as the comment's last line, so a reader can reach the
@@ -1381,11 +1385,10 @@ jobs:
 
       # The prompt cannot guarantee the pipeline actually updated its session
       # comment -- an earlier run left the issue with nothing but the "Starting"
-      # placeholder. Backfill only when the comment carries no
-      # `<!-- agent:session -->` marker (never written, or written wrong): a
-      # partially filled comment is the pipeline's and is left alone. Runs after
-      # redaction because result.result is agent free text going to a public
-      # issue.
+      # placeholder. Stage blocks the agent wrote are always kept; its closing
+      # message only fills what is missing (the whole comment, or the summary).
+      # Runs after redaction because result.result is agent free text going to
+      # a public issue.
       - name: Backfill session comment
         if: always() && steps.redact.outcome == 'success' && steps.ai-fix.outputs.execution_file
         uses: actions/github-script@v9
@@ -1399,7 +1402,9 @@ jobs:
             const current = await github.rest.issues.getComment({
               owner: context.repo.owner, repo: context.repo.repo, comment_id: id
             });
-            if ((current.data.body || '').includes('<!-- agent:session -->')) return;
+            const old = current.data.body || '';
+            // Finished: the agent's own summary is in, keep the comment as is.
+            if (old.includes('<!-- agent:summary -->')) return;
             const fs = require('fs');
             const file = '${{ steps.ai-fix.outputs.execution_file }}';
             if (!fs.existsSync(file)) return;
@@ -1407,9 +1412,23 @@ jobs:
               .filter(e => e.type === 'result').pop();
             if (!result || result.is_error || !result.result) return;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const footer = `\n\n---\n_The [\`fix\` job](${runUrl}) did not update this comment itself, so this is the agent's closing summary only._`;
-            let body = `<!-- agent:session -->\n\n${result.result}${footer}`;
-            if (body.length > 65000) body = body.slice(0, 64800 - footer.length) + `\n\n_(truncated -- full output in the job artifacts)_` + footer;
+            // Never written: the closing message becomes the whole comment.
+            // Stopped mid-pipeline: keep the stage blocks, append it as the summary.
+            // Must match the "Post starting message" step.
+            const untouched = old.startsWith('Starting automated fix on this issue.');
+            const head = untouched
+              ? '<!-- agent:session -->\n\n'
+              : `${old}\n\n<!-- agent:summary -->\n\n**Summary** _(the agent's closing message; the run stopped before writing its own)_\n\n`;
+            const tail = untouched
+              ? `\n\n---\n_The [\`fix\` job](${runUrl}) did not update this comment itself, so this is the agent's closing summary only._`
+              : '';
+            // Truncate the closing message only, never the stage blocks; GitHub caps a comment at 65536.
+            const note = '\n\n_(truncated -- full output in the job artifacts)_';
+            const room = 65000 - head.length - tail.length;
+            const text = result.result.length <= room
+              ? result.result
+              : result.result.slice(0, Math.max(0, room - note.length)) + note;
+            const body = head + text + tail;
             await github.rest.issues.updateComment({
               owner: context.repo.owner, repo: context.repo.repo, comment_id: id, body
             });
