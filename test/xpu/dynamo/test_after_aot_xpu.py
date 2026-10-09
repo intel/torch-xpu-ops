@@ -12,6 +12,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+sys.path.append("../../test/dynamo")
+sys.path.append("../../test/inductor")
+
 import torch._dynamo.test_case
 from torch._dynamo.repro import after_aot
 from torch._dynamo.repro.after_aot import (
@@ -55,7 +58,7 @@ def _make_test_graph():
 
 @instantiate_parametrized_tests
 class TestAfterAot(torch._dynamo.test_case.TestCase):
-    @patch("torch.cuda.is_available", lambda: False)
+    @patch("torch.accelerator.is_available", lambda: False)
     def test_save_args_dynamic_shapes(self):
         import torch._functorch.config as functorch_config
         from torch._inductor import config as inductor_config

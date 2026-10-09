@@ -26,6 +26,7 @@ import weakref
 from collections import namedtuple
 from collections.abc import Callable
 from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import torch
@@ -80,11 +81,11 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     IS_FBCODE,
     parametrize,
+    skipIfXpu,
 )
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils.checkpoint import checkpoint
-
 
 MY_LAMBDA = lambda x: x + 1  # noqa: E731
 
@@ -170,7 +171,6 @@ class CustomCompiledFunction(torch._dynamo.aot_compile.SerializableCallable):
     @classmethod
     def serialize_compile_artifacts(cls, fn) -> bytes:
         import sympy
-
         from torch._subclasses import FakeTensorMode
         from torch.fx._graph_pickler import Options
 
@@ -2352,17 +2352,17 @@ class TestAOTCompile(torch._inductor.test_case.TestCase):
             lambda: torch.compile(foo, fullgraph=True).aot_compile(  # noqa: UNSPECIFIED_BACKEND
                 ((torch.ones(3), torch.ones(3)), {})
             ),
-            """\
+            f"""\
 Call to `torch._dynamo.graph_break()`
   Explanation: User-inserted graph break. Message: None
   Hint: Remove the `torch._dynamo.graph_break()` call.
 
-  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`
+  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{{}}`
 
  For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html
 
 from user code:
-   File "test_aot_compile.py", line N, in foo
+   File "{Path(__file__).name}", line N, in foo
     torch._dynamo.graph_break()""",
         )
 
@@ -9255,6 +9255,7 @@ from user code:
         x = torch.randn(4, 4)
         self.assertEqual(model(x), mod(x))
 
+    @skipIfXpu(msg="def forward(self, x) line 1126 KeyError: '__builtins__'")
     def test_load_then_compile_survives_baked_in_global_collision(self):
         # output_graph.install_global's retry loop reached across processes: the
         # name the mint collides with is one a real load seeded out of another
@@ -10716,7 +10717,7 @@ from user code:
         # use "val".
         with FakeTensorMode():
             cpu = torch.empty(2)
-            cuda = torch.empty(2, device="cuda")
+            cuda = torch.empty(2, device=GPU_TYPE)
         graph = torch.fx.Graph()
         c = graph.placeholder("c")
         c.meta["example_value"] = cpu
@@ -10728,8 +10729,8 @@ from user code:
         g_sum.meta["example_value"] = cuda
         graph.output((c_sum, g_sum))
         devices = _graph_device_types(graph)
-        self.assertEqual(devices, frozenset(("cpu", "cuda")))
-        self.assertEqual(_collapse_device_types(devices), "cuda")
+        self.assertEqual(devices, frozenset(("cpu", GPU_TYPE)))
+        self.assertEqual(_collapse_device_types(devices), GPU_TYPE)
 
     def test_graph_device_types_reads_a_get_attr_submodule_body(self):
         # A cond branch is a submodule the parent graph only references, and the
@@ -10739,7 +10740,7 @@ from user code:
             cpu = torch.empty(2)
         body = torch.fx.Graph()
         body_x = body.placeholder("x")
-        on_cuda = body.call_method("cuda", (body_x,))
+        on_cuda = body.call_method(GPU_TYPE, (body_x,))
         body.output((body.call_method("cpu", (on_cuda,)),))
         parent = torch.fx.Graph()
         x = parent.placeholder("x")
@@ -10752,8 +10753,8 @@ from user code:
         parent.output((cond,))
         root = {"cond_true_0": torch.fx.GraphModule({}, body)}
         devices = _graph_device_types(torch.fx.GraphModule(root, parent).graph)
-        self.assertEqual(devices, frozenset(("cpu", "cuda")))
-        self.assertEqual(_collapse_device_types(devices), "cuda")
+        self.assertEqual(devices, frozenset(("cpu", GPU_TYPE)))
+        self.assertEqual(_collapse_device_types(devices), GPU_TYPE)
 
     def test_graph_device_types_scans_a_reused_body_once(self):
         # A reused region installs one body and emits a get_attr per call site
@@ -10761,7 +10762,7 @@ from user code:
         # depth. The dotted target is the other half: a get_attr target is a
         # qualified name, not a single attribute.
         leaf = torch.fx.Graph()
-        leaf.output((leaf.call_method("cuda", (leaf.placeholder("x"),)),))
+        leaf.output((leaf.call_method(GPU_TYPE, (leaf.placeholder("x"),)),))
         mid = torch.fx.Graph()
         for _ in range(4):
             mid.get_attr("leaf_0")
@@ -10781,7 +10782,7 @@ from user code:
 
         with patch("torch._dynamo.graph_utils._graph_device_types", counting):
             devices = counting(graph)
-        self.assertEqual(devices, frozenset(("cuda",)))
+        self.assertEqual(devices, frozenset((GPU_TYPE,)))
         # 1 + 4 + 4: each body is entered once, the other calls return at once.
         self.assertEqual(len(calls), 9)
 
@@ -10799,14 +10800,14 @@ from user code:
         # which has no device of its own, the shape the first graph below imitates.
         shape_env = ShapeEnv()
         with FakeTensorMode(shape_env=shape_env):
-            x = torch.empty(2, device="cuda")
+            x = torch.empty(2, device=GPU_TYPE)
             s0 = shape_env.create_unbacked_symint()
         graph = torch.fx.Graph()
         graph.placeholder("s0").meta["val"] = s0
         x_node = graph.placeholder("x")
         x_node.meta["val"] = x
         graph.call_function(torch.ops.aten.add.Tensor, (x_node, 1)).meta["val"] = x
-        self.assertEqual(_graph_device_types(graph), frozenset(("cuda",)))
+        self.assertEqual(_graph_device_types(graph), frozenset((GPU_TYPE,)))
 
         graph = torch.fx.Graph()
         graph.placeholder("n").meta["val"] = 4
@@ -10822,26 +10823,26 @@ from user code:
         graph = torch.fx.Graph()
         x = graph.placeholder("x")
         x.meta["val"] = cpu
-        graph.call_function(torch.amp._enter_autocast, ("cuda", None, True, None))
+        graph.call_function(torch.amp._enter_autocast, (GPU_TYPE, None, True, None))
         graph.call_function(torch.ops.aten.add.Tensor, (x, 1)).meta["val"] = cpu
         self.assertEqual(_graph_device_types(graph), frozenset(("cpu",)))
 
         # The other direction, where the collapse would hide the mistake, so
         # what this pins is the reported set itself.
         with FakeTensorMode():
-            cuda = torch.empty(2, device="cuda")
+            cuda = torch.empty(2, device=GPU_TYPE)
         graph = torch.fx.Graph()
         x = graph.placeholder("x")
         x.meta["val"] = cuda
         graph.call_function(torch.amp._enter_autocast, ("cpu", None, True, None))
-        self.assertEqual(_graph_device_types(graph), frozenset(("cuda",)))
+        self.assertEqual(_graph_device_types(graph), frozenset((GPU_TYPE,)))
 
         # Real device positions are still read.
         graph = torch.fx.Graph()
         x = graph.placeholder("x")
         graph.call_method("to", (x, "mps"))
-        graph.call_function(torch.ops.aten.ones.default, ([2],), {"device": "cuda"})
-        self.assertEqual(_graph_device_types(graph), frozenset(("mps", "cuda")))
+        graph.call_function(torch.ops.aten.ones.default, ([2],), {"device": GPU_TYPE})
+        self.assertEqual(_graph_device_types(graph), frozenset(("mps", GPU_TYPE)))
 
     @parametrize("method", ("cpu", "cuda", "xpu", "ipu", "mtia"))
     def test_graph_device_types_reads_a_device_naming_method(self, method):
@@ -10926,17 +10927,17 @@ from user code:
         with patch.object(torch.cuda, "is_available", return_value=True):
             here.check_compatibility(saved, "cpu")
             with self.assertRaisesRegex(RuntimeError, "created with different GPU"):
-                here.check_compatibility(saved, "cuda")
+                here.check_compatibility(saved, GPU_TYPE)
             # The two load paths pass the saved info in opposite positions (AOT
             # as other, caching precompile as self). With both names known they
             # agree; only the side passed as other is required to be known, so
             # an unknown name splits them.
             with self.assertRaisesRegex(RuntimeError, "created with different GPU"):
-                saved.check_compatibility(here, "cuda")
+                saved.check_compatibility(here, GPU_TYPE)
             unknown = dataclasses.replace(here, gpu_name=None)
             with self.assertRaisesRegex(RuntimeError, "created with different GPU"):
-                unknown.check_compatibility(saved, "cuda")
-            saved.check_compatibility(unknown, "cuda")
+                unknown.check_compatibility(saved, GPU_TYPE)
+            saved.check_compatibility(unknown, GPU_TYPE)
 
     def test_a_recorded_device_the_host_lacks_refuses_the_compile(self):
         # __post_init__ runs at the end of a compile as well as on load, so the
@@ -10949,9 +10950,11 @@ from user code:
 
         compiled_fn = torch.compile(fn, fullgraph=True, backend="aot_eager")
         artifacts = compiled_fn.aot_compile(((torch.randn(3),), {}))._artifacts
-        artifacts = dataclasses.replace(artifacts, device_type="cuda")
-        with patch.object(torch.cuda, "is_available", return_value=False):
-            with self.assertRaisesRegex(RuntimeError, "cuda is not available"):
+        artifacts = dataclasses.replace(artifacts, device_type=GPU_TYPE)
+        with patch.object(
+            torch.get_device_module(GPU_TYPE), "is_available", return_value=False
+        ):
+            with self.assertRaisesRegex(RuntimeError, f"{GPU_TYPE} is not available"):
                 AOTCompiledFunction(artifacts)
 
     @unittest.skipIf(not HAS_GPU, "requires gpu")
