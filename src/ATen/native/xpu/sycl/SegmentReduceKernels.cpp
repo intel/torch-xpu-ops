@@ -36,125 +36,85 @@
 namespace at::native::xpu {
 
 template <typename scalar_t, typename index_t>
-struct SegmentReduceForwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int64_t idx = item.get_global_linear_id();
-    auto initial_value = initial_value_raw_;
-    if (idx >= size_) {
-      return;
-    }
-    int64_t row_id = idx / inner_offset_;
-    int64_t lane_id = idx % inner_offset_; // lane_id is the inner_idx
-    int64_t outer_idx = row_id / segment_count_;
-    int64_t dim_idx = row_id % segment_count_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void segment_reduce_forward_kernel(
+    native::ReductionType reduction,
+    scalar_t* output_data,
+    const scalar_t* values_data,
+    const index_t* lengths_data,
+    const index_t* lengths_cumsum_data,
+    const int64_t segment_count,
+    const int64_t lengths_stride_axis,
+    bool is_initial_set,
+    scalar_t initial_value_raw,
+    const int64_t outer_offset,
+    const int64_t inner_offset,
+    const int64_t data_stride_axis,
+    const int64_t data_size_axis,
+    const int64_t output_stride_axis,
+    const int64_t output_size_axis,
+    const int64_t lengths_cumsum_stride_axis,
+    const int64_t size) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    int64_t offset_idx =
-        outer_idx * lengths_cumsum_stride_axis_ * (segment_count_ + 1) +
-        dim_idx;
-    index_t offset_start = lengths_cumsum_data_[offset_idx];
-    index_t offset_end = lengths_cumsum_data_[offset_idx + 1];
+  int64_t idx = item.get_global_linear_id();
+  auto initial_value = initial_value_raw;
+  if (idx >= size) {
+    return;
+  }
+  int64_t row_id = idx / inner_offset;
+  int64_t lane_id = idx % inner_offset; // lane_id is the inner_idx
+  int64_t outer_idx = row_id / segment_count;
+  int64_t dim_idx = row_id % segment_count;
 
-    // ===== step2: apply reduction_
-    for (index_t j = offset_start; j < offset_end; ++j) {
-      int64_t data_index = outer_idx * data_stride_axis_ * data_size_axis_ +
-          j * data_stride_axis_ + lane_id;
-      const auto data = values_data_[data_index];
-      // TODO: There is no need to branch with every element
-      if (reduction_ == native::ReductionType::MAX) {
-        initial_value =
-            sycl::isnan(static_cast<at::opmath_type<scalar_t>>(data))
-            ? data
-            : std::max<scalar_t>(initial_value, data);
-      } else if (
-          reduction_ == native::ReductionType::MEAN ||
-          reduction_ == native::ReductionType::SUM) {
-        initial_value = initial_value + data;
-      } else if (reduction_ == native::ReductionType::MIN) {
-        initial_value =
-            sycl::isnan(static_cast<at::opmath_type<scalar_t>>(data))
-            ? data
-            : std::min<scalar_t>(initial_value, data);
-      } else if (reduction_ == native::ReductionType::PROD) {
-        initial_value = initial_value * data;
-      }
-    }
+  int64_t offset_idx =
+      outer_idx * lengths_cumsum_stride_axis * (segment_count + 1) + dim_idx;
+  index_t offset_start = lengths_cumsum_data[offset_idx];
+  index_t offset_end = lengths_cumsum_data[offset_idx + 1];
 
-    // ===== step3: finalize reduction_
-    int64_t lengths_idx =
-        outer_idx * lengths_stride_axis_ * segment_count_ + dim_idx;
-    SYCL_KERNEL_ASSERT(lengths_data_[lengths_idx] >= 0);
-    if (lengths_data_[lengths_idx] == 0 && !is_initial_set_ &&
-        reduction_ == native::ReductionType::MEAN) {
-      initial_value = static_cast<scalar_t>(NAN);
+  // ===== step2: apply reduction
+  for (index_t j = offset_start; j < offset_end; ++j) {
+    int64_t data_index = outer_idx * data_stride_axis * data_size_axis +
+        j * data_stride_axis + lane_id;
+    const auto data = values_data[data_index];
+    // TODO: There is no need to branch with every element
+    if (reduction == native::ReductionType::MAX) {
+      initial_value = sycl::isnan(static_cast<at::opmath_type<scalar_t>>(data))
+          ? data
+          : std::max<scalar_t>(initial_value, data);
     } else if (
-        reduction_ == native::ReductionType::MEAN &&
-        lengths_data_[lengths_idx] > 0 &&
-        !sycl::isnan(static_cast<at::opmath_type<scalar_t>>(initial_value))) {
-      initial_value = initial_value / lengths_data_[lengths_idx];
+        reduction == native::ReductionType::MEAN ||
+        reduction == native::ReductionType::SUM) {
+      initial_value = initial_value + data;
+    } else if (reduction == native::ReductionType::MIN) {
+      initial_value = sycl::isnan(static_cast<at::opmath_type<scalar_t>>(data))
+          ? data
+          : std::min<scalar_t>(initial_value, data);
+    } else if (reduction == native::ReductionType::PROD) {
+      initial_value = initial_value * data;
     }
-    int64_t output_index = outer_idx * output_stride_axis_ * output_size_axis_ +
-        dim_idx * output_stride_axis_ + lane_id;
-    output_data_[output_index] = initial_value;
   }
 
-  SegmentReduceForwardKernelFunctor(
-      native::ReductionType reduction,
-      scalar_t* output_data,
-      const scalar_t* values_data,
-      const index_t* lengths_data,
-      const index_t* lengths_cumsum_data,
-      const int64_t segment_count,
-      const int64_t lengths_stride_axis,
-      bool is_initial_set,
-      scalar_t initial_value_raw,
-      const int64_t outer_offset,
-      const int64_t inner_offset,
-      const int64_t data_stride_axis,
-      const int64_t data_size_axis,
-      const int64_t output_stride_axis,
-      const int64_t output_size_axis,
-      const int64_t lengths_cumsum_stride_axis,
-      const int64_t size)
-      : reduction_(reduction),
-        output_data_(output_data),
-        values_data_(values_data),
-        lengths_data_(lengths_data),
-        lengths_cumsum_data_(lengths_cumsum_data),
-        segment_count_(segment_count),
-        lengths_stride_axis_(lengths_stride_axis),
-        is_initial_set_(is_initial_set),
-        initial_value_raw_(initial_value_raw),
-        outer_offset_(outer_offset),
-        inner_offset_(inner_offset),
-        data_stride_axis_(data_stride_axis),
-        data_size_axis_(data_size_axis),
-        output_stride_axis_(output_stride_axis),
-        output_size_axis_(output_size_axis),
-        lengths_cumsum_stride_axis_(lengths_cumsum_stride_axis),
-        size_(size) {}
-
- private:
-  native::ReductionType reduction_;
-  scalar_t* output_data_;
-  const scalar_t* values_data_;
-  const index_t* lengths_data_;
-  const index_t* lengths_cumsum_data_;
-  const int64_t segment_count_;
-  const int64_t lengths_stride_axis_;
-  bool is_initial_set_;
-  scalar_t initial_value_raw_;
-  const int64_t outer_offset_;
-  const int64_t inner_offset_;
-  const int64_t data_stride_axis_;
-  const int64_t data_size_axis_;
-  const int64_t output_stride_axis_;
-  const int64_t output_size_axis_;
-  const int64_t lengths_cumsum_stride_axis_;
-  const int64_t size_;
-};
+  // ===== step3: finalize reduction
+  int64_t lengths_idx =
+      outer_idx * lengths_stride_axis * segment_count + dim_idx;
+  SYCL_KERNEL_ASSERT(lengths_data[lengths_idx] >= 0);
+  if (lengths_data[lengths_idx] == 0 && !is_initial_set &&
+      reduction == native::ReductionType::MEAN) {
+    initial_value = static_cast<scalar_t>(NAN);
+  } else if (
+      reduction == native::ReductionType::MEAN &&
+      lengths_data[lengths_idx] > 0 &&
+      !sycl::isnan(static_cast<at::opmath_type<scalar_t>>(initial_value))) {
+    initial_value = initial_value / lengths_data[lengths_idx];
+  }
+  int64_t output_index = outer_idx * output_stride_axis * output_size_axis +
+      dim_idx * output_stride_axis + lane_id;
+  output_data[output_index] = initial_value;
+}
 
 template <typename scalar_t, typename index_t>
-void segment_reduce_forward_kernel(
+void segment_reduce_forward_kernel_impl(
     native::ReductionType reduction,
     scalar_t* output_data,
     const scalar_t* values_data,
@@ -172,10 +132,14 @@ void segment_reduce_forward_kernel(
     const int64_t output_size_axis,
     const int64_t lengths_cumsum_stride_axis) {
   const int64_t size = outer_offset * segment_count * inner_offset;
-  using Kernel = SegmentReduceForwardKernelFunctor<scalar_t, index_t>;
-  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
+  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      segment_reduce_forward_kernel<scalar_t, index_t>>();
   const int64_t work_group_num = (size + work_group_size - 1) / work_group_size;
-  Kernel kfn(
+  sycl_kernel_submit<segment_reduce_forward_kernel<scalar_t, index_t>>(
+      work_group_size * work_group_num,
+      work_group_size,
+      getCurrentSYCLQueue(),
+      0,
       reduction,
       output_data,
       values_data,
@@ -193,12 +157,6 @@ void segment_reduce_forward_kernel(
       output_size_axis,
       lengths_cumsum_stride_axis,
       size);
-
-  sycl_kernel_submit(
-      work_group_size * work_group_num,
-      work_group_size,
-      getCurrentSYCLQueue(),
-      kfn);
 }
 
 Tensor _segment_reduce_lengths_offsets_xpu_kernel(
@@ -284,7 +242,7 @@ Tensor _segment_reduce_lengths_offsets_xpu_kernel(
               } else if (reduction == native::ReductionType::PROD) {
                 initial_value = 1;
               }
-              segment_reduce_forward_kernel<scalar_t>(
+              segment_reduce_forward_kernel_impl<scalar_t>(
                   reduction,
                   output_data_ptr,
                   data_data_ptr,
@@ -328,164 +286,122 @@ Tensor _segment_reduce_offsets_kernel(
 }
 
 template <typename scalar_t, typename index_t>
-struct SegmentReduceBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int64_t idx = item.get_global_linear_id();
-    if (idx >= size_) {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void segment_reduce_backward_kernel(
+    native::ReductionType reduction,
+    scalar_t* grad_input_data,
+    const scalar_t* grad_data,
+    const scalar_t* output_data,
+    const scalar_t* values_data,
+    const index_t* lengths_data,
+    const index_t* lengths_cumsum_data,
+    const int64_t segment_count,
+    const int64_t lengths_stride_axis,
+    scalar_t initial_prod_value,
+    const int64_t outer_offset,
+    const int64_t inner_offset,
+    const int64_t data_stride_axis,
+    const int64_t data_size_axis,
+    const int64_t output_stride_axis,
+    const int64_t output_size_axis,
+    const int64_t lengths_cumsum_stride_axis,
+    const int64_t size) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+
+  int64_t idx = item.get_global_linear_id();
+  if (idx >= size) {
+    return;
+  }
+  if (idx >= size) {
+    return;
+  }
+  int64_t row_id = idx / inner_offset;
+  int64_t lane_id = idx % inner_offset; // lane_id is the inner_idx
+  int64_t outer_idx = row_id / segment_count;
+  int64_t dim_idx = row_id % segment_count;
+
+  int64_t lengths_idx =
+      outer_idx * lengths_stride_axis * segment_count + dim_idx;
+  auto segment_length = lengths_data[lengths_idx];
+  if (segment_length == 0) {
+    return;
+  }
+
+  int64_t offset_idx =
+      outer_idx * lengths_cumsum_stride_axis * (segment_count + 1) + dim_idx;
+  index_t offset_start = lengths_cumsum_data[offset_idx];
+  index_t offset_end = lengths_cumsum_data[offset_idx + 1];
+
+  int64_t output_index = outer_idx * output_stride_axis * output_size_axis +
+      dim_idx * output_stride_axis + lane_id;
+
+  if (reduction == native::ReductionType::MAX ||
+      reduction == native::ReductionType::MIN) {
+    int64_t counter = 0;
+    for (int64_t j = offset_start; j < offset_end; ++j) {
+      int64_t data_index = outer_idx * data_stride_axis * data_size_axis +
+          j * data_stride_axis + lane_id;
+      if (sycl::isnan(static_cast<at::opmath_type<scalar_t>>(
+              values_data[data_index])) ||
+          values_data[data_index] == output_data[output_index]) {
+        grad_input_data[data_index] = grad_data[output_index];
+        counter++;
+      }
+    }
+    // Average gradient based on number of maximum elements in the
+    // segment
+    if (counter < 2) {
       return;
     }
-    if (idx >= size_) {
-      return;
+    for (int64_t j = offset_start; j < offset_end; ++j) {
+      int64_t data_index = outer_idx * data_stride_axis * data_size_axis +
+          j * data_stride_axis + lane_id;
+      if (grad_input_data[data_index] > 0) {
+        grad_input_data[data_index] = grad_input_data[data_index] / counter;
+      }
     }
-    int64_t row_id = idx / inner_offset_;
-    int64_t lane_id = idx % inner_offset_; // lane_id is the inner_idx
-    int64_t outer_idx = row_id / segment_count_;
-    int64_t dim_idx = row_id % segment_count_;
-
-    int64_t lengths_idx =
-        outer_idx * lengths_stride_axis_ * segment_count_ + dim_idx;
-    auto segment_length = lengths_data_[lengths_idx];
-    if (segment_length == 0) {
-      return;
+  } else if (reduction == native::ReductionType::MEAN) {
+    auto grad_val = grad_data[output_index] / segment_length;
+    for (int64_t j = offset_start; j < offset_end; ++j) {
+      int64_t data_index = outer_idx * data_stride_axis * data_size_axis +
+          j * data_stride_axis + lane_id;
+      grad_input_data[data_index] = grad_val;
     }
-
-    int64_t offset_idx =
-        outer_idx * lengths_cumsum_stride_axis_ * (segment_count_ + 1) +
-        dim_idx;
-    index_t offset_start = lengths_cumsum_data_[offset_idx];
-    index_t offset_end = lengths_cumsum_data_[offset_idx + 1];
-
-    int64_t output_index = outer_idx * output_stride_axis_ * output_size_axis_ +
-        dim_idx * output_stride_axis_ + lane_id;
-
-    if (reduction_ == native::ReductionType::MAX ||
-        reduction_ == native::ReductionType::MIN) {
-      int64_t counter = 0;
-      for (int64_t j = offset_start; j < offset_end; ++j) {
-        int64_t data_index = outer_idx * data_stride_axis_ * data_size_axis_ +
-            j * data_stride_axis_ + lane_id;
-        if (sycl::isnan(static_cast<at::opmath_type<scalar_t>>(
-                values_data_[data_index])) ||
-            values_data_[data_index] == output_data_[output_index]) {
-          grad_input_data_[data_index] = grad_data_[output_index];
-          counter++;
-        }
-      }
-      // Average gradient based on number of maximum elements in the
-      // segment
-      if (counter < 2) {
-        return;
-      }
-      for (int64_t j = offset_start; j < offset_end; ++j) {
-        int64_t data_index = outer_idx * data_stride_axis_ * data_size_axis_ +
-            j * data_stride_axis_ + lane_id;
-        if (grad_input_data_[data_index] > 0) {
-          grad_input_data_[data_index] = grad_input_data_[data_index] / counter;
-        }
-      }
-    } else if (reduction_ == native::ReductionType::MEAN) {
-      auto grad_val = grad_data_[output_index] / segment_length;
-      for (int64_t j = offset_start; j < offset_end; ++j) {
-        int64_t data_index = outer_idx * data_stride_axis_ * data_size_axis_ +
-            j * data_stride_axis_ + lane_id;
-        grad_input_data_[data_index] = grad_val;
-      }
-    } else if (reduction_ == native::ReductionType::SUM) {
-      const auto& grad_val = grad_data_[output_index];
-      for (int64_t j = offset_start; j < offset_end; ++j) {
-        int64_t data_index = outer_idx * data_stride_axis_ * data_size_axis_ +
-            j * data_stride_axis_ + lane_id;
-        grad_input_data_[data_index] = grad_val;
-      }
-    } else if (reduction_ == native::ReductionType::PROD) {
-      const auto& grad_val =
-          grad_data_[output_index] * output_data_[output_index];
-      for (int64_t j = offset_start; j < offset_end; ++j) {
-        int64_t data_index = outer_idx * data_stride_axis_ * data_size_axis_ +
-            j * data_stride_axis_ + lane_id;
-        if (sycl::isnan(static_cast<at::opmath_type<scalar_t>>(
-                values_data_[data_index])) ||
-            values_data_[data_index] == 0) {
-          // explicitly compute exclusive prod
-          scalar_t exclusive_prod = initial_prod_value_;
-          int64_t prod_idx;
-          for (int64_t k = offset_start; k < offset_end; ++k) {
-            if (k != j) {
-              prod_idx = outer_idx * data_stride_axis_ * data_size_axis_ +
-                  k * data_stride_axis_ + lane_id;
-              exclusive_prod *= values_data_[prod_idx];
-            }
+  } else if (reduction == native::ReductionType::SUM) {
+    const auto& grad_val = grad_data[output_index];
+    for (int64_t j = offset_start; j < offset_end; ++j) {
+      int64_t data_index = outer_idx * data_stride_axis * data_size_axis +
+          j * data_stride_axis + lane_id;
+      grad_input_data[data_index] = grad_val;
+    }
+  } else if (reduction == native::ReductionType::PROD) {
+    const auto& grad_val = grad_data[output_index] * output_data[output_index];
+    for (int64_t j = offset_start; j < offset_end; ++j) {
+      int64_t data_index = outer_idx * data_stride_axis * data_size_axis +
+          j * data_stride_axis + lane_id;
+      if (sycl::isnan(static_cast<at::opmath_type<scalar_t>>(
+              values_data[data_index])) ||
+          values_data[data_index] == 0) {
+        // explicitly compute exclusive prod
+        scalar_t exclusive_prod = initial_prod_value;
+        int64_t prod_idx;
+        for (int64_t k = offset_start; k < offset_end; ++k) {
+          if (k != j) {
+            prod_idx = outer_idx * data_stride_axis * data_size_axis +
+                k * data_stride_axis + lane_id;
+            exclusive_prod *= values_data[prod_idx];
           }
-          grad_input_data_[data_index] =
-              grad_data_[output_index] * exclusive_prod;
-        } else {
-          grad_input_data_[data_index] = grad_val / values_data_[data_index];
         }
+        grad_input_data[data_index] = grad_data[output_index] * exclusive_prod;
+      } else {
+        grad_input_data[data_index] = grad_val / values_data[data_index];
       }
     }
   }
-
-  SegmentReduceBackwardKernelFunctor(
-      native::ReductionType reduction,
-      scalar_t* grad_input_data,
-      const scalar_t* grad_data,
-      const scalar_t* output_data,
-      const scalar_t* values_data,
-      const index_t* lengths_data,
-      const index_t* lengths_cumsum_data,
-      const int64_t segment_count,
-      const int64_t lengths_stride_axis,
-      scalar_t initial_prod_value,
-      const int64_t outer_offset,
-      const int64_t inner_offset,
-      const int64_t data_stride_axis,
-      const int64_t data_size_axis,
-      const int64_t output_stride_axis,
-      const int64_t output_size_axis,
-      const int64_t lengths_cumsum_stride_axis,
-      const int64_t size)
-      : reduction_(reduction),
-        grad_input_data_(grad_input_data),
-        grad_data_(grad_data),
-        output_data_(output_data),
-        values_data_(values_data),
-        lengths_data_(lengths_data),
-        lengths_cumsum_data_(lengths_cumsum_data),
-        segment_count_(segment_count),
-        lengths_stride_axis_(lengths_stride_axis),
-        initial_prod_value_(initial_prod_value),
-        outer_offset_(outer_offset),
-        inner_offset_(inner_offset),
-        data_stride_axis_(data_stride_axis),
-        data_size_axis_(data_size_axis),
-        output_stride_axis_(output_stride_axis),
-        output_size_axis_(output_size_axis),
-        lengths_cumsum_stride_axis_(lengths_cumsum_stride_axis),
-        size_(size) {}
-
- private:
-  native::ReductionType reduction_;
-  scalar_t* grad_input_data_;
-  const scalar_t* grad_data_;
-  const scalar_t* output_data_;
-  const scalar_t* values_data_;
-  const index_t* lengths_data_;
-  const index_t* lengths_cumsum_data_;
-  const int64_t segment_count_;
-  const int64_t lengths_stride_axis_;
-  scalar_t initial_prod_value_;
-  const int64_t outer_offset_;
-  const int64_t inner_offset_;
-  const int64_t data_stride_axis_;
-  const int64_t data_size_axis_;
-  const int64_t output_stride_axis_;
-  const int64_t output_size_axis_;
-  const int64_t lengths_cumsum_stride_axis_;
-  const int64_t size_;
-};
+}
 
 template <typename scalar_t, typename index_t>
-void segment_reduce_backward_kernel(
+void segment_reduce_backward_kernel_impl(
     native::ReductionType reduction,
     scalar_t* grad_input_data,
     const scalar_t* grad_data,
@@ -504,11 +420,15 @@ void segment_reduce_backward_kernel(
     const int64_t output_size_axis,
     const int64_t lengths_cumsum_stride_axis) {
   const int64_t size = outer_offset * segment_count * inner_offset;
-  using Kernel = SegmentReduceBackwardKernelFunctor<scalar_t, index_t>;
-  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
+  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      segment_reduce_backward_kernel<scalar_t, index_t>>();
   const int64_t work_group_num = (size + work_group_size - 1) / work_group_size;
 
-  Kernel kfn(
+  sycl_kernel_submit<segment_reduce_backward_kernel<scalar_t, index_t>>(
+      work_group_size * work_group_num,
+      work_group_size,
+      getCurrentSYCLQueue(),
+      0,
       reduction,
       grad_input_data,
       grad_data,
@@ -527,12 +447,6 @@ void segment_reduce_backward_kernel(
       output_size_axis,
       lengths_cumsum_stride_axis,
       size);
-
-  sycl_kernel_submit(
-      work_group_size * work_group_num,
-      work_group_size,
-      getCurrentSYCLQueue(),
-      kfn);
 }
 
 Tensor _segment_reduce_lengths_offsets_backward_xpu_kernel(
@@ -614,7 +528,7 @@ Tensor _segment_reduce_lengths_offsets_backward_xpu_kernel(
                 initial_prod_value = 1;
               }
 
-              segment_reduce_backward_kernel<scalar_t>(
+              segment_reduce_backward_kernel_impl<scalar_t>(
                   reduction,
                   grad_input_data,
                   grad_data,
