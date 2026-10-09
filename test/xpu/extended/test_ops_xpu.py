@@ -223,6 +223,7 @@ class TestCompositeCompliance(TestCase):
             skip(
                 "nn.functional.embedding_bag"
             ),  # "nn.functional.embedding_bag is not composite compliant"
+            skip("empty"),  # uninitialized output is not comparable
             skip("resize_"),  # "resize is not composite compliant"
             skip("resize_as_"),  # "resize_as is not composite compliant"
             skip("nn.functional.multi_head_attention_forward"),
