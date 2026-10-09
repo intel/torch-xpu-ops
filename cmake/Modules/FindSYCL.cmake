@@ -57,6 +57,43 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
+# ccache versions before 4.11 do not support DPC++ (icx) compiler. Additionally,
+# versions before 4.12.1 do not correctly pass -Xarch_host flags to LLVM compilers
+# family in general: they can strip -Xarch_host -fPIC, producing objects without
+# -fPIC that fail the PIE link. ccache 4.12.1 includes the fix for that, see:
+#
+# * https://github.com/ccache/ccache/issues/1632
+#
+# Below we keep the original launcher for the device-link step, and only apply
+# the ccache version gate for kernel code compilation step.
+set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
+if(_SYCL_COMPILER_LAUNCHER)
+  get_filename_component(_sycl_launcher_name "${_SYCL_COMPILER_LAUNCHER}" NAME)
+  if(_sycl_launcher_name MATCHES "^[Cc][Cc]ache")
+    execute_process(
+      COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
+      OUTPUT_VARIABLE _sycl_launcher_version
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      TIMEOUT 5
+    )
+    if(_sycl_launcher_version MATCHES "ccache version ([0-9]+\\.[0-9]+(\\.[0-9]+)?)")
+      set(_sycl_ccache_version "${CMAKE_MATCH_1}")
+      if(_sycl_ccache_version VERSION_GREATER_EQUAL "4.12.1")
+        message(STATUS "Found compatible ccache ${_sycl_ccache_version} for SYCL object compilation")
+      else()
+        message(WARNING
+          "ccache launcher '${CMAKE_SYCL_COMPILER_LAUNCHER}' has version "
+          "'${_sycl_ccache_version}' which is older than 4.12.1; "
+          "disabling it for SYCL object compilation. Upgrade to ccache >= 4.12.1.")
+        set(_SYCL_COMPILER_LAUNCHER "")
+      endif()
+    else()
+      message(WARNING "Found ccache but could not parse its version string.")
+    endif()
+  endif()
+endif()
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
@@ -216,9 +253,9 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       set(SYCL_build_type "Device")
 
-      # Apply the compiler launcher (e.g. ccache) to the individual SYCL object
-      # compile, mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
-      set(SYCL_compiler_launcher ${CMAKE_SYCL_COMPILER_LAUNCHER})
+      # Apply the compiler launcher to the individual SYCL object compile,
+      # mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
+      set(SYCL_compiler_launcher ${_SYCL_COMPILER_LAUNCHER})
 
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
@@ -330,14 +367,37 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       set(verbose_output OFF)
     endif()
 
+    set(SYCL_device_link_inputs ${object_files})
+    set(SYCL_device_link_extra_depends)
+    if(WIN32)
+      # On Windows the device objects should be passed through a response file instead
+      # of the command line, due to line length limitations when parsing a batch file.
+      # A batch line longer than 8191 characters is out of contract for cmd.exe
+      # and might cause silent parameter passing errors, depending on quotes' and operators'
+      # positioning inside the line.
+      # https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
+      set(SYCL_device_link_rsp "${output_file}.rsp")
+      set(SYCL_device_link_rsp_content "")
+      foreach(object_file IN LISTS object_files)
+        string(APPEND SYCL_device_link_rsp_content "\"${object_file}\"\n")
+      endforeach()
+      file(GENERATE
+        OUTPUT "${SYCL_device_link_rsp}"
+        CONTENT "${SYCL_device_link_rsp_content}")
+      set_source_files_properties("${SYCL_device_link_rsp}"
+        PROPERTIES GENERATED TRUE)
+      set(SYCL_device_link_inputs "@${SYCL_device_link_rsp}")
+      set(SYCL_device_link_extra_depends "${SYCL_device_link_rsp}")
+    endif()
+
     # Build the generated file and dependency file ##########################
     add_custom_command(
       OUTPUT ${output_file}
-      DEPENDS ${object_files}
+      DEPENDS ${object_files} ${SYCL_device_link_extra_depends}
       COMMAND ${CMAKE_COMMAND} -E make_directory "$<PATH:REMOVE_FILENAME,${output_file}>"
       COMMAND ${CMAKE_SYCL_COMPILER_LAUNCHER} ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
-      -fsycl-link ${object_files}
+      -fsycl-link ${SYCL_device_link_inputs}
       -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
       -o ${output_file}
       COMMENT "Building SYCL device link file ${output_file_relative_path}"

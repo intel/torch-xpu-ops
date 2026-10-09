@@ -47,6 +47,12 @@ jobs:
           repository: intel/llvm
           ref: v7.1.0
           path: intel-llvm
+      - name: Checkout pti-gpu
+        uses: actions/checkout@v7
+        with:
+          repository: intel/pti-gpu
+          ref: pti-1.1.0
+          path: pti-gpu
       - name: Install prerequisites
         run: |
           rm -rf /tmp/xpu-tool/myvenv
@@ -64,7 +70,8 @@ jobs:
           source /opt/rh/gcc-toolset-13/enable
           cmake -B _build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX
+            -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+            -DCMAKE_INSTALL_LIBDIR=lib
           cmake --build _build
           cmake --install _build
         working-directory: ./level-zero
@@ -82,6 +89,7 @@ jobs:
           cmake -B _build -S llvm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+            -DCMAKE_INSTALL_LIBDIR=lib \
             -DBUILD_SHARED_LIBS=ON \
             -DLLVM_BUILD_TOOLS=ON \
             -DLLVM_ENABLE_ASSERTIONS=ON \
@@ -109,6 +117,21 @@ jobs:
           cmake --build _build
           cmake --install _build
         working-directory: ./intel-llvm
+      - name: Build pti-gpu
+        env:
+          CC: dpclang
+          CXX: dpclang++
+        run: |
+          source /opt/rh/gcc-toolset-13/enable
+          cmake -B _build -S sdk -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DPTI_BUILD_SAMPLES=OFF \
+            -DPTI_BUILD_TESTING=OFF
+          cmake --build _build
+          cmake --install _build
+        working-directory: ./pti-gpu
       - name: Compress output
         run: |
           # Compressing manually to preserve access permissions for executables

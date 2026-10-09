@@ -7141,13 +7141,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         ):
             F.grid_sample(torch.empty(1, 1, 0, 2), grid, align_corners=False)
 
-        with self.assertRaisesRegex(
-            RuntimeError, "bicubic interpolation only supports 4D input"
-        ):
-            F.grid_sample(
-                torch.empty(1, 1, 2, 2, 2), torch.empty(1, 1, 1, 1, 3), mode="bicubic"
-            )
-
         if TEST_GPU:
             with self.assertRaisesRegex(
                 RuntimeError, "Expected all tensors to be on the same device"
@@ -14207,6 +14200,37 @@ class TestNNDeviceType(NNTestCase):
         loaded_model.__setstate__(state_dict)
         result = loaded_model(x)
         self.assertEqual(result, expected)
+
+    def test_grid_sample_backward_error_checking(self, device):
+        input = torch.empty(1, 1, 2, 2, device=device)
+        grid = torch.empty(1, 1, 1, 2, device=device)
+        grad_output = torch.empty(1, 1, 1, 1, device=device)
+
+        # assert no error
+        torch.ops.aten.grid_sampler_2d_backward(
+            grad_output, input, grid, 0, 0, False, (True, True)
+        )
+
+        with self.assertRaisesRegex(ValueError, "expected grad_output to have sizes"):
+            invalid_grad_output = torch.empty(2, 1, 1, 1, device=device)
+            torch.ops.aten.grid_sampler_2d_backward(
+                invalid_grad_output, input, grid, 0, 0, False, (True, True)
+            )
+
+        input = torch.empty(1, 1, 2, 2, 2, device=device)
+        grid = torch.empty(1, 1, 1, 1, 3, device=device)
+        grad_output = torch.empty(1, 1, 1, 1, 1, device=device)
+
+        # assert no error
+        torch.ops.aten.grid_sampler_3d_backward(
+            grad_output, input, grid, 0, 0, False, (True, True)
+        )
+
+        with self.assertRaisesRegex(ValueError, "expected grad_output to have sizes"):
+            invalid_grad_output = torch.empty(2, 1, 1, 1, 1, device=device)
+            torch.ops.aten.grid_sampler_3d_backward(
+                invalid_grad_output, input, grid, 0, 0, False, (True, True)
+            )
 
     @onlyOn(["cuda", "xpu"])
     @tf32_on_and_off(0.005)

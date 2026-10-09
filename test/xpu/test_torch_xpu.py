@@ -20,7 +20,6 @@ import inspect
 import io
 import itertools
 import math
-import os
 import pickle
 import random
 import re
@@ -238,61 +237,6 @@ def my_should_stop_test_suite(self):
 torch.testing._internal.common_utils.TestCase._should_stop_test_suite = (
     my_should_stop_test_suite
 )
-
-
-@contextlib.contextmanager
-def torch_vital_set(value):
-    stash = None
-    if "TORCH_VITAL" in os.environ:
-        stash = os.environ["TORCH_VITAL"]
-    os.environ["TORCH_VITAL"] = value
-    try:
-        yield
-    finally:
-        if stash:
-            os.environ["TORCH_VITAL"] = stash
-        else:
-            del os.environ["TORCH_VITAL"]
-
-
-# Tests Vital Signs for Torch
-# FIXME: document or deprecate whatever this is
-class TestBasicVitalSigns(TestCase):
-    # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
-    @onlyCUDA
-    def test_basic_vitals(self):
-        with torch_vital_set(""):
-            self.assertFalse(torch.vitals_enabled())
-        with torch_vital_set("ON"):
-            self.assertTrue(torch.vitals_enabled())
-
-    @onlyCUDA
-    def test_basic_vitals_read_write(self):
-        with torch_vital_set("ON"):
-            self.assertTrue(torch.vitals_enabled())
-            # This tests the code path of setting a vital
-            self.assertTrue(
-                torch.set_vital("Dataloader", "basic_unit_test", "TEST_VALUE_STRING")
-            )
-            self.assertIn("TEST_VALUE_STRING", torch.read_vitals())
-            self.assertIn("CUDA.used", torch.read_vitals())
-
-    @onlyCUDA
-    def test_dataloader_vitals(self):
-        with torch_vital_set("ON"):
-            inps = torch.arange(10 * 5, dtype=torch.float32).view(10, 5)
-            tgts = torch.arange(10 * 5, dtype=torch.float32).view(10, 5)
-            dataset = torch.utils.data.TensorDataset(inps, tgts)
-            torch.utils.data.DataLoader(dataset, batch_size=2)
-            self.assertIn("Dataloader.enabled\t\t True", torch.read_vitals())
-
-
-# FIXME: document or deprecate whatever this is
-class TestVitalSignsCuda(TestCase):
-    @onlyCUDA  # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
-    def test_cuda_vitals_gpu_only(self, device):
-        with torch_vital_set("ON"):
-            self.assertIn("CUDA.used\t\t true", torch.read_vitals())
 
 
 is_cuda_sm86 = torch.cuda.is_available() and torch.cuda.get_device_capability(0) == (
@@ -7772,6 +7716,30 @@ class TestDevicePrecision(TestCase):
         y = torch._efficientzerotensor(3, device=device)
         self.assertEqual(x.device, y.device)
 
+    @onlyNativeDeviceTypes
+    @dtypes(torch.uint16, torch.uint32, torch.uint64)
+    def test_where_barebones_unsigned(self, device, dtype):
+        # The barebones unsigned dtypes are excluded from the broader
+        # test_where_scalar_handcrafted_values because torch.result_type
+        # does not support promoting them. Cover the same-dtype path
+        # for where() against a CPU reference here.
+        for shape in ((5,), (1, 5), (4, 5)):
+            a = make_tensor(shape, dtype=dtype, device=device)
+            b = make_tensor(shape, dtype=dtype, device=device)
+            cond = torch.randint(0, 2, shape, dtype=torch.bool, device=device)
+            out = torch.where(cond, a, b)
+            expected = torch.where(cond.cpu(), a.cpu(), b.cpu()).to(device)
+            self.assertEqual(out, expected)
+
+        # Non-contiguous inputs.
+        big = make_tensor((8, 10), dtype=dtype, device=device)
+        a = big[::2]
+        b = big[1::2]
+        cond = torch.randint(0, 2, a.shape, dtype=torch.bool, device=device)
+        out = torch.where(cond, a, b)
+        expected = torch.where(cond.cpu(), a.cpu(), b.cpu()).to(device)
+        self.assertEqual(out, expected)
+
 
 # we implemented custom deallocation for subclasses, so it behooves
 # us to make sure all of these bits work.  We'll use __del__ to
@@ -12835,9 +12803,6 @@ class TestTensorDeviceOps(TestCase):
 # pytest will fail.
 add_neg_dim_tests()
 instantiate_device_type_tests(TestViewOps, globals(), allow_xpu=True, only_for="xpu")
-instantiate_device_type_tests(
-    TestVitalSignsCuda, globals(), allow_xpu=True, only_for="xpu"
-)
 instantiate_device_type_tests(
     TestTensorDeviceOps, globals(), allow_xpu=True, only_for="xpu"
 )

@@ -349,7 +349,6 @@ _cuda_xfail_xpu_pass = [
     ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
     ("_native_batch_norm_legit", "test_out"),
     ("native_batch_norm", "test_out"),
-    ("histc", "test_out"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
@@ -470,11 +469,6 @@ _xpu_tolerance_override = {
     "nn.ConvTranspose3d": {
         ("TestModule", "test_non_contiguous_tensors"): {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
-        }
-    },
-    "test_modules_xpu.py": {
-        ("TestModuleXPU", "test_non_contiguous_tensors_nn_LazyConv3d_xpu_float32"): {
-            torch.float32: tol(atol=2e-5, rtol=7e-5),
         }
     },
 }
