@@ -1391,6 +1391,13 @@ void group_norm_kernel(
     Tensor& Y,
     Tensor& mean,
     Tensor& rstd) {
+  // native_group_norm hands us X already contiguous in some memory format, so
+  // a non-contiguous X here means channels-last (NHWC/NDHWC).
+  // The kernels below index X/Y linearly as NCHW, hence the round-trip.
+  const bool is_channels_last = !X.is_contiguous();
+  Tensor X_ = is_channels_last ? X.contiguous() : X;
+  Tensor Y_ = is_channels_last ? at::empty_like(X_) : Y;
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -1398,7 +1405,7 @@ void group_norm_kernel(
       "group_norm_xpu",
       [&]() {
         group_norm_kernel_impl<scalar_t>(
-            X,
+            X_,
             gamma,
             beta,
             N,
@@ -1406,10 +1413,14 @@ void group_norm_kernel(
             HxW,
             group,
             static_cast<scalar_t>(eps),
-            Y,
+            Y_,
             mean,
             rstd);
       });
+
+  if (is_channels_last) {
+    Y.copy_(Y_);
+  }
 }
 
 template <typename T, typename T_ACC, int SIMD>
@@ -2458,6 +2469,14 @@ void group_norm_backward_kernel(
     Tensor& dX,
     Tensor& dgamma,
     Tensor& dbeta) {
+  // native_group_norm_backward hands us dY/X already contiguous in some memory
+  // format, so a non-contiguous X here means channels-last (NHWC/NDHWC).
+  // The kernels below index dY/X/dX linearly as NCHW.
+  const bool is_channels_last = !X.is_contiguous();
+  Tensor X_ = is_channels_last ? X.contiguous() : X;
+  Tensor dY_ = is_channels_last ? dY.contiguous() : dY;
+  Tensor dX_ = (is_channels_last && dX.defined()) ? at::empty_like(X_) : dX;
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -2465,8 +2484,12 @@ void group_norm_backward_kernel(
       "group_norm_backward_xpu",
       [&]() {
         group_norm_backward_kernel_impl<scalar_t>(
-            dY, X, mean, rstd, gamma, N, C, HxW, group, dX, dgamma, dbeta);
+            dY_, X_, mean, rstd, gamma, N, C, HxW, group, dX_, dgamma, dbeta);
       });
+
+  if (is_channels_last && dX.defined()) {
+    dX.copy_(dX_);
+  }
 }
 
 } // namespace at::native::xpu
