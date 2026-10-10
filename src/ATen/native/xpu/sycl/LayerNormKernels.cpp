@@ -367,29 +367,24 @@ WelfordDataLN WelfordOnlineSum(const U val, const WelfordDataLN& curr_sum) {
   }
 }
 
-template <bool rms_norm>
 WelfordDataLN WelfordCombine(
     const WelfordDataLN dataB,
     const WelfordDataLN dataA) {
-  if constexpr (!rms_norm) {
-    using U = decltype(dataB.count);
-    U delta = dataB.mean - dataA.mean;
-    U count = dataA.count + dataB.count;
-    U mean, sigma2;
-    if (count > decltype(dataB.count){0}) {
-      auto coef = sycl::native::recip(count);
-      auto nA = dataA.count * coef;
-      auto nB = dataB.count * coef;
-      mean = nA * dataA.mean + nB * dataB.mean;
-      sigma2 = dataA.sigma2 + dataB.sigma2 + delta * delta * dataA.count * nB;
-    } else {
-      mean = U(0);
-      sigma2 = U(0);
-    }
-    return {mean, sigma2, count};
+  using U = decltype(dataB.count);
+  U delta = dataB.mean - dataA.mean;
+  U count = dataA.count + dataB.count;
+  U mean, sigma2;
+  if (count > decltype(dataB.count){0}) {
+    auto coef = sycl::native::recip(count);
+    auto nA = dataA.count * coef;
+    auto nB = dataB.count * coef;
+    mean = nA * dataA.mean + nB * dataB.mean;
+    sigma2 = dataA.sigma2 + dataB.sigma2 + delta * delta * dataA.count * nB;
   } else {
-    return {0.f, dataB.sigma2 + dataA.sigma2, 0.f};
+    mean = U(0);
+    sigma2 = U(0);
   }
+  return {mean, sigma2, count};
 }
 
 template <typename T, typename T_ACC, bool rms_norm>
@@ -415,14 +410,21 @@ WelfordDataLN compute_stats(
           static_cast<acc_t>(data.val[ii]), wd);
     }
   }
+
   // intra-subgroup reduction
+  if constexpr (rms_norm) {
+    float sum_sq =
+        sycl::reduce_over_group(item_id.get_group(), wd.sigma2, sycl::plus<>());
+    return WelfordDataLN{0.f, sum_sq / float(N), 0.f};
+  }
+
   auto sg = item_id.get_sub_group();
   for (int offset = (SIMD >> 1); offset > 0; offset >>= 1) {
     WelfordDataLN wdB{
         sycl::shift_group_left(sg, wd.mean, offset),
         sycl::shift_group_left(sg, wd.sigma2, offset),
         sycl::shift_group_left(sg, wd.count, offset)};
-    wd = WelfordCombine<rms_norm>(wd, wdB);
+    wd = WelfordCombine(wd, wdB);
   }
 
   const int num_sg = item_id.get_local_range(0);
@@ -450,7 +452,7 @@ WelfordDataLN compute_stats(
             sycl::shift_group_left(sg, w.mean, offset),
             sycl::shift_group_left(sg, w.sigma2, offset),
             sycl::shift_group_left(sg, w.count, offset)};
-        w = WelfordCombine<rms_norm>(w, other);
+        w = WelfordCombine(w, other);
       }
       wd = w;
     }
@@ -482,7 +484,7 @@ WelfordDataLN compute_stats(
             static_cast<float>(buf[2 * rd_y]),
             static_cast<float>(buf[2 * rd_y + 1]),
             static_cast<float>(buf[rd_y + addr_offset])};
-        wd = WelfordCombine<rms_norm>(wd, wdB);
+        wd = WelfordCombine(wd, wdB);
       }
       sycl::group_barrier(item_id.get_group());
     }
