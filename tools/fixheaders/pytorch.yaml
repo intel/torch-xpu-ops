@@ -14,7 +14,6 @@ exclude:
   # Test files copied from PyTorch — do not add Intel headers
   # (these will be upstreamed back to PyTorch)
   - "test/xpu/dynamo/test_ctx_manager_xpu.py"
-  - "test/xpu/functorch/test_control_flow_xpu.py"
   - "test/xpu/functorch/test_eager_transforms_xpu.py"
   - "test/xpu/functorch/test_vmap_xpu.py"
   - "test/xpu/run_test_with_windows_nighltly.py"
