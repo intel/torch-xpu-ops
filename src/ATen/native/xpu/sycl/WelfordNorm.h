@@ -134,15 +134,17 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
 
   static constexpr int K = 4;
 
-  acc_vec_t sum_k[K];
-  acc_vec_t sum_sq_k[K];
+  acc_vec_t anchor_k[K];
+  acc_vec_t sum_delta_k[K];
+  acc_vec_t sum_sq_delta_k[K];
   int_vec_t count_k[K];
 #pragma unroll
   for (int k = 0; k < K; ++k) {
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      sum_k[k][v] = acc_t(0);
-      sum_sq_k[k][v] = acc_t(0);
+      anchor_k[k][v] = acc_t(0);
+      sum_delta_k[k][v] = acc_t(0);
+      sum_sq_delta_k[k][v] = acc_t(0);
       count_k[k][v] = int(0);
     }
   }
@@ -175,9 +177,15 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; ++v) {
           acc_t x = acc_t(xv[k][v]);
-          count_k[k][v]++;
-          sum_k[k][v] += x;
-          sum_sq_k[k][v] += x * x;
+          if (count_k[k][v] == 0) {
+            anchor_k[k][v] = x;
+            count_k[k][v] = 1;
+          } else {
+            acc_t d = x - anchor_k[k][v];
+            sum_delta_k[k][v] += d;
+            sum_sq_delta_k[k][v] += d * d;
+            count_k[k][v]++;
+          }
         }
       }
     }
@@ -187,9 +195,15 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
         acc_t x = acc_t(input_vec[v]);
-        count_k[0][v]++;
-        sum_k[0][v] += x;
-        sum_sq_k[0][v] += x * x;
+        if (count_k[0][v] == 0) {
+          anchor_k[0][v] = x;
+          count_k[0][v] = 1;
+        } else {
+          acc_t d = x - anchor_k[0][v];
+          sum_delta_k[0][v] += d;
+          sum_sq_delta_k[0][v] += d * d;
+          count_k[0][v]++;
+        }
       }
     }
   }
@@ -200,17 +214,17 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
 #pragma unroll
   for (int v = 0; v < VEC_SIZE; ++v) {
     int c0 = count_k[0][v];
-    acc_t m0 = c0 > 0 ? sum_k[0][v] / acc_t(c0) : acc_t(0);
+    acc_t m0 = c0 > 0 ? anchor_k[0][v] + sum_delta_k[0][v] / acc_t(c0) : acc_t(0);
     mean[v] = m0;
-    m2n[v] = c0 > 0 ? (sum_sq_k[0][v] * c0 - sum_k[0][v] * sum_k[0][v]) / c0 : acc_t(0);
+    m2n[v] = c0 > 0 ? (sum_sq_delta_k[0][v] * c0 - sum_delta_k[0][v] * sum_delta_k[0][v]) / c0 : acc_t(0);
     count[v] = c0;
 #pragma unroll
     for (int k = 1; k < K; ++k) {
       int ck = count_k[k][v];
       if (ck == 0)
         continue;
-      acc_t mk = sum_k[k][v] / acc_t(ck);
-      acc_t m2k = ck > 0 ? (sum_sq_k[k][v] * ck - sum_k[k][v] * sum_k[k][v]) / ck : acc_t(0);
+      acc_t mk = anchor_k[k][v] + sum_delta_k[k][v] / acc_t(ck);
+      acc_t m2k = ck > 0 ? (sum_sq_delta_k[k][v] * ck - sum_delta_k[k][v] * sum_delta_k[k][v]) / ck : acc_t(0);
       welford_merge(count[v], mean[v], m2n[v], ck, mk, m2k);
     }
   }
