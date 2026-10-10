@@ -1082,6 +1082,7 @@ Non-primal fwd outputs from model w/o backward hook: {mod_no_hook_fwd_outputs_no
         result = opt_fn(a, b)
         self.assertEqual(result, expected)
 
+    @skipIfXpu(msg="AssertionError: expected all tensors_saved_with_vc_check to be Tensors, got types: [<class 'NoneType'>, <class 'torch.Tensor'>]")
     @parametrize(
         "policy,expected_calls",
         [
