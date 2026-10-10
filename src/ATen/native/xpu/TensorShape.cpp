@@ -19,6 +19,7 @@
 #include <ATen/ops/as_strided_copy_native.h>
 #include <ATen/ops/as_strided_native.h>
 #include <ATen/ops/cat_native.h>
+#include <torch/library.h>
 
 namespace at {
 
@@ -86,5 +87,29 @@ Tensor& _chunk_cat_out_xpu(
   return xpu::_chunk_cat_out_xpu_kernel(tensors, dim, num_chunks, out);
 }
 
+Tensor& narrow_copy_out_xpu(
+    const Tensor& self,
+    int64_t dim,
+    SymInt start,
+    SymInt length,
+    Tensor& out) {
+  TORCH_CHECK(self.dim() > 0, "narrow() cannot be applied to a 0-dim tensor.");
+  TORCH_CHECK(self.dtype() == out.dtype());
+  TORCH_CHECK(self.device() == out.device());
+
+  auto narrowed = self.narrow(
+                          dim,
+                          start.guard_int(__FILE__, __LINE__),
+                          length.guard_int(__FILE__, __LINE__))
+                      .contiguous();
+  at::native::resize_output(out, narrowed.sizes());
+  out.copy_(narrowed);
+  return out;
+}
+
 } // namespace native
 } // namespace at
+
+TORCH_LIBRARY_IMPL(aten, XPU, m) {
+  m.impl("narrow_copy.out", TORCH_FN(at::native::narrow_copy_out_xpu));
+}
