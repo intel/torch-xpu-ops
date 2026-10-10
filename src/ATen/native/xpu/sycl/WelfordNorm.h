@@ -202,7 +202,7 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     int c0 = count_k[0][v];
     acc_t m0 = c0 > 0 ? sum_k[0][v] / acc_t(c0) : acc_t(0);
     mean[v] = m0;
-    m2n[v] = c0 > 0 ? sum_sq_k[0][v] - sum_k[0][v] * m0 : acc_t(0);
+    m2n[v] = c0 > 0 ? (sum_sq_k[0][v] * c0 - sum_k[0][v] * sum_k[0][v]) / c0 : acc_t(0);
     count[v] = c0;
 #pragma unroll
     for (int k = 1; k < K; ++k) {
@@ -210,7 +210,7 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
       if (ck == 0)
         continue;
       acc_t mk = sum_k[k][v] / acc_t(ck);
-      acc_t m2k = sum_sq_k[k][v] - sum_k[k][v] * mk;
+      acc_t m2k = ck > 0 ? (sum_sq_k[k][v] * ck - sum_k[k][v] * sum_k[k][v]) / ck : acc_t(0);
       welford_merge(count[v], mean[v], m2n[v], ck, mk, m2k);
     }
   }
@@ -404,7 +404,7 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
     for (int v = 0; v < VEC_SIZE; ++v) {
       count[v] = cnt[v];
       mean[v] = count[v] > 0 ? sum[v] / acc_t(count[v]) : acc_t(0);
-      m2n[v] = sum_sq[v] - sum[v] * mean[v];
+      m2n[v] = (sum_sq[v] * cnt[v] - sum[v] * sum[v]) / cnt[v];
     }
     welford_vertical_merge<VEC_SIZE>(
         item, count, mean, m2n, shmem_count_, shmem_mean_, shmem_m2n_);
