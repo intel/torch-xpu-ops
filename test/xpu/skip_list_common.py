@@ -428,4 +428,8 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
     f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
+    "dynamo/test_activation_checkpointing_xpu.py": None,
+    "dynamo/test_after_aot_xpu.py": None,
+    "dynamo/test_aot_compile_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_callback.py": None,
 }

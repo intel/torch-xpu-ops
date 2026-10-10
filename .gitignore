@@ -12,3 +12,5 @@
 
 agent_space/
 agent_space_xpu/
+
+lint.json
