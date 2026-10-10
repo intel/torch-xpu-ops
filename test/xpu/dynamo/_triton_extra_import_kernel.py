@@ -1,5 +1,5 @@
 # Owner(s): ["module: dynamo"]
-# THIS FILE CAN BE REMOVED WHEN test\xpu\dynamo\test_after_aot_xpu.py is 
+# THIS FILE CAN BE REMOVED WHEN test\xpu\dynamo\test_after_aot_xpu.py is
 # removed. It is referenced in the import_triton_extra_import_kernel.
 # A user-defined Triton kernel at module scope, using an imported Triton
 # helper name other than the usual `triton` or `tl` globals.
