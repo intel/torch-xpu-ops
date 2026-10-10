@@ -24,8 +24,8 @@ on:
         description: Triton by default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch'
       python:
         type: string
-        default: '3.10'
-        description: Python version by default is '3.10'
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
       ut:
         type: string
         default: ''
@@ -108,7 +108,7 @@ jobs:
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             scenario='["accuracy","performance"]'
             triton=''
-            python='3.10'
+            python=''
           else
             pytorch="${{ inputs.pytorch }}"
             if [ -z ${{ inputs.torch_xpu_ops }} ];then
