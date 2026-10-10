@@ -910,7 +910,7 @@ void batch_norm_stats_channels_last_template(
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
 
 
-  // Try row-outer kernel first for n_chunks 2-4
+  // Try row-outer kernel first (n_chunks == 2 only)
   using RowOuterKernel = WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor<
       VarTransform,
       scalar_t,

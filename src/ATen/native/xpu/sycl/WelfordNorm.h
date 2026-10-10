@@ -202,7 +202,7 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     int c0 = count_k[0][v];
     acc_t m0 = c0 > 0 ? sum_k[0][v] / acc_t(c0) : acc_t(0);
     mean[v] = m0;
-    m2n[v] = sum_sq_k[0][v] - sum_k[0][v] * m0;
+    m2n[v] = c0 > 0 ? sum_sq_k[0][v] - sum_k[0][v] * m0 : acc_t(0);
     count[v] = c0;
 #pragma unroll
     for (int k = 1; k < K; ++k) {
@@ -376,7 +376,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelConfig {
 
 
 // ============================================================
-// ROW-OUTER kernel: nwg_x=1, handles n_chunks 2-4
+// ROW-OUTER kernel: nwg_x=1, handles n_chunks == 2 only
 // Separate struct to avoid register pressure spillover
 // ============================================================
 template <
@@ -409,6 +409,7 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
     welford_vertical_merge<VEC_SIZE>(
         item, count, mean, m2n, shmem_count_, shmem_mean_, shmem_m2n_);
     output_fn(count, mean, m2n);
+    sycl::group_barrier(item.get_group());
   }
 
   void operator()(sycl::nd_item<2> item) const {
@@ -665,7 +666,6 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
       int reduction_size, int n_channels,
       const scalar_t* input, acc_t* save_mean, acc_t* save_invstd) {
     bool v = sizeof(scalar_t) <= 2;
-    v = v && (n_channels % VEC_SIZE == 0);
     v = v && (memory::can_vectorize_up_to<scalar_t>((char*)input) >= VEC_SIZE);
     v = v && (memory::can_vectorize_up_to<acc_t>((char*)save_mean) >= VEC_SIZE);
     v = v && (memory::can_vectorize_up_to<acc_t>((char*)save_invstd) >= VEC_SIZE);
