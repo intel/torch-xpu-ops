@@ -21,8 +21,8 @@ on:
       python:
         required: false
         type: string
-        default: '3.10'
-        description: Python version
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
       runner:
         required: true
         type: string
@@ -42,6 +42,10 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
+      - name: Resolve python version
+        uses: ./.github/actions/ci-config
+        with:
+          python: ${{ inputs.python }}
       - name: Clean old wheel artifacts
         if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
         shell: cmd
@@ -68,7 +72,7 @@ jobs:
           rmdir /s /q "C:\ProgramData\miniforge3\envs\windows_ut"
           call conda clean -ay
           call conda remove --all -y -n windows_ut
-          call conda create -n windows_ut python=${{ inputs.python }} -y
+          call conda create -n windows_ut python=%PYTHON_VERSION% -y
           call conda activate windows_ut
           python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist
           call conda install -y libuv
@@ -268,7 +272,7 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
-      - name: Setup python-${{ inputs.python }}
+      - name: Setup python
         uses: ./.github/actions/setup-python
         with:
           python: ${{ inputs.python }}
