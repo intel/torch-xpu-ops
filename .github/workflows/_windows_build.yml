@@ -16,8 +16,8 @@ on:
       python:
         required: false
         type: string
-        default: '3.10'
-        description: Python version
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
       runner:
         required: true
         type: string
@@ -39,6 +39,10 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
+      - name: Resolve python version
+        uses: ./.github/actions/ci-config
+        with:
+          python: ${{ inputs.python }}
       - name: Setup conda environment
         shell: cmd
         run: |
@@ -48,7 +52,7 @@ jobs:
           )
           call conda clean -ay
           call conda remove --all -y -n windows_ci
-          call conda create -n windows_ci python=${{ inputs.python }} cmake ninja -y
+          call conda create -n windows_ci python=%PYTHON_VERSION% cmake ninja -y
       - name: Prepare Pytorch Source
         shell: cmd
         run: |

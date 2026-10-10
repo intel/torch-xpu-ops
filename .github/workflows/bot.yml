@@ -1184,8 +1184,6 @@ jobs:
 
       - name: Setup Python
         uses: ./.github/actions/setup-python
-        with:
-          python: '3.10'
 
       - name: Prepare agent scratch dir
         run: mkdir -p "$AGENT_SPACE"
@@ -1876,8 +1874,6 @@ jobs:
 
       - name: Setup Python
         uses: ./.github/actions/setup-python
-        with:
-          python: '3.10'
 
       - name: Run bot script tests
         run: |

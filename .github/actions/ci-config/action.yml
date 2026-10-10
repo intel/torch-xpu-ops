@@ -1,0 +1,39 @@
+name: CI Config
+description: Resolve the shared CI defaults from .github/ci-config/defaults.json and export PYTHON_VERSION
+
+inputs:
+  python:
+    type: string
+    default: ''
+    description: Python version override. Empty resolves to the `python` entry of the config file
+  config:
+    type: string
+    default: ''
+    description: Config file path. Defaults to $BASE_ENV, then .github/ci-config/defaults.json
+
+outputs:
+  python:
+    description: Resolved python version
+    value: ${{ steps.resolve.outputs.python }}
+  json:
+    description: Full resolved config as JSON, for use with fromJSON()
+    value: ${{ steps.resolve.outputs.json }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve CI defaults
+      id: resolve
+      uses: actions/github-script@v9
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CONFIG_PATH: ${{ inputs.config }}
+        OVERRIDE_PYTHON: ${{ inputs.python }}
+      with:
+        script: |
+          const { resolve } = require(`${process.env.ACTION_PATH}/../../ci-config/resolve.js`);
+          resolve({
+            core,
+            config: process.env.CONFIG_PATH,
+            overrides: { python: process.env.OVERRIDE_PYTHON },
+          });

@@ -18,9 +18,9 @@ on:
     inputs:
       python:
         type: string
-        required: true
-        default: '3.10'
-        description: Python version (e.g. 3.10, 3.11, 3.12)
+        required: false
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
 
       # ----- Test scope (command pattern) -----
       test_pattern:

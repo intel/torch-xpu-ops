@@ -27,8 +27,8 @@ on:
         description: 'oneDNN ref (commit/branch/tag) or `repo@ref`. Empty/`pinned` keeps pytorch default.'
       python:
         type: string
-        default: '3.10'
-        description: Python version
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
       category:
         type: string
         default: ''
@@ -69,18 +69,22 @@ jobs:
           gh --version
           # cleanup files
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
-      - name: Setup python-${{ inputs.python }}
-        run: |
-          rm -rf /tmp/xpu-tool/myvenv
-          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
-          which python && python -V
-          which pip && pip list
-          pip install -U pip wheel "setuptools<81"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
+      - name: Resolve python version
+        uses: ./torch-xpu-ops/.github/actions/ci-config
+        with:
+          python: ${{ inputs.python }}
+      - name: Setup python-${{ env.PYTHON_VERSION }}
+        run: |
+          rm -rf /tmp/xpu-tool/myvenv
+          local_python=$(echo ${PYTHON_VERSION} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
+          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
+          which python && python -V
+          which pip && pip list
+          pip install -U pip wheel "setuptools<81"
       - name: Snapshot open skipped issues at build start
         run: |
           touch known_issue_static.log issues_snapshot.log issues_snapshot_bmg.log issues_snapshot_dpclang.log
