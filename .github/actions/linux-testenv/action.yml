@@ -160,6 +160,7 @@ runs:
           pip install -U "pip" "setuptools<81" "wheel"
           # Follow with standard installation path
           pip install -r requirements.txt
+          pip install transformers==5.13.0
           if [ "${{ github.event_name }}" == "pull_request" ];then
             while read line; do
               python install.py $(echo $line |awk -F, '{printf $1}')
