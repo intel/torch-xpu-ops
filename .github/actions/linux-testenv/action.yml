@@ -151,6 +151,7 @@ runs:
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
           sed -i 's/^ *pynvml.*//' requirements.txt
+          sed -i 's/transformers==4.57.3/transformers==5.13.0/' requirements.txt
           # Work around legacy deps (e.g. visdom) that still import
           # pkg_resources during build on newer Python toolchains.
           CONSTRAINT_FILE=/tmp/pip-constraints.txt
@@ -159,12 +160,7 @@ runs:
           export PIP_NO_BUILD_ISOLATION=1
           pip install -U "pip" "setuptools<81" "wheel"
           # Follow with standard installation path
-          pip install pandas psutil scipy requests
-          pip install -U numpy==1.26.4 accelerate
-          cd ../pytorch
-          pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt
-          pip install timm
-          cd ../benchmark
+          pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
             while read line; do
               python install.py $(echo $line |awk -F, '{printf $1}')
