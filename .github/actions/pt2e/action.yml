@@ -47,7 +47,7 @@ runs:
         # relative paths resolve correctly.
         rm -rf inductor_log && mkdir -p inductor_log
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_pt2e/
-        model_list_args=()
+        model_list_args=(--model-only ./benchmarks/dynamo/full_model_list.csv)
 
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
           model_list_args=(--model-only "${MODEL_ONLY_NAME}")

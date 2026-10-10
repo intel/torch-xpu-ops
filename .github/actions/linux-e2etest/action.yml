@@ -37,12 +37,13 @@ runs:
         # can see benchmarks/dynamo and run from the expected working tree.
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_e2e/
 
-        model_list_args=""
-        if [ -n "${MODEL_ONLY_NAME:-}" ]; then
-          model_list_args=" --model-only ${MODEL_ONLY_NAME} "
-        fi
+        model_list_args=()
         if [ "${{ github.event_name }}" != "pull_request" ]; then
           rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmark/ ./benchmarks/dynamo/
+          model_list_args=(--model-only ./benchmarks/dynamo/full_model_list.csv)
+        fi
+        if [ -n "${MODEL_ONLY_NAME:-}" ]; then
+          model_list_args=(--model-only "${MODEL_ONLY_NAME}")
         fi
 
         rm -rf torch && mkdir -p inductor_log
@@ -51,5 +52,5 @@ runs:
             --dtype "${{ inputs.dt }}" \
             --mode "${{ inputs.mode }}" \
             --scenario "${{ inputs.scenario }}" \
-            "${model_list_args}" \
+            "${model_list_args[@]}" \
             2>&1 | tee inductor_log/run_e2e.log || true
