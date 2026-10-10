@@ -1,1 +1,0 @@
-{"path":"/home/runner/work/torch-xpu-ops/torch-xpu-ops/test/xpu/dynamo/_triton_extra_import_kernel.py","line":2,"char":73,"code":"RUFF","severity":"warning","name":"W291","description":"Trailing whitespace.\nSee https://beta.ruff.rs/docs/rules/.\n\nTo disable, use `  # noqa: W291`"}
