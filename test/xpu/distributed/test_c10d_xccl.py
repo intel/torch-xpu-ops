@@ -273,6 +273,46 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
                 dist.recv(block, src=0)
 
     @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_p2p_collective_interleaved(self):
+        # Leaving isends in flight across a collective used to deadlock oneCCL.
+        self._create_process_group_xccl(timeout=timedelta(seconds=60))
+        device = self.rank_to_GPU[self.rank][0]
+        numel = 64
+        pending = []
+        for step in range(1, 17):
+            if self.rank == 0:
+                for work in pending:
+                    work.wait()
+                pending = [
+                    dist.isend(
+                        torch.full((numel,), step, dtype=torch.bfloat16, device=device),
+                        dst=1,
+                    )
+                    for _ in range(2)
+                ]
+            else:
+                for _ in range(2):
+                    recv = torch.empty(numel, dtype=torch.bfloat16, device=device)
+                    dist.irecv(recv, src=0).wait()
+                    self.assertTrue(recv.eq(step).all().item())
+
+            # The mixed dtypes/shapes right after the p2p traffic are part of
+            # the repro.
+            src_value = step if self.rank == 1 else 0
+            b1 = torch.full((numel, 1), src_value, dtype=torch.int64, device=device)
+            b2 = torch.full((2, numel), src_value, dtype=torch.int32, device=device)
+            dist.broadcast(b1, src=1)
+            dist.broadcast(b2, src=1)
+            self.assertTrue(b1.eq(step).all().item())
+            self.assertTrue(b2.eq(step).all().item())
+
+        for work in pending:
+            work.wait()
+        torch.xpu.synchronize()
+        dist.destroy_process_group()
+
+    @requires_xccl()
     @skip_but_pass_in_sandcastle_if(
         torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs"
     )
