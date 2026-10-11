@@ -264,14 +264,14 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v4
       with:
-        name: manywheel-py3_10-xpu
+        name: Torch-XPU-Wheel-bd37b214c0263c271ea13442cc363cc55c73f494-38063226334-1
         github-token: ${{ github.token }}
-        repository: pytorch/pytorch
-        run-id: 34419841414
+        repository: mengfei25/torch-xpu-ops
+        run-id: 38063226334
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
       run: |
         pip uninstall -y torch && pip uninstall -y torch
-        pip install ${{ github.workspace }}/wheels/torch-*.whl --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps
         pip list |grep -E 'intel|torch|triton'
