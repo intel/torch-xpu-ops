@@ -272,23 +272,22 @@ def main() -> int:
                     previous_issue_url = str(published_issue["html_url"])
                     if published_issue.get("state") == "open":
                         filed_issue_url = previous_issue_url
-            if filed_issue_url is not None and verdict == "triage":
+            if filed_issue_url is not None:
+                if verdict == "triage":
+                    reused_units.add(unit_id)
                 if comments and not FILED_MARKER_RE.search(comments[-1]["body"]):
+                    body = comments[-1]["body"] if verdict == "triage" else draft
                     update_comment(
                         args.repo,
                         int(comments[-1]["id"]),
-                        filed_body(comments[-1]["body"], unit_id, filed_issue_url),
+                        filed_body(body, unit_id, filed_issue_url),
                     )
-                reused_units.add(unit_id)
-                print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
-                continue
-            if previous_issue_url is not None and filed_issue_url is None:
-                draft += f"\nPreviously filed as {previous_issue_url} (closed).\n"
-            if filed_issue_url is not None and int(filed_comment["id"]) == int(comments[-1]["id"]):
                 if verdict == "auto-file":
                     filed.append((unit_id, filed_issue_url))
                 print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
                 continue
+            if previous_issue_url is not None:
+                draft += f"\nPreviously filed as {previous_issue_url} (closed).\n"
 
             # Keep filed comments as history; refresh only an unfiled draft.
             if comments and not FILED_MARKER_RE.search(comments[-1]["body"]):
@@ -300,16 +299,6 @@ def main() -> int:
 
             if mode == "dry-run":
                 print(f"Posted dry-run draft for {unit_id} on #{args.triage_issue}")
-                continue
-            if filed_issue_url is not None:
-                update_comment(
-                    args.repo,
-                    comment_id,
-                    filed_body(draft, unit_id, filed_issue_url),
-                )
-                if verdict == "auto-file":
-                    filed.append((unit_id, filed_issue_url))
-                print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
                 continue
             if verdict == "triage":
                 print(f"Queued {unit_id} for manual triage on #{args.triage_issue}")
