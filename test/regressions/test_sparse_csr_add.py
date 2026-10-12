@@ -129,8 +129,9 @@ class TestSparseCompressedMixedAdd(TestCase):
             if dtype.is_complex:
                 dense_value, alpha = 1 + 1j, alpha * (1 + 1j)
         else:
-            value = 2e38 if dtype == torch.bfloat16 else 40000
-            dense_value, sparse_value, alpha = -value, value, 2
+            value = 3.375e38 if dtype == torch.bfloat16 else 40000
+            alpha = 1.0078125 if dtype == torch.bfloat16 else 2
+            dense_value, sparse_value = -value, value
         dense_cpu = torch.full((1, 1), dense_value, dtype=dtype)
         values_cpu = torch.tensor([sparse_value], dtype=dtype)
         oracle_dtype = torch.complex128 if dtype.is_complex else torch.float64
