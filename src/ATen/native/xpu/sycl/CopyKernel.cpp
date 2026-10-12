@@ -45,6 +45,14 @@ struct CastScalarFunc<Half, Float8DataType> {
   }
 };
 
+void float16_copy_kernel_xpu(TensorIteratorBase& iter) {
+  gpu_kernel_nocast(iter, CastScalarFunc<float, Half>());
+}
+
+void bfloat16_copy_kernel_xpu(TensorIteratorBase& iter) {
+  gpu_kernel_nocast(iter, CastScalarFunc<float, BFloat16>());
+}
+
 void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   ScalarType dtype = iter.dtype(0);
   ScalarType other_dtype = iter.dtype(1);
@@ -166,6 +174,14 @@ void copy_kernel(TensorIteratorBase& iter) {
     float8_copy_kernel_xpu(iter);
   } else if (iter.dtype(0) == kFloat4_e2m1fn_x2) {
     float4_copy_kernel_xpu(iter);
+  } else if (
+      iter.dtype(1) == kFloat &&
+      (iter.dtype(0) == kBFloat16 || iter.dtype(0) == kHalf)) {
+    if (iter.dtype(0) == kBFloat16) {
+      bfloat16_copy_kernel_xpu(iter);
+    } else {
+      float16_copy_kernel_xpu(iter);
+    }
   } else {
     AT_DISPATCH_V2(
         dtype,
