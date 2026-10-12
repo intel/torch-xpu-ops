@@ -4,7 +4,7 @@ import os
 import re
 import subprocess
 import sys
-from functools import lru_cache
+from functools import lru_cache, cache
 from itertools import product
 from pathlib import Path
 
@@ -44,7 +44,7 @@ def get_torch_version() -> str:
         return "0.0.0"
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_skipped_models(suite: str) -> frozenset[str]:
     """Return the models that ``benchmarks/dynamo/<suite>.yaml`` skips on XPU."""
     yaml_file = Path(f"benchmarks/dynamo/{suite}.yaml")
@@ -67,7 +67,7 @@ def get_skipped_models(suite: str) -> frozenset[str]:
     return frozenset(flatten(skip.get("all"))) | frozenset(flatten((skip.get("device") or {}).get("xpu")))
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str | None = None) -> list[str]:
     """Retrieve model names from a CSV file, string list, or default text file.
 
