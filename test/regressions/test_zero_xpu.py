@@ -2,29 +2,19 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-#
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for zero_xpu_ (device-memset path of zero_) in isolation.
-
-zero_xpu_ is a torch-xpu-ops native that zeroes a tensor with a SYCL device
-memset. Because it is only invoked by the aten::zero_ dispatch once the
-upstream pytorch wires `XPU: zero_xpu_` (a separate, coordinated change), these
-tests call `at::native::zero_xpu_` DIRECTLY (bypassing the dispatcher) so the
-function is verified standalone, without depending on the upstream dispatch
-registration.
-
-It checks that zero_xpu_ clears dtypes that have no fill kernel (the bitserial
-Bits* dtypes and Float4_e2m1fn_x2), and that the non-dense fallback to fill_(0)
-still behaves correctly.
-"""
+# Owner(s): ["module: intel"]
 
 import torch
-from torch.utils.cpp_extension import load_inline
 from torch.testing._internal.common_utils import TestCase, run_tests
 
-# dtypes with no fill kernel on XPU (see intel/torch-xpu-ops#5378)
-_BITS_DTYPES = [
+xpu_device = torch.device("xpu")
+
+# dtypes with no fill kernel on XPU (see intel/torch-xpu-ops#5378). zero_()
+# on these dispatches to the XPU device-memset path (zero_xpu_) instead of a
+# fill kernel, which would otherwise raise "fill_xpu not implemented".
+BITS_DTYPES = [
     torch.bits1x8,
     torch.bits2x4,
     torch.bits4x2,
@@ -33,40 +23,20 @@ _BITS_DTYPES = [
     torch.float4_e2m1fn_x2,
 ]
 
-_DISPATCH = r"""
-#include <ATen/ATen.h>
-#include <ATen/ops/zero_native.h>
 
-// Direct call to at::native::zero_xpu_ (bypasses the aten::zero_ dispatcher),
-// so this function can be verified without the upstream `XPU: zero_xpu_`
-// dispatch registration.
-void zero_xpu_direct(torch::Tensor self) {
-  at::native::zero_xpu_(self);
-}
-"""
+class TestZeroXpu(TestCase):
+    def test_zero_clears_dtypes_without_fill_kernel(self):
+        # zero_() on a view of a bitserial/Float4 dtype must clear the
+        # underlying storage (value 0 is the all-zero bit pattern in every
+        # layout).
+        for dtype in BITS_DTYPES:
+            raw = torch.ones(1024, dtype=torch.uint8, device=xpu_device)
+            raw.view(dtype).zero_()
+            self.assertEqual(raw.count_nonzero().item(), 0, f"dtype={dtype}")
 
-_zero_xpu_mod = load_inline(
-    name="_zero_xpu_direct",
-    cpp_sources=_DISPATCH,
-    functions=["zero_xpu_direct"],
-    verbose=False,
-)
-
-
-class TestZeroXpuDirect(TestCase):
-    def test_zero_xpu_direct_clears_dtypes_without_fill_kernel(self):
-        # zero_xpu_ must clear the underlying storage of a bitserial/Float4
-        # view (value 0 is the all-zero bit pattern in every layout).
-        for dtype in _BITS_DTYPES:
-            raw = torch.ones(1024, dtype=torch.uint8, device="xpu")
-            _zero_xpu_mod.zero_xpu_direct(raw.view(dtype))
-            self.assertEqual(
-                raw.count_nonzero().item(), 0, f"dtype={dtype}"
-            )
-
-    def test_zero_xpu_direct_memssets_dense_tensor(self):
-        t = torch.randint(1, 100, (64, 64), device="xpu", dtype=torch.float32)
-        _zero_xpu_mod.zero_xpu_direct(t)
+    def test_zero_clears_dense_tensor(self):
+        t = torch.randint(1, 100, (64, 64), device=xpu_device, dtype=torch.float32)
+        t.zero_()
         self.assertEqual(t.count_nonzero().item(), 0)
 
 
