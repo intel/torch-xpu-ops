@@ -42,8 +42,8 @@ namespace {
   // libccl.so.2 is DT_NEEDED, so it is already mapped by the time this runs.
   if (void* v2 = dlopen("libccl.so.2", RTLD_LAZY | RTLD_NOLOAD)) {
     link_map* lm = nullptr;
-    if (dlinfo(v2, RTLD_DI_LINKMAP, &lm) == 0 && lm != nullptr &&
-        lm->l_name != nullptr && lm->l_name[0] != '\0') {
+    if (dlinfo(v2, RTLD_DI_LINKMAP, static_cast<void*>(&lm)) == 0 &&
+        lm != nullptr && lm->l_name != nullptr && lm->l_name[0] != '\0') {
       std::string path(lm->l_name);
       const size_t slash = path.rfind('/');
       if (slash != std::string::npos) {
