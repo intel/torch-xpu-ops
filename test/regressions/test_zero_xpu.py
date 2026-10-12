@@ -7,7 +7,7 @@
 # Owner(s): ["module: intel"]
 
 import torch
-from torch.testing._internal.common_utils import TestCase, run_tests
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 xpu_device = torch.device("xpu")
 
