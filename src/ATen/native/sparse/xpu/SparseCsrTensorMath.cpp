@@ -436,7 +436,6 @@ static Tensor& add_out_dense_sparse_compressed_xpu(
   const bool sparse_alias = out.is_alias_of(sparse_impl->values()) ||
       out.is_alias_of(sparse_impl->compressed_indices()) ||
       out.is_alias_of(sparse_impl->plain_indices());
-  resize_output(out, dense.sizes());
   Tensor buffer = out;
   if (out.scalar_type() != common_dtype || sparse_alias) {
     buffer = dense.to(common_dtype).contiguous();
@@ -444,11 +443,16 @@ static Tensor& add_out_dense_sparse_compressed_xpu(
     if (buffer.is_same(dense)) {
       buffer = buffer.clone();
     }
-  } else if (!out.is_same(dense)) {
-    buffer.copy_(dense);
+  } else {
+    resize_output(out, dense.sizes());
+    if (!out.is_same(dense)) {
+      buffer.copy_(dense);
+    }
   }
   xpu::add_out_dense_sparse_compressed_kernel(buffer, sparse, alpha);
   if (!buffer.is_same(out)) {
+    // Constructor arguments may share shape metadata with sparse members.
+    resize_output(out, dense.sizes());
     out.copy_(buffer);
   }
   return out;

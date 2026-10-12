@@ -270,6 +270,36 @@ class TestSparseCompressedMixedAdd(TestCase):
 
         self.assertEqual(out.cpu(), torch.tensor([[5, 1], [1, 7]], dtype=dtype))
 
+    @dtypes(torch.int64)
+    @parametrize("layout", [torch.sparse_csr, torch.sparse_csc])
+    @parametrize("reverse", [False, True])
+    @parametrize("component", ["values", "compressed", "plain"])
+    def test_out_is_sparse_constructor_argument(
+        self, device, dtype, layout, reverse, component
+    ):
+        compressed = torch.tensor([0, 1, 2], device=device)
+        plain = torch.tensor([0, 1], device=device)
+        values = torch.tensor([2, 3], dtype=dtype, device=device)
+        out = {"compressed": compressed, "plain": plain, "values": values}[component]
+        sparse = torch.sparse_compressed_tensor(
+            compressed,
+            plain,
+            values,
+            size=(2, 2),
+            layout=layout,
+            device=device,
+            check_invariants=True,
+        )
+        dense = torch.ones((2, 2), dtype=dtype, device=device)
+        inputs = (sparse, dense) if reverse else (dense, sparse)
+
+        with self.assertWarnsRegex(UserWarning, "output.*resized"):
+            returned = torch.add(*inputs, alpha=2, out=out)
+
+        self.assertIs(returned, out)
+        self.assertEqual(out.cpu(), torch.tensor([[5, 1], [1, 7]], dtype=dtype))
+        self.assertEqual(dense.cpu(), torch.ones((2, 2), dtype=dtype))
+
     @dtypes(torch.int32, torch.float32)
     @parametrize("layout", [torch.sparse_csr, torch.sparse_csc])
     @parametrize("reverse", [False, True])
