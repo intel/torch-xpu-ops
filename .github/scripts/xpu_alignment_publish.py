@@ -260,15 +260,19 @@ def main() -> int:
             filed_issue_url = None
             if filed_comment is not None:
                 filed_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
+                previous_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
                 if is_open_issue(args.repo, filed_number):
-                    filed_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
+                    filed_issue_url = previous_issue_url
+                else:
+                    draft += f"\nPreviously filed as {previous_issue_url} (closed).\n"
             if filed_issue_url is not None and int(filed_comment["id"]) == int(comments[-1]["id"]):
                 if verdict == "auto-file":
                     filed.append((unit_id, filed_issue_url))
                 print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
                 continue
 
-            if comments:
+            # Keep filed comments as history; refresh only an unfiled draft.
+            if comments and not FILED_MARKER_RE.search(comments[-1]["body"]):
                 comment_id = int(comments[-1]["id"])
                 update_comment(args.repo, comment_id, draft)
                 print(f"Updated the latest draft for {unit_id} on #{args.triage_issue}")

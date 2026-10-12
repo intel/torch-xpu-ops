@@ -117,12 +117,14 @@ Review the immutable scan artifact without an expected answer key. Re-check
 source and tracker state with read-only GitHub access. Cover every candidate whose
 local result is `confirmed` or `related-failure`; do not silently omit a difficult
 case. Decide whether the behavior needs independent XPU work, is owned upstream,
-is already fixed or tracked, is not a defect, or lacks sufficient evidence.
+is already fixed or has an open local tracker, is not a defect, or lacks
+sufficient evidence.
 
-Apply the ownership, tracker, verdict, and citation rules in
-[references/evidence.md](references/evidence.md). In automation, follow the
-[review artifact contract](references/automation-contract.md) and write only
-under `review/`. A blocked review produces no publishable payloads.
+Only `needs-xpu-fix` without a reusable canonical tracker may carry a new issue
+payload. When an open `intel/torch-xpu-ops` issue covers the work, record it
+as `canonical_tracker` and do not create a payload or comment on the tracker. In
+automation, write only under `review/` and follow the minimal review contract. A
+blocked review produces no publishable payloads.
 
 ## Completion
 

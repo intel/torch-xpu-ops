@@ -4,9 +4,9 @@
 
 """The comment protocol of the standing XPU alignment triage issue.
 
-Drafts live as bot comments carrying a unit marker. Publishing preserves the
-reviewed title and visible body and adds only a hidden stable-unit marker for
-idempotency.
+Drafts live as bot comments carrying a unit marker. Publishing retains the
+reviewed title and body, adds a stable-unit marker for idempotency, and cites a
+closed predecessor when it files a replacement.
 """
 
 from __future__ import annotations
@@ -195,9 +195,10 @@ def is_open_issue(repo: str, number: str) -> bool:
     return issue.get("state") == "open"
 
 
-def find_published_issue(repo: str, unit_id: str) -> str | None:
+def find_published_issue(repo: str, unit_id: str) -> dict | None:
     marker = PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)
     page = 1
+    closed = None
     while True:
         issues = json.loads(
             gh(
@@ -208,10 +209,13 @@ def find_published_issue(repo: str, unit_id: str) -> str | None:
             )
         )
         for issue in issues:
-            if issue.get("state") == "open" and marker in (issue.get("body") or ""):
-                return str(issue["html_url"])
+            if marker in (issue.get("body") or ""):
+                if issue.get("state") == "open":
+                    return issue
+                if closed is None:
+                    closed = issue
         if len(issues) < 100:
-            return None
+            return closed
         page += 1
 
 
@@ -222,7 +226,11 @@ def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
         fail(f"Refusing to file an invalid unit id: `{unit_id}`.")
     existing = find_published_issue(repo, unit_id)
     if existing:
-        return existing
+        issue_url = str(existing["html_url"])
+        if existing.get("state") == "open":
+            return issue_url
+        if not re.search(rf"{re.escape(issue_url)}(?![0-9])", body):
+            body = f"{body.rstrip()}\n\nPreviously filed as {issue_url} (closed)."
     published_body = f"{PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)}\n{body.rstrip()}\n"
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as handle:
         handle.write(published_body)
