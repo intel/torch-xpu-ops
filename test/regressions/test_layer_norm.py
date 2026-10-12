@@ -9,20 +9,22 @@
 # Owner(s): ["module: intel"]
 import torch
 import torch.nn as nn
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_utils import parametrize, TestCase
 
 cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 
-def _over_threshold_rows():
-    """Row count above the kernel's two-stage column-reduction threshold.
+def _over_threshold_rows(device=xpu_device):
+    """Row count above the two-stage column reduction's row threshold.
 
     The kernel gates on `M > xe_core_count * 1024`, where its `xe_core_count` is
     `gpu_eu_count / gpu_eu_count_per_subslice` -- the same quotient PyTorch
-    exposes as `gpu_subslice_count`. One extra tile of rows clears it.
+    exposes as `gpu_subslice_count`. One extra tile of rows clears it, but
+    dtype, column count, and occupancy also determine which path runs.
     """
-    xe_core_count = torch.xpu.get_device_properties(0).gpu_subslice_count
+    xe_core_count = torch.xpu.get_device_properties(device).gpu_subslice_count
     return xe_core_count * 1024 + 1024
 
 
@@ -38,41 +40,48 @@ class TestLayerNorm(TestCase):
         y_xpu = layernorm_xpu(x_xpu)
         self.assertEqual(y_cpu, y_xpu.to(cpu_device))
 
-    def test_layer_norm_backward_multidim_normalized_shape_large_rows(self):
-        """Weight and bias gradients keep normalized_shape above the threshold.
 
-        Above `xe_core_count * 1024` rows the backward takes a two-stage column
-        reduction whose accumulator is `{num_tile_m, N}` with N the flattened
-        normalized size, so `sum(0)` is a flat `{N}` and assigning it replaced
-        the gradient the caller had allocated from the parameter. Autograd then
-        saw `[8]` where it expected `[2, 4]`. A one-dimensional normalized_shape
-        hides it because `{N}` is already the right shape.
-        """
+class TestLayerNormMultidimBackward(TestCase):
+    @parametrize("has_weight,has_bias", [(True, True), (True, False), (False, True)])
+    def test_layer_norm_backward_multidim_normalized_shape_large_rows(
+        self, device, has_weight, has_bias
+    ):
+        """Both parameter gradients, weight-only, and bias-only retain their shape."""
         torch.manual_seed(42)
         dim = [2, 4]
-        rows = _over_threshold_rows()
+        rows = _over_threshold_rows(device)
+        x = torch.randn(rows, *dim, dtype=torch.float32)
+        weight = torch.randn(dim, dtype=torch.float32) if has_weight else None
+        bias = torch.randn(dim, dtype=torch.float32) if has_bias else None
+        grad_out = torch.randn_like(x)
 
-        x_cpu = torch.randn(rows, *dim, dtype=torch.float32, requires_grad=True)
-        layernorm_cpu = nn.LayerNorm(dim, dtype=torch.float32)
-        layernorm_cpu(x_cpu).sum().backward()
+        grads = []
+        for dev in ("cpu", device):
+            x_dev = x.to(dev).detach().requires_grad_()
+            w_dev = weight.to(dev).detach().requires_grad_() if has_weight else None
+            b_dev = bias.to(dev).detach().requires_grad_() if has_bias else None
+            out = torch.nn.functional.layer_norm(x_dev, dim, w_dev, b_dev)
+            out.backward(grad_out.to(dev))
+            grads.append(
+                (
+                    x_dev.grad,
+                    w_dev.grad if has_weight else None,
+                    b_dev.grad if has_bias else None,
+                )
+            )
 
-        x_xpu = x_cpu.detach().to(xpu_device).requires_grad_()
-        layernorm_xpu = nn.LayerNorm(dim, dtype=torch.float32).to(xpu_device)
-        layernorm_xpu.load_state_dict(layernorm_cpu.state_dict())
-        layernorm_xpu(x_xpu).sum().backward()
+        for name, ref, grad in zip(("input", "weight", "bias"), grads[0], grads[1]):
+            if ref is None:
+                self.assertIsNone(grad)
+                continue
+            expected_shape = x.shape if name == "input" else torch.Size(dim)
+            self.assertEqual(grad.shape, expected_shape, name)
+            if name == "input":
+                self.assertEqual(grad.cpu(), ref, name)
+            else:
+                self.assertEqual(grad.cpu(), ref, name, atol=1e-3, rtol=1e-3)
 
-        self.assertEqual(layernorm_xpu.weight.grad.shape, torch.Size(dim))
-        self.assertEqual(layernorm_xpu.bias.grad.shape, torch.Size(dim))
-        self.assertEqual(
-            layernorm_cpu.weight.grad,
-            layernorm_xpu.weight.grad.to(cpu_device),
-            atol=1e-1,
-            rtol=1e-3,
-        )
-        self.assertEqual(
-            layernorm_cpu.bias.grad,
-            layernorm_xpu.bias.grad.to(cpu_device),
-            atol=1e-1,
-            rtol=1e-3,
-        )
-        self.assertEqual(x_cpu.grad, x_xpu.grad.to(cpu_device))
+
+instantiate_device_type_tests(
+    TestLayerNormMultidimBackward, globals(), only_for="xpu", allow_xpu=True
+)
