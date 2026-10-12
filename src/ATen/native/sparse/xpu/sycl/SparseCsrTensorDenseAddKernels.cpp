@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorAddKernels.h>
 #include <comm/SYCLContext.h>
@@ -17,6 +18,8 @@ namespace at::native::xpu {
 
 template <typename scalar_t, typename index_t>
 struct DenseSparseCompressedAddFunctor {
+  using opmath_t = opmath_type<scalar_t>;
+
   void operator()(sycl::item<1> item) const {
     const auto task = static_cast<int64_t>(item.get_id(0));
     const auto batch = task / nnz_;
@@ -35,14 +38,16 @@ struct DenseSparseCompressedAddFunctor {
     const auto plain = plain_indices_[task];
     const auto row = is_csr_ ? lower : plain;
     const auto col = is_csr_ ? plain : lower;
-    output_[(batch * rows_ + row) * cols_ + col] += alpha_ * values_[task];
+    const auto offset = (batch * rows_ + row) * cols_ + col;
+    output_[offset] = static_cast<opmath_t>(output_[offset]) +
+        alpha_ * static_cast<opmath_t>(values_[task]);
   }
 
   scalar_t* output_;
   const index_t* compressed_indices_;
   const index_t* plain_indices_;
   const scalar_t* values_;
-  scalar_t alpha_;
+  opmath_t alpha_;
   int64_t rows_;
   int64_t cols_;
   int64_t compressed_size_;
@@ -95,7 +100,7 @@ void add_out_dense_sparse_compressed_kernel(
                       compressed_indices.const_data_ptr<index_t>(),
                       plain_indices.const_data_ptr<index_t>(),
                       values.const_data_ptr<scalar_t>(),
-                      alpha.to<scalar_t>(),
+                      alpha.to<opmath_type<scalar_t>>(),
                       rows,
                       cols,
                       compressed_size,

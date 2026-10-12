@@ -115,6 +115,56 @@ class TestSparseCompressedMixedAdd(TestCase):
         self.assertEqual(out.cpu(), expected)
         self.assertEqual(dense.cpu(), dense_cpu)
 
+    @dtypes(torch.float16, torch.bfloat16, torch.complex32)
+    @parametrize("layout", [torch.sparse_csr, torch.sparse_csc])
+    @parametrize("reverse", [False, True])
+    @parametrize("case", ["large_alpha", "cancellation", "large_product"])
+    @parametrize("output", ["functional", "out", "inplace", "converted"])
+    def test_low_precision_opmath(self, device, dtype, layout, reverse, case, output):
+        if case == "large_alpha":
+            dense_value, sparse_value, alpha = 1, 0.001, 70000
+        elif case == "cancellation":
+            dense_value, sparse_value = 1, -10
+            alpha = 0.1001 if dtype == torch.bfloat16 else 0.10001
+            if dtype.is_complex:
+                dense_value, alpha = 1 + 1j, alpha * (1 + 1j)
+        else:
+            value = 2e38 if dtype == torch.bfloat16 else 40000
+            dense_value, sparse_value, alpha = -value, value, 2
+        dense_cpu = torch.full((1, 1), dense_value, dtype=dtype)
+        values_cpu = torch.tensor([sparse_value], dtype=dtype)
+        oracle_dtype = torch.complex128 if dtype.is_complex else torch.float64
+        expected = (
+            dense_cpu.to(oracle_dtype) + alpha * values_cpu.to(oracle_dtype)
+        ).to(dtype)
+        dense = dense_cpu.to(device)
+        sparse = torch.sparse_compressed_tensor(
+            torch.tensor([0, 1], device=device),
+            torch.tensor([0], device=device),
+            values_cpu.to(device),
+            size=(1, 1),
+            layout=layout,
+            device=device,
+            check_invariants=True,
+        )
+        inputs = (sparse, dense) if reverse else (dense, sparse)
+        if output == "functional":
+            actual = torch.add(*inputs, alpha=alpha)
+        else:
+            output_dtype = dtype
+            if output == "converted":
+                output_dtype = torch.complex64 if dtype.is_complex else torch.float32
+            out = (
+                dense
+                if output == "inplace"
+                else torch.empty((1, 1), dtype=output_dtype, device=device)
+            )
+            actual = torch.add(*inputs, alpha=alpha, out=out)
+            self.assertIs(actual, out)
+        self.assertEqual(actual.cpu().to(oracle_dtype), expected.to(oracle_dtype))
+        if output != "inplace":
+            self.assertEqual(dense.cpu().to(oracle_dtype), dense_cpu.to(oracle_dtype))
+
     @dtypes(torch.float32)
     def test_mixed_layout_checks(self, device, dtype):
         dense = torch.ones((2, 3), dtype=dtype, device=device)
