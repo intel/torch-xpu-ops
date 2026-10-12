@@ -14,7 +14,7 @@ set(TEST_SYCL_CXX_SRCS ${TEST_SYCL_ROOT}/main.cpp)
 sycl_add_executable(
   test_sycl_build_standalone
   SYCL_SOURCES ${TEST_SYCL_SYCL_SRCS}
-  CXX_SOURCES ${TEST_SYCL_CXX_SRCS} ${TEST_SYCL_CXX_SRCS})
+  CXX_SOURCES ${TEST_SYCL_CXX_SRCS})
 
 if(INSTALL_TEST)
   install(TARGETS test_sycl_build_standalone DESTINATION bin)
@@ -33,7 +33,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # Windows
   target_link_libraries(test_sycl_build_archive
   "-WHOLEARCHIVE:\"$<TARGET_FILE:sycl_simple_kernel_test>\"")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   # Linux
   target_link_libraries(test_sycl_build_archive
     "-Wl,--whole-archive,\"$<TARGET_FILE:sycl_simple_kernel_test>\" -Wl,--no-whole-archive")

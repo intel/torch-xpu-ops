@@ -12,16 +12,16 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUImportCtx
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUImportCtx
 
-with XPUPatchForImport(False):
-    from test_python_dispatch import TestWrapperSubclassAliasing
+with XPUImportCtx(False):
+    from test_python_dispatch import TestWrapperSubclassAliasingDevice
 
 
 instantiate_device_type_tests(
-    TestWrapperSubclassAliasing, globals(), only_for="xpu", allow_xpu=True
+    TestWrapperSubclassAliasingDevice, globals(), only_for="xpu", allow_xpu=True
 )
 
 

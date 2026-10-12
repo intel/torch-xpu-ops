@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 
@@ -38,7 +39,8 @@ void mse_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct SmoothL1Functor {
   scalar_t operator()(scalar_t input, scalar_t target) const {
-    auto z = std::abs(input - target);
+    using opmath_t = at::opmath_type<scalar_t>;
+    auto z = sycl::fabs(static_cast<opmath_t>(input - target));
     return z < beta_val ? scalar_t(0.5) * z * z / beta_val
                         : z - scalar_t(0.5) * beta_val;
   }
@@ -64,7 +66,8 @@ void smooth_l1_kernel(TensorIteratorBase& iter, double beta) {
 template <typename scalar_t>
 struct HuberFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    auto z = std::abs(a - b);
+    using opmath_t = at::opmath_type<scalar_t>;
+    auto z = sycl::fabs(static_cast<opmath_t>(a - b));
     return z < delta_val_ ? scalar_t(0.5) * z * z
                           : delta_val_ * (z - scalar_t(0.5) * delta_val_);
   }
@@ -80,7 +83,7 @@ struct HuberFunctor<at::Half> {
     // Compute internally in float32 - following CPU implementation.
     float af = static_cast<float>(a);
     float bf = static_cast<float>(b);
-    float z = std::abs(af - bf);
+    float z = sycl::fabs(af - bf);
     float out =
         z < delta_val_ ? 0.5f * z * z : delta_val_ * (z - 0.5f * delta_val_);
     return static_cast<at::Half>(out);
@@ -113,7 +116,9 @@ struct XlogyFunctor {
     if (x == 0) {
       return 0;
     }
-    return x * std::log(y);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return static_cast<scalar_t>(
+        static_cast<opmath_t>(x) * sycl::log(static_cast<opmath_t>(y)));
   }
 };
 
@@ -135,7 +140,9 @@ struct Xlog1pyFunctor {
     if (x == 0) {
       return 0;
     }
-    return x * std::log1p(y);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return static_cast<scalar_t>(
+        static_cast<opmath_t>(x) * sycl::log1p(static_cast<opmath_t>(y)));
   }
 };
 

@@ -147,7 +147,7 @@ std::tuple<at::Tensor, c10::intrusive_ptr<Work>> _allgather_base_XPU(
     int64_t timeout) {
   auto work =
       process_group->getBackend(c10::DeviceType::XPU)
-          ->_allgather_base(
+          ->all_gather_single(
               output_tensor,
               input_tensor,
               AllgatherOptions{std::chrono::milliseconds(timeout), asyncOp});
@@ -179,7 +179,7 @@ c10::intrusive_ptr<c10d::Work> allgather_into_tensor_coalesced_XPU(
   auto opts = AllgatherOptions{};
   opts.asyncOp = asyncOp;
   return process_group->getBackend(c10::DeviceType::XPU)
-      ->allgather_into_tensor_coalesced(output_vec, input_vec, opts);
+      ->all_gather_single_coalesced(output_vec, input_vec, opts);
 }
 
 std::tuple<std::vector<at::Tensor>, c10::intrusive_ptr<Work>> reduce_scatter_XPU(
@@ -211,7 +211,7 @@ std::tuple<at::Tensor, c10::intrusive_ptr<Work>> _reduce_scatter_base_XPU(
     bool asyncOp,
     int64_t timeout) {
   auto work = process_group->getBackend(c10::DeviceType::XPU)
-                  ->_reduce_scatter_base(
+                  ->reduce_scatter_single(
                       output_tensor,
                       input_tensor,
                       ReduceScatterOptions{
@@ -231,7 +231,7 @@ c10::intrusive_ptr<c10d::Work> reduce_scatter_tensor_coalesced_XPU(
   auto output_vec = outputs.vec();
   auto input_vec = inputs.vec();
   return process_group->getBackend(c10::DeviceType::XPU)
-      ->reduce_scatter_tensor_coalesced(
+      ->reduce_scatter_single_coalesced(
           output_vec,
           input_vec,
           ReduceScatterOptions{
@@ -300,7 +300,7 @@ c10::intrusive_ptr<Work> alltoall_base_XPU(
     bool asyncOp,
     int64_t timeout) {
   return process_group->getBackend(c10::DeviceType::XPU)
-      ->alltoall_base(
+      ->all_to_all_single(
           output,
           input,
           output_split_sizes,

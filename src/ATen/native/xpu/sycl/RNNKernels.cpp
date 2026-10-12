@@ -16,6 +16,7 @@
 #include <ATen/TensorIterator.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/util/generic_math.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -38,7 +39,8 @@ std::tuple<int64_t, int64_t> rnn_get_launch_config(
     int64_t numel) {
   int64_t num_groups =
       (numel + max_threads_per_group - 1) / max_threads_per_group;
-  auto hw_max_groups = syclMaxWorkItemsPerTile() / max_threads_per_group;
+  int64_t hw_max_groups =
+      at::xpu::getDeviceMaxWorkItems() / max_threads_per_group;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
   return std::make_tuple(num_groups, max_threads_per_group);
 }
@@ -101,7 +103,7 @@ void collapseDims(TensorInfo<T, T2>& info, Args&... infos) {
 template <typename T>
 inline T sigmoid(T in) {
   T one = static_cast<T>(1.0);
-  return one / (one + std::exp(-in));
+  return one / (one + sycl::exp(-in));
 }
 
 template <
@@ -111,7 +113,8 @@ template <
     int indexing_kind>
 struct LstmCellForwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    bool has_bias = bias1_.data != nullptr;
+    bool has_bias1 = bias1_.data != nullptr;
+    bool has_bias2 = bias2_.data != nullptr;
 
     for (index_type linearIndex = item.get_global_id(0);
          linearIndex < totalElements_;
@@ -141,21 +144,24 @@ struct LstmCellForwardFunctor {
       scalar_t b1i, b1f, b1c, b1o;
       scalar_t b2i, b2f, b2c, b2o;
 
-      if (has_bias) {
+      if (has_bias1) {
         b1i = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 0 * hsz_);
         b1f = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 1 * hsz_);
         b1c = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 2 * hsz_);
         b1o = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 3 * hsz_);
-
-        b2i = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 0 * hsz_);
-        b2f = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 1 * hsz_);
-        b2c = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 2 * hsz_);
-        b2o = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 3 * hsz_);
       } else {
         b1i = F2H(0.0);
         b1f = F2H(0.0);
         b1c = F2H(0.0);
         b1o = F2H(0.0);
+      }
+
+      if (has_bias2) {
+        b2i = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 0 * hsz_);
+        b2f = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 1 * hsz_);
+        b2c = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 2 * hsz_);
+        b2o = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 3 * hsz_);
+      } else {
         b2i = F2H(0.0);
         b2f = F2H(0.0);
         b2c = F2H(0.0);
@@ -167,11 +173,11 @@ struct LstmCellForwardFunctor {
 
       ig = sigmoid(H2F(iig) + H2F(hig) + H2F(b1i) + H2F(b2i));
       fg = sigmoid(H2F(ifg) + H2F(hfg) + H2F(b1f) + H2F(b2f));
-      cg = std::tanh(H2F(icg) + H2F(hcg) + H2F(b1c) + H2F(b2c));
+      cg = sycl::tanh(H2F(icg) + H2F(hcg) + H2F(b1c) + H2F(b2c));
       og = sigmoid(H2F(iog) + H2F(hog) + H2F(b1o) + H2F(b2o));
 
       f_cy = (fg * H2F(cx)) + (ig * cg);
-      f_hy = og * std::tanh(f_cy);
+      f_hy = og * sycl::tanh(f_cy);
 
       *hy = F2H(f_hy);
       *cy = F2H(f_cy);
@@ -258,7 +264,7 @@ struct LstmCellBackwardFunctor {
           ? H2F(DEVICE_LINEAR_GET(gradoutputcell_, linearIndex))
           : 0.f;
 
-      accscalar_t gcx = std::tanh(H2F(cy));
+      accscalar_t gcx = sycl::tanh(H2F(cy));
 
       accscalar_t gog = go * gcx;
       gcx = go * H2F(og) * (1 - gcx * gcx) + goc;
@@ -366,7 +372,7 @@ struct GruCellForwardFunctor {
       ig = sigmoid<accscalar_t>(H2F(ii) + H2F(hi) + H2F(b1i) + H2F(b2i));
 
       ng = H2F(in) + H2F(b1n) + rg * (H2F(hn) + H2F(b2n));
-      ng = std::tanh(ng);
+      ng = sycl::tanh(ng);
       *hy = F2H(ng + ig * (H2F(hx) - ng));
 
       // SAVE FOR BACKWARDS
@@ -526,7 +532,7 @@ void lstm_forward_impl(
         workspaceI);
     using KernelT =
         LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 1>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -546,7 +552,7 @@ void lstm_forward_impl(
   } else {
     using KernelT =
         LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 2>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -596,7 +602,7 @@ void lstm_backward_impl(
         grad_hyI, grad_cyI, cxI, cyI, workspaceI, grad_gatesI, grad_cxI);
     using KernelT =
         LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -615,7 +621,7 @@ void lstm_backward_impl(
   } else {
     using KernelT =
         LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -675,7 +681,7 @@ void gru_forward_impl(
         hyI,
         workspaceI);
     using KernelT = GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 1>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -693,7 +699,7 @@ void gru_forward_impl(
         nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
     using KernelT = GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 2>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -740,7 +746,7 @@ void gru_backward_impl(
         grad_hyI, workspaceI, grad_input_gatesI, grad_hidden_gatesI, grad_hxI);
     using KernelT =
         GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -757,7 +763,7 @@ void gru_backward_impl(
   } else {
     using KernelT =
         GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);

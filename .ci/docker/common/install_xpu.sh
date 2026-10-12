@@ -72,8 +72,40 @@ validate_environment() {
 
 # Common cleanup function
 cleanup() {
-    log_info "Cleaning up temporary files..."
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* 2>/dev/null || true
+    log_info "Cleaning up temporary files and repository configurations..."
+
+    # Remove Intel GPU repository configurations
+    rm -f /etc/apt/sources.list.d/intel-gpu-* 2>/dev/null || true
+    rm -f /etc/apt/sources.list.d/*intel*.list 2>/dev/null || true
+    rm -f /etc/apt/sources.list.d/*kobuk*.list 2>/dev/null || true
+    rm -f /etc/yum.repos.d/intel-gpu-* 2>/dev/null || true
+    rm -f /etc/zypp/repos.d/intel-gpu-* 2>/dev/null || true
+
+    # Remove Intel GPU GPG keyring
+    rm -f /usr/share/keyrings/intel-graphics.gpg 2>/dev/null || true
+
+    # Clean package manager caches to reduce image size and avoid stale metadata
+    if command -v apt-get &> /dev/null; then
+        apt-get clean -y 2>/dev/null || true
+        rm -rf /var/lib/apt/lists/*
+        rm -rf /var/cache/apt/archives/*.deb
+        rm -rf /var/cache/apt/archives/partial/*
+    elif command -v dnf &> /dev/null; then
+        dnf clean all 2>/dev/null || true
+        rm -rf /var/cache/dnf/*
+        rm -rf /var/cache/yum/*
+    elif command -v zypper &> /dev/null; then
+        zypper clean -a 2>/dev/null || true
+        rm -rf /var/cache/zypp/*
+    fi
+
+    # Clean temporary files and logs
+    rm -rf /tmp/* /var/tmp/* 2>/dev/null || true
+    rm -rf /var/log/apt/* 2>/dev/null || true
+    rm -rf /var/log/dnf* 2>/dev/null || true
+    rm -rf /var/log/yum* 2>/dev/null || true
+
+    log_info "Cleanup completed"
 }
 
 # Common package installation function
@@ -185,11 +217,10 @@ function install_ubuntu() {
 function install_ubuntu_client() {
     . /etc/os-release
 
-    local -r supported_lts_versions=("plucky")
-    local -r supported_rolling_versions=("noble" "plucky")
+    local -r supported_rolling_versions=("noble" "questing" "resolute" )
 
     if [ "${XPU_DRIVER_TYPE}" == "lts" ]; then
-        log_error "Ubuntu version ${VERSION_CODENAME} with ${XPU_DRIVER_TYPE} not supported"
+        log_error "${XPU_DRIVER_TYPE} not supported for client GPU"
         exit 1
     else
         if [[ ! " ${supported_rolling_versions[*]} " =~ " ${VERSION_CODENAME} " ]]; then
@@ -217,12 +248,12 @@ function install_ubuntu_client() {
     # Install runtime packages based on driver type
     local -r base_packages=(
         libze-intel-gpu1 libze1 intel-metrics-discovery intel-opencl-icd clinfo intel-gsc
-        intel-media-va-driver-non-free libmfx-gen1 libvpl2 libvpl-tools libva-glx2 va-driver-all vainfo
+        intel-media-va-driver-non-free libmfx-gen1.2 libvpl2 libvpl-tools libva-glx2 va-driver-all vainfo
     )
     install_packages "ubuntu" "${base_packages[@]}"
 
     # Development packages
-    install_packages "ubuntu" libze-dev intel-ocloc xpu-smi libgomp1 pciutils
+    install_packages "ubuntu" libze-dev intel-ocloc xpu-smi pciutils
 
     log_info "Ubuntu installation completed successfully"
 }

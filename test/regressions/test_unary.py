@@ -102,3 +102,32 @@ class TestSimpleUnary(TestCase):
     @Dtypes(floating_and_complex_types)
     def test_reciprocal_out(self, dtype):
         self._test_unary_out_ops("reciprocal", dtype)
+
+    def test_unary_geometric_bcomplex32(self):
+        x_cpu = torch.randn(64, dtype=torch.complex64) * 0.1
+        x_xpu = x_cpu.to("xpu").to(torch.bcomplex32)
+        unary_geometric_ops = [
+            torch.acos,
+            torch.acosh,
+            torch.asin,
+            torch.asinh,
+            torch.atan,
+            torch.atanh,
+            torch.cos,
+            torch.cosh,
+            torch.sin,
+            torch.sinh,
+            torch.tan,
+            torch.tanh,
+        ]
+
+        for op in unary_geometric_ops:
+            with self.subTest(op=op.__name__):
+                out = op(x_xpu)
+                self.assertEqual(out.dtype, torch.bcomplex32)
+                self.assertEqual(out.shape, x_xpu.shape)
+
+                ref = op(x_cpu)
+                self.assertEqual(
+                    out.to(torch.complex64).cpu(), ref, rtol=3e-2, atol=3e-2
+                )

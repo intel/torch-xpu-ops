@@ -41,8 +41,11 @@ Tensor _histc_xpu(
     const Scalar& min,
     const Scalar& max) {
   // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("_histc_xpu");
+  // Nondeterministic for floating types because of atomicAdd usage
+  if (at::isFloatingType(self.scalar_type())) {
+    globalContext().alertNotDeterministic(
+        "_histc_xpu with floating point input");
+  }
   return native::xpu::_histc_kernel(self, nbins, min, max);
 }
 
@@ -52,6 +55,13 @@ Tensor& _histc_out_xpu(
     const Scalar& min,
     const Scalar& max,
     Tensor& result) {
+  TORCH_CHECK(
+      self.dtype() == result.dtype(),
+      "torch.histogram: input tensor and hist tensor should",
+      " have the same dtype, but got input ",
+      self.dtype(),
+      " and hist ",
+      result.dtype());
   auto ret = _histc_xpu(self, bins, min, max);
   at::native::resize_output(result, ret.sizes());
   result.copy_(ret);

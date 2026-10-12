@@ -12,7 +12,11 @@
 
 # Owner(s): ["module: intel"]
 
+import inspect
 import io
+
+import torch
+from torch._export.serde import serialize as serde_serialize
 
 try:
     import testing_xpu as testing
@@ -27,6 +31,23 @@ from torch.export import export, load, save
 test_classes = {}
 
 
+def _module_safe_globals():
+    # SerDes round-trips can contain test helper classes and torch.nn module classes.
+    test_classes = [
+        obj
+        for _, obj in inspect.getmembers(test_export_xpu, inspect.isclass)
+        if obj.__module__ == test_export_xpu.__name__
+    ]
+    nn_classes = [obj for _, obj in inspect.getmembers(torch.nn, inspect.isclass)]
+    serde_helpers = [serde_serialize._reconstruct_fake_tensor]
+    return test_classes + nn_classes + serde_helpers
+
+
+def _load_with_safe_globals(buffer):
+    with torch.serialization.safe_globals(_module_safe_globals()):
+        return load(buffer)
+
+
 def mocked_serder_export_strict(*args, **kwargs):
     if "strict" not in kwargs:
         ep = export(*args, **kwargs, strict=True)
@@ -36,7 +57,7 @@ def mocked_serder_export_strict(*args, **kwargs):
     buffer = io.BytesIO()
     save(ep, buffer)
     buffer.seek(0)
-    loaded_ep = load(buffer)
+    loaded_ep = _load_with_safe_globals(buffer)
     return loaded_ep
 
 
@@ -45,7 +66,7 @@ def mocked_serder_export_non_strict(*args, **kwargs):
     buffer = io.BytesIO()
     save(ep, buffer)
     buffer.seek(0)
-    loaded_ep = load(buffer)
+    loaded_ep = _load_with_safe_globals(buffer)
     return loaded_ep
 
 

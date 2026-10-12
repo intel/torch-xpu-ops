@@ -8,14 +8,16 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <comm/Macros.h>
-// clang-format off
-DISABLE_RETURN_TYPE_WARNING_BEGIN
-// clang-format on
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/AccumulateType.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/Runtime.h>
+#include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
 
@@ -25,11 +27,11 @@ namespace at::native::xpu {
 using namespace at::native;
 using namespace at::xpu::detail;
 
-template <typename input_t, typename IndexType>
+template <typename input_t, typename acc_t, typename IndexType>
 static IndexType get_bin(
     input_t b_val,
-    at::acc_type_device<input_t, kXPU> min_value,
-    at::acc_type_device<input_t, kXPU> max_value,
+    acc_t min_value,
+    acc_t max_value,
     int nbins) {
   IndexType bin = (int)((b_val - min_value) * nbins / (max_value - min_value));
   // (only applicable for histc)
@@ -48,62 +50,46 @@ static IndexType get_bin(
 template <
     typename output_t,
     typename input_t,
+    typename acc_t,
     typename IndexType,
     int ADims,
     int BDims,
     bool has_weight,
     typename Op>
-struct Histogram1DKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto out_ptr = a_.data;
-    auto in_ptr = b_.data;
-    auto weight_ptr = c_.data;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void histogram_1d_sub_kernel(
+    TensorInfo<output_t, IndexType> a,
+    TensorInfo<const input_t, IndexType> b,
+    TensorInfo<output_t, IndexType> c,
+    int nbins,
+    acc_t minvalue,
+    acc_t maxvalue,
+    IndexType totalElements,
+    Op get_op) {
+  auto out_ptr = a.data;
+  auto in_ptr = b.data;
+  auto weight_ptr = c.data;
 
-    auto linear_index = item_id.get_id(0);
-    // Convert `linear_index` into an offset of `b`
-    const IndexType b_offset =
-        IndexToOffset<const input_t, IndexType, BDims>::get(linear_index, b_);
-    const auto b_val = in_ptr[b_offset];
-    if (b_val >= min_value_ && b_val <= max_value_) {
-      // Use value at `b` as an offset of `a`
-      const IndexType bin =
-          get_bin<input_t, IndexType>(b_val, min_value_, max_value_, nbins_);
-      const IndexType a_offset =
-          IndexToOffset<output_t, IndexType, ADims>::get(bin, a_);
-      atomicAdd(
-          (sycl_global_ptr<output_t>)&out_ptr[a_offset],
-          get_op_(weight_ptr, linear_index));
-    }
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto linear_index = item.get_global_id(0);
+  if (linear_index >= totalElements) {
+    return;
   }
-  Histogram1DKernelFunctor(
-      TensorInfo<output_t, IndexType> a,
-      TensorInfo<const input_t, IndexType> b,
-      TensorInfo<output_t, IndexType> c,
-      int nbins,
-      at::acc_type_device<input_t, kXPU> minvalue,
-      at::acc_type_device<input_t, kXPU> maxvalue,
-      IndexType totalElements,
-      Op get_op)
-      : a_(a),
-        b_(b),
-        c_(c),
-        nbins_(nbins),
-        min_value_(minvalue),
-        max_value_(maxvalue),
-        total_elements_(totalElements),
-        get_op_(get_op) {}
-
- private:
-  TensorInfo<output_t, IndexType> a_;
-  TensorInfo<const input_t, IndexType> b_;
-  TensorInfo<output_t, IndexType> c_;
-  int nbins_;
-  at::acc_type_device<input_t, kXPU> min_value_;
-  at::acc_type_device<input_t, kXPU> max_value_;
-  IndexType total_elements_;
-  Op get_op_;
-};
-
+  // Convert `linear_index` into an offset of `b`
+  const IndexType b_offset =
+      IndexToOffset<const input_t, IndexType, BDims>::get(linear_index, b);
+  const auto b_val = in_ptr[b_offset];
+  if (b_val >= minvalue && b_val <= maxvalue) {
+    // Use value at `b` as an offset of `a`
+    const IndexType bin =
+        get_bin<input_t, acc_t, IndexType>(b_val, minvalue, maxvalue, nbins);
+    const IndexType a_offset =
+        IndexToOffset<output_t, IndexType, ADims>::get(bin, a);
+    atomicAdd(
+        (sycl_global_ptr<output_t>)&out_ptr[a_offset],
+        get_op(weight_ptr, linear_index));
+  }
+}
 /*
   Kernel for computing the histogram of the input.
  */
@@ -120,23 +106,39 @@ void histogram_1d_kernel(
     TensorInfo<const input_t, IndexType> b, /* input */
     TensorInfo<output_t, IndexType> c, /* weight */
     int nbins,
-    at::acc_type_device<input_t, kXPU> min_value,
-    at::acc_type_device<input_t, kXPU> max_value,
+    acc_type_device<input_t, kXPU> min_value,
+    acc_type_device<input_t, kXPU> max_value,
     IndexType total_elements,
     Op get_op) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
+  using acc_t = acc_type_device<input_t, kXPU>;
 
-  Histogram1DKernelFunctor<
+  constexpr auto kernelFunc = histogram_1d_sub_kernel<
       output_t,
       input_t,
+      acc_t,
       IndexType,
       ADims,
       BDims,
       has_weight,
-      Op>
-      kfn(a, b, c, nbins, min_value, max_value, total_elements, get_op);
+      Op>;
+  int64_t max_wg_size = syclMaxWorkGroupSize<kernelFunc>();
+  auto wg_size = std::min(max_wg_size, total_elements);
+  auto total_blocks = (total_elements + wg_size - 1) / wg_size;
 
-  sycl_kernel_submit(::sycl::range<1>(total_elements), sycl_queue, kfn);
+  sycl_kernel_submit<kernelFunc>(
+      ::sycl::range<1>(total_blocks * wg_size),
+      ::sycl::range<1>(wg_size),
+      sycl_queue,
+      0,
+      a,
+      b,
+      c,
+      nbins,
+      min_value,
+      max_value,
+      total_elements,
+      get_op);
 }
 
 #define HANDLE_CASE(WEIGHTS_OP, WITH_WEIGHT)                             \
@@ -176,8 +178,8 @@ void tensor_histogram(
     at::Tensor b, /* input */
     at::Tensor c, /* weights(optional) */
     int64_t nbins,
-    at::acc_type_device<input_t, kXPU> min_value,
-    at::acc_type_device<input_t, kXPU> max_value) {
+    acc_type_device<input_t, kXPU> min_value,
+    acc_type_device<input_t, kXPU> max_value) {
   checkBackend("tensor_histogram", {a, b}, Backend::XPU);
   if (has_weights) {
     checkBackend("tensor_histogram", {c}, Backend::XPU);
@@ -210,8 +212,8 @@ template <typename input_t>
 Tensor _histc_template(
     const Tensor& self,
     int64_t nbins,
-    at::acc_type_device<input_t, kXPU> min,
-    at::acc_type_device<input_t, kXPU> max) {
+    acc_type_device<input_t, kXPU> min,
+    acc_type_device<input_t, kXPU> max) {
   if (nbins <= 0) {
     AT_ERROR("bins must be > 0");
   }
@@ -222,7 +224,7 @@ Tensor _histc_template(
       DeviceType::XPU,
       std::nullopt /* pin_memory */);
 
-  using bounds_t = at::acc_type_device<input_t, kXPU>;
+  using bounds_t = acc_type_device<input_t, kXPU>;
   bounds_t minvalue = min;
   bounds_t maxvalue = max;
 
@@ -258,7 +260,7 @@ Tensor _histc_kernel(
     const Scalar& max) {
   return AT_DISPATCH_ALL_TYPES_AND2(
       kHalf, kBFloat16, self.scalar_type(), "_histc_xpu", [&] {
-        using bounds_t = at::acc_type_device<scalar_t, kXPU>;
+        using bounds_t = acc_type_device<scalar_t, kXPU>;
         return _histc_template<scalar_t>(
             self, nbins, min.to<bounds_t>(), max.to<bounds_t>());
       });
@@ -288,7 +290,7 @@ Tensor bincount_template(
 
   const int64_t nbins =
       std::max(self.max().item<input_t>() + (int64_t)1, minlength);
-  using bounds_t = at::acc_type_device<input_t, kXPU>;
+  using bounds_t = acc_type_device<input_t, kXPU>;
   const bounds_t min_value = 0;
   const bounds_t max_value = nbins;
   // alloc output counter on GPU
@@ -331,6 +333,5 @@ Tensor bincount_kernel(
 }
 } // namespace at::native::xpu
 
-// clang-format off
-DISABLE_RETURN_TYPE_WARNING_END
-// clang-format on
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop

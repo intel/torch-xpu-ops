@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 
@@ -23,7 +24,8 @@ namespace xpu {
 template <typename scalar_t>
 struct Atan2Functor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::atan2(a, b);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::atan2(static_cast<opmath_t>(a), static_cast<opmath_t>(b));
   }
 };
 
@@ -39,7 +41,8 @@ void atan2_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct HypotFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::hypot(a, b);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::hypot(static_cast<opmath_t>(a), static_cast<opmath_t>(b));
   }
 };
 

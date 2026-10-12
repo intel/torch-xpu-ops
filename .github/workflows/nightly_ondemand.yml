@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
+        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,upstream_distributed,upstream_inductor,upstream_default,microbench,windows'. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -50,6 +50,10 @@ on:
         type: string
         default: ''
         description: Model. Will only run this one mode if set
+      ut_auto_issue:
+        type: boolean
+        default: false
+        description: Analyse this run's UT failures. Evidence only - an on-demand run files no issues
 
 permissions: read-all
 
@@ -58,7 +62,7 @@ run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(
 jobs:
   Conditions-Filter:
     name: conditions-filter
-    if: ${{ github.repository_owner == 'intel' }}
+    if: ${{ github.repository_owner == 'intel' || github.event_name != 'schedule' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     outputs:
@@ -68,6 +72,7 @@ jobs:
       torch_xpu_ops: ${{ steps.inputs-check.outputs.torch_xpu_ops }}
       ut: ${{ steps.inputs-check.outputs.ut }}
       suite: ${{ steps.inputs-check.outputs.suite }}
+      scenario: ${{ steps.inputs-check.outputs.scenario }}
       triton: ${{ steps.inputs-check.outputs.triton }}
       python: ${{ steps.inputs-check.outputs.python }}
     steps:
@@ -96,7 +101,12 @@ jobs:
               exit 1
             fi
             ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
+            # Weekly also runs the upstream UT scopes
+            if [[ "${test_type}" == *"-weekly" ]];then
+              ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed","upstream_distributed","upstream_inductor","upstream_default"]'
+            fi
             suite='["huggingface","timm_models","torchbench","pt2e"]'
+            scenario='["accuracy","performance"]'
             triton=''
             python='3.10'
           else
@@ -113,6 +123,11 @@ jobs:
             fi
             ut="$(echo ${{ inputs.ut }} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
             suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            if [ -n "${{ inputs.scenario }}" ];then
+              scenario="$(echo ${{ inputs.scenario }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            else
+              scenario='["accuracy","performance"]'
+            fi
             triton="${{ inputs.triton }}"
             python="${{ inputs.python }}"
           fi
@@ -121,6 +136,7 @@ jobs:
           echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
           echo "ut=${ut}" >> ${GITHUB_OUTPUT}
           echo "suite=${suite}" >> ${GITHUB_OUTPUT}
+          echo "scenario=${scenario}" >> ${GITHUB_OUTPUT}
           echo "triton=${triton}" >> ${GITHUB_OUTPUT}
           echo "python=${python}" >> ${GITHUB_OUTPUT}
 
@@ -134,56 +150,85 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: pvc_rolling
+      runner: build
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     secrets: inherit
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc_rolling
+      runner: ${{ (matrix.ut_name == 'xpu_distributed' || matrix.ut_name == 'upstream_distributed') && 'distributed' || 'bmg-test' }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
 
+  Linux-Nightly-Ondemand-UT-Auto-Issue:
+    name: linux-ut-auto-issue
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
+    # Not success(): the UT job fails whenever there are new failures, which is
+    # precisely when this needs to run.
+    # `contains(inputs.ut, 'p')` mirrors the UT job's own gate: with no UT job
+    # there are no artifacts to analyse.
+    if: >-
+      ${{ !cancelled()
+          && (github.event_name == 'schedule'
+              || (inputs.ut_auto_issue && contains(inputs.ut, 'p')))
+          && needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel' }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_ut_auto_issue.yml
+    with:
+      run_id: ${{ github.run_id }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      # Off unless the repo variable is set to 'true'. Kept as a variable rather
+      # than hardcoded so filing can be stopped without merging a PR. Never on
+      # for an on-demand run: its torch commit is arbitrary, so the baseline
+      # comparison behind `regression` and `new_case_failure` means nothing.
+      create_issues: ${{ github.event_name == 'schedule' && vars.UT_AUTO_ISSUE_ENABLED == 'true' }}
+
   Linux-Nightly-Ondemand-E2E-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     secrets: inherit
     strategy:
       fail-fast: false
       matrix:
         suite: ${{ fromJSON(needs.Conditions-Filter.outputs.suite) }}
+        scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: pvc_rolling
+      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       suite: ${{ matrix.suite }}
       dt: ${{ github.event_name == 'schedule' && '' || inputs.dt }}
       mode: ${{ github.event_name == 'schedule' && '' || inputs.mode }}
-      scenario: ${{ github.event_name == 'schedule' && '' || inputs.scenario }}
+      scenario: ${{ matrix.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
-    if: ${{ ! cancelled() && ! endsWith(needs.Linux-Nightly-Ondemand-E2E-Tests.result, 'ed') }}
+    if: ${{ !cancelled() && !endsWith(needs.Linux-Nightly-Ondemand-E2E-Tests.result, 'ed') }}
     permissions:
       actions: read
       contents: read
@@ -194,13 +239,14 @@ jobs:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
     name: linux-microbench
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    # if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
+    if: false # Temporarily disabled
     permissions:
       actions: read
       contents: read
       issues: write
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
     strategy:
       fail-fast: false
@@ -208,32 +254,32 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: pvc_rolling
+      runner: pvc
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
 
   Windows-Nightly-Ondemand-Build:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     name: windows-build
     needs: [Conditions-Filter]
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      build_runner: Windows_CI_Build
+      runner: windows-build
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
 
   Windows-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     name: windows-ut
     needs: [Conditions-Filter, Windows-Nightly-Ondemand-Build]
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut'
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      runner: Windows_CI
+      runner: windows-test
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}

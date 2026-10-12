@@ -7,6 +7,16 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 skip_dict = {
+    # xdist can't serialize nn.Module subclasses on Windows (#3793)
+    "nn/test_pruning_xpu.py": (
+        "test_pruning_rollback",
+        "test_remove_pruning",
+        "test_remove_pruning_exception",
+    ),
+    # xdist can't serialize builtin_function_or_method on Windows (#3797)
+    "test_autograd_xpu.py": (
+        "test_min_max_aminmax_median_backprops_to_all_values_xpu",
+    ),
     # SYCL default context is not supported on Windows
     "test_tensor_creation_ops_xpu.py": (
         "test_alias_from_dlpack_xpu_bfloat16",

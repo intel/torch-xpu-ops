@@ -24,7 +24,7 @@ struct LegendrePolynomialPFunctor {
       return scalar_t(0.0);
     }
 
-    if (std::abs(x) == scalar_t(1.0)) {
+    if (sycl::fabs(x) == scalar_t(1.0)) {
       if (x > scalar_t(0.0) || n % 2 == 0) {
         return scalar_t(1.0);
       }
@@ -44,7 +44,7 @@ struct LegendrePolynomialPFunctor {
     scalar_t q = x;
     scalar_t r;
 
-    for (int64_t k = 1; (k < n) && !std::isnan(q); k++) {
+    for (int64_t k = 1; (k < n) && !sycl::isnan(q); k++) {
       r = ((k + k + 1) * x * q - k * p) / (k + 1);
       p = q;
       q = r;

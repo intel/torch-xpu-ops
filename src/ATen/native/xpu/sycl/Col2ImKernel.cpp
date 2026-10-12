@@ -21,6 +21,7 @@
 
 #include <ATen/native/im2col_shape_check.h>
 #include <comm/Runtime.h>
+#include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/Col2ImKernel.h>
@@ -28,93 +29,63 @@
 namespace at::native::xpu {
 
 template <typename T>
-struct Col2imKernelFunctor {
-  void operator()(sycl::item<1> itemId) const {
-    auto in_ptr = in_data;
-    auto out_ptr = out_data;
-    auto id = itemId.get_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void col2im_ff_kernel(
+    const T* in_data,
+    const int64_t channels,
+    const int64_t height,
+    const int64_t width,
+    const int64_t output_height,
+    const int64_t output_width,
+    const int64_t kernel_h,
+    const int64_t kernel_w,
+    const int64_t pad_h,
+    const int64_t pad_w,
+    const int64_t stride_h,
+    const int64_t stride_w,
+    const int64_t dilation_h,
+    const int64_t dilation_w,
+    T* out_data) {
+  auto itemId = syclext::this_work_item::get_nd_item<1>();
+  auto in_ptr = in_data;
+  auto out_ptr = out_data;
+  auto id = itemId.get_global_id(0);
+  if (id >= channels * height * width) {
+    return;
+  }
 
-    T val = static_cast<T>(0);
-    const int64_t w_im = id % width + pad_w;
-    const int64_t h_im = (id / width) % height + pad_h;
-    const int64_t c_im = id / (width * height);
-    int64_t kernel_extent_w = (kernel_w - 1) * dilation_w + 1;
-    int64_t kernel_extent_h = (kernel_h - 1) * dilation_h + 1;
-    // compute the start and end of the output
-    const int64_t w_col_start =
-        (w_im < kernel_extent_w) ? 0 : (w_im - kernel_extent_w) / stride_w + 1;
-    const int64_t w_col_end = std::min(w_im / stride_w + 1, output_width);
-    const int64_t h_col_start =
-        (h_im < kernel_extent_h) ? 0 : (h_im - kernel_extent_h) / stride_h + 1;
-    const int64_t h_col_end = std::min(h_im / stride_h + 1, output_height);
+  T val = static_cast<T>(0);
+  const int64_t w_im = id % width + pad_w;
+  const int64_t h_im = (id / width) % height + pad_h;
+  const int64_t c_im = id / (width * height);
+  int64_t kernel_extent_w = (kernel_w - 1) * dilation_w + 1;
+  int64_t kernel_extent_h = (kernel_h - 1) * dilation_h + 1;
+  // compute the start and end of the output
+  const int64_t w_col_start =
+      (w_im < kernel_extent_w) ? 0 : (w_im - kernel_extent_w) / stride_w + 1;
+  const int64_t w_col_end = std::min(w_im / stride_w + 1, output_width);
+  const int64_t h_col_start =
+      (h_im < kernel_extent_h) ? 0 : (h_im - kernel_extent_h) / stride_h + 1;
+  const int64_t h_col_end = std::min(h_im / stride_h + 1, output_height);
 
-    for (int64_t h_col = h_col_start; h_col < h_col_end; h_col += 1) {
-      for (int64_t w_col = w_col_start; w_col < w_col_end; w_col += 1) {
-        int64_t h_k = (h_im - h_col * stride_h);
-        int64_t w_k = (w_im - w_col * stride_w);
-        if (h_k % dilation_h == 0 && w_k % dilation_w == 0) {
-          h_k /= dilation_h;
-          w_k /= dilation_w;
-          int64_t data_col_index =
-              (((c_im * kernel_h + h_k) * kernel_w + w_k) * output_height +
-               h_col) *
-                  output_width +
-              w_col;
-          val += in_ptr[data_col_index];
-        }
+  for (int64_t h_col = h_col_start; h_col < h_col_end; h_col += 1) {
+    for (int64_t w_col = w_col_start; w_col < w_col_end; w_col += 1) {
+      int64_t h_k = (h_im - h_col * stride_h);
+      int64_t w_k = (w_im - w_col * stride_w);
+      if (h_k % dilation_h == 0 && w_k % dilation_w == 0) {
+        h_k /= dilation_h;
+        w_k /= dilation_w;
+        int64_t data_col_index =
+            (((c_im * kernel_h + h_k) * kernel_w + w_k) * output_height +
+             h_col) *
+                output_width +
+            w_col;
+        val += in_ptr[data_col_index];
       }
     }
-    out_ptr[id] = static_cast<T>(val);
   }
-  Col2imKernelFunctor(
-      const T* in_data_,
-      const int64_t channels_,
-      const int64_t height_,
-      const int64_t width_,
-      const int64_t output_height_,
-      const int64_t output_width_,
-      const int64_t kernel_h_,
-      const int64_t kernel_w_,
-      const int64_t pad_h_,
-      const int64_t pad_w_,
-      const int64_t stride_h_,
-      const int64_t stride_w_,
-      const int64_t dilation_h_,
-      const int64_t dilation_w_,
-      T* out_data_)
-      : in_data(in_data_),
-        channels(channels_),
-        height(height_),
-        width(width_),
-        output_height(output_height_),
-        output_width(output_width_),
-        kernel_h(kernel_h_),
-        kernel_w(kernel_w_),
-        pad_h(pad_h_),
-        pad_w(pad_w_),
-        stride_h(stride_h_),
-        stride_w(stride_w_),
-        dilation_h(dilation_h_),
-        dilation_w(dilation_w_),
-        out_data(out_data_) {}
-
- private:
-  const T* in_data;
-  const int64_t channels;
-  const int64_t height;
-  const int64_t width;
-  const int64_t output_height;
-  const int64_t output_width;
-  const int64_t kernel_h;
-  const int64_t kernel_w;
-  const int64_t pad_h;
-  const int64_t pad_w;
-  const int64_t stride_h;
-  const int64_t stride_w;
-  const int64_t dilation_h;
-  const int64_t dilation_w;
-  T* out_data;
-};
+  out_ptr[id] = static_cast<T>(val);
+}
 
 template <typename T>
 static void col2im_kernel(
@@ -138,7 +109,16 @@ static void col2im_kernel(
 
   auto in_data = data_col;
   auto out_data = data_im;
-  auto kfn = Col2imKernelFunctor<T>(
+
+  int64_t local_range = syclMaxWorkGroupSize<col2im_ff_kernel<T>>();
+  int64_t global_range =
+      ((total_threads + local_range - 1) / local_range) * local_range;
+
+  sycl_kernel_submit<col2im_ff_kernel<T>>(
+      ::sycl::range<1>(global_range),
+      ::sycl::range<1>(local_range),
+      sycl_queue,
+      0,
       in_data,
       channels,
       height,
@@ -154,7 +134,6 @@ static void col2im_kernel(
       dilation_h,
       dilation_w,
       out_data);
-  sycl_kernel_submit(::sycl::range<1>(total_threads), sycl_queue, kfn);
 }
 
 void col2im_kernel(
@@ -228,7 +207,6 @@ void col2im_kernel(
   auto n_output_plane = n_input_plane / (kernel_width * kernel_height);
 
   output.resize_({batch_size, n_output_plane, output_height, output_width});
-  output.zero_();
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
       at::ScalarType::BFloat16,
