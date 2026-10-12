@@ -60,7 +60,7 @@ cleanup_temp_files() {
 process_accuracy() {
     local results_dir="$1"
 
-    if ! find "$results_dir" -name "*-accuracy.csv" -quit; then
+    if [[ -z "$(find "$results_dir" -name "*-accuracy.csv" -print -quit)" ]]; then
         return
     fi
 
@@ -196,7 +196,7 @@ process_suite() {
 get_models_for_suite() {
     local results_dir="$1" suite="$2"
     find "$results_dir" -name "*-${suite}-*-accuracy.csv" -exec cat {} \; | \
-        grep "^xpu," | cut -d, -f6 | sort | uniq
+        tr -d '\r' | grep "^xpu," | cut -d, -f6 | sort | uniq
 }
 
 process_model() {
@@ -227,33 +227,44 @@ process_model() {
 get_model_result() {
     local results_dir="$1" suite="$2" model="$3" dtype="$4" mode="$5"
     local tmp_file="/tmp/tmp-${suite}-${mode}-${dtype}.txt"
-    local color="black"
+    local color="" csv_file value=""
 
-    if [[ -f "$tmp_file" ]] && grep -q -w "$model" "$tmp_file"; then
+    if [[ -f "$tmp_file" ]]; then
         color=$(determine_color "$tmp_file" "$model")
     fi
 
-    local value
-    # shellcheck disable=SC2016  # $6 and $NF are awk fields, not shell variables
-    value=$(find "$results_dir" -name "*-${suite}-${dtype}-${mode}-*-accuracy.csv" -type f | \
-        head -1 | xargs awk -F, -v m="${model}" '$6==m{print $NF; exit}' 2>/dev/null | head -1)
-
-    if [[ "$color" != "black" ]]; then
-        echo "${color}${value}"
-    else
-        echo "${value}"
+    csv_file=$(find "$results_dir" -name "*-${suite}-${dtype}-${mode}-*-accuracy.csv" -type f | head -1)
+    if [[ -n "$csv_file" ]]; then
+        value=$(read_csv_field "$csv_file" "$model" accuracy)
     fi
+
+    echo "${color}${value}"
+}
+
+# Print the given header column of the first data row whose "name" equals the model.
+read_csv_field() {
+    local csv_file="$1" model="$2" column="$3"
+    awk -F, -v m="$model" -v col="$column" '
+        { sub(/\r$/, "") }
+        NR == 1 {
+            for (i = 1; i <= NF; i++) {
+                if ($i == col) { value_idx = i }
+                if ($i == "name") { name_idx = i }
+            }
+            next
+        }
+        name_idx && value_idx && $name_idx == m { print $value_idx; exit }
+    ' "$csv_file"
 }
 
 determine_color() {
     local tmp_file="$1" model="$2"
-    grep -w "$model" "$tmp_file" | awk '
+    grep -Fw -- "$model" "$tmp_file" | awk '
         /Real failed models:/ { print "🔴"; exit }
         /Expected failed models:|New models:/ { print "🔵"; exit }
         /Warning timeout models:/ { print "🟡"; exit }
         /Failed to passed models:/ { print "🟢"; exit }
-        { print "black" }
-    ' | head -1
+    '
 }
 
 generate_html_row() {
@@ -280,7 +291,7 @@ EOF
 process_performance() {
     local results_dir="$1" reference_dir="$2"
 
-    if ! find "$results_dir" -name "*-performance.csv" -quit; then
+    if [[ -z "$(find "$results_dir" -name "*-performance.csv" -print -quit)" ]]; then
         return
     fi
 
