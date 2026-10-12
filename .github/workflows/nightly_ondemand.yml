@@ -106,7 +106,7 @@ jobs:
               ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed","upstream_distributed","upstream_inductor","upstream_default"]'
             fi
             if [[ "${test_type}" == "wheel-weekly" ]];then
-              ut="${ut%]},\"xpu_distributed_weekly\"]"
+              ut="${ut/xpu_distributed/xpu_distributed_weekly}"
             fi
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             scenario='["accuracy","performance"]'
