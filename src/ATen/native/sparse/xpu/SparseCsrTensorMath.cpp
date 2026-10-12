@@ -11,6 +11,7 @@
 #include <ATen/ExpandUtils.h>
 #include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/TensorOperators.h>
+#include <ATen/native/BinaryOps.h>
 #include <ATen/native/LinearAlgebraUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/sparse/SparseCsrTensorMath.h>
@@ -422,6 +423,7 @@ static Tensor& add_out_dense_sparse_compressed_xpu(
 
   const auto common_dtype =
       promoteTypes(dense.scalar_type(), sparse.scalar_type());
+  alpha_check(common_dtype, alpha);
   TORCH_CHECK(
       canCast(common_dtype, out.scalar_type()),
       "Can't convert result type ",
@@ -430,9 +432,13 @@ static Tensor& add_out_dense_sparse_compressed_xpu(
       out.scalar_type(),
       " in add operation");
   const c10::OptionalDeviceGuard device_guard(dense.device());
+  const auto* sparse_impl = at::sparse_csr::get_sparse_csr_impl(sparse);
+  const bool sparse_alias = out.is_alias_of(sparse_impl->values()) ||
+      out.is_alias_of(sparse_impl->compressed_indices()) ||
+      out.is_alias_of(sparse_impl->plain_indices());
   resize_output(out, dense.sizes());
   Tensor buffer = out;
-  if (out.scalar_type() != common_dtype) {
+  if (out.scalar_type() != common_dtype || sparse_alias) {
     buffer = dense.to(common_dtype).contiguous();
     // Conversion may return the input when its dtype already matches.
     if (buffer.is_same(dense)) {

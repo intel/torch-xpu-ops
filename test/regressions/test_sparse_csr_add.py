@@ -143,6 +143,101 @@ class TestSparseCompressedMixedAdd(TestCase):
 
         self.assertEqual(dense.cpu(), torch.tensor([[5.0, 1.0, 3.0], [1.0, 7.0, 1.0]]))
 
+    @dtypes(torch.float32, torch.int64)
+    @parametrize("layout", [torch.sparse_csr, torch.sparse_csc])
+    @parametrize("reverse", [False, True])
+    @parametrize("inplace", [False, True])
+    def test_out_aliases_sparse_values(self, device, dtype, layout, reverse, inplace):
+        out = torch.tensor([[2, 3], [0, 0]], dtype=dtype, device=device)
+        sparse = torch.sparse_compressed_tensor(
+            torch.tensor([0, 1, 2], device=device),
+            torch.tensor([0, 1], device=device),
+            out.reshape(-1)[:2],
+            size=(2, 2),
+            layout=layout,
+            device=device,
+            check_invariants=True,
+        )
+        self.assertEqual(
+            out.untyped_storage().data_ptr(),
+            sparse.values().untyped_storage().data_ptr(),
+        )
+        dense = out if inplace else torch.ones_like(out)
+        expected = dense.cpu().clone() + 2 * torch.diag(
+            torch.tensor([2, 3], dtype=dtype)
+        )
+        inputs = (sparse, dense) if reverse else (dense, sparse)
+
+        returned = torch.add(*inputs, alpha=2, out=out)
+
+        self.assertIs(returned, out)
+        self.assertEqual(out.cpu(), expected)
+
+    @dtypes(torch.int64)
+    @parametrize("layout", [torch.sparse_csr, torch.sparse_csc])
+    @parametrize("reverse", [False, True])
+    @parametrize("component", ["compressed", "plain"])
+    def test_out_aliases_sparse_indices(
+        self, device, dtype, layout, reverse, component
+    ):
+        out = torch.tensor([[0, 1], [2, 0]], dtype=dtype, device=device)
+        compressed = torch.tensor([0, 1, 2], device=device)
+        plain = torch.tensor([0, 1], device=device)
+        if component == "compressed":
+            compressed = out.reshape(-1)[:3]
+        else:
+            plain = out.reshape(-1)[:2]
+        sparse = torch.sparse_compressed_tensor(
+            compressed,
+            plain,
+            torch.tensor([2, 3], dtype=dtype, device=device),
+            size=(2, 2),
+            layout=layout,
+            device=device,
+            check_invariants=True,
+        )
+        if component == "compressed":
+            aliased_indices = (
+                sparse.crow_indices()
+                if layout == torch.sparse_csr
+                else sparse.ccol_indices()
+            )
+        else:
+            aliased_indices = (
+                sparse.col_indices()
+                if layout == torch.sparse_csr
+                else sparse.row_indices()
+            )
+        self.assertEqual(
+            out.untyped_storage().data_ptr(),
+            aliased_indices.untyped_storage().data_ptr(),
+        )
+        dense = torch.ones_like(out)
+        inputs = (sparse, dense) if reverse else (dense, sparse)
+
+        torch.add(*inputs, alpha=2, out=out)
+
+        self.assertEqual(out.cpu(), torch.tensor([[5, 1], [1, 7]], dtype=dtype))
+
+    @dtypes(torch.int32, torch.float32)
+    @parametrize("layout", [torch.sparse_csr, torch.sparse_csc])
+    @parametrize("reverse", [False, True])
+    @parametrize("empty", [False, True])
+    def test_invalid_alpha(self, device, dtype, layout, reverse, empty):
+        dense = torch.ones((2, 2), dtype=dtype, device=device)
+        sparse_dense = torch.zeros_like(dense) if empty else dense
+        sparse = sparse_dense.to_sparse(layout=layout)
+        inputs = (sparse, dense) if reverse else (dense, sparse)
+        invalid_alphas = [(True, "Boolean alpha"), (1j, "integral input|non-complex")]
+        if dtype == torch.int32:
+            invalid_alphas.append((0.5, "integral input"))
+        for alpha, error in invalid_alphas:
+            out = torch.full((1,), 17, dtype=dtype, device=device)
+            original = out.clone()
+            with self.assertRaisesRegex(RuntimeError, error):
+                torch.add(*inputs, alpha=alpha, out=out)
+            self.assertEqual(out, original)
+
 
 instantiate_device_type_tests(
     TestSparseCompressedMixedAdd, globals(), only_for="xpu", allow_xpu=True
