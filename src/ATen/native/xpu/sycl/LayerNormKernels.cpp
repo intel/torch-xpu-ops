@@ -392,7 +392,7 @@ WelfordDataLN WelfordCombine(
   }
 }
 
-template <typename T, typename T_ACC, bool rms_norm>
+template <typename T, typename T_ACC, bool rms_norm, int num_sg>
 WelfordDataLN compute_stats(
     const T* RESTRICT X,
     const int N,
@@ -425,14 +425,17 @@ WelfordDataLN compute_stats(
     wd = WelfordCombine<rms_norm>(wd, wdB);
   }
 
-  const int num_sg = item_id.get_local_range(0);
-  const int sg_id = item_id.get_local_id(0);
-  const int lane_id = item_id.get_local_id(1);
+  [[maybe_unused]] const int sg_id = item_id.get_local_id(0);
+  [[maybe_unused]] const int lane_id = item_id.get_local_id(1);
   // lane 0 of each subgroup holds that subgroup's reduced value
-  // inter-subgroup reductions
-  if (num_sg == SIMD) {
-    // fast path: subgroup 0 reduces all subgroup partials via shuffles
-
+  // inter-subgroup reduction
+  if constexpr (num_sg == 1) {
+    return WelfordDataLN{
+        sycl::select_from_group(sg, wd.mean, 0),
+        sycl::select_from_group(sg, wd.sigma2, 0) / float(N),
+        0.f};
+  } else {
+    // subgroup 0 reduces all num_sg partials via shuffles
     if (lane_id == 0) {
       buf[sg_id] = wd.mean;
       buf[sg_id + num_sg] = wd.sigma2;
@@ -441,11 +444,15 @@ WelfordDataLN compute_stats(
     sycl::group_barrier(item_id.get_group());
 
     if (sg_id == 0) {
-      WelfordDataLN w{
-          static_cast<float>(buf[lane_id]),
-          static_cast<float>(buf[lane_id + num_sg]),
-          static_cast<float>(buf[lane_id + 2 * num_sg])};
-      for (int offset = (SIMD >> 1); offset > 0; offset >>= 1) {
+      // lanes past num_sg stay inert (count == 0) in WelfordCombine
+      WelfordDataLN w = (lane_id < num_sg)
+          ? WelfordDataLN{
+                static_cast<float>(buf[lane_id]),
+                static_cast<float>(buf[lane_id + num_sg]),
+                static_cast<float>(buf[lane_id + 2 * num_sg])}
+          : WelfordDataLN{0.f, 0.f, 0.f};
+#pragma unroll
+      for (int offset = num_sg / 2; offset > 0; offset >>= 1) {
         WelfordDataLN other{
             sycl::shift_group_left(sg, w.mean, offset),
             sycl::shift_group_left(sg, w.sigma2, offset),
@@ -462,47 +469,10 @@ WelfordDataLN compute_stats(
     sycl::group_barrier(item_id.get_group());
     return WelfordDataLN{
         static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
-  } else if (num_sg > 1) {
-    // Tree reduce via SLM
-    auto addr_offset = num_sg;
-    for (int offset = addr_offset / 2; offset > 0; offset /= 2) {
-      // upper half of subgroups write to shared
-      if (lane_id == 0 && sg_id >= offset && sg_id < 2 * offset) {
-        const int wrt_y = sg_id - offset;
-        buf[2 * wrt_y] = wd.mean;
-        buf[2 * wrt_y + 1] = wd.sigma2;
-        buf[wrt_y + addr_offset] = wd.count;
-      }
-      sycl::group_barrier(item_id.get_group());
-
-      // lower half merges
-      if (lane_id == 0 && sg_id < offset) {
-        const int rd_y = sg_id;
-        WelfordDataLN wdB{
-            static_cast<float>(buf[2 * rd_y]),
-            static_cast<float>(buf[2 * rd_y + 1]),
-            static_cast<float>(buf[rd_y + addr_offset])};
-        wd = WelfordCombine<rms_norm>(wd, wdB);
-      }
-      sycl::group_barrier(item_id.get_group());
-    }
-
-    if (lane_id == 0 && sg_id == 0) {
-      buf[0] = wd.mean;
-      buf[1] = wd.sigma2 / float(N);
-    }
-    sycl::group_barrier(item_id.get_group());
-    return WelfordDataLN{
-        static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
-  } else {
-    return WelfordDataLN{
-        sycl::select_from_group(sg, wd.mean, 0),
-        sycl::select_from_group(sg, wd.sigma2, 0) / float(N),
-        0.f};
   }
 }
 
-template <typename T, typename T_ACC, bool rms_norm>
+template <typename T, typename T_ACC, bool rms_norm, int num_sg>
 struct VectorizedLayerNormKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
@@ -510,7 +480,7 @@ struct VectorizedLayerNormKernelFunctor
     auto i1 = item_id.get_group(1);
     const T* block_row = X_ + i1 * N_;
     WelfordDataLN wd =
-        compute_stats<T, T_ACC, rms_norm>(block_row, N_, buf_, item_id);
+        compute_stats<T, T_ACC, rms_norm, num_sg>(block_row, N_, buf_, item_id);
 
     using vec_t = aligned_vector<T, vec_size>;
     const vec_t* X_vec = reinterpret_cast<const vec_t*>(block_row);
@@ -592,9 +562,8 @@ struct VectorizedLayerNormKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    const int64_t num_sg = wg_size_ / SIMD;
-    const size_t buf_size = (num_sg == SIMD) ? num_sg * 3 : num_sg * 2;
-    // Only the fast path of tree-reduce fills three num_sg wide SLM
+    // subgroup-0 reduction stores mean/sigma2/count in three num_sg regions
+    constexpr size_t buf_size = num_sg == 1 ? 2 : num_sg * 3;
     buf_ = sycl_local_acc_t<T_ACC>(buf_size, cgh);
   }
 
@@ -606,8 +575,7 @@ struct VectorizedLayerNormKernelFunctor
       const T* beta,
       T_ACC* mean,
       T_ACC* rstd,
-      T* Y,
-      int64_t wg_size)
+      T* Y)
       : N_(N),
         eps_(eps),
         X_(X),
@@ -615,8 +583,7 @@ struct VectorizedLayerNormKernelFunctor
         beta_(beta),
         mean_(mean),
         rstd_(rstd),
-        Y_(Y),
-        wg_size_(wg_size) {}
+        Y_(Y) {}
 
  private:
   const int N_;
@@ -627,7 +594,6 @@ struct VectorizedLayerNormKernelFunctor
   T_ACC* mean_;
   T_ACC* rstd_;
   T* Y_;
-  int64_t wg_size_;
   sycl_local_acc_t<T_ACC> buf_;
 };
 
@@ -661,6 +627,27 @@ int64_t layer_norm_wg_size_select(
   return wg_size;
 }
 
+template <typename T, typename T_ACC, bool rms_norm, int num_sg>
+void launch_vectorized_layer_norm_kernel_impl(
+    int N,
+    int64_t M,
+    T_ACC eps,
+    const T* X_data,
+    const T* gamma_data,
+    const T* beta_data,
+    T* Y_data,
+    T_ACC* mean_data,
+    T_ACC* rstd_data) {
+  using KernelClass =
+      VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm, num_sg>;
+  KernelClass kfn(
+      N, eps, X_data, gamma_data, beta_data, mean_data, rstd_data, Y_data);
+  sycl::range<2> local_range{size_t(num_sg), SIMD};
+  sycl::range<2> global_range(size_t(num_sg), M * SIMD);
+  auto queue = getCurrentSYCLQueue();
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
+}
+
 template <typename T, typename T_ACC, bool rms_norm>
 void launch_vectorized_layer_norm_kernel(
     int N,
@@ -672,23 +659,47 @@ void launch_vectorized_layer_norm_kernel(
     T* Y_data,
     T_ACC* mean_data,
     T_ACC* rstd_data) {
-  using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
+  // Dispatch num_sg as a compile-time constant so the subgroup-0 reduction
+  // unrolls and the branch selection is resolved at compile time. All
+  // instantiations use negligible SLM, so query one for the max work-group
+  // size and derive num_sg = wg_size / SIMD from it.
+  using MaxKernelClass =
+      VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm, SIMD>;
   auto wg_size = layer_norm_wg_size_select(
-      at::xpu::getKernelMaxWorkGroupSize<KernelClass>(), M, N / vec_size);
-  KernelClass kfn(
-      N,
-      eps,
-      X_data,
-      gamma_data,
-      beta_data,
-      mean_data,
-      rstd_data,
-      Y_data,
-      wg_size);
-  sycl::range<2> local_range{size_t(wg_size / SIMD), SIMD};
-  sycl::range<2> global_range(size_t(wg_size / SIMD), M * SIMD);
-  auto queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(global_range, local_range, queue, kfn);
+      at::xpu::getKernelMaxWorkGroupSize<MaxKernelClass>(), M, N / vec_size);
+  // Round the subgroup count down to a power of two (capped at SIMD). Rounding
+  // up could push the work-group size past the queried maximum, and sub-group
+  // 0 holds one partial per lane so num_sg must not exceed SIMD.
+  const int64_t avail_sg = wg_size / SIMD;
+  int num_sg = 1;
+  while (num_sg * 2 <= avail_sg && num_sg * 2 <= SIMD) {
+    num_sg *= 2;
+  }
+#define LAUNCH_NUM_SG(NSG)                                            \
+  launch_vectorized_layer_norm_kernel_impl<T, T_ACC, rms_norm, NSG>( \
+      N, M, eps, X_data, gamma_data, beta_data, Y_data, mean_data,   \
+      rstd_data)
+  switch (num_sg) {
+    case 32:
+      LAUNCH_NUM_SG(32);
+      break;
+    case 16:
+      LAUNCH_NUM_SG(16);
+      break;
+    case 8:
+      LAUNCH_NUM_SG(8);
+      break;
+    case 4:
+      LAUNCH_NUM_SG(4);
+      break;
+    case 2:
+      LAUNCH_NUM_SG(2);
+      break;
+    default:
+      LAUNCH_NUM_SG(1);
+      break;
+  }
+#undef LAUNCH_NUM_SG
 }
 
 template <typename T, typename T_ACC, bool rms_norm = false>
