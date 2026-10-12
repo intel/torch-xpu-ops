@@ -19,6 +19,7 @@
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
+#include <c10/core/DeviceGuard.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -397,6 +398,56 @@ Tensor& bmm_out_sparse_csr_xpu(
       result, mat1, mat2, beta, alpha, result);
 }
 
+static Tensor& add_out_dense_sparse_compressed_xpu(
+    Tensor& out,
+    const Tensor& dense,
+    const Tensor& sparse,
+    const Scalar& alpha) {
+  TORCH_CHECK(
+      sparse.layout() == kSparseCsr || sparse.layout() == kSparseCsc,
+      "add: expected a sparse CSR or CSC input, but got ",
+      sparse.layout());
+  TORCH_CHECK(
+      sparse.dense_dim() == 0,
+      "add: hybrid sparse compressed inputs are not supported");
+  TORCH_CHECK(out.is_contiguous(), "out argument must be contiguous");
+  TORCH_CHECK(
+      dense.is_xpu() && sparse.device() == dense.device() &&
+          out.device() == dense.device(),
+      "add: expected all tensors to be on the same XPU device");
+  TORCH_CHECK(
+      dense.sizes().equals(sparse.sizes()),
+      "add: expected 'self' and 'other' to have the same size; "
+      "dense-sparse addition does not currently support broadcasting");
+
+  const auto common_dtype =
+      promoteTypes(dense.scalar_type(), sparse.scalar_type());
+  TORCH_CHECK(
+      canCast(common_dtype, out.scalar_type()),
+      "Can't convert result type ",
+      common_dtype,
+      " to output ",
+      out.scalar_type(),
+      " in add operation");
+  const c10::OptionalDeviceGuard device_guard(dense.device());
+  resize_output(out, dense.sizes());
+  Tensor buffer = out;
+  if (out.scalar_type() != common_dtype) {
+    buffer = dense.to(common_dtype).contiguous();
+    // Conversion may return the input when its dtype already matches.
+    if (buffer.is_same(dense)) {
+      buffer = buffer.clone();
+    }
+  } else if (!out.is_same(dense)) {
+    buffer.copy_(dense);
+  }
+  xpu::add_out_dense_sparse_compressed_kernel(buffer, sparse, alpha);
+  if (!buffer.is_same(out)) {
+    out.copy_(buffer);
+  }
+  return out;
+}
+
 Tensor& add_out_sparse_compressed_xpu(
     const Tensor& self,
     const SparseCsrTensor& other,
@@ -409,11 +460,9 @@ Tensor& add_out_sparse_compressed_xpu(
         out.layout());
   }
   if (self.layout() == kStrided) {
-    at::add_out(out, self, other.to_dense(), alpha);
-    return out;
+    return add_out_dense_sparse_compressed_xpu(out, self, other, alpha);
   } else if (other.layout() == kStrided) {
-    at::add_out(out, other, self.to_dense(), alpha);
-    return out;
+    return add_out_dense_sparse_compressed_xpu(out, other, self, alpha);
   } else {
     TORCH_CHECK(
         self.sizes().equals(other.sizes()),
