@@ -31,9 +31,11 @@ import unittest
 
 import torch
 import torch.nn.functional as F
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
 from torch.testing._internal.common_utils import run_tests, TestCase
-
-DTYPES = (torch.float32, torch.float16, torch.bfloat16)
 
 # XPU reduces the row norm in a float accumulator across a sub-group, so the
 # rounding differs from the CPU reference for the narrow types.
@@ -46,53 +48,53 @@ TOLERANCES = {
 
 @unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
 class TestEmbeddingRenormRowWidth(TestCase):
-    def test_embedding_max_norm_zero_embedding_dim(self):
-        for dtype in DTYPES:
-            with self.subTest(dtype=dtype):
-                weight = torch.empty((20, 0), dtype=dtype, device="xpu")
-                indices = torch.tensor([0], dtype=torch.int64, device="xpu")
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    def test_embedding_max_norm_zero_embedding_dim(self, device, dtype):
+        weight = torch.empty((20, 0), dtype=dtype, device=device)
+        indices = torch.tensor([0], dtype=torch.int64, device=device)
 
-                out = F.embedding(indices, weight, max_norm=1.0, norm_type=2.0)
-                torch.xpu.synchronize()
+        out = F.embedding(indices, weight, max_norm=1.0, norm_type=2.0)
+        torch.xpu.synchronize()
 
-                self.assertEqual(out.shape, (1, 0))
+        self.assertEqual(out.shape, (1, 0))
 
-    def test_embedding_renorm_non_contiguous_weight(self):
-        for dtype in DTYPES:
-            with self.subTest(dtype=dtype):
-                torch.manual_seed(0)
-                base = (torch.randn(20, 10, device="xpu") * 10).to(dtype)
-                base_cpu = base.cpu().clone()
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    def test_embedding_renorm_non_contiguous_weight(self, device, dtype):
+        torch.manual_seed(0)
+        base = (torch.randn(20, 10, device=device) * 10).to(dtype)
+        base_cpu = base.cpu().clone()
 
-                weight = base[:, :5]
-                weight_cpu = base_cpu[:, :5]
-                self.assertNotEqual(weight.stride(0), weight.size(1))
+        weight = base[:, :5]
+        weight_cpu = base_cpu[:, :5]
+        self.assertNotEqual(weight.stride(0), weight.size(1))
 
-                indices = torch.tensor([2, 5], dtype=torch.int64, device="xpu")
-                torch.embedding_renorm_(weight, indices, 1.0, 2.0)
-                torch.xpu.synchronize()
-                torch.embedding_renorm_(weight_cpu, indices.cpu(), 1.0, 2.0)
+        indices = torch.tensor([2, 5], dtype=torch.int64, device=device)
+        torch.embedding_renorm_(weight, indices, 1.0, 2.0)
+        torch.xpu.synchronize()
+        torch.embedding_renorm_(weight_cpu, indices.cpu(), 1.0, 2.0)
 
-                self.assertEqual(weight.cpu(), weight_cpu, **TOLERANCES[dtype])
-                # The columns outside the slice must not be touched.
-                self.assertEqual(base.cpu(), base_cpu, **TOLERANCES[dtype])
+        self.assertEqual(weight.cpu(), weight_cpu, **TOLERANCES[dtype])
+        # The columns outside the slice must not be touched.
+        self.assertEqual(base.cpu(), base_cpu, **TOLERANCES[dtype])
 
-    def test_embedding_max_norm_contiguous_matches_cpu(self):
-        for dtype in DTYPES:
-            with self.subTest(dtype=dtype):
-                torch.manual_seed(0)
-                weight = (torch.randn(20, 8, device="xpu") * 10).to(dtype)
-                weight_cpu = weight.cpu().clone()
-                indices = torch.tensor([1, 3, 3, 7], dtype=torch.int64, device="xpu")
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    def test_embedding_max_norm_contiguous_matches_cpu(self, device, dtype):
+        torch.manual_seed(0)
+        weight = (torch.randn(20, 8, device=device) * 10).to(dtype)
+        weight_cpu = weight.cpu().clone()
+        indices = torch.tensor([1, 3, 3, 7], dtype=torch.int64, device=device)
 
-                out = F.embedding(indices, weight, max_norm=1.0, norm_type=2.0)
-                torch.xpu.synchronize()
-                out_cpu = F.embedding(
-                    indices.cpu(), weight_cpu, max_norm=1.0, norm_type=2.0
-                )
+        out = F.embedding(indices, weight, max_norm=1.0, norm_type=2.0)
+        torch.xpu.synchronize()
+        out_cpu = F.embedding(indices.cpu(), weight_cpu, max_norm=1.0, norm_type=2.0)
 
-                self.assertEqual(weight.cpu(), weight_cpu, **TOLERANCES[dtype])
-                self.assertEqual(out.cpu(), out_cpu, **TOLERANCES[dtype])
+        self.assertEqual(weight.cpu(), weight_cpu, **TOLERANCES[dtype])
+        self.assertEqual(out.cpu(), out_cpu, **TOLERANCES[dtype])
+
+
+instantiate_device_type_tests(
+    TestEmbeddingRenormRowWidth, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":
