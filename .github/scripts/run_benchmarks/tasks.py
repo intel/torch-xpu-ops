@@ -44,8 +44,35 @@ def get_torch_version() -> str:
         return "0.0.0"
 
 
+@lru_cache(maxsize=None)
+def get_skipped_models(suite: str) -> frozenset[str]:
+    """Return the models that ``benchmarks/dynamo/<suite>.yaml`` skips on XPU."""
+    yaml_file = Path(f"benchmarks/dynamo/{suite}.yaml")
+    if not yaml_file.exists():
+        return frozenset()
+
+    import yaml
+
+    with yaml_file.open(encoding="utf-8") as f:
+        skip = (yaml.safe_load(f) or {}).get("skip") or {}
+
+    def flatten(items):
+        # Anchors such as *DETECTRON2_MODELS expand to a nested list, "~" to None.
+        for item in items or []:
+            if isinstance(item, list):
+                yield from flatten(item)
+            elif item is not None:
+                yield str(item)
+
+    return frozenset(flatten(skip.get("all"))) | frozenset(flatten((skip.get("device") or {}).get("xpu")))
+
+
+@lru_cache(maxsize=None)
 def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str | None = None) -> list[str]:
-    """Retrieve model names from a CSV file, string list, or default text file."""
+    """Retrieve model names from a CSV file, string list, or default text file.
+
+    Cached: callers must treat the returned list as read-only.
+    """
     if model_only is not None:
         if os.path.isfile(model_only):
             import pandas as pd
@@ -59,24 +86,28 @@ def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str 
             if col_header not in df.columns:
                 available = ", ".join(df.columns)
                 raise ValueError(f"Column '{col_header}' not found in {model_only}. Available: {available}")
-            return df[col_header].dropna().astype(str).str.strip().tolist()
+            models = df[col_header].dropna().astype(str).str.strip().tolist()
+        else:
+            models = parse_string_list(model_only)
+    else:
+        base = suite.replace('_models', '')
+        list_file = Path(f"benchmarks/dynamo/{base}_models_list.txt")
+        if not list_file.exists():
+            raise FileNotFoundError(f"Model list file not found: {list_file}")
 
-        return parse_string_list(model_only)
+        with list_file.open() as f:
+            models = [
+                parts[0].strip()
+                for raw in f
+                if (line := raw.split('#', 1)[0].strip())
+                and (parts := parse_string_list(line))
+                and parts[0].strip()
+            ]
 
-    base = suite.replace('_models', '')
-    list_file = Path(f"benchmarks/dynamo/{base}_models_list.txt")
-    if not list_file.exists():
-        raise FileNotFoundError(f"Model list file not found: {list_file}")
-
-    with list_file.open() as f:
-        models = [
-            parts[0].strip()
-            for raw in f
-            if (line := raw.split('#', 1)[0].strip())
-            and (parts := parse_string_list(line))
-            and parts[0].strip()
-        ]
-    return models
+    skipped = get_skipped_models(suite)
+    if dropped := sorted(set(models) & skipped):
+        log(f"Skipping {suite} models disabled in {suite}.yaml: {', '.join(dropped)}", level="WARN")
+    return [model for model in models if model not in skipped]
 
 
 def _is_numeric(s: str) -> bool:
