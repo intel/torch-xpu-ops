@@ -27,6 +27,7 @@ from alignment_triage import (
     create_issue,
     fail,
     filed_body,
+    find_published_issue,
     find_run_note,
     find_unit_comments,
     is_open_issue,
@@ -239,6 +240,7 @@ def main() -> int:
     existing = list_comments(args.repo, args.triage_issue)
     existing_run_note = find_run_note(existing, run_id) if mode == "schedule" else None
     filed: list[tuple[str, str]] = []
+    reused_units: set[str] = set()
     publication_failures: list[str] = []
     for payload in payloads:
         unit_id = payload["unit_id"]
@@ -258,13 +260,30 @@ def main() -> int:
                 None,
             )
             filed_issue_url = None
+            previous_issue_url = None
             if filed_comment is not None:
                 filed_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
                 previous_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
                 if is_open_issue(args.repo, filed_number):
                     filed_issue_url = previous_issue_url
-                else:
-                    draft += f"\nPreviously filed as {previous_issue_url} (closed).\n"
+            if verdict == "triage" and filed_issue_url is None:
+                published_issue = find_published_issue(args.repo, unit_id)
+                if published_issue is not None:
+                    previous_issue_url = str(published_issue["html_url"])
+                    if published_issue.get("state") == "open":
+                        filed_issue_url = previous_issue_url
+            if filed_issue_url is not None and verdict == "triage":
+                if comments and not FILED_MARKER_RE.search(comments[-1]["body"]):
+                    update_comment(
+                        args.repo,
+                        int(comments[-1]["id"]),
+                        filed_body(comments[-1]["body"], unit_id, filed_issue_url),
+                    )
+                reused_units.add(unit_id)
+                print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
+                continue
+            if previous_issue_url is not None and filed_issue_url is None:
+                draft += f"\nPreviously filed as {previous_issue_url} (closed).\n"
             if filed_issue_url is not None and int(filed_comment["id"]) == int(comments[-1]["id"]):
                 if verdict == "auto-file":
                     filed.append((unit_id, filed_issue_url))
@@ -307,7 +326,10 @@ def main() -> int:
             )
 
     headline, lines, should_notify = run_note(
-        decision, payloads, filed, publication_failures
+        decision,
+        [payload for payload in payloads if payload["unit_id"] not in reused_units],
+        filed,
+        publication_failures,
     )
     summary = render_run_note(
         run_id,
