@@ -10,6 +10,38 @@
 
 #include <xccl/xccl.h>
 
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
+
+namespace {
+
+// WA. revert it once DLE 2026.2 releases.
+//
+// libccl.so.2 dlopen()s its legacy plugin libccl_legacy.so, which lists
+// libccl.so.1 in DT_NEEDED but ships without RPATH/RUNPATH. A dlopen'd object
+// does not inherit the search path of whoever pulled it in, so in the flat
+// PyPI/venv layout libccl.so.1 is looked up only in /etc/ld.so.cache, /lib and
+// /usr/lib; it is not found and oneCCL fails with "Could not load any plugin",
+// taking down every process group creation. Loading it here resolves it
+// through this library's RPATH -- the same one that already locates
+// libccl.so.2 -- and leaves it in the global scope for the plugin to bind
+// against.
+//
+// A failure here is expected on a full oneAPI/DLE layout, where the plugin
+// resolves its own dependencies, so it is deliberately not reported.
+//
+// oneCCL 2022.2 adds $ORIGIN search paths to its wheels; drop this once that
+// is the minimum supported version.
+[[maybe_unused]] const bool preloaded_oneccl_legacy_dep = []() {
+#ifndef _WIN32
+  (void)dlopen("libccl.so.1", RTLD_NOW | RTLD_GLOBAL);
+#endif
+  return true;
+}();
+
+} // namespace
+
 namespace c10d {
 namespace xccl {
 
