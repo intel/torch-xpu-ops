@@ -225,8 +225,8 @@ def md_details(summary: str, body: list[str]) -> list[str]:
     return ["<details>", f"<summary>{summary}</summary>", "", *body, "", "</details>"]
 
 
-def plural(count: int, noun: str) -> str:
-    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
+def plural(count: int, noun: str, many: str = "") -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {many or noun + 's'}"
 
 
 def case_message(result: ET.Element) -> str:
@@ -420,7 +420,10 @@ class Report:
                 for category, counts in sorted(totals.items())]
         grand = ["**Total**"] + [str(sum(c[key] for c in totals.values()))
                                  for key in COUNT_KEYS]
-        lines = md_table(CATEGORY_HEADER, [*rows, grand])
+        lines = md_table(CATEGORY_HEADER, [grand])
+        if rows:
+            lines += ["", *md_details(plural(len(rows), "category", "categories"),
+                                      md_table(CATEGORY_HEADER, rows))]
         if self.summaries:
             lines += ["", *md_details(plural(len(self.summaries), "report"),
                                       md_table(SUMMARY_HEADER,

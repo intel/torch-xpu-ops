@@ -148,7 +148,7 @@ def test_failures_are_all_shown_without_a_comparison(tmp_path):
     assert "test_known" in markdown
 
 
-def test_summary_shows_categories_and_folds_the_reports(tmp_path):
+def test_summary_shows_the_total_and_folds_the_rest(tmp_path):
     write_xml(tmp_path / "op_regression.xml", [PASS])
     write_xml(tmp_path / "op_extended.xml", [PASS, FAIL], failures=1)
     report = ut_results.build_report(
@@ -159,10 +159,12 @@ def test_summary_shows_categories_and_folds_the_reports(tmp_path):
 
     assert shown.splitlines()[0] == \
         "| Category | Test cases | Passed | Skipped | Failures | Errors |"
-    assert "| op_extended | 2 | 1 | 0 | 1 | 0 |" in shown
-    assert "| op_regression | 1 | 1 | 0 | 0 | 0 |" in shown
     assert "| **Total** | 3 | 2 | 0 | 1 | 0 |" in shown
-    # The per-report rows are still there, one fold away.
+    assert "op_extended" not in shown
+    # The category and per-report rows are still there, one fold away.
+    assert "<summary>2 categories</summary>" in folded
+    assert "| op_extended | 2 | 1 | 0 | 1 | 0 |" in folded
+    assert "| op_regression | 1 | 1 | 0 | 0 | 0 |" in folded
     assert "<summary>2 reports</summary>" in folded
     assert "| op_extended | op_extended | 2 | 1 | 0 | 1 | 0 | XML |" in folded
 
