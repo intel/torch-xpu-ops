@@ -53,7 +53,7 @@ jobs:
         id: ut-check
         continue-on-error: true
         run: |
-          python3 ./.github/scripts/ut_check.py summary \
+          python3 ./.github/scripts/ut_results.py summary \
             --artifacts "${ARTIFACTS_DIR}" \
             --snapshot "${SNAPSHOT_DIR}" \
             --work "${WORK_DIR}" \
@@ -62,7 +62,7 @@ jobs:
         id: new-failures
         if: ${{ ! cancelled() }}
         run: |
-          cat "${WORK_DIR}/panel.md" >> "${GITHUB_STEP_SUMMARY}" || true
+          cat "${WORK_DIR}/ut_summary.md" >> "${GITHUB_STEP_SUMMARY}" || true
           if [ -s "${WORK_DIR}/all_new_failures.txt" ]; then
             echo "has_new_failures=true" >> "${GITHUB_OUTPUT}"
           else
@@ -77,10 +77,10 @@ jobs:
           # Everything the run's UT results are read from. The XML reports they
           # were built from stay in the Inductor-XPU-UT-Data artifacts.
           path: |
-            ${{ github.workspace }}/ut_summary/panel.md
+            ${{ github.workspace }}/ut_summary/ut_summary.md
             ${{ github.workspace }}/ut_summary/all_new_failures.txt
             ${{ github.workspace }}/ut_summary/all_new_failures.csv
-            ${{ github.workspace }}/ut_summary/*/check_ut.md
+            ${{ github.workspace }}/ut_summary/*/results.md
             ${{ github.workspace }}/ut_summary/*/run_health.jsonl
             ${{ github.workspace }}/ut_summary/*/new_failure_list.txt
             ${{ github.workspace }}/ut_summary/*/new_ut_failure_list.csv

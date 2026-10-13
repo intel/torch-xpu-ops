@@ -1,4 +1,4 @@
-"""Unit tests for ut_check.py.
+"""Unit tests for ut_results.py.
 
 Covers what the CI depends on and cannot see until a nightly breaks: the shape
 of the case logs, the known-failure comparison and the pass/fail verdict.
@@ -12,10 +12,10 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parent
-spec = importlib.util.spec_from_file_location("ut_check", SCRIPTS / "ut_check.py")
-ut_check = importlib.util.module_from_spec(spec)
-sys.modules["ut_check"] = ut_check
-spec.loader.exec_module(ut_check)
+spec = importlib.util.spec_from_file_location("ut_results", SCRIPTS / "ut_results.py")
+ut_results = importlib.util.module_from_spec(spec)
+sys.modules["ut_results"] = ut_results
+spec.loader.exec_module(ut_results)
 
 
 def write_xml(path: Path, cases, tests=None, failures=0, errors=0, skipped=0):
@@ -43,7 +43,7 @@ FAIL = ('<testcase classname="TestFoo" name="test_bad">'
 def test_report_writes_one_log_per_status(tmp_path):
     write_xml(tmp_path / "op_regression.xml", [PASS, SKIP, FAIL], failures=1, skipped=1)
 
-    report = ut_check.build_report("op_regression", [tmp_path / "op_regression.xml"], tmp_path)
+    report = ut_results.build_report("op_regression", [tmp_path / "op_regression.xml"], tmp_path)
 
     assert (tmp_path / "passed_op_regression.log").read_text() == \
         "op_regression,TestFoo,test_ok\n"
@@ -64,7 +64,7 @@ def test_report_writes_one_log_per_status(tmp_path):
 def test_report_failure_csv_is_headerless_and_carries_the_message(tmp_path):
     write_xml(tmp_path / "op_ut_with_skip.xml", [FAIL], failures=1)
 
-    ut_check.build_report("op_ut", [tmp_path / "op_ut_with_skip.xml"], tmp_path)
+    ut_results.build_report("op_ut", [tmp_path / "op_ut_with_skip.xml"], tmp_path)
 
     rows = (tmp_path / "ut_failure_list.csv").read_text().splitlines()
     assert rows == ["| op_ut | TestFoo | test_bad | failed | RuntimeError: boom | XML |"]
@@ -73,7 +73,7 @@ def test_report_failure_csv_is_headerless_and_carries_the_message(tmp_path):
 def test_report_skips_the_failure_csv_for_skipped_ut(tmp_path):
     write_xml(tmp_path / "op_ut_with_skip.xml", [FAIL], failures=1)
 
-    ut_check.build_report("skipped_ut", [tmp_path / "op_ut_with_skip.xml"], tmp_path)
+    ut_results.build_report("skipped_ut", [tmp_path / "op_ut_with_skip.xml"], tmp_path)
 
     assert not (tmp_path / "ut_failure_list.csv").exists()
 
@@ -81,8 +81,8 @@ def test_report_skips_the_failure_csv_for_skipped_ut(tmp_path):
 def test_report_category_totals_log_round_trips_through_the_checker(tmp_path):
     write_xml(tmp_path / "op_regression.xml", [PASS] * 353, tests=353)
 
-    ut_check.build_report("op_regression", [tmp_path / "op_regression.xml"], tmp_path)
-    checker = ut_check.Checker(work_dir=tmp_path, health_file=tmp_path / "health.jsonl")
+    ut_results.build_report("op_regression", [tmp_path / "op_regression.xml"], tmp_path)
+    checker = ut_results.Checker(work_dir=tmp_path, health_file=tmp_path / "health.jsonl")
 
     assert checker.check_case_counts("op_regression") is True
     record = json.loads((tmp_path / "health.jsonl").read_text())
@@ -94,7 +94,7 @@ def test_report_survives_a_broken_file(tmp_path, capsys):
     (tmp_path / "op_ut.xml").write_text("<not xml", encoding="utf-8")
     write_xml(tmp_path / "op_regression.xml", [PASS])
 
-    report = ut_check.build_report(
+    report = ut_results.build_report(
         "basic", [tmp_path / "op_ut.xml", tmp_path / "op_regression.xml"], tmp_path)
 
     assert "Error processing" in capsys.readouterr().err
@@ -109,7 +109,7 @@ def test_report_survives_a_broken_file(tmp_path, capsys):
     ("something_else", "unknown"),
 ])
 def test_determine_category(name, expected):
-    assert ut_check.determine_category(name) == expected
+    assert ut_results.determine_category(name) == expected
 
 
 # --------------------------------------------------------------------------- #
@@ -118,14 +118,14 @@ def test_determine_category(name, expected):
 
 
 def seed(tmp_path, *, failures=(), passed=(), known=(), cases=353):
-    ut_check.write_lines(tmp_path / "failures_op_regression.log", list(failures))
-    ut_check.write_lines(tmp_path / "passed_op_regression.log", list(passed))
-    ut_check.write_lines(tmp_path / "Known_issue.log", list(known))
-    ut_check.write_lines(tmp_path / "category_op_regression.log", [
+    ut_results.write_lines(tmp_path / "failures_op_regression.log", list(failures))
+    ut_results.write_lines(tmp_path / "passed_op_regression.log", list(passed))
+    ut_results.write_lines(tmp_path / "Known_issue.log", list(known))
+    ut_results.write_lines(tmp_path / "category_op_regression.log", [
         "Category: op_regression", f"Test cases: {cases}", "Passed: 1",
         "Skipped: 0", "Failures: 0", "Errors: 0",
     ])
-    return ut_check.Checker(work_dir=tmp_path)
+    return ut_results.Checker(work_dir=tmp_path)
 
 
 def test_check_passes_when_every_failure_is_known(tmp_path):
@@ -180,7 +180,7 @@ def test_check_does_not_touch_github_outside_a_scheduled_source_build(tmp_path, 
     monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
     checker = seed(tmp_path)
     called = []
-    monkeypatch.setattr(ut_check, "gh", lambda *a, **k: called.append(a))
+    monkeypatch.setattr(ut_results, "gh", lambda *a, **k: called.append(a))
 
     checker.report_passing_known_issues(["op_regression,TestFoo,test_ok"])
 
@@ -188,7 +188,7 @@ def test_check_does_not_touch_github_outside_a_scheduled_source_build(tmp_path, 
 
 
 def test_check_unknown_category_is_not_a_failure(tmp_path, capsys):
-    assert ut_check.Checker(work_dir=tmp_path).run("nope").passed
+    assert ut_results.Checker(work_dir=tmp_path).run("nope").passed
     assert "Unknown test suite" in capsys.readouterr().err
 
 
@@ -199,8 +199,8 @@ def test_distributed_check_reads_the_console_log(tmp_path):
         "PASSED test/foo.py::TestBar::test_ok\n",
         encoding="utf-8",
     )
-    ut_check.write_lines(tmp_path / "Known_issue.log", [])
-    checker = ut_check.Checker(work_dir=tmp_path)
+    ut_results.write_lines(tmp_path / "Known_issue.log", [])
+    checker = ut_results.Checker(work_dir=tmp_path)
 
     result = checker.run("xpu_distributed")
 
@@ -213,13 +213,13 @@ def test_distributed_check_reads_the_console_log(tmp_path):
 def test_profiling_check_fails_on_a_failing_report(tmp_path):
     write_xml(tmp_path / "xpu_profiling_rn50.xml", [PASS, FAIL], failures=1)
 
-    assert not ut_check.Checker(work_dir=tmp_path).run("xpu_profiling").passed
+    assert not ut_results.Checker(work_dir=tmp_path).run("xpu_profiling").passed
 
 
 def test_profiling_check_passes_on_a_clean_report(tmp_path):
     write_xml(tmp_path / "xpu_profiling_rn50.xml", [PASS])
 
-    assert ut_check.Checker(work_dir=tmp_path).run("xpu_profiling").passed
+    assert ut_results.Checker(work_dir=tmp_path).run("xpu_profiling").passed
 
 
 # --------------------------------------------------------------------------- #
@@ -238,8 +238,8 @@ def test_known_issue_cases_are_taken_per_category():
         "op_ut,TestFoo,not_in_a_cases_block",
     ])
 
-    assert ut_check.KnownIssues.cases_of(issues, "op_ut") == ["op_ut,TestFoo,test_a"]
-    assert ut_check.KnownIssues.cases_of(issues, "op_regression") == \
+    assert ut_results.KnownIssues.cases_of(issues, "op_ut") == ["op_ut,TestFoo,test_a"]
+    assert ut_results.KnownIssues.cases_of(issues, "op_regression") == \
         ["op_regression,TestFoo,test_b"]
 
 
@@ -249,13 +249,13 @@ def test_known_issue_cases_are_taken_per_category():
 
 
 def test_enrich_new_failures_matches_on_category_class_and_test(tmp_path):
-    ut_check.write_lines(tmp_path / "ut_failure_list.csv", [
+    ut_results.write_lines(tmp_path / "ut_failure_list.csv", [
         "| op_regression | TestFoo | test_bad | failed | one | XML |",
         "| op_extended | TestFoo | test_bad | failed | two | XML |",
         "| op_extended | TestFoo | test_bad_longer | failed | three | XML |",
     ])
 
-    rows = ut_check.enrich_new_failures(tmp_path, ["op_extended,TestFoo,test_bad"])
+    rows = ut_results.enrich_new_failures(tmp_path, ["op_extended,TestFoo,test_bad"])
 
     assert rows == ["| op_extended | TestFoo | test_bad | failed | two | XML |"]
 
@@ -267,16 +267,16 @@ def test_summary_reports_checks_and_gates_one_run(tmp_path, monkeypatch):
         "UT_NAME=op_regression\nUT_RUNNER=bmg-test\nUT_CATEGORY=\n", encoding="utf-8")
     write_xml(artifact / "op_regression.xml",
               [PASS] * 352 + [FAIL], tests=353, failures=1)
-    monkeypatch.setattr(ut_check.KnownIssues, "_fetch", lambda self, *a: "")
+    monkeypatch.setattr(ut_results.KnownIssues, "_fetch", lambda self, *a: "")
 
     work = tmp_path / "work"
-    code = ut_check.summarize(tmp_path / "artifacts", tmp_path / "none", work, "main")
+    code = ut_results.summarize(tmp_path / "artifacts", tmp_path / "none", work, "main")
 
     assert code == 1
     assert (work / "all_new_failures.txt").read_text() == "op_regression,TestFoo,test_bad\n"
     assert (work / "all_new_failures.csv").read_text() == \
         "| op_regression | TestFoo | test_bad | failed | RuntimeError: boom | XML |\n"
-    panel = (work / "panel.md").read_text()
+    panel = (work / "ut_summary.md").read_text()
     assert "#### op_regression" in panel
     assert "| op_regression | op_regression | 1 | ❌ failed |" in panel
     assert json.loads((work / "op_regression" / "run_health.jsonl").read_text())["healthy"]
@@ -290,22 +290,22 @@ def test_summary_is_green_when_every_failure_is_known(tmp_path, monkeypatch):
     write_xml(artifact / "op_regression.xml",
               [PASS] * 352 + [FAIL], tests=353, failures=1)
     monkeypatch.setattr(
-        ut_check.KnownIssues, "_fetch",
+        ut_results.KnownIssues, "_fetch",
         lambda self, *a: "Issue #1: x\nCases:\nop_regression,TestFoo,test_bad\n",
     )
 
     work = tmp_path / "work"
-    code = ut_check.summarize(tmp_path / "artifacts", tmp_path / "none", work, "main")
+    code = ut_results.summarize(tmp_path / "artifacts", tmp_path / "none", work, "main")
 
     assert code == 0
     assert (work / "all_new_failures.txt").read_text() == ""
     assert "| op_regression | op_regression | 0 | ✅ passed |" in \
-        (work / "panel.md").read_text()
+        (work / "ut_summary.md").read_text()
 
 
 def test_summary_fails_when_no_artifact_names_a_ut_job(tmp_path, monkeypatch):
     (tmp_path / "artifacts" / "junk").mkdir(parents=True)
-    monkeypatch.setattr(ut_check.KnownIssues, "_fetch", lambda self, *a: "")
+    monkeypatch.setattr(ut_results.KnownIssues, "_fetch", lambda self, *a: "")
 
-    assert ut_check.summarize(
+    assert ut_results.summarize(
         tmp_path / "artifacts", tmp_path / "none", tmp_path / "work", "main") == 1

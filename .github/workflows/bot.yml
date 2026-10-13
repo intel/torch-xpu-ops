@@ -7,7 +7,7 @@ on:
     paths:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
-      - '.github/scripts/ut_check.py'
+      - '.github/scripts/ut_results.py'
       - '.github/scripts/test_*.py'
       - '.github/scripts/fold_details.js'
       - '.github/scripts/test_fold_details.js'
