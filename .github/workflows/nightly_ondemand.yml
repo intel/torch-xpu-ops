@@ -177,9 +177,24 @@ jobs:
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
 
+  Linux-Nightly-Ondemand-UT-Summary:
+    name: linux-ut-summary
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
+    if: ${{ !cancelled() && !endsWith(needs.Linux-Nightly-Ondemand-UT-Tests.result, 'ed') }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/_linux_ut_summary.yml
+    with:
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      python: ${{ needs.Conditions-Filter.outputs.python }}
+
   Linux-Nightly-Ondemand-UT-Auto-Issue:
     name: linux-ut-auto-issue
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests, Linux-Nightly-Ondemand-UT-Summary]
     # Not success(): the UT job fails whenever there are new failures, which is
     # precisely when this needs to run.
     # `contains(inputs.ut, 'p')` mirrors the UT job's own gate: with no UT job

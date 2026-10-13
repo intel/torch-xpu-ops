@@ -56,23 +56,23 @@ def download_artifacts(repo, run_id, download_dir):
     """Download UT-related artifacts from the workflow run.
 
     Returns (has_new_failures_artifact, new_failures_dir) where new_failures_dir
-    is the directory that holds the authoritative New-UT-Failures artifact. We
-    track it explicitly because the Inductor-XPU-UT-Data artifact also bundles a
-    copy of new_ut_failure_list.csv; parsing both would double-count failures.
+    is the directory that holds the authoritative UT-Summary artifact. We track
+    it explicitly because the Inductor-XPU-UT-Data artifact also bundles a copy
+    of the failure list; parsing both would double-count failures.
     """
     run(f"mkdir -p {download_dir}", check=False)
 
     new_failures_dir = os.path.join(download_dir, "_new_failures")
     result = subprocess.run(
         f"gh run download {run_id} --repo {repo} --dir {new_failures_dir} "
-        f'--pattern "New-UT-Failures-*"',
+        f'--pattern "UT-Summary-*"',
         shell=True,
         capture_output=True,
         text=True,
         check=False,
     )
     has_new_failures_artifact = result.returncode == 0 and any(
-        Path(new_failures_dir).rglob("new_ut_failure_list.csv")
+        Path(new_failures_dir).rglob("all_new_failures.csv")
     )
 
     # Download UT data artifacts (for passed/skipped logs and category totals).
@@ -89,21 +89,21 @@ def download_artifacts(repo, run_id, download_dir):
 
 
 def parse_new_failures(new_failures_dir):
-    """Parse new_ut_failure_list.csv from the New-UT-Failures-* artifact.
+    """Parse all_new_failures.csv from the UT-Summary-* artifact.
 
     This artifact is the authoritative source for new failures. It is produced
     by the CI summary job which filters all failures against the known issues
     list. The file is a pipe-delimited markdown table:
         | Category | Class name | Test name | Status | Message | Source |
 
-    Only the New-UT-Failures directory is scanned (not the whole download dir):
-    the Inductor-XPU-UT-Data artifact bundles a duplicate copy of this file, and
-    including it would count every failure twice. Results are de-duplicated by
-    (category, class, test) as a further safety net against re-run attempts.
+    Only the UT-Summary directory is scanned (not the whole download dir): the
+    Inductor-XPU-UT-Data artifact bundles the unfiltered failure list, and
+    including it would report known failures as new. Results are de-duplicated
+    by (category, class, test) as a further safety net against re-run attempts.
     """
     failures = []
     seen = set()
-    for csv_file in Path(new_failures_dir).rglob("new_ut_failure_list.csv"):
+    for csv_file in Path(new_failures_dir).rglob("all_new_failures.csv"):
         with open(csv_file) as f:
             for line in f:
                 line = line.strip()
