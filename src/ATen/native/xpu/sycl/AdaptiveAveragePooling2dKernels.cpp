@@ -180,7 +180,7 @@ void adaptive_avg_pool2d_bwd_slm_kernel_impl(
   int oh = gyacc.size(2);
   int ow = gyacc.size(3);
 
-  int* lsm = (int*)syclexp::get_work_group_scratch_memory();
+  int* lsm = static_cast<int*>(syclexp::get_work_group_scratch_memory());
   int* _oh0_cached = reinterpret_cast<int*>(lsm);
   int* _oh1_cached = reinterpret_cast<int*>(_oh0_cached + ih);
   int* _ow0_cached = reinterpret_cast<int*>(_oh1_cached + ih);
