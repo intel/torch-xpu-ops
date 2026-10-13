@@ -48,7 +48,7 @@ jobs:
           cd target/
           gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "Inductor-*-XPU-E2E-*"
           find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
-                  while read line; do rsync -az --delete $line/ $(basename $line)/; done
+                  while read line; do rsync -az $line/ $(basename $line)/; done
           rm -rf Inductor-*-XPU-E2E-* || true
       - name: Download Baseline Artifact
         run: |
@@ -64,7 +64,7 @@ jobs:
           if [ "${REFERENCE_RUN_ID}" != "" ];then
             gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
             find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
-                    while read line; do rsync -az --delete $line/ $(basename $line)/; done
+                    while read line; do rsync -az $line/ $(basename $line)/; done
             rm -rf Inductor-*-XPU-E2E-* || true
           fi
       - name: Get summary
