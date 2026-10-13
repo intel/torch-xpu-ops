@@ -429,12 +429,39 @@ WelfordDataLN compute_stats(
   [[maybe_unused]] const int lane_id = item_id.get_local_id(1);
   // lane 0 of each subgroup holds that subgroup's reduced value
   // inter-subgroup reduction
-  if constexpr (num_sg == 1) {
+  if constexpr (num_sg > SIMD) {
+    // more subgroups than a single subgroup can shuffle: tree reduce via SLM
+    auto addr_offset = num_sg;
+    for (int offset = addr_offset / 2; offset > 0; offset /= 2) {
+      // upper half of subgroups write to shared
+      if (lane_id == 0 && sg_id >= offset && sg_id < 2 * offset) {
+        const int wrt_y = sg_id - offset;
+        buf[2 * wrt_y] = wd.mean;
+        buf[2 * wrt_y + 1] = wd.sigma2;
+        buf[wrt_y + addr_offset] = wd.count;
+      }
+      sycl::group_barrier(item_id.get_group());
+
+      // lower half merges
+      if (lane_id == 0 && sg_id < offset) {
+        const int rd_y = sg_id;
+        WelfordDataLN wdB{
+            static_cast<float>(buf[2 * rd_y]),
+            static_cast<float>(buf[2 * rd_y + 1]),
+            static_cast<float>(buf[rd_y + addr_offset])};
+        wd = WelfordCombine<rms_norm>(wd, wdB);
+      }
+      sycl::group_barrier(item_id.get_group());
+    }
+
+    if (lane_id == 0 && sg_id == 0) {
+      buf[0] = wd.mean;
+      buf[1] = wd.sigma2 / float(N);
+    }
+    sycl::group_barrier(item_id.get_group());
     return WelfordDataLN{
-        sycl::select_from_group(sg, wd.mean, 0),
-        sycl::select_from_group(sg, wd.sigma2, 0) / float(N),
-        0.f};
-  } else {
+        static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
+  } else if constexpr (num_sg > 1) {
     // subgroup 0 reduces all num_sg partials
     if (lane_id == 0) {
       buf[sg_id] = wd.mean;
@@ -473,15 +500,33 @@ WelfordDataLN compute_stats(
                   static_cast<float>(buf[lane_id + num_sg]),
                   static_cast<float>(buf[lane_id + 2 * num_sg])}
             : WelfordDataLN{0.f, 0.f, 0.f};
+        // shuffle tree down to 4 partials, then finish with balanced serial
 #pragma unroll
-        for (int offset = num_sg / 2; offset > 0; offset >>= 1) {
+        for (int offset = num_sg / 2; offset >= 4; offset >>= 1) {
           WelfordDataLN other{
               sycl::shift_group_left(sg, w.mean, offset),
               sycl::shift_group_left(sg, w.sigma2, offset),
               sycl::shift_group_left(sg, w.count, offset)};
           w = WelfordCombine<rms_norm>(w, other);
         }
-        wd = w;
+        WelfordDataLN parts[4];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+          parts[i] = WelfordDataLN{
+              sycl::select_from_group(sg, w.mean, i),
+              sycl::select_from_group(sg, w.sigma2, i),
+              sycl::select_from_group(sg, w.count, i)};
+        }
+        if (lane_id == 0) {
+#pragma unroll
+          for (int stride = 2; stride > 0; stride /= 2) {
+#pragma unroll
+            for (int i = 0; i < stride; ++i) {
+              parts[i] = WelfordCombine<rms_norm>(parts[i], parts[i + stride]);
+            }
+          }
+          wd = parts[0];
+        }
       }
     }
 
@@ -492,6 +537,11 @@ WelfordDataLN compute_stats(
     sycl::group_barrier(item_id.get_group());
     return WelfordDataLN{
         static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
+  } else {
+    return WelfordDataLN{
+        sycl::select_from_group(sg, wd.mean, 0),
+        sycl::select_from_group(sg, wd.sigma2, 0) / float(N),
+        0.f};
   }
 }
 
