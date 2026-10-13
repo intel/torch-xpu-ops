@@ -224,24 +224,35 @@ update is the **caller's** responsibility.
 ```
 <!-- agent:verify -->
 
-## Verify Result
+## Verify
 
-- **Target repo:** <pytorch | torch-xpu-ops>
-- **Refined command:** <refined_command>
-- **Verdict:** <PASSED | FAILED | CANNOT_VERIFY> — <one-line reason>
-- **Lint:** <clean | errors: <summary>>
-
-### Before / after
-
-Before = the failure `fix-reproduce` recorded; After = the Step 3 test
-result with the fix applied.
+<One or two sentences: what was built and where — source build sha or
+wheel version, `TORCH_XPU_ARCH_LIST`, and the fact that baseline and
+fixed builds differ only by the changed files.>
 
 | Test case | Before | After |
 |-----------|--------|-------|
-| TestFooXPU::test_bar | FAILED (AssertionError: ...) | PASSED |
+| `TestFooXPU::test_bar` | FAIL | PASS |
+
+<One line saying what `Before` was: the failure signature `fix-reproduce`
+recorded, backticked.>
+
+Regression checks on the fixed build:
+
+| Suite | Result |
+|---|---|
+| `test_foo_ops.py -k xpu` | 85 passed, 1 skipped |
+
+- **Verdict:** <PASSED | FAILED | CANNOT_VERIFY> — <one-line reason>
+- **Lint:** <clean | errors: <summary>>
 
 *Automated by fix-verify.*
 ```
+
+`Before` = the failure `fix-reproduce` recorded; `After` = the Step 3
+test result with the fix applied. One row per test case, same labels the
+reproduce block used. The regression table lists the suites run beyond
+the reproducer; omit the table and its heading line when none were run.
 
 ```json
 {
