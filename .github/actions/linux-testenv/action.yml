@@ -83,11 +83,6 @@ runs:
         echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
-    - name: Download Pytorch wheel
-      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-      uses: actions/download-artifact@v4
-      with:
-        pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
@@ -262,12 +257,12 @@ runs:
           exit 1
         fi
     - name: Download Pytorch wheel
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
-        name: Torch-XPU-Wheel-695497d31449d9ed8d7f0c1c83321ad5422f2c98-38121196503-1
+        name: Torch-XPU-Wheel-5c53f8e1cc0daf5bca605a26f058b2e3f4f81a48-38370465501-1
         github-token: ${{ github.token }}
         repository: mengfei25/torch-xpu-ops
-        run-id: 38121196503
+        run-id: 38370465501
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
