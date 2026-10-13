@@ -108,7 +108,7 @@ runs:
         # the profiler tables the cases print for manual check
         export PYTEST_ADDOPTS="-v --timeout 3600 --timeout_method=thread"
         # RN50 Test (runs rn50.py, then checks its kernel events, runtime op time and .pt artifact)
-        # the xpu_profiling_ prefix is what check-ut.py uses to group these reports
+        # the xpu_profiling_ prefix is what ut_check.py uses to group these reports
         python -m pytest -s -v \
           --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_rn50.xml \
           test/profiling/test_rn50_profiling.py | \

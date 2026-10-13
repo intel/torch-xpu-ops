@@ -81,7 +81,7 @@ NAME_SAMPLE = 20
 HEALTH_RATIO = 0.95
 
 # Covered UT jobs. xpu_distributed is deliberately excluded: it reports through
-# run_distributed_tests in ut_result_check.sh, which produces neither the
+# Checker.run_distributed in ut_check.py, which produces neither the
 # per-category passed/failed logs nor a case count, so neither the health
 # gate nor the baseline comparison has anything to read. The upstream_* jobs
 # run weekly only; upstream_distributed goes through run_main_tests like the rest.
@@ -95,7 +95,7 @@ UT_JOB_CATEGORIES = {
 }
 CATEGORY_UT_JOB = {c: job for job, cats in UT_JOB_CATEGORIES.items() for c in cats}
 
-# Mirrors EXPECTED_CASES in ut_result_check.sh (linux column). Only a fallback:
+# Mirrors EXPECTED_CASES in ut_check.py (linux column). Only a fallback:
 # runs predating run_health.jsonl carry no recorded verdict of their own.
 EXPECTED_CASES = {
     "op_extended": 5349,
@@ -417,7 +417,7 @@ def category_state(root: Path, category: str) -> tuple[str, int, int]:
 
 
 def parse_failure_csv(path: Path | None) -> list[Case]:
-    """Headerless markdown rows written by check-ut.py:print_md_row:
+    """Headerless markdown rows written by ut_check.py:Report.write_failure_csv:
     `| Category | Class name | Test name | Status | Message | Source |`."""
     cases = []
     for line in read_lines(path):
@@ -796,8 +796,8 @@ def classify_case(case: Case, baselines: dict[str, Baseline],
 # erases its cases rather than failing them, and a test removed or renamed in
 # stock pytorch is simply not there. Neither reaches new_ut_failure_list.csv,
 # and a few hundred missing cases sit far below the 5% count gate in
-# ut_result_check.sh:check_test_cases. Comparing this run's roster against the
-# baseline's is the only thing here that sees them.
+# ut_check.py:Checker.check_case_counts. Comparing this run's roster against
+# the baseline's is the only thing here that sees them.
 #
 # It matters twice. The count of cases a module used to pass is the blast
 # radius an issue about that module has to state. And a module whose names

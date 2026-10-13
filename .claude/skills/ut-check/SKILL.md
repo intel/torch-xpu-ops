@@ -58,8 +58,8 @@ a baseline verdict. The JSON contains:
 
 The authoritative source for new failures is the `UT-Summary-*` artifact
 which contains `all_new_failures.csv`. This CSV is produced by the CI
-summary job: `ut_result_check.sh` identifies new failures (not in the known
-issues list), and the workflow enriches them with error messages.
+summary job: `ut_check.py` identifies new failures (not in the known
+issues list) and enriches them with error messages.
 
 The `Inductor-XPU-UT-Data-*` artifact bundles the **unfiltered** failure list
 (`ut_failure_list.csv`, known failures included); `bot_ut_check.py` reads only
