@@ -170,3 +170,17 @@ jobs:
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
+
+  linux-ut-summary:
+    needs: linux-ut
+    if: ${{ !cancelled() && !endsWith(needs.linux-ut.result, 'ed') }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/_linux_ut_summary.yml
+    with:
+      category: dpclang
+      pytorch: ${{ github.base_ref || github.ref_name }}

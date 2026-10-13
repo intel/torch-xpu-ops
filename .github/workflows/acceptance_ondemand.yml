@@ -115,7 +115,6 @@ jobs:
       python: ${{ inputs.python }}
       ut: ${{ inputs.test_pattern == 'test_pt_smoke' && 'op_regression' || 'xpu_p0'}}
       category: target
-      skip_summary: true
 
   target-e2e:
     name: target / e2e
@@ -166,7 +165,6 @@ jobs:
       python: ${{ inputs.python }}
       ut: ${{ inputs.test_pattern == 'test_pt_smoke' && 'op_regression' || 'xpu_p0'}}
       category: baseline
-      skip_summary: true
 
   baseline-e2e:
     name: baseline / e2e
@@ -233,12 +231,6 @@ jobs:
           pattern: 'Inductor-XPU-UT-Data-*-target'
           path: ${{ github.workspace }}/results/target/ut
 
-      - name: Download target UT failure lists
-        uses: actions/download-artifact@v8
-        with:
-          pattern: 'XPU-UT-Failure-List-*-target'
-          path: ${{ github.workspace }}/results/target/ut
-
       - name: Download baseline E2E logs
         uses: actions/download-artifact@v8
         with:
@@ -249,12 +241,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-XPU-UT-Data-*-baseline'
-          path: ${{ github.workspace }}/results/baseline/ut
-
-      - name: Download baseline UT failure lists
-        uses: actions/download-artifact@v8
-        with:
-          pattern: 'XPU-UT-Failure-List-*-baseline'
           path: ${{ github.workspace }}/results/baseline/ut
 
       - name: Ensure result directories exist

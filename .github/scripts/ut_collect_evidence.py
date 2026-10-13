@@ -277,6 +277,43 @@ def pick_artifact(names: list[tuple[str, bool]], prefix: str, ut_job: str, run_i
     return best
 
 
+def pick_summary_artifact(names: list[tuple[str, bool]], run_id: int):
+    """Highest run attempt of `UT-Summary-<sha>-<run_id>-<attempt>`.
+
+    One per run rather than one per UT job: _linux_ut_summary.yml checks every
+    UT job of a run in a single job.
+    """
+    pat = re.compile(rf"^UT-Summary-.+-{run_id}-(\d+)")
+    best, best_attempt = None, -1
+    for name, expired in names:
+        m = pat.match(name)
+        if m and not expired and int(m.group(1)) > best_attempt:
+            best, best_attempt = name, int(m.group(1))
+    return best
+
+
+def fetch_summary(run_id: int, names: list[tuple[str, bool]], work: Path) -> Path | None:
+    """The run's combined UT summary, or None for runs that predate it."""
+    artifact = pick_summary_artifact(names, run_id)
+    if artifact is None:
+        return None
+    root = work / f"summary-{run_id}"
+    return root if download(run_id, artifact, root) else None
+
+
+def merge_summary(summary_root: Path | None, ut_job: str, dest: Path) -> None:
+    """Put a UT job's summary next to its data artifact.
+
+    The test job uploads the reports; _linux_ut_summary.yml turns them into the
+    per-category case logs. Everything downstream reads the two as one tree.
+    """
+    if summary_root is None:
+        return
+    job_summary = summary_root / ut_job
+    if job_summary.is_dir():
+        shutil.copytree(job_summary, dest / "summary", dirs_exist_ok=True)
+
+
 def download(run_id: int, artifact: str, dest: Path) -> bool:
     dest.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(
@@ -641,11 +678,13 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
         cand_id = int(cand["databaseId"])
         names = list_artifacts(cand_id)
         jobs = resolve_jobs(cand_id)
+        summary_root = fetch_summary(cand_id, names, work)
         dirs: dict[str, Path] = {}
         for ut_job in {CATEGORY_UT_JOB[c] for c in pending}:
             artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, cand_id)
             dest = work / f"baseline-{cand_id}-{ut_job}"
             if artifact and download(cand_id, artifact, dest):
+                merge_summary(summary_root, ut_job, dest)
                 dirs[ut_job] = dest
         for category in sorted(pending):
             root = dirs.get(CATEGORY_UT_JOB[category])
@@ -873,7 +912,7 @@ def names_by_module(lines: set[str]) -> dict[str, list[str]]:
 
 def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work: Path,
                 jobs: list, report: dict, current: RunInfo,
-                ut_job_health: dict) -> list[Case]:
+                ut_job_health: dict, summary_root: Path | None) -> list[Case]:
     """Artifact health checks plus this run's new failures, for one UT job."""
     data_artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, run_id)
     if data_artifact is None:
@@ -886,6 +925,11 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
         report["skipped_ut_jobs"].append(
             {"ut_job": ut_job, "reason": "artifact download failed"})
         return []
+
+    # The run-level summary holds what the comparison produced for this UT job
+    # (health verdicts, case logs, new failures); the data artifact holds the
+    # reports it was built from.
+    merge_summary(summary_root, ut_job, root)
 
     current.job_urls[ut_job] = job_url(run_id, jobs, ut_job)
     current.runners[ut_job] = job_runner(jobs, ut_job)
@@ -913,14 +957,18 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
         else:
             print(f"note: {category} never ran in this UT job; nothing to file")
 
-    failures_artifact = pick_artifact(names, "New-UT-Failures", ut_job, run_id)
-    if failures_artifact is None:
-        print(f"note: {ut_job} produced no new failures")
-        return []
-    csv_dir = work / f"current-{ut_job}-newfail"
-    if not download(run_id, failures_artifact, csv_dir):
-        return []
-    cases = parse_failure_csv(find_file(csv_dir, "new_ut_failure_list.csv"))
+    csv_path = find_file(root, "new_ut_failure_list.csv")
+    if csv_path is None:
+        # Runs predating the combined summary kept the CSV in its own artifact.
+        failures_artifact = pick_artifact(names, "New-UT-Failures", ut_job, run_id)
+        if failures_artifact is None:
+            print(f"note: {ut_job} produced no new failures")
+            return []
+        csv_dir = work / f"current-{ut_job}-newfail"
+        if not download(run_id, failures_artifact, csv_dir):
+            return []
+        csv_path = find_file(csv_dir, "new_ut_failure_list.csv")
+    cases = parse_failure_csv(csv_path)
 
     # H6: the CSV is built by grepping ut_failure_list.csv per filtered-log line,
     # so a mismatch means some failures lost their error message.
@@ -995,9 +1043,10 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         )
 
     names = list_artifacts(args.run_id)
+    summary_root = fetch_summary(args.run_id, names, work)
     for ut_job in UT_JOB_CATEGORIES:
         cases.extend(collect_ut_job(args.run_id, ut_job, names, work, jobs, report,
-                                 current, ut_job_health))
+                                 current, ut_job_health, summary_root))
 
     if len(cases) > TOO_MANY_THRESHOLD:
         warn(

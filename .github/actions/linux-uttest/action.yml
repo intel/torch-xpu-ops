@@ -5,9 +5,6 @@ inputs:
   ut_name:
     required: true
     description: Which ut to launch
-  skip_summary:
-    default: 'false'
-    description: "When 'true', do not write the per-job UT summary panel (caller runs its own comparison)"
 
 runs:
   using: composite
@@ -285,48 +282,3 @@ runs:
             || echo -e "${test_file}" >> "${log_dir}/${ut_name}_failed.log"
           echo "::endgroup::"
         done < ${log_dir}/${ut_name}_files.txt
-
-    # Summary
-    - name: UT Test Results Summary
-      if: ${{ !cancelled() && inputs.skip_summary != 'true' }}
-      shell: timeout 180 bash -xe {0}
-      run: |
-        uv pip install junitparser
-        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-        # Check the failure logs
-        if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
-          echo -e "Exist Failure logs"
-          echo "Found Failure logs as below: "
-          for file in ${{ github.workspace }}/failures*.log; do
-            echo "  - $file"
-            cp "$file" ${{ github.workspace }}/ut_log
-          done
-          echo -e "Failure logs Copied"
-        else
-          echo -e "No Failure logs"
-        fi
-        # Copied the passed logs
-        if ls passed*.log 1> /dev/null 2>&1; then
-          cp passed*.log ${{ github.workspace }}/ut_log
-          echo -e "Passed logs Copied"
-        else
-          echo -e "No Passed logs"
-        fi
-        # Copied the full case universe (includes skipped cases), used by
-        # ut_collect_evidence.py to classify a failure against its baseline.
-        if ls all_cases_*.log 1> /dev/null 2>&1; then
-          cp all_cases_*.log ${{ github.workspace }}/ut_log
-          echo -e "All-cases logs Copied"
-        else
-          echo -e "No All-cases logs"
-        fi
-        # Copied the Summary logs
-        if ls category*.log 1> /dev/null 2>&1; then
-          cp category*.log ${{ github.workspace }}/ut_log
-          echo -e "Category logs Copied"
-        else
-          echo -e "No Category logs"
-        fi
-        if [ -e ut_failure_list.csv ];then
-            cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
-        fi
