@@ -174,11 +174,18 @@ static void dispatch_transpose(
   constexpr int kMaxVec =
       sizeof(scalar_t) * 4 <= 16 ? 4 : (sizeof(scalar_t) * 2 <= 16 ? 2 : 1);
 
-  int vec_size = std::min(
-      {kMaxVec,
-       memory::can_vectorize_up_to<scalar_t>(
-           reinterpret_cast<const char*>(src)),
-       memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(dst))});
+  int vec_size = kMaxVec;
+  if (full_tile) {
+    // Only the full-tile path dereferences vec_t, so only it needs the bases
+    // aligned for the chosen width. Clamping the partial-tile path too would
+    // change its work-group geometry for a scalar kernel that is never at
+    // risk.
+    vec_size = std::min(
+        {vec_size,
+         memory::can_vectorize_up_to<scalar_t>(
+             reinterpret_cast<const char*>(src)),
+         memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(dst))});
+  }
   while (vec_size > 1 && (cols % vec_size != 0 || rows % vec_size != 0)) {
     vec_size /= 2;
   }
