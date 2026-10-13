@@ -298,7 +298,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     "test_schema_check.py": None,
     "test_nestedtensor_xpu.py": None,
-    "functorch/test_eager_transforms_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_eager_transforms.py": None,
     "test_cpp_api_parity_xpu.py": None,
     "test_expanded_weights_xpu.py": None,
     "test_fake_tensor_xpu.py": (
