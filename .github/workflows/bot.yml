@@ -7,12 +7,14 @@ on:
     paths:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
+      - '.github/scripts/bot_*.js'
       - '.github/scripts/test_bot_*.py'
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
   COST_TRACKING_ISSUE: 4251
+  FIX_ACCESS_ISSUE: 5547
 
 permissions:
   contents: read
@@ -28,6 +30,7 @@ jobs:
       github.event_name == 'issue_comment'
       && startsWith(github.event.comment.body, '@torchxpubot')
     permissions:
+      contents: read
       pull-requests: read
       issues: read
     outputs:
@@ -58,11 +61,21 @@ jobs:
               content: '+1'
             });
 
+      # After the reaction, so the acknowledgement is not held up by a clone.
+      # An issue_comment event has no branch, so this is the default branch: a
+      # pull request cannot hand itself `fix` access by editing the seed list.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Parse Command
         id: parse
         uses: actions/github-script@v9
         with:
           script: |
+            const access = require('./.github/scripts/bot_fix_access.js');
+            const accessIssue = ${{ env.FIX_ACCESS_ISSUE }};
             const body = context.payload.comment.body;
             const actor = context.payload.comment.user.login;
             const assoc = context.payload.comment.author_association;
@@ -91,7 +104,7 @@ jobs:
 
             const command = match[1].toLowerCase();
             const args = (match[2] || '').trim();
-            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'triage', 'help'];
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'triage', 'allow', 'deny', 'help'];
 
             if (!validCommands.includes(command)) {
               reject('Unknown command. Use `@torchxpubot help` to see available commands.');
@@ -103,8 +116,9 @@ jobs:
               : (command === 'check-ut' || command === 'ut') ? 'ut-check'
               : command;
 
-            // Context check: fix and triage are issue-only, help works on both,
-            // and the rest are PR-only.
+            // Context check: fix and triage are issue-only, allow and deny
+            // belong to the access issue, help works on both, and the rest are
+            // PR-only.
             if (normalizedCommand === 'fix' || normalizedCommand === 'triage') {
               if (isPR) {
                 reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on issue comments, not on pull requests.`);
@@ -112,6 +126,11 @@ jobs:
               }
               if (context.payload.issue.state !== 'open') {
                 reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on open issues.`);
+                return;
+              }
+            } else if (normalizedCommand === 'allow' || normalizedCommand === 'deny') {
+              if (issueNumber !== accessIssue) {
+                reject(`\`@torchxpubot ${normalizedCommand}\` is only read on #${accessIssue}, so a grant posted here would do nothing.`);
                 return;
               }
             } else if (normalizedCommand !== 'help' && !isPR) {
@@ -127,9 +146,19 @@ jobs:
             if (command === 'help') {
               authorized = true; // anyone
             } else if (command === 'fix') {
-              // fix drives an autonomous agent with write access, so it is
-              // gated like `merge -f` rather than like the read-only commands.
-              authorized = maintainerOnly.includes(assoc);
+              // fix drives an autonomous agent on a GPU runner, so it answers
+              // to a named list rather than to MEMBER, which is every one of
+              // intel's ~2000 org members. The grants live on the access issue
+              // rather than in the file, so joining the list is a comment.
+              const grants = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: accessIssue,
+                per_page: 100,
+              });
+              authorized = access.allowedAccounts(grants).has(actor.toLowerCase());
+            } else if (command === 'allow' || command === 'deny') {
+              authorized = access.canApprove(actor);
             } else if (!privileged.includes(assoc)) {
               authorized = false;
             }
@@ -245,7 +274,12 @@ jobs:
             if (cmd === 'merge' && force === 'true') {
               msg = 'Only OWNER or MEMBER can use `@torchxpubot merge -f` (force merge).';
             } else if (cmd === 'fix') {
-              msg = 'Only OWNER or MEMBER can use `@torchxpubot fix`.';
+              msg = '`@torchxpubot fix` runs an autonomous agent on an XPU host, so it is limited to '
+                + 'the accounts seeded in `.github/scripts/bot_fix_access.js` plus whoever has been '
+                + 'granted access on #${{ env.FIX_ACCESS_ISSUE }}. Ask for it there -- no PR needed.';
+            } else if (cmd === 'allow' || cmd === 'deny') {
+              msg = `Only an approver can \`@torchxpubot ${cmd}\`; see \`APPROVERS\` in `
+                + '`.github/scripts/bot_fix_access.js`.';
             }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -280,6 +314,7 @@ jobs:
             | \`@torchxpubot review\` (or \`pr-review\`) | AI-powered PR code review |
             | \`@torchxpubot ut-check\` (or \`check-ut\`, \`ut\`) | Analyze UT results: new failures, relevance, coverage |
             | \`@torchxpubot cherry-pick --onto release/x.xx -c <class>\` | Cherry-pick this merged PR onto a release branch |
+            | \`@torchxpubot allow @user\` | Grant \`fix\` access, on #${{ env.FIX_ACCESS_ISSUE }}, approvers only (\`deny\` revokes) |
             | \`@torchxpubot help\` | Show this help message |
 
             \`@torchxpubot fix\` is only available on issue comments.`;
@@ -288,8 +323,9 @@ jobs:
 
             | Command | Description |
             |---------|-------------|
-            | \`@torchxpubot fix\` | Reproduce this issue on an XPU host and attempt a fix (OWNER/MEMBER only) |
+            | \`@torchxpubot fix\` | Reproduce this issue on an XPU host and attempt a fix (allow-listed accounts; ask on #${{ env.FIX_ACCESS_ISSUE }}) |
             | \`@torchxpubot triage\` | Shallow text-only triage: classify, detect reproducer, apply agent labels |
+            | \`@torchxpubot allow @user\` | Grant \`fix\` access, on #${{ env.FIX_ACCESS_ISSUE }}, approvers only (\`deny\` revokes) |
             | \`@torchxpubot help\` | Show this help message |
 
             \`fix\` reproduces the issue on an XPU runner and, for C++/SYCL
