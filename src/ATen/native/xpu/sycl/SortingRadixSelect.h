@@ -213,19 +213,22 @@ struct TopKTypeConfig<at::BFloat16> {
   }
 };
 
-// The field width is a class template parameter so an over-wide field is a
-// compile error rather than a shift past the width of T. A full-width field is
-// rejected too: the mask expression cannot express it, and no radix needs it.
+// The field width is a class template parameter, so it is checked once at
+// instantiation instead of being masked to 8 bits on every call. `pos` stays an
+// unchecked runtime value, so shifting past the width of T remains the caller's
+// responsibility. A full-width field is rejected because no radix needs one.
 template <typename T, int len>
 struct Bitfield {
-  static_assert(std::is_unsigned_v<T>);
-  static_assert(len > 0 && len < static_cast<int>(sizeof(T) * 8));
+  static_assert(std::is_unsigned_v<T>, "Bitfield requires an unsigned T.");
+  static_assert(
+      len > 0 && len < static_cast<int>(sizeof(T) * 8),
+      "Bitfield width must be positive and narrower than T.");
 
-  static inline T getBitfield(T val, int pos) {
+  static constexpr T getBitfield(T val, int pos) {
     return (val >> pos) & kMask;
   }
 
-  static inline T setBitfield(T val, T toInsert, int pos) {
+  static constexpr T setBitfield(T val, T toInsert, int pos) {
     T m = kMask;
     toInsert &= m;
     toInsert <<= pos;
@@ -236,6 +239,19 @@ struct Bitfield {
  private:
   static constexpr T kMask = (T{1} << len) - 1;
 };
+
+// The replaced uint64_t specialization built its mask as (1u << len) - 1u,
+// which truncated to 0xff once len reached 32. Widths 2 and 4 are the ones
+// radix select instantiates.
+static_assert(
+    Bitfield<uint64_t, 40>::getBitfield(~uint64_t{0}, 8) ==
+    (uint64_t{1} << 40) - 1);
+static_assert(
+    Bitfield<uint64_t, 40>::setBitfield(0, ~uint64_t{0}, 8) ==
+    ((uint64_t{1} << 40) - 1) << 8);
+static_assert(Bitfield<uint64_t, 2>::getBitfield(~uint64_t{0}, 62) == 0x3);
+static_assert(Bitfield<uint32_t, 4>::getBitfield(~uint32_t{0}, 28) == 0xf);
+static_assert(Bitfield<uint32_t, 2>::setBitfield(0, 0x3, 30) == 0xc0000000u);
 
 // This function counts the distribution of all input values in a
 // slice we are selecting by radix digit at `radixDigitPos`, but only
@@ -368,8 +384,6 @@ void radixSelect(
     int* smem,
     scalar_t* topK,
     sycl::nd_item<1>& item_id) {
-  using Digit = Bitfield<bitwise_t, RADIX_BITS>;
-
   // Per-thread buckets into which we accumulate digit counts in our
   // radix
   int counts[RADIX_SIZE];
@@ -413,8 +427,10 @@ void radixSelect(
       /* threads will return from the function. */
       if (count == 1 && kToFind == 1) {
         /* There is a unique answer. */
-        desired = Digit::setBitfield(desired, i, digitPos);
-        desiredMask = Digit::setBitfield(desiredMask, RADIX_MASK, digitPos);
+        desired =
+            Bitfield<bitwise_t, RADIX_BITS>::setBitfield(desired, i, digitPos);
+        desiredMask = Bitfield<bitwise_t, RADIX_BITS>::setBitfield(
+            desiredMask, RADIX_MASK, digitPos);
 
         /* The answer is now the unique element v such that: */
         /* (v & desiredMask) == desired */
@@ -435,8 +451,10 @@ void radixSelect(
     };
     auto found_non_unique = [&](int i, int count) -> bool {
       if (count >= kToFind) {
-        desired = Digit::setBitfield(desired, i, digitPos);
-        desiredMask = Digit::setBitfield(desiredMask, RADIX_MASK, digitPos);
+        desired =
+            Bitfield<bitwise_t, RADIX_BITS>::setBitfield(desired, i, digitPos);
+        desiredMask = Bitfield<bitwise_t, RADIX_BITS>::setBitfield(
+            desiredMask, RADIX_MASK, digitPos);
 
         /* The top-Kth element v must now be one such that: */
         /* (v & desiredMask == desired) */
