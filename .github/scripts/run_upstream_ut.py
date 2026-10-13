@@ -2,8 +2,8 @@
 """Run upstream PyTorch unit tests on XPU, in one of two modes.
 
 run_test.py shards (category: inductor)
-    Each file in INDUCTOR_PARTS is split into --shards-per-file shards via
-    `run_test.py --shard`. Shards are queued in order and each GPU runs one
+    One `run_test.py --include <file>` shard per file in INDUCTOR_PARTS, with no
+    parallelism inside a shard. Shards are queued in order and each GPU runs one
     shard at a time, taking the next one as soon as it is free.
 
 pytest per file (categories: default, distributed)
@@ -15,7 +15,7 @@ pytest per file (categories: default, distributed)
 Examples (from the directory that contains pytorch/):
   run_upstream_ut.py default --list
   run_upstream_ut.py default --files test/test_nn.py test/test_ops.py
-  run_upstream_ut.py inductor --gpus 0,1 --shards-per-file 2
+  run_upstream_ut.py inductor --gpus 0,1
   run_upstream_ut.py inductor --dry-run
 
 Exit code: 0 all passed, 1 some tests failed, 2 setup error.
@@ -156,33 +156,20 @@ class Shard:
     id: int  # global, 1..N in queue order
     part: str
     test: str
-    index: int  # 1..total within this test file
-    total: int
 
     @property
     def tag(self):
-        return f"shard{self.id}_{self.part}_{self.test.replace('/', '_')}_{self.index}of{self.total}"
+        return f"shard{self.id}_{self.part}_{self.test.replace('/', '_')}"
 
     @property
     def args(self):
         extra, _ = INDUCTOR_PARTS[self.part]
-        return [
-            *extra,
-            "--include",
-            self.test,
-            "--shard",
-            str(self.index),
-            str(self.total),
-        ]
+        return [*extra, "--include", self.test]
 
 
-def build_shards(per_file):
+def build_shards():
     tests = [(part, t) for part, (_, ts) in INDUCTOR_PARTS.items() for t in ts]
-    return [
-        Shard(n * per_file + i, part, test, i, per_file)
-        for n, (part, test) in enumerate(tests)
-        for i in range(1, per_file + 1)
-    ]
+    return [Shard(i, part, test) for i, (part, test) in enumerate(tests, 1)]
 
 
 def run_shard(shard, gpu, args, env, out_log, err_log):
@@ -213,7 +200,7 @@ def run_shard(shard, gpu, args, env, out_log, err_log):
 
 
 def run_shards(args, env):
-    shards = build_shards(args.shards_per_file)
+    shards = build_shards()
     if args.dry_run:
         for s in shards:
             print(f"shard{s.id}: {s.part} {' '.join(s.args).replace('--include ', '')}")
@@ -380,12 +367,6 @@ def parse_args():
     parser.add_argument(
         "--gpus",
         help="comma-separated GPU ids (default: $ZE_AFFINITY_MASK or 0; distributed: 0,1,2,3)",
-    )
-    parser.add_argument(
-        "--shards-per-file",
-        type=int,
-        default=2,
-        help="inductor: run_test.py shards per test file",
     )
     parser.add_argument(
         "--files",
