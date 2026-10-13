@@ -82,7 +82,7 @@ def warn(msg: str) -> None:
 def parse_cases_block(body: str) -> set[str]:
     """The lines of one body that actually mute.
 
-    `ut_result_check.sh:mark_passed_issue` rewrites a line to `~~<line>~~` once
+    `ut_check.py:mark_passed_issues` rewrites a line to `~~<line>~~` once
     the case passes, and the subtraction is `grep -vFxf` - whole line, fixed
     string - so a struck line matches nothing and mutes nothing. It is history:
     that issue claimed the case and has released it.

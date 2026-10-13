@@ -284,35 +284,11 @@ jobs:
       - name: UT Test Results Summary
         shell: bash
         run: |
-          uv pip install junitparser
           find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
-          python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-          # Check the failure logs
-          if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
-            echo -e "Exist Failure logs"
-            echo "Found Failure logs as below: "
-            for file in ${{ github.workspace }}/failures*.log; do
-              echo "  - $file"
-              cp "$file" ${{ github.workspace }}/ut_log
-            done
-            echo -e "Failure logs Copied"
-          else
-            echo -e "No Failure logs"
-          fi
-          # Copied the passed logs
-          if ls passed*.log 1> /dev/null 2>&1; then
-            cp passed*.log ${{ github.workspace }}/ut_log
-            echo -e "Passed logs Copied"
-          else
-            echo -e "No Passed logs"
-          fi
-          # Copied the Summary logs
-          if ls category*.log 1> /dev/null 2>&1; then
-            cp category*.log ${{ github.workspace }}/ut_log
-            echo -e "Category logs Copied"
-          else
-            echo -e "No Category logs"
-          fi
+          python ./.github/scripts/ut_check.py report \
+            -n ${{ inputs.ut }} \
+            -i ${{ github.workspace }}/ut_log/*.xml \
+            --dir ${{ github.workspace }}/ut_log >> $GITHUB_STEP_SUMMARY || true
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
@@ -366,7 +342,6 @@ jobs:
               --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' >> issues.log
           fi
 
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
             touch Known_issue.log
@@ -379,7 +354,7 @@ jobs:
             else
               echo "Info: issues.log not found or empty, using empty Known_issue.log"
             fi
-            TEST_PLATFORM=windows bash ut_result_check.sh ${ut_name}
+            TEST_PLATFORM=windows python3 ${{ github.workspace }}/.github/scripts/ut_check.py check ${ut_name}
           done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}

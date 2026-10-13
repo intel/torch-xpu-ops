@@ -190,7 +190,6 @@ jobs:
     uses: ./.github/workflows/_linux_ut_summary.yml
     with:
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Linux-Nightly-Ondemand-UT-Auto-Issue:
     name: linux-ut-auto-issue
