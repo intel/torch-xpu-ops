@@ -435,7 +435,7 @@ WelfordDataLN compute_stats(
         sycl::select_from_group(sg, wd.sigma2, 0) / float(N),
         0.f};
   } else {
-    // subgroup 0 reduces all num_sg partials via shuffles
+    // subgroup 0 reduces all num_sg partials
     if (lane_id == 0) {
       buf[sg_id] = wd.mean;
       buf[sg_id + num_sg] = wd.sigma2;
@@ -443,23 +443,46 @@ WelfordDataLN compute_stats(
     }
     sycl::group_barrier(item_id.get_group());
 
-    if (sg_id == 0) {
-      // lanes past num_sg stay inert (count == 0) in WelfordCombine
-      WelfordDataLN w = (lane_id < num_sg)
-          ? WelfordDataLN{
-                static_cast<float>(buf[lane_id]),
-                static_cast<float>(buf[lane_id + num_sg]),
-                static_cast<float>(buf[lane_id + 2 * num_sg])}
-          : WelfordDataLN{0.f, 0.f, 0.f};
+    if constexpr (num_sg <= 4) {
+      // small counts: lane 0 combines straight from SLM in balanced pairs,
+      // avoiding shuffles while keeping every merge balanced
+      if (sg_id == 0 && lane_id == 0) {
+        WelfordDataLN parts[num_sg];
 #pragma unroll
-      for (int offset = num_sg / 2; offset > 0; offset >>= 1) {
-        WelfordDataLN other{
-            sycl::shift_group_left(sg, w.mean, offset),
-            sycl::shift_group_left(sg, w.sigma2, offset),
-            sycl::shift_group_left(sg, w.count, offset)};
-        w = WelfordCombine<rms_norm>(w, other);
+        for (int i = 0; i < num_sg; ++i) {
+          parts[i] = WelfordDataLN{
+              static_cast<float>(buf[i]),
+              static_cast<float>(buf[i + num_sg]),
+              static_cast<float>(buf[i + 2 * num_sg])};
+        }
+#pragma unroll
+        for (int stride = num_sg / 2; stride > 0; stride /= 2) {
+#pragma unroll
+          for (int i = 0; i < stride; ++i) {
+            parts[i] = WelfordCombine<rms_norm>(parts[i], parts[i + stride]);
+          }
+        }
+        wd = parts[0];
       }
-      wd = w;
+    } else {
+      if (sg_id == 0) {
+        // lanes past num_sg stay inert (count == 0) in WelfordCombine
+        WelfordDataLN w = (lane_id < num_sg)
+            ? WelfordDataLN{
+                  static_cast<float>(buf[lane_id]),
+                  static_cast<float>(buf[lane_id + num_sg]),
+                  static_cast<float>(buf[lane_id + 2 * num_sg])}
+            : WelfordDataLN{0.f, 0.f, 0.f};
+#pragma unroll
+        for (int offset = num_sg / 2; offset > 0; offset >>= 1) {
+          WelfordDataLN other{
+              sycl::shift_group_left(sg, w.mean, offset),
+              sycl::shift_group_left(sg, w.sigma2, offset),
+              sycl::shift_group_left(sg, w.count, offset)};
+          w = WelfordCombine<rms_norm>(w, other);
+        }
+        wd = w;
+      }
     }
 
     if (sg_id == 0 && lane_id == 0) {
