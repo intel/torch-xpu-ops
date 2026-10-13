@@ -282,3 +282,15 @@ runs:
             || echo -e "${test_file}" >> "${log_dir}/${ut_name}_failed.log"
           echo "::endgroup::"
         done < ${log_dir}/${ut_name}_files.txt
+
+    # This job's own results, on the job that produced them, and the case logs
+    # its artifact is read by. The run's verdict is _linux_ut_summary.yml's: it
+    # is the only thing that sees every UT job.
+    - name: UT Test Results
+      if: ${{ !cancelled() }}
+      shell: timeout 180 bash -xe {0}
+      run: |
+        python ./.github/scripts/ut_results.py report \
+          -n ${{ inputs.ut_name }} \
+          -i ${{ github.workspace }}/ut_log/*.xml \
+          --dir ${{ github.workspace }}/ut_log >> $GITHUB_STEP_SUMMARY || true
