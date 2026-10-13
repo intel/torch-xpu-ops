@@ -90,7 +90,7 @@ Tensor& arange_kernel(
     const Scalar& end,
     const Scalar& step,
     Tensor& result) {
-  AT_DISPATCH_ALL_TYPES_AND2(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       result.scalar_type(),
