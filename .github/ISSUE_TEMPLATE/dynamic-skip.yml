@@ -19,8 +19,8 @@ labels: ["skipped"]
 # bot-label cls-regression: regression
 # bot-label cls-new_case_failure: new_case_failure
 #
-# The `Cases:` block is what mutes, and it is parsed by fetch_issues.sh, by the
-# awk filter in _linux_ut.yml and by mark_passed_issue in ut_check.py.
+# The `Cases:` block is what mutes, and it is parsed by ut_known_issues.sh, by the
+# awk filter in _linux_ut.yml and by mark_passed_issues in ut_results.py.
 # Between them the contract is: a line starting with `Cases:`, one case per
 # line with no blank lines inside, and a blank line to end it. Nothing else in
 # a body may contain the string `Cases:`, or the awk filter starts collecting

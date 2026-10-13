@@ -285,7 +285,7 @@ jobs:
         shell: bash
         run: |
           find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
-          python ./.github/scripts/ut_check.py report \
+          python ./.github/scripts/ut_results.py report \
             -n ${{ inputs.ut }} \
             -i ${{ github.workspace }}/ut_log/*.xml \
             --dir ${{ github.workspace }}/ut_log >> $GITHUB_STEP_SUMMARY || true
@@ -354,7 +354,7 @@ jobs:
             else
               echo "Info: issues.log not found or empty, using empty Known_issue.log"
             fi
-            TEST_PLATFORM=windows python3 ${{ github.workspace }}/.github/scripts/ut_check.py check ${ut_name}
+            TEST_PLATFORM=windows python3 ${{ github.workspace }}/.github/scripts/ut_results.py check ${ut_name}
           done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}

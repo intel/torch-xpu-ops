@@ -9,6 +9,10 @@ Three commands over one model of the data:
 
 `report` and `check` are what a single platform job needs; `summary` is what a
 Linux run does once, for every UT job of the run together.
+
+`summary` writes, under its work directory: `ut_summary.md` (the panel),
+`all_new_failures.{txt,csv}` (the run's new failures) and one directory per UT
+job holding its case logs, `results.md` and `run_health.jsonl`.
 """
 
 from __future__ import annotations
@@ -868,11 +872,11 @@ class KnownIssues:
 
     def _fetch(self, *args: str) -> str:
         proc = subprocess.run(
-            ["bash", str(SCRIPT_DIR / "fetch_issues.sh"), *args],
+            ["bash", str(SCRIPT_DIR / "ut_known_issues.sh"), *args],
             capture_output=True, text=True, check=False,
         )
         if proc.returncode != 0:
-            warn(f"fetch_issues.sh {' '.join(args)} failed: {proc.stderr.strip()}")
+            warn(f"ut_known_issues.sh {' '.join(args)} failed: {proc.stderr.strip()}")
         return proc.stdout
 
     def _fetch_static(self) -> str:
@@ -977,7 +981,7 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
         if reports:
             report = build_report(meta.ut_job, reports, job_dir)
             rendered = report.render()
-            (job_dir / "check_ut.md").write_text(rendered, encoding="utf-8")
+            (job_dir / "results.md").write_text(rendered, encoding="utf-8")
             # Only the counts table: the failure listing is the whole of
             # ut_failure_list.csv, which the artifact carries.
             table = rendered.split("### Results Summary", 1)[-1].strip()
@@ -1011,7 +1015,7 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
 
     write_lines(work_dir / "all_new_failures.txt", all_new)
     write_lines(work_dir / "all_new_failures.csv", all_rows)
-    write_lines(work_dir / "panel.md", panel + verdicts)
+    write_lines(work_dir / "ut_summary.md", panel + verdicts)
     return 1 if failed else 0
 
 
