@@ -270,7 +270,7 @@ void adaptive_avg_pool2d_bwd_slm_channels_last_kernel_impl(
     size_t group_size) {
   auto item = syclext::this_work_item::get_nd_item<3>();
 
-  int* lsm = (int*)syclexp::get_work_group_scratch_memory();
+  int* lsm = static_cast<int*>(syclexp::get_work_group_scratch_memory());
   int* ostartW_cached = reinterpret_cast<int*>(lsm);
   int* oendW_cached = reinterpret_cast<int*>(ostartW_cached + isizeW);
   scalar_t* r_kW_cached = reinterpret_cast<scalar_t*>(oendW_cached + isizeW);
