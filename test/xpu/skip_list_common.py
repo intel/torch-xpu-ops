@@ -342,7 +342,7 @@ skip_dict = {
     "export/test_cpp_serdes_xpu.py": None,
     "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
-    "export/test_passes_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_passes.py": None,
     "export/test_retraceability_xpu.py": None,
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
