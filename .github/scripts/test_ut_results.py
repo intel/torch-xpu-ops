@@ -101,6 +101,72 @@ def test_report_survives_a_broken_file(tmp_path, capsys):
     assert len(report.cases) == 1
 
 
+# --------------------------------------------------------------------------- #
+# report markdown
+# --------------------------------------------------------------------------- #
+
+
+def two_failures(tmp_path):
+    write_xml(tmp_path / "op_regression.xml", [
+        PASS,
+        FAIL,
+        '<testcase classname="TestFoo" name="test_known">'
+        '<failure message="old">RuntimeError: old</failure></testcase>',
+    ], failures=2)
+    return ut_results.build_report(
+        "op_regression", [tmp_path / "op_regression.xml"], tmp_path)
+
+
+def test_failures_show_the_new_ones_and_fold_the_known_ones(tmp_path):
+    report = two_failures(tmp_path)
+
+    markdown = report.render({"op_regression,TestFoo,test_bad"})
+
+    shown, _, folded = markdown.partition("<details>")
+    assert "test_bad" in shown
+    assert "test_known" not in shown
+    assert "<summary>1 known failure</summary>" in folded
+    assert "test_known" in folded
+
+
+def test_failures_say_so_when_every_failure_is_known(tmp_path):
+    report = two_failures(tmp_path)
+
+    markdown = report.render(set())
+
+    assert "✅ No new failures." in markdown.partition("<details>")[0]
+    assert "<summary>2 known failures</summary>" in markdown
+
+
+def test_failures_are_all_shown_without_a_comparison(tmp_path):
+    report = two_failures(tmp_path)
+
+    markdown = report.render()
+
+    assert "<details>" not in markdown.split("### Results Summary")[0]
+    assert "test_bad" in markdown
+    assert "test_known" in markdown
+
+
+def test_summary_shows_categories_and_folds_the_reports(tmp_path):
+    write_xml(tmp_path / "op_regression.xml", [PASS])
+    write_xml(tmp_path / "op_extended.xml", [PASS, FAIL], failures=1)
+    report = ut_results.build_report(
+        "basic", [tmp_path / "op_extended.xml", tmp_path / "op_regression.xml"], tmp_path)
+
+    summary = "\n".join(report.summary_md())
+    shown, _, folded = summary.partition("<details>")
+
+    assert shown.splitlines()[0] == \
+        "| Category | Test cases | Passed | Skipped | Failures | Errors |"
+    assert "| op_extended | 2 | 1 | 0 | 1 | 0 |" in shown
+    assert "| op_regression | 1 | 1 | 0 | 0 | 0 |" in shown
+    assert "| **Total** | 3 | 2 | 0 | 1 | 0 |" in shown
+    # The per-report rows are still there, one fold away.
+    assert "<summary>2 reports</summary>" in folded
+    assert "| op_extended | op_extended | 2 | 1 | 0 | 1 | 0 | XML |" in folded
+
+
 @pytest.mark.parametrize(("name", "expected"), [
     ("op_regression", "op_regression"),
     ("op_ut_with_skip_test_xpu", "op_ut"),

@@ -208,6 +208,8 @@ SUMMARY_HEADER = [
     "Errors",
     "Source",
 ]
+COUNT_KEYS = ("Test cases", "Passed", "Skipped", "Failures", "Errors")
+CATEGORY_HEADER = ["Category", *COUNT_KEYS]
 FAILURE_HEADER = ["Category", "Class name", "Test name", "Status", "Message", "Source"]
 
 
@@ -232,6 +234,15 @@ def md_row(values: list[str]) -> str:
 
 def md_table(header: list[str], rows: list[list[str]]) -> list[str]:
     return [md_row(header), md_row(["---"] * len(header)), *(md_row(r) for r in rows)]
+
+
+def md_details(summary: str, body: list[str]) -> list[str]:
+    """Folded away: there when it is wanted, silent when it is not."""
+    return ["<details>", f"<summary>{summary}</summary>", "", *body, "", "</details>"]
+
+
+def plural(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def case_message(result: ET.Element) -> str:
@@ -401,29 +412,53 @@ class Report:
                 *(f"{key}: {value}" for key, value in totals.items()),
             ])
 
-    def failure_rows(self) -> list[list[str]]:
+    def failure_rows(self, cases: list[Case] | None = None) -> list[list[str]]:
         return [[c.category, c.classname, c.name, c.status, c.message, c.source]
-                for c in self.failures]
+                for c in (self.failures if cases is None else cases)]
 
     def write_failure_csv(self, path: Path) -> None:
         """Headerless, pipe delimited: the summary greps it row by row."""
         write_lines(path, [md_row(row) for row in self.failure_rows()])
 
-    def render(self) -> str:
+    def render(self, new_lines: set[str] | None = None) -> str:
+        """What the run has to answer for, with the rest folded away.
+
+        `new_lines` are the failures the known-failure comparison called new;
+        without it there is no way to tell one failure from another, so they
+        are all shown.
+        """
         blocks = []
-        rows = self.failure_rows()
-        if rows:
-            blocks.append("\n".join(["### Test Failures", *md_table(FAILURE_HEADER, rows)]))
-        total = ["**Total**", "", 0, 0, 0, 0, 0, ""]
-        for s in self.summaries:
-            for i, value in enumerate(s.row[2:7], start=2):
-                total[i] += int(value)
-        blocks.append("\n".join([
-            "### Results Summary",
-            *md_table(SUMMARY_HEADER,
-                      [s.row for s in self.summaries] + [[str(v) for v in total]]),
-        ]))
+        if self.failures:
+            blocks.append("\n".join(["### Test Failures", "",
+                                     *self.failures_md(new_lines)]))
+        blocks.append("\n".join(["### Results Summary", "", *self.summary_md()]))
         return "\n\n".join(blocks)
+
+    def failures_md(self, new_lines: set[str] | None = None) -> list[str]:
+        if new_lines is None:
+            return md_table(FAILURE_HEADER, self.failure_rows())
+        new = [c for c in self.failures if c.line in new_lines]
+        known = [c for c in self.failures if c.line not in new_lines]
+        lines = md_table(FAILURE_HEADER, self.failure_rows(new)) if new \
+            else ["✅ No new failures."]
+        if known:
+            lines += ["", *md_details(plural(len(known), "known failure"),
+                                      md_table(FAILURE_HEADER,
+                                               self.failure_rows(known)))]
+        return lines
+
+    def summary_md(self) -> list[str]:
+        totals = self.totals()
+        rows = [[category, *(str(counts[key]) for key in COUNT_KEYS)]
+                for category, counts in sorted(totals.items())]
+        grand = ["**Total**"] + [str(sum(c[key] for c in totals.values()))
+                                 for key in COUNT_KEYS]
+        lines = md_table(CATEGORY_HEADER, [*rows, grand])
+        if self.summaries:
+            lines += ["", *md_details(plural(len(self.summaries), "report"),
+                                      md_table(SUMMARY_HEADER,
+                                               [s.row for s in self.summaries]))]
+        return lines
 
 
 def build_report(ut_name: str, inputs: list[Path], out_dir: Path) -> Report:
@@ -978,15 +1013,8 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
 
         print(f"::group::{meta.ut_job} (runner: {meta.runner or 'unknown'})", flush=True)
         reports = sorted(job_dir.glob("*.xml"))
-        if reports:
-            report = build_report(meta.ut_job, reports, job_dir)
-            rendered = report.render()
-            (job_dir / "results.md").write_text(rendered, encoding="utf-8")
-            # Only the counts table: the failure listing is the whole of
-            # ut_failure_list.csv, which the artifact carries.
-            table = rendered.split("### Results Summary", 1)[-1].strip()
-            panel += [f"#### {meta.ut_job}", "", table, ""]
-        else:
+        report = build_report(meta.ut_job, reports, job_dir) if reports else None
+        if report is None:
             warn(f"{meta.ut_job} produced no junit report")
 
         checker = Checker(
@@ -1002,6 +1030,15 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             verdicts.append(md_row([meta.ut_job, category,
                                     str(len(result.new_failures)), result.verdict]))
         print("::endgroup::", flush=True)
+
+        # Rendered after the comparison, which is what tells a new failure from
+        # a known one.
+        if report is not None:
+            (job_dir / "results.md").write_text(report.render(set(job_new)),
+                                                encoding="utf-8")
+            # The panel carries the counts, not the listing: the failures are
+            # in all_new_failures.csv and in the job's results.md.
+            panel += [f"#### {meta.ut_job}", "", *report.summary_md(), ""]
 
         write_lines(job_dir / "new_failure_list.txt", job_new)
         rows = enrich_new_failures(job_dir, job_new)
