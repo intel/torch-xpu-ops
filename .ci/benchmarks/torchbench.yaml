@@ -69,13 +69,11 @@ tolerance:
   # segmentation models where small floating-point differences get thresholded
   # into boolean masks.
   use_iou_for_bool_masks:
+    - detectron2_maskrcnn_r_101_fpn
+    - detectron2_maskrcnn_r_50_c4
     - sam
     - sam_fast
     - vision_maskrcnn
-    - detectron2_maskrcnn
-    - detectron2_maskrcnn_r_101_fpn
-    - detectron2_maskrcnn_r_50_c4
-    - detectron2_maskrcnn_r_50_fpn
 
   # Custom IoU thresholds per model (default is 0.99)
   iou_thresholds:
@@ -189,35 +187,7 @@ skip:
     - hf_clip
     # multi gpu not always available in benchmark runners
     - simple_gpt_tp_manual
-    # skip hf and timm models in torchbench since
-    # there are already separate benchmarks for them
-    # - hf_Albert
-    # - hf_Bart
-    # - hf_Bert
-    # - hf_BigBird
-    # - hf_DistilBert
-    # - hf_GPT2
-    # - hf_Longformer
-    # - hf_Reformer
-    # - hf_T5
-    # - timm_efficientdet
-    # - timm_efficientnet
-    # - timm_nfnet
-    # - timm_regnet
-    # - timm_resnest
-    # - timm_vision_transformer
-    # - timm_vovnet
-    # - hf_Bert_large
-    # - hf_GPT2_large
-    # - hf_Roberta_base
-    # - hf_T5_base
-    # - hf_T5_generate
-    # - hf_T5_large
-    # - hf_Whisper
-    # - hf_distil_whisper
-    # - timm_vision_transformer_large
     # https://github.com/pytorch/pytorch/issues/167895
-    - stable_diffusion
     - stable_diffusion_text_encoder
     - stable_diffusion_unet
     # Has never been working correctly
@@ -240,8 +210,6 @@ skip:
       - sam_fast
       # model is CUDA only
       - llama_v2_7b_16h
-      # flaky
-      - stable_diffusion
       # requires FBGEMM, CUDA only
       - torchrec_dlrm
       - simple_gpt

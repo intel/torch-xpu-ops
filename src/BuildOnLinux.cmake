@@ -33,6 +33,16 @@ endmacro()
 
 if(BUILD_SEPARATE_OPS)
   setup_common_libraries()
+  # torch-xpu-ops-sycl-Comm-kernels includes SYCL kernels shared in different other SYCL kernels.
+  # SYCL free func: These SYCL kernels are moved from headers into torch-xpu-ops-sycl-Comm-kernels to resolve 'redefinition issue'.
+  sycl_add_library(
+      torch-xpu-ops-sycl-Comm-kernels
+      SHARED
+      SYCL_SOURCES ${ATen_XPU_SYCL_COMM_SRCS})
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch-xpu-ops-sycl-Comm-kernels)
+  # Decouple with PyTorch cmake definition.
+  install(TARGETS torch-xpu-ops-sycl-Comm-kernels DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     cmake_path(GET sycl_src STEM LAST_ONLY name)
     set(sycl_lib torch-xpu-ops-sycl-${name})
@@ -50,6 +60,8 @@ if(BUILD_SEPARATE_OPS)
     else()
       target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
     endif()
+    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    target_link_libraries(${sycl_lib} PUBLIC torch-xpu-ops-sycl-Comm-kernels)
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.
@@ -60,7 +72,7 @@ else()
     torch_xpu_ops
     STATIC
     CXX_SOURCES  ${ATen_XPU_MKL_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_XCCL_SRCS}
-    SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
+    SYCL_SOURCES ${ATen_XPU_SYCL_SRCS} ${ATen_XPU_SYCL_COMM_SRCS})
   if(USE_C10D_XCCL)
     target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
     target_link_libraries(torch_xpu_ops  PUBLIC torch::xccl)

@@ -21,6 +21,7 @@
 
 #include <ATen/native/im2col_shape_check.h>
 #include <comm/Runtime.h>
+#include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/Col2ImKernel.h>
@@ -49,6 +50,9 @@ void col2im_ff_kernel(
   auto in_ptr = in_data;
   auto out_ptr = out_data;
   auto id = itemId.get_global_id(0);
+  if (id >= channels * height * width) {
+    return;
+  }
 
   T val = static_cast<T>(0);
   const int64_t w_im = id % width + pad_w;
@@ -106,9 +110,13 @@ static void col2im_kernel(
   auto in_data = data_col;
   auto out_data = data_im;
 
+  int64_t local_range = syclMaxWorkGroupSize<col2im_ff_kernel<T>>();
+  int64_t global_range =
+      ((total_threads + local_range - 1) / local_range) * local_range;
+
   sycl_kernel_submit<col2im_ff_kernel<T>>(
-      ::sycl::range<1>(total_threads),
-      ::sycl::range<1>(1),
+      ::sycl::range<1>(global_range),
+      ::sycl::range<1>(local_range),
       sycl_queue,
       0,
       in_data,

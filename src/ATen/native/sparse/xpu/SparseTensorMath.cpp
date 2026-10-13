@@ -35,6 +35,10 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 
 #include <ATen/ExpandUtils.h>
 
+#if defined(USE_ONEMKL_XPU)
+#include <ATen/native/sparse/xpu/mkl/SparseTensorMath.h>
+#endif // USE_ONEMKL_XPU
+
 namespace at::native {
 
 using namespace at::sparse;
