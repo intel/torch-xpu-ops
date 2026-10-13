@@ -12,6 +12,9 @@
 
 #include <ATen/core/Tensor.h>
 
+#include <cstdint>
+#include <optional>
+
 namespace at::native::xpu {
 
 TORCH_XPU_API Tensor& _philox_uniform_xpu_(
@@ -25,5 +28,11 @@ TORCH_XPU_API Tensor& _philox_normal_xpu_(
     const Tensor& key,
     double mean,
     double stddev);
+
+TORCH_XPU_API Tensor& _philox_randint_xpu_(
+    Tensor& self,
+    const Tensor& key,
+    std::optional<int64_t> low,
+    std::optional<int64_t> high);
 
 } // namespace at::native::xpu
