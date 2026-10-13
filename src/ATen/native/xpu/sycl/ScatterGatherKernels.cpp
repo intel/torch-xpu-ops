@@ -61,13 +61,15 @@ class ReduceAdd {
       int64_t index,
       int64_t numel,
       const scalar_t* src_data) const {
-    atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)(self_data_start + index),
+        c10::load(src_data));
   }
 
   template <typename scalar_t>
   constexpr void operator()(scalar_t* self_data, const scalar_t* src_data)
       const {
-    atomicAdd((sycl_global_ptr<scalar_t>)self_data, *src_data);
+    atomicAdd((sycl_global_ptr<scalar_t>)self_data, c10::load(src_data));
   }
 };
 static ReduceAdd reduce_add;
