@@ -143,6 +143,7 @@ jobs:
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
     name: linux-build
+    if: ${{ needs.Conditions-Filter.outputs.pytorch != 'https://github.com/daisyden/pytorch.git@daisyden/any_gate' }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -159,7 +160,12 @@ jobs:
   Linux-Nightly-Ondemand-UT-Tests:
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
+    if: >-
+      ${{ !cancelled()
+          && (github.event_name == 'schedule' || contains(inputs.ut, 'p'))
+          && (needs.Linux-Nightly-Ondemand-Build.result == 'success'
+              || (needs.Conditions-Filter.outputs.pytorch == 'https://github.com/daisyden/pytorch.git@daisyden/any_gate'
+                  && needs.Linux-Nightly-Ondemand-Build.result == 'skipped')) }}
     secrets: inherit
     permissions:
       contents: read

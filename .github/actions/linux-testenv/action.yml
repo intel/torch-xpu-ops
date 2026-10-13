@@ -63,7 +63,7 @@ runs:
         echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
-      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
+      if: ${{ ! endsWith(inputs.pytorch, '_wheel') && inputs.pytorch != 'https://github.com/daisyden/pytorch.git@daisyden/any_gate' }}
       uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
@@ -71,7 +71,9 @@ runs:
       shell: bash -xe {0}
       run: |
         # install pytorch
-        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
+        if [[ "${{ inputs.pytorch }}" == "https://github.com/daisyden/pytorch.git@daisyden/any_gate" ]]; then
+          uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
@@ -89,7 +91,11 @@ runs:
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
-        git checkout ${TORCH_COMMIT_ID}
+        if [[ "${{ inputs.pytorch }}" == "https://github.com/daisyden/pytorch.git@daisyden/any_gate" ]]; then
+          git checkout daisyden/any_gate
+        else
+          git checkout ${TORCH_COMMIT_ID}
+        fi
         # apply extra PRs for stock pytorch
         uv pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
