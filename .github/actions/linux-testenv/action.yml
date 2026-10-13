@@ -259,7 +259,7 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v8
       with:
-        name: Torch-XPU-Wheel-5c53f8e1cc0daf5bca605a26f058b2e3f4f81a48-38370465501-1
+        name: Torch-XPU-Wheel-5c53f8e1cc0daf5bca605a26f058b2e3f4f81a48-38370465501-2
         github-token: ${{ github.token }}
         repository: mengfei25/torch-xpu-ops
         run-id: 38370465501
