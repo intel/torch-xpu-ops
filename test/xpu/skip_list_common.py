@@ -338,7 +338,7 @@ skip_dict = {
     "profiler/test_profiler_use_cases.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "export/test_converter_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_converter.py": None,
     "export/test_cpp_serdes_xpu.py": None,
     "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
