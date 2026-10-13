@@ -36,13 +36,13 @@ class TestRreluWithNoise(TestCase):
             with self.assertRaisesRegex(
                 RuntimeError, "noise tensor shape must match self tensor shape"
             ):
-                torch.rrelu_with_noise(x, noise, training=True)
+                torch._C._nn.rrelu_with_noise(x, noise, training=True)
 
     def test_noise_non_contiguous(self):
         x = torch.randn(4, 8, device=xpu_device)
         noise = torch.randn(4, 16, device=xpu_device)[:, ::2]
         self.assertFalse(noise.is_contiguous())
-        out = torch.rrelu_with_noise(x, noise, training=True)
+        out = torch._C._nn.rrelu_with_noise(x, noise, training=True)
         self.assertEqual(out, x * noise)
 
         # An expanded view: its storage holds one row; writing through its
@@ -50,18 +50,18 @@ class TestRreluWithNoise(TestCase):
         # noise values cannot land there, so the copy back rejects it.
         noise = torch.zeros(1, 8, device=xpu_device).expand(4, 8)
         with self.assertRaisesRegex(RuntimeError, "refers to a single memory location"):
-            torch.rrelu_with_noise(x, noise, training=True)
+            torch._C._nn.rrelu_with_noise(x, noise, training=True)
 
     def test_noise_written(self):
         # Positive path: the kernel must write into the caller's noise.
         x = torch.randn(64, 64, device=xpu_device)
         noise = torch.zeros_like(x)
-        out = torch.rrelu_with_noise(x, noise, 0.1, 0.9, training=True)
+        out = torch._C._nn.rrelu_with_noise(x, noise, 0.1, 0.9, training=True)
         pos, neg = x > 0, x <= 0
         self.assertTrue(torch.all(noise[pos] == 1))
         self.assertTrue(torch.all(noise[neg] >= 0.1))
         self.assertTrue(torch.all(noise[neg] <= 0.9))
-        self.assertTrue(torch.all(out >= 0))
+        self.assertEqual(out, x * noise)
 
 
 if __name__ == "__main__":
