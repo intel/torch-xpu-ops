@@ -14,7 +14,9 @@ on:
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
-  COST_TRACKING_ISSUE: 4251
+  # Cost rows go to a tracker outside this repo so they do not add noise here.
+  COST_TRACKING_REPO: torchxpubot/ci-infra
+  COST_TRACKING_ISSUE: 1
 
 permissions:
   contents: read
@@ -966,10 +968,11 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
             await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`review\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`review\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   ut-check:
@@ -1105,10 +1108,11 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
             await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`ut-check\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`ut-check\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
       - name: Deterministic fallback
@@ -1632,10 +1636,11 @@ jobs:
             const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
             await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`fix\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
       # Keep the agent transcript (thinking + every tool call/result) for
@@ -1908,10 +1913,11 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
             await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`label\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`label\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   triage:
@@ -2119,10 +2125,11 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
             await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`triage\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`triage\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   # Unit-test the bot scripts that carry non-trivial logic. The fix pipeline's

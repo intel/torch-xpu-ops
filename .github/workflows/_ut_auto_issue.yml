@@ -44,7 +44,9 @@ concurrency:
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
-  COST_TRACKING_ISSUE: 4251
+  # Cost rows go to a tracker outside this repo so they do not add noise here.
+  COST_TRACKING_REPO: torchxpubot/ci-infra
+  COST_TRACKING_ISSUE: 1
   WORK_DIR: ${{ github.workspace }}/ut_auto_issue_work
   EVIDENCE_DIR: ${{ github.workspace }}/ut_auto_issue_report/evidence
   DRAFTS: ${{ github.workspace }}/ut_auto_issue_report/drafts.json
@@ -159,10 +161,11 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
             await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`ut-auto-issue\`](${jobUrl}) on nightly #${{ inputs.run_id }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`ut-auto-issue\`](${jobUrl}) on nightly run \`${{ inputs.run_id }}\` — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
       - name: Upload report
