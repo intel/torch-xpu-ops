@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-"""UT reporting, checking and summarizing for torch-xpu-ops CI.
-
-Three commands over one model of the data:
+"""UT results for torch-xpu-ops CI.
 
     report   junit/log reports    -> per-category case logs and a results table
     check    one category's logs  -> verdict against the known-failure list
     summary  a run's UT artifacts -> report + check for every UT job, one panel
 
-`report` and `check` are what a single platform job needs; `summary` is what a
-Linux run does once, for every UT job of the run together.
-
-`summary` writes, under its work directory: `ut_summary.md` (the panel),
-`all_new_failures.{txt,csv}` (the run's new failures) and one directory per UT
-job holding its case logs, `results.md` and `run_health.jsonl`.
+A platform job runs `report` and `check`; a Linux run runs `summary` once, for
+every UT job together. `summary` writes `ut_summary.md`, `all_new_failures.*`
+and one directory per UT job: its case logs, `results.md`, `run_health.jsonl`.
 """
 
 from __future__ import annotations
@@ -30,8 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = "intel/torch-xpu-ops"
-# Tracks the cases that pass despite being skipped, so `skipped_ut` can tell a
-# newly passing case from one that has been passing for months.
+# Cases that pass despite being skipped, so a newly passing one is visible.
 NEW_PASSED_ISSUE = 2333
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -135,11 +129,7 @@ def resolve_platform() -> str:
 
 
 def issue_platform(platform: str, runner: str) -> str:
-    """How a result is labelled in an issue comment.
-
-    Derived from the runner, so the Windows nightly and the distributed jobs
-    do not report themselves as plain Linux.
-    """
+    """Label for an issue comment, from the runner so distributed is not Linux."""
     if platform == "windows":
         return "Windows"
     runner = runner.lower()
@@ -185,17 +175,12 @@ class SuiteSummary:
     source: str
 
     @property
+    def counts(self) -> tuple[int, int, int, int, int]:
+        return self.tests, self.passed, self.skipped, self.failures, self.errors
+
+    @property
     def row(self) -> list[str]:
-        return [
-            self.category,
-            self.ut,
-            str(self.tests),
-            str(self.passed),
-            str(self.skipped),
-            str(self.failures),
-            str(self.errors),
-            self.source,
-        ]
+        return [self.category, self.ut, *(str(c) for c in self.counts), self.source]
 
 
 SUMMARY_HEADER = [
@@ -237,7 +222,6 @@ def md_table(header: list[str], rows: list[list[str]]) -> list[str]:
 
 
 def md_details(summary: str, body: list[str]) -> list[str]:
-    """Folded away: there when it is wanted, silent when it is not."""
     return ["<details>", f"<summary>{summary}</summary>", "", *body, "", "</details>"]
 
 
@@ -246,11 +230,7 @@ def plural(count: int, noun: str) -> str:
 
 
 def case_message(result: ET.Element) -> str:
-    """The exception line of a failure, not its traceback.
-
-    A junit <failure> carries the whole traceback; what identifies the failure
-    is the exception line(s) inside it.
-    """
+    """The exception line(s) of a failure, not the traceback around them."""
     full_text = result.text or result.get("message") or ""
     messages = []
     for line in full_text.splitlines():
@@ -301,17 +281,10 @@ class Report:
 
     def totals(self) -> dict[str, dict[str, int]]:
         totals: dict[str, dict[str, int]] = defaultdict(
-            lambda: dict.fromkeys(
-                ("Test cases", "Passed", "Skipped", "Failures", "Errors"), 0
-            )
-        )
+            lambda: dict.fromkeys(COUNT_KEYS, 0))
         for s in self.summaries:
-            entry = totals[s.category]
-            entry["Test cases"] += s.tests
-            entry["Passed"] += s.passed
-            entry["Skipped"] += s.skipped
-            entry["Failures"] += s.failures
-            entry["Errors"] += s.errors
+            for key, value in zip(COUNT_KEYS, s.counts):
+                totals[s.category][key] += value
         return totals
 
     def add(self, path: Path) -> None:
@@ -389,20 +362,19 @@ class Report:
     def write_case_logs(self, out_dir: Path) -> None:
         """One file per category per status, each line `category,class,test`.
 
-        The whole roster goes to all_cases_*: passed and failures together
+        all_cases_* carries the whole roster: passed and failures together
         cannot express "skipped", which the baseline comparison needs to tell a
         newly enabled case from a brand-new one.
         """
         groups: dict[tuple[str, str], list[Case]] = defaultdict(list)
         for case in self.cases:
-            groups["all", case.category].append(case)
+            groups["all_cases", case.category].append(case)
             if case.status == "passed":
                 groups["passed", case.category].append(case)
-            elif case.status not in ("skipped",):
+            elif case.status != "skipped":
                 groups["failures", case.category].append(case)
-        prefix = {"all": "all_cases", "passed": "passed", "failures": "failures"}
         for (kind, category), cases in groups.items():
-            write_lines(out_dir / f"{prefix[kind]}_{category}.log", [c.line for c in cases])
+            write_lines(out_dir / f"{kind}_{category}.log", [c.line for c in cases])
 
         for category, totals in self.totals().items():
             if totals["Test cases"] == 0:
@@ -421,12 +393,7 @@ class Report:
         write_lines(path, [md_row(row) for row in self.failure_rows()])
 
     def render(self, new_lines: set[str] | None = None) -> str:
-        """What the run has to answer for, with the rest folded away.
-
-        `new_lines` are the failures the known-failure comparison called new;
-        without it there is no way to tell one failure from another, so they
-        are all shown.
-        """
+        """Without `new_lines` no failure can be told from another, so all show."""
         blocks = []
         if self.failures:
             blocks.append("\n".join(["### Test Failures", "",
@@ -523,10 +490,9 @@ class Checker:
 
     def record_health(self, category: str, expected: int, actual: int,
                       healthy: bool, reason: str) -> None:
-        """One JSON line per category.
+        """One JSON line per category, read by the evidence collector.
 
-        The evidence collector reads it to tell a truncated run from a healthy
-        one. A category that never ran gets no line, which is how "absent" stays
+        A category that never ran gets no line, which is how "absent" stays
         distinguishable from "truncated".
         """
         if self.health_file is None:
@@ -759,11 +725,7 @@ class Checker:
         return sorted(found)
 
     def run_skipped(self) -> CheckResult:
-        """Cases that are skipped on purpose but pass anyway.
-
-        Never fails the job: a newly passing skipped case is a review item, not
-        a regression.
-        """
+        """Cases skipped on purpose that pass anyway: a review item, not a gate."""
         print("🔍 Checking for newly passed tests in skipped UT...")
         test_log = self.path("skipped_ut_with_skip_test.log")
         if not test_log.is_file():
@@ -890,9 +852,8 @@ class JobMeta:
 class KnownIssues:
     """The known-failure list of a run, per runner and category.
 
-    Two sources: the snapshot taken when the build started, which keeps issues
-    that were closed mid-run, and a live fetch, which picks up issues opened
-    after it.
+    The build-start snapshot keeps issues closed mid-run; the live fetch picks
+    up issues opened after it.
     """
 
     def __init__(self, snapshot_dir: Path, work_dir: Path) -> None:
@@ -968,7 +929,7 @@ def collect_job_dir(artifact: Path, job_dir: Path) -> None:
 
 
 def enrich_new_failures(job_dir: Path, new_failures: list[str]) -> list[str]:
-    """Give each new failure its error message, which only the csv carries.
+    """Give each new failure the error message only the csv carries.
 
     Keyed on category too: one job's csv holds every category it ran, and the
     same class and test name can appear in two of them.
