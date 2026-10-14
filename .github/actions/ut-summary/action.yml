@@ -1,0 +1,101 @@
+name: UT Summary
+description: Summarize and check every UT job of a run against the known-failure list
+
+inputs:
+  pytorch:
+    default: 'nightly_wheel'
+    description: Pytorch version the UT jobs ran against, recorded in issue comments
+  platform:
+    default: 'linux'
+    description: linux or windows; selects the expected case counts and issue labels
+  artifact_pattern:
+    default: ''
+    description: UT data artifacts to summarize. Empty means every one of this run
+  snapshot_artifact:
+    default: ''
+    description: Known-failure snapshot taken at build start. Empty skips it
+  summary_artifact:
+    required: true
+    description: Name to upload the summary under
+
+outputs:
+  has_new_failures:
+    description: "'true' when the run hit a failure that is not a known one"
+    value: ${{ steps.check.outputs.has_new_failures }}
+  passed:
+    description: "'true' when every category passed"
+    value: ${{ steps.check.outputs.passed }}
+  work_dir:
+    description: Directory holding ut_summary.md, all_new_failures.* and the per-job dirs
+    value: ${{ github.workspace }}/ut_summary
+  artifact_url:
+    description: URL of the uploaded summary artifact
+    value: ${{ steps.upload.outputs.artifact-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download UT artifacts
+      shell: bash -xe {0}
+      env:
+        PATTERN: ${{ inputs.artifact_pattern || 'Inductor-XPU-UT-Data-*' }}
+      run: |
+        mkdir -p "${GITHUB_WORKSPACE}/ut_artifacts"
+        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+          --dir "${GITHUB_WORKSPACE}/ut_artifacts" -p "${PATTERN}"
+        ls -al "${GITHUB_WORKSPACE}/ut_artifacts"
+    - name: Download known-failure issues snapshot
+      shell: bash -xe {0}
+      env:
+        SNAPSHOT: ${{ inputs.snapshot_artifact }}
+      run: |
+        mkdir -p "${GITHUB_WORKSPACE}/issues_snapshot"
+        # Without it the run falls back to the live issue list, which misses
+        # issues closed while it was running.
+        [ -n "${SNAPSHOT}" ] || exit 0
+        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+          --dir "${GITHUB_WORKSPACE}/issues_snapshot" -n "${SNAPSHOT}" || \
+          echo "::warning::no ${SNAPSHOT} artifact; using the live issue list only"
+    - name: Check UT results
+      id: check
+      shell: bash {0}
+      run: |
+        set -x
+        if python3 "${GITHUB_ACTION_PATH}/../../scripts/ut_results.py" summary \
+          --artifacts "${GITHUB_WORKSPACE}/ut_artifacts" \
+          --snapshot "${GITHUB_WORKSPACE}/issues_snapshot" \
+          --work "${GITHUB_WORKSPACE}/ut_summary" \
+          --pytorch "${{ inputs.pytorch }}" \
+          --platform "${{ inputs.platform }}"; then
+          echo "passed=true" >> "${GITHUB_OUTPUT}"
+        else
+          echo "passed=false" >> "${GITHUB_OUTPUT}"
+        fi
+        if [ -s "${GITHUB_WORKSPACE}/ut_summary/all_new_failures.txt" ]; then
+          echo "has_new_failures=true" >> "${GITHUB_OUTPUT}"
+        else
+          echo "has_new_failures=false" >> "${GITHUB_OUTPUT}"
+        fi
+        cat "${GITHUB_WORKSPACE}/ut_summary/ut_summary.md" >> "${GITHUB_STEP_SUMMARY}" || true
+    - name: Upload UT summary
+      id: upload
+      if: ${{ ! cancelled() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.summary_artifact }}
+        # Everything the run's UT results are read from. The XML reports they
+        # were built from stay in the Inductor-XPU-UT-Data artifacts.
+        path: |
+          ${{ github.workspace }}/ut_summary/ut_summary.md
+          ${{ github.workspace }}/ut_summary/all_new_failures.txt
+          ${{ github.workspace }}/ut_summary/all_new_failures.csv
+          ${{ github.workspace }}/ut_summary/*/results.md
+          ${{ github.workspace }}/ut_summary/*/run_health.jsonl
+          ${{ github.workspace }}/ut_summary/*/new_failure_list.txt
+          ${{ github.workspace }}/ut_summary/*/new_ut_failure_list.csv
+          ${{ github.workspace }}/ut_summary/*/ut_failure_list.csv
+          ${{ github.workspace }}/ut_summary/*/failures_*.log
+          ${{ github.workspace }}/ut_summary/*/passed_*.log
+          ${{ github.workspace }}/ut_summary/*/all_cases_*.log
+          ${{ github.workspace }}/ut_summary/*/category_*.log
+        if-no-files-found: ignore

@@ -30,81 +30,33 @@ jobs:
       pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
-      ARTIFACTS_DIR: ${{ github.workspace }}/ut_artifacts
-      SNAPSHOT_DIR: ${{ github.workspace }}/issues_snapshot
-      WORK_DIR: ${{ github.workspace }}/ut_summary
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
-      - name: Download UT artifacts
-        run: |
-          mkdir -p "${ARTIFACTS_DIR}"
-          gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
-            --dir "${ARTIFACTS_DIR}" \
-            -p "Inductor-XPU-UT-Data-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}"
-          ls -al "${ARTIFACTS_DIR}"
-      - name: Download known-failure issues snapshot
-        continue-on-error: true
-        uses: actions/download-artifact@v8
+      - name: Summarize UT results
+        id: ut
+        uses: ./.github/actions/ut-summary
         with:
-          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
-          path: ${{ github.workspace }}/issues_snapshot
-      - name: Check UT results
-        id: ut-check
-        continue-on-error: true
-        run: |
-          python3 ./.github/scripts/ut_results.py summary \
-            --artifacts "${ARTIFACTS_DIR}" \
-            --snapshot "${SNAPSHOT_DIR}" \
-            --work "${WORK_DIR}" \
-            --pytorch "${{ inputs.pytorch }}"
-      - name: Write summary panel
-        id: new-failures
-        if: ${{ ! cancelled() }}
-        run: |
-          cat "${WORK_DIR}/ut_summary.md" >> "${GITHUB_STEP_SUMMARY}" || true
-          if [ -s "${WORK_DIR}/all_new_failures.txt" ]; then
-            echo "has_new_failures=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "has_new_failures=false" >> "${GITHUB_OUTPUT}"
-          fi
-      - name: Upload UT summary
-        if: ${{ ! cancelled() }}
-        id: upload-summary
-        uses: actions/upload-artifact@v7
-        with:
-          name: UT-Summary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
-          # Everything the run's UT results are read from. The XML reports they
-          # were built from stay in the Inductor-XPU-UT-Data artifacts.
-          path: |
-            ${{ github.workspace }}/ut_summary/ut_summary.md
-            ${{ github.workspace }}/ut_summary/all_new_failures.txt
-            ${{ github.workspace }}/ut_summary/all_new_failures.csv
-            ${{ github.workspace }}/ut_summary/*/results.md
-            ${{ github.workspace }}/ut_summary/*/run_health.jsonl
-            ${{ github.workspace }}/ut_summary/*/new_failure_list.txt
-            ${{ github.workspace }}/ut_summary/*/new_ut_failure_list.csv
-            ${{ github.workspace }}/ut_summary/*/ut_failure_list.csv
-            ${{ github.workspace }}/ut_summary/*/failures_*.log
-            ${{ github.workspace }}/ut_summary/*/passed_*.log
-            ${{ github.workspace }}/ut_summary/*/all_cases_*.log
-            ${{ github.workspace }}/ut_summary/*/category_*.log
-          if-no-files-found: ignore
+          pytorch: ${{ inputs.pytorch }}
+          artifact_pattern: Inductor-XPU-UT-Data-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          snapshot_artifact: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
+          summary_artifact: UT-Summary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
       - name: Comment on PR for new failures
         if: >-
           ${{ ! cancelled() && github.event_name == 'pull_request'
-          && steps.new-failures.outputs.has_new_failures == 'true'
+          && steps.ut.outputs.has_new_failures == 'true'
           && github.event.pull_request.head.repo.full_name == github.repository
           && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
               || github.event.pull_request.user.login == 'copilot[bot]') }}
         uses: actions/github-script@v9
+        env:
+          WORK_DIR: ${{ steps.ut.outputs.work_dir }}
+          ARTIFACT_URL: ${{ steps.ut.outputs.artifact_url }}
         with:
           github-token: ${{ secrets.COPILOT_TOKEN }}
           script: |
             const fs = require('fs');
-            const prNumber = context.issue.number;
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const artifactUrl = '${{ steps.upload-summary.outputs.artifact-url }}';
 
             // all_new_failures.csv is headerless and pipe delimited, with the
             // artifact source as its last column.
@@ -129,7 +81,7 @@ jobs:
               '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
               '',
               `Job log: ${jobUrl}`,
-              `Full new failure report: ${artifactUrl}`,
+              `Full new failure report: ${process.env.ARTIFACT_URL}`,
               '',
               '**New failures:**',
               '',
@@ -146,17 +98,17 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: prNumber,
+              issue_number: context.issue.number,
               body: body
             });
       - name: Fail if UT check failed
-        if: ${{ steps.ut-check.outcome == 'failure' }}
+        if: ${{ steps.ut.outputs.passed != 'true' }}
         shell: bash {0}
         run: |
-          new_failure_list="${WORK_DIR}/all_new_failures.txt"
-          if [ -s "${new_failure_list}" ]; then
-            echo "::error::UT check failed with $(grep -c . "${new_failure_list}") new failures:"
-            cat "${new_failure_list}"
+          new_failures="${{ steps.ut.outputs.work_dir }}/all_new_failures.txt"
+          if [ -s "${new_failures}" ]; then
+            echo "::error::UT check failed with $(grep -c . "${new_failures}") new failures:"
+            cat "${new_failures}"
           else
             echo "::error::UT check failed"
           fi
