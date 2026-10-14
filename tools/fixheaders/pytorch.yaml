@@ -17,7 +17,7 @@ exclude:
   - "test/xpu/functorch/test_control_flow_xpu.py"
   - "test/xpu/functorch/test_eager_transforms_xpu.py"
   - "test/xpu/functorch/test_vmap_xpu.py"
-  - "test/xpu/run_test_with_windows_nighltly.py"
+  - "test/xpu/run_test_with_windows_nightly.py"
   - "test/xpu/test_cpp_api_parity_xpu.py"
   - "test/xpu/test_expanded_weights_xpu.py"
   - "test/xpu/test_fake_tensor_xpu.py"
