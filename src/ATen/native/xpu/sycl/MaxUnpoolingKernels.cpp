@@ -42,7 +42,9 @@ void max_unpooling_2d_forward_kernel_impl(
         ? linearIndex % numChannels
         : (linearIndex / inputWidth / inputHeight) % numChannels;
     int n = linearIndex / inputWidth / inputHeight / numChannels;
-    int maxind = indices_data[linearIndex];
+    // Keep the index at int64 so the bounds check below sees the value the
+    // user passed in, not its 32-bit truncation.
+    int64_t maxind = indices_data[linearIndex];
     SYCL_KERNEL_ASSERT(maxind >= 0 && maxind < outputImageSize);
     index_t offset = is_channels_last
         ? n * numChannels * outputHeight * outputWidth + c
@@ -217,12 +219,12 @@ void max_unpooling_3d_forward_kernel_impl(
   index_t iRow = item.get_global_id(1);
   index_t iFrame = (item.get_group()[0] + offsetZ) % iT; // input frame/time
   index_t slice = (item.get_group()[0] + offsetZ) / iT; // input slice/feature
-  index_t outputImageSize = oT * oH * oW;
+  int64_t outputImageSize = oT * oH * oW;
   if (iRow < iH && iColumn < iW) {
     scalar_t val = input_ptr
         [slice * iT * iH * iW + iFrame * iH * iW + iRow * iW +
          iColumn] /*[slice][iFrame][iRow][iColumn]*/;
-    index_t index = indices_ptr
+    int64_t index = indices_ptr
         [slice * iT * iH * iW + iFrame * iH * iW + iRow * iW +
          iColumn] /*[slice][iFrame][iRow][iColumn]*/;
     SYCL_KERNEL_ASSERT(index >= 0 && index < outputImageSize);
@@ -294,13 +296,15 @@ void max_unpooling_3d_cl_forward_kernel_impl(
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto input_ptr = input_data;
   auto indices_ptr = indices_data;
+  int64_t outputImageSize = outputDepth * outputHeight * outputWidth;
   for (index_t linearIndex = item.get_global_id(0);
        linearIndex < numInputElements;
        linearIndex += item.get_global_range()[0]) {
     index_t c = linearIndex % numChannels;
     index_t n =
         linearIndex / inputDepth / inputWidth / inputHeight / numChannels;
-    index_t maxind = indices_ptr[linearIndex];
+    int64_t maxind = indices_ptr[linearIndex];
+    SYCL_KERNEL_ASSERT(maxind >= 0 && maxind < outputImageSize);
     index_t offset =
         n * numChannels * outputDepth * outputHeight * outputWidth + c;
     scalar_t* out = output_data + offset;
