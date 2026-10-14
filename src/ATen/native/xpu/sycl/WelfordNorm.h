@@ -410,15 +410,21 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
   template <typename OutputFunc>
   void finalize_chunk(
       sycl::nd_item<2> item,
-      acc_vec_t& sum, acc_vec_t& sum_sq, int_vec_t& cnt,
+      acc_vec_t& anchor, acc_vec_t& sum_delta, acc_vec_t& sum_sq_delta,
+      int_vec_t& cnt,
       OutputFunc output_fn) const {
     acc_vec_t mean, m2n;
     int_vec_t count;
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
       count[v] = cnt[v];
-      mean[v] = count[v] > 0 ? sum[v] / acc_t(count[v]) : acc_t(0);
-      m2n[v] = (sum_sq[v] * cnt[v] - sum[v] * sum[v]) / cnt[v];
+      mean[v] = count[v] > 0
+          ? anchor[v] + sum_delta[v] / acc_t(count[v])
+          : acc_t(0);
+      m2n[v] = count[v] > 0
+          ? (sum_sq_delta[v] * count[v] - sum_delta[v] * sum_delta[v]) /
+              acc_t(count[v])
+          : acc_t(0);
     }
     welford_vertical_merge<VEC_SIZE>(
         item, count, mean, m2n, shmem_count_, shmem_mean_, shmem_m2n_);
