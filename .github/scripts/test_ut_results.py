@@ -316,66 +316,97 @@ def test_known_issue_cases_are_taken_per_category():
 # --------------------------------------------------------------------------- #
 
 
-def test_enrich_new_failures_matches_on_category_class_and_test(tmp_path):
+def test_enrich_failures_matches_on_category_class_and_test(tmp_path):
     ut_results.write_lines(tmp_path / "ut_failure_list.csv", [
         "| op_regression | TestFoo | test_bad | failed | one | XML |",
         "| op_extended | TestFoo | test_bad | failed | two | XML |",
         "| op_extended | TestFoo | test_bad_longer | failed | three | XML |",
     ])
 
-    rows = ut_results.enrich_new_failures(tmp_path, ["op_extended,TestFoo,test_bad"])
+    rows = ut_results.enrich_failures(tmp_path, ["op_extended,TestFoo,test_bad"])
 
     assert rows == ["| op_extended | TestFoo | test_bad | failed | two | XML |"]
 
 
-def test_summary_reports_checks_and_gates_one_run(tmp_path, monkeypatch):
-    artifact = tmp_path / "artifacts" / "Inductor-XPU-UT-Data-sha-op_regression-1-1"
+def seed_artifact(tmp_path, ut="op_regression"):
+    artifact = tmp_path / "artifacts" / f"Inductor-XPU-UT-Data-sha-{ut}-1-1"
     artifact.mkdir(parents=True)
     (artifact / "ut_meta.env").write_text(
-        "UT_NAME=op_regression\nUT_RUNNER=bmg-test\nUT_CATEGORY=\n", encoding="utf-8")
-    write_xml(artifact / "op_regression.xml",
-              [PASS] * 352 + [FAIL], tests=353, failures=1)
+        f"UT_NAME={ut}\nUT_RUNNER=bmg-test\nUT_CATEGORY=\n", encoding="utf-8")
+    write_xml(artifact / f"{ut}.xml", [PASS] * 352 + [FAIL], tests=353, failures=1)
+    return tmp_path / "artifacts"
+
+
+def test_check_separates_new_from_known_and_fails_on_new(tmp_path, monkeypatch):
+    artifacts = seed_artifact(tmp_path)
     monkeypatch.setattr(ut_results.KnownIssues, "_fetch", lambda self, *a: "")
 
     work = tmp_path / "work"
-    code = ut_results.summarize(tmp_path / "artifacts", tmp_path / "none", work, "main")
+    code = ut_results.check_run(artifacts, tmp_path / "none", work, "main")
 
     assert code == 1
-    assert (work / "all_new_failures.txt").read_text() == "op_regression,TestFoo,test_bad\n"
-    assert (work / "all_new_failures.csv").read_text() == \
+    job = work / "op_regression"
+    assert (job / "new_failure_list.txt").read_text() == "op_regression,TestFoo,test_bad\n"
+    assert (job / "new_ut_failure_list.csv").read_text() == \
         "| op_regression | TestFoo | test_bad | failed | RuntimeError: boom | XML |\n"
-    panel = (work / "ut_summary.md").read_text()
-    # The verdict leads, then the job's two sections.
-    assert panel.index("### Known-failure comparison") < panel.index("### op_regression")
-    assert "| op_regression | op_regression | 1 | ❌ failed |" in panel
-    assert panel.index("#### Test Failures") < panel.index("#### Results Summary")
-    assert json.loads((work / "op_regression" / "run_health.jsonl").read_text())["healthy"]
+    assert (job / "known_ut_failure_list.csv").read_text() == ""
+    verdict = json.loads((job / "verdict.json").read_text())
+    assert verdict["ut_job"] == "op_regression"
+    assert verdict["categories"] == [
+        {"category": "op_regression", "known": 0, "new": 1, "passed": False}]
+    assert json.loads((job / "run_health.jsonl").read_text())["healthy"]
 
 
-def test_summary_is_green_when_every_failure_is_known(tmp_path, monkeypatch):
-    artifact = tmp_path / "artifacts" / "Inductor-XPU-UT-Data-sha-op_regression-1-1"
-    artifact.mkdir(parents=True)
-    (artifact / "ut_meta.env").write_text(
-        "UT_NAME=op_regression\nUT_RUNNER=bmg-test\nUT_CATEGORY=\n", encoding="utf-8")
-    write_xml(artifact / "op_regression.xml",
-              [PASS] * 352 + [FAIL], tests=353, failures=1)
+def test_check_passes_when_the_failure_is_a_known_one(tmp_path, monkeypatch):
+    artifacts = seed_artifact(tmp_path)
     monkeypatch.setattr(
         ut_results.KnownIssues, "_fetch",
         lambda self, *a: "Issue #1: x\nCases:\nop_regression,TestFoo,test_bad\n",
     )
 
     work = tmp_path / "work"
-    code = ut_results.summarize(tmp_path / "artifacts", tmp_path / "none", work, "main")
+    code = ut_results.check_run(artifacts, tmp_path / "none", work, "main")
 
     assert code == 0
-    assert (work / "all_new_failures.txt").read_text() == ""
-    assert "| op_regression | op_regression | 0 | ✅ passed |" in \
-        (work / "ut_summary.md").read_text()
+    job = work / "op_regression"
+    assert (job / "new_ut_failure_list.csv").read_text() == ""
+    assert (job / "known_ut_failure_list.csv").read_text() == \
+        "| op_regression | TestFoo | test_bad | failed | RuntimeError: boom | XML |\n"
+    assert json.loads((job / "verdict.json").read_text())["categories"] == [
+        {"category": "op_regression", "known": 1, "new": 0, "passed": True}]
 
 
-def test_summary_fails_when_no_artifact_names_a_ut_job(tmp_path, monkeypatch):
+def test_report_has_a_summary_and_two_folded_failure_sections(tmp_path):
+    check = tmp_path / "checks" / "UT-Check-sha-op_ut-1-1" / "op_ut"
+    check.mkdir(parents=True)
+    (check / "verdict.json").write_text(json.dumps({
+        "ut_job": "op_ut", "runner": "bmg-test",
+        "categories": [{"category": "op_ut", "known": 2, "new": 1, "passed": False}],
+    }), encoding="utf-8")
+    ut_results.write_lines(check / "new_ut_failure_list.csv", [
+        "| op_ut | TestFoo | test_new | failed | boom | XML |"])
+    ut_results.write_lines(check / "known_ut_failure_list.csv", [
+        "| op_ut | TestFoo | test_old | failed | bang | XML |",
+        "| op_ut | TestFoo | test_older | failed | bang | XML |"])
+
+    out = tmp_path / "report" / "ut_report.md"
+    assert ut_results.render_report(tmp_path / "checks", out) == 0
+
+    report = out.read_text()
+    summary, _, folded = report.partition("<details>")
+    assert "| UT job | Category | Known failures | New failures | Result |" in summary
+    assert "| op_ut | op_ut | 2 | 1 | ❌ failed |" in summary
+    assert "test_new" not in summary and "test_old" not in summary
+    assert "<summary>New failures (1)</summary>" in folded
+    assert "<summary>Known failures (2)</summary>" in folded
+    assert folded.index("test_new") < folded.index("test_old")
+    assert (out.parent / "new_failures.csv").read_text() == \
+        "| op_ut | TestFoo | test_new | failed | boom | XML |\n"
+
+
+def test_check_fails_when_no_artifact_names_a_ut_job(tmp_path, monkeypatch):
     (tmp_path / "artifacts" / "junk").mkdir(parents=True)
     monkeypatch.setattr(ut_results.KnownIssues, "_fetch", lambda self, *a: "")
 
-    assert ut_results.summarize(
+    assert ut_results.check_run(
         tmp_path / "artifacts", tmp_path / "none", tmp_path / "work", "main") == 1

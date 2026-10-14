@@ -292,8 +292,8 @@ jobs:
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
-  linux-ut-summary:
-    name: linux-ut-summary
+  linux-ut-report:
+    name: linux-ut-report
     needs: [linux-ut, linux-distributed, preci-lint-check]
     if: >-
       ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true'
@@ -302,11 +302,8 @@ jobs:
     permissions:
       actions: read
       contents: read
-      issues: write
       pull-requests: write
-    uses: ./.github/workflows/_linux_ut_summary.yml
-    with:
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+    uses: ./.github/workflows/_ut_report.yml
 
   linux-e2e:
     name: linux-e2e

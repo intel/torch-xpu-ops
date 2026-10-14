@@ -1,0 +1,97 @@
+name: UT Check
+description: Compare a UT job's failures with the known-failure list and fail on a new one
+
+inputs:
+  artifact_pattern:
+    required: true
+    description: UT data artifacts of the job being checked, one glob per line
+  pytorch:
+    default: 'nightly_wheel'
+    description: Pytorch version the UT job ran against, recorded in issue comments
+  platform:
+    default: 'linux'
+    description: linux or windows; selects the expected case counts and issue labels
+  snapshot_artifact:
+    default: ''
+    description: Known-failure snapshot taken at build start. Empty skips it
+  check_artifact:
+    required: true
+    description: Name to upload the check under
+
+outputs:
+  passed:
+    description: "'true' when every category passed"
+    value: ${{ steps.check.outputs.passed }}
+  new_failures:
+    description: How many failures are not known ones
+    value: ${{ steps.check.outputs.new_failures }}
+  work_dir:
+    description: Directory holding the per-job check output
+    value: ${{ github.workspace }}/ut_check
+
+runs:
+  using: composite
+  steps:
+    - name: Download UT artifacts
+      shell: bash -xe {0}
+      env:
+        PATTERNS: ${{ inputs.artifact_pattern }}
+      run: |
+        mkdir -p "${GITHUB_WORKSPACE}/ut_artifacts"
+        # A scope can produce more than one artifact: xpu_p0 splits its
+        # distributed group onto a second machine.
+        while IFS= read -r pattern; do
+          [ -n "${pattern}" ] || continue
+          gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+            --dir "${GITHUB_WORKSPACE}/ut_artifacts" -p "${pattern}" || \
+            echo "::warning::no artifact matches ${pattern}"
+        done <<< "${PATTERNS}"
+        ls -al "${GITHUB_WORKSPACE}/ut_artifacts"
+    - name: Download known-failure issues snapshot
+      shell: bash -xe {0}
+      env:
+        SNAPSHOT: ${{ inputs.snapshot_artifact }}
+      run: |
+        mkdir -p "${GITHUB_WORKSPACE}/issues_snapshot"
+        # Without it the check falls back to the live issue list, which misses
+        # issues closed while the run was going.
+        [ -n "${SNAPSHOT}" ] || exit 0
+        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+          --dir "${GITHUB_WORKSPACE}/issues_snapshot" -n "${SNAPSHOT}" || \
+          echo "::warning::no ${SNAPSHOT} artifact; using the live issue list only"
+    - name: Check UT failures
+      id: check
+      shell: bash {0}
+      run: |
+        set -x
+        if python3 "${GITHUB_ACTION_PATH}/../../scripts/ut_results.py" check \
+          --artifacts "${GITHUB_WORKSPACE}/ut_artifacts" \
+          --work "${GITHUB_WORKSPACE}/ut_check" \
+          --snapshot "${GITHUB_WORKSPACE}/issues_snapshot" \
+          --pytorch "${{ inputs.pytorch }}" \
+          --platform "${{ inputs.platform }}"; then
+          echo "passed=true" >> "${GITHUB_OUTPUT}"
+        else
+          echo "passed=false" >> "${GITHUB_OUTPUT}"
+        fi
+        new=$(cat "${GITHUB_WORKSPACE}"/ut_check/*/new_failure_list.txt 2>/dev/null | grep -c . || true)
+        echo "new_failures=${new:-0}" >> "${GITHUB_OUTPUT}"
+    - name: Upload UT check
+      if: ${{ ! cancelled() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.check_artifact }}
+        # What the check concluded. The case logs it read are in the
+        # Inductor-XPU-UT-Data artifact.
+        path: |
+          ${{ github.workspace }}/ut_check/*/verdict.json
+          ${{ github.workspace }}/ut_check/*/run_health.jsonl
+          ${{ github.workspace }}/ut_check/*/new_failure_list.txt
+          ${{ github.workspace }}/ut_check/*/new_ut_failure_list.csv
+          ${{ github.workspace }}/ut_check/*/known_ut_failure_list.csv
+          ${{ github.workspace }}/ut_check/*/ut_failure_list.csv
+          ${{ github.workspace }}/ut_check/*/failures_*.log
+          ${{ github.workspace }}/ut_check/*/passed_*.log
+          ${{ github.workspace }}/ut_check/*/all_cases_*.log
+          ${{ github.workspace }}/ut_check/*/category_*.log
+        if-no-files-found: ignore
