@@ -345,8 +345,10 @@ def test_summary_reports_checks_and_gates_one_run(tmp_path, monkeypatch):
     assert (work / "all_new_failures.csv").read_text() == \
         "| op_regression | TestFoo | test_bad | failed | RuntimeError: boom | XML |\n"
     panel = (work / "ut_summary.md").read_text()
-    assert "#### op_regression" in panel
+    # The verdict leads, then the job's two sections.
+    assert panel.index("### Known-failure comparison") < panel.index("### op_regression")
     assert "| op_regression | op_regression | 1 | ❌ failed |" in panel
+    assert panel.index("#### Test Failures") < panel.index("#### Results Summary")
     assert json.loads((work / "op_regression" / "run_health.jsonl").read_text())["healthy"]
 
 

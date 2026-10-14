@@ -141,7 +141,9 @@ def issue_platform(platform: str, runner: str) -> str:
 
 
 def categories_of(ut_job: str) -> tuple[str, ...]:
-    return JOB_CATEGORIES.get(ut_job, (ut_job,))
+    if ut_job in JOB_CATEGORIES:
+        return JOB_CATEGORIES[ut_job]
+    return tuple(part for part in ut_job.split(",") if part)
 
 
 # --------------------------------------------------------------------------- #
@@ -392,26 +394,33 @@ class Report:
         """Headerless, pipe delimited: the summary greps it row by row."""
         write_lines(path, [md_row(row) for row in self.failure_rows()])
 
-    def render(self, new_lines: set[str] | None = None) -> str:
+    def render(self, new_lines: set[str] | None = None, level: int = 3,
+              limit: int | None = None) -> str:
         """Without `new_lines` no failure can be told from another, so all show."""
+        heading = "#" * level
         blocks = []
         if self.failures:
-            blocks.append("\n".join(["### Test Failures", "",
-                                     *self.failures_md(new_lines)]))
-        blocks.append("\n".join(["### Results Summary", "", *self.summary_md()]))
+            blocks.append("\n".join([f"{heading} Test Failures", "",
+                                     *self.failures_md(new_lines, limit)]))
+        blocks.append("\n".join([f"{heading} Results Summary", "", *self.summary_md()]))
         return "\n\n".join(blocks)
 
-    def failures_md(self, new_lines: set[str] | None = None) -> list[str]:
+    def failures_md(self, new_lines: set[str] | None = None,
+                    limit: int | None = None) -> list[str]:
+        def table(cases: list[Case]) -> list[str]:
+            shown = cases if limit is None else cases[:limit]
+            lines = md_table(FAILURE_HEADER, self.failure_rows(shown))
+            if len(shown) < len(cases):
+                lines += ["", f"… and {len(cases) - len(shown)} more, in results.md"]
+            return lines
+
         if new_lines is None:
-            return md_table(FAILURE_HEADER, self.failure_rows())
+            return table(self.failures)
         new = [c for c in self.failures if c.line in new_lines]
         known = [c for c in self.failures if c.line not in new_lines]
-        lines = md_table(FAILURE_HEADER, self.failure_rows(new)) if new \
-            else ["✅ No new failures."]
+        lines = table(new) if new else ["✅ No new failures."]
         if known:
-            lines += ["", *md_details(plural(len(known), "known failure"),
-                                      md_table(FAILURE_HEADER,
-                                               self.failure_rows(known)))]
+            lines += ["", *md_details(plural(len(known), "known failure"), table(known))]
         return lines
 
     def summary_md(self) -> list[str]:
@@ -951,15 +960,18 @@ def enrich_new_failures(job_dir: Path, new_failures: list[str]) -> list[str]:
     return enriched
 
 
+# How much of a failure table the panel carries; a step summary is capped at
+# 1MB and a bad night has thousands of rows. results.md keeps all of them.
+PANEL_FAILURE_LIMIT = 50
+
+
 def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
-              pytorch: str) -> int:
+              pytorch: str, platform: str = "linux") -> int:
     work_dir.mkdir(parents=True, exist_ok=True)
     known = KnownIssues(snapshot_dir, work_dir)
 
-    panel = ["### UT Results Summary", ""]
-    verdicts = ["### Known-failure comparison", "",
-                md_row(["UT job", "Category", "New failures", "Result"]),
-                md_row(["---"] * 4)]
+    verdicts: list[list[str]] = []
+    job_blocks: list[str] = []
     all_new: list[str] = []
     all_rows: list[str] = []
     failed = False
@@ -972,7 +984,7 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             warn(f"{artifact.name} names no UT job, skipped")
             continue
         jobs += 1
-        job_dir = work_dir / meta.ut_job
+        job_dir = work_dir / meta.ut_job.replace(",", "_")
         collect_job_dir(artifact, job_dir)
 
         print(f"::group::{meta.ut_job} (runner: {meta.runner or 'unknown'})", flush=True)
@@ -982,7 +994,7 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             warn(f"{meta.ut_job} produced no junit report")
 
         checker = Checker(
-            work_dir=job_dir, pytorch=pytorch, platform="linux", runner=meta.runner,
+            work_dir=job_dir, pytorch=pytorch, platform=platform, runner=meta.runner,
             health_file=job_dir / "run_health.jsonl",
         )
         job_new: list[str] = []
@@ -991,8 +1003,8 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             result = checker.run(category)
             failed = failed or not result.passed
             job_new += result.new_failures
-            verdicts.append(md_row([meta.ut_job, category,
-                                    str(len(result.new_failures)), result.verdict]))
+            verdicts.append([meta.ut_job, category,
+                             str(len(result.new_failures)), result.verdict])
         print("::endgroup::", flush=True)
 
         # Rendered after the comparison, which is what tells a new failure from
@@ -1000,9 +1012,9 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
         if report is not None:
             (job_dir / "results.md").write_text(report.render(set(job_new)),
                                                 encoding="utf-8")
-            # The panel carries the counts, not the listing: the failures are
-            # in all_new_failures.csv and in the job's results.md.
-            panel += [f"#### {meta.ut_job}", "", *report.summary_md(), ""]
+            job_blocks += [f"### {meta.ut_job}", "",
+                           report.render(set(job_new), level=4,
+                                         limit=PANEL_FAILURE_LIMIT), ""]
 
         write_lines(job_dir / "new_failure_list.txt", job_new)
         rows = enrich_new_failures(job_dir, job_new)
@@ -1014,9 +1026,15 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
         print("::error::no UT data artifact carried a ut_meta.env; nothing to summarize")
         return 1
 
+    # The verdict is what the run is read for, so it leads even though it is
+    # the last thing known.
+    panel = ["## UT Results Summary", "",
+             "### Known-failure comparison", "",
+             *md_table(["UT job", "Category", "New failures", "Result"], verdicts),
+             "", *job_blocks]
     write_lines(work_dir / "all_new_failures.txt", all_new)
     write_lines(work_dir / "all_new_failures.csv", all_rows)
-    write_lines(work_dir / "ut_summary.md", panel + verdicts)
+    write_lines(work_dir / "ut_summary.md", panel)
     return 1 if failed else 0
 
 
@@ -1046,6 +1064,7 @@ def main(argv: list[str] | None = None) -> int:
     summary.add_argument("--snapshot", default="", type=Path)
     summary.add_argument("--work", required=True, type=Path)
     summary.add_argument("--pytorch", default="nightly_wheel")
+    summary.add_argument("--platform", default="linux", choices=("linux", "windows"))
 
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)
@@ -1061,7 +1080,8 @@ def main(argv: list[str] | None = None) -> int:
         checker = Checker.from_env(Path(args.dir), args.pytorch)
         return 0 if checker.run(args.category).passed else 1
 
-    return summarize(args.artifacts, Path(args.snapshot or "."), args.work, args.pytorch)
+    return summarize(args.artifacts, Path(args.snapshot or "."), args.work,
+                     args.pytorch, args.platform)
 
 
 if __name__ == "__main__":
