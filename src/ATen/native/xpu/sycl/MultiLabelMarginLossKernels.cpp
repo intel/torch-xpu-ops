@@ -40,7 +40,7 @@ void multilabel_margin_loss_forward_kernel_impl(
     bool size_average) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   accscalar_t* smem =
-      reinterpret_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
+      static_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
 
   int k = item.get_group(0);
   const scalar_t* input_k = input + k * dim;
