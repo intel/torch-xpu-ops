@@ -386,9 +386,9 @@ template <
     int ELEMS_PER_THREAD,
     int SIMD,
     typename IndexT>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((intelex::grf_size<128>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void sbtopk_gather_kernel(
     const scalar_t* inputData,
     scalar_t* topKData,
