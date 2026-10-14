@@ -41,7 +41,9 @@ REGISTER_XPU_DISPATCH(polar_stub, &xpu::polar_kernel);
 // Zero a tensor via a device memset instead of a fill kernel, mirroring the
 // CUDA zero_cuda_ implementation (PR #195303). This makes zero_() work for
 // dtypes without a fill kernel (e.g. bitserial Bits* and Float4_e2m1fn_x2).
-Tensor& zero_xpu_(Tensor& self) {
+// Mark default-visible (TORCH_XPU_API) so it is resolvable by a separately
+// compiled test/load_inline extension in a standalone torch-xpu-ops build.
+TORCH_XPU_API Tensor& zero_xpu_(Tensor& self) {
   void* const ptr = self.mutable_data_ptr();
   if (ptr != nullptr && self.is_non_overlapping_and_dense()) {
     at::xpu::getCurrentXPUStream(self.device().index())
