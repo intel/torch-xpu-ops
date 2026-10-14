@@ -1,0 +1,55 @@
+name: UT Report
+description: One report for a run, from what every UT check job concluded
+
+inputs:
+  check_pattern:
+    default: ''
+    description: UT check artifacts to report on. Empty means every one of this run
+  report_artifact:
+    required: true
+    description: Name to upload the report under
+
+outputs:
+  has_new_failures:
+    description: "'true' when the run hit a failure that is not a known one"
+    value: ${{ steps.report.outputs.has_new_failures }}
+  work_dir:
+    description: Directory holding ut_report.md and the failure tables
+    value: ${{ github.workspace }}/ut_report
+  artifact_url:
+    description: URL of the uploaded report artifact
+    value: ${{ steps.upload.outputs.artifact-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download UT checks
+      shell: bash -xe {0}
+      env:
+        PATTERN: ${{ inputs.check_pattern || 'UT-Check-*' }}
+      run: |
+        mkdir -p "${GITHUB_WORKSPACE}/ut_checks"
+        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+          --dir "${GITHUB_WORKSPACE}/ut_checks" -p "${PATTERN}"
+        ls -al "${GITHUB_WORKSPACE}/ut_checks"
+    - name: Render the report
+      id: report
+      shell: bash -xe {0}
+      run: |
+        python3 "${GITHUB_ACTION_PATH}/../../scripts/ut_results.py" summary \
+          --checks "${GITHUB_WORKSPACE}/ut_checks" \
+          --out "${GITHUB_WORKSPACE}/ut_report/ut_report.md"
+        cat "${GITHUB_WORKSPACE}/ut_report/ut_report.md" >> "${GITHUB_STEP_SUMMARY}"
+        if [ -s "${GITHUB_WORKSPACE}/ut_report/new_failures.csv" ]; then
+          echo "has_new_failures=true" >> "${GITHUB_OUTPUT}"
+        else
+          echo "has_new_failures=false" >> "${GITHUB_OUTPUT}"
+        fi
+    - name: Upload UT report
+      id: upload
+      if: ${{ ! cancelled() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.report_artifact }}
+        path: ${{ github.workspace }}/ut_report
+        if-no-files-found: ignore

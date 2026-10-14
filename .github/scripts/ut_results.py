@@ -2,12 +2,11 @@
 """UT results for torch-xpu-ops CI.
 
     report   junit/log reports    -> per-category case logs and a results table
-    check    one category's logs  -> verdict against the known-failure list
-    summary  a run's UT artifacts -> report + check for every UT job, one panel
+    check    a run's UT artifacts -> new and known failures per job, and a verdict
+    summary  the checks of a run  -> one markdown report
 
-A platform job runs `report` and `check`; a Linux run runs `summary` once, for
-every UT job together. `summary` writes `ut_summary.md`, `all_new_failures.*`
-and one directory per UT job: its case logs, `results.md`, `run_health.jsonl`.
+The UT job runs `report`; the check job of each UT scope runs `check` and fails
+on a new failure; the report job runs `summary` once for the whole run.
 """
 
 from __future__ import annotations
@@ -394,33 +393,26 @@ class Report:
         """Headerless, pipe delimited: the summary greps it row by row."""
         write_lines(path, [md_row(row) for row in self.failure_rows()])
 
-    def render(self, new_lines: set[str] | None = None, level: int = 3,
-              limit: int | None = None) -> str:
+    def render(self, new_lines: set[str] | None = None) -> str:
         """Without `new_lines` no failure can be told from another, so all show."""
-        heading = "#" * level
         blocks = []
         if self.failures:
-            blocks.append("\n".join([f"{heading} Test Failures", "",
-                                     *self.failures_md(new_lines, limit)]))
-        blocks.append("\n".join([f"{heading} Results Summary", "", *self.summary_md()]))
+            blocks.append("\n".join(["### Test Failures", "",
+                                     *self.failures_md(new_lines)]))
+        blocks.append("\n".join(["### Results Summary", "", *self.summary_md()]))
         return "\n\n".join(blocks)
 
-    def failures_md(self, new_lines: set[str] | None = None,
-                    limit: int | None = None) -> list[str]:
-        def table(cases: list[Case]) -> list[str]:
-            shown = cases if limit is None else cases[:limit]
-            lines = md_table(FAILURE_HEADER, self.failure_rows(shown))
-            if len(shown) < len(cases):
-                lines += ["", f"… and {len(cases) - len(shown)} more, in results.md"]
-            return lines
-
+    def failures_md(self, new_lines: set[str] | None = None) -> list[str]:
         if new_lines is None:
-            return table(self.failures)
+            return md_table(FAILURE_HEADER, self.failure_rows())
         new = [c for c in self.failures if c.line in new_lines]
         known = [c for c in self.failures if c.line not in new_lines]
-        lines = table(new) if new else ["✅ No new failures."]
+        lines = md_table(FAILURE_HEADER, self.failure_rows(new)) if new \
+            else ["✅ No new failures."]
         if known:
-            lines += ["", *md_details(plural(len(known), "known failure"), table(known))]
+            lines += ["", *md_details(plural(len(known), "known failure"),
+                                      md_table(FAILURE_HEADER,
+                                               self.failure_rows(known)))]
         return lines
 
     def summary_md(self) -> list[str]:
@@ -940,8 +932,8 @@ def collect_job_dir(artifact: Path, job_dir: Path) -> None:
                 shutil.copy2(path, target)
 
 
-def enrich_new_failures(job_dir: Path, new_failures: list[str]) -> list[str]:
-    """Give each new failure the error message only the csv carries.
+def enrich_failures(job_dir: Path, lines: list[str], what: str = "new") -> list[str]:
+    """Give each failure the error message only the csv carries.
 
     Keyed on category too: one job's csv holds every category it ran, and the
     same class and test name can appear in two of them.
@@ -952,28 +944,30 @@ def enrich_new_failures(job_dir: Path, new_failures: list[str]) -> list[str]:
         fields = [f.strip() for f in row.strip("|").split(" | ")]
         if len(fields) >= 3:
             index.setdefault(tuple(fields[:3]), row)
-    enriched = [index[key] for line in new_failures
+    enriched = [index[key] for line in lines
                 if (key := tuple(line.split(",", 2))) in index]
-    if rows and len(enriched) != len(new_failures):
-        warn(f"{job_dir.name} new failure count mismatch: "
-             f"filtered={len(new_failures)}, csv={len(enriched)}")
+    if rows and len(enriched) != len(lines):
+        warn(f"{job_dir.name} {what} failure count mismatch: "
+             f"filtered={len(lines)}, csv={len(enriched)}")
     return enriched
 
 
-# How much of a failure table the panel carries; a step summary is capped at
-# 1MB and a bad night has thousands of rows. results.md keeps all of them.
-PANEL_FAILURE_LIMIT = 50
+# How much of a failure table the report carries; a step summary is capped at
+# 1MB and a bad night has thousands of rows. The artifact keeps all of them.
+REPORT_FAILURE_LIMIT = 100
+SUMMARY_TABLE_HEADER = ["UT job", "Category", "Known failures", "New failures", "Result"]
 
 
-def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
+def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
               pytorch: str, platform: str = "linux") -> int:
+    """Compare every UT job in `artifacts_dir` with the known-failure list.
+
+    Writes, per UT job: `verdict.json`, the new and known failure tables, and
+    `run_health.jsonl`. Fails when a category has a new failure or did not run
+    healthily.
+    """
     work_dir.mkdir(parents=True, exist_ok=True)
     known = KnownIssues(snapshot_dir, work_dir)
-
-    verdicts: list[list[str]] = []
-    job_blocks: list[str] = []
-    all_new: list[str] = []
-    all_rows: list[str] = []
     failed = False
     jobs = 0
 
@@ -988,54 +982,86 @@ def summarize(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
         collect_job_dir(artifact, job_dir)
 
         print(f"::group::{meta.ut_job} (runner: {meta.runner or 'unknown'})", flush=True)
+        # The UT job writes these too; rebuilding them keeps the check working
+        # on an artifact whose job died before it reported.
         reports = sorted(job_dir.glob("*.xml"))
-        report = build_report(meta.ut_job, reports, job_dir) if reports else None
-        if report is None:
+        if reports:
+            build_report(meta.ut_job, reports, job_dir)
+        else:
             warn(f"{meta.ut_job} produced no junit report")
 
         checker = Checker(
             work_dir=job_dir, pytorch=pytorch, platform=platform, runner=meta.runner,
             health_file=job_dir / "run_health.jsonl",
         )
-        job_new: list[str] = []
+        verdict = {"ut_job": meta.ut_job, "runner": meta.runner, "categories": []}
+        new_lines: list[str] = []
+        known_lines: list[str] = []
         for category in categories_of(meta.ut_job):
             known.write_for(category, meta, job_dir / "Known_issue.log")
             result = checker.run(category)
             failed = failed or not result.passed
-            job_new += result.new_failures
-            verdicts.append([meta.ut_job, category,
-                             str(len(result.new_failures)), result.verdict])
+            failures = read_lines(job_dir / f"failures_{category}.log")
+            was_known = [line for line in failures if line not in set(result.new_failures)]
+            new_lines += result.new_failures
+            known_lines += was_known
+            verdict["categories"].append({
+                "category": category,
+                "known": len(was_known),
+                "new": len(result.new_failures),
+                "passed": result.passed,
+            })
         print("::endgroup::", flush=True)
 
-        # Rendered after the comparison, which is what tells a new failure from
-        # a known one.
-        if report is not None:
-            (job_dir / "results.md").write_text(report.render(set(job_new)),
-                                                encoding="utf-8")
-            job_blocks += [f"### {meta.ut_job}", "",
-                           report.render(set(job_new), level=4,
-                                         limit=PANEL_FAILURE_LIMIT), ""]
-
-        write_lines(job_dir / "new_failure_list.txt", job_new)
-        rows = enrich_new_failures(job_dir, job_new)
-        write_lines(job_dir / "new_ut_failure_list.csv", rows)
-        all_new += job_new
-        all_rows += rows
+        write_lines(job_dir / "new_failure_list.txt", new_lines)
+        write_lines(job_dir / "new_ut_failure_list.csv",
+                    enrich_failures(job_dir, new_lines, "new"))
+        write_lines(job_dir / "known_ut_failure_list.csv",
+                    enrich_failures(job_dir, known_lines, "known"))
+        (job_dir / "verdict.json").write_text(json.dumps(verdict, indent=2),
+                                              encoding="utf-8")
 
     if jobs == 0:
-        print("::error::no UT data artifact carried a ut_meta.env; nothing to summarize")
+        print("::error::no UT data artifact carried a ut_meta.env; nothing to check")
         return 1
-
-    # The verdict is what the run is read for, so it leads even though it is
-    # the last thing known.
-    panel = ["## UT Results Summary", "",
-             "### Known-failure comparison", "",
-             *md_table(["UT job", "Category", "New failures", "Result"], verdicts),
-             "", *job_blocks]
-    write_lines(work_dir / "all_new_failures.txt", all_new)
-    write_lines(work_dir / "all_new_failures.csv", all_rows)
-    write_lines(work_dir / "ut_summary.md", panel)
     return 1 if failed else 0
+
+
+def render_report(checks_dir: Path, out_file: Path) -> int:
+    """One report for a run, from what every check job concluded."""
+    rows: list[list[str]] = []
+    new_rows: list[str] = []
+    known_rows: list[str] = []
+    for verdict_file in sorted(checks_dir.rglob("verdict.json")):
+        verdict = json.loads(verdict_file.read_text(encoding="utf-8"))
+        for entry in verdict["categories"]:
+            rows.append([
+                verdict["ut_job"], entry["category"],
+                str(entry["known"]), str(entry["new"]),
+                "✅ passed" if entry["passed"] else "❌ failed",
+            ])
+        new_rows += read_lines(verdict_file.parent / "new_ut_failure_list.csv")
+        known_rows += read_lines(verdict_file.parent / "known_ut_failure_list.csv")
+
+    if not rows:
+        warn("no UT check artifact to report on")
+
+    def fold(title: str, table_rows: list[str]) -> list[str]:
+        shown = table_rows[:REPORT_FAILURE_LIMIT]
+        body = md_table(FAILURE_HEADER, []) + shown
+        if len(shown) < len(table_rows):
+            body += ["", f"… and {len(table_rows) - len(shown)} more, in the artifact"]
+        return ["", *md_details(f"{title} ({len(table_rows)})", body)]
+
+    report = ["## UT Report", "", "### Summary", "",
+              *md_table(SUMMARY_TABLE_HEADER, rows)]
+    report += fold("New failures", new_rows)
+    report += fold("Known failures", known_rows)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    write_lines(out_file, report)
+    write_lines(out_file.parent / "new_failures.csv", new_rows)
+    write_lines(out_file.parent / "known_failures.csv", known_rows)
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -1054,17 +1080,19 @@ def main(argv: list[str] | None = None) -> int:
                         help="JUnit XML or console log files")
     report.add_argument("--dir", default=".", help="where the case logs are written")
 
-    check = commands.add_parser("check", help="one category against known failures")
-    check.add_argument("category")
-    check.add_argument("pytorch", nargs="?", default="nightly_wheel")
-    check.add_argument("--dir", default=".", help="directory holding the case logs")
+    check = commands.add_parser("check", help="a run's UT jobs against known failures")
+    check.add_argument("--artifacts", required=True, type=Path,
+                       help="downloaded Inductor-XPU-UT-Data artifacts")
+    check.add_argument("--work", required=True, type=Path)
+    check.add_argument("--snapshot", default="", type=Path)
+    check.add_argument("--pytorch", default="nightly_wheel")
+    check.add_argument("--platform", default="linux", choices=("linux", "windows"))
 
-    summary = commands.add_parser("summary", help="every UT job of a run")
-    summary.add_argument("--artifacts", required=True, type=Path)
-    summary.add_argument("--snapshot", default="", type=Path)
-    summary.add_argument("--work", required=True, type=Path)
-    summary.add_argument("--pytorch", default="nightly_wheel")
-    summary.add_argument("--platform", default="linux", choices=("linux", "windows"))
+    report_run = commands.add_parser("summary", help="one report from the checks")
+    report_run.add_argument("--checks", required=True, type=Path,
+                            help="downloaded UT-Check artifacts")
+    report_run.add_argument("--out", required=True, type=Path,
+                            help="markdown report to write")
 
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)
@@ -1077,11 +1105,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "check":
-        checker = Checker.from_env(Path(args.dir), args.pytorch)
-        return 0 if checker.run(args.category).passed else 1
+        return check_run(args.artifacts, Path(args.snapshot or "."), args.work,
+                         args.pytorch, args.platform)
 
-    return summarize(args.artifacts, Path(args.snapshot or "."), args.work,
-                     args.pytorch, args.platform)
+    return render_report(args.checks, args.out)
 
 
 if __name__ == "__main__":

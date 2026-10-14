@@ -273,7 +273,7 @@ jobs:
           path: "${{ github.workspace }}/ut_log"
           if-no-files-found: ignore
 
-  summary:
+  check:
     needs: [ut_test]
     if: ${{ ! cancelled() }}
     runs-on: ubuntu-24.04
@@ -287,23 +287,37 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
-      - name: Summarize UT results
+      - name: Check UT failures
         id: ut
-        uses: ./.github/actions/ut-summary
+        uses: ./.github/actions/ut-check
         with:
           platform: windows
           pytorch: ${{ inputs.pytorch }}
-          artifact_pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
-          summary_artifact: UT-Summary-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
-      - name: Fail if UT check failed
+          artifact_pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-*
+          check_artifact: UT-Check-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Fail on new failures
         if: ${{ steps.ut.outputs.passed != 'true' }}
         shell: bash {0}
         run: |
-          new_failures="${{ steps.ut.outputs.work_dir }}/all_new_failures.txt"
-          if [ -s "${new_failures}" ]; then
-            echo "::error::UT check failed with $(grep -c . "${new_failures}") new failures:"
-            cat "${new_failures}"
-          else
-            echo "::error::UT check failed"
-          fi
+          echo "::error::${{ steps.ut.outputs.new_failures }} new UT failures:"
+          cat "${{ steps.ut.outputs.work_dir }}"/*/new_failure_list.txt
           exit 1
+
+  report:
+    needs: [check]
+    if: ${{ ! cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+      - name: Report UT results
+        uses: ./.github/actions/ut-report
+        with:
+          check_pattern: UT-Check-${{ github.event.pull_request.number || github.sha }}-Windows-*
+          report_artifact: UT-Report-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}

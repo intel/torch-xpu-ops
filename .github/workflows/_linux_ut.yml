@@ -71,8 +71,8 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           mkdir -p "${{ github.workspace }}/ut_log"
-          # _linux_ut_summary.yml reads this to know which known-failure labels
-          # and which platform name apply to the artifact.
+          # The check job reads this to know which known-failure labels and
+          # which platform name apply to the artifact.
           {
             echo "UT_NAME=${{ inputs.ut }}"
             echo "UT_RUNNER=${{ inputs.runner }}"
@@ -128,3 +128,33 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
+
+  check:
+    needs: [test-in-container, test-in-baremetal]
+    if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+      - name: Check UT failures
+        id: ut
+        uses: ./.github/actions/ut-check
+        with:
+          pytorch: ${{ inputs.pytorch }}
+          artifact_pattern: |
+            Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+            Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}_distributed-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          snapshot_artifact: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
+          check_artifact: UT-Check-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+      - name: Fail on new failures
+        if: ${{ steps.ut.outputs.passed != 'true' }}
+        shell: bash {0}
+        run: |
+          echo "::error::${{ steps.ut.outputs.new_failures }} new UT failures:"
+          cat "${{ steps.ut.outputs.work_dir }}"/*/new_failure_list.txt
+          exit 1

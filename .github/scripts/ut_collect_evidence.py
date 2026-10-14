@@ -278,11 +278,7 @@ def pick_artifact(names: list[tuple[str, bool]], prefix: str, ut_job: str, run_i
 
 
 def pick_summary_artifact(names: list[tuple[str, bool]], run_id: int):
-    """Highest run attempt of `UT-Summary-<sha>-<run_id>-<attempt>`.
-
-    One per run rather than one per UT job: _linux_ut_summary.yml checks every
-    UT job of a run in a single job.
-    """
+    """Deprecated run-level summary of the runs that had one."""
     pat = re.compile(rf"^UT-Summary-.+-{run_id}-(\d+)")
     best, best_attempt = None, -1
     for name, expired in names:
@@ -301,17 +297,20 @@ def fetch_summary(run_id: int, names: list[tuple[str, bool]], work: Path) -> Pat
     return root if download(run_id, artifact, root) else None
 
 
-def merge_summary(summary_root: Path | None, ut_job: str, dest: Path) -> None:
-    """Put a UT job's summary next to its data artifact.
+def merge_check(run_id: int, names: list[tuple[str, bool]], ut_job: str,
+                summary_root: Path | None, dest: Path) -> None:
+    """Put what the check concluded next to the data artifact it read.
 
-    The test job uploads the reports; _linux_ut_summary.yml turns them into the
-    per-category case logs. Everything downstream reads the two as one tree.
+    The UT job uploads the reports and case logs; the check job turns them into
+    a verdict, a health record and the new-failure table. Everything downstream
+    reads the two as one tree.
     """
-    if summary_root is None:
+    artifact = pick_artifact(names, "UT-Check", ut_job, run_id)
+    if artifact is not None and download(run_id, artifact, dest / "check"):
         return
-    job_summary = summary_root / ut_job
-    if job_summary.is_dir():
-        shutil.copytree(job_summary, dest / "summary", dirs_exist_ok=True)
+    # Runs between the combined summary and the per-job check.
+    if summary_root is not None and (summary_root / ut_job).is_dir():
+        shutil.copytree(summary_root / ut_job, dest / "check", dirs_exist_ok=True)
 
 
 def download(run_id: int, artifact: str, dest: Path) -> bool:
@@ -684,7 +683,7 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
             artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, cand_id)
             dest = work / f"baseline-{cand_id}-{ut_job}"
             if artifact and download(cand_id, artifact, dest):
-                merge_summary(summary_root, ut_job, dest)
+                merge_check(cand_id, names, ut_job, summary_root, dest)
                 dirs[ut_job] = dest
         for category in sorted(pending):
             root = dirs.get(CATEGORY_UT_JOB[category])
@@ -929,7 +928,7 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
     # The run-level summary holds what the comparison produced for this UT job
     # (health verdicts, case logs, new failures); the data artifact holds the
     # reports it was built from.
-    merge_summary(summary_root, ut_job, root)
+    merge_check(run_id, names, ut_job, summary_root, root)
 
     current.job_urls[ut_job] = job_url(run_id, jobs, ut_job)
     current.runners[ut_job] = job_runner(jobs, ut_job)

@@ -1,16 +1,12 @@
-name: Linux UT Summary
+name: UT Report
 
 on:
   workflow_call:
     inputs:
-      pytorch:
-        type: string
-        default: 'main'
-        description: Pytorch version the UT jobs ran against, recorded in issue comments
       category:
         type: string
         default: ''
-        description: 'Artifact tag of the UT jobs to summarize (empty means every UT job of the run)'
+        description: 'Artifact tag of the UT checks to report on (empty means every one of the run)'
 
 permissions:
   contents: read
@@ -20,27 +16,24 @@ defaults:
     shell: bash -xe {0}
 
 jobs:
-  summary:
+  report:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
-      issues: write
       pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
-      - name: Summarize UT results
+      - name: Report UT results
         id: ut
-        uses: ./.github/actions/ut-summary
+        uses: ./.github/actions/ut-report
         with:
-          pytorch: ${{ inputs.pytorch }}
-          artifact_pattern: Inductor-XPU-UT-Data-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
-          snapshot_artifact: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
-          summary_artifact: UT-Summary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          check_pattern: UT-Check-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          report_artifact: UT-Report-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
       - name: Comment on PR for new failures
         if: >-
           ${{ ! cancelled() && github.event_name == 'pull_request'
@@ -58,9 +51,9 @@ jobs:
             const fs = require('fs');
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
-            // all_new_failures.csv is headerless and pipe delimited, with the
+            // new_failures.csv is headerless and pipe delimited, with the
             // artifact source as its last column.
-            const csvFile = `${process.env.WORK_DIR}/all_new_failures.csv`;
+            const csvFile = `${process.env.WORK_DIR}/new_failures.csv`;
             let failureTable = '';
             let totalCount = 0;
             if (fs.existsSync(csvFile)) {
@@ -101,15 +94,3 @@ jobs:
               issue_number: context.issue.number,
               body: body
             });
-      - name: Fail if UT check failed
-        if: ${{ steps.ut.outputs.passed != 'true' }}
-        shell: bash {0}
-        run: |
-          new_failures="${{ steps.ut.outputs.work_dir }}/all_new_failures.txt"
-          if [ -s "${new_failures}" ]; then
-            echo "::error::UT check failed with $(grep -c . "${new_failures}") new failures:"
-            cat "${new_failures}"
-          else
-            echo "::error::UT check failed"
-          fi
-          exit 1
