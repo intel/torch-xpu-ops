@@ -13,6 +13,7 @@
 #include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/detail/FunctionTraits.h>
+#include <ATen/native/RangeUtils.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
@@ -96,20 +97,49 @@ Tensor& arange_kernel(
       result.scalar_type(),
       "arange_xpu",
       [&]() {
-        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-        auto xstart = start.to<accscalar_t>();
-        auto xstep = step.to<accscalar_t>();
+        const int64_t size = compute_arange_size<scalar_t>(start, end, step);
+        const int64_t numel = result.numel();
+        if (numel != size) {
+          if (numel > 0) {
+            TORCH_WARN(
+                "The number of elements in the out tensor of shape ",
+                result.sizes(),
+                " is ",
+                numel,
+                " which does not match the computed number of elements ",
+                size,
+                ". Note that this may occur as a result of rounding error. "
+                "The out tensor will be resized to a tensor of shape (",
+                size,
+                ",).");
+          }
+          result.resize_({size});
+        }
 
-        bool is_contiguous = result.is_contiguous();
-        Tensor r = !is_contiguous
-            ? at::empty_like(result, LEGACY_CONTIGUOUS_MEMORY_FORMAT)
-            : result;
+        if constexpr (c10::is_complex<scalar_t>::value) {
+          if (size <= 1) {
+            result.fill_(start);
+          } else {
+            const auto endc = start.to<c10::complex<double>>() +
+                step.to<c10::complex<double>>() * static_cast<double>(size - 1);
+            linspace_kernel(start, Scalar(endc), size, result);
+          }
+        } else {
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+          auto xstart = start.to<accscalar_t>();
+          auto xstep = step.to<accscalar_t>();
 
-        auto f = ArangeFunctor<scalar_t, accscalar_t>(xstart, xstep);
-        gpu_kernel_with_index(r, f);
+          bool is_contiguous = result.is_contiguous();
+          Tensor r = !is_contiguous
+              ? at::empty_like(result, LEGACY_CONTIGUOUS_MEMORY_FORMAT)
+              : result;
 
-        if (!is_contiguous) {
-          result.copy_(r);
+          auto f = ArangeFunctor<scalar_t, accscalar_t>(xstart, xstep);
+          gpu_kernel_with_index(r, f);
+
+          if (!is_contiguous) {
+            result.copy_(r);
+          }
         }
       });
 

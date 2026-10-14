@@ -38,44 +38,6 @@ Tensor& arange_xpu_out(
     const Scalar& end,
     const Scalar& step,
     Tensor& out) {
-  int64_t size = 0;
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      out.scalar_type(),
-      "arange_xpu_preprocess",
-      [&]() {
-        size = compute_arange_size<scalar_t>(start, end, step);
-        int64_t numel = out.numel();
-
-        if (numel != size) {
-          if (numel > 0) {
-            TORCH_WARN(
-                "The number of elements in the out tensor of shape ",
-                out.sizes(),
-                " is ",
-                numel,
-                " which does not match the computed number of elements ",
-                size,
-                ". Note that this may occur as a result of rounding error. "
-                "The out tensor will be resized to a tensor of shape (",
-                size,
-                ",).");
-          }
-          out.resize_({size});
-        }
-      });
-
-  if (isComplexType(out.scalar_type())) {
-    if (size <= 1) {
-      out.fill_(start);
-      return out;
-    }
-    const auto endc = start.to<c10::complex<double>>() +
-        step.to<c10::complex<double>>() * static_cast<double>(size - 1);
-    return xpu::linspace_kernel(start, Scalar(endc), size, out);
-  }
-
   return xpu::arange_kernel(start, end, step, out);
 }
 
