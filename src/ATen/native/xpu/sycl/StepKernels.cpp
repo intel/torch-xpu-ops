@@ -8,6 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <cstdint>
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/util/BFloat16-math.h>
@@ -22,6 +24,60 @@ template <typename scalar_t>
 struct NextafterFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
     return std::nextafter(a, b);
+  }
+};
+
+// The device builtin std::nextafter for float/double does not preserve the
+// sign of a zero result: stepping from -min_subnormal toward a larger value
+// yields +0.0 instead of the IEEE-correct -0.0. Operate on the integer
+// representation (musl algorithm, matching the bf16/fp16 path in
+// c10/util/BFloat16-math.h) so the sign bit survives.
+// Reference: https://git.musl-libc.org/cgit/musl/tree/src/math/nextafter.c
+template <typename scalar_t, typename int_repr_t>
+static inline scalar_t nextafter_bits(scalar_t from, scalar_t to) {
+  constexpr int_repr_t sign_mask = int_repr_t{1}
+      << (sizeof(scalar_t) * 8 - 1);
+  union {
+    scalar_t f;
+    int_repr_t i;
+  } ufrom = {from}, uto = {to};
+
+  if (from != from || to != to) {
+    return from + to;
+  }
+  if (ufrom.i == uto.i) {
+    return from;
+  }
+
+  int_repr_t abs_from = ufrom.i & ~sign_mask;
+  int_repr_t abs_to = uto.i & ~sign_mask;
+  if (abs_from == 0) {
+    if (abs_to == 0) {
+      return to;
+    }
+    ufrom.i = (uto.i & sign_mask) | int_repr_t{1};
+    return ufrom.f;
+  }
+
+  if (abs_from > abs_to || ((ufrom.i ^ uto.i) & sign_mask)) {
+    ufrom.i--;
+  } else {
+    ufrom.i++;
+  }
+  return ufrom.f;
+}
+
+template <>
+struct NextafterFunctor<float> {
+  float operator()(float a, float b) const {
+    return nextafter_bits<float, uint32_t>(a, b);
+  }
+};
+
+template <>
+struct NextafterFunctor<double> {
+  double operator()(double a, double b) const {
+    return nextafter_bits<double, uint64_t>(a, b);
   }
 };
 
