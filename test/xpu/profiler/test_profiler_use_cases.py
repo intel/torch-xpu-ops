@@ -17,7 +17,6 @@ import re
 import unittest
 
 import torch
-from torch._C._profiler import _ExperimentalConfig
 from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_utils import (
     run_tests,
@@ -244,16 +243,17 @@ class XpuProfilerUseCasesTest(TestCase):
         torch.xpu.synchronize()
 
         with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
-            experimental_config=_ExperimentalConfig(
-                profiler_metrics=[
-                    "XVE_STALL",
-                    "XVE_ACTIVE",
-                    "GpuCoreClocks",
-                    "AvgGpuCoreFrequencyMHz",
-                ],
-                profiler_measure_per_kernel=True,
-            ),
+            activities=[
+                ProfilerActivity.CPU,
+                {
+                    ProfilerActivity.XPU: [
+                        "XVE_STALL",
+                        "XVE_ACTIVE",
+                        "GpuCoreClocks",
+                        "AvgGpuCoreFrequencyMHz",
+                    ]
+                },
+            ],
         ) as prof:
             _ = x @ weight
             prof.step()
