@@ -1053,10 +1053,8 @@ void launch_avg_pool2d_channels_last_kernel(
         LAUNCH_AVG_POOL2D_CL_VEC(2);
       }
     } else {
+      // No vec8 case: W-tile eligibility above caps max_vs at 4.
       switch (vec_size) {
-        case 8:
-          LAUNCH_AVG_POOL2D_CL_WTILE(8);
-          break;
         case 4:
           LAUNCH_AVG_POOL2D_CL_WTILE(4);
           break;
