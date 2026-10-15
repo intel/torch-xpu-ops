@@ -22,7 +22,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1,xpu_distributed,upstream_distributed,upstream_inductor,upstream_default`
+        description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1,xpu_distributed,xpu_distributed_weekly,upstream_distributed,upstream_inductor,upstream_default`
       category:
         type: string
         default: ''
@@ -75,14 +75,14 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
       - name: Cleanup workspace
@@ -117,14 +117,14 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 
@@ -143,7 +143,7 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v8
         with:
-          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}
           path: ${{ github.workspace }}/ut_log
       - name: Download known-failure issues snapshot
         continue-on-error: true
@@ -158,7 +158,7 @@ jobs:
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/
           # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}" |sort -V |tail -n 1)
           latest_dir="${latest_dir:-.}"
           cd "${latest_dir}/${{ inputs.ut }}"
           find "${{ github.workspace }}/ut_log" -type f \
@@ -200,7 +200,8 @@ jobs:
           for ut_name in ${ut_list}
           do
             cp Known_issue.log.tmp Known_issue.log
-            awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
+            ut_filter_name="${ut_name/xpu_distributed_weekly/xpu_distributed}"
+            awk -v r="${ut_filter_name}" 'BEGIN{ print_row = 0 }{
               if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
               if ( print_row == 1 && $1 ~ r ) { print $0 };
               if ( $0 ~ /Cases:/ ) { print_row = 1 };
@@ -215,7 +216,7 @@ jobs:
         run: |
           cd ${{ github.workspace }}/ut_log/
           # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}" |sort -V |tail -n 1)
           latest_dir="${latest_dir:-.}"
           ut_dir="${latest_dir}/${{ inputs.ut }}"
           if [ "${{ inputs.ut }}" == "basic" ]; then
@@ -261,13 +262,13 @@ jobs:
         id: upload-new-failures
         uses: actions/upload-artifact@v7
         with:
-          name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}
           path: ${{ github.workspace }}/ut_log/new_ut_failure_list.csv
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}
           path: ${{ github.workspace }}/ut_log
           overwrite: true
       - name: Comment on PR for new failures
