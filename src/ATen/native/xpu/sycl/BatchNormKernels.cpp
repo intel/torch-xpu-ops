@@ -1372,13 +1372,14 @@ template <
     typename accscalar_t,
     typename layerscalar_t,
     int VEC_SIZE,
-    bool USE_SLM>
+    bool USE_SLM,
+    typename index_t>
 struct BatchNormTransformInputChannelsLast1DKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   using local_acc_t = sycl_local_acc_t<accscalar_t, 1>;
 
   void operator()(sycl::nd_item<1> item) const {
-    const int global_stride = item.get_global_range(0);
+    const index_t global_stride = item.get_global_range(0);
 
     if constexpr (USE_SLM) {
       const int lid = item.get_local_id(0);
@@ -1395,10 +1396,11 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor
       sycl::group_barrier(item.get_group());
     }
 
-    const int total_elems = reduction_size_ * stride_;
+    const index_t total_elems =
+        static_cast<index_t>(reduction_size_) * stride_;
 
     if constexpr (VEC_SIZE == 1) {
-      for (int idx = item.get_global_id(0); idx < total_elems;
+      for (index_t idx = item.get_global_id(0); idx < total_elems;
            idx += global_stride) {
         const int c = static_cast<int>(
             divider_.divmod(static_cast<unsigned int>(idx)).mod);
@@ -1407,10 +1409,10 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor
       }
     } else {
       using vec2_t = memory::aligned_vector<scalar_t, 2>;
-      const int total_vecs = total_elems / 2;
-      for (int id = item.get_global_id(0); id < total_vecs;
+      const index_t total_vecs = total_elems / 2;
+      for (index_t id = item.get_global_id(0); id < total_vecs;
            id += global_stride) {
-        const int flat_pos = id * 2;
+        const index_t flat_pos = id * 2;
         const int c0 = static_cast<int>(
             divider_.divmod(static_cast<unsigned int>(flat_pos)).mod);
         const int c1 = (c0 + 1 < stride_) ? c0 + 1 : 0;
@@ -1433,7 +1435,7 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor
 
       // Scalar tail when the total element count is odd.
       if ((total_elems & 1) && item.get_global_id(0) == 0) {
-        const int fp = total_elems - 1;
+        const index_t fp = total_elems - 1;
         const int c = static_cast<int>(
             divider_.divmod(static_cast<unsigned int>(fp)).mod);
         out_[fp] =
@@ -1521,7 +1523,8 @@ template <
     typename accscalar_t,
     typename layerscalar_t,
     int VEC_SIZE,
-    bool USE_SLM>
+    bool USE_SLM,
+    typename index_t>
 static void launch_batch_norm_transform_channels_last_1d(
     const scalar_t* input,
     const scalar_t* z,
@@ -1539,7 +1542,8 @@ static void launch_batch_norm_transform_channels_last_1d(
       accscalar_t,
       layerscalar_t,
       VEC_SIZE,
-      USE_SLM>(
+      USE_SLM,
+      index_t>(
       input,
       z,
       mean,
@@ -1569,7 +1573,11 @@ static void launch_batch_norm_transform_channels_last_1d(
 //     the device local memory. Handles odd C via channel wrap-around.
 //   - Non-SLM vec2 path additionally requires even C to keep the parameter
 //     gather monotone; otherwise scalar.
-template <typename scalar_t, typename accscalar_t, typename layerscalar_t>
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t,
+    typename index_t>
 static void batch_norm_transform_channels_last_1d(
     const at::Tensor& output,
     const at::Tensor& input,
@@ -1600,7 +1608,8 @@ static void batch_norm_transform_channels_last_1d(
       accscalar_t,                              \
       layerscalar_t,                            \
       VEC,                                      \
-      SLM>(                                     \
+      SLM,                                      \
+      index_t>(                                 \
       input_ptr,                                \
       z_ptr,                                    \
       mean_ptr,                                 \
@@ -1653,11 +1662,21 @@ void batch_norm_elemt_channels_last_template(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-          batch_norm_transform_channels_last_1d<
-              scalar_t,
-              accscalar_t,
-              accscalar_t>(
-              output, input, weight, shift, mean, inv_std, z, fuse_relu);
+          if (canUse32BitIndexMath(input)) {
+            batch_norm_transform_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                int32_t>(
+                output, input, weight, shift, mean, inv_std, z, fuse_relu);
+          } else {
+            batch_norm_transform_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                int64_t>(
+                output, input, weight, shift, mean, inv_std, z, fuse_relu);
+          }
         });
   } else {
     if (weight.defined()) {
@@ -1671,11 +1690,21 @@ void batch_norm_elemt_channels_last_template(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-          batch_norm_transform_channels_last_1d<
-              scalar_t,
-              accscalar_t,
-              scalar_t>(
-              output, input, weight, shift, mean, inv_std, z, fuse_relu);
+          if (canUse32BitIndexMath(input)) {
+            batch_norm_transform_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                int32_t>(
+                output, input, weight, shift, mean, inv_std, z, fuse_relu);
+          } else {
+            batch_norm_transform_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                int64_t>(
+                output, input, weight, shift, mean, inv_std, z, fuse_relu);
+          }
         });
   }
 }
