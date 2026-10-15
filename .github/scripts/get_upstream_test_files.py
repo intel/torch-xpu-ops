@@ -5,8 +5,11 @@ The tracking issue (default: intel/torch-xpu-ops#5205) keeps an
 auto-generated list of upstream test files between the
 ``<!-- auto-file-lists:begin -->`` / ``<!-- auto-file-lists:end -->`` markers.
 This script fetches the issue body, extracts the files under the
-"Done test files" section and splits them into distributed, inductor
-and default buckets.
+"Done test files" section and splits them into the distributed and
+inductor buckets.
+
+The default bucket is not taken from the issue: it is read from the
+``ut.txt`` list checked in at the repository root.
 """
 
 import argparse
@@ -22,6 +25,10 @@ API_URL = "https://api.github.com/repos/{owner}/{repo}/issues/{number}"
 # match a specific prefix falls into the default bucket.
 DISTRIBUTED_PREFIX = "test/distributed/"
 INDUCTOR_PREFIX = "test/inductor/"
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))
+DEFAULT_LIST_FILE = os.path.join(REPO_ROOT, "ut.txt")
 
 
 def fetch_issue_body(owner, repo, number):
@@ -73,9 +80,24 @@ def parse_files(section):
 def split_files(files):
     distributed = [f for f in files if f.startswith(DISTRIBUTED_PREFIX)]
     inductor = [f for f in files if f.startswith(INDUCTOR_PREFIX)]
-    default = [f for f in files
-               if not f.startswith((DISTRIBUTED_PREFIX, INDUCTOR_PREFIX))]
-    return distributed, inductor, default
+    return distributed, inductor
+
+
+def read_default_files(path):
+    """Read the default bucket from a plain list file such as ut.txt."""
+    files = []
+    seen = set()
+    with open(path) as fh:
+        for line in fh:
+            entry = re.sub(r"\s+", "", line)
+            if not entry or entry.startswith("#") or not entry.endswith(".py"):
+                continue
+            if entry.startswith((DISTRIBUTED_PREFIX, INDUCTOR_PREFIX)):
+                continue
+            if entry not in seen:
+                seen.add(entry)
+                files.append(entry)
+    return files
 
 
 def main():
@@ -93,23 +115,30 @@ def main():
                         help="write inductor file list to this path")
     parser.add_argument("--default-output",
                         help="write default file list to this path")
+    parser.add_argument("--default-file", default=DEFAULT_LIST_FILE,
+                        help="plain list file holding the default bucket")
     args = parser.parse_args()
 
     owner, _, repo = args.repo.partition("/")
     if not repo:
         parser.error("--repo must be in 'owner/repo' format")
 
-    body = fetch_issue_body(owner, repo, args.issue)
-    done_files = parse_files(extract_done_section(body))
-    if not done_files:
-        print("No Done test files found in issue body", file=sys.stderr)
-        return 1
+    default = read_default_files(args.default_file)
 
-    # Keep only files that are in Done and not in Not Applicable.
-    not_applicable = set(parse_files(extract_not_applicable_section(body)))
-    files = [f for f in done_files if f not in not_applicable]
+    # The default bucket never needs the tracking issue.
+    if args.category == "default":
+        distributed, inductor = [], []
+    else:
+        body = fetch_issue_body(owner, repo, args.issue)
+        done_files = parse_files(extract_done_section(body))
+        if not done_files:
+            print("No Done test files found in issue body", file=sys.stderr)
+            return 1
 
-    distributed, inductor, default = split_files(files)
+        # Keep only files that are in Done and not in Not Applicable.
+        not_applicable = set(parse_files(extract_not_applicable_section(body)))
+        files = [f for f in done_files if f not in not_applicable]
+        distributed, inductor = split_files(files)
 
     if args.distributed_output:
         with open(args.distributed_output, "w") as fh:
@@ -121,10 +150,9 @@ def main():
         with open(args.default_output, "w") as fh:
             fh.write("\n".join(default) + "\n" if default else "")
 
-    print(f"Done test files: {len(files)} "
-          f"(distributed: {len(distributed)}, inductor: {len(inductor)}, "
-          f"default: {len(default)}; "
-          f"excluded {len(done_files) - len(files)} Not Applicable)",
+    print(f"Test files: distributed: {len(distributed)}, "
+          f"inductor: {len(inductor)}, "
+          f"default: {len(default)} (from {args.default_file})",
           file=sys.stderr)
 
     if args.category == "distributed":
@@ -134,7 +162,7 @@ def main():
     elif args.category == "default":
         selected = default
     else:
-        selected = files
+        selected = distributed + inductor + default
     print("\n".join(selected))
     return 0
 
