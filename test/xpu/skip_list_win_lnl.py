@@ -37,7 +37,7 @@ skip_dict = {
     ),
     # https://github.com/intel/torch-xpu-ops/issues/1171
     # AssertionError: 'Assertion maxind >= 0 && maxind < outputImageSize failed' not found in '\nAssertHandler::printMessage\n' : The expected error was not found
-    "nn/test_pooling_xpu.py": (
+    f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": (
         "test_MaxUnpool_index_errors_case1_xpu",
         "test_MaxUnpool_index_errors_case2_xpu",
         "test_MaxUnpool_index_errors_case4_xpu",
