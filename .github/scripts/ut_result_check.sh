@@ -2,7 +2,7 @@
 # Test Suite Runner for Intel Torch-XPU-Ops
 # Usage: TEST_PLATFORM=linux ./script.sh <test_suite>
 
-# Available suites: op_regression, op_extended, op_ut, test_xpu, upstream_default, upstream_inductor, xpu_distributed, upstream_distributed, skipped_ut
+# Available suites: op_regression, op_extended, op_ut, test_xpu, upstream_default, upstream_inductor, xpu_distributed, xpu_distributed_weekly, upstream_distributed, skipped_ut
 readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
 readonly inputs_pytorch="${2:-nightly_wheel}"
 readonly REPO="intel/torch-xpu-ops"
@@ -498,6 +498,6 @@ case "$ut_suite" in
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2
         printf "💡 Available: op_regression, op_regression_dev1, op_extended, op_ut, test_xpu, " >&2
-    printf "xpu_distributed, xpu_distributed_weekly, upstream_default, upstream_inductor, upstream_distributed, skipped_ut, xpu_profiling\n" >&2
+        printf "xpu_distributed, xpu_distributed_weekly, upstream_default, upstream_inductor, upstream_distributed, skipped_ut, xpu_profiling\n" >&2
         ;;
 esac
