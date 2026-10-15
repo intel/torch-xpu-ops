@@ -216,7 +216,7 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     int c0 = count_k[0][v];
     acc_t m0 = c0 > 0 ? anchor_k[0][v] + sum_delta_k[0][v] / acc_t(c0) : acc_t(0);
     mean[v] = m0;
-    m2n[v] = c0 > 0 ? (sum_sq_delta_k[0][v] * c0 - sum_delta_k[0][v] * sum_delta_k[0][v]) / c0 : acc_t(0);
+    m2n[v] = c0 > 0 ? sum_sq_delta_k[0][v] - sum_delta_k[0][v] * (sum_delta_k[0][v] / acc_t(c0)) : acc_t(0);
     count[v] = c0;
 #pragma unroll
     for (int k = 1; k < K; ++k) {
@@ -224,7 +224,7 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
       if (ck == 0)
         continue;
       acc_t mk = anchor_k[k][v] + sum_delta_k[k][v] / acc_t(ck);
-      acc_t m2k = ck > 0 ? (sum_sq_delta_k[k][v] * ck - sum_delta_k[k][v] * sum_delta_k[k][v]) / ck : acc_t(0);
+      acc_t m2k = ck > 0 ? sum_sq_delta_k[k][v] - sum_delta_k[k][v] * (sum_delta_k[k][v] / acc_t(ck)) : acc_t(0);
       welford_merge(count[v], mean[v], m2n[v], ck, mk, m2k);
     }
   }
@@ -422,8 +422,7 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
           ? anchor[v] + sum_delta[v] / acc_t(count[v])
           : acc_t(0);
       m2n[v] = count[v] > 0
-          ? (sum_sq_delta[v] * count[v] - sum_delta[v] * sum_delta[v]) /
-              acc_t(count[v])
+          ? sum_sq_delta[v] - sum_delta[v] * (sum_delta[v] / acc_t(count[v]))
           : acc_t(0);
     }
     welford_vertical_merge<VEC_SIZE>(
@@ -609,6 +608,8 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
             *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_off0]) = invstd_vec;
           }
         }
+        // Barrier: chunk 1's vertical merge reuses the same shared memory.
+        sycl::group_barrier(item.get_group());
         // Cross-WG merge chunk 1
         {
           acc_vec_t mean, m2n;
