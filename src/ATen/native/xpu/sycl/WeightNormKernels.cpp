@@ -387,6 +387,14 @@ std::tuple<Tensor, Tensor> weight_norm_kernel(
             at::xpu::detail::getTensorInfo<accscalar_t, int64_t>(norms);
         ninfo.collapseDims();
         dim_after_collapse = 1 - dim_after_collapse; // remain dim
+        if (dim_after_collapse >= vinfo.dims) {
+          // 1-D v (first dim == last dim): no reduction dim survives the
+          // collapse, so add a trivial size-1 one instead of reading past the
+          // TensorInfo (which yields a garbage problem size and OOM).
+          vinfo.sizes[dim_after_collapse] = 1;
+          vinfo.strides[dim_after_collapse] = 1;
+          vinfo.dims = dim_after_collapse + 1;
+        }
 
         int64_t batch = vinfo.outerSize(dim_after_collapse);
         int64_t problem = vinfo.sizes[dim_after_collapse];
@@ -869,6 +877,13 @@ std::tuple<Tensor, Tensor> weight_norm_backward_kernel(
         gginfo.collapseDims();
 
         dim_after_collapse = 1 - dim_after_collapse; // remain dim
+        if (dim_after_collapse >= vinfo.dims) {
+          // 1-D saved_v: no reduction dim survives the collapse, so add a
+          // trivial size-1 one instead of reading past the TensorInfo.
+          vinfo.sizes[dim_after_collapse] = 1;
+          vinfo.strides[dim_after_collapse] = 1;
+          vinfo.dims = dim_after_collapse + 1;
+        }
 
         int64_t batch = vinfo.outerSize(dim_after_collapse);
         int64_t problem = vinfo.sizes[dim_after_collapse];

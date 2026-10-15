@@ -229,8 +229,7 @@ struct Float2 {
   accscalar_t v1, v2;
   Float2() = default;
 
-  Float2(scalar_t v1, scalar_t v2)
-      : v1(static_cast<accscalar_t>(v1)), v2(static_cast<accscalar_t>(v2)) {}
+  Float2(accscalar_t v1, accscalar_t v2) : v1(v1), v2(v2) {}
   Float2(int v)
       : v1(static_cast<accscalar_t>(v)), v2(static_cast<accscalar_t>(v)) {}
   Float2& operator+=(const Float2& a) {
