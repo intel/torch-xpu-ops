@@ -183,6 +183,8 @@ After drafting the review, spawn a sub-agent per reported issue (in parallel) to
 **Omit sections where you have no problems to report.** Every sentence must identify a problem or request a change.
 
 ```markdown
+VERDICT: <one sentence — the outcome and why>
+
 ## PR Review: #<number>
 <!-- Or for local branch reviews: -->
 ## Branch Review: <branch-name> (vs main)

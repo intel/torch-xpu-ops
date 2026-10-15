@@ -26,8 +26,6 @@ jobs:
         uses: actions/checkout@v7
       - name: Setup python
         uses: ./.github/actions/setup-python
-        with:
-          python: '3.10'
       - name: Downlaod artifacts
         run: |
           rm -rf target && mkdir target && cd target
