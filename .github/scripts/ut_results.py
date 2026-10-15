@@ -1085,7 +1085,7 @@ def enrich_failures(job_dir: Path, items: list[tuple[str, str]],
 # How much of a failure table the report carries; a step summary is capped at
 # 1MB and a bad night has thousands of rows. The artifact keeps all of them.
 REPORT_FAILURE_LIMIT = 100
-SUMMARY_TABLE_HEADER = ["OS", "Category", "Total cases", "Known failures",
+SUMMARY_TABLE_HEADER = ["OS", "Runner", "Category", "Total cases", "Known failures",
                        "New failures", "New passes", "Result"]
 PASS_HEADER = ["Category", "Class name", "Test name"]
 
@@ -1208,15 +1208,16 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
     new_passes.csv.
     """
     # A rerun check merged every attempt's cases, so the latest one is final.
-    best: dict[tuple[str, str, str], tuple[tuple[int, int], list[str], Path]] = {}
+    best: dict[tuple[str, str, str, str], tuple[tuple[int, int], list[str], Path]] = {}
     for verdict_file in sorted(checks_dir.rglob("verdict.json")):
         verdict = json.loads(verdict_file.read_text(encoding="utf-8"))
         for entry in verdict["categories"]:
             result = entry.get("status") or ("passed" if entry["passed"] else "failed")
             mark = {"passed": "✅", "failed": "❌", "skipped": "⏭️"}.get(result, "❔")
-            key = (verdict.get("os", "linux"), verdict["ut_job"], entry["category"])
+            key = (verdict.get("os", "linux"), verdict.get("runner", ""),
+                   verdict["ut_job"], entry["category"])
             row = [
-                key[0], key[2], str(entry.get("total", 0)),
+                key[0], key[1], key[3], str(entry.get("total", 0)),
                 str(entry["known"]), str(entry["new"]),
                 str(entry.get("new_passes", 0)),
                 f"{mark} {result}",
@@ -1229,7 +1230,7 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
     new_rows: list[str] = []
     known_rows: list[str] = []
     pass_rows: list[str] = []
-    for (os_name, _, category), (_, row, job_dir) in best.items():
+    for (os_name, _, _, category), (_, row, job_dir) in best.items():
         rows.append(row)
         for name, table in ((NEW_FAILURES_CSV, new_rows),
                             (KNOWN_FAILURES_CSV, known_rows),
