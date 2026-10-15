@@ -136,7 +136,9 @@ runs:
           uv pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt
           TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
           uv pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
-          python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)'
+          # chdir avoids importing the checkout instead of the installed package
+          PINNED_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
+          echo "Pinned by pytorch: transformers/timm ${PINNED_VERSIONS}"
         fi
         if [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
           TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
@@ -145,7 +147,8 @@ runs:
           git clone https://github.com/pytorch/benchmark benchmark
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
-          sed -i 's/^ *pynvml.*//;s/^ *transformers.*//;s/^ *timm.*//' requirements.txt
+          # torchbench carries its own transformers/timm pins, drop them for the pytorch ones
+          sed -i -E '/^[[:space:]]*(pynvml|transformers|timm)([[:space:]]*[<>=!~;[].*)?[[:space:]]*$/d' requirements.txt
           # Work around legacy deps (e.g. visdom) that still import
           # pkg_resources during build on newer Python toolchains.
           CONSTRAINT_FILE=/tmp/pip-constraints.txt
@@ -193,6 +196,13 @@ runs:
           sed -i '/mkl/d' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
           uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
+        fi
+        if [ -n "${PINNED_VERSIONS:-}" ];then
+          CURRENT_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
+          if [ "${CURRENT_VERSIONS}" != "${PINNED_VERSIONS}" ];then
+            echo "::error::transformers/timm changed from '${PINNED_VERSIONS}' to '${CURRENT_VERSIONS}' while installing suite requirements"
+            exit 1
+          fi
         fi
         # install the corresponding torchao
         uv pip uninstall torchao
