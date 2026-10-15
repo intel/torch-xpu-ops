@@ -162,6 +162,7 @@ jobs:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
