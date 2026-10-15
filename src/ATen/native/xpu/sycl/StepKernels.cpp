@@ -32,6 +32,8 @@ struct NextafterFunctor {
 // yields +0.0 instead of the IEEE-correct -0.0. Operate on the integer
 // representation (musl algorithm, matching the bf16/fp16 path in
 // c10/util/BFloat16-math.h) so the sign bit survives.
+// TODO: track the underlying issue (JIRA to be filed) and revisit this
+// workaround once it is resolved.
 // Reference: https://git.musl-libc.org/cgit/musl/tree/src/math/nextafter.c
 template <typename scalar_t, typename int_repr_t>
 static inline scalar_t nextafter_bits(scalar_t from, scalar_t to) {
@@ -42,6 +44,7 @@ static inline scalar_t nextafter_bits(scalar_t from, scalar_t to) {
     int_repr_t i;
   } ufrom = {from}, uto = {to};
 
+  // NaN check: if either input is NaN, propagate NaN via from + to.
   if (from != from || to != to) {
     return from + to;
   }
