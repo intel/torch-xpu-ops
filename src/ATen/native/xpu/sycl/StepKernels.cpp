@@ -35,8 +35,8 @@ struct NextafterFunctor {
 // Reference: https://git.musl-libc.org/cgit/musl/tree/src/math/nextafter.c
 template <typename scalar_t, typename int_repr_t>
 static inline scalar_t nextafter_bits(scalar_t from, scalar_t to) {
-  constexpr int_repr_t sign_mask = int_repr_t{1}
-      << (sizeof(scalar_t) * 8 - 1);
+  constexpr int bits = sizeof(scalar_t) * 8;
+  constexpr int_repr_t sign_mask = int_repr_t{1} << (bits - 1);
   union {
     scalar_t f;
     int_repr_t i;

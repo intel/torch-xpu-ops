@@ -10,7 +10,6 @@
 import torch
 from torch.testing._internal.common_utils import run_tests, TestCase
 
-
 # (float dtype, matching signed-int dtype for bit inspection)
 _DTYPE_CONFIGS = [
     (torch.float16, torch.int16),
