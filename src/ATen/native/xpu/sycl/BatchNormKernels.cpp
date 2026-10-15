@@ -859,7 +859,7 @@ void batch_norm_stats_channels_last_template(
   at::Tensor semaphores;
 
   using VecConfig = WelfordBatchNormStatChannelsLastVecKernelConfig<
-      VarTransform,
+      VarTransformFunctor,
       scalar_t,
       accscalar_t,
       PREFERRED_VEC_SIZE>;
@@ -887,7 +887,7 @@ void batch_norm_stats_channels_last_template(
 
     if (use_vec_kernel) {
       constexpr auto kptr = welford_batch_norm_stat_channels_last_vec_kernel<
-          VarTransform,
+          VarTransformFunctor,
           scalar_t,
           accscalar_t,
           PREFERRED_VEC_SIZE>;
