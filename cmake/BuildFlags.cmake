@@ -55,7 +55,9 @@ macro(set_build_flags)
       "Ensure SYCLToolkit is found before building torch-xpu-ops.")
   endif()
   list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS SYCL_COMPILER_VERSION=${SYCL_COMPILER_VERSION})
-  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU=${USE_XPU})
+  # Keep the bare spelling: it must match PyTorch's add_compile_definitions(USE_XPU)
+  # so FindSYCL's exact-string dedup drops it instead of redefining the macro.
+  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU)
 
   set(CPP_STD c++20)
   # -- Host flags (SYCL_CXX_FLAGS)
@@ -84,7 +86,8 @@ macro(set_build_flags)
     list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
       -Wno-stringop-overflow
       -Wno-dangling-reference
-      -Wno-error=dangling-reference)
+      -Wno-error=dangling-reference
+      -Wno-interference-size)
     CHECK_SYCL_FLAG("-Wno-maybe-uninitialized;-Werror=unknown-warning-option" SUPPORTS_NO_MAYBE_UNINITIALIZED)
     if(NOT SUPPORTS_NO_MAYBE_UNINITIALIZED)
       list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL -Wno-maybe-uninitialized)
@@ -223,6 +226,7 @@ macro(set_build_flags)
   list(APPEND SYCL_DEVICE_LINK_FLAGS --offload-compress)
   list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-sqrt)
   list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-div)
+  list(APPEND SYCL_DEVICE_LINK_FLAGS -fno-sycl-id-queries-fit-in-int)
 
   string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-poison-unsupported-fp64-kernels")
   string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-intel-enable-auto-large-GRF-mode")

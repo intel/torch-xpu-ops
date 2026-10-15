@@ -57,6 +57,43 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
+# ccache versions before 4.11 do not support DPC++ (icx) compiler. Additionally,
+# versions before 4.12.1 do not correctly pass -Xarch_host flags to LLVM compilers
+# family in general: they can strip -Xarch_host -fPIC, producing objects without
+# -fPIC that fail the PIE link. ccache 4.12.1 includes the fix for that, see:
+#
+# * https://github.com/ccache/ccache/issues/1632
+#
+# Below we keep the original launcher for the device-link step, and only apply
+# the ccache version gate for kernel code compilation step.
+set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
+if(_SYCL_COMPILER_LAUNCHER)
+  get_filename_component(_sycl_launcher_name "${_SYCL_COMPILER_LAUNCHER}" NAME)
+  if(_sycl_launcher_name MATCHES "^[Cc][Cc]ache")
+    execute_process(
+      COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
+      OUTPUT_VARIABLE _sycl_launcher_version
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      TIMEOUT 5
+    )
+    if(_sycl_launcher_version MATCHES "ccache version ([0-9]+\\.[0-9]+(\\.[0-9]+)?)")
+      set(_sycl_ccache_version "${CMAKE_MATCH_1}")
+      if(_sycl_ccache_version VERSION_GREATER_EQUAL "4.12.1")
+        message(STATUS "Found compatible ccache ${_sycl_ccache_version} for SYCL object compilation")
+      else()
+        message(WARNING
+          "ccache launcher '${CMAKE_SYCL_COMPILER_LAUNCHER}' has version "
+          "'${_sycl_ccache_version}' which is older than 4.12.1; "
+          "disabling it for SYCL object compilation. Upgrade to ccache >= 4.12.1.")
+        set(_SYCL_COMPILER_LAUNCHER "")
+      endif()
+    else()
+      message(WARNING "Found ccache but could not parse its version string.")
+    endif()
+  endif()
+endif()
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
@@ -216,9 +253,9 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       set(SYCL_build_type "Device")
 
-      # Apply the compiler launcher (e.g. ccache) to the individual SYCL object
-      # compile, mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
-      set(SYCL_compiler_launcher ${CMAKE_SYCL_COMPILER_LAUNCHER})
+      # Apply the compiler launcher to the individual SYCL object compile,
+      # mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
+      set(SYCL_compiler_launcher ${_SYCL_COMPILER_LAUNCHER})
 
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
