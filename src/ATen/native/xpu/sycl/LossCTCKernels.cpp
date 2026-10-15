@@ -39,7 +39,6 @@ namespace at::native::xpu {
 // this ad-hoc converts from targets (l in [1]) to augmented targets (l' in [1])
 // so if l is l_0 l_1 ... l_(tl-1) then this looks up idx in
 // l' = BLANK l_0 BLANK l_1 BLANK ... BLANK l_(tl-1) BLANK
-// - note that no bound-checking is done
 // - it is important to only call it with idx == 0 if the target length is 0
 template <typename target_t>
 static inline int64_t get_target_prime(
@@ -47,11 +46,14 @@ static inline int64_t get_target_prime(
     int64_t offset,
     int64_t stride,
     int64_t idx,
+    int64_t num_labels,
     int64_t BLANK) {
   if (idx % 2 == 0) {
     return BLANK;
   } else {
-    return target[offset + stride * (idx / 2)];
+    const int64_t label = target[offset + stride * (idx / 2)];
+    SYCL_KERNEL_ASSERT(label >= 0 && label < num_labels);
+    return label;
   }
 }
 
@@ -105,6 +107,7 @@ struct CTCLossLogAlphaKernelFunctor {
                                                    tg_batch_offset,
                                                    tg_target_stride_,
                                                    1,
+                                                   num_labels_,
                                                    BLANK_)];
             break;
           default:
@@ -126,7 +129,12 @@ struct CTCLossLogAlphaKernelFunctor {
       bool have_three; // flag which of the two cases in eq (6) we have
       if (valid && s < 2 * target_length + 1 && target_length > 0) {
         current_char = get_target_prime(
-            targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
+            targets_data_,
+            tg_batch_offset,
+            tg_target_stride_,
+            s,
+            num_labels_,
+            BLANK_);
         have_three =
             ((s > 1) &&
              (get_target_prime(
@@ -134,6 +142,7 @@ struct CTCLossLogAlphaKernelFunctor {
                   tg_batch_offset,
                   tg_target_stride_,
                   s - 2,
+                  num_labels_,
                   BLANK_) != current_char));
       } else {
         current_char = BLANK_;
@@ -232,6 +241,7 @@ struct CTCLossLogAlphaKernelFunctor {
       const int64_t* RESTRICT tg_batch_offsets,
       int64_t tg_target_stride,
       int64_t batch_size,
+      int64_t num_labels,
       int64_t BLANK)
       : log_alpha_data_(log_alpha_data),
         log_probs_data_(log_probs_data),
@@ -250,6 +260,7 @@ struct CTCLossLogAlphaKernelFunctor {
         tg_batch_offsets_(tg_batch_offsets),
         tg_target_stride_(tg_target_stride),
         batch_size_(batch_size),
+        num_labels_(num_labels),
         BLANK_(BLANK) {}
 
  private:
@@ -270,13 +281,13 @@ struct CTCLossLogAlphaKernelFunctor {
   const int64_t* RESTRICT tg_batch_offsets_;
   int64_t tg_target_stride_;
   int64_t batch_size_;
+  int64_t num_labels_;
   int64_t BLANK_;
 };
 
 // The forward computation. Lot's of admin and a call to the alpha kernel.
-// Note: we do not check that the labels are in the valid range. As we use
-// them for indexing in the kernels, you'll see memory errors when you
-// pass corrupt labels.
+// Check label bounds in the kernels to avoid synchronizing device targets.
+//
 // We support both a 2-dimensional tensor as targets (one set of targets in each
 // row) and a 1-dimensional tensor where all targets are concatenated (and we
 // use target_lengths to figure out where they begin). We return log_alpha
@@ -331,7 +342,7 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
           " (while checking arguments for ",
           c,
           ")");
-      tg_batch_offsets_data[i] = pos;
+      tg_batch_offsets_data[i] = pos * targets.stride(0);
       pos += target_lengths[i];
       if (max_target_length < target_lengths[i])
         max_target_length = target_lengths[i];
@@ -438,6 +449,7 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
       tg_batch_offsets.const_data_ptr<int64_t>(),
       tg_target_stride,
       batch_size,
+      num_labels,
       BLANK);
   sycl_kernel_submit(
       global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
@@ -487,7 +499,12 @@ struct CTCLossBackwardLogBetaKernelFunctor {
                lp_char_stride_ * BLANK_];
         } else if (s == 2 * target_length - 1) { // false for target_length == 0
           int64_t current_target_prime = get_target_prime(
-              targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
+              targets_data_,
+              tg_batch_offset,
+              tg_target_stride_,
+              s,
+              num_labels_,
+              BLANK_);
           lb = log_probs_data_
               [lp_batch_offset + (input_length - 1) * lp_input_stride_ +
                lp_char_stride_ * current_target_prime];
@@ -512,7 +529,12 @@ struct CTCLossBackwardLogBetaKernelFunctor {
       bool have_three;
       if (valid && s < 2 * target_length + 1 && target_length > 0) {
         current_target_prime = get_target_prime(
-            targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
+            targets_data_,
+            tg_batch_offset,
+            tg_target_stride_,
+            s,
+            num_labels_,
+            BLANK_);
         have_three =
             ((s < 2 * target_length - 1) &&
              (get_target_prime(
@@ -520,6 +542,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
                   tg_batch_offset,
                   tg_target_stride_,
                   s + 2,
+                  num_labels_,
                   BLANK_) != current_target_prime));
       } else {
         current_target_prime = BLANK_;
@@ -597,6 +620,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
       const int64_t* RESTRICT tg_batch_offsets,
       int64_t tg_target_stride,
       int64_t batch_size,
+      int64_t num_labels,
       int64_t BLANK)
       : log_beta_data_(log_beta_data),
         log_probs_data_(log_probs_data),
@@ -614,6 +638,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
         tg_batch_offsets_(tg_batch_offsets),
         tg_target_stride_(tg_target_stride),
         batch_size_(batch_size),
+        num_labels_(num_labels),
         BLANK_(BLANK) {}
 
  private:
@@ -633,6 +658,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
   const int64_t* RESTRICT tg_batch_offsets_;
   int64_t tg_target_stride_;
   int64_t batch_size_;
+  int64_t num_labels_;
   int64_t BLANK_;
 };
 
@@ -661,7 +687,9 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
     if (s >= target_length)
       return;
 
+    // Read directly rather than through get_target_prime, so bound-check here.
     int64_t target = targets_data_[tg_batch_offset + s * tg_target_stride_];
+    SYCL_KERNEL_ASSERT(target >= 0 && target < num_labels_);
     scalar_t nll = neg_log_likelihood_data_[b];
     scalar_t gr = grad_out_data_[b * grad_out_batch_stride_];
 
@@ -713,6 +741,7 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
       const int64_t* RESTRICT tg_batch_offsets,
       int64_t tg_target_stride,
       int64_t batch_size,
+      int64_t num_labels,
       bool zero_infinity)
       : gradient_data_(gradient_data),
         grad_out_data_(grad_out_data),
@@ -739,6 +768,7 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
         tg_batch_offsets_(tg_batch_offsets),
         tg_target_stride_(tg_target_stride),
         batch_size_(batch_size),
+        num_labels_(num_labels),
         zero_infinity_(zero_infinity) {}
 
  private:
@@ -767,6 +797,7 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
   const int64_t* RESTRICT tg_batch_offsets_;
   int64_t tg_target_stride_;
   int64_t batch_size_;
+  int64_t num_labels_;
   bool zero_infinity_;
 };
 
@@ -798,7 +829,12 @@ struct CTCLossBackwardCollectKernelFunctor {
     for (int s = 0; s < 2 * max_target_length_ + 1; s++) {
       if (s < 2 * target_length + 1) { // if target_length == 0, s == 0
         int64_t current_target_prime = get_target_prime(
-            targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
+            targets_data_,
+            tg_batch_offset,
+            tg_target_stride_,
+            s,
+            num_labels_,
+            BLANK_);
         scalar_t log_alpha_beta =
             (log_alpha_data_
                  [la_batch_offset + la_input_stride_ * t +
@@ -1015,7 +1051,7 @@ Tensor ctc_loss_backward_kernel_template(
     int64_t pos = 0;
     max_target_length = 0;
     for (int64_t i = 0; i < batch_size; i++) {
-      tg_batch_offsets_data[i] = pos;
+      tg_batch_offsets_data[i] = pos * targets.stride(0);
       pos += target_lengths[i];
       if (max_target_length < target_lengths[i])
         max_target_length = target_lengths[i];
@@ -1081,6 +1117,7 @@ Tensor ctc_loss_backward_kernel_template(
         tg_batch_offsets.const_data_ptr<int64_t>(),
         tg_target_stride,
         batch_size,
+        num_labels,
         BLANK);
     sycl_kernel_submit(global_range, local_range, queue, caller);
   }
@@ -1167,6 +1204,7 @@ Tensor ctc_loss_backward_kernel_template(
         tg_batch_offsets.const_data_ptr<int64_t>(),
         tg_target_stride,
         batch_size,
+        num_labels,
         zero_infinity);
     sycl_kernel_submit(global_range, local_range, queue, caller);
   } else { // small problem, use naive algorithm
