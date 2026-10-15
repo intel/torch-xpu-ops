@@ -156,6 +156,7 @@ jobs:
     needs: build-wheels
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write

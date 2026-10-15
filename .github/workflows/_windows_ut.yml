@@ -281,7 +281,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
