@@ -382,6 +382,7 @@ _cuda_xfail_xpu_pass = [
 # tests for ConvTranspose2d).
 _none_device_xfail_xpu_pass = [
     ("narrow_copy", "test_out"),
+    ("narrow_copy", "test_out_warning"),
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
     ("_refs.true_divide", "test_python_ref_executor"),
