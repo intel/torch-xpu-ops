@@ -75,7 +75,7 @@ on:
 permissions: read-all
 
 concurrency:
-  group: acceptance-${{ github.event.inputs.caller || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
+  group: acceptance-${{ github.event.inputs.callback_sha || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
   cancel-in-progress: true
 
 run-name: >-
