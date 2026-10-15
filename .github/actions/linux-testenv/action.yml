@@ -141,7 +141,7 @@ runs:
           echo "Pinned by pytorch: transformers/timm ${PINNED_VERSIONS}"
         fi
         if [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
+          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
           cd ../
           rm -rf ./benchmark
           git clone https://github.com/pytorch/benchmark benchmark
