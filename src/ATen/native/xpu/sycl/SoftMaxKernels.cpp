@@ -233,8 +233,8 @@ template <
     typename calc_t,
     bool is_safe_softmax,
     bool is_same_dtype>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 void dispatch_softmax_forward_kernel_func(
     const inscalar_t* in_data,
     outscalar_t* out_data,
@@ -961,8 +961,8 @@ template <
     typename calc_t,
     int NUM,
     bool is_same_dtype = false>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 void dispatch_softmax_backward_kernel_func(
     inscalar_t* gradInput,
     const outscalar_t* output,
