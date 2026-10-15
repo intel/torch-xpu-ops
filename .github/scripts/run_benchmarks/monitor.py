@@ -17,6 +17,10 @@ _xpu_smi_lock = threading.Lock()
 _tiles_per_device: int | None = None
 _tiles_per_device_lock = threading.Lock()
 
+# Cache for the xpu-smi major version (CLI options differ between 1.x and 2.x)
+_xpu_smi_major: int | None = None
+_xpu_smi_major_lock = threading.Lock()
+
 
 def parse_memory_threshold() -> float | None:
     """Extract memory threshold from error_patterns (e.g. 'Memory>0.9' → 0.9)."""
@@ -35,23 +39,47 @@ def _is_xpu_smi_available() -> bool:
         return _xpu_smi_available
 
 
+def _get_xpu_smi_major_version() -> int:
+    """Return the xpu-smi major version, falling back to 1 when undetectable."""
+    global _xpu_smi_major
+    with _xpu_smi_major_lock:
+        if _xpu_smi_major is None:
+            _xpu_smi_major = 1
+            try:
+                result = subprocess.run(
+                    ["xpu-smi", "-v"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                m = re.search(r'(?:Version:\s*|\bv)(\d+)\.\d+', result.stdout)
+                if m:
+                    _xpu_smi_major = int(m.group(1))
+            except Exception:
+                pass
+            log(f"Detected xpu-smi major version {_xpu_smi_major}")
+        return _xpu_smi_major
+
+
 def _get_tiles_per_device() -> int:
     """Return tiles-per-device, probed once from device 0 via xpu-smi stats."""
     global _tiles_per_device
     with _tiles_per_device_lock:
         if _tiles_per_device is None:
-            try:
-                result = subprocess.run(
-                    ["xpu-smi", "stats", "-d", "0"],
-                    capture_output=True, text=True, timeout=10,
-                )
-                if result.returncode == 0:
-                    tile_ids = {int(m.group(1)) for m in re.finditer(r'Tile\s+(\d+)', result.stdout)}
-                    _tiles_per_device = max(len(tile_ids), 1)
-                else:
-                    _tiles_per_device = 1
-            except Exception:
+            if _get_xpu_smi_major_version() >= 2:
+                # xpu-smi 2.x dropped the --tile option entirely.
                 _tiles_per_device = 1
+            else:
+                try:
+                    result = subprocess.run(
+                        ["xpu-smi", "stats", "-d", "0"],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    if result.returncode == 0:
+                        tile_ids = {int(m.group(1)) for m in re.finditer(r'Tile\s+(\d+)', result.stdout)}
+                        _tiles_per_device = max(len(tile_ids), 1)
+                    else:
+                        _tiles_per_device = 1
+                except Exception:
+                    _tiles_per_device = 1
             log(f"Detected {_tiles_per_device} tile(s) per device")
         return _tiles_per_device
 
@@ -79,9 +107,11 @@ def get_gpu_memory_utilization(
         cmd = ["xpu-smi", "dump", "-d", str(device_id)]
         if tile_id is not None:
             cmd += ["-t", str(tile_id)]
-        # -m 0: GPU Utilization, 2: GPU Frequency, 3: GPU Core Temperature,
+        # metrics 0: GPU Utilization, 2: GPU Frequency, 3: GPU Core Temperature,
         # 5: GPU Memory Utilization, 17: GPU Memory Bandwidth Utilization
-        cmd += ["-m", "0,2,3,5,17", "-n", "1"]
+        cmd += ["--metrics", "0,2,3,5,17"]
+        # 1.x only accepts -n; 2.x renamed it to --number/--count.
+        cmd += ["--number", "1"] if _get_xpu_smi_major_version() >= 2 else ["-n", "1"]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         if result.returncode != 0:
@@ -103,13 +133,11 @@ def get_gpu_memory_utilization(
         headers = [h.strip() for h in header_line.split(',')]
         values = [v.strip() for v in data_line.split(',')]
 
-        def _get_col(keyword: str) -> str | None:
-            try:
-                idx = next(i for i, h in enumerate(headers) if keyword in h)
-                if idx < len(values) and values[idx] not in ("N/A", ""):
+        def _get_col(*keywords: str) -> str | None:
+            for keyword in keywords:
+                idx = next((i for i, h in enumerate(headers) if keyword in h), None)
+                if idx is not None and idx < len(values) and values[idx] not in ("N/A", ""):
                     return values[idx]
-            except StopIteration:
-                pass
             return None
 
         mem_util_str = _get_col("GPU Memory Utilization")
@@ -121,7 +149,8 @@ def get_gpu_memory_utilization(
             val /= 100.0
 
         # Gather additional metrics for logging
-        gpu_util = _get_col("GPU Utilization")
+        # 1.x labels metric 0 "Average % utilization of all GPU Engines"; 2.x "GPU Utilization (%)"
+        gpu_util = _get_col("GPU Utilization", "utilization of all GPU Engines")
         gpu_freq = _get_col("GPU Frequency")
         gpu_temp = _get_col("GPU Core Temperature")
         mem_bw = _get_col("Memory Bandwidth Utilization")
