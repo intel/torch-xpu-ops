@@ -25,11 +25,11 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/Indexing.h>
 #include <ATen/native/xpu/sycl/IndexingUtils.h>
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors.h>
-#include <ATen/ops/aminmax.h>
 #include <ATen/ops/arange.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/gather.h>
@@ -863,7 +863,8 @@ struct PutFunctor {
 template <typename scalar_t, typename index_t>
 struct PutAccumulateFunctor {
   void operator()(scalar_t& iterated, const index_t offset) const {
-    atomicAdd(sycl_global_ptr<scalar_t>(indexed_ptr_ + offset), iterated);
+    atomicAdd(
+        sycl_global_ptr<scalar_t>(indexed_ptr_ + offset), c10::load(&iterated));
   }
   PutAccumulateFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
 
@@ -945,7 +946,7 @@ struct IndexFuncSmallIndexFunctor {
 
         T val;
         if constexpr (std::is_same_v<T, bool>) {
-          val = src_.data[srcOffset] && alpha_;
+          val = c10::load(&src_.data[srcOffset]) && alpha_;
         } else {
           val = src_.data[srcOffset] * alpha_;
         }
@@ -1053,7 +1054,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
       T val;
       if constexpr (std::is_same_v<T, bool>) {
-        val = src_.data[srcOffset] && alpha_;
+        val = c10::load(&src_.data[srcOffset]) && alpha_;
       } else {
         val = src_.data[srcOffset] * alpha_;
       }
@@ -2130,6 +2131,32 @@ TensorInfo<T, IndexType> tensorInfoLegacyIfScalar(TensorInfo<T, IndexType> ti) {
   return ti;
 }
 
+template <typename index_t>
+struct IndexSelectBoundsCheckFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    XPU_KERNEL_LOOP_TYPE(item, position, num_indices_, int64_t) {
+      const auto index_value = indices_[position * stride_];
+      SYCL_KERNEL_ASSERT(index_value >= 0 && index_value < axis_size_);
+    }
+  }
+
+  IndexSelectBoundsCheckFunctor(
+      const index_t* indices,
+      int64_t num_indices,
+      int64_t stride,
+      int64_t axis_size)
+      : indices_(indices),
+        num_indices_(num_indices),
+        stride_(stride),
+        axis_size_(axis_size) {}
+
+ private:
+  const index_t* indices_;
+  int64_t num_indices_;
+  int64_t stride_;
+  int64_t axis_size_;
+};
+
 template <typename scalar_t>
 void index_select_out_impl(
     Tensor& out,
@@ -2161,15 +2188,24 @@ void index_select_out_impl(
         indexing_axis_dim > 0,
         "index_select(): self indexing axis dim should be positive");
 
-    const auto [min_index, max_index] = at::aminmax(index);
-    const auto min_index_value = min_index.item<int64_t>();
-    const auto max_index_value = max_index.item<int64_t>();
-    TORCH_CHECK(
-        min_index_value >= 0 && max_index_value < indexing_axis_dim,
-        "INDICES element is out of DATA bounds, id=",
-        min_index_value < 0 ? min_index_value : max_index_value,
-        " axis_dim=",
-        indexing_axis_dim);
+    // Keep value-dependent validation on device, including during graph replay.
+    AT_DISPATCH_INDEX_TYPES(
+        index.scalar_type(), "index_select_empty_source_bounds", [&] {
+          const int64_t group_size = std::min<int64_t>(
+              index.numel(), at::xpu::getDeviceMaxWorkGroupSize() / 2);
+          const auto num_groups =
+              xpuKernelLoopGroupRange(index.numel(), group_size);
+          auto check = IndexSelectBoundsCheckFunctor<index_t>(
+              index.const_data_ptr<index_t>(),
+              index.numel(),
+              index.dim() == 0 ? 1 : index.stride(0),
+              indexing_axis_dim);
+          sycl_kernel_submit(
+              num_groups * group_size,
+              group_size,
+              getCurrentSYCLQueue(),
+              check);
+        });
   }
 
   uint64_t outTotalSize = out.numel();

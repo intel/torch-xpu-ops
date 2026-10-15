@@ -4,21 +4,31 @@ description: Setup uv python, clear the virtual environment, and export the virt
 inputs:
   python:
     type: string
-    default: '3.10'
-    description: Python version
+    default: ''
+    description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
 
 runs:
   using: composite
   steps:
-    - name: Setup python-${{ inputs.python }}
+    - name: Resolve python version
+      id: config
+      uses: actions/github-script@v9
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        OVERRIDE_PYTHON: ${{ inputs.python }}
+      with:
+        script: |
+          const { resolve } = require(`${process.env.ACTION_PATH}/../../ci-config/resolve.js`);
+          resolve({ core, overrides: { python: process.env.OVERRIDE_PYTHON } });
+    - name: Setup python-${{ steps.config.outputs.python }}
       uses: astral-sh/setup-uv@v9.0.0
       with:
-        python-version: ${{ inputs.python }}
+        python-version: ${{ steps.config.outputs.python }}
         activate-environment: true
     - name: Clear venv
       shell: bash -xe {0}
       run: |
-        uv venv --clear --python ${{ inputs.python }}
+        uv venv --clear --python ${{ steps.config.outputs.python }}
         uv pip install -U pip wheel "setuptools<81"
     - name: Setup venv paths
       shell: bash -xe {0}

@@ -15,6 +15,7 @@ from torch.nn.functional import ScalingType
 from torch.testing._internal.common_cuda import PLATFORM_SUPPORTS_FP8
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
+    onlyCUDA,
     onlyXPU,
 )
 from torch.testing._internal.common_utils import (
@@ -302,6 +303,15 @@ def _xpu_test_scaled_mm_vs_emulated(self, base_dtype, x_cm, y_cm, device):
 
 
 TestFP8Matmul.test_scaled_mm_vs_emulated = _xpu_test_scaled_mm_vs_emulated
+
+# Those tests are correctly marked as `@onlyCUDA` in upstream.
+TestFP8Matmul.test_mxfp8_tn_only_on_rocm = onlyCUDA(
+    TestFP8Matmul.test_mxfp8_tn_only_on_rocm
+)
+TestFP8Matmul.test_rowwise_tn_only_on_rocm = onlyCUDA(
+    TestFP8Matmul.test_rowwise_tn_only_on_rocm
+)
+
 
 instantiate_device_type_tests(TestFP8Matmul, globals(), only_for="xpu", allow_xpu=True)
 

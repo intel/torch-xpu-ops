@@ -28,210 +28,132 @@ namespace at::native {
 namespace xpu {
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool2dKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP(item, index, total_elements_) {
-      const int pw = index % pooled_width_;
-      const int ph = (index / pooled_width_) % pooled_height_;
-      const int c = (index / pooled_width_ / pooled_height_) % channels_;
-      const int n = index / pooled_width_ / pooled_height_ / channels_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void avg_pool2d_kernel_impl(
+    scalar_t* top_data,
+    const scalar_t* bottom_data,
+    const int total_elements,
+    const int64_t channels,
+    const int64_t height,
+    const int64_t width,
+    const int64_t pooled_height,
+    const int pooled_width,
+    const int kernel_h,
+    const int kernel_w,
+    const int stride_h,
+    const int stride_w,
+    const int pad_h,
+    const int pad_w,
+    const int divisor_override,
+    bool count_include_pad,
+    bool use_divisor) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP(item, index, total_elements) {
+    const int pw = index % pooled_width;
+    const int ph = (index / pooled_width) % pooled_height;
+    const int c = (index / pooled_width / pooled_height) % channels;
+    const int n = index / pooled_width / pooled_height / channels;
 
-      int hstart = ph * stride_h_ - pad_h_;
-      int wstart = pw * stride_w_ - pad_w_;
-      int hend =
-          sycl::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
-      int wend =
-          sycl::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
-      const int pool_size = (hend - hstart) * (wend - wstart);
-      hstart = sycl::max(hstart, 0);
-      wstart = sycl::max(wstart, 0);
-      hend = sycl::min(hend, static_cast<int>(height_));
-      wend = sycl::min(wend, static_cast<int>(width_));
+    int hstart = ph * stride_h - pad_h;
+    int wstart = pw * stride_w - pad_w;
+    int hend = sycl::min(hstart + kernel_h, static_cast<int>(height + pad_h));
+    int wend = sycl::min(wstart + kernel_w, static_cast<int>(width + pad_w));
+    const int pool_size = (hend - hstart) * (wend - wstart);
+    hstart = sycl::max(hstart, 0);
+    wstart = sycl::max(wstart, 0);
+    hend = sycl::min(hend, static_cast<int>(height));
+    wend = sycl::min(wend, static_cast<int>(width));
 
-      if (hstart >= hend || wstart >= wend) {
-        top_data_[index] = scalar_t(0);
-        return;
-      }
-
-      accscalar_t aveval = accscalar_t(0);
-      const scalar_t* const bottom_slice =
-          bottom_data_ + (n * channels_ + c) * height_ * width_;
-
-      for (int h = hstart; h < hend; ++h) {
-        for (int w = wstart; w < wend; ++w) {
-          aveval += bottom_slice[h * width_ + w];
-        }
-      }
-      int divide_factor;
-      if (use_divisor_) {
-        divide_factor = divisor_override_;
-      } else {
-        if (count_include_pad_) {
-          divide_factor = pool_size;
-        } else {
-          divide_factor = (hend - hstart) * (wend - wstart);
-        }
-      }
-      top_data_[index] = static_cast<scalar_t>(aveval / divide_factor);
+    if (hstart >= hend || wstart >= wend) {
+      top_data[index] = scalar_t(0);
+      return;
     }
-  }
-  AvgPool2dKernelFunctor(
-      scalar_t* top_data,
-      const scalar_t* bottom_data,
-      const int total_elements,
-      const int64_t channels,
-      const int64_t height,
-      const int64_t width,
-      const int64_t pooled_height,
-      const int pooled_width,
-      const int kernel_h,
-      const int kernel_w,
-      const int stride_h,
-      const int stride_w,
-      const int pad_h,
-      const int pad_w,
-      const int divisor_override,
-      bool count_include_pad,
-      bool use_divisor)
-      : top_data_(top_data),
-        bottom_data_(bottom_data),
-        total_elements_(total_elements),
-        channels_(channels),
-        height_(height),
-        width_(width),
-        pooled_height_(pooled_height),
-        pooled_width_(pooled_width),
-        kernel_h_(kernel_h),
-        kernel_w_(kernel_w),
-        stride_h_(stride_h),
-        stride_w_(stride_w),
-        pad_h_(pad_h),
-        pad_w_(pad_w),
-        divisor_override_(divisor_override),
-        count_include_pad_(count_include_pad),
-        use_divisor_(use_divisor) {}
 
- private:
-  scalar_t* top_data_;
-  const scalar_t* bottom_data_;
-  const int total_elements_;
-  const int64_t channels_;
-  const int64_t height_;
-  const int64_t width_;
-  const int64_t pooled_height_;
-  const int pooled_width_;
-  const int kernel_h_;
-  const int kernel_w_;
-  const int stride_h_;
-  const int stride_w_;
-  const int pad_h_;
-  const int pad_w_;
-  const int divisor_override_;
-  bool count_include_pad_;
-  bool use_divisor_;
-};
+    accscalar_t aveval = accscalar_t(0);
+    const scalar_t* const bottom_slice =
+        bottom_data + (n * channels + c) * height * width;
+
+    for (int h = hstart; h < hend; ++h) {
+      for (int w = wstart; w < wend; ++w) {
+        aveval += bottom_slice[h * width + w];
+      }
+    }
+    int divide_factor;
+    if (use_divisor) {
+      divide_factor = divisor_override;
+    } else {
+      if (count_include_pad) {
+        divide_factor = pool_size;
+      } else {
+        divide_factor = (hend - hstart) * (wend - wstart);
+      }
+    }
+    top_data[index] = static_cast<scalar_t>(aveval / divide_factor);
+  }
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool2dChannelsLastKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP(item, index, total_elements_) {
-      const int c = index % channels_;
-      const int pw = (index / channels_) % pooled_width_;
-      const int ph = (index / channels_ / pooled_width_) % pooled_height_;
-      const int n = index / channels_ / pooled_width_ / pooled_height_;
-      int hstart = ph * stride_h_ - pad_h_;
-      int wstart = pw * stride_w_ - pad_w_;
-      int hend =
-          sycl::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
-      int wend =
-          sycl::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
-      const int pool_size = (hend - hstart) * (wend - wstart);
-      hstart = sycl::max(hstart, 0);
-      wstart = sycl::max(wstart, 0);
-      hend = sycl::min(hend, static_cast<int>(height_));
-      wend = sycl::min(wend, static_cast<int>(width_));
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void avg_pool2d_channels_last_kernel_impl(
+    scalar_t* top_data,
+    const scalar_t* bottom_data,
+    index_t total_elements,
+    index_t channels,
+    index_t height,
+    index_t width,
+    int pooled_height,
+    int pooled_width,
+    int kernel_h,
+    int kernel_w,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w,
+    int divisor_override,
+    bool count_include_pad,
+    bool use_divisor) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP(item, index, total_elements) {
+    const int c = index % channels;
+    const int pw = (index / channels) % pooled_width;
+    const int ph = (index / channels / pooled_width) % pooled_height;
+    const int n = index / channels / pooled_width / pooled_height;
+    int hstart = ph * stride_h - pad_h;
+    int wstart = pw * stride_w - pad_w;
+    int hend = sycl::min(hstart + kernel_h, static_cast<int>(height + pad_h));
+    int wend = sycl::min(wstart + kernel_w, static_cast<int>(width + pad_w));
+    const int pool_size = (hend - hstart) * (wend - wstart);
+    hstart = sycl::max(hstart, 0);
+    wstart = sycl::max(wstart, 0);
+    hend = sycl::min(hend, static_cast<int>(height));
+    wend = sycl::min(wend, static_cast<int>(width));
 
-      if (hstart >= hend || wstart >= wend) {
-        top_data_[index] = scalar_t(0);
-        return;
-      }
-
-      accscalar_t aveval = accscalar_t(0);
-      const scalar_t* const bottom_slice =
-          bottom_data_ + n * channels_ * height_ * width_ + c;
-      for (int h = hstart; h < hend; ++h) {
-        for (int w = wstart; w < wend; ++w) {
-          aveval += bottom_slice[(h * width_ + w) * channels_];
-        }
-      }
-      int divide_factor;
-      if (use_divisor_) {
-        divide_factor = divisor_override_;
-      } else {
-        if (count_include_pad_) {
-          divide_factor = pool_size;
-        } else {
-          divide_factor = (hend - hstart) * (wend - wstart);
-        }
-      }
-      top_data_[index] = static_cast<scalar_t>(aveval / divide_factor);
+    if (hstart >= hend || wstart >= wend) {
+      top_data[index] = scalar_t(0);
+      return;
     }
-  }
-  AvgPool2dChannelsLastKernelFunctor(
-      scalar_t* top_data,
-      const scalar_t* bottom_data,
-      index_t total_elements,
-      index_t channels,
-      index_t height,
-      index_t width,
-      int pooled_height,
-      int pooled_width,
-      int kernel_h,
-      int kernel_w,
-      int stride_h,
-      int stride_w,
-      int pad_h,
-      int pad_w,
-      int divisor_override,
-      bool count_include_pad,
-      bool use_divisor)
-      : top_data_(top_data),
-        bottom_data_(bottom_data),
-        total_elements_(total_elements),
-        channels_(channels),
-        height_(height),
-        width_(width),
-        pooled_height_(pooled_height),
-        pooled_width_(pooled_width),
-        kernel_h_(kernel_h),
-        kernel_w_(kernel_w),
-        stride_h_(stride_h),
-        stride_w_(stride_w),
-        pad_h_(pad_h),
-        pad_w_(pad_w),
-        divisor_override_(divisor_override),
-        count_include_pad_(count_include_pad),
-        use_divisor_(use_divisor) {}
 
- private:
-  scalar_t* top_data_;
-  const scalar_t* bottom_data_;
-  index_t total_elements_;
-  index_t channels_;
-  index_t height_;
-  index_t width_;
-  int pooled_height_;
-  int pooled_width_;
-  int kernel_h_;
-  int kernel_w_;
-  int stride_h_;
-  int stride_w_;
-  int pad_h_;
-  int pad_w_;
-  int divisor_override_;
-  bool count_include_pad_;
-  bool use_divisor_;
-};
+    accscalar_t aveval = accscalar_t(0);
+    const scalar_t* const bottom_slice =
+        bottom_data + n * channels * height * width + c;
+    for (int h = hstart; h < hend; ++h) {
+      for (int w = wstart; w < wend; ++w) {
+        aveval += bottom_slice[(h * width + w) * channels];
+      }
+    }
+    int divide_factor;
+    if (use_divisor) {
+      divide_factor = divisor_override;
+    } else {
+      if (count_include_pad) {
+        divide_factor = pool_size;
+      } else {
+        divide_factor = (hend - hstart) * (wend - wstart);
+      }
+    }
+    top_data[index] = static_cast<scalar_t>(aveval / divide_factor);
+  }
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
 void launch_avg_pool2d_channels_last_kernel(
@@ -256,11 +178,17 @@ void launch_avg_pool2d_channels_last_kernel(
   const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
+  const int64_t group_size =
+      static_cast<int64_t>(syclMaxWorkItemsPerSubSlice());
   const int64_t global_range =
       xpuKernelLoopGroupRange(total_elements, group_size) * group_size;
 
-  auto kfn = AvgPool2dChannelsLastKernelFunctor<scalar_t, accscalar_t, index_t>(
+  sycl_kernel_submit<
+      avg_pool2d_channels_last_kernel_impl<scalar_t, accscalar_t, index_t>>(
+      global_range,
+      group_size,
+      queue,
+      0,
       top_data,
       bottom_data,
       total_elements,
@@ -278,7 +206,6 @@ void launch_avg_pool2d_channels_last_kernel(
       divisor_override,
       count_include_pad,
       use_divisor);
-  sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
@@ -304,11 +231,16 @@ void launch_avg_pool2d_kernel(
   const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
+  const int64_t group_size =
+      static_cast<int64_t>(syclMaxWorkItemsPerSubSlice());
   const int64_t global_range =
       xpuKernelLoopGroupRange(total_elements, group_size) * group_size;
 
-  auto kfn = AvgPool2dKernelFunctor<scalar_t, accscalar_t, index_t>(
+  sycl_kernel_submit<avg_pool2d_kernel_impl<scalar_t, accscalar_t, index_t>>(
+      global_range,
+      group_size,
+      queue,
+      0,
       top_data,
       bottom_data,
       total_elements,
@@ -326,219 +258,144 @@ void launch_avg_pool2d_kernel(
       divisor_override,
       count_include_pad,
       use_divisor);
-  sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool2dChannelsLastBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP_TYPE(item, index, total_elements_, index_t) {
-      const int c = index % channels_;
-      const int w = (index / channels_) % width_ + pad_w_;
-      const int h = (index / channels_ / width_) % height_ + pad_h_;
-      const int n = index / channels_ / width_ / height_;
-      const int phstart = (h < kernel_h_) ? 0 : (h - kernel_h_) / stride_h_ + 1;
-      const int phend = sycl::min(h / stride_h_ + 1, pooled_height_);
-      const int pwstart = (w < kernel_w_) ? 0 : (w - kernel_w_) / stride_w_ + 1;
-      const int pwend = sycl::min(w / stride_w_ + 1, pooled_width_);
-      accscalar_t gradient = accscalar_t(0);
-      const scalar_t* const top_slice =
-          top_data_ + n * channels_ * pooled_height_ * pooled_width_ + c;
-      for (int ph = phstart; ph < phend; ++ph) {
-        for (int pw = pwstart; pw < pwend; ++pw) {
-          // figure out the pooling size
-          int hstart = ph * stride_h_ - pad_h_;
-          int wstart = pw * stride_w_ - pad_w_;
-          int hend =
-              sycl::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
-          int wend =
-              sycl::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
-          int pool_size = (hend - hstart) * (wend - wstart);
-          hstart = sycl::max(hstart, 0);
-          wstart = sycl::max(wstart, 0);
-          hend = sycl::min(hend, static_cast<int>(height_));
-          wend = sycl::min(wend, static_cast<int>(width_));
-          if (hstart >= hend || wstart >= wend) {
-            continue;
-          }
-          int divide_factor;
-          if (use_divisor_) {
-            divide_factor = divisor_override_;
-          } else {
-            if (count_include_pad_) {
-              divide_factor = pool_size;
-            } else {
-              divide_factor = (hend - hstart) * (wend - wstart);
-            }
-          }
-          gradient +=
-              top_slice[(ph * pooled_width_ + pw) * channels_] / divide_factor;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void avg_pool2d_channels_last_backward_kernel_impl(
+    const scalar_t* top_data,
+    scalar_t* bottom_data,
+    int64_t total_elements,
+    int64_t channels,
+    int64_t height,
+    int64_t width,
+    int pooled_height,
+    int pooled_width,
+    int kernel_h,
+    int kernel_w,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w,
+    int divisor_override,
+    bool count_include_pad,
+    bool use_divisor) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP_TYPE(item, index, total_elements, index_t) {
+    const int c = index % channels;
+    const int w = (index / channels) % width + pad_w;
+    const int h = (index / channels / width) % height + pad_h;
+    const int n = index / channels / width / height;
+    const int phstart = (h < kernel_h) ? 0 : (h - kernel_h) / stride_h + 1;
+    const int phend = sycl::min(h / stride_h + 1, pooled_height);
+    const int pwstart = (w < kernel_w) ? 0 : (w - kernel_w) / stride_w + 1;
+    const int pwend = sycl::min(w / stride_w + 1, pooled_width);
+    accscalar_t gradient = accscalar_t(0);
+    const scalar_t* const top_slice =
+        top_data + n * channels * pooled_height * pooled_width + c;
+    for (int ph = phstart; ph < phend; ++ph) {
+      for (int pw = pwstart; pw < pwend; ++pw) {
+        // figure out the pooling size
+        int hstart = ph * stride_h - pad_h;
+        int wstart = pw * stride_w - pad_w;
+        int hend =
+            sycl::min(hstart + kernel_h, static_cast<int>(height + pad_h));
+        int wend =
+            sycl::min(wstart + kernel_w, static_cast<int>(width + pad_w));
+        int pool_size = (hend - hstart) * (wend - wstart);
+        hstart = sycl::max(hstart, 0);
+        wstart = sycl::max(wstart, 0);
+        hend = sycl::min(hend, static_cast<int>(height));
+        wend = sycl::min(wend, static_cast<int>(width));
+        if (hstart >= hend || wstart >= wend) {
+          continue;
         }
+        int divide_factor;
+        if (use_divisor) {
+          divide_factor = divisor_override;
+        } else {
+          if (count_include_pad) {
+            divide_factor = pool_size;
+          } else {
+            divide_factor = (hend - hstart) * (wend - wstart);
+          }
+        }
+        gradient +=
+            top_slice[(ph * pooled_width + pw) * channels] / divide_factor;
       }
-      bottom_data_[index] = static_cast<scalar_t>(gradient);
     }
+    bottom_data[index] = static_cast<scalar_t>(gradient);
   }
-  AvgPool2dChannelsLastBackwardKernelFunctor(
-      const scalar_t* top_data,
-      scalar_t* bottom_data,
-      int64_t total_elements,
-      int64_t channels,
-      int64_t height,
-      int64_t width,
-      int pooled_height,
-      int pooled_width,
-      int kernel_h,
-      int kernel_w,
-      int stride_h,
-      int stride_w,
-      int pad_h,
-      int pad_w,
-      int divisor_override,
-      bool count_include_pad,
-      bool use_divisor)
-      : top_data_(top_data),
-        bottom_data_(bottom_data),
-        total_elements_(total_elements),
-        channels_(channels),
-        height_(height),
-        width_(width),
-        pooled_height_(pooled_height),
-        pooled_width_(pooled_width),
-        kernel_h_(kernel_h),
-        kernel_w_(kernel_w),
-        stride_h_(stride_h),
-        stride_w_(stride_w),
-        pad_h_(pad_h),
-        pad_w_(pad_w),
-        divisor_override_(divisor_override),
-        count_include_pad_(count_include_pad),
-        use_divisor_(use_divisor) {}
-
- private:
-  const scalar_t* top_data_;
-  scalar_t* bottom_data_;
-  int64_t total_elements_;
-  int64_t channels_;
-  int64_t height_;
-  int64_t width_;
-  int pooled_height_;
-  int pooled_width_;
-  int kernel_h_;
-  int kernel_w_;
-  int stride_h_;
-  int stride_w_;
-  int pad_h_;
-  int pad_w_;
-  int divisor_override_;
-  bool count_include_pad_;
-  bool use_divisor_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool2dBackwarKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP_TYPE(item, index, total_elements_, index_t) {
-      // find out the local index
-      // find out the local offset
-      const int w = index % width_ + pad_w_;
-      const int h = (index / width_) % height_ + pad_h_;
-      const int c = (index / width_ / height_) % channels_;
-      const int n = index / width_ / height_ / channels_;
-      const int phstart = (h < kernel_h_) ? 0 : (h - kernel_h_) / stride_h_ + 1;
-      const int phend = sycl::min(h / stride_h_ + 1, pooled_height_);
-      const int pwstart = (w < kernel_w_) ? 0 : (w - kernel_w_) / stride_w_ + 1;
-      const int pwend = sycl::min(w / stride_w_ + 1, pooled_width_);
-      accscalar_t gradient = accscalar_t(0);
-      const scalar_t* const top_data_slice =
-          top_data_ + (n * channels_ + c) * pooled_height_ * pooled_width_;
-      for (int ph = phstart; ph < phend; ++ph) {
-        for (int pw = pwstart; pw < pwend; ++pw) {
-          // figure out the pooling size
-          int hstart = ph * stride_h_ - pad_h_;
-          int wstart = pw * stride_w_ - pad_w_;
-          int hend =
-              sycl::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
-          int wend =
-              sycl::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
-          int pool_size = (hend - hstart) * (wend - wstart);
-          hstart = sycl::max(hstart, 0);
-          wstart = sycl::max(wstart, 0);
-          hend = sycl::min(hend, static_cast<int>(height_));
-          wend = sycl::min(wend, static_cast<int>(width_));
-          if (hstart >= hend || wstart >= wend) {
-            continue;
-          }
-          int divide_factor;
-          if (use_divisor_) {
-            divide_factor = divisor_override_;
-          } else {
-            if (count_include_pad_) {
-              divide_factor = pool_size;
-            } else {
-              divide_factor = (hend - hstart) * (wend - wstart);
-            }
-          }
-          gradient += top_data_slice[ph * pooled_width_ + pw] / divide_factor;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void avg_pool2d_backward_kernel_impl(
+    const scalar_t* top_data,
+    scalar_t* bottom_data,
+    int64_t total_elements,
+    int64_t channels,
+    int64_t height,
+    int64_t width,
+    int pooled_height,
+    int pooled_width,
+    int kernel_h,
+    int kernel_w,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w,
+    int divisor_override,
+    bool count_include_pad,
+    bool use_divisor) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP_TYPE(item, index, total_elements, index_t) {
+    // find out the local index
+    // find out the local offset
+    const int w = index % width + pad_w;
+    const int h = (index / width) % height + pad_h;
+    const int c = (index / width / height) % channels;
+    const int n = index / width / height / channels;
+    const int phstart = (h < kernel_h) ? 0 : (h - kernel_h) / stride_h + 1;
+    const int phend = sycl::min(h / stride_h + 1, pooled_height);
+    const int pwstart = (w < kernel_w) ? 0 : (w - kernel_w) / stride_w + 1;
+    const int pwend = sycl::min(w / stride_w + 1, pooled_width);
+    accscalar_t gradient = accscalar_t(0);
+    const scalar_t* const top_data_slice =
+        top_data + (n * channels + c) * pooled_height * pooled_width;
+    for (int ph = phstart; ph < phend; ++ph) {
+      for (int pw = pwstart; pw < pwend; ++pw) {
+        // figure out the pooling size
+        int hstart = ph * stride_h - pad_h;
+        int wstart = pw * stride_w - pad_w;
+        int hend =
+            sycl::min(hstart + kernel_h, static_cast<int>(height + pad_h));
+        int wend =
+            sycl::min(wstart + kernel_w, static_cast<int>(width + pad_w));
+        int pool_size = (hend - hstart) * (wend - wstart);
+        hstart = sycl::max(hstart, 0);
+        wstart = sycl::max(wstart, 0);
+        hend = sycl::min(hend, static_cast<int>(height));
+        wend = sycl::min(wend, static_cast<int>(width));
+        if (hstart >= hend || wstart >= wend) {
+          continue;
         }
+        int divide_factor;
+        if (use_divisor) {
+          divide_factor = divisor_override;
+        } else {
+          if (count_include_pad) {
+            divide_factor = pool_size;
+          } else {
+            divide_factor = (hend - hstart) * (wend - wstart);
+          }
+        }
+        gradient += top_data_slice[ph * pooled_width + pw] / divide_factor;
       }
-      bottom_data_[index] = static_cast<scalar_t>(gradient);
     }
+    bottom_data[index] = static_cast<scalar_t>(gradient);
   }
-  AvgPool2dBackwarKernelFunctor(
-      const scalar_t* top_data,
-      scalar_t* bottom_data,
-      int64_t total_elements,
-      int64_t channels,
-      int64_t height,
-      int64_t width,
-      int pooled_height,
-      int pooled_width,
-      int kernel_h,
-      int kernel_w,
-      int stride_h,
-      int stride_w,
-      int pad_h,
-      int pad_w,
-      int divisor_override,
-      bool count_include_pad,
-      bool use_divisor)
-      : top_data_(top_data),
-        bottom_data_(bottom_data),
-        total_elements_(total_elements),
-        channels_(channels),
-        height_(height),
-        width_(width),
-        pooled_height_(pooled_height),
-        pooled_width_(pooled_width),
-        kernel_h_(kernel_h),
-        kernel_w_(kernel_w),
-        stride_h_(stride_h),
-        stride_w_(stride_w),
-        pad_h_(pad_h),
-        pad_w_(pad_w),
-        divisor_override_(divisor_override),
-        count_include_pad_(count_include_pad),
-        use_divisor_(use_divisor) {}
-
- private:
-  const scalar_t* top_data_;
-  scalar_t* bottom_data_;
-  int64_t total_elements_;
-  int64_t channels_;
-  int64_t height_;
-  int64_t width_;
-  int pooled_height_;
-  int pooled_width_;
-  int kernel_h_;
-  int kernel_w_;
-  int stride_h_;
-  int stride_w_;
-  int pad_h_;
-  int pad_w_;
-  int divisor_override_;
-  bool count_include_pad_;
-  bool use_divisor_;
-};
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
 void launch_avg_pool2d_backward_channels_last_kernel(
@@ -563,14 +420,19 @@ void launch_avg_pool2d_backward_channels_last_kernel(
   scalar_t* bottom_data = grad_input.mutable_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
+  const int64_t group_size =
+      static_cast<int64_t>(syclMaxWorkItemsPerSubSlice());
   const int64_t global_range =
       xpuKernelLoopGroupRange(total_elements, group_size) * group_size;
 
-  auto kfn = AvgPool2dChannelsLastBackwardKernelFunctor<
+  sycl_kernel_submit<avg_pool2d_channels_last_backward_kernel_impl<
       scalar_t,
       accscalar_t,
-      index_t>(
+      index_t>>(
+      global_range,
+      group_size,
+      queue,
+      0,
       top_data,
       bottom_data,
       total_elements,
@@ -588,7 +450,6 @@ void launch_avg_pool2d_backward_channels_last_kernel(
       divisor_override,
       count_include_pad,
       use_divisor);
-  sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
@@ -614,11 +475,17 @@ void launch_avg_pool2d_backward_kernel(
   scalar_t* bottom_data = grad_input.mutable_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
+  const int64_t group_size =
+      static_cast<int64_t>(syclMaxWorkItemsPerSubSlice());
   const int64_t global_range =
       xpuKernelLoopGroupRange(total_elements, group_size) * group_size;
 
-  auto kfn = AvgPool2dBackwarKernelFunctor<scalar_t, accscalar_t, index_t>(
+  sycl_kernel_submit<
+      avg_pool2d_backward_kernel_impl<scalar_t, accscalar_t, index_t>>(
+      global_range,
+      group_size,
+      queue,
+      0,
       top_data,
       bottom_data,
       total_elements,
@@ -636,7 +503,6 @@ void launch_avg_pool2d_backward_kernel(
       divisor_override,
       count_include_pad,
       use_divisor);
-  sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
 
 void avg_pool2d_kernel(
