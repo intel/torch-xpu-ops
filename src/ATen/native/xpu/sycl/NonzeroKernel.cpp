@@ -261,7 +261,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
         num_wgs * count_wg_size,
         count_wg_size,
         queue,
-        0,
+        count_wg_size * sizeof(int64_t),
         self_data + start,
         this_chunk,
         all_partial_sums_ptr + ci * max_wgs_per_chunk,
