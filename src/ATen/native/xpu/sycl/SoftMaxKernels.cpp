@@ -310,10 +310,12 @@ struct DispatchSoftmaxForwardKernelFunctor
     else if (sum_value != 0)
       sum_value = accscalar_t(1) / sum_value;
 
-      // The max reduce can drop a NaN, so max_value == lowest() alone does not
-      // mean the row was fully masked; sum_value still carries the NaN.
+    // The max reduce can drop a NaN, so the sentinel alone can be spurious.
+    const bool row_fully_masked = is_safe_softmax &&
+        max_value == std::numeric_limits<accscalar_t>::lowest() &&
+        !at::_isnan(sum_value);
 
-      // update result
+    // update result
 #pragma unroll(outer_loop)
     for (int i = 0; i < outer_loop; ++i) {
       auto index = i * local_stride + lid_offset;
@@ -327,10 +329,7 @@ struct DispatchSoftmaxForwardKernelFunctor
           if constexpr (LogSoftMax) {
             reg_in[i][j] =
                 static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
-          } else if (
-              is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest() &&
-              !at::_isnan(sum_value)) {
+          } else if (row_fully_masked) {
             reg_in[i][j] = static_cast<outscalar_t>(0);
           } else if (sum_value == 0) {
             reg_in[i][j] = nan_;
@@ -342,10 +341,7 @@ struct DispatchSoftmaxForwardKernelFunctor
           if constexpr (LogSoftMax) {
             out_data_point[j] =
                 static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
-          } else if (
-              is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest() &&
-              !at::_isnan(sum_value)) {
+          } else if (row_fully_masked) {
             out_data_point[j] = static_cast<outscalar_t>(0);
           } else if (sum_value == 0) {
             out_data_point[j] = static_cast<outscalar_t>(nan_);
@@ -602,8 +598,10 @@ struct SoftmaxForwardKernelFunctor {
     else
       sum_value = accscalar_t(1) / sum_value;
 
-    // The max reduce can drop a NaN, so max_value == lowest() alone does not
-    // mean the row was fully masked; sum_value still carries the NaN.
+    // The max reduce can drop a NaN, so the sentinel alone can be spurious.
+    const bool row_fully_masked = is_safe_softmax &&
+        max_value == std::numeric_limits<accscalar_t>::lowest() &&
+        !at::_isnan(sum_value);
 
     // update result
     constexpr int out_vec_size = align_bytes / sizeof(outscalar_t);
@@ -626,10 +624,7 @@ struct SoftmaxForwardKernelFunctor {
             if constexpr (LogSoftMax)
               out_data_[group_offset + linear_idx] = static_cast<outscalar_t>(
                   in_data_[group_offset + linear_idx] - max_value - sum_value);
-            else if (
-                is_safe_softmax &&
-                max_value == std::numeric_limits<accscalar_t>::lowest() &&
-                !at::_isnan(sum_value))
+            else if (row_fully_masked)
               out_data_[group_offset + linear_idx] =
                   static_cast<outscalar_t>(0);
             else
@@ -647,10 +642,7 @@ struct SoftmaxForwardKernelFunctor {
           if constexpr (LogSoftMax)
             results[j] =
                 static_cast<outscalar_t>(in_val[j] - max_value - sum_value);
-          else if (
-              is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest() &&
-              !at::_isnan(sum_value))
+          else if (row_fully_masked)
             results[j] = static_cast<outscalar_t>(0);
           else
             results[j] = static_cast<outscalar_t>(
