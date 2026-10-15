@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 from skip_list_dist import skip_dict
+from torch.testing._internal.common_xpu import get_xpu_codename, XPUCodename
 from xpu_test_utils import launch_test
 
 res = 0
@@ -47,11 +48,23 @@ if ret == 0:
         if len(value) > len(max_affinity):
             max_affinity = value
 
-    # BMG has no XL-linked GPU groups (all-SYS topology), so each row only
-    # reports its own index; fall back to the first WORLD_SIZE GPUs instead.
+    # BMG has no XL-linked GPU groups (all-SYS topology), so use the first
+    # WORLD_SIZE GPUs only when PyTorch identifies the device as BMG.
     if "," not in max_affinity:
+        if get_xpu_codename() != XPUCodename.BMG:
+            print(
+                "No multi-GPU XELINK group found; refusing to select GPUs by fallback."
+            )
+            sys.exit(255)
+        if not gpu_dict:
+            print("No GPUs found in xpu-smi topology output.")
+            sys.exit(255)
+
         world_size = int(os.environ.get("WORLD_SIZE", "4"))
         max_affinity = ",".join(str(i) for i in range(min(world_size, len(gpu_dict))))
+        print(
+            f"No multi-GPU XELINK group found on BMG; falling back to {max_affinity}."
+        )
 
     os.environ["ZE_AFFINITY_MASK"] = str(max_affinity)
     print(str("ZE_AFFINITY_MASK=" + os.environ.get("ZE_AFFINITY_MASK")))
