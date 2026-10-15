@@ -27,9 +27,9 @@ namespace xpu {
 // ======================= group sort =======================
 
 template <typename method_t, typename key_t, typename value_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void segmented_group_radix_sort_pairs_func(
     const key_t* keys_in,
     key_t* keys_out,
@@ -97,9 +97,9 @@ void segmented_group_radix_sort_pairs_kernel(
 // ======================= upsweep =======================
 
 template <typename method_t, typename key_t, typename value_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void segmented_radix_sort_pairs_upsweep_func(
     const key_t* keys_in,
     int* counts,
@@ -171,9 +171,9 @@ void segmented_radix_sort_pairs_upsweep_kernel(
 // ======================= scan bins =======================
 
 template <typename method_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void segmented_radix_sort_pairs_scan_func(int* counts, int num_tiles) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   char* slm = static_cast<char*>(syclexp::get_work_group_scratch_memory());
@@ -204,9 +204,9 @@ void segmented_radix_sort_pairs_scan_kernel(
 // ======================= downsweep =======================
 
 template <typename method_t, typename key_t, typename value_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void segmented_radix_sort_pairs_downsweep_func(
     const key_t* keys_in,
     key_t* keys_out,
@@ -410,9 +410,9 @@ inline index_t make_alignment_n(index_t size) {
 }
 
 template <typename method_t, typename key_t, typename value_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (syclexp::sub_group_size<method_t::SUBGROUP_SIZE>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void segmented_group_radix_select_pairs_kernel(
     const key_t* keys_in,
     key_t* keys_out,
