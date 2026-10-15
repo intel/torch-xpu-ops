@@ -378,9 +378,10 @@ WelfordDataLN WelfordCombine(
     U mean, sigma2;
     if (count > decltype(dataB.count){0}) {
       auto coef = sycl::native::recip(count);
-      auto nA = dataA.count * coef;
       auto nB = dataB.count * coef;
-      mean = nA * dataA.mean + nB * dataB.mean;
+      // Preserve equal partial means: rounded weights need not sum to one,
+      // even when the reciprocal is correctly rounded.
+      mean = (dataA.count == U(0)) ? dataB.mean : dataA.mean + delta * nB;
       sigma2 = dataA.sigma2 + dataB.sigma2 + delta * delta * dataA.count * nB;
     } else {
       mean = U(0);
