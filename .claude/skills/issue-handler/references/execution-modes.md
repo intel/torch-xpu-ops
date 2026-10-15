@@ -130,6 +130,10 @@ never a bare `pytorch/pytorch#197334`, a URL, or a markdown link. All three
 render as a reference, which back-links the comment onto the upstream issue;
 a code span is not linkified. Run and job log links are fine.
 
+**References to issues in this repo stay bare** — write
+intel/torch-xpu-ops#5476, not backticked. Here the back-link is wanted: it
+is how a tracking issue you file gets found again.
+
 The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
 already lives in the root-cause block above it.

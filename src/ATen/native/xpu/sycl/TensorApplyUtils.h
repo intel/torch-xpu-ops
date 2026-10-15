@@ -256,10 +256,6 @@ inline uint64_t get_apply_group_count(
       static_cast<uint64_t>(threads_per_group) * static_cast<uint64_t>(step);
   uint64_t num_groups =
       (total_elements + numel_per_thread - 1) / numel_per_thread;
-  uint64_t estimated_max_groups_per_tile =
-      at::xpu::getDeviceMaxWorkItems() / threads_per_group;
-  if (num_groups > estimated_max_groups_per_tile)
-    num_groups = estimated_max_groups_per_tile;
   return num_groups;
 }
 
