@@ -9,31 +9,19 @@
 from skip_list_common import PYTORCH_TEST_DIR
 
 skip_dict = {
-    # tensor(0.-0.j, device='xpu:0', dtype=torch.complex32) tensor(nan+nanj, device='xpu:0', dtype=torch.complex32) (1.5707964+0j)
-    "test_unary_ufuncs_xpu.pyy": (
-        "test_reference_numerics_small_acos_xpu_complex32",
-        "test_reference_numerics_small_asin_xpu_complex32",
-        "test_reference_numerics_small_asinh_xpu_complex32",
-        "test_reference_numerics_small_atan_xpu_complex32",
-        "test_reference_numerics_small_atanh_xpu_complex32",
-        # Need to check compiler std::sin() on inf+infj
-        "test_reference_numerics_extremal__refs_sin_xpu_complex128",
-        "test_reference_numerics_extremal__refs_sin_xpu_complex64",
-        "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex128",
-        "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
-        "test_reference_numerics_extremal_sin_xpu_complex128",
-        "test_reference_numerics_extremal_sin_xpu_complex64",
-        "test_reference_numerics_extremal_sinh_xpu_complex128",
-        "test_reference_numerics_extremal_sinh_xpu_complex64",
-        "test_reference_numerics_large__refs_sin_xpu_complex32",
-        "test_reference_numerics_large_sin_xpu_complex32",
-        # Known issue of exp accuracy
-        # tensor(13437.7000-501.j, device='xpu:0', dtype=torch.complex128) tensor(inf+infj, device='xpu:0', dtype=torch.complex128) (-inf+infj)
-        "test_reference_numerics_large__refs_exp_xpu_complex128",
-        "test_reference_numerics_large_exp_xpu_complex128",
-        "test_reference_numerics_small_exp_xpu_complex32",
-        ":test_reference_numerics_normal_special_i1_xpu_float32",
-        "test_reference_numerics_normal_sigmoid_xpu_complex32",
+    f"{PYTORCH_TEST_DIR}/nn/test_convolution.py": (
+        "test_conv_noncontig_weights_and_bias_xpu",
+        "test_conv_noncontig_weights_xpu",
+        "test_conv_transpose_with_output_size_and_no_batch_dim_ConvTranspose2d_xpu",
+        "test_conv_transpose_with_output_size_and_no_batch_dim_ConvTranspose3d_xpu",
+        "test_convert_conv2d_weight_memory_format_xpu",
+        "test_convert_conv3d_weight_memory_format_xpu",
+        "test_group_convTranspose_empty_xpu",
+        "test_group_conv_empty_xpu",
+        "test_noncontig_conv_grad_xpu_float16",
+        "test_noncontig_conv_grad_xpu_float32",
+        "test_noncontig_conv_grad_xpu_float64",
+        "test_conv_large_xpu",
     ),
     # https://github.com/intel/torch-xpu-ops/issues/1171
     # AssertionError: 'Assertion maxind >= 0 && maxind < outputImageSize failed' not found in '\nAssertHandler::printMessage\n' : The expected error was not found
@@ -110,43 +98,16 @@ skip_dict = {
         "test_sort_large_bool",
         "test_sort_large_slice",
     ),
+    "test_tensor_creation_ops_xpu.py": (
+        "test_ones_large_xpu_complex128",
+        "test_zeros_large_xpu_complex128",
+        "test_range_factories_64bit_indexing_xpu",
+    ),
     "test_tensor_factory.py": (
         "test_empty_float",
         "test_empty_int64",
         "test_empty_strided_float",
         "test_empty_strided_int64",
-    ),
-    "test_unary.py": (
-        "test_abs_out",
-        "test_cos_out",
-        "test_log_out",
-        "test_neg_out",
-        "test_reciprocal_out",
-        "test_rsqrt_out",
-        "test_sin_out",
-        "test_sqrt_out",
-        "test_tanh_out",
-    ),
-    "test_upsample_bilinear_bwd.py": ("test_upsample_bilinear_bwd",),
-    "test_upsample_nearest.py": ("test_upsample_nearest",),
-    f"{PYTORCH_TEST_DIR}/nn/test_convolution.py": (
-        "test_conv_noncontig_weights_and_bias_xpu",
-        "test_conv_noncontig_weights_xpu",
-        "test_conv_transpose_with_output_size_and_no_batch_dim_ConvTranspose2d_xpu",
-        "test_conv_transpose_with_output_size_and_no_batch_dim_ConvTranspose3d_xpu",
-        "test_convert_conv2d_weight_memory_format_xpu",
-        "test_convert_conv3d_weight_memory_format_xpu",
-        "test_group_convTranspose_empty_xpu",
-        "test_group_conv_empty_xpu",
-        "test_noncontig_conv_grad_xpu_float16",
-        "test_noncontig_conv_grad_xpu_float32",
-        "test_noncontig_conv_grad_xpu_float64",
-        "test_conv_large_xpu",
-    ),
-    "test_tensor_creation_ops_xpu.py": (
-        "test_ones_large_xpu_complex128",
-        "test_zeros_large_xpu_complex128",
-        "test_range_factories_64bit_indexing_xpu",
     ),
     "test_torchvision_roi_ops.py": (
         "test_forward[torch.float16-True-xpu]",
@@ -217,4 +178,43 @@ skip_dict = {
         "test_autocast[rois_dtype1-x_dtype1-False-True]",
         "test_autocast[rois_dtype1-x_dtype1-False-False]",
     ),
+    "test_unary.py": (
+        "test_abs_out",
+        "test_cos_out",
+        "test_log_out",
+        "test_neg_out",
+        "test_reciprocal_out",
+        "test_rsqrt_out",
+        "test_sin_out",
+        "test_sqrt_out",
+        "test_tanh_out",
+    ),
+    # tensor(0.-0.j, device='xpu:0', dtype=torch.complex32) tensor(nan+nanj, device='xpu:0', dtype=torch.complex32) (1.5707964+0j)
+    "test_unary_ufuncs_xpu.pyy": (
+        "test_reference_numerics_small_acos_xpu_complex32",
+        "test_reference_numerics_small_asin_xpu_complex32",
+        "test_reference_numerics_small_asinh_xpu_complex32",
+        "test_reference_numerics_small_atan_xpu_complex32",
+        "test_reference_numerics_small_atanh_xpu_complex32",
+        # Need to check compiler std::sin() on inf+infj
+        "test_reference_numerics_extremal__refs_sin_xpu_complex128",
+        "test_reference_numerics_extremal__refs_sin_xpu_complex64",
+        "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex128",
+        "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
+        "test_reference_numerics_extremal_sin_xpu_complex128",
+        "test_reference_numerics_extremal_sin_xpu_complex64",
+        "test_reference_numerics_extremal_sinh_xpu_complex128",
+        "test_reference_numerics_extremal_sinh_xpu_complex64",
+        "test_reference_numerics_large__refs_sin_xpu_complex32",
+        "test_reference_numerics_large_sin_xpu_complex32",
+        # Known issue of exp accuracy
+        # tensor(13437.7000-501.j, device='xpu:0', dtype=torch.complex128) tensor(inf+infj, device='xpu:0', dtype=torch.complex128) (-inf+infj)
+        "test_reference_numerics_large__refs_exp_xpu_complex128",
+        "test_reference_numerics_large_exp_xpu_complex128",
+        "test_reference_numerics_small_exp_xpu_complex32",
+        ":test_reference_numerics_normal_special_i1_xpu_float32",
+        "test_reference_numerics_normal_sigmoid_xpu_complex32",
+    ),
+    "test_upsample_bilinear_bwd.py": ("test_upsample_bilinear_bwd",),
+    "test_upsample_nearest.py": ("test_upsample_nearest",),
 }
