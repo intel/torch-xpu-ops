@@ -247,26 +247,36 @@ macro(set_build_flags)
     list(APPEND SYCL_COMPILE_FLAGS ${SYCL_TARGETS_OPTION})
     list(APPEND SYCL_DEVICE_LINK_FLAGS ${SYCL_TARGETS_OPTION})
     list(APPEND SYCL_DEVICE_LINK_FLAGS "-Xspirv-translator;-spirv-ext=+SPV_INTEL_split_barrier,+SPV_INTEL_2d_block_io,+SPV_INTEL_subgroup_matrix_multiply_accumulate")
-    # PVC flash attention kernels built with IGC < 2.20 have known accuracy
-    # issues; the IGC version is taken from the libigc file name.
-    find_library(IGC_LIBRARY NAMES libigc.so.2 igc HINTS ENV LD_LIBRARY_PATH)
-    if(IGC_LIBRARY)
-      file(REAL_PATH ${IGC_LIBRARY} _igc_real_path)
-      get_filename_component(_igc_name ${_igc_real_path} NAME)
-      string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" IGC_VERSION "${_igc_name}")
-    endif()
     if(TORCH_XPU_ARCH_LIST STREQUAL "cri")
       set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device cri")
-    elseif(IGC_VERSION AND IGC_VERSION VERSION_LESS 2.20 AND NOT USE_SYCLTLA_PVC_WITH_OLD_IGC)
-      message(WARNING "IGC ${IGC_VERSION} (${IGC_LIBRARY}) is older than 2.20 and "
-        "has known accuracy issues with flash attention on PVC, so SYCL-TLA "
-        "kernels are not built for PVC and SDPA on PVC falls back to other "
-        "backends. Upgrade IGC, or set USE_SYCLTLA_PVC_WITH_OLD_IGC=1 to build "
-        "them anyway.")
-      add_compile_definitions(SYCLTLA_NO_PVC)
-      set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device bmg")
     else()
-      set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,bmg")
+      # SYCL-TLA requires IGC >= 2.27.10 on PVC; older versions produce
+      # inaccurate flash attention results. The IGC version is taken from the
+      # libigc file name.
+      set(SYCLTLA_PVC_MIN_IGC_VERSION 2.27.10)
+      find_library(IGC_LIBRARY NAMES libigc.so.2 igc HINTS ENV LD_LIBRARY_PATH)
+      set(IGC_VERSION "")
+      if(IGC_LIBRARY)
+        file(REAL_PATH ${IGC_LIBRARY} _igc_real_path)
+        get_filename_component(_igc_name ${_igc_real_path} NAME)
+        string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" IGC_VERSION "${_igc_name}")
+      endif()
+      if(NOT IGC_VERSION)
+        message(STATUS "Could not determine the IGC version (libigc: ${IGC_LIBRARY}); "
+          "skipping the IGC >= ${SYCLTLA_PVC_MIN_IGC_VERSION} check for PVC flash attention.")
+      endif()
+      if(IGC_VERSION AND IGC_VERSION VERSION_LESS SYCLTLA_PVC_MIN_IGC_VERSION
+         AND NOT USE_SYCLTLA_PVC_WITH_OLD_IGC)
+        message(WARNING "IGC ${IGC_VERSION} (${IGC_LIBRARY}) is older than "
+          "${SYCLTLA_PVC_MIN_IGC_VERSION}, which SYCL-TLA requires on PVC, and "
+          "has known accuracy issues with flash attention, so SYCL-TLA kernels "
+          "are not built for PVC and SDPA on PVC falls back to other backends. "
+          "Upgrade IGC, or set USE_SYCLTLA_PVC_WITH_OLD_IGC=1 to build them anyway.")
+        add_compile_definitions(SYCLTLA_NO_PVC)
+        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device bmg")
+      else()
+        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,bmg")
+      endif()
     endif()
   else()
     if(WIN32)

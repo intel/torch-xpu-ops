@@ -18,15 +18,17 @@ bool is_flash_attention_available() {
 #ifndef USE_SYCLTLA
   return false;
 #elif defined(SYCLTLA_NO_PVC)
-  // PVC kernels were left out of the build (IGC < 2.20); let SDPA fall back.
+  // PVC kernels were left out of the build because the IGC used at build time
+  // is too old; let SDPA fall back.
   using sycl::ext::oneapi::experimental::architecture;
   if (at::xpu::is_available()) {
     auto arch = at::xpu::getCurrentDeviceProperties()->architecture;
     if (arch == architecture::intel_gpu_pvc ||
         arch == architecture::intel_gpu_pvc_vg) {
       TORCH_WARN_ONCE(
-          "Flash attention was not built for PVC because of IGC < 2.20 at "
-          "build time; scaled_dot_product_attention will use another backend.");
+          "Flash attention was not built for PVC because the IGC used at "
+          "build time is older than SYCL-TLA requires; "
+          "scaled_dot_product_attention will use another backend.");
       return false;
     }
   }
