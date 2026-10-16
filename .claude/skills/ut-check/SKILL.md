@@ -56,13 +56,14 @@ a baseline verdict. The JSON contains:
 
 ### Ground Truth for New Failures
 
-The authoritative source for new failures is the `New-UT-Failures-*` artifact
-which contains `new_ut_failure_list.csv`. This CSV is produced by the CI
-summary job: `ut_result_check.sh` identifies new failures (not in the known
-issues list), and the workflow enriches them with error messages.
+The authoritative source for new failures is the `UT-Check-*` artifacts
+which contain `new_ut_failure_list.csv`. This CSV is produced by the CI
+check job: `ut_results.py` identifies new failures (not in the known
+issues list) and enriches them with error messages.
 
-The `Inductor-XPU-UT-Data-*` artifact bundles a **duplicate** copy of that CSV;
-`bot_ut_check.py` reads only the authoritative artifact and de-duplicates by
+The `Inductor-XPU-UT-Data-*` artifact bundles the **unfiltered** failure list
+(`ut_failure_list.csv`, known failures included); `bot_ut_check.py` reads only
+the authoritative artifact and de-duplicates by
 `(category, class, test)`. If you ever see the same failure listed twice, treat
 it as a single failure and note the collection anomaly.
 

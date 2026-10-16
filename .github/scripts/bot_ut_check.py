@@ -56,16 +56,16 @@ def download_artifacts(repo, run_id, download_dir):
     """Download UT-related artifacts from the workflow run.
 
     Returns (has_new_failures_artifact, new_failures_dir) where new_failures_dir
-    is the directory that holds the authoritative New-UT-Failures artifact. We
-    track it explicitly because the Inductor-XPU-UT-Data artifact also bundles a
-    copy of new_ut_failure_list.csv; parsing both would double-count failures.
+    is the directory that holds the authoritative UT-Check artifacts. We track
+    it explicitly because the Inductor-XPU-UT-Data artifact also bundles a copy
+    of the failure list; parsing both would double-count failures.
     """
     run(f"mkdir -p {download_dir}", check=False)
 
     new_failures_dir = os.path.join(download_dir, "_new_failures")
     result = subprocess.run(
         f"gh run download {run_id} --repo {repo} --dir {new_failures_dir} "
-        f'--pattern "New-UT-Failures-*"',
+        f'--pattern "UT-Check-*"',
         shell=True,
         capture_output=True,
         text=True,
@@ -89,17 +89,17 @@ def download_artifacts(repo, run_id, download_dir):
 
 
 def parse_new_failures(new_failures_dir):
-    """Parse new_ut_failure_list.csv from the New-UT-Failures-* artifact.
+    """Parse new_ut_failure_list.csv from the UT-Check-* artifacts.
 
-    This artifact is the authoritative source for new failures. It is produced
-    by the CI summary job which filters all failures against the known issues
-    list. The file is a pipe-delimited markdown table:
+    These artifacts are the authoritative source for new failures. They are
+    produced by the CI check jobs, which filter all failures against the known
+    issues list. The file is a pipe-delimited markdown table:
         | Category | Class name | Test name | Status | Message | Source |
 
-    Only the New-UT-Failures directory is scanned (not the whole download dir):
-    the Inductor-XPU-UT-Data artifact bundles a duplicate copy of this file, and
-    including it would count every failure twice. Results are de-duplicated by
-    (category, class, test) as a further safety net against re-run attempts.
+    Only the UT-Check directory is scanned (not the whole download dir): the
+    Inductor-XPU-UT-Data artifact bundles the unfiltered failure list, and
+    including it would report known failures as new. Results are de-duplicated
+    by (category, class, test) as a further safety net against re-run attempts.
     """
     failures = []
     seen = set()

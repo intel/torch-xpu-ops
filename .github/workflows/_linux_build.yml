@@ -88,12 +88,12 @@ jobs:
       - name: Snapshot open skipped issues at build start
         run: |
           touch known_issue_static.log issues_snapshot.log issues_snapshot_bmg.log issues_snapshot_dpclang.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "${{ inputs.category }}" > issues_snapshot.log
+          bash torch-xpu-ops/.github/scripts/ut_known_issues.sh static > known_issue_static.log
+          bash torch-xpu-ops/.github/scripts/ut_known_issues.sh open "${{ inputs.category }}" > issues_snapshot.log
           # Runner/category specific labels snapshotted separately so the summary job
           # only applies them on the matching runner (avoids masking failures elsewhere).
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "" "bmg-test" "extra-only" > issues_snapshot_bmg.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "dpclang" "" "extra-only" > issues_snapshot_dpclang.log
+          bash torch-xpu-ops/.github/scripts/ut_known_issues.sh open "" "bmg-test" "extra-only" > issues_snapshot_bmg.log
+          bash torch-xpu-ops/.github/scripts/ut_known_issues.sh open "dpclang" "" "extra-only" > issues_snapshot_dpclang.log
       - name: Upload skipped issues snapshot
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7

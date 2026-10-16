@@ -7,7 +7,8 @@ on:
     paths:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
-      - '.github/scripts/test_bot_*.py'
+      - '.github/scripts/ut_results.py'
+      - '.github/scripts/test_*.py'
       - '.github/scripts/fold_details.js'
       - '.github/scripts/test_fold_details.js'
 
@@ -2176,12 +2177,13 @@ jobs:
               body: `\`${date}\` [\`triage\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
-  # Unit-test the bot scripts that carry non-trivial logic. The fix pipeline's
+  # Unit-test the scripts that carry non-trivial logic. The fix pipeline's
   # patch export is a schema gate, a lost-fix cross-check and a salvage path
   # rolled into one; it used to be an inline heredoc in the fix job, where the
   # only way to exercise it was to run the whole ~5h job on an XPU runner.
-  # Pure python, no GPU, seconds -- so a regression in it is caught on the PR
-  # that introduces it instead of by losing a fix in production.
+  # The UT check decides whether a nightly is green, from logs no PR produces.
+  # Pure python, no GPU, seconds -- so a regression in them is caught on the PR
+  # that introduces it instead of by losing a fix, or a failure, in production.
   script-tests:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
@@ -2192,10 +2194,10 @@ jobs:
       - name: Setup Python
         uses: ./.github/actions/setup-python
 
-      - name: Run bot script tests
+      - name: Run script tests
         run: |
           pip install pytest
-          python -m pytest .github/scripts/test_bot_*.py -v
+          python -m pytest .github/scripts/test_*.py -v
           node .github/scripts/test_fold_details.js
 
   token-permission-test:

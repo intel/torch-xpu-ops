@@ -81,7 +81,7 @@ NAME_SAMPLE = 20
 HEALTH_RATIO = 0.95
 
 # Covered UT jobs. xpu_distributed is deliberately excluded: it reports through
-# run_distributed_tests in ut_result_check.sh, which produces neither the
+# Checker.run_distributed in ut_results.py, which produces neither the
 # per-category passed/failed logs nor a case count, so neither the health
 # gate nor the baseline comparison has anything to read. The upstream_* jobs
 # run weekly only; upstream_distributed goes through run_main_tests like the rest.
@@ -95,7 +95,7 @@ UT_JOB_CATEGORIES = {
 }
 CATEGORY_UT_JOB = {c: job for job, cats in UT_JOB_CATEGORIES.items() for c in cats}
 
-# Mirrors EXPECTED_CASES in ut_result_check.sh (linux column). Only a fallback:
+# Mirrors EXPECTED_CASES in ut_results.py (linux column). Only a fallback:
 # runs predating run_health.jsonl carry no recorded verdict of their own.
 EXPECTED_CASES = {
     "op_extended": 5349,
@@ -277,6 +277,42 @@ def pick_artifact(names: list[tuple[str, bool]], prefix: str, ut_job: str, run_i
     return best
 
 
+def pick_summary_artifact(names: list[tuple[str, bool]], run_id: int):
+    """Deprecated run-level summary of the runs that had one."""
+    pat = re.compile(rf"^UT-Summary-.+-{run_id}-(\d+)")
+    best, best_attempt = None, -1
+    for name, expired in names:
+        m = pat.match(name)
+        if m and not expired and int(m.group(1)) > best_attempt:
+            best, best_attempt = name, int(m.group(1))
+    return best
+
+
+def fetch_summary(run_id: int, names: list[tuple[str, bool]], work: Path) -> Path | None:
+    """The run's combined UT summary, or None for runs that predate it."""
+    artifact = pick_summary_artifact(names, run_id)
+    if artifact is None:
+        return None
+    root = work / f"summary-{run_id}"
+    return root if download(run_id, artifact, root) else None
+
+
+def merge_check(run_id: int, names: list[tuple[str, bool]], ut_job: str,
+                summary_root: Path | None, dest: Path) -> None:
+    """Put what the check concluded next to the data artifact it read.
+
+    The UT job uploads the reports and case logs; the check job turns them into
+    a verdict, a health record and the new-failure table. Everything downstream
+    reads the two as one tree.
+    """
+    artifact = pick_artifact(names, "UT-Check", ut_job, run_id)
+    if artifact is not None and download(run_id, artifact, dest / "check"):
+        return
+    # Runs between the combined summary and the per-job check.
+    if summary_root is not None and (summary_root / ut_job).is_dir():
+        shutil.copytree(summary_root / ut_job, dest / "check", dirs_exist_ok=True)
+
+
 def download(run_id: int, artifact: str, dest: Path) -> bool:
     dest.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(
@@ -380,7 +416,7 @@ def category_state(root: Path, category: str) -> tuple[str, int, int]:
 
 
 def parse_failure_csv(path: Path | None) -> list[Case]:
-    """Headerless markdown rows written by check-ut.py:print_md_row:
+    """Headerless markdown rows written by ut_results.py:Report.write_failure_csv:
     `| Category | Class name | Test name | Status | Message | Source |`."""
     cases = []
     for line in read_lines(path):
@@ -641,11 +677,13 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
         cand_id = int(cand["databaseId"])
         names = list_artifacts(cand_id)
         jobs = resolve_jobs(cand_id)
+        summary_root = fetch_summary(cand_id, names, work)
         dirs: dict[str, Path] = {}
         for ut_job in {CATEGORY_UT_JOB[c] for c in pending}:
             artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, cand_id)
             dest = work / f"baseline-{cand_id}-{ut_job}"
             if artifact and download(cand_id, artifact, dest):
+                merge_check(cand_id, names, ut_job, summary_root, dest)
                 dirs[ut_job] = dest
         for category in sorted(pending):
             root = dirs.get(CATEGORY_UT_JOB[category])
@@ -757,8 +795,8 @@ def classify_case(case: Case, baselines: dict[str, Baseline],
 # erases its cases rather than failing them, and a test removed or renamed in
 # stock pytorch is simply not there. Neither reaches new_ut_failure_list.csv,
 # and a few hundred missing cases sit far below the 5% count gate in
-# ut_result_check.sh:check_test_cases. Comparing this run's roster against the
-# baseline's is the only thing here that sees them.
+# ut_results.py:Checker.check_case_counts. Comparing this run's roster against
+# the baseline's is the only thing here that sees them.
 #
 # It matters twice. The count of cases a module used to pass is the blast
 # radius an issue about that module has to state. And a module whose names
@@ -873,7 +911,7 @@ def names_by_module(lines: set[str]) -> dict[str, list[str]]:
 
 def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work: Path,
                 jobs: list, report: dict, current: RunInfo,
-                ut_job_health: dict) -> list[Case]:
+                ut_job_health: dict, summary_root: Path | None) -> list[Case]:
     """Artifact health checks plus this run's new failures, for one UT job."""
     data_artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, run_id)
     if data_artifact is None:
@@ -886,6 +924,11 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
         report["skipped_ut_jobs"].append(
             {"ut_job": ut_job, "reason": "artifact download failed"})
         return []
+
+    # The run-level summary holds what the comparison produced for this UT job
+    # (health verdicts, case logs, new failures); the data artifact holds the
+    # reports it was built from.
+    merge_check(run_id, names, ut_job, summary_root, root)
 
     current.job_urls[ut_job] = job_url(run_id, jobs, ut_job)
     current.runners[ut_job] = job_runner(jobs, ut_job)
@@ -913,14 +956,18 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
         else:
             print(f"note: {category} never ran in this UT job; nothing to file")
 
-    failures_artifact = pick_artifact(names, "New-UT-Failures", ut_job, run_id)
-    if failures_artifact is None:
-        print(f"note: {ut_job} produced no new failures")
-        return []
-    csv_dir = work / f"current-{ut_job}-newfail"
-    if not download(run_id, failures_artifact, csv_dir):
-        return []
-    cases = parse_failure_csv(find_file(csv_dir, "new_ut_failure_list.csv"))
+    csv_path = find_file(root, "new_ut_failure_list.csv")
+    if csv_path is None:
+        # Runs predating the combined summary kept the CSV in its own artifact.
+        failures_artifact = pick_artifact(names, "New-UT-Failures", ut_job, run_id)
+        if failures_artifact is None:
+            print(f"note: {ut_job} produced no new failures")
+            return []
+        csv_dir = work / f"current-{ut_job}-newfail"
+        if not download(run_id, failures_artifact, csv_dir):
+            return []
+        csv_path = find_file(csv_dir, "new_ut_failure_list.csv")
+    cases = parse_failure_csv(csv_path)
 
     # H6: the CSV is built by grepping ut_failure_list.csv per filtered-log line,
     # so a mismatch means some failures lost their error message.
@@ -995,9 +1042,10 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         )
 
     names = list_artifacts(args.run_id)
+    summary_root = fetch_summary(args.run_id, names, work)
     for ut_job in UT_JOB_CATEGORIES:
         cases.extend(collect_ut_job(args.run_id, ut_job, names, work, jobs, report,
-                                 current, ut_job_health))
+                                 current, ut_job_health, summary_root))
 
     if len(cases) > TOO_MANY_THRESHOLD:
         warn(
