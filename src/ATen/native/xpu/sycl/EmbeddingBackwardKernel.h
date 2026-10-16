@@ -35,15 +35,14 @@ inline void krn_partials_per_segment_kernel(
 
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto id = item.get_global_linear_id();
-  if (id < *num_of_segments_ptr) {
+  const auto stride = item.get_global_range(0);
+  for (; id < *num_of_segments_ptr; id += stride) {
     const index_t idx_start = offsets_ptr[id];
     const index_t idx_end = (id == *num_of_segments_ptr - 1)
         ? static_cast<index_t>(numel)
         : offsets_ptr[id + 1];
     const index_t size = idx_end - idx_start;
     ret_ptr[id] = at::ceil_div(size, static_cast<index_t>(NROWS_PER_THREAD));
-  } else {
-    ret_ptr[id] = 0;
   }
 }
 
@@ -87,7 +86,7 @@ inline void krn_partial_segment_offset_kernel(
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto id = item.get_global_linear_id();
   auto stride = item.get_global_range(0);
-  if (id < *num_of_segments_ptr) {
+  for (; id < *num_of_segments_ptr; id += stride) {
     index_t idx = partials_per_segment_offset_ptr[id];
     const index_t num_partials = partials_per_segment_ptr[id];
     const index_t segment_offset = segment_offsets_ptr[id];
@@ -421,7 +420,7 @@ void sum_and_scatter(
     int64_t max_segments,
     const Tensor& grad_weight_per_segment,
     const Tensor& segment_sizes_offsets,
-    const int64_t* num_of_partial_segments,
+    int64_t num_of_partial_segments,
     const int64_t padding_idx) {
   auto grad_weight_data = grad_weight.data_ptr<scalar_t>();
   auto input_data = input.const_data_ptr<index_t>();

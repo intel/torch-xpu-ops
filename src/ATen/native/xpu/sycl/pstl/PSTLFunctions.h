@@ -1113,9 +1113,9 @@ inline void index_copy_kernel_fn(
     int64_t N) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int64_t item_id = item.get_global_linear_id();
-  const auto segment = tpos_ptr_[item_id];
   if (item_id >= N)
     return;
+  const int64_t segment = tpos_ptr[item_id];
   d_first[item_id] = range_ptr[segment + 1] - range_ptr[segment];
 }
 
@@ -1199,7 +1199,7 @@ OutputIt count_by_segment(
       gmask_ptr, tpos_ptr, range_ptr, N);
   sycl_kernel_submit(sycl::range<1>(N), q, offsets_kfn);
 
-  // 4. flush range to every elements of counts
+  // 3. flush range to every elements of counts
   {
     int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
         index_copy_kernel_fn<output_t, index_t, OutputIt>>();
