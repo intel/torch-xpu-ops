@@ -27,6 +27,10 @@ on:
         required: true
         type: string
         description: Runner label
+      category:
+        type: string
+        default: ''
+        description: 'Optional artifact tag; also selects known-failure label scope'
       xpu_version:
         required: false
         type: string
@@ -264,12 +268,12 @@ jobs:
           rem which platform name apply to the artifact.
           echo UT_NAME=${{ inputs.ut }}> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
           echo UT_RUNNER=${{ inputs.runner }}>> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
-          echo UT_CATEGORY=>> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
+          echo UT_CATEGORY=${{ inputs.category }}>> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-windows-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: "${{ github.workspace }}/ut_log"
           if-no-files-found: ignore
 
@@ -281,6 +285,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -292,8 +297,8 @@ jobs:
         with:
           platform: windows
           pytorch: ${{ inputs.pytorch }}
-          artifact_pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-*
-          check_artifact: UT-Check-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact_pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-windows-${{ inputs.ut }}-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          check_artifact: UT-Check-${{ github.event.pull_request.number || github.sha }}-windows-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
       - name: Fail on new failures
         if: ${{ steps.ut.outputs.passed != 'true' }}
         shell: bash {0}
