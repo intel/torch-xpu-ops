@@ -9,6 +9,10 @@
 from skip_list_common import PYTORCH_TEST_DIR
 
 skip_dict = {
+    # torch-xpu-ops tests, not upstreamed yet, must be sorted alphabetically
+    "distributed/test_c10d_ops_xccl.py": None,
+    "distributed/test_c10d_xccl.py": None,
+    # upstreamed tests, must be sorted alphabetically
     f"{PYTORCH_TEST_DIR}/distributed/_composable/fsdp/test_fully_shard_comm.py": None,
     f"{PYTORCH_TEST_DIR}/distributed/_composable/fsdp/test_fully_shard_frozen.py": None,
     f"{PYTORCH_TEST_DIR}/distributed/_composable/fsdp/test_fully_shard_state_dict.py": (
@@ -51,7 +55,5 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/distributed/tensor/test_math_ops.py": None,
     f"{PYTORCH_TEST_DIR}/distributed/tensor/test_random_ops.py": None,
     f"{PYTORCH_TEST_DIR}/distributed/test_c10d_functional_native.py": None,
-    "distributed/test_c10d_ops_xccl.py": None,
-    "distributed/test_c10d_xccl.py": None,
     f"{PYTORCH_TEST_DIR}/distributed/test_functional_api.py": None,
 }
