@@ -1658,11 +1658,22 @@ void batch_norm_elemt_channels_last_template(
       ? weight.scalar_type()
       : (shift.defined() ? shift.scalar_type() : input.scalar_type());
 
+  // The CL 1D transform uses a grid-stride loop whose terminating
+  // `idx += global_stride` runs one step past the last valid index. Even when
+  // every valid index fits in int32, that final increment can exceed INT32_MAX
+  // (signed overflow is UB). global_stride is bounded by
+  // syclMaxWorkItemsPerTile(), so only take the int32 fast path when numel
+  // leaves that much headroom below INT32_MAX; otherwise use the int64 path.
+  const int64_t index32_limit =
+      static_cast<int64_t>(std::numeric_limits<int32_t>::max()) -
+      syclMaxWorkItemsPerTile();
+  const bool can_use_32bit_index = canUse32BitIndexMath(input, index32_limit);
+
   if (input.scalar_type() != second_dtype) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-          if (canUse32BitIndexMath(input)) {
+          if (can_use_32bit_index) {
             batch_norm_transform_channels_last_1d<
                 scalar_t,
                 accscalar_t,
@@ -1690,7 +1701,7 @@ void batch_norm_elemt_channels_last_template(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-          if (canUse32BitIndexMath(input)) {
+          if (can_use_32bit_index) {
             batch_norm_transform_channels_last_1d<
                 scalar_t,
                 accscalar_t,
