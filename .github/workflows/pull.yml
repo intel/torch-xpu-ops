@@ -294,12 +294,13 @@ jobs:
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
-  linux-ut-report:
-    name: linux-ut-report
-    needs: [linux-ut, linux-distributed, preci-lint-check]
+  ut-report:
+    name: ut-report
+    needs: [linux-ut, linux-distributed, windows-ut, preci-lint-check]
     if: >-
       ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true'
-      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.linux-distributed.result, 'ed')) }}
+      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.linux-distributed.result, 'ed')
+      || !endsWith(needs.windows-ut.result, 'ed')) }}
     secrets: inherit
     permissions:
       actions: read

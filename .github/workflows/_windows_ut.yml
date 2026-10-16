@@ -301,22 +301,3 @@ jobs:
           echo "::error::${{ steps.ut.outputs.new_failures }} new UT failures:"
           cat "${{ steps.ut.outputs.work_dir }}"/*/new_failure_list.txt
           exit 1
-
-  report:
-    needs: [check]
-    if: ${{ ! cancelled() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      actions: read
-      contents: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
-      - name: Report UT results
-        uses: ./.github/actions/ut-report
-        with:
-          check_pattern: UT-Check-${{ github.event.pull_request.number || github.sha }}-Windows-*
-          report_artifact: UT-Report-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}

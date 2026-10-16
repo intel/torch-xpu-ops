@@ -1012,8 +1012,8 @@ def enrich_failures(job_dir: Path, items: list[tuple[str, str]],
 # How much of a failure table the report carries; a step summary is capped at
 # 1MB and a bad night has thousands of rows. The artifact keeps all of them.
 REPORT_FAILURE_LIMIT = 100
-SUMMARY_TABLE_HEADER = ["UT job", "Category", "Total cases", "Known failures", "New failures",
-                       "New passes", "Result"]
+SUMMARY_TABLE_HEADER = ["OS", "UT job", "Category", "Total cases", "Known failures",
+                       "New failures", "New passes", "Result"]
 PASS_HEADER = ["Category", "Class name", "Test name"]
 
 
@@ -1053,7 +1053,8 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             work_dir=job_dir, pytorch=pytorch, platform=platform, runner=meta.runner,
             health_file=job_dir / "run_health.jsonl",
         )
-        verdict = {"ut_job": meta.ut_job, "runner": meta.runner, "categories": []}
+        verdict = {"ut_job": meta.ut_job, "runner": meta.runner, "os": platform,
+                   "categories": []}
         new_lines: list[tuple[str, str]] = []
         known_lines: list[tuple[str, str]] = []
         pass_lines: list[tuple[str, str]] = []
@@ -1103,7 +1104,7 @@ def render_report(checks_dir: Path, out_file: Path) -> int:
         verdict = json.loads(verdict_file.read_text(encoding="utf-8"))
         for entry in verdict["categories"]:
             rows.append([
-                verdict["ut_job"], entry["category"],
+                verdict.get("os", "linux"), verdict["ut_job"], entry["category"],
                 str(entry.get("total", 0)),
                 str(entry["known"]), str(entry["new"]),
                 str(entry.get("new_passes", 0)),
@@ -1115,6 +1116,7 @@ def render_report(checks_dir: Path, out_file: Path) -> int:
 
     if not rows:
         warn("no UT check artifact to report on")
+    rows.sort(key=lambda row: row[0])  # group the OSes, keep each one's job order
 
     def fold(title: str, table_rows: list[str],
              header: list[str] = FAILURE_HEADER) -> list[str]:

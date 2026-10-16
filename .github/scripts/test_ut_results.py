@@ -378,6 +378,7 @@ def test_check_separates_new_from_known_and_fails_on_new(tmp_path, monkeypatch):
     assert (job / "known_ut_failure_list.csv").read_text() == ""
     verdict = json.loads((job / "verdict.json").read_text())
     assert verdict["ut_job"] == "op_regression"
+    assert verdict["os"] == "linux"
     assert verdict["categories"] == [
         {"category": "op_regression", "total": 353, "known": 0, "new": 1,
          "new_passes": 0, "passed": False}]
@@ -408,7 +409,7 @@ def test_report_has_a_summary_and_three_folded_sections(tmp_path):
     check = tmp_path / "checks" / "UT-Check-sha-op_ut-1-1" / "op_ut"
     check.mkdir(parents=True)
     (check / "verdict.json").write_text(json.dumps({
-        "ut_job": "op_ut", "runner": "bmg-test",
+        "ut_job": "op_ut", "runner": "bmg-test", "os": "linux",
         "categories": [{"category": "op_ut", "total": 100, "known": 2, "new": 1,
                         "new_passes": 3, "passed": False}],
     }), encoding="utf-8")
@@ -425,9 +426,9 @@ def test_report_has_a_summary_and_three_folded_sections(tmp_path):
 
     report = out.read_text()
     summary, _, folded = report.partition("<details>")
-    assert ("| UT job | Category | Total cases | Known failures | New failures | "
+    assert ("| OS | UT job | Category | Total cases | Known failures | New failures | "
             "New passes | Result |") in summary
-    assert "| op_ut | op_ut | 100 | 2 | 1 | 3 | ❌ failed |" in summary
+    assert "| linux | op_ut | op_ut | 100 | 2 | 1 | 3 | ❌ failed |" in summary
     assert "test_new" not in summary and "test_old" not in summary
     assert "<summary>New failures (1)</summary>" in folded
     assert "<summary>Known failures (2)</summary>" in folded
@@ -439,6 +440,24 @@ def test_report_has_a_summary_and_three_folded_sections(tmp_path):
         "| op_ut | TestFoo | test_new | failed | boom | XML |\n"
     assert (out.parent / "new_passes.csv").read_text() == \
         "| op_ut | TestFoo | test_now_ok |\n"
+
+
+def test_report_merges_the_oses_and_groups_them(tmp_path):
+    for name, job, os_name in (("win", "op_extended", "windows"),
+                               ("lin", "op_ut", "linux")):
+        check = tmp_path / "checks" / f"UT-Check-sha-{name}-1-1" / job
+        check.mkdir(parents=True)
+        (check / "verdict.json").write_text(json.dumps({
+            "ut_job": job, "runner": "r", "os": os_name,
+            "categories": [{"category": job, "total": 1, "known": 0, "new": 0,
+                            "new_passes": 0, "passed": True}],
+        }), encoding="utf-8")
+
+    out = tmp_path / "report" / "ut_report.md"
+    assert ut_results.render_report(tmp_path / "checks", out) == 0
+
+    summary = out.read_text().partition("<details>")[0]
+    assert summary.index("| linux | op_ut |") < summary.index("| windows | op_extended |")
 
 
 def test_check_fails_when_no_artifact_names_a_ut_job(tmp_path, monkeypatch):
