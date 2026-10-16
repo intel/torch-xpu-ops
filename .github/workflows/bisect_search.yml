@@ -32,8 +32,8 @@ on:
         description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       python:
         type: string
-        default: '3.10'
-        description: Python version
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
 
 permissions: read-all
 

@@ -295,14 +295,10 @@ skip_dict = {
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
-    "test_view_ops_xpu.py": (
-        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
-        "test_ravel_xpu",
-        "test_flatten_xpu",
-    ),
+    f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     "test_schema_check.py": None,
     "test_nestedtensor_xpu.py": None,
-    "functorch/test_eager_transforms_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_eager_transforms.py": None,
     "test_cpp_api_parity_xpu.py": None,
     "test_expanded_weights_xpu.py": None,
     "test_fake_tensor_xpu.py": (
@@ -323,7 +319,7 @@ skip_dict = {
         "test_backward_grads_are_tensor_or_none",
         "test_backward_impl_on_existing_op",
     ),
-    "test_flop_counter_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_flop_counter.py": None,
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     "test_utils_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_vmap.py": None,
@@ -342,11 +338,11 @@ skip_dict = {
     "profiler/test_profiler_use_cases.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "export/test_converter_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_converter.py": None,
     "export/test_cpp_serdes_xpu.py": None,
     "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
-    "export/test_passes_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_passes.py": None,
     "export/test_retraceability_xpu.py": None,
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
@@ -379,7 +375,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
-    "test_python_dispatch_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
     "test_scaled_matmul_cuda_xpu.py": {
         # https://github.com/intel/torch-xpu-ops/issues/5339
         # The operator 'aten::_scaled_addmm.out' is not currently implemented for the XPU device
@@ -416,7 +412,7 @@ skip_dict = {
     "test_cuda_nvml_based_avail_xpu.py": None,
     "test_cuda_primary_ctx_xpu.py": None,
     "test_cuda_sanitizer_xpu.py": None,
-    "test_cuda_trace_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_gpu_trace.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
     "test_mkldnn_fusion_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
@@ -428,4 +424,5 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
     f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_leaf_function.py": None,
 }
