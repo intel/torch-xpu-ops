@@ -51,12 +51,12 @@ def launch_test(test_case, skip_list=None, exe_list=None):
 
 skip_files_list = [
     f"{PYTORCH_TEST_DIR}/test_autocast.py",
-    "test_autograd_fallback_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py",
     "test_autograd_xpu.py",
     # "test_binary_ufuncs_xpu.py",
-    "test_comparison_utils_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_comparison_utils.py",
     "test_complex_xpu.py",
-    "test_content_store_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_content_store.py",
     "test_dataloader_xpu.py",
     "test_decomp.py",
     "test_decomp_xpu.py",
@@ -88,7 +88,7 @@ skip_files_list = [
     # "test_transformers_xpu.py",
     "test_type_promotion_xpu.py",
     # "test_unary_ufuncs_xpu.py",
-    # "test_view_ops_xpu.py",
+    # f"{PYTORCH_TEST_DIR}/test_view_ops.py",
     "functorch/test_ops_xpu.py",
 ]
 
@@ -104,22 +104,10 @@ for key in skip_dict:
         print(f"\n=== Skipping test file: {key} ===")
         continue
 
-    skip_list = skip_dict.get(key)
-    if skip_list is None:
-        skip_list = []
-
-    if IS_WINDOWS and key in skip_dict_win:
-        win_skip_list = skip_dict_win[key]
-        if isinstance(win_skip_list, tuple):
-            skip_list.extend(list(win_skip_list))
-        elif win_skip_list is not None:
-            skip_list.extend(win_skip_list)
-    if IS_WINDOWS and key in skip_dict_win_lnl:
-        win_lnl_skip_list = skip_dict_win_lnl[key]
-        if isinstance(win_lnl_skip_list, tuple):
-            skip_list.extend(list(win_lnl_skip_list))
-        elif win_lnl_skip_list is not None:
-            skip_list.extend(win_lnl_skip_list)
+    skip_list: list[str] = list(skip_dict.get(key) or ())
+    if IS_WINDOWS:
+        skip_list.extend(skip_dict_win.get(key) or ())
+        skip_list.extend(skip_dict_win_lnl.get(key) or ())
 
     print(f"\n=== Processing test case: {key} ===")
     res += launch_test(key, skip_list=skip_list)
