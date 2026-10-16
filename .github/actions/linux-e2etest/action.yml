@@ -39,7 +39,7 @@ runs:
 
         model_list_args=()
         if [ "${{ github.event_name }}" != "pull_request" ]; then
-          rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmark/ ./benchmarks/dynamo/
+          rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmarks/ ./benchmarks/dynamo/
           model_list_args=(--model-only ./benchmarks/dynamo/full_model_list.csv)
         fi
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
