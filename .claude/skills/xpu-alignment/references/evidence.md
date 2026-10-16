@@ -115,9 +115,16 @@ Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
 explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
 canonical tracker. The current source, a generic related issue, or an XPU mention
 alone does not establish upstream ownership. When upstream explicitly owns the
-XPU work, use `track-upstream`. When an existing ops tracker covers the work,
-record its URL as `canonical_tracker`; do not create a new payload or
-automatically comment on the existing tracker.
+XPU work, use `track-upstream` and emit no payload.
+
+For current, confirmed independent XPU work, record an open
+`intel/torch-xpu-ops` issue covering the same work as `canonical_tracker`: use
+`duplicate`, emit no payload, and do not automatically comment on that issue.
+Otherwise leave `canonical_tracker` null, use `needs-xpu-fix`, and emit a new
+payload. Cite any closed predecessor and related issue, PR, or commit URLs in
+the payload body; these links alone do not suppress a payload. Closing an issue
+does not establish whether the current XPU behavior is fixed: re-check the
+source and verification evidence before proposing a new issue.
 
 Use exactly one verdict:
 
@@ -131,10 +138,13 @@ Use exactly one verdict:
 - `fixed`: the relevant change is already present and verified;
 - `non-issue`: evidence establishes that the observed behavior is not a current
   XPU defect;
-- `duplicate`: a canonical tracker already covers the same work;
+- `duplicate`: an open canonical tracker already covers the same work;
 - `verification-gap`: available evidence cannot support another verdict.
 
-Prefer `verification-gap` over a forced conclusion. A `needs-xpu-fix` payload has
+Only `needs-xpu-fix` without a canonical tracker carries a payload; all other
+verdicts have no payload. Prefer `verification-gap` over a forced conclusion.
+A `needs-xpu-fix` payload has
 a `[xpu-alignment]` title, exactly the `ai_generated` label, upstream source and
 scan window, observed XPU behavior, target-path evidence, a copy-pasteable
-reproducer, relevant output, environment identity, and ownership rationale.
+reproducer, relevant output, environment identity, ownership rationale, and
+links to any closed predecessor or related trackers.
