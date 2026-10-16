@@ -1113,21 +1113,38 @@ inline void index_copy_kernel_fn(
     int64_t N) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int64_t item_id = item.get_global_linear_id();
+  const auto segment = tpos_ptr_[item_id];
   if (item_id >= N)
     return;
-  d_first[item_id] = range_ptr[tpos_ptr[item_id]];
+  d_first[item_id] = range_ptr[segment + 1] - range_ptr[segment];
 }
 
 template <typename output_t, typename index_t>
-struct CountBySegmentCopyIfKernelFunctor {
-  auto operator()(output_t a) const {
-    return gmask_ptr_[a] != 0;
+struct CountBySegmentOffsetsKernelFunctor {
+  void operator()(sycl::item<1> item) const {
+    const auto id = item.get_linear_id();
+    if (gmask_ptr_[id]) {
+      offsets_[tpos_ptr_[id]] = id;
+    }
+    if (id == numel_ - 1) {
+      offsets_[tpos_ptr_[id] + 1] = numel_;
+    }
   }
-  CountBySegmentCopyIfKernelFunctor(index_t* gmask_ptr)
-      : gmask_ptr_(gmask_ptr) {}
+  CountBySegmentOffsetsKernelFunctor(
+      const index_t* gmask_ptr,
+      const index_t* tpos_ptr,
+      output_t* offsets,
+      int64_t numel)
+      : gmask_ptr_(gmask_ptr),
+        tpos_ptr_(tpos_ptr),
+        offsets_(offsets),
+        numel_(numel) {}
 
  private:
-  index_t* gmask_ptr_;
+  const index_t* gmask_ptr_;
+  const index_t* tpos_ptr_;
+  output_t* offsets_;
+  int64_t numel_;
 };
 
 template <
@@ -1144,6 +1161,9 @@ OutputIt count_by_segment(
     BinaryPredicate p) {
   RECORD_FUNCTION("count_by_segment_xpu", {});
   const auto N = std::distance(first, last);
+  if (N == 0) {
+    return d_first;
+  }
   auto& q = getCurrentSYCLQueue();
 
   auto options = map_options<output_t>();
@@ -1173,24 +1193,11 @@ OutputIt count_by_segment(
   constexpr index_t ZERO_BASED_INDEX_OFFSET = static_cast<index_t>(-1);
   inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, ZERO_BASED_INDEX_OFFSET);
 
-  // 3. calculate counts for each unique point
   Tensor range = at::empty({N + 1}, options);
   output_t* range_ptr = range.data_ptr<output_t>();
-  auto range_begin = range_ptr;
-  itoa(range_begin, range_begin + N + 1, (output_t)0);
-  Tensor picked_range = at::empty({N + 1}, options);
-  output_t* picked_range_ptr = picked_range.data_ptr<output_t>();
-  auto picked_range_begin = picked_range_ptr;
-  auto picked_range_end = picked_range_begin;
-  auto fn = CountBySegmentCopyIfKernelFunctor<output_t, index_t>(gmask_ptr);
-  picked_range_end =
-      copy_if<index_t>(range_begin, range_begin + N, picked_range_begin, fn);
-  auto num_out = std::distance(picked_range_begin, picked_range_end);
-  picked_range[num_out] = N;
-  // notice: the temp tensor `range` will be re-used to store the result of
-  // adjacent_difference
-  adjacent_difference<index_t>(
-      picked_range_begin + 1, picked_range_begin + num_out + 1, range_begin);
+  auto offsets_kfn = CountBySegmentOffsetsKernelFunctor<output_t, index_t>(
+      gmask_ptr, tpos_ptr, range_ptr, N);
+  sycl_kernel_submit(sycl::range<1>(N), q, offsets_kfn);
 
   // 4. flush range to every elements of counts
   {
