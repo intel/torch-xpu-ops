@@ -10,7 +10,6 @@
 
 from ..case import F, OpBench, rand, State, torch
 
-
 SHAPES = [
     ((8, 16), (2, 16)),
     ((10, 8192), (10, 8192)),
