@@ -82,7 +82,7 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-linux-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Cleanup workspace
@@ -125,7 +125,7 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-linux-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
 
@@ -147,10 +147,10 @@ jobs:
         with:
           pytorch: ${{ inputs.pytorch }}
           artifact_pattern: |
-            Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
-            Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}_distributed-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+            Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-linux-${{ inputs.ut }}-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+            Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-linux-${{ inputs.ut }}_distributed-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           snapshot_artifact: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
-          check_artifact: UT-Check-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          check_artifact: UT-Check-${{ github.event.pull_request.number || github.sha }}-linux-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
       - name: Fail on new failures
         if: ${{ steps.ut.outputs.passed != 'true' }}
         shell: bash {0}

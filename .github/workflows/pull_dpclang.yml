@@ -172,7 +172,7 @@ jobs:
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
 
-  linux-ut-report:
+  ut-report:
     needs: linux-ut
     if: ${{ !cancelled() && !endsWith(needs.linux-ut.result, 'ed') }}
     secrets: inherit
