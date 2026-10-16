@@ -56,11 +56,9 @@ void krn_partials_per_segment(
     int64_t numel) {
   constexpr auto caller = krn_partials_per_segment_kernel<index_t>;
   const int64_t group_size = std::min<int64_t>(
-      max_segments,
-      at::xpu::getKernelMaxWorkGroupSize<caller>());
+      max_segments, at::xpu::getKernelMaxWorkGroupSize<caller>());
   const int64_t global_range =
-      xpuKernelLoopGroupRange(
-          static_cast<int64_t>(max_segments), group_size) *
+      xpuKernelLoopGroupRange(static_cast<int64_t>(max_segments), group_size) *
       group_size;
   sycl_kernel_submit<caller>(
       sycl::range<1>((size_t)global_range),
@@ -112,8 +110,7 @@ void krn_partial_segment_offset(
       static_cast<int64_t>(max_segments),
       at::xpu::getKernelMaxWorkGroupSize<caller>());
   const int64_t global_range =
-      xpuKernelLoopGroupRange(
-          static_cast<int64_t>(max_segments), group_size) *
+      xpuKernelLoopGroupRange(static_cast<int64_t>(max_segments), group_size) *
       group_size;
   sycl_kernel_submit<caller>(
       sycl::range<1>((size_t)global_range),
@@ -505,8 +502,7 @@ inline void compute_num_of_partial_segments_kernel(
     const int64_t* num_of_segments,
     int64_t* num_of_partial_segments) {
   const auto last = *num_of_segments - 1;
-  *num_of_partial_segments =
-      static_cast<int64_t>(partials_per_segment[last]) +
+  *num_of_partial_segments = static_cast<int64_t>(partials_per_segment[last]) +
       partials_per_segment_offset[last];
 }
 
@@ -570,8 +566,7 @@ Tensor embedding_backward_deterministic_kernel(
   }
 
   const int64_t max_segments = std::min(numel, num_weights);
-  auto partials_per_segment =
-      at::empty({max_segments}, orig_indices.options());
+  auto partials_per_segment = at::empty({max_segments}, orig_indices.options());
 
   krn_partials_per_segment<index_t>(
       partials_per_segment.template data_ptr<index_t>(),
@@ -610,8 +605,7 @@ Tensor embedding_backward_deterministic_kernel(
       num_of_segments_ptr,
       num_of_partial_segments_ptr);
 
-  const int64_t max_partial_segments =
-      numel / NROWS_PER_THREAD + max_segments;
+  const int64_t max_partial_segments = numel / NROWS_PER_THREAD + max_segments;
   auto partial_segment_offset =
       at::empty({max_partial_segments}, orig_indices.options());
   krn_partial_segment_offset<index_t>(
@@ -628,8 +622,7 @@ Tensor embedding_backward_deterministic_kernel(
   } else {
     op = grad.options();
   }
-  auto grad_weight_per_segment =
-      at::empty({max_partial_segments, stride}, op);
+  auto grad_weight_per_segment = at::empty({max_partial_segments, stride}, op);
   // Compute the sum of each partial-segment and handle bags
   if (offset2bag.defined()) {
     compute_grad_weight_bags<scalar_t, index_t>(
