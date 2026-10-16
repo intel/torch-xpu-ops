@@ -435,13 +435,13 @@ void upsample_nearest2d_channels_last_kernel(
     const size_t out_numel_,
     index_op_t index_op_) {
   auto item = syclext::this_work_item::get_nd_item<1>();
-  const int index = item.get_global_linear_id();
-
-  if (index < out_numel_) {
-    const int c = index % channels_;
-    const int w2 = (index / channels_) % width2_;
-    const int h2 = (index / channels_ / width2_) % height2_;
-    const int n = index / channels_ / width2_ / height2_;
+  const size_t stride = item.get_global_range(0);
+  for (size_t index = item.get_global_linear_id(); index < out_numel_;
+       index += stride) {
+    const size_t c = index % channels_;
+    const size_t w2 = (index / channels_) % width2_;
+    const size_t h2 = (index / channels_ / width2_) % height2_;
+    const size_t n = index / channels_ / width2_ / height2_;
 
     const size_t h1 =
         height1_ == height2_ ? h2 : index_op_(height_scale_, h2, height1_);
