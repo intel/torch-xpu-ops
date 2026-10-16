@@ -1,0 +1,42 @@
+# gating.yaml - statistical decision parameters (plan section 7).
+#
+# A case blocks a PR only if all hold: A/B run, PR tier, op not excluded from
+# gating, not quarantined, A/A calibrated (history.json noise_stats "calibrated"),
+# device-time verdict "regression" in both screening and confirmation.
+
+# regression / improvement threshold on median(B) / median(A)
+threshold: 0.10
+# per-case noise margin delta when history.json noise_stats has none, by noise_class;
+# regression also needs CI lower bound > 1 + delta
+default_delta:
+  normal: 0.03
+  atomic: 0.08
+  random: 0.08
+  host_bound: 0.05
+# Holm-adjusted one-sided p-value
+alpha: 0.05
+# CI wider than this (hi/lo - 1) is inconclusive
+max_ci_width: 0.10
+# only cases with A/A calibration data may block
+require_calibration: true
+# E2E is report-only; list noise classes whose E2E may block (e.g. host_bound)
+e2e_blocking_noise_classes: []
+e2e_threshold: 0.20
+# canary: max drift between start and end of a run, and max deviation from
+# the card's history; beyond either the run's verdicts become inconclusive
+canary_drift: 0.03
+canary_history_tol: 0.05
+n_boot: 2000
+
+budget:
+  # PR test time budget (minutes, excluding builds) used to truncate selection
+  test_minutes: 30
+
+# Cases/ops whose results are reported but never block (plan 7.2: high-noise
+# cases that stay above their threshold after extra rounds). Filled from
+# nightly noise statistics; each entry needs a reason, e.g.
+#   cases: [{case_id: 0123456789ab, reason: "nightly A/A CI width 14%"}]
+#   ops:   [{op: index_add, reason: "atomic contention noise"}]
+quarantine:
+  cases: []
+  ops: []
