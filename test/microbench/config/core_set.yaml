@@ -1,0 +1,310 @@
+# core_set.yaml - core representative set (plan 6.1).
+#
+# Runs when a PR touches a common/global file, adds an XPU op, or changes an
+# unmapped kernel file. One group per shared code path; common_files must
+# match op_source_map.yaml. 1-2 cases per group (one per major branch),
+# bf16, noise_class normal, PR tier, device time ~50us-5ms. First version
+# only uses migrated cases; refresh after nightly A/A data (quarantine,
+# header split/rename, group change). Changes need maintainer review.
+version: 1
+groups:
+  elementwise:
+    common_files:
+    - src/ATen/native/xpu/sycl/ElementwiseInvoke.h
+    - src/ATen/native/xpu/sycl/IntegerDivider.h
+    - src/ATen/native/xpu/sycl/KernelUtils.h
+    - src/ATen/native/xpu/sycl/Loops.h
+    - src/ATen/native/xpu/sycl/MathExtensions.h
+    - src/ATen/native/xpu/sycl/MemoryAccess.h
+    - src/ATen/native/xpu/sycl/MemoryAccessUtils.h
+    - src/ATen/native/xpu/sycl/NumericLimits.h
+    - src/ATen/native/xpu/sycl/OffsetCalculator.h
+    - src/ATen/native/xpu/sycl/Pow.h
+    ops:
+    - abs
+    - add
+    - addcmul
+    - bitwise_and
+    - bitwise_not
+    - bitwise_or
+    - clamp
+    - cos
+    - div
+    - eq
+    - exp
+    - floor
+    - ge
+    - gelu
+    - gt
+    - hardsigmoid
+    - hardswish
+    - hardtanh
+    - isin
+    - isinf
+    - le
+    - leaky_relu
+    - log
+    - log2
+    - lt
+    - maximum
+    - minimum
+    - mul
+    - nan_to_num
+    - ne
+    - neg
+    - pow
+    - reciprocal
+    - relu
+    - remainder
+    - rsqrt
+    - rsub
+    - sgn
+    - sigmoid
+    - silu
+    - sin
+    - sqrt
+    - sub
+    - where
+    cases:
+    - op: add
+      pass: fwd
+      case_id: 50b5399eca4f
+      label: shape=(8192, 8192), other=tensor, dtype=bf16
+      reason: 'contiguous inputs: vectorized Loops.h path'
+    - op: add
+      pass: fwd
+      case_id: 01897f0bdcfd
+      label: shape=(8192, 8192), other=tensor, in_stride=(20000, 2), dtype=bf16
+      reason: 'strided inputs: non-vectorized OffsetCalculator path'
+  reduction:
+    common_files:
+    - src/ATen/native/xpu/sycl/GroupReduceUtils.h
+    - src/ATen/native/xpu/sycl/Reduce.h
+    - src/ATen/native/xpu/sycl/ReduceOpsKernels.h
+    - src/ATen/native/xpu/sycl/SYCLGroupAlgorithm.h
+    - src/ATen/native/xpu/sycl/SharedReduceOps.h
+    ops:
+    - all
+    - any
+    - argmax
+    - max
+    - mean
+    - std
+    - sum
+    cases:
+    - op: sum
+      pass: fwd
+      case_id: d93f18c37872
+      label: shape=(8192, 8192), dtype=bf16, dim=1
+      reason: inner (last dim) reduction
+    - op: sum
+      pass: fwd
+      case_id: d651d1e54fcd
+      label: shape=(8192, 8192), dtype=bf16, dim=0
+      reason: outer (non-last dim) reduction
+  softmax:
+    common_files:
+    - src/ATen/native/xpu/sycl/SoftMaxKernels.h
+    ops:
+    - _log_softmax
+    - _safe_softmax
+    - softmax
+    cases:
+    - op: softmax
+      pass: fwd
+      case_id: 851d7b5871b5
+      label: shape=(8192, 8192), dtype=bf16, dim=1
+      reason: forward
+    - op: softmax
+      pass: bwd
+      case_id: 46ccd092bb36
+      label: shape=(8192, 8192), dtype=bf16, dim=1
+      reason: backward
+  norm:
+    common_files:
+    - src/ATen/native/xpu/sycl/BatchKernel.h
+    - src/ATen/native/xpu/sycl/Norm.h
+    - src/ATen/native/xpu/sycl/WelfordNorm.h
+    ops:
+    - batch_norm_1d
+    - batch_norm_2d
+    - batch_norm_3d
+    - group_norm
+    - layer_norm
+    cases:
+    - op: layer_norm
+      pass: fwd
+      case_id: 22ed3a0c2e67
+      label: shape=(512, 3136, 128), normalized_shape=(3136, 128), dtype=bf16
+      reason: forward (Welford)
+    - op: layer_norm
+      pass: bwd
+      case_id: 4d44e29bcb1b
+      label: shape=(512, 3136, 128), normalized_shape=(3136, 128), dtype=bf16
+      reason: backward
+  indexing:
+    common_files:
+    - src/ATen/native/xpu/sycl/IndexUtils.h
+    - src/ATen/native/xpu/sycl/Indexing.h
+    - src/ATen/native/xpu/sycl/IndexingKernels.h
+    - src/ATen/native/xpu/sycl/IndexingUtils.h
+    - src/ATen/native/xpu/sycl/TensorApplyUtils.h
+    - src/ATen/native/xpu/sycl/comm/IndexKernelUtils.*
+    ops:
+    - diag
+    - index
+    - index_add
+    - index_copy
+    - index_fill
+    - index_put
+    - index_select
+    - masked_fill
+    - put
+    - take
+    cases:
+    - op: index_select
+      pass: fwd
+      case_id: 506b48c645ab
+      label: shape=(8192, 8192), dtype=bf16, dim=0
+      reason: index_select gather along dim 0
+  scatter_gather:
+    common_files:
+    - src/ATen/native/xpu/sycl/Atomics.h
+    - src/ATen/native/xpu/sycl/ScatterGatherKernels.h
+    ops:
+    - gather
+    - scatter
+    - scatter_add
+    cases:
+    - op: gather
+      pass: fwd
+      case_id: 0d79d6a15746
+      label: shape=(10240, 8192), index_shape=(10240, 2048), dim=1, dtype=bf16
+      reason: gather along the last dim (no atomics)
+  sort_scan:
+    common_files:
+    - src/ATen/native/xpu/ScanKernels.h
+    - src/ATen/native/xpu/sycl/ScanUtils.h
+    - src/ATen/native/xpu/sycl/Sorting.h
+    - src/ATen/native/xpu/sycl/SortingCommon.h
+    - src/ATen/native/xpu/sycl/SortingKernels.h
+    - src/ATen/native/xpu/sycl/SortingRadixSelect.h
+    - src/ATen/native/xpu/sycl/SortingRadixSort.h
+    - src/ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h
+    - src/ATen/native/xpu/sycl/TensorTopKSbtopkKernelImpl.h
+    - src/ATen/native/xpu/sycl/pstl/PSTLFunctions.h
+    ops:
+    - cumsum
+    - masked_select
+    - nonzero
+    - randperm
+    - sort
+    - topk
+    - unique
+    cases:
+    - op: sort
+      pass: fwd
+      case_id: dcf40b065d99
+      label: shape=(8193, 8193), dtype=bf16, dim=1
+      reason: segmented radix sort
+    - op: cumsum
+      pass: fwd
+      case_id: cfff4b05e4c3
+      label: shape=(8193, 8193), dtype=bf16, dim=1
+      reason: scan along the last dim
+  foreach:
+    common_files:
+    - src/ATen/native/xpu/sycl/DeviceAddCmulCdiv.h
+    - src/ATen/native/xpu/sycl/ForeachFunctors.h
+    - src/ATen/native/xpu/sycl/MultiTensorApply.h
+    ops:
+    - _foreach_add
+    - _foreach_addcdiv
+    - _foreach_addcmul
+    - _foreach_div
+    - _foreach_lerp
+    - _foreach_mul
+    - _foreach_sqrt
+    cases: []
+    note: no migrated foreach case yet; the _foreach_* cases from model shapes join after nightly A/A calibration
+  copy_shape:
+    common_files:
+    - src/ATen/native/xpu/sycl/CopyKernel.cpp
+    - src/ATen/native/xpu/sycl/CopyKernel.h
+    - src/ATen/native/xpu/sycl/ShapeKernels.h
+    - src/ATen/native/xpu/sycl/TransposeKernel.*
+    ops:
+    - cat
+    - flip
+    - pad_sequence
+    - repeat_interleave
+    - roll
+    - unfold_backward
+    cases: []
+    note: no migrated cat case yet; the cat cases from model shapes join after nightly A/A calibration
+  pooling:
+    common_files:
+    - src/ATen/native/xpu/sycl/AveragePool2dKernels.h
+    - src/ATen/native/xpu/sycl/AveragePool3dKernels.h
+    - src/ATen/native/xpu/sycl/DilatedMaxPool2d.h
+    - src/ATen/native/xpu/sycl/DilatedMaxPool3d.h
+    ops:
+    - adaptive_avg_pool2d
+    - adaptive_max_pool2d
+    - avg_pool2d
+    - avg_pool3d
+    - fractional_max_pool2d
+    - fractional_max_pool3d
+    - max_pool2d
+    - max_pool3d
+    - max_unpool2d
+    - max_unpool3d
+    cases:
+    - op: max_pool2d
+      pass: fwd
+      case_id: 7e2705ffa2ac
+      label: shape=(16, 24, 112, 112), kernel_size=3, stride=2, dtype=bf16, channels_last=True
+      reason: max pooling
+    - op: avg_pool2d
+      pass: fwd
+      case_id: 631982f538db
+      label: shape=(16, 24, 112, 112), kernel_size=3, stride=2, dtype=bf16, channels_last=True
+      reason: average pooling
+  upsample:
+    common_files:
+    - src/ATen/native/xpu/UpSample.h
+    ops:
+    - upsample_bicubic2d
+    - upsample_bilinear2d
+    - upsample_nearest2d
+    - upsample_nearest3d
+    - upsample_nearest_exact2d
+    cases:
+    - op: upsample_bilinear2d
+      pass: fwd
+      case_id: 03fd566c89da
+      label: shape=(8, 32, 256, 256), scale_factor=3, align_corners=False, dtype=bf16
+      reason: interpolating upsample
+    - op: upsample_nearest2d
+      pass: fwd
+      case_id: dc31ee94a409
+      label: shape=(8, 32, 256, 256), scale_factor=3, dtype=bf16, channels_last=True
+      reason: nearest upsample
+  distribution:
+    common_files:
+    - src/ATen/native/xpu/sycl/DistributionKernels.h
+    - src/ATen/native/xpu/sycl/DistributionTemplates.h
+    - src/ATen/native/xpu/sycl/Philox4x32.h
+    ops:
+    - bernoulli
+    - cauchy
+    - dropout
+    - exponential
+    - geometric
+    - log_normal
+    - multinomial
+    - normal
+    - random
+    - uniform
+    cases: []
+    note: random-number ops are noise_class random and cannot be in the core set (6.1.2)

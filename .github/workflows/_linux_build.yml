@@ -33,6 +33,18 @@ on:
         type: string
         default: ''
         description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
+      pytorch_sha:
+        type: string
+        default: ''
+        description: 'Exact PyTorch commit to build (overrides the ref in `pytorch`). Empty keeps the current behavior (HEAD of `pytorch`).'
+      checkout_torch_xpu_ops:
+        type: boolean
+        default: false
+        description: 'Clone `torch_xpu_ops` even on pull_request events (default there: build the PR source). Used by the microbench base wheel.'
+      wheel_cache_key:
+        type: string
+        default: ''
+        description: 'If set, reuse wheels cached under this key and skip the build (microbench base wheel).'
 
 permissions: read-all
 
@@ -85,6 +97,19 @@ jobs:
           which python && python -V
           which pip && pip list
           pip install -U pip wheel "setuptools<81"
+      - name: Restore cached wheels
+        id: wheel-cache
+        if: ${{ inputs.wheel_cache_key != '' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/wheel-cache
+          key: ${{ inputs.wheel_cache_key }}
+      - name: Use cached wheels
+        if: ${{ steps.wheel-cache.outputs.cache-hit == 'true' }}
+        run: |
+          cp ${{ github.workspace }}/wheel-cache/*.whl ${{ github.workspace }}/
+          ls -l ${{ github.workspace }}/*.whl
+          echo "Reusing wheels cached under '${{ inputs.wheel_cache_key }}'" >> "${GITHUB_STEP_SUMMARY}"
       - name: Snapshot open skipped issues at build start
         run: |
           touch known_issue_static.log issues_snapshot.log issues_snapshot_bmg.log issues_snapshot_dpclang.log
@@ -124,6 +149,7 @@ jobs:
           echo "USE_DPCLANG=yes" >> $GITHUB_ENV
           echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
       - name: Prepare Pytorch Source
+        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' }}
         run: |
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
@@ -131,6 +157,13 @@ jobs:
           else
             PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
             PYTORCH_COMMIT="${{ inputs.pytorch }}"
+          fi
+          if [ -n "${{ inputs.pytorch_sha }}" ];then
+            # Pinned by the caller so that several builds of one run use the same commit
+            PYTORCH_COMMIT="${{ inputs.pytorch_sha }}"
+          fi
+          if [ "${{ inputs.checkout_torch_xpu_ops }}" == "true" ];then
+            export TORCH_XPU_OPS_CHECKOUT=1
           fi
           if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
             TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
@@ -147,6 +180,7 @@ jobs:
             --torch-xpu-ops-commit="${TORCH_XPU_OPS_COMMIT}" \
             --onednn-commit='${{ inputs.onednn }}'
       - name: Build Pytorch
+        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' }}
         run: |
           export USE_XCCL=1
           export IS_XPU_CI=1
@@ -164,6 +198,7 @@ jobs:
             exit 1
           fi
       - name: Build Torchvision and Torchaudio
+        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' }}
         run: |
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
@@ -189,6 +224,7 @@ jobs:
           pip install dist/*.whl
           cp dist/*.whl ${{ github.workspace }}
       - name: Build Triton
+        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' }}
         run: |
           cd ./pytorch
           rm -rf triton_xpu-*.whl
@@ -227,6 +263,7 @@ jobs:
             cp triton_xpu-*.whl ${{ github.workspace }}
           fi
       - name: Torch Config
+        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' }}
         run: |
           printenv
           python -c "import torch; print(torch.__config__.show())"
@@ -237,6 +274,17 @@ jobs:
           python -c "import torchaudio; print(torchaudio.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
+      - name: Save wheel cache
+        if: ${{ success() && inputs.wheel_cache_key != '' && steps.wheel-cache.outputs.cache-hit != 'true' }}
+        run: |
+          mkdir -p ${{ github.workspace }}/wheel-cache
+          cp ${{ github.workspace }}/*.whl ${{ github.workspace }}/wheel-cache/
+      - name: Upload wheel cache
+        if: ${{ success() && inputs.wheel_cache_key != '' && steps.wheel-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/wheel-cache
+          key: ${{ inputs.wheel_cache_key }}
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
         uses: actions/upload-artifact@v7
