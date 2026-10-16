@@ -362,6 +362,10 @@ jobs:
       || (needs.preci-lint-check.outputs.skip_ut != 'true'
       && needs.conditions-filter-win.outputs.src_changed == 'true')) }}
     secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: op_extended,test_xpu

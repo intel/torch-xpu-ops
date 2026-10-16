@@ -291,6 +291,10 @@ jobs:
     needs: [Conditions-Filter, Windows-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut'
