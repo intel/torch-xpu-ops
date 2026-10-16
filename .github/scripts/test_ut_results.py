@@ -353,7 +353,8 @@ def test_check_separates_new_from_known_and_fails_on_new(tmp_path, monkeypatch):
     verdict = json.loads((job / "verdict.json").read_text())
     assert verdict["ut_job"] == "op_regression"
     assert verdict["categories"] == [
-        {"category": "op_regression", "known": 0, "new": 1, "passed": False}]
+        {"category": "op_regression", "total": 353, "known": 0, "new": 1,
+         "new_passes": 0, "passed": False}]
     assert json.loads((job / "run_health.jsonl").read_text())["healthy"]
 
 
@@ -373,7 +374,8 @@ def test_check_passes_when_the_failure_is_a_known_one(tmp_path, monkeypatch):
     assert (job / "known_ut_failure_list.csv").read_text() == \
         "| op_regression | TestFoo | test_bad | failed | RuntimeError: boom | XML |\n"
     assert json.loads((job / "verdict.json").read_text())["categories"] == [
-        {"category": "op_regression", "known": 1, "new": 0, "passed": True}]
+        {"category": "op_regression", "total": 353, "known": 1, "new": 0,
+         "new_passes": 0, "passed": True}]
 
 
 def test_report_has_a_summary_and_two_folded_failure_sections(tmp_path):
@@ -381,7 +383,8 @@ def test_report_has_a_summary_and_two_folded_failure_sections(tmp_path):
     check.mkdir(parents=True)
     (check / "verdict.json").write_text(json.dumps({
         "ut_job": "op_ut", "runner": "bmg-test",
-        "categories": [{"category": "op_ut", "known": 2, "new": 1, "passed": False}],
+        "categories": [{"category": "op_ut", "total": 100, "known": 2, "new": 1,
+                        "new_passes": 3, "passed": False}],
     }), encoding="utf-8")
     ut_results.write_lines(check / "new_ut_failure_list.csv", [
         "| op_ut | TestFoo | test_new | failed | boom | XML |"])
@@ -394,8 +397,9 @@ def test_report_has_a_summary_and_two_folded_failure_sections(tmp_path):
 
     report = out.read_text()
     summary, _, folded = report.partition("<details>")
-    assert "| UT job | Category | Known failures | New failures | Result |" in summary
-    assert "| op_ut | op_ut | 2 | 1 | ❌ failed |" in summary
+    assert ("| UT job | Category | Total cases | Known failures | New failures | "
+            "New passes | Result |") in summary
+    assert "| op_ut | op_ut | 100 | 2 | 1 | 3 | ❌ failed |" in summary
     assert "test_new" not in summary and "test_old" not in summary
     assert "<summary>New failures (1)</summary>" in folded
     assert "<summary>Known failures (2)</summary>" in folded
