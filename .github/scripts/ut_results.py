@@ -956,6 +956,15 @@ def collect_job_dir(artifact: Path, job_dir: Path) -> None:
                 shutil.copy2(path, target)
 
 
+def case_fields(line: str) -> tuple[str, str]:
+    """The class and test of either a `category,class,test` line or a node id."""
+    if "::" in line:
+        classname, _, name = line.rpartition("::")
+        return classname, name
+    fields = line.split(",", 2)
+    return (fields[1], fields[2]) if len(fields) == 3 else ("", line)
+
+
 def node_id_parts(line: str) -> tuple[str, str]:
     """The class and test of a `path.py::Class::test` console node id."""
     parts = line.split("::")
@@ -991,12 +1000,7 @@ def enrich_failures(job_dir: Path, items: list[tuple[str, str]],
                 row = md_row([category, *fields[1:]])
         if row is None:
             missing += 1
-            if "::" in line:
-                classname, _, name = line.rpartition("::")
-            else:
-                fields = line.split(",", 2)
-                classname, name = (fields[1], fields[2]) if len(fields) == 3 \
-                    else ("", line)
+            classname, name = case_fields(line)
             row = md_row([category, classname, name, "failed", "", "Log"])
         enriched.append(row)
     if rows and missing:
@@ -1010,6 +1014,7 @@ def enrich_failures(job_dir: Path, items: list[tuple[str, str]],
 REPORT_FAILURE_LIMIT = 100
 SUMMARY_TABLE_HEADER = ["UT job", "Category", "Total cases", "Known failures", "New failures",
                        "New passes", "Result"]
+PASS_HEADER = ["Category", "Class name", "Test name"]
 
 
 def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
@@ -1051,6 +1056,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
         verdict = {"ut_job": meta.ut_job, "runner": meta.runner, "categories": []}
         new_lines: list[tuple[str, str]] = []
         known_lines: list[tuple[str, str]] = []
+        pass_lines: list[tuple[str, str]] = []
         for category in categories_of(meta.ut_job):
             known.write_for(category, meta, job_dir / "Known_issue.log")
             result = checker.run(category)
@@ -1059,6 +1065,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             was_known = [line for line in result.failures if line not in new_set]
             new_lines += [(category, line) for line in result.new_failures]
             known_lines += [(category, line) for line in was_known]
+            pass_lines += [(category, line) for line in result.new_passes]
             verdict["categories"].append({
                 "category": category,
                 "total": result.total,
@@ -1074,6 +1081,9 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
                     enrich_failures(job_dir, new_lines, "new"))
         write_lines(job_dir / "known_ut_failure_list.csv",
                     enrich_failures(job_dir, known_lines, "known"))
+        write_lines(job_dir / "new_pass_list.csv",
+                    [md_row([category, *case_fields(line)])
+                     for category, line in pass_lines])
         (job_dir / "verdict.json").write_text(json.dumps(verdict, indent=2),
                                               encoding="utf-8")
 
@@ -1088,6 +1098,7 @@ def render_report(checks_dir: Path, out_file: Path) -> int:
     rows: list[list[str]] = []
     new_rows: list[str] = []
     known_rows: list[str] = []
+    pass_rows: list[str] = []
     for verdict_file in sorted(checks_dir.rglob("verdict.json")):
         verdict = json.loads(verdict_file.read_text(encoding="utf-8"))
         for entry in verdict["categories"]:
@@ -1100,13 +1111,15 @@ def render_report(checks_dir: Path, out_file: Path) -> int:
             ])
         new_rows += read_lines(verdict_file.parent / "new_ut_failure_list.csv")
         known_rows += read_lines(verdict_file.parent / "known_ut_failure_list.csv")
+        pass_rows += read_lines(verdict_file.parent / "new_pass_list.csv")
 
     if not rows:
         warn("no UT check artifact to report on")
 
-    def fold(title: str, table_rows: list[str]) -> list[str]:
+    def fold(title: str, table_rows: list[str],
+             header: list[str] = FAILURE_HEADER) -> list[str]:
         shown = table_rows[:REPORT_FAILURE_LIMIT]
-        body = md_table(FAILURE_HEADER, []) + shown
+        body = md_table(header, []) + shown
         if len(shown) < len(table_rows):
             body += ["", f"… and {len(table_rows) - len(shown)} more, in the artifact"]
         return ["", *md_details(f"{title} ({len(table_rows)})", body)]
@@ -1115,10 +1128,12 @@ def render_report(checks_dir: Path, out_file: Path) -> int:
               *md_table(SUMMARY_TABLE_HEADER, rows)]
     report += fold("New failures", new_rows)
     report += fold("Known failures", known_rows)
+    report += fold("New passes", pass_rows, PASS_HEADER)
     out_file.parent.mkdir(parents=True, exist_ok=True)
     write_lines(out_file, report)
     write_lines(out_file.parent / "new_failures.csv", new_rows)
     write_lines(out_file.parent / "known_failures.csv", known_rows)
+    write_lines(out_file.parent / "new_passes.csv", pass_rows)
     return 0
 
 
