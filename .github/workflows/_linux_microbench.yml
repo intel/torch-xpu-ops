@@ -1,0 +1,306 @@
+name: Linux OP Microbench (A/B)
+
+# Shared by pull.yml (PR gating), nightly and on-demand runs (plan 8, 11.2).
+#
+#   microbench-run    BMG runner. Installs the B (PR / current) wheel and, for
+#                     A/B, the A (base / previous) wheel into separate venvs,
+#                     checks the PyTorch SHAs, validates changed cases, then
+#                     runs the A/B scheduler. Fails only on infrastructure
+#                     errors or case-validation failures. Uploads raw data.
+#   microbench-check  ubuntu. Statistical verdicts, report, PR comment payload.
+#                     Fails only on a blocking regression without a valid
+#                     maintainer override.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        default: 'bmg-microbench'
+        description: Runner label of the BMG benchmark machines
+      python:
+        type: string
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
+      mode:
+        type: string
+        default: 'pr'
+        description: "pr | nightly | ondemand"
+      mode_label:
+        type: string
+        default: ''
+        description: Banner shown in the report (e.g. 'ondemand A/B')
+      selection_artifact:
+        type: string
+        required: true
+        description: Artifact with selection.json (from `python -m microbench select`)
+      need_base:
+        type: string
+        default: 'true'
+        description: "'true' for A/B with a base wheel, 'false' for A/A with the B wheel"
+      base_source:
+        type: string
+        default: 'artifact'
+        description: "artifact (Torch-XPU-Wheel-*-baseline of this run) | previous_nightly"
+      pytorch_sha:
+        type: string
+        default: ''
+        description: PyTorch SHA both wheels must report; empty skips the check against it
+      allow_sha_mismatch:
+        type: boolean
+        default: false
+        description: Allow A and B to have different PyTorch commits (nightly vs previous nightly)
+      pr_number:
+        type: string
+        default: ''
+      head_sha:
+        type: string
+        default: ''
+        description: Commit whose benchmark code runs on both sides (PR head)
+      base_sha:
+        type: string
+        default: ''
+      screen_rounds:
+        type: string
+        default: '3'
+      confirm_rounds:
+        type: string
+        default: '6'
+      budget_min:
+        type: string
+        default: '30'
+      coverage:
+        type: boolean
+        default: false
+        description: Also run the case validator on all cases and publish the coverage report (nightly)
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  microbench-run:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.mode == 'pr' && 120 || 900 }}
+    container:
+      image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+    steps:
+      - name: Checkout torch-xpu-ops (benchmark code of the PR head)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.head_sha || github.sha }}
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
+      - name: Install scheduler dependencies
+        run: |
+          uv pip install pyyaml numpy
+          which gh || (apt-get update -qq && apt-get install -y -qq gh numactl) || true
+          which numactl || (apt-get update -qq && apt-get install -y -qq numactl) || true
+      - name: Download selection
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.selection_artifact }}
+          path: ${{ github.workspace }}/mb_selection
+      - name: Download B wheel
+        uses: actions/download-artifact@v8
+        with:
+          pattern: Torch-XPU-Wheel-*
+          path: ${{ github.workspace }}/mb_wheels
+      - name: Fetch A wheel of the previous nightly
+        if: ${{ inputs.need_base == 'true' && inputs.base_source == 'previous_nightly' }}
+        run: |
+          mkdir -p ${{ github.workspace }}/mb_wheels_prev
+          PREV=$(gh run list --repo ${{ github.repository }} --workflow nightly_ondemand.yml --event schedule \
+            --status success --limit 20 --json databaseId,createdAt \
+            --jq "[.[] | select(.databaseId != ${{ github.run_id }})][].databaseId" | while read id; do
+              if gh run download "$id" --repo ${{ github.repository }} -p 'Torch-XPU-Wheel-*' -D ${{ github.workspace }}/mb_wheels_prev/$id >/dev/null 2>&1; then
+                echo "$id"; break
+              fi
+            done)
+          if [ -z "${PREV}" ]; then
+            echo "::error::No previous nightly with a Torch-XPU-Wheel artifact"
+            echo "Benchmark did not complete (infra error): no previous nightly wheel" >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+          echo "PREV_NIGHTLY_RUN=${PREV}" >> "${GITHUB_ENV}"
+      - name: Create venvs
+        run: |
+          WS=${{ github.workspace }}
+          pick() {  # newest artifact dir matching a name filter
+            find "$1" -maxdepth 1 -mindepth 1 -type d | grep -E "$2" | sort -V | tail -n 1
+          }
+          B_DIR=$(pick "$WS/mb_wheels" 'Torch-XPU-Wheel-[^/]*-[0-9]+$')
+          B_DIR=${B_DIR:-$WS/mb_wheels}
+          uv venv --clear "$WS/venv_b" --python "$(python -c 'import sys; print(sys.executable)')"
+          VIRTUAL_ENV="$WS/venv_b" uv pip install --python "$WS/venv_b/bin/python" $(find "$B_DIR" -maxdepth 1 -name '*.whl') numpy
+          echo "MB_PY_B=$WS/venv_b/bin/python" >> "${GITHUB_ENV}"
+          if [ "${{ inputs.need_base }}" == "true" ]; then
+            if [ "${{ inputs.base_source }}" == "previous_nightly" ]; then
+              A_DIR=$(find "$WS/mb_wheels_prev" -name 'torch-*.whl' -printf '%h\n' | head -n 1)
+            else
+              A_DIR=$(pick "$WS/mb_wheels" 'Torch-XPU-Wheel-.*-baseline$')
+            fi
+            if [ -z "$A_DIR" ] || [ -z "$(find "$A_DIR" -maxdepth 1 -name 'torch-*.whl')" ]; then
+              echo "::error::base wheel not found"
+              echo "### Benchmark did not complete (infra error)" >> "${GITHUB_STEP_SUMMARY}"
+              echo "Base wheel artifact not found; rerun the failed jobs." >> "${GITHUB_STEP_SUMMARY}"
+              exit 1
+            fi
+            uv venv --clear "$WS/venv_a" --python "$(python -c 'import sys; print(sys.executable)')"
+            VIRTUAL_ENV="$WS/venv_a" uv pip install --python "$WS/venv_a/bin/python" $(find "$A_DIR" -maxdepth 1 -name '*.whl') numpy
+            echo "MB_PY_A=$WS/venv_a/bin/python" >> "${GITHUB_ENV}"
+          else
+            echo "MB_PY_A=$WS/venv_b/bin/python" >> "${GITHUB_ENV}"
+          fi
+      - name: Lock frequencies
+        run: |
+          bash .github/scripts/freq-fixed.sh lock || true
+          cd test && python -m microbench env lock
+          python -m microbench env status
+      - name: Run microbench
+        id: run
+        run: |
+          cd test
+          EXTRA=""
+          if [ -n "${{ inputs.pytorch_sha }}" ] && [ "${{ inputs.allow_sha_mismatch }}" != "true" ]; then
+            EXTRA="$EXTRA --expect-torch-sha ${{ inputs.pytorch_sha }}"
+          fi
+          if [ "${{ inputs.allow_sha_mismatch }}" == "true" ]; then
+            EXTRA="$EXTRA --allow-sha-mismatch"
+          fi
+          set +e
+          python -m microbench schedule \
+            --python-a "${MB_PY_A}" --python-b "${MB_PY_B}" \
+            --cases ${{ github.workspace }}/mb_selection/selection.json \
+            --validate ${{ github.workspace }}/mb_selection/selection.json \
+            --out-dir ${{ github.workspace }}/mb_out \
+            --screen-rounds ${{ inputs.screen_rounds }} --confirm-rounds ${{ inputs.confirm_rounds }} \
+            --budget-min ${{ inputs.budget_min }} \
+            --max-restarts ${{ inputs.mode == 'pr' && 2 || 50 }} \
+            --env-check --canary \
+            --summary "${GITHUB_STEP_SUMMARY}" $EXTRA
+          rc=$?
+          set -e
+          cp ${{ github.workspace }}/mb_selection/selection.json ${{ github.workspace }}/mb_out/ || true
+          exit $rc
+      - name: Coverage report (validator on all cases)
+        if: ${{ inputs.coverage && !cancelled() }}
+        continue-on-error: true
+        run: |
+          cd test
+          ZE_AFFINITY_MASK=0 "${MB_PY_B}" -m microbench validate --out ${{ github.workspace }}/mb_out/validation_all.jsonl || true
+          NF=$("${MB_PY_B}" -c 'import torchgen, os; print(os.path.join(os.path.dirname(torchgen.__file__), "packaged/ATen/native/native_functions.yaml"))')
+          cp "$NF" ${{ github.workspace }}/mb_out/native_functions.yaml
+          PREV_NF=""
+          if [ -n "${PREV_NIGHTLY_RUN}" ] && gh run download "${PREV_NIGHTLY_RUN}" --repo ${{ github.repository }} -n microbench-native-functions -D /tmp/prev_nf; then
+            PREV_NF="--prev-native-functions /tmp/prev_nf/native_functions.yaml"
+          fi
+          python -m microbench coverage --native-functions "$NF" $PREV_NF \
+            --observed ${{ github.workspace }}/mb_out/validation_all.jsonl \
+            --out-json ${{ github.workspace }}/mb_out/coverage.json --out-md ${{ github.workspace }}/mb_out/coverage.md \
+            --summary "${GITHUB_STEP_SUMMARY}"
+          python -m microbench srcmap --summary "${GITHUB_STEP_SUMMARY}"
+      - name: Unlock frequencies
+        if: ${{ always() }}
+        run: |
+          cd test && python -m microbench env unlock || true
+          cd .. && bash .github/scripts/freq-fixed.sh unlock || true
+          chown 1000:1000 ${{ github.workspace }} -R || true
+      - name: Upload raw data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: microbench-raw-${{ inputs.pr_number || github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/mb_out
+          retention-days: ${{ inputs.mode == 'pr' && 30 || 90 }}
+      - name: Upload native_functions.yaml
+        if: ${{ inputs.coverage && !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: microbench-native-functions
+          path: ${{ github.workspace }}/mb_out/native_functions.yaml
+          retention-days: 90
+
+  microbench-check:
+    needs: [microbench-run]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.head_sha || github.sha }}
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
+      - name: Install dependencies
+        run: uv pip install pyyaml numpy
+      - name: Download raw data
+        uses: actions/download-artifact@v8
+        with:
+          # a rerun of only this job (override label) has a newer run_attempt
+          # than the run job that produced the data, so match any attempt
+          pattern: microbench-raw-${{ inputs.pr_number || github.run_id }}-*
+          path: ${{ github.workspace }}/mb_raw_tmp
+      - name: Pick latest raw data
+        run: |
+          latest=$(find ${{ github.workspace }}/mb_raw_tmp -maxdepth 1 -mindepth 1 -type d -name 'microbench-raw-*' | sort -V | tail -n 1)
+          latest=${latest:-${{ github.workspace }}/mb_raw_tmp}
+          mv "$latest" ${{ github.workspace }}/mb_out
+      - name: Judge
+        id: judge
+        run: |
+          cd test
+          set +e
+          python -m microbench check \
+            --data-dir ${{ github.workspace }}/mb_out \
+            --selection ${{ github.workspace }}/mb_out/selection.json \
+            --out-dir ${{ github.workspace }}/mb_report \
+            ${{ inputs.pr_number != '' && format('--pr {0} --gh-repo {1}', inputs.pr_number, github.repository) || '' }} \
+            ${{ inputs.head_sha != '' && format('--head-sha {0}', inputs.head_sha) || '' }} \
+            ${{ inputs.base_sha != '' && format('--base-sha {0}', inputs.base_sha) || '' }} \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --mode-label "${{ inputs.mode_label }}"
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "${GITHUB_OUTPUT}"
+      - name: Noise statistics and case costs (nightly)
+        if: ${{ inputs.mode == 'nightly' && !cancelled() }}
+        continue-on-error: true
+        run: |
+          cd test
+          python -m microbench noise summarize ${{ github.workspace }}/mb_out \
+            --out ${{ github.workspace }}/mb_report/noise_summary.json \
+            --history-out ${{ github.workspace }}/mb_report/history.json
+      - name: Upload report and comment payload
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: microbench-comment-${{ inputs.pr_number || github.run_id }}
+          path: ${{ github.workspace }}/mb_report
+          retention-days: ${{ inputs.mode == 'pr' && 30 || 90 }}
+          overwrite: true
+      - name: Result
+        run: |
+          if [ "${{ steps.judge.outputs.rc }}" != "0" ]; then
+            echo "::error::Blocking microbench regression (see the job summary). A maintainer can accept it with label perf_regression_accepted."
+            exit 1
+          fi
