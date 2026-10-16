@@ -10,7 +10,6 @@
 
 from ..case import randn, State, TableBench, to_dtype, torch, torchvision, with_dtypes
 
-
 NMS_CASES = [
     dict(shape=(6000, 4), iou_threshold=0.7),
 ]
