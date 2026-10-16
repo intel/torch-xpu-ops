@@ -199,7 +199,10 @@ CATEGORY_HEADER = ["Category", *COUNT_KEYS]
 FAILURE_HEADER = ["Category", "Class name", "Test name", "Status", "Message", "Source"]
 
 
-def determine_category(ut: str) -> str:
+def determine_category(ut: str, ut_job: str = "") -> str:
+    # The distributed job names its junit reports op_ut_*, which they are not.
+    if ut_job == "xpu_distributed":
+        return ut_job
     exact = {"op_regression", "op_regression_dev1", "op_extended", "test_xpu"}
     if ut in exact:
         return ut
@@ -272,7 +275,8 @@ def suite_counts(suite: ET.Element) -> tuple[int, int, int, int]:
 class Report:
     """Every case of a UT job, and the per-suite counts behind them."""
 
-    def __init__(self) -> None:
+    def __init__(self, ut_job: str = "") -> None:
+        self.ut_job = ut_job
         self.cases: list[Case] = []
         self.summaries: list[SuiteSummary] = []
 
@@ -301,7 +305,7 @@ class Report:
 
     def _add_xml(self, path: Path) -> None:
         ut = path.stem
-        category = determine_category(path.name.split(".")[0])
+        category = determine_category(path.name.split(".")[0], self.ut_job)
         for suite in iter_testsuites(path):
             tests, skipped, failures, errors = suite_counts(suite)
             self.summaries.append(SuiteSummary(
@@ -328,7 +332,7 @@ class Report:
         """Unittest console output, for the suites that produce no junit xml."""
         content = path.read_text(encoding="utf-8", errors="replace")
         ut = path.stem
-        category = determine_category(ut)
+        category = determine_category(ut, self.ut_job)
 
         tests = skipped = 0
         if m := re.search(r"Ran (\d+) tests in [\d.]+s", content):
@@ -433,7 +437,7 @@ class Report:
 
 
 def build_report(ut_name: str, inputs: list[Path], out_dir: Path) -> Report:
-    report = Report()
+    report = Report(ut_name)
     for path in inputs:
         report.add(path)
     # skipped_ut is a list of cases expected to fail; its failures are not news.
@@ -728,8 +732,8 @@ class Checker:
         new_passes = self.report_passing_known_issues(passed)
         new = self.new_failures(category, failures)
         return self.finish(category, new, len(passed), None,
-                           total=len(passed) + len(failures), new_passes=new_passes,
-                           failures=failures)
+                           total=self.total_cases(category) or len(passed) + len(failures),
+                           new_passes=new_passes, failures=failures)
 
     def scan_console(self, category: str, markers: tuple[str, ...]) -> list[str]:
         """Sorted, unique `file::class::case` node ids of one outcome."""
@@ -952,15 +956,10 @@ def collect_job_dir(artifact: Path, job_dir: Path) -> None:
                 shutil.copy2(path, target)
 
 
-def failure_row(category: str, line: str) -> str:
-    """A csv row for a failure no junit report described, such as a distributed
-    node id scraped from a console log."""
-    if "::" in line:
-        classname, _, name = line.rpartition("::")
-    else:
-        fields = line.split(",", 2)
-        classname, name = (fields[1], fields[2]) if len(fields) == 3 else ("", line)
-    return md_row([category, classname, name, "failed", "", "Log"])
+def node_id_parts(line: str) -> tuple[str, str]:
+    """The class and test of a `path.py::Class::test` console node id."""
+    parts = line.split("::")
+    return (parts[-2] if len(parts) > 1 else ""), parts[-1]
 
 
 def enrich_failures(job_dir: Path, items: list[tuple[str, str]],
@@ -968,21 +967,37 @@ def enrich_failures(job_dir: Path, items: list[tuple[str, str]],
     """Give each failure the error message only the csv carries.
 
     Keyed on category too: one job's csv holds every category it ran, and the
-    same class and test name can appear in two of them.
+    same class and test name can appear in two of them. A console node id
+    names the same case as a junit row with a dotted module path, so it joins
+    on the class and test alone.
     """
     rows = read_lines(job_dir / "ut_failure_list.csv")
-    index = {}
+    index: dict[tuple[str, ...], str] = {}
+    by_case: dict[tuple[str, str], str] = {}
     for row in rows:
         fields = [f.strip() for f in row.strip("|").split(" | ")]
         if len(fields) >= 3:
             index.setdefault(tuple(fields[:3]), row)
+            by_case.setdefault((fields[1].rpartition(".")[2], fields[2]), row)
     enriched = []
     missing = 0
     for category, line in items:
         row = index.get(tuple(line.split(",", 2)))
+        if row is None and "::" in line:
+            classname, name = node_id_parts(line)
+            row = by_case.get((classname, name))
+            if row is not None:
+                fields = [f.strip() for f in row.strip("|").split(" | ")]
+                row = md_row([category, *fields[1:]])
         if row is None:
             missing += 1
-            row = failure_row(category, line)
+            if "::" in line:
+                classname, _, name = line.rpartition("::")
+            else:
+                fields = line.split(",", 2)
+                classname, name = (fields[1], fields[2]) if len(fields) == 3 \
+                    else ("", line)
+            row = md_row([category, classname, name, "failed", "", "Log"])
         enriched.append(row)
     if rows and missing:
         warn(f"{job_dir.name} {what} failures not in the junit csv: {missing} "
