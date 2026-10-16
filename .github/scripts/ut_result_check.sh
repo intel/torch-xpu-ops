@@ -467,13 +467,27 @@ check_profiling_ut() {
         echo -e "\\n✅ Passing Known Issues:"
         check_passed_known_issues "passed_${suite}.log" "Known_issue.log"
     fi
-    if [[ -f "failures_${suite}.log" ]] && [[ -f "Known_issue.log" ]]; then
+    # Fallback verdict: only used when check-ut.py produced no failure list to filter against
+    local failed_count=$((total_failures + total_errors))
+    if [[ -f "failures_${suite}.log" ]]; then
+        echo -e "\\n🔍 Filtered Cases:"
+        local filtered_count
+        grep -noFf "Known_issue.log" "failures_${suite}.log" > "failures_${suite}_removed.log"
+        filtered_count=$(wc -l < "failures_${suite}_removed.log")
+        if [[ "$filtered_count" -gt 0 ]]; then
+            echo "⏩ Skipping ${filtered_count} known issues:"
+            awk -F':' '{printf "   Line %3d: %s\n", $1, $2}' "failures_${suite}_removed.log"
+        else
+            echo "✅ No skipped cases"
+        fi
         echo -e "\\nChecking New Failures:"
         check_new_failed "failures_${suite}.log" "Known_issue.log"
+        failed_count=$(wc -l < "failures_${suite}_filtered.log")
     fi
     echo -e "\\n📈 Final Summary:"
-    echo "   Reports: ${report_count}, Tests: ${total_tests}, Failed: ${total_failures}, Errors: ${total_errors}"
-    if [[ "$total_failures" -gt 0 ]] || [[ "$total_errors" -gt 0 ]] || [[ "$total_tests" -le 0 ]]; then
+    echo "   Reports: ${report_count}, Tests: ${total_tests}, Failed: ${total_failures}," \
+         "Errors: ${total_errors}, New failures: ${failed_count}"
+    if [[ "$failed_count" -gt 0 ]] || [[ "$total_tests" -le 0 ]]; then
         echo "❌ TEST FAILED: xpu_profiling"
         exit 1
     else
