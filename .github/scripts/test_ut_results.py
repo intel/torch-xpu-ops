@@ -180,6 +180,11 @@ def test_determine_category(name, expected):
     assert ut_results.determine_category(name) == expected
 
 
+def test_the_distributed_job_owns_its_reports_whatever_they_are_named():
+    assert ut_results.determine_category(
+        "op_ut_with_all", "xpu_distributed") == "xpu_distributed"
+
+
 # --------------------------------------------------------------------------- #
 # check
 # --------------------------------------------------------------------------- #
@@ -334,6 +339,19 @@ def test_enrich_failures_synthesizes_a_row_for_a_distributed_node_id(tmp_path):
 
     assert rows == [
         "| xpu_distributed | test/foo.py::TestBar | test_bad | failed |  | Log |"]
+
+
+def test_enrich_failures_joins_a_node_id_to_its_junit_row(tmp_path):
+    ut_results.write_lines(tmp_path / "ut_failure_list.csv", [
+        "| op_ut | test.distributed.fsdp.test_core.TestBar | test_bad | failed | boom | XML |",
+    ])
+
+    rows = ut_results.enrich_failures(
+        tmp_path, [("xpu_distributed", "../../test/distributed/fsdp/test_core.py::TestBar::test_bad")])
+
+    assert rows == [
+        "| xpu_distributed | test.distributed.fsdp.test_core.TestBar | test_bad "
+        "| failed | boom | XML |"]
 
 
 def seed_artifact(tmp_path, ut="op_regression"):
