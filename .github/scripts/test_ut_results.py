@@ -404,7 +404,7 @@ def test_check_passes_when_the_failure_is_a_known_one(tmp_path, monkeypatch):
          "new_passes": 0, "passed": True}]
 
 
-def test_report_has_a_summary_and_two_folded_failure_sections(tmp_path):
+def test_report_has_a_summary_and_three_folded_sections(tmp_path):
     check = tmp_path / "checks" / "UT-Check-sha-op_ut-1-1" / "op_ut"
     check.mkdir(parents=True)
     (check / "verdict.json").write_text(json.dumps({
@@ -417,6 +417,8 @@ def test_report_has_a_summary_and_two_folded_failure_sections(tmp_path):
     ut_results.write_lines(check / "known_ut_failure_list.csv", [
         "| op_ut | TestFoo | test_old | failed | bang | XML |",
         "| op_ut | TestFoo | test_older | failed | bang | XML |"])
+    ut_results.write_lines(check / "new_pass_list.csv", [
+        "| op_ut | TestFoo | test_now_ok |"])
 
     out = tmp_path / "report" / "ut_report.md"
     assert ut_results.render_report(tmp_path / "checks", out) == 0
@@ -429,9 +431,14 @@ def test_report_has_a_summary_and_two_folded_failure_sections(tmp_path):
     assert "test_new" not in summary and "test_old" not in summary
     assert "<summary>New failures (1)</summary>" in folded
     assert "<summary>Known failures (2)</summary>" in folded
-    assert folded.index("test_new") < folded.index("test_old")
+    assert "<summary>New passes (1)</summary>" in folded
+    _, _, passes = folded.partition("<summary>New passes (1)</summary>")
+    assert "| Category | Class name | Test name |\n| --- | --- | --- |" in passes
+    assert folded.index("test_new") < folded.index("test_old") < folded.index("test_now_ok")
     assert (out.parent / "new_failures.csv").read_text() == \
         "| op_ut | TestFoo | test_new | failed | boom | XML |\n"
+    assert (out.parent / "new_passes.csv").read_text() == \
+        "| op_ut | TestFoo | test_now_ok |\n"
 
 
 def test_check_fails_when_no_artifact_names_a_ut_job(tmp_path, monkeypatch):
