@@ -216,7 +216,7 @@ jobs:
         scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
+      runner: bmg-test
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
