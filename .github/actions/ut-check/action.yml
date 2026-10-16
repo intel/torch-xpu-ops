@@ -89,6 +89,7 @@ runs:
           ${{ github.workspace }}/ut_check/*/new_failure_list.txt
           ${{ github.workspace }}/ut_check/*/new_ut_failure_list.csv
           ${{ github.workspace }}/ut_check/*/known_ut_failure_list.csv
+          ${{ github.workspace }}/ut_check/*/new_pass_list.csv
           ${{ github.workspace }}/ut_check/*/ut_failure_list.csv
           ${{ github.workspace }}/ut_check/*/failures_*.log
           ${{ github.workspace }}/ut_check/*/passed_*.log

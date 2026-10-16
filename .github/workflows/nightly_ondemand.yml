@@ -179,9 +179,13 @@ jobs:
       ut: ${{ matrix.ut_name }}
 
   Linux-Nightly-Ondemand-UT-Report:
-    name: linux-ut-report
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
-    if: ${{ !cancelled() && !endsWith(needs.Linux-Nightly-Ondemand-UT-Tests.result, 'ed') }}
+    name: ut-report
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests,
+            Windows-Nightly-Ondemand-UT-Tests]
+    if: >-
+      ${{ !cancelled()
+      && (!endsWith(needs.Linux-Nightly-Ondemand-UT-Tests.result, 'ed')
+      || !endsWith(needs.Windows-Nightly-Ondemand-UT-Tests.result, 'ed')) }}
     secrets: inherit
     permissions:
       actions: read
