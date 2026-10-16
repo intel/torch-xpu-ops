@@ -5,9 +5,11 @@ on:
     # GMT+8 21:00 every workday
     - cron: '10 13 * * 0-4' # build from source
     - cron: '30 13 * * 0-4' # nightly wheel
+    - cron: '50 13 * * 0-4' # build from source with dpclang
     # GMT+8 00:00 Saturday
     - cron: '10 16 * * 5' # build from source
     - cron: '30 16 * * 5' # nightly wheel
+    - cron: '50 16 * * 5' # build from source with dpclang
   workflow_dispatch:
     inputs:
       pytorch:
@@ -50,6 +52,10 @@ on:
         type: string
         default: ''
         description: Model. Will only run this one mode if set
+      dpclang:
+        type: boolean
+        default: false
+        description: Build pytorch with the open source dpclang stack instead of oneAPI
       ut_auto_issue:
         type: boolean
         default: false
@@ -57,7 +63,7 @@ on:
 
 permissions: read-all
 
-run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}
+run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || (contains(github.event.schedule, '50') && 'Build-from-source-dpclang') || inputs.pytorch }}${{ inputs.dpclang && ' / dpclang' || '' }}
 
 jobs:
   Conditions-Filter:
@@ -75,10 +81,12 @@ jobs:
       scenario: ${{ steps.inputs-check.outputs.scenario }}
       triton: ${{ steps.inputs-check.outputs.triton }}
       python: ${{ steps.inputs-check.outputs.python }}
+      category: ${{ steps.inputs-check.outputs.category }}
     steps:
       - name: Inputs check
         id: inputs-check
         run: |
+          category=""
           if [ "${{ github.event_name }}" == "schedule" ];then
             if [ "${{ github.event.schedule }}" == "10 13 * * 0-4" ];then
               test_type="build-nightly"
@@ -96,6 +104,16 @@ jobs:
               test_type="wheel-weekly"
               pytorch="nightly_wheel"
               torch_xpu_ops="pinned"
+            elif [ "${{ github.event.schedule }}" == "50 13 * * 0-4" ];then
+              test_type="dpclang-nightly"
+              pytorch="main"
+              torch_xpu_ops="main"
+              category="dpclang"
+            elif [ "${{ github.event.schedule }}" == "50 16 * * 5" ];then
+              test_type="dpclang-weekly"
+              pytorch="main"
+              torch_xpu_ops="main"
+              category="dpclang"
             else
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
@@ -118,6 +136,13 @@ jobs:
             fi
             if [[ "${{ inputs.pytorch }}" == *"_wheel" ]];then
               test_type="wheel-ondemand"
+              if [ "${{ inputs.dpclang }}" == "true" ];then
+                echo "dpclang requires building pytorch from source"
+                exit 1
+              fi
+            elif [ "${{ inputs.dpclang }}" == "true" ];then
+              test_type="dpclang-ondemand"
+              category="dpclang"
             else
               test_type="build-ondemand"
             fi
@@ -131,6 +156,14 @@ jobs:
             triton="${{ inputs.triton }}"
             python="${{ inputs.python }}"
           fi
+          # dpclang stack has no oneCCL, so XCCL is not built
+          if [ "${category}" == "dpclang" ];then
+            ut="$(echo "${ut}" |sed -E 's/,?"(xpu|upstream)_distributed"//g;s/^\[,/[/')"
+            if [ "${ut}" == "[]" ];then
+              echo "Distributed UT is not supported with dpclang"
+              exit 1
+            fi
+          fi
           echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
           echo "pytorch=${pytorch}" >> ${GITHUB_OUTPUT}
           echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
@@ -139,6 +172,7 @@ jobs:
           echo "scenario=${scenario}" >> ${GITHUB_OUTPUT}
           echo "triton=${triton}" >> ${GITHUB_OUTPUT}
           echo "python=${python}" >> ${GITHUB_OUTPUT}
+          echo "category=${category}" >> ${GITHUB_OUTPUT}
 
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
@@ -155,6 +189,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
+      category: ${{ needs.Conditions-Filter.outputs.category }}
 
   Linux-Nightly-Ondemand-UT-Tests:
     name: linux-ut
@@ -176,6 +211,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
+      category: ${{ needs.Conditions-Filter.outputs.category }}
 
   Linux-Nightly-Ondemand-UT-Auto-Issue:
     name: linux-ut-auto-issue
@@ -188,7 +224,8 @@ jobs:
       ${{ !cancelled()
           && (github.event_name == 'schedule'
               || (inputs.ut_auto_issue && contains(inputs.ut, 'p')))
-          && needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel' }}
+          && needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel'
+          && needs.Conditions-Filter.outputs.category == '' }}
     secrets: inherit
     permissions:
       actions: read
@@ -225,6 +262,7 @@ jobs:
       mode: ${{ github.event_name == 'schedule' && '' || inputs.mode }}
       scenario: ${{ matrix.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
+      category: ${{ needs.Conditions-Filter.outputs.category }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
@@ -261,7 +299,7 @@ jobs:
   Windows-Nightly-Ondemand-Build:
     name: windows-build
     needs: [Conditions-Filter]
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
+    if: ${{ (github.event_name == 'schedule' || contains(inputs.ut, 'windows')) && needs.Conditions-Filter.outputs.category == '' }}
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
