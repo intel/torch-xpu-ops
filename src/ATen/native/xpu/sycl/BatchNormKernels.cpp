@@ -909,13 +909,13 @@ void batch_norm_stats_channels_last_template(
   auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
 
-
   // Try row-outer kernel first (n_chunks == 2 only)
-  using RowOuterKernel = WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor<
-      VarTransform,
-      scalar_t,
-      accscalar_t,
-      PREFERRED_VEC_SIZE>;
+  using RowOuterKernel =
+      WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor<
+          VarTransform,
+          scalar_t,
+          accscalar_t,
+          PREFERRED_VEC_SIZE>;
 
   if (RowOuterKernel::valid(
           reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
@@ -950,7 +950,6 @@ void batch_norm_stats_channels_last_template(
     }
   }
 
-  
   bool use_vec_kernel = false;
 
   if (VecConfig::valid(

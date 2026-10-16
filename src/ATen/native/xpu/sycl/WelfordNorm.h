@@ -179,6 +179,9 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
           acc_t x = acc_t(xv[k][v]);
           if (count_k[k][v] == 0) {
             anchor_k[k][v] = x;
+            // seed squared-delta with x - x: 0 for finite x, NaN/Inf-safe
+            // so single-sample partials still propagate non-finite variance.
+            sum_sq_delta_k[k][v] = x - x;
             count_k[k][v] = 1;
           } else {
             acc_t d = x - anchor_k[k][v];
@@ -197,6 +200,7 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
         acc_t x = acc_t(input_vec[v]);
         if (count_k[0][v] == 0) {
           anchor_k[0][v] = x;
+          sum_sq_delta_k[0][v] = x - x;
           count_k[0][v] = 1;
         } else {
           acc_t d = x - anchor_k[0][v];
@@ -214,9 +218,12 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
 #pragma unroll
   for (int v = 0; v < VEC_SIZE; ++v) {
     int c0 = count_k[0][v];
-    acc_t m0 = c0 > 0 ? anchor_k[0][v] + sum_delta_k[0][v] / acc_t(c0) : acc_t(0);
+    acc_t m0 =
+        c0 > 0 ? anchor_k[0][v] + sum_delta_k[0][v] / acc_t(c0) : acc_t(0);
     mean[v] = m0;
-    m2n[v] = c0 > 0 ? sum_sq_delta_k[0][v] - sum_delta_k[0][v] * (sum_delta_k[0][v] / acc_t(c0)) : acc_t(0);
+    m2n[v] = c0 > 0 ? sum_sq_delta_k[0][v] -
+            sum_delta_k[0][v] * (sum_delta_k[0][v] / acc_t(c0))
+                    : acc_t(0);
     count[v] = c0;
 #pragma unroll
     for (int k = 1; k < K; ++k) {
@@ -224,7 +231,9 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
       if (ck == 0)
         continue;
       acc_t mk = anchor_k[k][v] + sum_delta_k[k][v] / acc_t(ck);
-      acc_t m2k = ck > 0 ? sum_sq_delta_k[k][v] - sum_delta_k[k][v] * (sum_delta_k[k][v] / acc_t(ck)) : acc_t(0);
+      acc_t m2k = ck > 0 ? sum_sq_delta_k[k][v] -
+              sum_delta_k[k][v] * (sum_delta_k[k][v] / acc_t(ck))
+                         : acc_t(0);
       welford_merge(count[v], mean[v], m2n[v], ck, mk, m2k);
     }
   }
@@ -388,7 +397,6 @@ struct WelfordBatchNormStatChannelsLastVecKernelConfig {
   size_t ngroups_x_;
 };
 
-
 // ============================================================
 // ROW-OUTER kernel: nwg_x=1, handles n_chunks == 2 only
 // Separate struct to avoid register pressure spillover
@@ -410,7 +418,9 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
   template <typename OutputFunc>
   void finalize_chunk(
       sycl::nd_item<2> item,
-      acc_vec_t& anchor, acc_vec_t& sum_delta, acc_vec_t& sum_sq_delta,
+      acc_vec_t& anchor,
+      acc_vec_t& sum_delta,
+      acc_vec_t& sum_sq_delta,
       int_vec_t& cnt,
       OutputFunc output_fn) const {
     acc_vec_t mean, m2n;
@@ -418,9 +428,8 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
       count[v] = cnt[v];
-      mean[v] = count[v] > 0
-          ? anchor[v] + sum_delta[v] / acc_t(count[v])
-          : acc_t(0);
+      mean[v] =
+          count[v] > 0 ? anchor[v] + sum_delta[v] / acc_t(count[v]) : acc_t(0);
       m2n[v] = count[v] > 0
           ? sum_sq_delta[v] - sum_delta[v] * (sum_delta[v] / acc_t(count[v]))
           : acc_t(0);
@@ -433,12 +442,19 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
 
   void operator()(sycl::nd_item<2> item) const {
     // Two chunks, scalar accumulators (no arrays)
-    acc_vec_t anchor0, sum_delta0, sum_sq_delta0, anchor1, sum_delta1, sum_sq_delta1;
+    acc_vec_t anchor0, sum_delta0, sum_sq_delta0, anchor1, sum_delta1,
+        sum_sq_delta1;
     int_vec_t cnt0, cnt1;
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      anchor0[v] = acc_t(0); sum_delta0[v] = acc_t(0); sum_sq_delta0[v] = acc_t(0); cnt0[v] = 0;
-      anchor1[v] = acc_t(0); sum_delta1[v] = acc_t(0); sum_sq_delta1[v] = acc_t(0); cnt1[v] = 0;
+      anchor0[v] = acc_t(0);
+      sum_delta0[v] = acc_t(0);
+      sum_sq_delta0[v] = acc_t(0);
+      cnt0[v] = 0;
+      anchor1[v] = acc_t(0);
+      sum_delta1[v] = acc_t(0);
+      sum_sq_delta1[v] = acc_t(0);
+      cnt1[v] = 0;
     }
 
     int gy = item.get_group(0);
@@ -475,7 +491,16 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; ++v) {
           acc_t x = acc_t(xv[k][v]);
-          if (cnt0[v] == 0) { anchor0[v] = x; cnt0[v] = 1; } else { acc_t d = x - anchor0[v]; sum_delta0[v] += d; sum_sq_delta0[v] += d * d; cnt0[v]++; }
+          if (cnt0[v] == 0) {
+            anchor0[v] = x;
+            sum_sq_delta0[v] = x - x;
+            cnt0[v] = 1;
+          } else {
+            acc_t d = x - anchor0[v];
+            sum_delta0[v] += d;
+            sum_sq_delta0[v] += d * d;
+            cnt0[v]++;
+          }
         }
       }
       // Chunk 1
@@ -488,7 +513,16 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
 #pragma unroll
           for (int v = 0; v < VEC_SIZE; ++v) {
             acc_t x = acc_t(xv[k][v]);
-            if (cnt1[v] == 0) { anchor1[v] = x; cnt1[v] = 1; } else { acc_t d = x - anchor1[v]; sum_delta1[v] += d; sum_sq_delta1[v] += d * d; cnt1[v]++; }
+            if (cnt1[v] == 0) {
+              anchor1[v] = x;
+              sum_sq_delta1[v] = x - x;
+              cnt1[v] = 1;
+            } else {
+              acc_t d = x - anchor1[v];
+              sum_delta1[v] += d;
+              sum_sq_delta1[v] += d * d;
+              cnt1[v]++;
+            }
           }
         }
       }
@@ -501,7 +535,16 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; ++v) {
           acc_t x = acc_t(xv0[v]);
-          if (cnt0[v] == 0) { anchor0[v] = x; cnt0[v] = 1; } else { acc_t d = x - anchor0[v]; sum_delta0[v] += d; sum_sq_delta0[v] += d * d; cnt0[v]++; }
+          if (cnt0[v] == 0) {
+            anchor0[v] = x;
+            sum_sq_delta0[v] = x - x;
+            cnt0[v] = 1;
+          } else {
+            acc_t d = x - anchor0[v];
+            sum_delta0[v] += d;
+            sum_sq_delta0[v] += d * d;
+            cnt0[v]++;
+          }
         }
       }
       if (valid1) {
@@ -509,7 +552,16 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; ++v) {
           acc_t x = acc_t(xv0[v]);
-          if (cnt1[v] == 0) { anchor1[v] = x; cnt1[v] = 1; } else { acc_t d = x - anchor1[v]; sum_delta1[v] += d; sum_sq_delta1[v] += d * d; cnt1[v]++; }
+          if (cnt1[v] == 0) {
+            anchor1[v] = x;
+            sum_sq_delta1[v] = x - x;
+            cnt1[v] = 1;
+          } else {
+            acc_t d = x - anchor1[v];
+            sum_delta1[v] += d;
+            sum_sq_delta1[v] += d * d;
+            cnt1[v]++;
+          }
         }
       }
     }
@@ -517,29 +569,39 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
     // Post-loop: per-chunk vertical merge + output
     if (num_cooperative_groups == 1) {
       // Chunk 0
-      finalize_chunk(item, anchor0, sum_delta0, sum_sq_delta0, cnt0,
+      finalize_chunk(
+          item,
+          anchor0,
+          sum_delta0,
+          sum_sq_delta0,
+          cnt0,
           [&](int_vec_t& count, acc_vec_t& mean, acc_vec_t& m2n) {
-        if (item.get_local_id(0) == 0 && valid0) {
-          acc_vec_t invstd_vec;
+            if (item.get_local_id(0) == 0 && valid0) {
+              acc_vec_t invstd_vec;
 #pragma unroll
-          for (int v = 0; v < VEC_SIZE; ++v)
-            invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon_);
-          *reinterpret_cast<acc_vec_t*>(&save_mean_[c_off0]) = mean;
-          *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_off0]) = invstd_vec;
-        }
-      });
+              for (int v = 0; v < VEC_SIZE; ++v)
+                invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon_);
+              *reinterpret_cast<acc_vec_t*>(&save_mean_[c_off0]) = mean;
+              *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_off0]) = invstd_vec;
+            }
+          });
       // Chunk 1
-      finalize_chunk(item, anchor1, sum_delta1, sum_sq_delta1, cnt1,
+      finalize_chunk(
+          item,
+          anchor1,
+          sum_delta1,
+          sum_sq_delta1,
+          cnt1,
           [&](int_vec_t& count, acc_vec_t& mean, acc_vec_t& m2n) {
-        if (item.get_local_id(0) == 0 && valid1) {
-          acc_vec_t invstd_vec;
+            if (item.get_local_id(0) == 0 && valid1) {
+              acc_vec_t invstd_vec;
 #pragma unroll
-          for (int v = 0; v < VEC_SIZE; ++v)
-            invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon_);
-          *reinterpret_cast<acc_vec_t*>(&save_mean_[c_off1]) = mean;
-          *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_off1]) = invstd_vec;
-        }
-      });
+              for (int v = 0; v < VEC_SIZE; ++v)
+                invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon_);
+              *reinterpret_cast<acc_vec_t*>(&save_mean_[c_off1]) = mean;
+              *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_off1]) = invstd_vec;
+            }
+          });
     } else {
       acc_t* staging_mean = staging_data_;
       acc_t* staging_m2n = &staging_data_[n_channels_ * num_cooperative_groups];
@@ -547,25 +609,35 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
           &staging_m2n[n_channels_ * num_cooperative_groups]);
 
       // Write staging for chunk 0
-      finalize_chunk(item, anchor0, sum_delta0, sum_sq_delta0, cnt0,
+      finalize_chunk(
+          item,
+          anchor0,
+          sum_delta0,
+          sum_sq_delta0,
+          cnt0,
           [&](int_vec_t& count, acc_vec_t& mean, acc_vec_t& m2n) {
-        if (item.get_local_id(0) == 0 && valid0) {
-          int addr = c_off0 + gy * n_channels_;
-          *reinterpret_cast<acc_vec_t*>(&staging_mean[addr]) = mean;
-          *reinterpret_cast<acc_vec_t*>(&staging_m2n[addr]) = m2n;
-          *reinterpret_cast<int_vec_t*>(&staging_count[addr]) = count;
-        }
-      });
+            if (item.get_local_id(0) == 0 && valid0) {
+              int addr = c_off0 + gy * n_channels_;
+              *reinterpret_cast<acc_vec_t*>(&staging_mean[addr]) = mean;
+              *reinterpret_cast<acc_vec_t*>(&staging_m2n[addr]) = m2n;
+              *reinterpret_cast<int_vec_t*>(&staging_count[addr]) = count;
+            }
+          });
       // Write staging for chunk 1
-      finalize_chunk(item, anchor1, sum_delta1, sum_sq_delta1, cnt1,
+      finalize_chunk(
+          item,
+          anchor1,
+          sum_delta1,
+          sum_sq_delta1,
+          cnt1,
           [&](int_vec_t& count, acc_vec_t& mean, acc_vec_t& m2n) {
-        if (item.get_local_id(0) == 0 && valid1) {
-          int addr = c_off1 + gy * n_channels_;
-          *reinterpret_cast<acc_vec_t*>(&staging_mean[addr]) = mean;
-          *reinterpret_cast<acc_vec_t*>(&staging_m2n[addr]) = m2n;
-          *reinterpret_cast<int_vec_t*>(&staging_count[addr]) = count;
-        }
-      });
+            if (item.get_local_id(0) == 0 && valid1) {
+              int addr = c_off1 + gy * n_channels_;
+              *reinterpret_cast<acc_vec_t*>(&staging_mean[addr]) = mean;
+              *reinterpret_cast<acc_vec_t*>(&staging_m2n[addr]) = m2n;
+              *reinterpret_cast<int_vec_t*>(&staging_count[addr]) = count;
+            }
+          });
 
       sycl::group_barrier(item.get_group());
       if (item.get_local_linear_id() == 0) {
@@ -582,19 +654,28 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
           int_vec_t count;
 #pragma unroll
           for (int v = 0; v < VEC_SIZE; ++v) {
-            mean[v] = acc_t(0); m2n[v] = acc_t(0); count[v] = 0;
+            mean[v] = acc_t(0);
+            m2n[v] = acc_t(0);
+            count[v] = 0;
           }
           for (int y = item.get_local_id(0); y < num_cooperative_groups;
                y += item.get_local_range(0)) {
             if (valid0) {
               int addr = y * n_channels_ + c_off0;
-              auto mean_new = *reinterpret_cast<acc_vec_t*>(&staging_mean[addr]);
+              auto mean_new =
+                  *reinterpret_cast<acc_vec_t*>(&staging_mean[addr]);
               auto m2n_new = *reinterpret_cast<acc_vec_t*>(&staging_m2n[addr]);
-              auto count_new = *reinterpret_cast<int_vec_t*>(&staging_count[addr]);
+              auto count_new =
+                  *reinterpret_cast<int_vec_t*>(&staging_count[addr]);
 #pragma unroll
               for (int v = 0; v < VEC_SIZE; ++v)
-                welford_merge(count[v], mean[v], m2n[v],
-                    count_new[v], mean_new[v], m2n_new[v]);
+                welford_merge(
+                    count[v],
+                    mean[v],
+                    m2n[v],
+                    count_new[v],
+                    mean_new[v],
+                    m2n_new[v]);
             }
           }
           welford_vertical_merge<VEC_SIZE>(
@@ -616,19 +697,28 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
           int_vec_t count;
 #pragma unroll
           for (int v = 0; v < VEC_SIZE; ++v) {
-            mean[v] = acc_t(0); m2n[v] = acc_t(0); count[v] = 0;
+            mean[v] = acc_t(0);
+            m2n[v] = acc_t(0);
+            count[v] = 0;
           }
           for (int y = item.get_local_id(0); y < num_cooperative_groups;
                y += item.get_local_range(0)) {
             if (valid1) {
               int addr = y * n_channels_ + c_off1;
-              auto mean_new = *reinterpret_cast<acc_vec_t*>(&staging_mean[addr]);
+              auto mean_new =
+                  *reinterpret_cast<acc_vec_t*>(&staging_mean[addr]);
               auto m2n_new = *reinterpret_cast<acc_vec_t*>(&staging_m2n[addr]);
-              auto count_new = *reinterpret_cast<int_vec_t*>(&staging_count[addr]);
+              auto count_new =
+                  *reinterpret_cast<int_vec_t*>(&staging_count[addr]);
 #pragma unroll
               for (int v = 0; v < VEC_SIZE; ++v)
-                welford_merge(count[v], mean[v], m2n[v],
-                    count_new[v], mean_new[v], m2n_new[v]);
+                welford_merge(
+                    count[v],
+                    mean[v],
+                    m2n[v],
+                    count_new[v],
+                    mean_new[v],
+                    m2n_new[v]);
             }
           }
           welford_vertical_merge<VEC_SIZE>(
@@ -655,16 +745,29 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
   }
 
   WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor(
-      const scalar_t* input, acc_t* save_mean, acc_t* save_invstd,
-      int reduction_size, int n_channels,
-      acc_t* staging_data, int* semaphores, double epsilon)
-      : input_(input), save_mean_(save_mean), save_invstd_(save_invstd),
-        reduction_size_(reduction_size), n_channels_(n_channels),
-        staging_data_(staging_data), semaphores_(semaphores), epsilon_(epsilon) {}
+      const scalar_t* input,
+      acc_t* save_mean,
+      acc_t* save_invstd,
+      int reduction_size,
+      int n_channels,
+      acc_t* staging_data,
+      int* semaphores,
+      double epsilon)
+      : input_(input),
+        save_mean_(save_mean),
+        save_invstd_(save_invstd),
+        reduction_size_(reduction_size),
+        n_channels_(n_channels),
+        staging_data_(staging_data),
+        semaphores_(semaphores),
+        epsilon_(epsilon) {}
 
   void init() {
     using KernelT = WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor<
-        VarTransform, scalar_t, acc_t, VEC_SIZE>;
+        VarTransform,
+        scalar_t,
+        acc_t,
+        VEC_SIZE>;
     auto max_group_size = syclMaxWorkGroupSize<KernelT>();
     std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_) =
         get_adaptive_config(
@@ -677,26 +780,31 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
         ((int)group_size_x_ * (int)group_size_y_);
     tile_cap = std::max(tile_cap, 1);
     int loops_per_item = 8 / VEC_SIZE;
-    int64_t nwg_y_max = at::ceil_div(
-        reduction_size_, (int)group_size_y_ * loops_per_item);
+    int64_t nwg_y_max =
+        at::ceil_div(reduction_size_, (int)group_size_y_ * loops_per_item);
     ngroups_y_ = std::min(nwg_y_max, (int64_t)(tile_cap / (int)ngroups_x_));
     ngroups_y_ = std::max(ngroups_y_, (size_t)1);
   }
 
   static bool valid(
-      int reduction_size, int n_channels,
-      const scalar_t* input, acc_t* save_mean, acc_t* save_invstd) {
+      int reduction_size,
+      int n_channels,
+      const scalar_t* input,
+      acc_t* save_mean,
+      acc_t* save_invstd) {
     bool v = sizeof(scalar_t) <= 2;
     v = v && (n_channels % VEC_SIZE == 0);
     v = v && (memory::can_vectorize_up_to<scalar_t>((char*)input) >= VEC_SIZE);
     v = v && (memory::can_vectorize_up_to<acc_t>((char*)save_mean) >= VEC_SIZE);
-    v = v && (memory::can_vectorize_up_to<acc_t>((char*)save_invstd) >= VEC_SIZE);
+    v = v &&
+        (memory::can_vectorize_up_to<acc_t>((char*)save_invstd) >= VEC_SIZE);
     // Only for n_chunks == 2
     int channels_per_tile = 32 * VEC_SIZE;
     int n_chunks = at::ceil_div(n_channels, channels_per_tile);
     v = v && (n_chunks == 2);
     // Only enable when per-WG data >= 1MB (tensor > tile_cap * 1MB)
-    int64_t tensor_bytes = (int64_t)reduction_size * n_channels * sizeof(scalar_t);
+    int64_t tensor_bytes =
+        (int64_t)reduction_size * n_channels * sizeof(scalar_t);
     int tile_cap = int(syclMaxWorkItemsPerTile()) / (32 * 32);
     tile_cap = std::max(tile_cap, 1);
     v = v && (tensor_bytes > (int64_t)tile_cap * (1 << 20));
@@ -710,16 +818,25 @@ struct WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor
     return sycl::range<2>(
         group_size_y_ * ngroups_y_, group_size_x_ * ngroups_x_);
   }
-  int staging_size() const { return ngroups_y_ * n_channels_ * 4; }
-  int semaphores_size() const { return ngroups_x_; }
+  int staging_size() const {
+    return ngroups_y_ * n_channels_ * 4;
+  }
+  int semaphores_size() const {
+    return ngroups_x_;
+  }
 
   bool set_staging_data_check(acc_t* staging_data) {
     staging_data_ = staging_data;
-    return ((staging_data == nullptr) ||
+    return (
+        (staging_data == nullptr) ||
         (memory::can_vectorize_up_to<acc_t>((char*)staging_data) >= VEC_SIZE));
   }
-  void set_semaphores(int* semaphores) { semaphores_ = semaphores; }
-  int num_cooperative_groups() const { return ngroups_y_; }
+  void set_semaphores(int* semaphores) {
+    semaphores_ = semaphores;
+  }
+  int num_cooperative_groups() const {
+    return ngroups_y_;
+  }
 
  private:
   const scalar_t* input_;
