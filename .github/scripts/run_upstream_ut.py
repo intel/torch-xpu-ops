@@ -83,7 +83,7 @@ INDUCTOR_ENV = {
     # clamped to the GPU count, so the default would put 3 workers on the one GPU
     # this shard is pinned to via ZE_AFFINITY_MASK.
     "PYTORCH_TEST_RUN_EVERYTHING_IN_SERIAL": "1",
-    "PYTEST_ADDOPTS": " --timeout 3600 --timeout_method=thread -v ",
+    "PYTEST_ADDOPTS": " --timeout 600 --timeout_method=thread -v ",
 }
 
 DISTRIBUTED_ENV = {

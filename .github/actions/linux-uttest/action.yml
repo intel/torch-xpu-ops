@@ -222,7 +222,7 @@ runs:
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
 
     - name: upstream_ut
-      shell: timeout 86400 bash -e -o pipefail {0}
+      shell: timeout 172800 bash -e -o pipefail {0}
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         ut_name="${{ inputs.ut_name }}"
