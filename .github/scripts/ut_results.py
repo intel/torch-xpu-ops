@@ -454,6 +454,8 @@ class CheckResult:
     passed: bool
     new_failures: list[str] = field(default_factory=list)
     counts_normal: bool | None = None
+    total: int = 0
+    new_passes: list[str] = field(default_factory=list)
 
     @property
     def verdict(self) -> str:
@@ -512,6 +514,12 @@ class Checker:
                 "reason": reason,
             }) + "\n")
 
+    def total_cases(self, category: str) -> int:
+        for line in read_lines(self.path(f"category_{category}.log")):
+            if m := re.match(r"Test cases: (\d+)", line):
+                return int(m.group(1))
+        return 0
+
     def check_case_counts(self, category: str) -> bool | None:
         """None when there is no count to read, which is not a verdict."""
         log = self.path(f"category_{category}.log")
@@ -562,7 +570,7 @@ class Checker:
         else:
             print("✅ No skipped cases")
 
-    def report_passing_known_issues(self, passed: list[str]) -> None:
+    def report_passing_known_issues(self, passed: list[str]) -> list[str]:
         known = set(self.known_issues)
         now_passing = sorted({line for line in passed if line in known})
         print("\n📊 New Passing Known Issues:")
@@ -573,6 +581,7 @@ class Checker:
             print("ℹ️  No known issues are now passing")
         if now_passing and self.may_write_issues():
             self.mark_passed_issues(now_passing)
+        return now_passing
 
     def new_failures(self, category: str, failures: list[str]) -> list[str]:
         known = set(self.known_issues)
@@ -693,12 +702,14 @@ class Checker:
         self.report_filtered(category, failures)
 
         print("\n✅ Passing Known Issues:")
-        self.report_passing_known_issues(passed)
+        new_passes = self.report_passing_known_issues(passed)
 
         print("\nChecking New Failures:")
         new = self.new_failures(category, failures) if failures else []
 
-        return self.finish(category, new, len(passed), counts_normal)
+        return self.finish(category, new, len(passed), counts_normal,
+                           total=self.total_cases(category) or len(passed) + len(failures),
+                           new_passes=new_passes)
 
     def run_distributed(self, category: str) -> CheckResult:
         """The distributed suite prints a pytest console log, not a junit xml."""
@@ -713,9 +724,10 @@ class Checker:
 
         print("\n🔍 Filtered Cases:")
         self.report_filtered(category, failures)
-        self.report_passing_known_issues(passed)
+        new_passes = self.report_passing_known_issues(passed)
         new = self.new_failures(category, failures)
-        return self.finish(category, new, len(passed), None)
+        return self.finish(category, new, len(passed), None,
+                           total=len(passed) + len(failures), new_passes=new_passes)
 
     def scan_console(self, category: str, markers: tuple[str, ...]) -> list[str]:
         """Sorted, unique `file::class::case` node ids of one outcome."""
@@ -803,9 +815,10 @@ class Checker:
 
         passed = read_lines(self.path("passed_xpu_profiling.log"))
         failed = read_lines(self.path("failures_xpu_profiling.log"))
+        new_passes: list[str] = []
         if passed and self.known_issues:
             print("\n✅ Passing Known Issues:")
-            self.report_passing_known_issues(passed)
+            new_passes = self.report_passing_known_issues(passed)
         if failed and self.known_issues:
             print("\nChecking New Failures:")
             self.new_failures("xpu_profiling", failed)
@@ -815,10 +828,12 @@ class Checker:
               f"Failed: {total_failures}, Errors: {total_errors}")
         ok = total_failures == 0 and total_errors == 0 and total_tests > 0
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: xpu_profiling")
-        return CheckResult(category="xpu_profiling", passed=ok)
+        return CheckResult(category="xpu_profiling", passed=ok, total=total_tests,
+                           new_passes=new_passes)
 
     def finish(self, category: str, new: list[str], passed_count: int,
-               counts_normal: bool | None) -> CheckResult:
+               counts_normal: bool | None, total: int = 0,
+               new_passes: list[str] | None = None) -> CheckResult:
         """A category passes when it has new failures, no passes, no shrink."""
         print("\n📈 Final Summary:")
         print(f"   Failed: {len(new)}, Passed: {passed_count}, "
@@ -826,7 +841,8 @@ class Checker:
         ok = not new and passed_count > 0 and counts_normal is not False
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: {category}")
         return CheckResult(category=category, passed=ok, new_failures=new,
-                           counts_normal=counts_normal)
+                           counts_normal=counts_normal, total=total,
+                           new_passes=new_passes or [])
 
 
 # --------------------------------------------------------------------------- #
@@ -955,7 +971,8 @@ def enrich_failures(job_dir: Path, lines: list[str], what: str = "new") -> list[
 # How much of a failure table the report carries; a step summary is capped at
 # 1MB and a bad night has thousands of rows. The artifact keeps all of them.
 REPORT_FAILURE_LIMIT = 100
-SUMMARY_TABLE_HEADER = ["UT job", "Category", "Known failures", "New failures", "Result"]
+SUMMARY_TABLE_HEADER = ["UT job", "Category", "Total cases", "Known failures", "New failures",
+                       "New passes", "Result"]
 
 
 def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
@@ -1007,8 +1024,10 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             known_lines += was_known
             verdict["categories"].append({
                 "category": category,
+                "total": result.total,
                 "known": len(was_known),
                 "new": len(result.new_failures),
+                "new_passes": len(result.new_passes),
                 "passed": result.passed,
             })
         print("::endgroup::", flush=True)
@@ -1037,7 +1056,9 @@ def render_report(checks_dir: Path, out_file: Path) -> int:
         for entry in verdict["categories"]:
             rows.append([
                 verdict["ut_job"], entry["category"],
+                str(entry.get("total", 0)),
                 str(entry["known"]), str(entry["new"]),
+                str(entry.get("new_passes", 0)),
                 "✅ passed" if entry["passed"] else "❌ failed",
             ])
         new_rows += read_lines(verdict_file.parent / "new_ut_failure_list.csv")
