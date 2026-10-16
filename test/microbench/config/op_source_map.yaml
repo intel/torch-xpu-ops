@@ -1,0 +1,588 @@
+# op_source_map.yaml - which microbench ops a changed source file selects.
+#
+# Generated from kernel file names (local tooling, see plan 6) and reviewed
+# by hand. Paths are fnmatch globs relative to the repository root ('*' also
+# matches '/').
+#
+#   global          build-wide files: run the full core set
+#   common_groups   shared kernel paths (plan 6.1.1), one group per code path:
+#                   one group touched -> its ops' PR cases + core set;
+#                   several groups -> full core set. Keep in sync with core_set.yaml.
+#   no_bench        files whose changes never run microbench
+#   ops             microbench op -> source files; a change runs the op's PR-tier cases
+#
+# Kernel files matching nothing are "unmapped": they run the core set and are
+# listed by `python -m microbench srcmap` (report only).
+global:
+- CMakeLists.txt
+- cmake/**
+- src/CMakeLists.txt
+- src/BuildOnLinux.cmake
+- src/BuildOnWindows.cmake
+- src/ATen/CMakeLists.txt
+- src/comm/SYCLHelpers.h
+- src/comm/DeviceProperties.h
+- src/comm/Macros.h
+- src/comm/Runtime.h
+- src/comm/SYCLContext.h
+- src/comm/xpu_aten.h
+- src/comm/TensorInfo.h
+- src/comm/XPUPair.h
+- src/comm/XPUMathCompat.h
+- src/comm/TensorOptions.h
+- src/comm/MemoryFormat.h
+common_groups:
+  elementwise:
+  - src/ATen/native/xpu/sycl/ElementwiseInvoke.h
+  - src/ATen/native/xpu/sycl/IntegerDivider.h
+  - src/ATen/native/xpu/sycl/KernelUtils.h
+  - src/ATen/native/xpu/sycl/Loops.h
+  - src/ATen/native/xpu/sycl/MathExtensions.h
+  - src/ATen/native/xpu/sycl/MemoryAccess.h
+  - src/ATen/native/xpu/sycl/MemoryAccessUtils.h
+  - src/ATen/native/xpu/sycl/NumericLimits.h
+  - src/ATen/native/xpu/sycl/OffsetCalculator.h
+  - src/ATen/native/xpu/sycl/Pow.h
+  scatter_gather:
+  - src/ATen/native/xpu/sycl/Atomics.h
+  - src/ATen/native/xpu/sycl/ScatterGatherKernels.h
+  reduction:
+  - src/ATen/native/xpu/sycl/GroupReduceUtils.h
+  - src/ATen/native/xpu/sycl/Reduce.h
+  - src/ATen/native/xpu/sycl/ReduceOpsKernels.h
+  - src/ATen/native/xpu/sycl/SYCLGroupAlgorithm.h
+  - src/ATen/native/xpu/sycl/SharedReduceOps.h
+  distribution:
+  - src/ATen/native/xpu/sycl/DistributionKernels.h
+  - src/ATen/native/xpu/sycl/DistributionTemplates.h
+  - src/ATen/native/xpu/sycl/Philox4x32.h
+  foreach:
+  - src/ATen/native/xpu/sycl/DeviceAddCmulCdiv.h
+  - src/ATen/native/xpu/sycl/ForeachFunctors.h
+  - src/ATen/native/xpu/sycl/MultiTensorApply.h
+  indexing:
+  - src/ATen/native/xpu/sycl/IndexUtils.h
+  - src/ATen/native/xpu/sycl/Indexing.h
+  - src/ATen/native/xpu/sycl/IndexingKernels.h
+  - src/ATen/native/xpu/sycl/IndexingUtils.h
+  - src/ATen/native/xpu/sycl/TensorApplyUtils.h
+  - src/ATen/native/xpu/sycl/comm/IndexKernelUtils.*
+  sort_scan:
+  - src/ATen/native/xpu/ScanKernels.h
+  - src/ATen/native/xpu/sycl/ScanUtils.h
+  - src/ATen/native/xpu/sycl/Sorting.h
+  - src/ATen/native/xpu/sycl/SortingCommon.h
+  - src/ATen/native/xpu/sycl/SortingKernels.h
+  - src/ATen/native/xpu/sycl/SortingRadixSelect.h
+  - src/ATen/native/xpu/sycl/SortingRadixSort.h
+  - src/ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h
+  - src/ATen/native/xpu/sycl/TensorTopKSbtopkKernelImpl.h
+  - src/ATen/native/xpu/sycl/pstl/PSTLFunctions.h
+  upsample:
+  - src/ATen/native/xpu/UpSample.h
+  copy_shape:
+  - src/ATen/native/xpu/sycl/CopyKernel.cpp
+  - src/ATen/native/xpu/sycl/CopyKernel.h
+  - src/ATen/native/xpu/sycl/ShapeKernels.h
+  - src/ATen/native/xpu/sycl/TransposeKernel.*
+  norm:
+  - src/ATen/native/xpu/sycl/BatchKernel.h
+  - src/ATen/native/xpu/sycl/Norm.h
+  - src/ATen/native/xpu/sycl/WelfordNorm.h
+  softmax:
+  - src/ATen/native/xpu/sycl/SoftMaxKernels.h
+  pooling:
+  - src/ATen/native/xpu/sycl/AveragePool2dKernels.h
+  - src/ATen/native/xpu/sycl/AveragePool3dKernels.h
+  - src/ATen/native/xpu/sycl/DilatedMaxPool2d.h
+  - src/ATen/native/xpu/sycl/DilatedMaxPool3d.h
+no_bench:
+- src/xccl/**
+- src/ATen/native/quantized/**
+- src/ATen/native/sparse/**
+- src/ATen/native/nested/**
+- src/ATen/native/xpu/RecordStream.cpp
+- src/ATen/native/xpu/TensorProperties.cpp
+- src/ATen/native/xpu/mkl/**
+- src/ATen/xpu/**
+ops:
+  _fft_c2c:
+  - src/ATen/native/xpu/SpectralOps.cpp
+  - src/ATen/native/xpu/sycl/FFTKernelFunctor.*
+  _foreach_add:
+  - src/ATen/native/xpu/ForeachOpList.cpp
+  - src/ATen/native/xpu/ForeachOpScalar.cpp
+  - src/ATen/native/xpu/ForeachOpScalarList.cpp
+  - src/ATen/native/xpu/ForeachOpScalarTensor.cpp
+  - src/ATen/native/xpu/sycl/ForeachBinaryOp*Kernels.*
+  _foreach_addcdiv:
+  - src/ATen/native/xpu/ForeachOpList.cpp
+  - src/ATen/native/xpu/ForeachOpScalar.cpp
+  - src/ATen/native/xpu/ForeachOpScalarList.cpp
+  - src/ATen/native/xpu/ForeachOpScalarTensor.cpp
+  - src/ATen/native/xpu/sycl/ForeachPointwise*
+  _foreach_addcmul:
+  - src/ATen/native/xpu/ForeachOpList.cpp
+  - src/ATen/native/xpu/ForeachOpScalar.cpp
+  - src/ATen/native/xpu/ForeachOpScalarList.cpp
+  - src/ATen/native/xpu/ForeachOpScalarTensor.cpp
+  - src/ATen/native/xpu/sycl/ForeachPointwise*
+  _foreach_div:
+  - src/ATen/native/xpu/ForeachOpList.cpp
+  - src/ATen/native/xpu/ForeachOpScalar.cpp
+  - src/ATen/native/xpu/ForeachOpScalarList.cpp
+  - src/ATen/native/xpu/ForeachOpScalarTensor.cpp
+  - src/ATen/native/xpu/sycl/ForeachBinaryOp*Kernels.*
+  _foreach_lerp:
+  - src/ATen/native/xpu/ForeachOpList.cpp
+  - src/ATen/native/xpu/ForeachOpScalar.cpp
+  - src/ATen/native/xpu/ForeachOpScalarList.cpp
+  - src/ATen/native/xpu/sycl/ForeachTernary*
+  _foreach_mul:
+  - src/ATen/native/xpu/ForeachOpList.cpp
+  - src/ATen/native/xpu/ForeachOpScalar.cpp
+  - src/ATen/native/xpu/ForeachOpScalarList.cpp
+  - src/ATen/native/xpu/ForeachOpScalarTensor.cpp
+  - src/ATen/native/xpu/sycl/ForeachBinaryOp*Kernels.*
+  _foreach_sqrt:
+  - src/ATen/native/xpu/ForeachUnaryOp.cpp
+  - src/ATen/native/xpu/sycl/ForeachUnaryKernels.*
+  _log_softmax:
+  - src/ATen/native/xpu/SoftMax.cpp
+  - src/ATen/native/xpu/sycl/SoftMaxKernels.*
+  _safe_softmax:
+  - src/ATen/native/xpu/SoftMax.cpp
+  - src/ATen/native/xpu/sycl/SoftMaxKernels.*
+  _scaled_dot_product_flash_attention:
+  - src/ATen/native/transformers/**
+  abs:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/AbsKernel.*
+  adaptive_avg_pool2d:
+  - src/ATen/native/xpu/AdaptiveAveragePooling2d.cpp
+  - src/ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernels.*
+  adaptive_max_pool2d:
+  - src/ATen/native/xpu/AdaptiveMaxPooling2d.cpp
+  - src/ATen/native/xpu/sycl/AdaptiveMaxPooling2dKernels.*
+  add:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryKernels.*
+  addcmul:
+  - src/ATen/native/xpu/PointwiseOps.cpp
+  - src/ATen/native/xpu/sycl/PointwiseOpsKernels.*
+  all:
+  - src/ATen/native/xpu/ReduceAllOps.cpp
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/sycl/ReduceLogicKernels.cpp
+  any:
+  - src/ATen/native/xpu/ReduceAllOps.cpp
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/sycl/ReduceLogicKernels.cpp
+  arange:
+  - src/ATen/native/xpu/RangeFactories.cpp
+  - src/ATen/native/xpu/sycl/RangeFactoriesKernel.*
+  argmax:
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/sycl/ReduceArgMaxKernel.cpp
+  avg_pool2d:
+  - src/ATen/native/xpu/AveragePool2d.cpp
+  - src/ATen/native/xpu/sycl/AveragePool2dKernels.*
+  avg_pool3d:
+  - src/ATen/native/xpu/AveragePool3d.cpp
+  - src/ATen/native/xpu/sycl/AveragePool3dKernels.*
+  batch_norm_1d:
+  - src/ATen/native/xpu/BatchNorm.cpp
+  - src/ATen/native/xpu/sycl/BatchNormKernels.*
+  batch_norm_2d:
+  - src/ATen/native/xpu/BatchNorm.cpp
+  - src/ATen/native/xpu/sycl/BatchNormKernels.*
+  batch_norm_3d:
+  - src/ATen/native/xpu/BatchNorm.cpp
+  - src/ATen/native/xpu/sycl/BatchNormKernels.*
+  bernoulli:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/DistributionBernoulli.cpp
+  binary_cross_entropy:
+  - src/ATen/native/xpu/Loss.cpp
+  - src/ATen/native/xpu/sycl/LossKernels.*
+  bitwise_and:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.*
+  bitwise_not:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryKernels.*
+  bitwise_or:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.*
+  cat:
+  - src/ATen/native/xpu/TensorShape.cpp
+  - src/ATen/native/xpu/sycl/Shape.cpp
+  cauchy:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/DistributionCauchyKernel.cpp
+  cdist:
+  - src/ATen/native/xpu/Distance.cpp
+  - src/ATen/native/xpu/sycl/DistanceKernels.*
+  clamp:
+  - src/ATen/native/xpu/TensorCompare.cpp
+  - src/ATen/native/xpu/sycl/TensorCompareKernels.*
+  col2im:
+  - src/ATen/native/xpu/Col2Im.cpp
+  - src/ATen/native/xpu/Im2Col.cpp
+  - src/ATen/native/xpu/sycl/Col2ImKernel.*
+  - src/ATen/native/xpu/sycl/Im2ColKernel.*
+  cos:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryGeometricCosKernel.*
+  ctc_loss:
+  - src/ATen/native/xpu/LossCTC.cpp
+  - src/ATen/native/xpu/sycl/LossCTCKernels.*
+  cumsum:
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/ScanKernels.*
+  - src/ATen/native/xpu/sycl/CumsumKernel.cpp
+  diag:
+  - src/ATen/native/xpu/Copy.cpp
+  - src/ATen/native/xpu/Fill.cpp
+  - src/ATen/native/xpu/sycl/CopyKernel.*
+  - src/ATen/native/xpu/sycl/FillKernel.*
+  div:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryDivTrueKernel.cpp
+  dropout:
+  - src/ATen/native/xpu/Dropout.cpp
+  - src/ATen/native/xpu/sycl/Dropout.cpp
+  - src/ATen/native/xpu/sycl/DropoutKernels.h
+  embedding:
+  - src/ATen/native/xpu/Embedding.cpp
+  - src/ATen/native/xpu/sycl/Embedding.cpp
+  - src/ATen/native/xpu/sycl/EmbeddingBackwardKernel.h
+  - src/ATen/native/xpu/sycl/EmbeddingKernels.h
+  embedding_bag:
+  - src/ATen/native/xpu/EmbeddingBag.cpp
+  - src/ATen/native/xpu/sycl/EmbeddingBackwardKernel.h
+  - src/ATen/native/xpu/sycl/EmbeddingBag.*
+  - src/ATen/native/xpu/sycl/EmbeddingBagKernels.h
+  eq:
+  - src/ATen/native/xpu/CompareOps.cpp
+  - src/ATen/native/xpu/sycl/CompareKernels.*
+  exp:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryKernels.*
+  exponential:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/DistributionExponentialKernel.cpp
+  fill:
+  - src/ATen/native/xpu/Fill.cpp
+  - src/ATen/native/xpu/sycl/FillKernel.*
+  flip:
+  - src/ATen/native/xpu/TensorTransformations.cpp
+  - src/ATen/native/xpu/sycl/TensorTransformationsKernels.*
+  floor:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryFractionKernels.*
+  fractional_max_pool2d:
+  - src/ATen/native/xpu/FractionalMaxPool2d.cpp
+  - src/ATen/native/xpu/sycl/FractionalMaxPool2dKernels.*
+  fractional_max_pool3d:
+  - src/ATen/native/xpu/FractionalMaxPool3d.cpp
+  - src/ATen/native/xpu/sycl/FractionalMaxPool3dKernels.*
+  gather:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/ScatterGatherKernels.*
+  ge:
+  - src/ATen/native/xpu/CompareOps.cpp
+  - src/ATen/native/xpu/sycl/CompareKernels.*
+  gelu:
+  - src/ATen/native/xpu/Activation.cpp
+  - src/ATen/native/xpu/sycl/ActivationGeluKernel.*
+  geometric:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/DistributionGeometricKernel.cpp
+  grid_sampler_2d:
+  - src/ATen/native/xpu/GridSampler.cpp
+  - src/ATen/native/xpu/sycl/GridSampler.*
+  grid_sampler_3d:
+  - src/ATen/native/xpu/GridSampler.cpp
+  - src/ATen/native/xpu/sycl/GridSampler.*
+  group_norm:
+  - src/ATen/native/xpu/GroupNorm.cpp
+  - src/ATen/native/xpu/sycl/GroupNormKernels.*
+  gt:
+  - src/ATen/native/xpu/CompareOps.cpp
+  - src/ATen/native/xpu/sycl/CompareKernels.*
+  hardsigmoid:
+  - src/ATen/native/xpu/Activation.cpp
+  - src/ATen/native/xpu/sycl/ActivationHardsigmoidKernels.*
+  hardswish:
+  - src/ATen/native/xpu/Activation.cpp
+  - src/ATen/native/xpu/sycl/ActivationHardswishKernels.*
+  hardtanh:
+  - src/ATen/native/xpu/Activation.cpp
+  - src/ATen/native/xpu/TensorCompare.cpp
+  - src/ATen/native/xpu/sycl/ActivationHardtanhKernels.*
+  - src/ATen/native/xpu/sycl/TensorCompareKernels.*
+  im2col:
+  - src/ATen/native/xpu/Col2Im.cpp
+  - src/ATen/native/xpu/Im2Col.cpp
+  - src/ATen/native/xpu/sycl/Col2ImKernel.*
+  - src/ATen/native/xpu/sycl/Im2ColKernel.*
+  index:
+  - src/ATen/native/xpu/Indexing.cpp
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  index_add:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  index_copy:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  index_fill:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  index_put:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  index_select:
+  - src/ATen/native/xpu/Indexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  isin:
+  - src/ATen/native/xpu/Sorting.cpp
+  - src/ATen/native/xpu/TensorCompare.cpp
+  - src/ATen/native/xpu/sycl/Sorting.*
+  - src/ATen/native/xpu/sycl/TensorCompareKernels.*
+  isinf:
+  - src/ATen/native/xpu/CompareOps.cpp
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/AbsKernel.*
+  - src/ATen/native/xpu/sycl/CompareKernels.*
+  l1_loss:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/AbsKernel.*
+  - src/ATen/native/xpu/sycl/BinaryKernels.*
+  - src/ATen/native/xpu/sycl/ReduceMomentKernels.cpp
+  - src/ATen/native/xpu/sycl/UnarySignKernels.*
+  layer_norm:
+  - src/ATen/native/xpu/LayerNorm.cpp
+  - src/ATen/native/xpu/sycl/LayerNormKernels.*
+  le:
+  - src/ATen/native/xpu/CompareOps.cpp
+  - src/ATen/native/xpu/sycl/CompareKernels.*
+  leaky_relu:
+  - src/ATen/native/xpu/Activation.cpp
+  - src/ATen/native/xpu/sycl/ActivationLeakyReluKernels.*
+  linspace:
+  - src/ATen/native/xpu/RangeFactories.cpp
+  - src/ATen/native/xpu/sycl/RangeFactoriesKernel.*
+  log:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryLogKernels.*
+  log2:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryLogKernels.*
+  log_normal:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/DistributionLogNormalKernel.cpp
+  lt:
+  - src/ATen/native/xpu/CompareOps.cpp
+  - src/ATen/native/xpu/sycl/CompareKernels.*
+  masked_fill:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  masked_select:
+  - src/ATen/native/xpu/Indexing.cpp
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  matmul:
+  - src/ATen/native/xpu/Blas.*
+  max:
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/TensorCompare.cpp
+  - src/ATen/native/xpu/sycl/ReduceMaxValuesKernels.*
+  - src/ATen/native/xpu/sycl/TensorCompareKernels.*
+  max_pool2d:
+  - src/ATen/native/xpu/DilatedMaxPool2d.cpp
+  - src/ATen/native/xpu/sycl/DilatedMaxPool2d.*
+  max_pool3d:
+  - src/ATen/native/xpu/DilatedMaxPool3d.cpp
+  - src/ATen/native/xpu/sycl/DilatedMaxPool3d.*
+  max_unpool2d:
+  - src/ATen/native/xpu/MaxUnpooling.cpp
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/MaxUnpoolingKernels.*
+  - src/ATen/native/xpu/sycl/ScatterGatherKernels.*
+  max_unpool3d:
+  - src/ATen/native/xpu/MaxUnpooling.cpp
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/MaxUnpoolingKernels.*
+  - src/ATen/native/xpu/sycl/ScatterGatherKernels.*
+  maximum:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/MaxMinElementwiseKernels.*
+  mean:
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/sycl/ReduceMomentKernels.cpp
+  minimum:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/MaxMinElementwiseKernels.*
+  mse_loss:
+  - src/ATen/native/xpu/Loss.cpp
+  - src/ATen/native/xpu/sycl/LossKernels.*
+  mul:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryKernels.*
+  multilabel_margin_loss:
+  - src/ATen/native/xpu/LossMultiLabelMargin.cpp
+  - src/ATen/native/xpu/sycl/MultiLabelMarginLossKernels.*
+  multinomial:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/MultinomialKernel.*
+  nan_to_num:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryKernels.*
+  ne:
+  - src/ATen/native/xpu/CompareOps.cpp
+  - src/ATen/native/xpu/sycl/CompareKernels.*
+  neg:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnarySignKernels.*
+  nll_loss:
+  - src/ATen/native/xpu/LossNLL.cpp
+  - src/ATen/native/xpu/sycl/LossNLLKernel.*
+  nll_loss2d:
+  - src/ATen/native/xpu/LossNLL2d.cpp
+  - src/ATen/native/xpu/sycl/LossNLL2dKernels.*
+  nms:
+  - src/ATen/native/xpu/NMS.cpp
+  - src/ATen/native/xpu/XPUFallback.cpp
+  - src/ATen/native/xpu/sycl/NMSKernel.*
+  nonzero:
+  - src/ATen/native/xpu/Nonzero.cpp
+  - src/ATen/native/xpu/sycl/NonzeroKernel.*
+  normal:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/DistributionNormal.cpp
+  pad_sequence:
+  - src/ATen/native/xpu/Copy.cpp
+  - src/ATen/native/xpu/Fill.cpp
+  - src/ATen/native/xpu/sycl/CopyKernel.*
+  - src/ATen/native/xpu/sycl/FillKernel.*
+  pdist:
+  - src/ATen/native/xpu/Distance.cpp
+  - src/ATen/native/xpu/sycl/DistanceKernels.*
+  pow:
+  - src/ATen/native/xpu/Pow.cpp
+  - src/ATen/native/xpu/sycl/PowKernels.*
+  put:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  random:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/DistributionRandomKernel.cpp
+  randperm:
+  - src/ATen/native/xpu/TensorFactories.cpp
+  - src/ATen/native/xpu/sycl/RandpermKernel.*
+  reciprocal:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryFractionKernels.*
+  relu:
+  - src/ATen/native/xpu/Activation.cpp
+  - src/ATen/native/xpu/TensorCompare.cpp
+  - src/ATen/native/xpu/sycl/TensorCompareKernels.*
+  remainder:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryRemainderKernel.*
+  repeat_interleave:
+  - src/ATen/native/xpu/Indexing.cpp
+  - src/ATen/native/xpu/Repeat.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  - src/ATen/native/xpu/sycl/RepeatKernel.*
+  roi_align:
+  - src/ATen/native/xpu/RoiAlign.cpp
+  - src/ATen/native/xpu/XPUFallback.cpp
+  - src/ATen/native/xpu/sycl/RoiAlignKernels.*
+  roll:
+  - src/ATen/native/xpu/TensorTransformations.cpp
+  - src/ATen/native/xpu/sycl/TensorTransformationsKernels.*
+  rsqrt:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryKernels.*
+  rsub:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryKernels.*
+  scatter:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/ScatterGatherKernels.*
+  scatter_add:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/ScatterGatherKernels.*
+  sgn:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnarySignKernels.*
+  sigmoid:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.*
+  - src/ATen/native/xpu/sycl/UnarySpecialOpsKernels.*
+  silu:
+  - src/ATen/native/xpu/Activation.cpp
+  - src/ATen/native/xpu/sycl/ActivationSiluKernels.*
+  sin:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryGeometricSinKernel.*
+  smooth_l1_loss:
+  - src/ATen/native/xpu/Loss.cpp
+  - src/ATen/native/xpu/sycl/LossKernels.*
+  softmax:
+  - src/ATen/native/xpu/SoftMax.cpp
+  - src/ATen/native/xpu/sycl/SoftMaxKernels.*
+  sort:
+  - src/ATen/native/xpu/Sorting.cpp
+  - src/ATen/native/xpu/sycl/Sorting.*
+  sqrt:
+  - src/ATen/native/xpu/UnaryOps.cpp
+  - src/ATen/native/xpu/sycl/UnaryKernels.*
+  std:
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/sycl/ReduceMomentKernels.cpp
+  sub:
+  - src/ATen/native/xpu/BinaryOps.cpp
+  - src/ATen/native/xpu/sycl/BinaryKernels.*
+  sum:
+  - src/ATen/native/xpu/ReduceOps.cpp
+  - src/ATen/native/xpu/sycl/ReduceSumProdKernels.cpp
+  take:
+  - src/ATen/native/xpu/TensorAdvancedIndexing.cpp
+  - src/ATen/native/xpu/sycl/Indexing.*
+  topk:
+  - src/ATen/native/xpu/TensorTopK.cpp
+  - src/ATen/native/xpu/sycl/TensorTopK*
+  unfold_backward:
+  - src/ATen/native/xpu/UnfoldBackward.cpp
+  - src/ATen/native/xpu/sycl/UnfoldBackwardKernels.*
+  uniform:
+  - src/ATen/native/xpu/Distributions.cpp
+  - src/ATen/native/xpu/sycl/DistributionUniform.cpp
+  unique:
+  - src/ATen/native/xpu/Unique.cpp
+  - src/ATen/native/xpu/sycl/UniqueKernels.*
+  upsample_bicubic2d:
+  - src/ATen/native/xpu/UpSampleBicubic2d.cpp
+  - src/ATen/native/xpu/sycl/UpSampleBicubic2dKernels.*
+  upsample_bilinear2d:
+  - src/ATen/native/xpu/UpSampleBilinear2d.cpp
+  - src/ATen/native/xpu/sycl/UpSampleBilinear2dKernels.*
+  upsample_nearest2d:
+  - src/ATen/native/xpu/UpSampleNearest2d.cpp
+  - src/ATen/native/xpu/sycl/UpSampleNearest2dKernels.*
+  upsample_nearest3d:
+  - src/ATen/native/xpu/UpSampleNearest3d.cpp
+  - src/ATen/native/xpu/sycl/UpSampleNearest3dKernels.*
+  upsample_nearest_exact2d:
+  - src/ATen/native/xpu/UpSampleNearest2d.cpp
+  - src/ATen/native/xpu/sycl/UpSampleNearest2dKernels.*
+  where:
+  - src/ATen/native/xpu/TensorCompare.cpp
+  - src/ATen/native/xpu/sycl/TensorCompareKernels.*

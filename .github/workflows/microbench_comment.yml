@@ -1,0 +1,55 @@
+name: Microbench PR Comment
+
+# Posts / updates the single microbench comment of a PR (plan 8.1).
+#
+# The check job of pull.yml only writes the comment as an artifact, because
+# pull_request runs from forks get a read-only token. This workflow runs from
+# the default branch with write permission, never checks out PR code, and
+# cross-checks the PR number in the artifact against the run's head SHA.
+
+on:
+  workflow_run:
+    workflows: [pull]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  comment:
+    if: ${{ github.event.workflow_run.event == 'pull_request' && github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout default branch (scripts only)
+        uses: actions/checkout@v7
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+      - name: Download comment artifact
+        id: dl
+        run: |
+          mkdir -p mb_comment
+          if gh run download ${{ github.event.workflow_run.id }} --repo ${{ github.repository }} \
+              -p 'microbench-comment-*' -D mb_comment; then
+            dir=$(dirname "$(find mb_comment -name comment.json | sort -V | tail -n 1)")
+            if [ -n "$dir" ] && [ -f "$dir/comment.md" ]; then
+              echo "dir=$dir" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          fi
+          echo "No microbench comment artifact in run ${{ github.event.workflow_run.id }}; nothing to do."
+      - name: Post or update the comment
+        if: ${{ steps.dl.outputs.dir != '' }}
+        run: |
+          cd test
+          python -m microbench.github comment \
+            --dir "${{ github.workspace }}/${{ steps.dl.outputs.dir }}" \
+            --repo "${{ github.repository }}" \
+            --head-sha "${{ github.event.workflow_run.head_sha }}"
