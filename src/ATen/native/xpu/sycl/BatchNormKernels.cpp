@@ -1396,8 +1396,7 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor
       sycl::group_barrier(item.get_group());
     }
 
-    const index_t total_elems =
-        static_cast<index_t>(reduction_size_) * stride_;
+    const index_t total_elems = static_cast<index_t>(reduction_size_) * stride_;
 
     if constexpr (VEC_SIZE == 1) {
       for (index_t idx = item.get_global_id(0); idx < total_elems;
