@@ -323,9 +323,17 @@ def test_enrich_failures_matches_on_category_class_and_test(tmp_path):
         "| op_extended | TestFoo | test_bad_longer | failed | three | XML |",
     ])
 
-    rows = ut_results.enrich_failures(tmp_path, ["op_extended,TestFoo,test_bad"])
+    rows = ut_results.enrich_failures(tmp_path, [("op_extended", "op_extended,TestFoo,test_bad")])
 
     assert rows == ["| op_extended | TestFoo | test_bad | failed | two | XML |"]
+
+
+def test_enrich_failures_synthesizes_a_row_for_a_distributed_node_id(tmp_path):
+    rows = ut_results.enrich_failures(
+        tmp_path, [("xpu_distributed", "test/foo.py::TestBar::test_bad")])
+
+    assert rows == [
+        "| xpu_distributed | test/foo.py::TestBar | test_bad | failed |  | Log |"]
 
 
 def seed_artifact(tmp_path, ut="op_regression"):

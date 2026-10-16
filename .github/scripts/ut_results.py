@@ -456,6 +456,7 @@ class CheckResult:
     counts_normal: bool | None = None
     total: int = 0
     new_passes: list[str] = field(default_factory=list)
+    failures: list[str] = field(default_factory=list)
 
     @property
     def verdict(self) -> str:
@@ -709,7 +710,7 @@ class Checker:
 
         return self.finish(category, new, len(passed), counts_normal,
                            total=self.total_cases(category) or len(passed) + len(failures),
-                           new_passes=new_passes)
+                           new_passes=new_passes, failures=failures)
 
     def run_distributed(self, category: str) -> CheckResult:
         """The distributed suite prints a pytest console log, not a junit xml."""
@@ -727,7 +728,8 @@ class Checker:
         new_passes = self.report_passing_known_issues(passed)
         new = self.new_failures(category, failures)
         return self.finish(category, new, len(passed), None,
-                           total=len(passed) + len(failures), new_passes=new_passes)
+                           total=len(passed) + len(failures), new_passes=new_passes,
+                           failures=failures)
 
     def scan_console(self, category: str, markers: tuple[str, ...]) -> list[str]:
         """Sorted, unique `file::class::case` node ids of one outcome."""
@@ -816,12 +818,13 @@ class Checker:
         passed = read_lines(self.path("passed_xpu_profiling.log"))
         failed = read_lines(self.path("failures_xpu_profiling.log"))
         new_passes: list[str] = []
+        new: list[str] = []
         if passed and self.known_issues:
             print("\n✅ Passing Known Issues:")
             new_passes = self.report_passing_known_issues(passed)
         if failed and self.known_issues:
             print("\nChecking New Failures:")
-            self.new_failures("xpu_profiling", failed)
+            new = self.new_failures("xpu_profiling", failed)
 
         print("\n📈 Final Summary:")
         print(f"   Reports: {report_count}, Tests: {total_tests}, "
@@ -829,11 +832,12 @@ class Checker:
         ok = total_failures == 0 and total_errors == 0 and total_tests > 0
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: xpu_profiling")
         return CheckResult(category="xpu_profiling", passed=ok, total=total_tests,
-                           new_passes=new_passes)
+                           new_failures=new, new_passes=new_passes, failures=failed)
 
     def finish(self, category: str, new: list[str], passed_count: int,
                counts_normal: bool | None, total: int = 0,
-               new_passes: list[str] | None = None) -> CheckResult:
+               new_passes: list[str] | None = None,
+               failures: list[str] | None = None) -> CheckResult:
         """A category passes when it has new failures, no passes, no shrink."""
         print("\n📈 Final Summary:")
         print(f"   Failed: {len(new)}, Passed: {passed_count}, "
@@ -842,7 +846,7 @@ class Checker:
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: {category}")
         return CheckResult(category=category, passed=ok, new_failures=new,
                            counts_normal=counts_normal, total=total,
-                           new_passes=new_passes or [])
+                           new_passes=new_passes or [], failures=failures or [])
 
 
 # --------------------------------------------------------------------------- #
@@ -948,7 +952,19 @@ def collect_job_dir(artifact: Path, job_dir: Path) -> None:
                 shutil.copy2(path, target)
 
 
-def enrich_failures(job_dir: Path, lines: list[str], what: str = "new") -> list[str]:
+def failure_row(category: str, line: str) -> str:
+    """A csv row for a failure no junit report described, such as a distributed
+    node id scraped from a console log."""
+    if "::" in line:
+        classname, _, name = line.rpartition("::")
+    else:
+        fields = line.split(",", 2)
+        classname, name = (fields[1], fields[2]) if len(fields) == 3 else ("", line)
+    return md_row([category, classname, name, "failed", "", "Log"])
+
+
+def enrich_failures(job_dir: Path, items: list[tuple[str, str]],
+                    what: str = "new") -> list[str]:
     """Give each failure the error message only the csv carries.
 
     Keyed on category too: one job's csv holds every category it ran, and the
@@ -960,11 +976,17 @@ def enrich_failures(job_dir: Path, lines: list[str], what: str = "new") -> list[
         fields = [f.strip() for f in row.strip("|").split(" | ")]
         if len(fields) >= 3:
             index.setdefault(tuple(fields[:3]), row)
-    enriched = [index[key] for line in lines
-                if (key := tuple(line.split(",", 2))) in index]
-    if rows and len(enriched) != len(lines):
-        warn(f"{job_dir.name} {what} failure count mismatch: "
-             f"filtered={len(lines)}, csv={len(enriched)}")
+    enriched = []
+    missing = 0
+    for category, line in items:
+        row = index.get(tuple(line.split(",", 2)))
+        if row is None:
+            missing += 1
+            row = failure_row(category, line)
+        enriched.append(row)
+    if rows and missing:
+        warn(f"{job_dir.name} {what} failures not in the junit csv: {missing} "
+             f"of {len(items)}")
     return enriched
 
 
@@ -1012,16 +1034,16 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             health_file=job_dir / "run_health.jsonl",
         )
         verdict = {"ut_job": meta.ut_job, "runner": meta.runner, "categories": []}
-        new_lines: list[str] = []
-        known_lines: list[str] = []
+        new_lines: list[tuple[str, str]] = []
+        known_lines: list[tuple[str, str]] = []
         for category in categories_of(meta.ut_job):
             known.write_for(category, meta, job_dir / "Known_issue.log")
             result = checker.run(category)
             failed = failed or not result.passed
-            failures = read_lines(job_dir / f"failures_{category}.log")
-            was_known = [line for line in failures if line not in set(result.new_failures)]
-            new_lines += result.new_failures
-            known_lines += was_known
+            new_set = set(result.new_failures)
+            was_known = [line for line in result.failures if line not in new_set]
+            new_lines += [(category, line) for line in result.new_failures]
+            known_lines += [(category, line) for line in was_known]
             verdict["categories"].append({
                 "category": category,
                 "total": result.total,
@@ -1032,7 +1054,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             })
         print("::endgroup::", flush=True)
 
-        write_lines(job_dir / "new_failure_list.txt", new_lines)
+        write_lines(job_dir / "new_failure_list.txt", [line for _, line in new_lines])
         write_lines(job_dir / "new_ut_failure_list.csv",
                     enrich_failures(job_dir, new_lines, "new"))
         write_lines(job_dir / "known_ut_failure_list.csv",
