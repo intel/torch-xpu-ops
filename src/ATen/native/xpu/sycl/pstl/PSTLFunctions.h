@@ -509,6 +509,67 @@ static inline OutputIt copy_if(
   return d_first + M;
 }
 
+template <typename index_t>
+struct CopyScalarKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    dst_[0] = src_[0];
+  }
+  CopyScalarKernelFunctor(const index_t* src, index_t* dst)
+      : src_(src), dst_(dst) {}
+
+ private:
+  const index_t* src_;
+  index_t* dst_;
+};
+
+template <typename index_t, class InputIt, class OutputIt, class UnaryPredicate>
+static inline void copy_if_count(
+    InputIt first,
+    InputIt last,
+    OutputIt d_first,
+    index_t* count_ptr,
+    UnaryPredicate pred) {
+  RECORD_FUNCTION("copy_if_count_xpu", {});
+  const auto N = std::distance(first, last);
+  if (N == 0) {
+    return;
+  }
+  auto& q = getCurrentSYCLQueue();
+
+  auto index_options = map_options<index_t>();
+
+  Tensor global_mask = at::empty({N}, index_options);
+  Tensor target_pos = at::empty({N}, index_options);
+  index_t* gmask_ptr = global_mask.data_ptr<index_t>();
+  index_t* tpos_ptr = target_pos.data_ptr<index_t>();
+
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      predict_kernel_fn<index_t, InputIt, OutputIt, UnaryPredicate>>();
+  int64_t num_groups = (N + wg_size - 1) / wg_size;
+  sycl_kernel_submit<
+      predict_kernel_fn<index_t, InputIt, OutputIt, UnaryPredicate>>(
+      num_groups * wg_size, wg_size, q, 0, first, pred, gmask_ptr, (int64_t)N);
+
+  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
+
+  int64_t wg_size2 = at::xpu::getKernelMaxWorkGroupSize<
+      copy_if_kernel_fn<index_t, InputIt, OutputIt>>();
+  int64_t num_groups2 = (N + wg_size2 - 1) / wg_size2;
+  sycl_kernel_submit<copy_if_kernel_fn<index_t, InputIt, OutputIt>>(
+      num_groups2 * wg_size2,
+      wg_size2,
+      q,
+      0,
+      first,
+      d_first,
+      gmask_ptr,
+      tpos_ptr,
+      (int64_t)N);
+
+  CopyScalarKernelFunctor<index_t> kfn3(tpos_ptr + N - 1, count_ptr);
+  sycl_kernel_submit(sycl::range<1>(1), q, kfn3);
+}
+
 template <
     typename output_t,
     class InputIt,
