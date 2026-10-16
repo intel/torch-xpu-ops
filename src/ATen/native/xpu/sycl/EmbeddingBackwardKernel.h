@@ -154,9 +154,9 @@ inline void compute_grad_weight_bags_kernel(
 
   auto item = syclext::this_work_item::get_nd_item<1>();
 
-  const int gid = item.get_global_linear_id();
-  const int id = gid / stride_warped;
-  const int startFeature = gid % stride_warped;
+  const int64_t gid = item.get_global_linear_id();
+  const int64_t id = gid / stride_warped;
+  const int64_t startFeature = gid % stride_warped;
   if (startFeature >= stride) {
     return;
   }
@@ -286,9 +286,9 @@ inline void compute_grad_weight_kernel(
   auto segment_offsets_ptr = segment_offsets_data;
 
   auto item = syclext::this_work_item::get_nd_item<1>();
-  const int gid = item.get_global_linear_id();
-  const int id = gid / stride_warped;
-  const int startFeature = gid % stride_warped;
+  const int64_t gid = item.get_global_linear_id();
+  const int64_t id = gid / stride_warped;
+  const int64_t startFeature = gid % stride_warped;
   if (startFeature >= stride) {
     return;
   }
@@ -384,9 +384,9 @@ inline void sum_and_scatter_kernel(
   auto segment_sizes_offsets_ptr = segment_sizes_offsets_data;
 
   auto item = syclext::this_work_item::get_nd_item<1>();
-  const int gid = item.get_global_linear_id();
-  const int id = gid / stride_warped;
-  const int startFeature = gid % stride_warped;
+  const int64_t gid = item.get_global_linear_id();
+  const int64_t id = gid / stride_warped;
+  const int64_t startFeature = gid % stride_warped;
   if (startFeature >= stride) {
     return;
   }
