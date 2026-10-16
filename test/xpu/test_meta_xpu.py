@@ -214,7 +214,6 @@ meta_function_device_skips["xpu"].update(
         xfail("view_as_complex"),
         skip("sparse.sampled_addmm"),
         xfail("nn.functional.binary_cross_entropy"),
-        xfail("narrow_copy"),
         xfail("view_copy"),
         xfail("view"),
         xfail("view_as"),
@@ -259,8 +258,6 @@ TestMetaCudaRef.test_dispatch_symbolic_meta_outplace_all_strides = (
         # XPU-specific skips
         # NotImplementedError
         skip("__rmatmul__", dtypes=[torch.int8, torch.uint8], device_type="xpu"),
-        # NotImplementedError: The operator 'aten::narrow_copy.out'
-        skip("narrow_copy", device_type="xpu"),
         # "tensordot" not implemented for int8/uint8
         skip("tensordot", dtypes=[torch.int8, torch.uint8], device_type="xpu"),
         # XPU SDPA with int8/uint8 calls bmm(float_attn_weights, int_values) internally;
@@ -314,8 +311,6 @@ TestMeta.test_dispatch_symbolic_meta_outplace = _test_dispatch_symbolic_meta_out
         # XPU-specific skips
         # NotImplementedError
         skip("__rmatmul__", dtypes=[torch.int8, torch.uint8], device_type="xpu"),
-        # NotImplementedError: The operator 'aten::narrow_copy.out'
-        skip("narrow_copy", device_type="xpu"),
         # "tensordot" not implemented for int8/uint8
         skip("tensordot", dtypes=[torch.int8, torch.uint8], device_type="xpu"),
         # oneDNN XPU supports int8/uint8 SDPA but it is not integrated;
@@ -371,8 +366,6 @@ _orig_test_meta_outplace = TestMeta.test_meta_outplace
         # XPU-specific skips
         # NotImplementedError
         skip("__rmatmul__", dtypes=[torch.int8, torch.uint8], device_type="xpu"),
-        # NotImplementedError: The operator 'aten::narrow_copy.out'
-        skip("narrow_copy", device_type="xpu"),
         # "tensordot" not implemented for int8/uint8
         skip("tensordot", dtypes=[torch.int8, torch.uint8], device_type="xpu"),
         # oneDNN XPU supports int8/uint8 SDPA but it is not integrated;
