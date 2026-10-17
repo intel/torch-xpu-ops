@@ -73,7 +73,6 @@ skip_files_list = [
     "test_nestedtensor_xpu.py",
     "test_nn_xpu.py",
     "test_ops_fwd_gradients_xpu.py",
-    # "test_ops_gradients_xpu.py",
     # "test_ops_xpu.py",
     "test_optim_xpu.py",
     # "test_reductions_xpu.py",
