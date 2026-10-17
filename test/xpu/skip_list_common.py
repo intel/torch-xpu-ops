@@ -427,4 +427,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
+    f"{PYTORCH_TEST_DIR}/autograd/test_complex.py": None,
+    f"{PYTORCH_TEST_DIR}/autograd/test_logging.py": None,
+    f"{PYTORCH_TEST_DIR}/autograd/test_node_lifecycle.py": None,
 }
