@@ -47,7 +47,7 @@ skip_dict = {
     "functorch/test_aotdispatch_xpu.py": None,
     "functorch/test_control_flow_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    "nn/test_multihead_attention_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_multihead_attention.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
@@ -200,18 +200,8 @@ skip_dict = {
     ),
     "test_numba_integration_xpu.py": None,
     "test_numpy_interop_xpu.py": None,
-    "test_ops_fwd_gradients_xpu.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_fn_fwgrad_bwgrad_stft_xpu_complex128",
-        # https://github.com/intel/torch-xpu-ops/issues/4996
-        "test_fn_fwgrad_bwgrad_stft_xpu_float64",
-    ),
-    "test_ops_gradients_xpu.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_fn_gradgrad_stft_xpu_complex128",
-    ),
+    f"{PYTORCH_TEST_DIR}/test_ops_fwd_gradients.py": None,
+    f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": None,
     "test_ops_xpu.py": (
         "_jiterator_",
         # crash
