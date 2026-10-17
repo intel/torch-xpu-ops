@@ -11,14 +11,6 @@ PYTORCH_TEST_DIR = "../../../../test"
 skip_dict = {
     # torch-xpu-ops tests, not upstreamed yet, must be sorted alphabetically
     "complex_tensor/test_complex_tensor_xpu.py": None,
-    "dynamo/test_aot_autograd_cache_xpu.py": (
-        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
-        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
-        "test_cache_hot_load_device_cpu",
-        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
-        "test_cache_lazy_backward_for_compiled_autograd",
-    ),
-    "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_ctx_manager_xpu.py": (
         # Autocast to float64 is CUDA-specific and not supported on XPU.
         # More details in https://github.com/pytorch/pytorch/pull/179141
@@ -427,4 +419,27 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_activation_offloading.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_aot_autograd.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_aot_autograd_cache.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_autograd_function.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_backward_higher_order_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_base_hop.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_base_output.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_buffers_override.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_bytecode_debugger.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_bytecode_utils.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_call_protocol.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_check_type_id.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_compile.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_compiler_bisector.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_complex.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_comprehensions.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_comptime.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_config.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_contains_protocol.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_contextvars.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_debug_utils.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_decorators.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_deque_reconstruct.py": None,
 }
