@@ -171,6 +171,8 @@ runs:
       run: |
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
+        uv pip install torch==2.15.0 torchaudio torchvision \
+          --index-url https://download.pytorch.org/whl/test/xpu
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
@@ -250,7 +252,6 @@ runs:
           export WORLD_SIZE=4
           export USE_CCL_V2=1
           export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}${GITHUB_WORKSPACE}/pytorch/test/distributed/pipelining"
-          export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
           XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
           if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
             echo -e "[ERROR] XCCL is not enabled"
