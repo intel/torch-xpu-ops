@@ -59,12 +59,11 @@ inline void welford_merge(
     const T& m2n_new) {
   if (count_new == 0)
     return;
-  C new_count = count + count_new;
-  T nb_over_n = T(count_new) / T(new_count);
-  T delta = mean_new - mean;
-  mean += delta * nb_over_n;
-  m2n += m2n_new + delta * delta * T(count) * nb_over_n;
-  count = new_count;
+  T factor = T(1.0) / std::max(1, (count + count_new));
+  T delta0 = mean - mean_new;
+  mean = (mean_new * count_new + mean * count) * factor;
+  m2n += m2n_new + delta0 * delta0 * count_new * count * factor;
+  count += count_new;
 }
 
 template <int VEC_SIZE, typename T, typename C, typename TACC, typename CACC>
