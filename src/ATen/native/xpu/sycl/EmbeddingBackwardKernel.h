@@ -368,7 +368,7 @@ template <typename scalar_t, typename index_t, typename acc_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void sum_and_scatter_kernel(
     int64_t stride,
-    int64_t num_of_partial_segments,
+    const int64_t* num_of_partial_segments_ptr,
     const int64_t padding_idx,
     int64_t stride_warped,
     scalar_t* grad_weight_data,
@@ -391,6 +391,7 @@ inline void sum_and_scatter_kernel(
     return;
   }
   const auto num_of_segments = *num_of_segments_ptr;
+  const auto num_of_partial_segments = *num_of_partial_segments_ptr;
   if (id >= num_of_segments) {
     return;
   }
@@ -420,7 +421,7 @@ void sum_and_scatter(
     int64_t max_segments,
     const Tensor& grad_weight_per_segment,
     const Tensor& segment_sizes_offsets,
-    int64_t num_of_partial_segments,
+    const int64_t* num_of_partial_segments_ptr,
     const int64_t padding_idx) {
   auto grad_weight_data = grad_weight.data_ptr<scalar_t>();
   auto input_data = input.const_data_ptr<index_t>();
@@ -449,7 +450,7 @@ void sum_and_scatter(
       getCurrentSYCLQueue(),
       0,
       stride,
-      num_of_partial_segments,
+      num_of_partial_segments_ptr,
       padding_idx,
       stride_warped,
       grad_weight_data,
