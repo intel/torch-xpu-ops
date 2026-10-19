@@ -22,6 +22,7 @@
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
+#include <sycl/ext/intel/math.hpp>
 
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 
@@ -68,7 +69,7 @@ struct ExpFunctor {
     if constexpr (c10::is_complex<acc_t>::value) {
       return std::exp(static_cast<acc_t>(a));
     } else {
-      return sycl::exp(static_cast<acc_t>(a));
+      return sycl::ext::intel::math::exp(static_cast<acc_t>(a));
     }
   }
 };
@@ -272,7 +273,7 @@ template <typename scalar_t>
 struct Expm1Functor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    return sycl::expm1(static_cast<opmath_t>(a));
+    return sycl::ext::intel::math::expm1(static_cast<opmath_t>(a));
   }
 };
 

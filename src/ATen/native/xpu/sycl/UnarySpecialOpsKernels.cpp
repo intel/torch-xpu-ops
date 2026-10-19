@@ -21,6 +21,7 @@
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
 #include <comm/xpu_aten.h>
+#include <sycl/ext/intel/math.hpp>
 #include <numbers>
 
 #include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
@@ -35,7 +36,8 @@ struct SigmoidFunctor {
     if constexpr (c10::is_complex<opmath_t>::value) {
       return one / (one + std::exp(-static_cast<opmath_t>(a)));
     } else {
-      return one / (one + sycl::exp(-static_cast<opmath_t>(a)));
+      return one /
+          (one + sycl::ext::intel::math::exp(-static_cast<opmath_t>(a)));
     }
   }
 };
@@ -120,7 +122,7 @@ template <typename scalar_t>
 struct Exp2Functor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    return sycl::exp2(static_cast<opmath_t>(a));
+    return sycl::ext::intel::math::exp2(static_cast<opmath_t>(a));
   }
 };
 
