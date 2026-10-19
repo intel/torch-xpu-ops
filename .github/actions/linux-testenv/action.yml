@@ -11,8 +11,8 @@ inputs:
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
-    default: '3.10'
-    description: Python version
+    default: ''
+    description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
   suite:
     type: string
     default: 'None'
@@ -35,7 +35,7 @@ runs:
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
-    - name: Setup python-${{ inputs.python }}
+    - name: Setup python
       uses: ./.github/actions/setup-python
       with:
         python: ${{ inputs.python }}
@@ -126,22 +126,29 @@ runs:
         # common
         uv pip install pandas psutil scipy pyyaml
         cd pytorch
-        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+        # huggingface, timm_models and torchbench all run against the transformers/timm
+        # versions pinned by pytorch, so the three suites stay comparable.
+        if [[ "${{ inputs.suite }}" == *"huggingface"* || \
+              "${{ inputs.suite }}" == *"timm_models"* || \
+              "${{ inputs.suite }}" == *"torchbench"* ]];then
           # for new LLM models
           uv pip install accelerate
-          uv pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || uv pip install transformers==4.54.0 soxr==0.5.0
-          TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
-        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
-          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
+          uv pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt
+          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
           uv pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
-        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
+          # chdir avoids importing the checkout instead of the installed package
+          PINNED_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
+          echo "Pinned by pytorch: transformers/timm ${PINNED_VERSIONS}"
+        fi
+        if [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
           cd ../
           rm -rf ./benchmark
           git clone https://github.com/pytorch/benchmark benchmark
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
-          sed -i 's/^ *pynvml.*//' requirements.txt
+          # torchbench carries its own transformers/timm pins, drop them for the pytorch ones
+          sed -i -E '/^[[:space:]]*(pynvml|transformers|timm)([[:space:]]*[<>=!~;[].*)?[[:space:]]*$/d' requirements.txt
           # Work around legacy deps (e.g. visdom) that still import
           # pkg_resources during build on newer Python toolchains.
           CONSTRAINT_FILE=/tmp/pip-constraints.txt
@@ -156,7 +163,7 @@ runs:
               python install.py $(echo $line |awk -F, '{printf $1}')
             done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
           else
-            python install.py --continue_on_fail
+            python install.py --continue_on_fail $(echo "${MODEL_ONLY_NAME}" |sed 's/,/ /g')
           fi
           echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
           # for dlrm
@@ -184,11 +191,18 @@ runs:
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs uv pip install
           uv pip uninstall fbgemm_gpu_nightly-cpu
           cd ../pytorch
-        else
+        elif [[ "${{ inputs.suite }}" != *"huggingface"* && "${{ inputs.suite }}" != *"timm_models"* ]];then
           # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
           sed -i '/mkl/d' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
           uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
+        fi
+        if [ -n "${PINNED_VERSIONS:-}" ];then
+          CURRENT_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
+          if [ "${CURRENT_VERSIONS}" != "${PINNED_VERSIONS}" ];then
+            echo "::error::transformers/timm changed from '${PINNED_VERSIONS}' to '${CURRENT_VERSIONS}' while installing suite requirements"
+            exit 1
+          fi
         fi
         # install the corresponding torchao
         uv pip uninstall torchao
@@ -202,23 +216,7 @@ runs:
         if [ "${{ inputs.suite }}" != "None" ];then
           # To install numpy 1.x for benchmarks as CUDA
           # yolov requires numpy>=1.23
-          uv pip install -U numpy==1.26.4
-        fi
-    - name: Update numpy
-      shell: bash -xe {0}
-      run: |
-        # TODO: Remove this step once Python 3.10 is no longer supported.
-        if [[ "${{ inputs.python }}" == "3.10" ]]; then
-          CURRENT_NUMPY=$(python -c "import numpy as np; print(np.__version__)")
-          if [[ "${CURRENT_NUMPY}" == 1.23.* ]]; then
-            echo "Detected numpy ${CURRENT_NUMPY}; upgrading to 1.24.4"
-            uv pip install -U "numpy==1.24.4"
-            python -c "import numpy as np; print(f'numpy version after conditional upgrade: {np.__version__}')"
-          else
-            echo "numpy is ${CURRENT_NUMPY}; skipping upgrade because version is not 1.23.*"
-          fi
-        else
-          echo "Skipping Update numpy because python is not 3.10 (python=${{ inputs.python }})"
+          uv pip install -U numpy==1.26.4 scipy==1.11.4
         fi
     - name: Detect devices
       shell: bash -euo pipefail {0}
@@ -233,7 +231,16 @@ runs:
         python -c "import torchvision; print(torchvision.__version__)"
         python -c "import torchaudio; print(torchaudio.__version__)"
         python -c "import triton; print(triton.__version__)"
-        python pytorch/torch/utils/collect_env.py
+        # Land the environment and the exact shas under test in ut_log so they
+        # ride along in the UT artifact; ut_collect_evidence.py reads them to
+        # render the issue body and to build baseline..current compare links.
+        mkdir -p "${{ github.workspace }}/ut_log"
+        python pytorch/torch/utils/collect_env.py |tee "${{ github.workspace }}/ut_log/collect_env.log"
+        # collect_env only carries an abbreviated torch sha and no torch-xpu-ops sha.
+        printf 'torch=%s\ntorch_xpu_ops=%s\n' \
+          "${TORCH_COMMIT_ID}" \
+          "$(git -C pytorch/third_party/torch-xpu-ops rev-parse HEAD 2>/dev/null || echo unknown)" \
+          > "${{ github.workspace }}/ut_log/versions.txt"
         uv pip list |grep -E 'torch|intel'
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then

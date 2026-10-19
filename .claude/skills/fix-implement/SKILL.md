@@ -5,8 +5,8 @@ description: >
   proposed patch, or produce a staged code change from triage output.
   Takes fix-root-cause's output and edits code; leaves the change staged
   (uncommitted) for fix-verify to check. Does NOT run tests, does NOT
-  commit, does NOT open PRs. Called by both issue-handler
-  (`allow_skip=false`) and xpu-nightly-ci-fix (`allow_skip=true`).
+  commit, does NOT open PRs. Called by issue-handler, with `allow_skip`
+  set from the kind of issue being fixed.
 ---
 
 # Implement — Apply the Fix
@@ -41,11 +41,13 @@ is `fix-verify`'s job); staging-only, see HARD RULES.
   All git and edit operations in this skill run against
   `target_repo_dir`, never against `PYTORCH_DIR` when the two differ.
 - `allow_skip` — controls skip decorator strategy:
-  - `false` (**issue-handler**): never add skip decorators; must unskip
-    and really fix.
-  - `true` (**xpu-nightly-ci-fix**): may add a skip with tracking issue
-    when the fix requires significant implementation work beyond the
-    current scope. Stale skips must still be removed.
+  - `false` (UT and everything else): never add skip decorators; must
+    unskip and really fix.
+  - `true` (CI break: `pytorch-ci-failure`, or a mirrored DISABLED
+    test): may add a skip with a tracking issue when
+    the fix needs dependencies, information you do not have, or
+    feature-sized work. Repair in place first; the skip is the fallback.
+    Stale skips must still be removed.
 
 ## Step 0: Verify environment
 
@@ -107,9 +109,9 @@ Skip decorators for a failing test live wherever that test lives: the
 pytorch test tree for upstream tests, `test/xpu/` inside torch-xpu-ops
 for its own tests.
 
-**The skip must live inside `target_repo_dir`.** This skill only ever
-produces a single-repo diff, and the orchestrator commits (or reads)
-only `target_repo_dir`. If the skip would have to be added to a file
+**The skip must live inside `target_repo_dir`.** One invocation produces
+one repo's diff (a two-repo fix is two invocations), and the orchestrator
+commits (or reads) only `target_repo_dir`. If the skip would have to be added to a file
 outside `target_repo_dir` — e.g. `target_repo == "torch-xpu-ops"` but
 the failing test is in pytorch's `test/` tree — do NOT edit it: that
 change would be left uncommitted and then wiped by the orchestrator's
@@ -128,8 +130,9 @@ first so the skip has a follow-up owner, then edit:
 # 1. Create the tracking issue and capture the URL.
 issue_url=$(gh issue create \
   --repo intel/torch-xpu-ops \
-  --title "[skip-added] <test_id> on XPU" \
-  --body "Auto-added by fix-implement (allow_skip=true).
+  --title "[upstream_ut] <test name>: <one-line symptom>" \
+  --body "Auto-added by fix-implement (allow_skip=true) while handling
+  intel/torch-xpu-ops#<the issue number this run was triggered on>.
 
   Test: <test_id>
   Original failure: <one-line failure summary from triage_result>
@@ -137,7 +140,7 @@ issue_url=$(gh issue create \
   Reason for skip: <why the actual fix requires human follow-up>
   Base analyzed: <target_repo>@<short_sha from analyzed_sha>
   " \
-  --label "agent-added,module: xpu" \
+  --label "test: ut" \
   | tail -1)
 
 # 2. Add the decorator with a comment citing $issue_url so a human
@@ -152,8 +155,11 @@ issue_url=$(gh issue create \
 ```
 
 Emit the resulting `issue_url` as `tracking_issue` in the JSON output
-(see Output section). `skip_added` becomes `true`. The issue label
-`agent-added` lets a human filter for automated-triage tracking issues.
+(see Output section). `skip_added` becomes `true`.
+
+Keep the title prefix, the label, and the bare `intel/torch-xpu-ops#<N>`
+exactly as above: a label this repo does not have fails the call, and
+backticking the issue number kills the cross-reference back to it.
 
 ## Step 3: Stage changes
 
@@ -168,7 +174,7 @@ tooling, not part of any bug fix (see HARD RULES).
 
 ## Step 3.5: Skip-guard review (only when `allow_skip=false`)
 
-Skip this step entirely when `allow_skip=true` (xpu-nightly-ci-fix flow).
+Skip this step entirely when `allow_skip=true` (the CI-break flow).
 
 When `allow_skip=false`, spawn a fresh-context subagent via the `Task`
 tool (`subagent_type=general-purpose`) to inspect the staged diff for
@@ -249,20 +255,25 @@ markdown block so a downstream caller can locate its own previous
 implement comment (if any) and update it in place. Comment location and
 update is the **caller's** responsibility.
 
-```
+````markdown
 <!-- agent:implement -->
 
 ## Implement Result
 
 - **Target repo:** <pytorch | torch-xpu-ops>
 - **Analyzed at:** <target_repo>@<short_sha>
-- **What I changed:** <bullet list of files and what changed in each>
+- **What I changed:** <per file: what changed in it, with the line count>
 - **Why:** <one sentence connecting each change to the triage root cause; must cite file:line for every upstream/CUDA comparison — see the hard rule below>
 - **Skip added:** <yes (tracking: intel/torch-xpu-ops#N, url: <url>) | no>
 - **Ready for verify:** <yes | no>
 
-*Automated by fix-implement.*
+```diff
+<git diff --cached, or the key hunks when the full diff would blow the
+65000-char comment limit>
 ```
+
+*Automated by fix-implement.*
+````
 
 ```json
 {
@@ -272,6 +283,7 @@ update is the **caller's** responsibility.
   "skip_added": false,
   "tracking_issue": null,
   "allow_skip": false,
+  "covers": [],
   "ready_for_verify": true,
   "verdict": "READY or NEEDS_HUMAN",
   "reason": "<enumerated reason code, see below>",
@@ -290,12 +302,16 @@ update is the **caller's** responsibility.
   --name-only` **at output time**. Re-run that command immediately
   before emitting the JSON block; do not cache a pre-Step-3.5 file list,
   because Step 3.5's reviewer may have unstaged offending files.
+- `covers` — other batch entries this patch also fixes, confirmed by
+  re-running them against the staged fix (see `issue-handler`, "One fix
+  may cover several sub-items"). Node ids or issue numbers; empty on the
+  single-bug path. They are not fixed again.
 - `skip_added` — `true` only when this run added a new skip decorator
   under `allow_skip=true`. Removing a stale skip is NOT `skip_added`.
 - `tracking_issue` — issue URL from the "Add a new skip" recipe in
-  Step 2 when `skip_added=true`; `null` otherwise. `xpu-nightly-ci-fix`
-  reads this to populate the "Needs Human (skip added)" section of
-  its summary.
+  Step 2 when `skip_added=true`; `null` otherwise. The orchestrator
+  reads this for the "Skipped (with tracking issue)" rows of its
+  fan-out report.
 - `allow_skip` — echo the input flag verbatim, so a reviewer can tell
   by looking at the output alone whether Step 3.5 ran.
 - `ready_for_verify` — `true` when Step 3.5 (if it ran) returned

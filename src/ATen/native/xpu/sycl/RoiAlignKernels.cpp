@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -477,8 +478,8 @@ Tensor roi_align_kernel(
       input.scalar_type(),
       "roi_align_forward_kernel_xpu",
       [&] {
-        int64_t local_range =
-            syclMaxWorkGroupSize<RoiAlignForwardKernel<scalar_t>>();
+        int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<
+            RoiAlignForwardKernel<scalar_t>>();
         int items_per_roi = pooled_height * pooled_width * channels;
         if (items_per_roi < local_range) {
           constexpr int simd_len = 32;

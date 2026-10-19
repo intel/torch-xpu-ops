@@ -17,6 +17,7 @@
 #include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SharedReduceOps.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/MemoryFormat.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
@@ -1042,7 +1043,7 @@ void group_norm_kernel_impl(
   T* mean_data = mean.mutable_data_ptr<T>();
   T* rstd_data = rstd.mutable_data_ptr<T>();
   auto& queue = getCurrentSYCLQueue();
-  int64_t simd = syclMaxSubGroupSize();
+  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
 
   // --- Fused forward path: single kernel for Welford + normalization ---
   constexpr int FUSED_VEC_SIZE = 4;
@@ -1066,7 +1067,7 @@ void group_norm_kernel_impl(
     rstd_acc_data = rstd_acc.mutable_data_ptr<T_ACC>();
   }
 
-  int64_t thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int64_t thread_slots = at::xpu::getDeviceHWThreads();
 
   // Small-DS path: single vec4 per lane (covers DS where lanes <= SIMD).
   // WG = 1 SG, flat mapping over (N, G) with grid-stride loop.
@@ -1220,7 +1221,7 @@ void group_norm_kernel_impl(
       using index_t = decltype(index_tag);
       using K =
           GNFusedForwardFunctor<T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
-      int64_t max_wg = syclMaxWorkGroupSize<K>();
+      int64_t max_wg = at::xpu::getKernelMaxWorkGroupSize<K>();
       int64_t ideal = (DS + kElemsPerWorkItem - 1) / kElemsPerWorkItem;
       int64_t min_wg_for_occ =
           ((thread_slots / 2 + n_groups - 1) / n_groups) * simd;
@@ -1234,12 +1235,12 @@ void group_norm_kernel_impl(
         }
       }
       // SLM budget: local_mem_size shared among concurrent WGs per Xe-core
-      int64_t eu_per_xc = syclGpuEUCountPerSubslice();
+      int64_t eu_per_xc = at::xpu::getDeviceEUCountPerXeCore();
       int64_t hw_thr = syclGpuHWThreadsPerEU();
       int64_t slots_per_xc = eu_per_xc * hw_thr;
       int64_t sgs_per_wg = wg_size / simd;
       int64_t concurrent_wgs = slots_per_xc / sgs_per_wg;
-      int64_t slm_per_wg = syclLocalMemSize() / concurrent_wgs;
+      int64_t slm_per_wg = at::xpu::getDeviceLocalMemSize() / concurrent_wgs;
       bool use_slm_coeff = (2 * D * (int64_t)sizeof(T_ACC) <= slm_per_wg);
       auto kfn =
           K(static_cast<index_t>(D),
@@ -1295,7 +1296,8 @@ void group_norm_kernel_impl(
     using KernelS32T =
         GNRowwiseMomentsVectorizedFunctor<T, T_ACC, SIMD32, VEC_SIZE>;
     auto max_size = std::min(
-        syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
+        at::xpu::getKernelMaxWorkGroupSize<KernelS16T>(),
+        at::xpu::getKernelMaxWorkGroupSize<KernelS32T>());
     auto wg_size =
         get_adaptive_workgroup_size(prob_size / VEC_SIZE, simd, max_size);
     auto global_range = sycl::range<1>((stride / VEC_SIZE) * wg_size);
@@ -1316,7 +1318,8 @@ void group_norm_kernel_impl(
     using KernelS16T = GNRowwiseMomentsFunctor<T, T_ACC, SIMD16>;
     using KernelS32T = GNRowwiseMomentsFunctor<T, T_ACC, SIMD32>;
     auto max_size = std::min(
-        syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
+        at::xpu::getKernelMaxWorkGroupSize<KernelS16T>(),
+        at::xpu::getKernelMaxWorkGroupSize<KernelS32T>());
     auto wg_size = get_adaptive_workgroup_size(prob_size, simd, max_size);
     auto global_range = sycl::range<1>(stride * wg_size);
     auto local_range = sycl::range<1>(wg_size);
@@ -1388,6 +1391,13 @@ void group_norm_kernel(
     Tensor& Y,
     Tensor& mean,
     Tensor& rstd) {
+  // native_group_norm hands us X already contiguous in some memory format, so
+  // a non-contiguous X here means channels-last (NHWC/NDHWC).
+  // The kernels below index X/Y linearly as NCHW, hence the round-trip.
+  const bool is_channels_last = !X.is_contiguous();
+  Tensor X_ = is_channels_last ? X.contiguous() : X;
+  Tensor Y_ = is_channels_last ? at::empty_like(X_) : Y;
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -1395,7 +1405,7 @@ void group_norm_kernel(
       "group_norm_xpu",
       [&]() {
         group_norm_kernel_impl<scalar_t>(
-            X,
+            X_,
             gamma,
             beta,
             N,
@@ -1403,10 +1413,14 @@ void group_norm_kernel(
             HxW,
             group,
             static_cast<scalar_t>(eps),
-            Y,
+            Y_,
             mean,
             rstd);
       });
+
+  if (is_channels_last) {
+    Y.copy_(Y_);
+  }
 }
 
 template <typename T, typename T_ACC, int SIMD>
@@ -1711,7 +1725,7 @@ void group_norm_1d_backward(
   const T* rstd_data = rstd.const_data_ptr<T>();
 
   auto& queue = getCurrentSYCLQueue();
-  int64_t simd = syclMaxSubGroupSize();
+  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
 
   if (dX.defined()) {
     const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
@@ -2287,7 +2301,7 @@ void group_norm_backward_kernel_impl(
   }
 
   auto& queue = getCurrentSYCLQueue();
-  int64_t simd = syclMaxSubGroupSize();
+  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
 
   constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
   int64_t wg_size = 0;
@@ -2455,6 +2469,14 @@ void group_norm_backward_kernel(
     Tensor& dX,
     Tensor& dgamma,
     Tensor& dbeta) {
+  // native_group_norm_backward hands us dY/X already contiguous in some memory
+  // format, so a non-contiguous X here means channels-last (NHWC/NDHWC).
+  // The kernels below index dY/X/dX linearly as NCHW.
+  const bool is_channels_last = !X.is_contiguous();
+  Tensor X_ = is_channels_last ? X.contiguous() : X;
+  Tensor dY_ = is_channels_last ? dY.contiguous() : dY;
+  Tensor dX_ = (is_channels_last && dX.defined()) ? at::empty_like(X_) : dX;
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -2462,8 +2484,12 @@ void group_norm_backward_kernel(
       "group_norm_backward_xpu",
       [&]() {
         group_norm_backward_kernel_impl<scalar_t>(
-            dY, X, mean, rstd, gamma, N, C, HxW, group, dX, dgamma, dbeta);
+            dY_, X_, mean, rstd, gamma, N, C, HxW, group, dX_, dgamma, dbeta);
       });
+
+  if (is_channels_last && dX.defined()) {
+    dX.copy_(dX_);
+  }
 }
 
 } // namespace at::native::xpu

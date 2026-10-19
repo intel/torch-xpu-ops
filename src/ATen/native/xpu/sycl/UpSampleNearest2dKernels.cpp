@@ -12,6 +12,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/LaunchUtils.h>
 #include <ATen/native/xpu/sycl/UpSampleNearest2dKernels.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
@@ -141,7 +142,7 @@ void upsample_nearest2d_backward_channels_last_kernel(
     accscalar_t grad = 0;
     for (int ih = h1; ih < h1_up; ih++) {
       for (int iw = w1; iw < w1_up; iw++) {
-        grad += go_[idx_cl(n, ih, iw, c, height1_, width1_, channels_)];
+        grad += go_[idx_cl<size_t>(n, ih, iw, c, height1_, width1_, channels_)];
       }
     }
     gi_[index] = static_cast<scalar_t>(grad);
@@ -447,7 +448,8 @@ void upsample_nearest2d_channels_last_kernel(
     const size_t w1 =
         width1_ == width2_ ? w2 : index_op_(width_scale_, w2, width1_);
 
-    odata_[index] = idata_[idx_cl(n, h1, w1, c, height1_, width1_, channels_)];
+    odata_[index] =
+        idata_[idx_cl<size_t>(n, h1, w1, c, height1_, width1_, channels_)];
   }
 }
 
@@ -469,7 +471,7 @@ void upsample_nearest2d_channels_last_frame(
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t global_range =
       (out_numel + work_group_size - 1) / work_group_size * work_group_size;
-  int64_t max_groups = syclMaxWorkItemsPerTile() / work_group_size;
+  int64_t max_groups = at::xpu::getDeviceMaxWorkItems() / work_group_size;
   max_groups = std::max<int64_t>(1, max_groups);
   global_range = std::min<int64_t>(global_range, max_groups * work_group_size);
 

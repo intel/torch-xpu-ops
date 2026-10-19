@@ -569,13 +569,10 @@ void dq_dk_dv_1colblock(
     const int bidhkv,
     const int n_block,
     const int tail_n = 0) {
-  using T = typename Trait::DType;
   using V = typename Trait::VType;
   constexpr int kHeadDim = Trait::kHeadDim;
   constexpr int kBlockM = Trait::kBlockM;
   constexpr int kBlockN = Trait::kBlockN;
-  constexpr int kNSGs = Trait::kNSGs;
-  constexpr int SubgroupSize = Trait::SubgroupSize;
   constexpr bool is_causal = Trait::is_causal;
   auto local_id = int(compat::get_nd_item<1>().get_local_id(0));
   auto group = compat::get_nd_item<1>().get_group();
@@ -934,11 +931,7 @@ void convert_dq(
   copy(tileload_dQaccum, thr_tile_dQaccum_S, rdQaccum);
   if constexpr (Is_even_M) {
     Tensor rdQ = convert_type<DType>(rdQaccum);
-    Tensor accQ = make_identity_tensor(shapeQ);
-    Tensor taccQ = thr_save_dQ.partition_D(accQ);
-    Tensor taccQ_rc = logical_divide(taccQ, Shape<_1>{})(0, _, 0);
     for (int m = 0; m < size<1>(thr_tile_dQ_D); ++m) {
-      int row_m = get<0>(taccQ_rc(m));
       auto thr_tile_dq = thr_tile_dQ_D(_, m, _);
       auto r_dq = rdQ(_, m, _);
       copy(r_dq, thr_tile_dq);

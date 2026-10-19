@@ -99,7 +99,8 @@ void where_kernel(TensorIterator& iter) {
       kBFloat16,
       kBool,
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-      AT_EXPAND(AT_FLOAT8_TYPES));
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 void isposinf_kernel(TensorIteratorBase& iter) {
@@ -192,36 +193,38 @@ struct AssertAsyncKernelFunctor1 {
   void operator()(sycl::nd_item<1> item) const {
     SYCL_KERNEL_ASSERT(input_[0] != 0);
   }
-  AssertAsyncKernelFunctor1(const scalar_t* input, Msg msg)
-      : input_(input), msg_(msg) {}
+  // TODO: add actual handling for the message argument
+  // See: https://github.com/intel/torch-xpu-ops/issues/5165
+  AssertAsyncKernelFunctor1(const scalar_t* input, Msg) : input_(input) {}
 
  private:
   const scalar_t* input_;
-  Msg msg_;
 };
 
 struct AssertAsyncKernelFunctor2 {
   void operator()(sycl::nd_item<1> item) const {
     SYCL_KERNEL_ASSERT(input_[0] != c10::complex<float>(0, 0));
   }
-  AssertAsyncKernelFunctor2(const c10::complex<float>* input, Msg msg)
-      : input_(input), msg_(msg) {}
+  // TODO: add actual handling for the message argument
+  // See: https://github.com/intel/torch-xpu-ops/issues/5165
+  AssertAsyncKernelFunctor2(const c10::complex<float>* input, Msg)
+      : input_(input) {}
 
  private:
   const c10::complex<float>* input_;
-  Msg msg_;
 };
 
 struct AssertAsyncKernelFunctor3 {
   void operator()(sycl::nd_item<1> item) const {
     SYCL_KERNEL_ASSERT(input_[0] != c10::complex<double>(0, 0));
   }
-  AssertAsyncKernelFunctor3(const c10::complex<double>* input, Msg msg)
-      : input_(input), msg_(msg) {}
+  // TODO: add actual handling for the message argument
+  // See: https://github.com/intel/torch-xpu-ops/issues/5165
+  AssertAsyncKernelFunctor3(const c10::complex<double>* input, Msg)
+      : input_(input) {}
 
  private:
   const c10::complex<double>* input_;
-  Msg msg_;
 };
 
 template <typename scalar_t>

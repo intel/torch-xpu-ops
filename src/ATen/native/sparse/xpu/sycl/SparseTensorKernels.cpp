@@ -50,69 +50,52 @@ struct CoalesceEQFunctor {
 };
 
 template <typename Dtype, typename Acctype>
-struct CoalesceValuesKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    int seg = item.get_group(1) * 4 + item.get_local_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void coalesce_values_kernel(
+    int64_t* segment_offsets,
+    int64_t* value_indices,
+    Dtype* values,
+    Dtype* newValues,
+    int64_t nnz,
+    int64_t newNnz,
+    int64_t stride) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  int seg = item.get_group(1) * 4 + item.get_local_id(0);
 
-    // Number of values processed by each thread (grain size)
-    constexpr int SZ = 4;
+  // Number of values processed by each thread (grain size)
+  constexpr int SZ = 4;
 
-    if (seg < newNnz_) {
-      const int newValueRow = seg * stride_;
-      const int begin = segment_offsets_[seg];
-      const int end = (seg < newNnz_ - 1) ? segment_offsets_[seg + 1] : nnz_;
-      const int startFeature = item.get_local_id(1) +
-          item.get_group(0) * item.get_local_range(1) * SZ;
-      Acctype tmp[SZ];
+  if (seg < newNnz) {
+    const int newValueRow = seg * stride;
+    const int begin = segment_offsets[seg];
+    const int end = (seg < newNnz - 1) ? segment_offsets[seg + 1] : nnz;
+    const int startFeature =
+        item.get_local_id(1) + item.get_group(0) * item.get_local_range(1) * SZ;
+    Acctype tmp[SZ];
 #pragma unroll
-      for (int ii = 0; ii < SZ; ii++) {
-        tmp[ii] = 0;
-      }
-      for (int row = begin; row < end; row++) {
-        const int valueRow = ((int)value_indices_[row]) * stride_;
+    for (int ii = 0; ii < SZ; ii++) {
+      tmp[ii] = 0;
+    }
+    for (int row = begin; row < end; row++) {
+      const int valueRow = ((int)value_indices[row]) * stride;
 
-#pragma unroll
-        for (int ii = 0; ii < SZ; ii++) {
-          int featureDim = startFeature + ii * C10_WARP_SIZE;
-          if (featureDim < stride_) {
-            tmp[ii] += static_cast<Acctype>(values_[valueRow + featureDim]);
-          }
-        }
-      }
 #pragma unroll
       for (int ii = 0; ii < SZ; ii++) {
         int featureDim = startFeature + ii * C10_WARP_SIZE;
-        if (featureDim < stride_) {
-          newValues_[newValueRow + featureDim] = static_cast<Dtype>(tmp[ii]);
+        if (featureDim < stride) {
+          tmp[ii] += static_cast<Acctype>(values[valueRow + featureDim]);
         }
       }
     }
+#pragma unroll
+    for (int ii = 0; ii < SZ; ii++) {
+      int featureDim = startFeature + ii * C10_WARP_SIZE;
+      if (featureDim < stride) {
+        newValues[newValueRow + featureDim] = static_cast<Dtype>(tmp[ii]);
+      }
+    }
   }
-  CoalesceValuesKernelFunctor(
-      const int64_t* segment_offsets,
-      const int64_t* value_indices,
-      const Dtype* values,
-      Dtype* newValues,
-      int64_t nnz,
-      int64_t newNnz,
-      int64_t stride)
-      : segment_offsets_(segment_offsets),
-        value_indices_(value_indices),
-        values_(values),
-        newValues_(newValues),
-        nnz_(nnz),
-        newNnz_(newNnz),
-        stride_(stride) {}
-
- private:
-  const int64_t* segment_offsets_;
-  const int64_t* value_indices_;
-  const Dtype* values_;
-  Dtype* newValues_;
-  int64_t nnz_;
-  int64_t newNnz_;
-  int64_t stride_;
-};
+}
 
 SparseTensor coalesce_sparse_kernel(const SparseTensor& self) {
   int64_t nnz = self._nnz();
@@ -174,16 +157,18 @@ SparseTensor coalesce_sparse_kernel(const SparseTensor& self) {
         "coalesce_sparse_xpu",
         [&] {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
-          auto caller = CoalesceValuesKernelFunctor<scalar_t, accscalar_t>(
-              uniqueOffsets.const_data_ptr<int64_t>(),
-              origIndices.const_data_ptr<int64_t>(),
-              values.const_data_ptr<scalar_t>(),
+          sycl_kernel_submit<coalesce_values_kernel<scalar_t, accscalar_t>>(
+              global_range,
+              local_range,
+              getCurrentSYCLQueue(),
+              0,
+              uniqueOffsets.data_ptr<int64_t>(),
+              origIndices.data_ptr<int64_t>(),
+              values.data_ptr<scalar_t>(),
               newValues.data_ptr<scalar_t>(),
               nnz,
               newNnz,
               stride);
-          sycl_kernel_submit(
-              global_range, local_range, getCurrentSYCLQueue(), caller);
         });
   }
 

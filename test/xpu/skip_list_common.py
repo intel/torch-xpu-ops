@@ -9,20 +9,51 @@
 PYTORCH_TEST_DIR = "../../../../test"
 
 skip_dict = {
+    # torch-xpu-ops tests, not upstreamed yet, must be sorted alphabetically
     "complex_tensor/test_complex_tensor_xpu.py": None,
+    "dynamo/test_aot_autograd_cache_xpu.py": (
+        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
+        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
+        "test_cache_hot_load_device_cpu",
+        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
+        "test_cache_lazy_backward_for_compiled_autograd",
+    ),
+    "dynamo/test_compiler_bisector_xpu.py": None,
+    "dynamo/test_ctx_manager_xpu.py": (
+        # Autocast to float64 is CUDA-specific and not supported on XPU.
+        # More details in https://github.com/pytorch/pytorch/pull/179141
+        "test_autocast_float64",
+        "test_cuda_amp_autocast",
+    ),
+    "dynamo/test_cudagraphs_xpu.py": None,
+    "dynamo/test_deviceguard_xpu.py": None,
+    "dynamo/test_export_xpu.py": None,
+    "dynamo/test_logging_xpu.py": None,
+    "dynamo/test_misc_xpu.py": None,
+    "dynamo/test_recompiles_xpu.py": None,
+    "dynamo/test_regional_inductor_xpu.py": None,
+    "dynamo/test_streams_xpu.py": None,
+    "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
+    "export/test_cpp_serdes_xpu.py": None,
+    "export/test_draft_export_xpu.py": None,
+    "export/test_experimental_xpu.py": None,
+    "export/test_export_opinfo_xpu.py": None,
+    "export/test_export_strict_xpu.py": None,
+    "export/test_export_training_ir_to_run_decomp_xpu.py": None,
+    "export/test_retraceability_xpu.py": None,
+    "export/test_serdes_xpu.py": None,
+    "export/test_serialize_xpu.py": None,
+    "export/test_strict_export_v2_xpu.py": None,
+    "functorch/test_aotdispatch_xpu.py": None,
+    "functorch/test_control_flow_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    "nn/test_convolution_xpu.py": None,
-    "nn/test_dropout_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
-    "nn/test_init_xpu.py": None,
-    "nn/test_lazy_modules_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
-    f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     "nn/test_multihead_attention_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
-    "nn/test_pooling_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
+    "profiler/test_cpp_thread_xpu.py": None,
+    "profiler/test_execution_trace_xpu.py": None,
+    "profiler/test_profiler_use_cases.py": None,
+    "profiler/test_profiler_xpu.py": None,
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Tensor-likes are not close!
         # RuntimeError: value cannot be converted to type int without overflow
@@ -67,8 +98,6 @@ skip_dict = {
         # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
-    f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
-    "test_autograd_fallback_xpu.py": None,
     "test_autograd_xpu.py": (
         # skipped due to #2536, torch._C._scatter or torch._C._gather
         "test_profiler_emit_nvtx_xpu",
@@ -81,9 +110,23 @@ skip_dict = {
         "test_foward_mode_AD_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
-    "test_comparison_utils_xpu.py": None,
+    "test_compile_benchmark_util_xpu.py": None,
     "test_complex_xpu.py": None,
-    "test_content_store_xpu.py": None,
+    "test_cpp_api_parity_xpu.py": None,
+    "test_cuda_multigpu_xpu.py": None,
+    "test_cuda_nvml_based_avail_xpu.py": None,
+    "test_cuda_primary_ctx_xpu.py": None,
+    "test_cuda_sanitizer_xpu.py": None,
+    "test_custom_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/3644
+        # CPU-only tests, flaky under pytest-xdist worksteal scheduling
+        "test_backward_dict_grad_for_nontensor",
+        "test_backward_dict_invalid_keys",
+        "test_backward_dict_requires_keys_for_input_optional_tensors",
+        "test_backward_dict_requires_keys_for_input_tensors",
+        "test_backward_grads_are_tensor_or_none",
+        "test_backward_impl_on_existing_op",
+    ),
     "test_dataloader_xpu.py": None,
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
@@ -100,16 +143,14 @@ skip_dict = {
         "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
     "test_distributions_xpu.py": None,
-    "test_dynamic_shapes_xpu.py": None,
-    "test_foreach_xpu.py": (
-        # RuntimeError: Tried to instantiate dummy base class CUDAGraph
-        "use_cuda_graph_True",
+    "test_expanded_weights_xpu.py": None,
+    "test_fake_tensor_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2472
+        # aten::_cudnn_rnn/aten::miopen_rnn not supported
+        "test_cudnn_rnn",
     ),
-    "test_indexing_xpu.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_index_add_fast_path_xpu_float64",
-    ),
+    "test_fx_experimental_xpu.py": None,
+    "test_fx_xpu.py": None,
     "test_linalg_xpu.py": (
         # skipped due to #2309, unsupported ops: aten::_dyn_quant_pack_4bit_weight, aten::narrow_copy, aten::_histogramdd_bin_edges
         "test__dyn_quant_matmul_4bit_m_1_k_128_n_11008_xpu",
@@ -141,6 +182,7 @@ skip_dict = {
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
+    "test_matmul_cuda_xpu.py": None,
     "test_meta_xpu.py": (
         # skipped due to #2309, unsupported ops: aten::narrow_copy, aten::_histogramdd_bin_edges
         "narrow_copy",
@@ -149,14 +191,15 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/2285
         "_efficient_attention_forward",
     ),
-    "test_modules_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
-    "test_native_mha_xpu.py": None,
+    "test_mkldnn_fusion_xpu.py": None,
+    "test_nestedtensor_xpu.py": None,
     "test_nn_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2531
         # cuDNN CTC test uses CUDA-only backend/device assumptions.
         "test_ctc_loss_cudnn_tensor_cuda_xpu",
     ),
+    "test_numba_integration_xpu.py": None,
+    "test_numpy_interop_xpu.py": None,
     "test_ops_fwd_gradients_xpu.py": (
         # BMG hang (>10 min) taking down the xdist worker
         # https://github.com/intel/torch-xpu-ops/issues/4947
@@ -180,7 +223,6 @@ skip_dict = {
         # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
         "test_dtypes_linalg_multi_dot_xpu",
         # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
-        "test_out_histc_xpu_float32",
         "test_out_mean_xpu_float32",
         # FakeTensor mismatch in outputs_alias_inputs for aten.view.default
         # Known upstream issue: https://github.com/pytorch/pytorch/issues/159150
@@ -189,9 +231,27 @@ skip_dict = {
         "test_fake_crossref_backward_no_amp_nn_functional_bilinear_xpu_float32",
     ),
     "test_optim_xpu.py": None,
+    "test_prims_xpu.py": None,
+    "test_proxy_tensor_xpu.py": None,
     "test_reductions_xpu.py": None,
-    "test_scatter_gather_ops_xpu.py": None,
+    "test_scaled_matmul_cuda_xpu.py": {
+        # https://github.com/intel/torch-xpu-ops/issues/5339
+        # The operator 'aten::_scaled_addmm.out' is not currently implemented for the XPU device
+        "test_scaled_addmm_tensorwise",
+        "test_scaled_addmm_inplace_tunableop",
+        "test_scaled_addmm_wgrad_accumulation",
+        "test_scaled_addmm_scalar_semantics",
+        "test_scaled_addmm_empty",
+        "test_scaled_addmm_contraction_dim",
+        "test_scaled_addmm_validation",
+        "test_scaled_addmm_mxfp8",
+        "test_scaled_addmm_nvfp4",
+        "test_scaled_addmm_fullgraph",
+        "test_scaled_addmm_cudagraph",
+    },
+    "test_schema_check.py": None,
     "test_segment_reductions_xpu.py": None,
+    "test_serialization_xpu.py": None,
     "test_shape_ops_xpu.py": (
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
         "test_flip_xpu_float32",
@@ -293,120 +353,78 @@ skip_dict = {
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
-    "test_view_ops_xpu.py": (
-        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
-        "test_ravel_xpu",
-        "test_flatten_xpu",
-    ),
-    "test_schema_check.py": None,
-    "test_nestedtensor_xpu.py": None,
-    "functorch/test_eager_transforms_xpu.py": None,
-    "test_cpp_api_parity_xpu.py": None,
-    "test_expanded_weights_xpu.py": None,
-    "test_fake_tensor_xpu.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/2472
-        # aten::_cudnn_rnn/aten::miopen_rnn not supported
-        "test_cudnn_rnn",
-    ),
-    "test_compile_benchmark_util_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/test_hub.py": None,
-    "test_matmul_cuda_xpu.py": None,
-    "test_custom_ops_xpu.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/3644
-        # CPU-only tests, flaky under pytest-xdist worksteal scheduling
-        "test_backward_dict_grad_for_nontensor",
-        "test_backward_dict_invalid_keys",
-        "test_backward_dict_requires_keys_for_input_optional_tensors",
-        "test_backward_dict_requires_keys_for_input_tensors",
-        "test_backward_grads_are_tensor_or_none",
-        "test_backward_impl_on_existing_op",
-    ),
-    "test_flop_counter_xpu.py": None,
-    "test_legacy_vmap_xpu.py": None,
     "test_utils_xpu.py": None,
-    "functorch/test_vmap_xpu.py": None,
-    "dynamo/test_ctx_manager_xpu.py": (
-        # Autocast to float64 is CUDA-specific and not supported on XPU.
-        # More details in https://github.com/pytorch/pytorch/pull/179141
-        "test_autocast_float64",
-        "test_cuda_amp_autocast",
-    ),
-    "functorch/test_control_flow_xpu.py": None,
-    "functorch/test_aot_joint_with_descriptors_xpu.py": None,
-    "profiler/test_memory_profiler.py": None,
-    "profiler/test_cpp_thread_xpu.py": None,
-    "profiler/test_execution_trace_xpu.py": None,
-    "profiler/test_profiler_xpu.py": None,
-    "export/test_hop_xpu.py": None,
-    "export/test_export_opinfo_xpu.py": None,
-    "export/test_converter_xpu.py": None,
-    "export/test_cpp_serdes_xpu.py": None,
-    "export/test_draft_export_xpu.py": None,
-    "export/test_experimental_xpu.py": None,
-    "export/test_passes_xpu.py": None,
-    "export/test_retraceability_xpu.py": None,
-    "export/test_serdes_xpu.py": None,
-    "export/test_serialize_xpu.py": None,
-    "export/test_strict_export_v2_xpu.py": None,
-    "export/test_export_strict_xpu.py": None,
-    "export/test_torchbind_xpu.py": (
-        # Skipped due to lack of _TorchScriptTesting::queue_push implementation.
-        # It will not be added as the whole TorchScript is currently deprecated.
-        "test_export_obj_torchbind_op_with_autocast_device_xpu",
-        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_inductor",
-        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_aot_eager",
-        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_eager",
-    ),
-    "functorch/test_aotdispatch_xpu.py": None,
-    "dynamo/test_aot_autograd_cache_xpu.py": (
-        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
-        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
-        "test_cache_hot_load_device_cpu",
-        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
-        "test_cache_lazy_backward_for_compiled_autograd",
-    ),
-    "dynamo/test_compiler_bisector_xpu.py": None,
-    "dynamo/test_deviceguard_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
-    f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
-    f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
-    "dynamo/test_misc_xpu.py": None,
-    "dynamo/test_regional_inductor_xpu.py": None,
-    "dynamo/test_streams_xpu.py": None,
-    "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
-    "export/test_export_training_ir_to_run_decomp_xpu.py": None,
-    "test_basic_torch_np_xpu.py": None,
-    "test_fx_xpu.py": None,
-    "test_multiprocessing_xpu.py": None,
-    "test_numba_integration_xpu.py": None,
-    "test_numpy_interop_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
-    "test_prims_xpu.py": None,
-    "test_proxy_tensor_xpu.py": None,
-    "test_python_dispatch_xpu.py": None,
-    "test_scaled_matmul_cuda_xpu.py": None,
-    "test_serialization_xpu.py": None,
-    "functorch/test_memory_efficient_fusion_xpu.py": None,
-    "higher_order_ops/test_invoke_subgraph_xpu.py": None,
-    "higher_order_ops/test_with_effects_xpu.py": None,
-    "test_fx_experimental_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/test_callback.py": None,
-    "dynamo/test_cudagraphs_xpu.py": None,
+    # upstreamed tests, must be sorted alphabetically
+    f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
         # Worker crash on BMG; no dedicated tracking issue yet
         "test_torch_size_tensor_index_scalar_constant_dynamic_shapes",
     ),
-    "dynamo/test_export_xpu.py": None,
-    "dynamo/test_logging_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/test_modes.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
-    "dynamo/test_recompiles_xpu.py": None,
-    "functorch/test_ac_xpu.py": None,
-    "test_cuda_multigpu_xpu.py": None,
-    "test_cuda_nvml_based_avail_xpu.py": None,
-    "test_cuda_primary_ctx_xpu.py": None,
-    "test_cuda_sanitizer_xpu.py": None,
-    "test_cuda_trace_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_converter.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_passes.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_torchbind.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_ac.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_aot_joint_with_descriptors.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_compile_to_python.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_eager_transforms.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_leaf_function.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_memory_efficient_fusion.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_vmap.py": None,
+    f"{PYTORCH_TEST_DIR}/higher_order_ops/test_invoke_subgraph.py": None,
+    f"{PYTORCH_TEST_DIR}/higher_order_ops/test_with_effects.py": None,
+    f"{PYTORCH_TEST_DIR}/lazy/test_reuse_ir.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_convolution.py": (
+        # CPU-only reference tests. Upstream only exercises the tight
+        # rtol=2e-5/atol=5e-6 tolerance when torch.cuda.is_tf32_supported() is
+        # False, so PyTorch CI (CUDA runners) never hits it.
+        "test_conv3d_vs_scipy_mode_same_cpu_float32",
+        "test_conv3d_vs_scipy_mode_valid_cpu_float32",
+    ),
+    f"{PYTORCH_TEST_DIR}/nn/test_dropout.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_init.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_lazy_modules.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
+    f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
+    f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
+    f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
+    f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
+    f"{PYTORCH_TEST_DIR}/test_callback.py": None,
+    f"{PYTORCH_TEST_DIR}/test_comparison_utils.py": None,
+    f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
-    "test_mkldnn_fusion_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_dynamic_shapes.py": None,
+    f"{PYTORCH_TEST_DIR}/test_flop_counter.py": None,
+    f"{PYTORCH_TEST_DIR}/test_foreach.py": None,
+    f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
+    f"{PYTORCH_TEST_DIR}/test_gpu_trace.py": None,
+    f"{PYTORCH_TEST_DIR}/test_hub.py": None,
+    f"{PYTORCH_TEST_DIR}/test_indexing.py": (
+        # BMG hang (>10 min) taking down the xdist worker
+        # https://github.com/intel/torch-xpu-ops/issues/4947
+        "test_index_add_fast_path_xpu_float64",
+    ),
+    f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
+    f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
+    f"{PYTORCH_TEST_DIR}/test_modes.py": None,
+    f"{PYTORCH_TEST_DIR}/test_modules.py": None,
+    f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
+    f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
+    f"{PYTORCH_TEST_DIR}/test_native_mha.py": None,
+    f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
+    f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
+    f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
+    f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
+    f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
+    f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
 }

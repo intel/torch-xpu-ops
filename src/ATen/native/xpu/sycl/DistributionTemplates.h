@@ -25,6 +25,7 @@
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/ops/empty.h>
 #include <ATen/xpu/PhiloxXpuState.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
@@ -45,7 +46,7 @@ inline std::tuple<uint64_t, uint32_t, uint32_t> calc_execution_policy(
       syclMaxWorkItemsPerSubSlice(); // TODO: see
                                      // https://github.com/intel/torch-xpu-ops/issues/135
   auto num_groups = (total_elements + group_size - 1) / group_size;
-  auto hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
+  int64_t hw_max_groups = at::xpu::getDeviceMaxWorkItems() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
   // Increment must be at least the number of 32-bit values consumed per
   // dist_func call. Our distribution functors consume one rand4-equivalent

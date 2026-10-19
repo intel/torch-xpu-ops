@@ -20,24 +20,19 @@
 namespace at::native::xpu {
 
 template <int nt, int vt, typename loop_t>
-struct ApplyKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    constexpr int nv = nt * vt;
-    int idx = nv * item.get_group(0) + item.get_local_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void apply_kernel(int64_t n, loop_t loop) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  constexpr int nv = nt * vt;
+  int idx = nv * item.get_group(0) + item.get_local_id(0);
 #pragma unroll
-    for (int i = 0; i < vt; ++i) {
-      if (idx < n_) {
-        loop_(idx);
-        idx += nt;
-      }
+  for (int i = 0; i < vt; ++i) {
+    if (idx < n) {
+      loop(idx);
+      idx += nt;
     }
   }
-  ApplyKernelFunctor(int64_t n, loop_t loop) : n_(n), loop_(loop) {}
-
- private:
-  int64_t n_;
-  loop_t loop_;
-};
+}
 
 template <int nt, int vt, typename loop_t>
 void launch_kernel(int64_t n, loop_t loop) {
@@ -47,8 +42,8 @@ void launch_kernel(int64_t n, loop_t loop) {
   }
   size_t local_range = nt;
   size_t global_range = (n + nt * vt - 1) / (nt * vt) * local_range;
-  auto caller = ApplyKernelFunctor<nt, vt, loop_t>(n, loop);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
+  sycl_kernel_submit<apply_kernel<nt, vt, loop_t>>(
+      global_range, local_range, getCurrentSYCLQueue(), 0, n, loop);
 }
 
 template <
