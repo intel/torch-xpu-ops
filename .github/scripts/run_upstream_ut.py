@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Run upstream PyTorch unit tests on XPU, in one of two modes.
 
-run_test.py shards (category: inductor)
-    One `run_test.py --include <file>` shard per file in INDUCTOR_PARTS, with no
-    parallelism inside a shard. Shards are queued in order and each GPU runs one
-    shard at a time, taking the next one as soon as it is free.
+inductor (category: inductor)
+    part1 first: one `run_test.py --inductor --include <test>` shard per test in
+    INDUCTOR_PART1 with INDUCTOR_ENV and no parallelism inside a shard. Shards
+    are queued in order and each GPU runs one shard at a time, taking the next
+    one as soon as it is free.
+    Then part2: the files in INDUCTOR_PART2, run like default (pytest per file).
 
 pytest per file (categories: default, distributed)
     One pytest run per test file, sequentially. Files come from --files or
@@ -42,24 +44,16 @@ ISSUE_API = "https://api.github.com/repos/{repo}/issues/{number}"
 DISTRIBUTED_PREFIX = "test/distributed/"
 PASS_LOG_TAIL = 200  # lines of a passing inductor shard's log echoed to the console
 
-# part -> (extra run_test.py flags, test files)
-INDUCTOR_PARTS = {
-    # Eager tests run through inductor
-    "part1": (
-        ["--inductor"],
-        ["test_modules", "test_ops", "test_ops_gradients", "test_torch"],
-    ),
-    # Inductor's own tests; no --inductor to avoid nested dynamo state
-    "part2": (
-        [],
-        [
-            "inductor/test_torchinductor",
-            "inductor/test_torchinductor_opinfo",
-            "inductor/test_aot_inductor",
-            "inductor/test_cpu_select_algorithm",
-        ],
-    ),
-}
+# Eager tests run through inductor via run_test.py --inductor
+INDUCTOR_PART1 = ["test_modules", "test_ops", "test_ops_gradients", "test_torch"]
+
+# Inductor's own tests, run like default
+INDUCTOR_PART2 = [
+    "test/inductor/test_torchinductor.py",
+    "test/inductor/test_torchinductor_opinfo.py",
+    "test/inductor/test_aot_inductor.py",
+    "test/inductor/test_cpu_select_algorithm.py",
+]
 
 COMMON_ENV = {
     "PYTORCH_TEST_WITH_SLOW": "1",
@@ -153,23 +147,20 @@ def get_issue_files(repo, issue, category):
 
 @dataclass(frozen=True)
 class Shard:
-    id: int  # global, 1..N in queue order
-    part: str
+    id: int  # 1..N in queue order
     test: str
 
     @property
     def tag(self):
-        return f"shard{self.id}_{self.part}_{self.test.replace('/', '_')}"
+        return f"shard{self.id}_part1_{self.test.replace('/', '_')}"
 
     @property
     def args(self):
-        extra, _ = INDUCTOR_PARTS[self.part]
-        return [*extra, "--include", self.test]
+        return ["--inductor", "--include", self.test]
 
 
 def build_shards():
-    tests = [(part, t) for part, (_, ts) in INDUCTOR_PARTS.items() for t in ts]
-    return [Shard(i, part, test) for i, (part, test) in enumerate(tests, 1)]
+    return [Shard(i, test) for i, test in enumerate(INDUCTOR_PART1, 1)]
 
 
 def run_shard(shard, gpu, args, env, out_log, err_log):
@@ -203,7 +194,7 @@ def run_shards(args, env):
     shards = build_shards()
     if args.dry_run:
         for s in shards:
-            print(f"shard{s.id}: {s.part} {' '.join(s.args).replace('--include ', '')}")
+            print(f"shard{s.id}: part1 run_test.py {' '.join(s.args)}")
         return 0
 
     shutil.rmtree(args.log_dir / "xml", ignore_errors=True)
@@ -406,8 +397,8 @@ def main():
     try:
         if args.category == "inductor":
             if args.list:
-                for part, (extra, tests) in INDUCTOR_PARTS.items():
-                    print(f"{part}: {' '.join(extra + tests)}")
+                print(f"part1: run_test.py --inductor {' '.join(INDUCTOR_PART1)}")
+                print(f"part2: pytest {' '.join(INDUCTOR_PART2)}")
                 return 0
         else:
             files = args.files or get_issue_files(args.repo, args.issue, args.category)
@@ -418,12 +409,14 @@ def main():
         args.log_dir.mkdir(parents=True, exist_ok=True)
         args.xml_dir.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, **COMMON_ENV}
+        part1_rc = 0
         if args.category == "inductor":
-            return run_shards(args, {**env, **INDUCTOR_ENV})
+            part1_rc = run_shards(args, {**env, **INDUCTOR_ENV})
+            files = INDUCTOR_PART2
         env["ZE_AFFINITY_MASK"] = ",".join(args.gpus)
         if args.category == "distributed" and not args.dry_run:
             setup_distributed_env(env, args.pytorch_dir)
-        return run_files(args, env, files)
+        return max(part1_rc, run_files(args, env, files))
     except Exception as e:  # noqa: BLE001
         print(f"[ERROR] {e}", file=sys.stderr)
         return 2
