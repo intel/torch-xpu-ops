@@ -43,9 +43,6 @@ std::tuple<int, int, int, int> get_adaptive_config(
           (group_size_y));
   nwg_y = std::max(nwg_y, 1);
 
-  // it's not worth having reduction between work groups if the reduction
-  // dimension is not big enough
-
   return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x);
 }
 
