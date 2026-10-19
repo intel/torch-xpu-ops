@@ -449,7 +449,7 @@ struct FMHAFwdMainloop<
   // Prepare the accumulators of a Q tile that the causal mask rejects in full,
   // so the epilogue can be run without the main loop. A zero accumulator and
   // a zero softmax sum drive the epilogue's existing fully-masked handling,
-  // which emits O = 0 and LSE = 0.
+  // which emits O = 0 and LSE = +inf.
   CUTLASS_DEVICE void init_fully_masked_tile(
       FragA& tArA,
       FragARow& tA_max,
