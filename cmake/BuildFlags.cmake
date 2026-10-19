@@ -212,6 +212,13 @@ macro(set_build_flags)
   # feed only SYCL_host_arch_flags.
   set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
   list(APPEND SYCL_HOST_FLAGS ${SYCL_HOST_PER_CONFIG_FLAGS})
+  # BUILD_ENVIRONMENT=*binary-manywheel* is only set by pytorch's official CD
+  # (nightly/release) wheel workflows. Use the highest useful compression level
+  # on CD only, mirroring CUDA's CD-only `-compress-mode=size`; CI/dev builds keep
+  # the lighter default to avoid the extra link-time cost.
+  if($ENV{BUILD_ENVIRONMENT} MATCHES "binary-manywheel")
+    list(APPEND SYCL_DEVICE_LINK_FLAGS --offload-compression-level=20)
+  endif()
 
   # -- SYCL device object linkage flags
   include(ProcessorCount)
