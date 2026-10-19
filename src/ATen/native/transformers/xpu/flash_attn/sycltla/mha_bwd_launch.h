@@ -102,6 +102,12 @@ void compute_o_dot_do(
   Tensor thr_tile_o_S = thr_load_odo.partition_S(mO);
   Tensor thr_tile_dq_D = thr_load_dq.partition_D(mdQaccum);
   Tensor rdQ = make_fragment_like(thr_tile_dq_D);
+
+  clear(rdQ);
+  for (int m = 0; m < size<1>(thr_tile_dq_D); ++m) {
+    copy(rdQ(_, m, _), thr_tile_dq_D(_, m, _));
+  }
+
   Tensor rdO = make_fragment_like<DType>(rdQ);
   Tensor rO = make_fragment_like<DType>(rdQ);
   Tensor cO = make_identity_tensor(dQ_shape);
