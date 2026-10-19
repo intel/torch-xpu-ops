@@ -21,6 +21,7 @@
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
+#include <sycl/ext/intel/math.hpp>
 
 #include <ATen/native/xpu/sycl/UnaryLogKernels.h>
 
@@ -90,7 +91,7 @@ struct Log1pFunctor {
       return std::log1p(x);
     } else {
       using opmath_t = at::opmath_type<scalar_t>;
-      return sycl::log1p(static_cast<opmath_t>(x));
+      return sycl::ext::intel::math::log1p(static_cast<opmath_t>(x));
     }
   }
 };
@@ -111,7 +112,7 @@ struct Log2Functor {
       return std::log2(x);
     } else {
       using opmath_t = at::opmath_type<scalar_t>;
-      return sycl::log2(static_cast<opmath_t>(x));
+      return sycl::ext::intel::math::log2(static_cast<opmath_t>(x));
     }
   }
 };
