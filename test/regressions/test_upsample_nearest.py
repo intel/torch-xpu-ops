@@ -166,3 +166,20 @@ class TestTorchMethod(TestCase):
         for dtype in test_dtypes:
             test_upsamle_nearest(dtype)
             test_upsample_nearest_exact(dtype)
+
+    def test_upsample_nearest2d_channels_last_many_channels(self):
+        # 8x8 -> 16x16 gives 256 outputs per channel, so C > 256 exceeds the
+        # 65536 work-items the channels_last kernel launches (intel/torch-xpu-ops#5701).
+        for mode in ("nearest", "nearest-exact"):
+            for dtype in (torch.float, torch.bfloat16, torch.float16):
+                for channels in (255, 256, 257, 512):
+                    with self.subTest(mode=mode, dtype=dtype, channels=channels):
+                        x = torch.randn(1, channels, 8, 8).to(dtype)
+                        x = x.contiguous(memory_format=torch.channels_last)
+                        out = torch.nn.functional.interpolate(
+                            x.to(device), scale_factor=2.0, mode=mode
+                        )
+                        ref = torch.nn.functional.interpolate(
+                            x.float(), scale_factor=2.0, mode=mode
+                        ).to(dtype)
+                        self.assertEqual(out.cpu(), ref)
