@@ -374,12 +374,18 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const char* profilingTitle);
 
   c10::intrusive_ptr<Work> allreduce_impl(
-      at::Tensor& tensor,
+      at::Tensor& inputTensor,
+      at::Tensor& outputTensor,
       const char* profilingTitle = "xccl:all_reduce",
       const AllreduceOptions& opts = AllreduceOptions());
 
   c10::intrusive_ptr<Work> allreduce(
       std::vector<at::Tensor>& tensors,
+      const AllreduceOptions& opts = AllreduceOptions()) override;
+
+  c10::intrusive_ptr<Work> all_reduce_out(
+      at::Tensor& outputTensor,
+      at::Tensor& inputTensor,
       const AllreduceOptions& opts = AllreduceOptions()) override;
 
   c10::intrusive_ptr<Work> allreduce_coalesced(

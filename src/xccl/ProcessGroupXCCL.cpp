@@ -1316,12 +1316,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
-    at::Tensor& tensor,
+    at::Tensor& inputTensor,
+    at::Tensor& outputTensor,
     const char* profilingTitle,
     const AllreduceOptions& opts) {
   return collective(
-      tensor,
-      tensor,
+      inputTensor,
+      outputTensor,
       [&](at::Tensor& input,
           at::Tensor& output,
           onecclComm_t& comm,
@@ -1370,7 +1371,57 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
       opts.asyncOp, // async_op
       reduceOpToString(opts.reduceOp)); // reductionOp
 
-  return allreduce_impl(tensor, "xccl:all_reduce", opts);
+  return allreduce_impl(tensor, tensor, "xccl:all_reduce", opts);
+}
+
+c10::intrusive_ptr<Work> ProcessGroupXCCL::all_reduce_out(
+    at::Tensor& outputTensor,
+    at::Tensor& inputTensor,
+    const AllreduceOptions& opts) {
+  TORCH_CHECK(
+      inputTensor.scalar_type() == outputTensor.scalar_type(),
+      "all_reduce_out: output tensor must have the same dtype as the input tensor");
+  // Unlike _allgather_base and _reduce_scatter_base, which flatten, this
+  // preserves shape, so require the sizes to match rather than just the numel.
+  TORCH_CHECK(
+      inputTensor.sizes() == outputTensor.sizes(),
+      "all_reduce_out: output tensor must have the same shape as the input tensor");
+
+  auto input = inputTensor;
+  auto output = outputTensor;
+  if (input.is_complex()) {
+    TORCH_CHECK(
+        complexViewAsRealAllowed(opts.reduceOp),
+        "all_reduce_out does not support ",
+        opts.reduceOp,
+        " on complex tensors");
+    input = at::view_as_real(input);
+    output = at::view_as_real(output);
+  }
+  checkSingleTensor(input);
+  checkSingleTensor(output);
+
+  // @lint-ignore CLANGTIDY
+  RECORD_PARAM_COMMS_DATA_WITH_LOG(
+      static_cast<int>(
+          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+      input, // inputTensors
+      output, // outputTensors
+      rank_, // rank
+      "all_reduce_out", // collective name
+      input.numel(), // inNelems
+      output.numel(), // outNelems
+      output.scalar_type(), // dType
+      std::vector<int64_t>(), // inSplitSizes
+      std::vector<int64_t>(), // outSplitSizes
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
+      size_, // worldSize
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
+
+  return allreduce_impl(input, output, "xccl:all_reduce_out", opts);
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
@@ -1954,7 +2005,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
 
   AllreduceOptions arOpts = AllreduceOptions();
   arOpts.asyncOp = opts.asyncOp;
-  auto work = allreduce_impl(barrierTensor, "xccl:all_reduce_barrier", arOpts);
+  auto work = allreduce_impl(
+      barrierTensor, barrierTensor, "xccl:all_reduce_barrier", arOpts);
 
   if (opts.asyncOp) {
     auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());

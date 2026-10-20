@@ -259,6 +259,33 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_all_reduce_out(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+
+        input_tensor = torch.full((10, 10), float(self.rank + 1), device=device)
+        input_before = input_tensor.clone()
+        output_tensor = torch.empty_like(input_tensor)
+
+        pg.all_reduce_out(output_tensor, input_tensor).wait()
+
+        expected = torch.full(
+            (10, 10), float(self.world_size * (self.world_size + 1) / 2), device=device
+        )
+        self.assertEqual(output_tensor, expected)
+        # The input buffer must be left untouched.
+        self.assertEqual(input_tensor, input_before)
+
+        # Same thing through the Python collective API.
+        output_tensor.zero_()
+        dist.all_reduce_out(output_tensor, input_tensor)
+        self.assertEqual(output_tensor, expected)
+        self.assertEqual(input_tensor, input_before)
+
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_send_recv_non_dense_tensor(self):
         pg = self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]
