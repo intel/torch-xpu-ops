@@ -35,12 +35,12 @@ void upsample_nearest2d_backward_kernel(
     float width_scale,
     index_bw_op_t index_bw_op) {
   auto item = syclext::this_work_item::get_nd_item<1>();
-  int dst_idx = item.get_global_linear_id();
-  if (dst_idx >= dim_c * dst_dim_h * dst_dim_w)
+  int64_t dst_idx = item.get_global_linear_id();
+  if (dst_idx >= static_cast<int64_t>(dim_c * dst_dim_h * dst_dim_w))
     return;
 
-  int dst_c_stride = dst_dim_h * dst_dim_w;
-  int src_c_stride = src_dim_h * src_dim_w;
+  int64_t dst_c_stride = dst_dim_h * dst_dim_w;
+  int64_t src_c_stride = src_dim_h * src_dim_w;
 
   int c = (dst_idx / (dst_c_stride)) % dim_c;
 
@@ -56,12 +56,12 @@ void upsample_nearest2d_backward_kernel(
   int src_x = index_bw_op(width_scale, dst_x, src_dim_w);
   int src_x_up = index_bw_op(width_scale, dst_x + 1, src_dim_w);
 
-  for (int b = 0; b < dim_b; b++) {
+  for (int64_t b = 0; b < static_cast<int64_t>(dim_b); b++) {
     accscalar_t grad = 0;
     for (int y = src_y; y < src_y_up; y++) {
       for (int x = src_x; x < src_x_up; x++) {
-        int src_idx =
-            b * dim_c * src_c_stride + c * src_c_stride + y * src_dim_w + x;
+        int64_t src_idx = b * dim_c * src_c_stride + c * src_c_stride +
+            static_cast<int64_t>(y) * src_dim_w + x;
         grad += grad_o[src_idx];
       }
     }
@@ -72,7 +72,7 @@ void upsample_nearest2d_backward_kernel(
 
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 void upsample_nearest2d_backward_frame(
-    size_t n,
+    int64_t n,
     const scalar_t* grad_o,
     size_t dim_b,
     size_t dim_c,
@@ -282,7 +282,7 @@ void upsample_nearest2d_backward_kernel(
         ? grad_input
         : at::empty(grad_input.sizes(), grad_input.options());
     Tensor grad_output = grad_output_.contiguous();
-    unsigned int n = grad_input.numel() / nbatch;
+    int64_t n = grad_input.numel() / nbatch;
 
     // upsample_nearest2d meta call makes sure `nbatch != 0`
     AT_DISPATCH_FLOATING_TYPES_AND3(

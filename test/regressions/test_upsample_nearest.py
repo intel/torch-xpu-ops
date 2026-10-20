@@ -10,7 +10,12 @@
 import torch
 from torch.autograd import Variable
 from torch.testing._internal.common_device_type import largeTensorTest
-from torch.testing._internal.common_utils import run_tests, TestCase
+from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    parametrize,
+    run_tests,
+    TestCase,
+)
 
 device = torch.device("xpu")
 cpu_device = torch.device("cpu")
@@ -173,38 +178,40 @@ class TestTorchMethod(TestCase):
             test_upsamle_nearest(dtype)
             test_upsample_nearest_exact(dtype)
 
-    def test_upsample_nearest2d_channels_last_many_channels(self):
-        # The launch is clamped to getDeviceMaxWorkItems(), so the output must
-        # exceed that for the grid-stride loop to be exercised (#5701).
-        for mode in ("nearest", "nearest-exact"):
-            for dtype in (torch.float, torch.bfloat16, torch.float16):
-                for channels in (255, 256, 257, 512):
-                    with self.subTest(mode=mode, dtype=dtype, channels=channels):
-                        x = torch.randn(1, channels, 32, 32, dtype=dtype).contiguous(
-                            memory_format=torch.channels_last
-                        )
+    @parametrize("mode", ("nearest", "nearest-exact"))
+    @parametrize("dtype", (torch.float, torch.bfloat16, torch.float16))
+    @parametrize("channels", (255, 256, 257, 512))
+    def test_upsample_nearest2d_channels_last_many_channels(
+        self, mode, dtype, channels
+    ):
+        # Use a larger spatial size to exercise the channels-last kernel launch
+        # boundary on PVC-class hardware (intel/torch-xpu-ops#5701).
+        x = torch.randn(1, channels, 32, 32, dtype=dtype).contiguous(
+            memory_format=torch.channels_last
+        )
 
-                        x_xpu = x.to(device)
-                        self.assertTrue(
-                            x_xpu.is_contiguous(memory_format=torch.channels_last)
-                        )
+        x_xpu = x.to(device)
+        self.assertTrue(x_xpu.is_contiguous(memory_format=torch.channels_last))
 
-                        out = torch.nn.functional.interpolate(
-                            x_xpu, scale_factor=2.0, mode=mode
-                        )
-                        ref = torch.nn.functional.interpolate(
-                            x.float(), scale_factor=2.0, mode=mode
-                        ).to(dtype)
+        out = torch.nn.functional.interpolate(x_xpu, scale_factor=2.0, mode=mode)
+        ref = torch.nn.functional.interpolate(
+            x.float(), scale_factor=2.0, mode=mode
+        ).to(dtype)
 
-                        self.assertEqual(out.cpu(), ref)
+        self.assertEqual(out.cpu(), ref)
 
-    # Large-tensor indexing regressions for upsample_nearest3d forward/backward.
+    # Regression tests for large-tensor indexing in upsample_nearest3d
+    # forward/backward.
+    #
     # *_large_size_int64: the kernels walk the batch dim with
     # dst_idx += C * D * H * W, so the flat index exceeds INT32_MAX once
-    # N * C * D * H * W > INT32_MAX even if a single batch fits in int32. Each
-    # batch is compared against a single-batch launch (32-bit index path).
-    # *_single_batch_over_uint32: one batch has more than UINT32_MAX elements,
-    # so the launch size (ceil_div of the per-batch numel) must be 64-bit.
+    # N * C * D * H * W > INT32_MAX even if a single batch fits in int32.
+    # Each batch is compared against a single-batch launch, which stays on
+    # the 32-bit index path.
+    #
+    # *_single_batch_over_uint32: a single batch has more than UINT32_MAX
+    # elements, so the launch size (ceil_div of the per-batch numel) must be
+    # computed in 64 bits or part of the output is never written.
 
     @largeTensorTest("8GB", device="xpu")
     def test_upsample_nearest3d_fwd_large_size_int64(self):
@@ -276,6 +283,60 @@ class TestTorchMethod(TestCase):
             self.assertEqual(grad_input[:, :, d : d + chunk], ref)
             del ref
 
+    # Regression tests for intel/torch-xpu-ops#6164: the index type must be
+    # chosen from both the read and the write tensor.
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest3d_fwd_large_input_small_output(self):
+        # Output fits in int32 but input does not.
+        x = torch.randint(0, 256, _LARGE_SIZE, dtype=torch.uint8, device="xpu")
+        y = torch.nn.functional.interpolate(x, size=_SMALL_SIZE[2:], mode="nearest")
+        self.assertEqual(y.shape, _SMALL_SIZE)
+
+        for b in range(_LARGE_SIZE[0]):
+            ref = torch.nn.functional.interpolate(
+                x[b : b + 1], size=_SMALL_SIZE[2:], mode="nearest"
+            )
+            self.assertEqual(y[b : b + 1], ref)
+            del ref
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest3d_bwd_large_grad_output_small_grad_input(self):
+        # grad_input fits in int32 but grad_output does not.
+        grad_output = torch.randint(0, 16, _LARGE_SIZE, dtype=torch.uint8, device="xpu")
+        grad_input = torch.ops.aten.upsample_nearest3d_backward(
+            grad_output, _LARGE_SIZE[2:], _SMALL_SIZE
+        )
+        self.assertEqual(grad_input.shape, _SMALL_SIZE)
+
+        for b in range(_SMALL_SIZE[0]):
+            ref = torch.ops.aten.upsample_nearest3d_backward(
+                grad_output[b : b + 1], _LARGE_SIZE[2:], (1, *_SMALL_SIZE[1:])
+            )
+            self.assertEqual(grad_input[b : b + 1], ref)
+            del ref
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest2d_bwd_contiguous_large(self):
+        # Contiguous backward kernel: grad_output has more than INT32_MAX
+        # elements across batches.
+        in_size = (3, 1, 16384, 16384)
+        out_size = (3, 1, 32768, 32768)
+        grad_output = torch.randint(0, 16, out_size, dtype=torch.uint8, device="xpu")
+        grad_input = torch.ops.aten.upsample_nearest2d_backward(
+            grad_output, out_size[2:], in_size
+        )
+        self.assertEqual(grad_input.shape, in_size)
+
+        for b in range(in_size[0]):
+            ref = torch.ops.aten.upsample_nearest2d_backward(
+                grad_output[b : b + 1], out_size[2:], (1, *in_size[1:])
+            )
+            self.assertEqual(grad_input[b : b + 1], ref)
+            del ref
+
+
+instantiate_parametrized_tests(TestTorchMethod)
 
 if __name__ == "__main__":
     run_tests()
