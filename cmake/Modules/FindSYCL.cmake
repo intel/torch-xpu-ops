@@ -24,6 +24,15 @@
 #  SYCL_HOST_FLAGS
 #  -- SYCL compiler's 3rd party host compiler (e.g. gcc) arguments .
 #
+#  SYCL_HOST_FLAGS_DIRECT_TO_SYCL
+#  -- Host arguments that are SYCL driver options and must not use -Xarch_host.
+#
+#  SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
+#  -- Host arguments omitted when composing the SYCL compiler command line.
+#
+#  SYCL_HOST_FLAGS_ONLY_FOR_SYCL
+#  -- Host arguments used only when composing the SYCL compiler command line.
+#
 #  SYCL_DEVICE_LINK_FLAGS
 #  -- Arguments used when linking device object.
 #
@@ -48,6 +57,43 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
+# ccache versions before 4.11 do not support DPC++ (icx) compiler. Additionally,
+# versions before 4.12.1 do not correctly pass -Xarch_host flags to LLVM compilers
+# family in general: they can strip -Xarch_host -fPIC, producing objects without
+# -fPIC that fail the PIE link. ccache 4.12.1 includes the fix for that, see:
+#
+# * https://github.com/ccache/ccache/issues/1632
+#
+# Below we keep the original launcher for the device-link step, and only apply
+# the ccache version gate for kernel code compilation step.
+set(_SYCL_COMPILER_LAUNCHER ${CMAKE_SYCL_COMPILER_LAUNCHER})
+if(_SYCL_COMPILER_LAUNCHER)
+  get_filename_component(_sycl_launcher_name "${_SYCL_COMPILER_LAUNCHER}" NAME)
+  if(_sycl_launcher_name MATCHES "^[Cc][Cc]ache")
+    execute_process(
+      COMMAND ${_SYCL_COMPILER_LAUNCHER} --version
+      OUTPUT_VARIABLE _sycl_launcher_version
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      TIMEOUT 5
+    )
+    if(_sycl_launcher_version MATCHES "ccache version ([0-9]+\\.[0-9]+(\\.[0-9]+)?)")
+      set(_sycl_ccache_version "${CMAKE_MATCH_1}")
+      if(_sycl_ccache_version VERSION_GREATER_EQUAL "4.12.1")
+        message(STATUS "Found compatible ccache ${_sycl_ccache_version} for SYCL object compilation")
+      else()
+        message(WARNING
+          "ccache launcher '${CMAKE_SYCL_COMPILER_LAUNCHER}' has version "
+          "'${_sycl_ccache_version}' which is older than 4.12.1; "
+          "disabling it for SYCL object compilation. Upgrade to ccache >= 4.12.1.")
+        set(_SYCL_COMPILER_LAUNCHER "")
+      endif()
+    else()
+      message(WARNING "Found ccache but could not parse its version string.")
+    endif()
+  endif()
+endif()
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
@@ -58,10 +104,6 @@ macro(SYCL_FIND_HELPER_FILE _name _extension)
   # Set this variable as internal, so the user isn't bugged with it.
   set(SYCL_${_name} ${SYCL_${_name}} CACHE INTERNAL "Location of ${_full_name}" FORCE)
 endmacro()
-
-# SYCL_HOST_COMPILER
-set(SYCL_HOST_COMPILER "${CMAKE_CXX_COMPILER}"
-  CACHE FILEPATH "Host side compiler used by SYCL")
 
 # SYCL_EXECUTABLE
 set(SYCL_EXECUTABLE ${SYCL_COMPILER} CACHE FILEPATH "SYCL compiler")
@@ -76,37 +118,6 @@ macro(SYCL_INCLUDE_EXTERNAL_DEPENDENCIES dependency_file)
   list(APPEND SYCL_EXTERNAL_DEPEND ${dependency_file})
 endmacro()
 
-macro(SYCL_INCLUDE_DEPENDENCIES dependency_file)
-  set(SYCL_DEPEND)
-  set(SYCL_DEPEND_REGENERATE FALSE)
-
-  # Make the output depend on the dependency file itself, which should cause the
-  # rule to re-run.
-  if(NOT EXISTS ${dependency_file})
-    file(WRITE ${dependency_file} "#FindSYCL.cmake generated file.  Do not edit.\n")
-  endif()
-
-  # Always include this file to force CMake to run again next
-  # invocation and rebuild the dependencies.
-  include(${dependency_file})
-
-  if(SYCL_DEPEND)
-    foreach(f ${SYCL_DEPEND})
-      if(NOT EXISTS ${f})
-        set(SYCL_DEPEND_REGENERATE TRUE)
-      endif()
-    endforeach()
-  else()
-    set(SYCL_DEPEND_REGENERATE TRUE)
-  endif()
-
-  if(SYCL_DEPEND_REGENERATE)
-    set(SYCL_DEPEND ${dependency_file})
-    file(WRITE ${dependency_file} "#FindSYCL.cmake generated file.  Do not edit.\n")
-  endif()
-endmacro()
-
-sycl_find_helper_file(make2cmake cmake)
 sycl_find_helper_file(run_sycl cmake)
 
 # Per-config subpaths under multi-config generators; flat for single-config.
@@ -221,8 +232,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(generated_file_path "${SYCL_compile_intermediate_directory}${SYCL_config_subdir}")
       set(generated_file_basename "${sycl_target}_gen_${_sycl_dir_hash}_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
-      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.SYCL-depend") # generate by compiler options -M -MF
-      set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
+      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.SYCL-depend") # compiler -MD -MF depfile, consumed via DEPFILE
       set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.cmake.pre-gen")
       set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.cmake")
 
@@ -241,23 +251,11 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       list(APPEND ${sycl_target}_INTERMEDIATE_LINK_OBJECTS "${generated_file}")
 
-      # Configure-time bookkeeping can't expand $<CONFIG>, so enumerate the
-      # per-config depend files literally; the command depends on their union.
-      if(CMAKE_CONFIGURATION_TYPES)
-        set(_sycl_depend_files "")
-        foreach(_config ${CMAKE_CONFIGURATION_TYPES})
-          list(APPEND _sycl_depend_files "${SYCL_compile_intermediate_directory}/${generated_file_basename}.${_config}.depend")
-        endforeach()
-      else()
-        set(_sycl_depend_files "${cmake_dependency_file}")
-      endif()
-      set(SYCL_ACCUMULATED_DEPEND)
-      foreach(_depend_file ${_sycl_depend_files})
-        SYCL_INCLUDE_DEPENDENCIES("${_depend_file}")
-        list(APPEND SYCL_ACCUMULATED_DEPEND ${SYCL_DEPEND})
-      endforeach()
-
       set(SYCL_build_type "Device")
+
+      # Apply the compiler launcher to the individual SYCL object compile,
+      # mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
+      set(SYCL_compiler_launcher ${_SYCL_COMPILER_LAUNCHER})
 
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
@@ -284,13 +282,13 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(SYCL_build_comment_string "Building SYCL (${SYCL_build_type}) object ${generated_file_basename}")
 
       # Build the generated file and dependency file ##########################
+      # Header deps come from the compiler depfile via DEPFILE (CMP0116 NEW).
       add_custom_command(
         OUTPUT ${generated_file}
-        # These output files depend on the source_file and the contents of cmake_dependency_file
         ${main_dep}
-        DEPENDS ${SYCL_ACCUMULATED_DEPEND}
         DEPENDS ${SYCL_EXTERNAL_DEPEND}
         DEPENDS ${custom_target_script}
+        DEPFILE ${SYCL_generated_dependency_file}
         # Make sure the output directory exists before trying to write to it.
         COMMAND ${CMAKE_COMMAND} -E make_directory "${generated_file_path}"
         COMMAND ${CMAKE_COMMAND} ARGS
@@ -307,7 +305,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       list(APPEND _SYCL_wrap_generated_files ${generated_file})
 
       # Add the other files that we want cmake to clean on a cleanup ##########
-      list(APPEND SYCL_ADDITIONAL_CLEAN_FILES "${cmake_dependency_file}")
+      list(APPEND SYCL_ADDITIONAL_CLEAN_FILES "${SYCL_generated_dependency_file}")
       list(REMOVE_DUPLICATES SYCL_ADDITIONAL_CLEAN_FILES)
       set(SYCL_ADDITIONAL_CLEAN_FILES ${SYCL_ADDITIONAL_CLEAN_FILES} CACHE INTERNAL "List of intermediate files that are part of the SYCL dependency scanning.")
     endif()
@@ -369,14 +367,37 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       set(verbose_output OFF)
     endif()
 
+    set(SYCL_device_link_inputs ${object_files})
+    set(SYCL_device_link_extra_depends)
+    if(WIN32)
+      # On Windows the device objects should be passed through a response file instead
+      # of the command line, due to line length limitations when parsing a batch file.
+      # A batch line longer than 8191 characters is out of contract for cmd.exe
+      # and might cause silent parameter passing errors, depending on quotes' and operators'
+      # positioning inside the line.
+      # https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
+      set(SYCL_device_link_rsp "${output_file}.rsp")
+      set(SYCL_device_link_rsp_content "")
+      foreach(object_file IN LISTS object_files)
+        string(APPEND SYCL_device_link_rsp_content "\"${object_file}\"\n")
+      endforeach()
+      file(GENERATE
+        OUTPUT "${SYCL_device_link_rsp}"
+        CONTENT "${SYCL_device_link_rsp_content}")
+      set_source_files_properties("${SYCL_device_link_rsp}"
+        PROPERTIES GENERATED TRUE)
+      set(SYCL_device_link_inputs "@${SYCL_device_link_rsp}")
+      set(SYCL_device_link_extra_depends "${SYCL_device_link_rsp}")
+    endif()
+
     # Build the generated file and dependency file ##########################
     add_custom_command(
       OUTPUT ${output_file}
-      DEPENDS ${object_files}
+      DEPENDS ${object_files} ${SYCL_device_link_extra_depends}
       COMMAND ${CMAKE_COMMAND} -E make_directory "$<PATH:REMOVE_FILENAME,${output_file}>"
       COMMAND ${CMAKE_SYCL_COMPILER_LAUNCHER} ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
-      -fsycl-link ${object_files}
+      -fsycl-link ${SYCL_device_link_inputs}
       -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
       -o ${output_file}
       COMMENT "Building SYCL device link file ${output_file_relative_path}"

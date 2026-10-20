@@ -25,8 +25,6 @@ pytorch_stargan
 pytorch_unet
 sam_fast
 soft_actor_critic
-stable_diffusion_text_encoder
-stable_diffusion_unet
 timm_efficientdet
 timm_resnest
 timm_vision_transformer_large

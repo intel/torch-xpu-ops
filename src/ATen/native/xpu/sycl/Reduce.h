@@ -18,9 +18,9 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/core/Allocator.h>
 #include <c10/macros/Macros.h>
-#include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUPair.h>
 #include <comm/xpu_aten.h>
@@ -100,8 +100,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   int sg_gid = sg.get_group_linear_id();
   int sg_range = sg.get_group_range()[0];
   // group reduce requests workgroup size is multiple of subgroup size
-  SYCL_KERNEL_ASSERT(
-      wg_size % sg_size == 0 && "unsupported workgroup size for group reduce");
+  SYCL_KERNEL_ASSERT(wg_size % sg_size == 0);
 
   // tree reduce in subgroup
   subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
@@ -289,14 +288,15 @@ struct ReduceConfig {
 
   template <typename T, class KernelClass>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
-    auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
+    int64_t max_wg_sz = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     // Bypass reduction on SLM by sparing workload to other SGs. As the
     // result, reduction of small shape input only requires some shift
     // operations in side of SG. It is functional WA. We got case failures on
     // some platforms supporting SIMD8.
     // https://github.com/intel/torch-xpu-ops/issues/698
-    auto max_sg_sz = syclMinSubGroupSize() == 8 ? syclMinSubGroupSize()
-                                                : syclMaxSubGroupSize();
+    int64_t max_sg_sz = at::xpu::getDeviceMinSubGroupSize() == 8
+        ? at::xpu::getDeviceMinSubGroupSize()
+        : at::xpu::getDeviceMaxSubGroupSize();
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
@@ -607,7 +607,7 @@ struct ReduceOp {
       value = item_reduce<output_vec_size>(pos, input_slice);
     }
 
-    auto combine = [=, this](arg1_t value, arg2_t other) -> arg1_t {
+    auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
       return ops.combine(value, other);
     };
 
@@ -1033,7 +1033,7 @@ struct ReduceOp {
         }
       }
 
-      auto combine = [=, this](arg1_t value, arg2_t other) -> arg1_t {
+      auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
         return ops.combine(value, other);
       };
 
@@ -1123,8 +1123,8 @@ class AccumulationBuffer {
       size_t acc_t_size,
       size_t out_t_size,
       char* out_ptr,
-      int64_t size) {
-    out_ptr_ = out_ptr;
+      int64_t size)
+      : out_ptr_(out_ptr) {
     if (out_t_size >= acc_t_size) {
       // reusing output buffer for accumulation.
       acc_ptr_ = out_ptr;
@@ -1408,8 +1408,8 @@ inline void gpu_reduce_kernel(
   constexpr int min_values_per_item = 16;
   constexpr int max_values_per_item = 256;
 
-  const auto target_group_range =
-      syclMaxWorkItemsPerTile() / (group_height * group_width);
+  const int64_t target_group_range =
+      at::xpu::getDeviceMaxWorkItems() / (group_height * group_width);
   // outputs after spliting to work group
   int reset_output = config.n_groups()[1];
   if (config.input_mult[1] != 0 &&

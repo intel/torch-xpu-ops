@@ -569,26 +569,32 @@ void dq_dk_dv_1colblock(
     const int bidhkv,
     const int n_block,
     const int tail_n = 0) {
-  using T = typename Trait::DType;
   using V = typename Trait::VType;
   constexpr int kHeadDim = Trait::kHeadDim;
   constexpr int kBlockM = Trait::kBlockM;
   constexpr int kBlockN = Trait::kBlockN;
-  constexpr int kNSGs = Trait::kNSGs;
-  constexpr int SubgroupSize = Trait::SubgroupSize;
   constexpr bool is_causal = Trait::is_causal;
   auto local_id = int(compat::get_nd_item<1>().get_local_id(0));
   auto group = compat::get_nd_item<1>().get_group();
   auto bofst = Boffset(param);
 
-  const index_t q_offset = bofst.q_offset(bidb, bidh, 0);
+  const int max_m_block = ceil_div(param.seq_len_q, kBlockM);
+  int first_m_block = 0;
+  if constexpr (is_causal) {
+    // Retain the boundary tile; only wholly masked query tiles are skipped.
+    const int first_q =
+        n_block * kBlockN - (param.seq_len_kv - param.seq_len_q);
+    first_m_block = first_q > 0 ? first_q / kBlockM : 0;
+  }
+  const int first_m_row = first_m_block * kBlockM;
+  const index_t q_offset = bofst.q_offset(bidb, bidh, first_m_row);
   const index_t k_offset = bofst.k_offset(bidb, bidhkv, n_block * kBlockN);
   const index_t v_offset = bofst.v_offset(bidb, bidhkv, n_block * kBlockN);
   const index_t dk_offset = bofst.dk_offset(bidb, bidh, n_block * kBlockN);
   const index_t dv_offset = bofst.dv_offset(bidb, bidh, n_block * kBlockN);
-  const index_t do_offset = bofst.do_offset(bidb, bidh, 0);
-  const index_t dqaccum_offset = bofst.dqaccum_offset(bidb, bidh, 0);
-  const index_t lse_offset = bofst.lse_offset(bidb, bidh, 0);
+  const index_t do_offset = bofst.do_offset(bidb, bidh, first_m_row);
+  const index_t dqaccum_offset = bofst.dqaccum_offset(bidb, bidh, first_m_row);
+  const index_t lse_offset = bofst.lse_offset(bidb, bidh, first_m_row);
   const index_t pb_offset =
       (bidb * param.num_head_q * param.seq_len_kv_pad * kBlockM +
        bidh * param.seq_len_kv_pad * kBlockM + n_block * kBlockN * kBlockM) *
@@ -687,14 +693,13 @@ void dq_dk_dv_1colblock(
   Tensor taccScS = thr_mma_sdp.partition_C(caccS);
   Tensor taccScS_rt = logical_divide(taccScS, Shape<_1>{});
 
-  const int max_m_block = ceil_div(param.seq_len_q, kBlockM);
   const int tail_m = param.seq_len_q % kBlockM;
 
   auto rdV = create_reg<V>(trait, mdV, tiled_mma_dkv);
   auto rdK = create_reg<V>(trait, mdK, tiled_mma_dkv);
   clear(rdV);
   clear(rdK);
-  for (int m_block = 0; m_block < max_m_block; ++m_block) {
+  for (int m_block = first_m_block; m_block < max_m_block; ++m_block) {
     const bool Is_even_M = not((m_block == max_m_block - 1) and (tail_m != 0));
     if (not Is_even_M) {
       mQ = make_tensor(
@@ -934,11 +939,7 @@ void convert_dq(
   copy(tileload_dQaccum, thr_tile_dQaccum_S, rdQaccum);
   if constexpr (Is_even_M) {
     Tensor rdQ = convert_type<DType>(rdQaccum);
-    Tensor accQ = make_identity_tensor(shapeQ);
-    Tensor taccQ = thr_save_dQ.partition_D(accQ);
-    Tensor taccQ_rc = logical_divide(taccQ, Shape<_1>{})(0, _, 0);
     for (int m = 0; m < size<1>(thr_tile_dQ_D); ++m) {
-      int row_m = get<0>(taccQ_rc(m));
       auto thr_tile_dq = thr_tile_dQ_D(_, m, _);
       auto r_dq = rdQ(_, m, _);
       copy(r_dq, thr_tile_dq);

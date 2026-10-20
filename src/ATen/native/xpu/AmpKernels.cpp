@@ -19,7 +19,7 @@ void _amp_foreach_non_finite_check_and_unscale_xpu_(
     TensorList scaled_grads,
     Tensor& found_inf,
     const Tensor& inv_scale) {
-  if (scaled_grads.size() == 0) {
+  if (scaled_grads.empty()) {
     return;
   }
 
@@ -79,7 +79,7 @@ void _amp_foreach_non_finite_check_and_unscale_xpu_(
         tensor_lists[0].push_back(t);
       }
     }
-    if (tensor_lists[0].size() == 0) {
+    if (tensor_lists[0].empty()) {
       return;
     }
   }

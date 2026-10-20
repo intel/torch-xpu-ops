@@ -156,6 +156,71 @@ def _test_poisson_gpu_sample(self):
         )
 
 
+def _chi2(counts, expected):
+    keep = expected > 50
+    return (((counts[keep] - expected[keep]) ** 2) / expected[keep]).sum().item()
+
+
+def _test_gamma_poisson_gpu_large_sample_independence(self):
+    # Regression test for https://github.com/pytorch/pytorch/issues/194926
+    #
+    # These kernels used to cap the launch far below the element count and walk a
+    # global-range-strided loop, re-seeding Philox from the work item id on every
+    # element. Every element handled by a given work item therefore replayed the
+    # same stream, leaving the sample periodic with the work item count. The
+    # launch is now one work item per element block, seeded from that index.
+    #
+    # The chi-square checks key off the collapse in effective sample size that
+    # the old scheme caused, so their power scales with n / work_items. Grow n if
+    # a device is ever wider than the ~115k work items this was checked against.
+    set_rng_seed(0)
+    n = 10000000
+
+    alpha = 2.3335
+    concentration = torch.tensor(alpha, device="xpu", dtype=torch.float64)
+    rate = torch.tensor(1.0, device="xpu", dtype=torch.float64)
+    x = Gamma(concentration, rate).sample((n,)).cpu()
+
+    # Gamma(alpha, 1) has mean == variance == alpha.
+    mean_se = (alpha / n) ** 0.5
+    # Var(S^2) = (mu4 - sigma^4) / n = (2 * alpha^2 + 6 * alpha) / n.
+    var_se = ((2 * alpha**2 + 6 * alpha) / n) ** 0.5
+    self.assertLess(abs(x.mean().item() - alpha) / mean_se, 5.0)
+    self.assertEqual(x.var().item(), alpha, atol=5 * var_se, rtol=0)
+    self.assertGreater(x.unique().numel(), n // 2)
+
+    lam = 4.0
+    p = torch.poisson(torch.full((n,), lam, device="xpu", dtype=torch.float64)).cpu()
+    self.assertEqual(p.mean().item(), lam, atol=10 * (lam / n) ** 0.5, rtol=0)
+    k = torch.arange(16, dtype=torch.float64, device="cpu")
+    expected = (
+        n
+        * Poisson(torch.tensor(lam, dtype=torch.float64, device="cpu"))
+        .log_prob(k)
+        .exp()
+    )
+    counts = torch.bincount(p.long(), minlength=16)[:16].double()
+    # ~14 once fixed, ~4000 under the bug at 40,960 work items.
+    self.assertLess(_chi2(counts, expected), 100.0)
+
+    # bernoulli_ with a tensor p is the only step=4 caller of tensor_apply2.
+    b = (
+        torch.empty(n, device="xpu")
+        .bernoulli_(torch.full((n,), 0.5, device="xpu"))
+        .cpu()
+    )
+    self.assertEqual(b.mean().item(), 0.5, atol=5 * (0.25 / n) ** 0.5, rtol=0)
+    # Histogram of consecutive draws packed 8 to a byte: flat once fixed, skewed
+    # by the repeated period under the bug.
+    codes = (b.view(-1, 8).long() * (2 ** torch.arange(8, device="cpu"))).sum(1)
+    byte_counts = torch.bincount(codes, minlength=256).double()
+    byte_expected = torch.full(
+        (256,), codes.numel() / 256, dtype=torch.float64, device="cpu"
+    )
+    # ~256 once fixed, ~62,000 under the bug at 40,960 work items.
+    self.assertLess(_chi2(byte_counts, byte_expected), 500.0)
+
+
 def _test_torch_binomial_dtype_errors(self):
     dtypes = [torch.int, torch.long, torch.short]
     devices = ["cpu", "xpu"]
@@ -182,12 +247,35 @@ def _test_torch_binomial_dtype_errors(self):
                 torch.binomial(total_count, total_prob)
 
 
+def _test_lowrank_multivariate_normal_moments(self):
+    # XPU override of the upstream moments test with a larger sample count.
+    #
+    # More samples shrink the 3-sigma mean spread (std error ~ sigma/sqrt(N)):
+    # 100k -> 500k brings it from ~0.0168 to ~0.0075, under atol=0.01
+    set_rng_seed(0)
+    mean = torch.randn(5)
+    cov_factor = torch.randn(5, 2)
+    cov_diag = torch.randn(5).abs()
+    d = LowRankMultivariateNormal(mean, cov_factor, cov_diag)
+    samples = d.rsample((500000,))
+    empirical_mean = samples.mean(0)
+    self.assertEqual(d.mean, empirical_mean, atol=0.01, rtol=0)
+    empirical_var = samples.var(0)
+    self.assertEqual(d.variance, empirical_var, atol=0.02, rtol=0)
+
+
 TestDistributions.test_beta_underflow_gpu = _test_beta_underflow_gpu
 TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
 TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
 TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
 TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
+TestDistributions.test_gamma_poisson_gpu_large_sample_independence = (
+    _test_gamma_poisson_gpu_large_sample_independence
+)
 TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_errors
+TestDistributions.test_lowrank_multivariate_normal_moments = (
+    _test_lowrank_multivariate_normal_moments
+)
 instantiate_device_type_tests(
     TestDistributions, globals(), only_for="xpu", allow_xpu=True
 )

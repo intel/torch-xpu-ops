@@ -45,7 +45,7 @@ jobs:
           echo "Existing disable labels: ${EXISTING:-none}"
 
       - name: Checkout repo (for skill file)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: .claude/skills/auto-label
           sparse-checkout-cone-mode: false

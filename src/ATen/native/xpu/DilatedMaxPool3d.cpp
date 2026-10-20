@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/Context.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/DilatedMaxPool3d.h>
 

@@ -138,7 +138,7 @@ struct InvStd {
   inline T operator()(T var, double epsilon) const {
     T invstd = 0.0f;
     if (var != static_cast<T>(0.0f) || epsilon != static_cast<T>(0.0f)) {
-      invstd = static_cast<T>(1.0f) / sycl::sqrt(var + static_cast<T>(epsilon));
+      invstd = sycl::rsqrt(var + static_cast<T>(epsilon));
     }
     return invstd;
   }
@@ -155,7 +155,7 @@ template <class KernelClass>
 int get_max_group_size(int simd = SIMD32) {
   // The max work group size required by batch_norm needs to ensure that the two
   // subgroup reduces can obtain correct results.
-  int max_size = syclMaxWorkGroupSize<KernelClass>();
+  int max_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   int shfl2_restricted_size = simd * simd;
   return max_size > shfl2_restricted_size ? shfl2_restricted_size : max_size;
 }
@@ -175,7 +175,7 @@ int get_num_threads(int nelem, int restricted_simd = SIMD32) {
 int get_dev_max_group_size(int simd = SIMD32) {
   // The max work group size required by batch_norm needs to ensure that the two
   // subgroup reduces can obtain correct results.
-  int max_size = syclDeviceMaxWorkGroupSize();
+  int max_size = at::xpu::getDeviceMaxWorkGroupSize();
   int shfl2_restricted_size = simd * simd;
   return max_size > shfl2_restricted_size ? shfl2_restricted_size : max_size;
 }
@@ -209,7 +209,7 @@ int get_prefer_simd(int numPlane, int nHw) {
   if (simd >= SIMD32 && nHw <= SIMD32)
     return SIMD32;
 
-  int64_t target_tile_size = syclMaxWorkItemsPerTile(dev_id);
+  int64_t target_tile_size = at::xpu::getDeviceMaxWorkItems(dev_id);
   // for work group barrier perf
   int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
   if (simd == SIMD32) {
@@ -229,8 +229,7 @@ struct Float2 {
   accscalar_t v1, v2;
   Float2() = default;
 
-  Float2(scalar_t v1, scalar_t v2)
-      : v1(static_cast<accscalar_t>(v1)), v2(static_cast<accscalar_t>(v2)) {}
+  Float2(accscalar_t v1, accscalar_t v2) : v1(v1), v2(v2) {}
   Float2(int v)
       : v1(static_cast<accscalar_t>(v)), v2(static_cast<accscalar_t>(v)) {}
   Float2& operator+=(const Float2& a) {
@@ -389,7 +388,7 @@ std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
   int nwg_x = at::ceil_div(stride, group_x);
   int nwg_y = std::min(
       at::ceil_div(reduction, group_y * loops_per_item),
-      int(syclMaxWorkItemsPerTile()) / (nwg_x * group_x) / (group_y));
+      int(at::xpu::getDeviceMaxWorkItems()) / (nwg_x * group_x) / (group_y));
   nwg_y = std::max(nwg_y, 1);
 
   if (coop_flag) {
@@ -901,7 +900,7 @@ void batch_norm_stats_channels_last_template(
   at::Tensor staging_data;
   at::Tensor semaphores;
 
-  using VecKernel = WelfordBatchNormStatChannelsLastVecKernelFunctor<
+  using VecConfig = WelfordBatchNormStatChannelsLastVecKernelConfig<
       VarTransform,
       scalar_t,
       accscalar_t,
@@ -911,35 +910,42 @@ void batch_norm_stats_channels_last_template(
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
   bool use_vec_kernel = false;
 
-  if (VecKernel::valid(
+  if (VecConfig::valid(
           reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
-    auto kfn = VecKernel(
-        input_ptr,
-        out_mean_ptr,
-        out_invstd_ptr,
-        reduction_size,
-        stride,
-        nullptr,
-        nullptr,
-        epsilon);
-    kfn.init();
+    auto cfg = VecConfig(reduction_size, stride);
+    cfg.init();
 
-    staging_data = at::empty({(long)(kfn.staging_size())}, out_mean.options());
+    staging_data = at::empty({(long)(cfg.staging_size())}, out_mean.options());
     semaphores = at::zeros(
-        {(long)(kfn.semaphores_size())}, input.options().dtype(at::kInt));
-    accscalar_t* staging_data_ptr = kfn.num_cooperative_groups() > 1
+        {(long)(cfg.semaphores_size())}, input.options().dtype(at::kInt));
+    accscalar_t* staging_data_ptr = cfg.num_cooperative_groups() > 1
         ? staging_data.mutable_data_ptr<accscalar_t>()
         : nullptr;
-    int* semaphores_ptr = kfn.num_cooperative_groups() > 1
+    int* semaphores_ptr = cfg.num_cooperative_groups() > 1
         ? semaphores.mutable_data_ptr<int>()
         : nullptr;
 
-    use_vec_kernel = kfn.set_staging_data_check(staging_data_ptr);
+    use_vec_kernel = cfg.check_staging_data(staging_data_ptr);
 
     if (use_vec_kernel) {
-      kfn.set_semaphores(semaphores_ptr);
-      sycl_kernel_submit(
-          kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
+      constexpr auto kptr = welford_batch_norm_stat_channels_last_vec_kernel<
+          VarTransform,
+          scalar_t,
+          accscalar_t,
+          PREFERRED_VEC_SIZE>;
+      sycl_kernel_submit<kptr, 2>(
+          cfg.global_range(),
+          cfg.local_range(),
+          getCurrentSYCLQueue(),
+          cfg.scratch_size(),
+          input_ptr,
+          out_mean_ptr,
+          out_invstd_ptr,
+          reduction_size,
+          stride,
+          staging_data_ptr,
+          semaphores_ptr,
+          epsilon);
       return;
     }
   }
@@ -952,7 +958,7 @@ void batch_norm_stats_channels_last_template(
         ELEMENTS_PER_ITER>;
 
     auto config = get_adaptive_launch_config(
-        syclMaxWorkGroupSize<KernelT>(),
+        at::xpu::getKernelMaxWorkGroupSize<KernelT>(),
         reduction_size,
         stride,
         true,
@@ -1048,10 +1054,8 @@ struct BatchNormTransformInputKernelFunctor {
     if constexpr (train) {
       invstd = var_or_invstd_[plane];
     } else {
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
-              static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
+      invstd = sycl::rsqrt(
+          static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
     index_t bs = input_.size(0);
@@ -1168,10 +1172,8 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
     if constexpr (train) {
       invstd = var_or_invstd_[plane];
     } else {
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
-              static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
+      invstd = sycl::rsqrt(
+          static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
     index_t bs = input_.size(0);
@@ -1326,7 +1328,7 @@ void batch_norm_elemt_template(
       1,
       std::min<int>(
           (256 * 1024) / input.size(1), (input.size(0) + tb - 1) / tb));
-  nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
+  nwg_y = std::min<int>(nwg_y, at::xpu::getDeviceMaxWorkItems() / (tf * tb));
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
   auto input_ptr = (char*)input_reshaped.const_data_ptr();
@@ -1636,7 +1638,7 @@ void batch_norm_elemt_channels_last_template(
                     stride,
                     fuse_relu);
             auto config_vec = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 false,
@@ -1661,7 +1663,7 @@ void batch_norm_elemt_channels_last_template(
                 stride,
                 fuse_relu);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 false,
@@ -1718,7 +1720,7 @@ void batch_norm_elemt_channels_last_template(
                     stride,
                     fuse_relu);
             auto config_vec = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 false,
@@ -1743,7 +1745,7 @@ void batch_norm_elemt_channels_last_template(
                 stride,
                 fuse_relu);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 false,
@@ -2365,16 +2367,13 @@ batch_norm_backward_reduce_channels_last_template(
   at::Tensor sumn_dy = at::empty({stride}, mean.options());
   at::Tensor sum_dy_xmu = at::empty({stride}, mean.options());
 
-  at::Tensor grad_weight;
-  at::Tensor grad_bias;
-  if (weight.defined()) {
-    grad_weight = at::zeros({stride}, weight.options());
-    grad_bias = at::zeros({stride}, weight.options());
-  } else {
-    // because I cannot return an uninitialized at::Tensor
-    grad_weight = at::empty({0}, mean.options());
-    grad_bias = at::empty({0}, mean.options());
-  }
+  // Without a weight the gradients are empty rather than undefined, since an
+  // undefined Tensor cannot be returned.
+  const bool has_weight = weight.defined();
+  const auto grad_opts = has_weight ? weight.options() : mean.options();
+  const int64_t grad_size = has_weight ? stride : 0;
+  at::Tensor grad_weight = at::empty({grad_size}, grad_opts);
+  at::Tensor grad_bias = at::empty({grad_size}, grad_opts);
 
   auto config = get_adaptive_launch_config(
       syclMaxWorkItemsPerSubSlice() * 2,
@@ -2944,7 +2943,7 @@ Tensor batch_norm_backward_elemt_template(
       1,
       std::min<int>(
           (256 * 1024) / input.size(1), (input.size(0) + tb - 1) / tb));
-  nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
+  nwg_y = std::min<int>(nwg_y, at::xpu::getDeviceMaxWorkItems() / (tf * tb));
   auto reduction_size = input_.numel() / n_input;
   auto norm_fct = static_cast<stat_accscalar_t>(1.0 / reduction_size);
 
@@ -3054,7 +3053,7 @@ Tensor batch_norm_backward_elemt_template(
       1,
       std::min<int>(
           (256 * 1024) / input.size(1), (input.size(0) + tb - 1) / tb));
-  nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
+  nwg_y = std::min<int>(nwg_y, at::xpu::getDeviceMaxWorkItems() / (tf * tb));
 
   sycl::range<2> local_range(tb, tf);
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
@@ -3408,7 +3407,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     reduction_size,
                     stride);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 true,
@@ -3437,7 +3436,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     reduction_size,
                     stride);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 true,
@@ -3465,7 +3464,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 reduction_size,
                 stride);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 true,
@@ -3491,7 +3490,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 reduction_size,
                 stride);
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 true,
@@ -3556,7 +3555,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 count.const_data_ptr<int>(),
                 count.numel());
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 false,
@@ -3587,7 +3586,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     count.const_data_ptr<int>(),
                     count.numel());
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 false,
@@ -3639,7 +3638,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 count.const_data_ptr<int>(),
                 count.numel());
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
                 false,
@@ -3671,7 +3670,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     count.const_data_ptr<int>(),
                     count.numel());
             auto config = get_adaptive_launch_config(
-                syclMaxWorkGroupSize(kfn),
+                at::xpu::getKernelMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
                 false,
@@ -3860,8 +3859,8 @@ void batch_norm_mean_var(
           save_var,
           save_mean,
           self,
-          /*dims=*/reduce_dims,
-          /*unbiased=*/false,
+          /*dim=*/reduce_dims,
+          /*correction=*/false,
           /*keepdim=*/false);
       return;
     }
@@ -3972,7 +3971,7 @@ template <typename scalar_t, typename acc_t>
 struct BatchNormCalcInvstdFunctor {
   acc_t operator()(scalar_t var) const {
     volatile acc_t v = var + eps_;
-    return c10::xpu::compat::rsqrt(v);
+    return sycl::rsqrt(v);
   }
 
   BatchNormCalcInvstdFunctor(acc_t eps) : eps_(eps) {}
@@ -4177,10 +4176,8 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       invstd = save_invstd_[plane];
     } else {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
-              static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+      invstd = sycl::rsqrt(
+          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
     stat_accscalar_t weight_val = weight_.size(0) > 0
@@ -4384,10 +4381,8 @@ struct BatchNormBackwardVectorizedKernelFunctor
       invstd = save_invstd_[plane];
     } else {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
-              static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+      invstd = sycl::rsqrt(
+          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
     stat_accscalar_t weight_val = weight_.size(0) > 0
@@ -5099,8 +5094,7 @@ struct BatchNormReduceStatisticsKernelFunctor {
         n += count;
       }
       mean[i] = avg;
-      invstd[i] =
-          static_cast<accscalar_t>(1) / sycl::sqrt(var_n / n + epsilon_);
+      invstd[i] = sycl::rsqrt(var_n / n + epsilon_);
       if (running_mean.data() != NULL) {
         running_mean[i] = static_cast<scalar_t>(
             (1 - momentum_) * running_mean[i] + momentum_ * avg);

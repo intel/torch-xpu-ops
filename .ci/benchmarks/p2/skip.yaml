@@ -1,0 +1,42 @@
+# Models excluded from specific test cases for priority p2.
+#
+# torchbench_models_list.txt, huggingface_models_list.txt and
+# timm_models_list.txt in this folder contain the full model set for this
+# priority. A model listed under a given suite/scenario/mode here is skipped for
+# that run configuration.
+skip:
+  huggingface:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  timm:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  torchbench:
+    accuracy:
+      inference: []
+      training:
+        - doctr_det_predictor
+        - doctr_reco_predictor
+        - maml
+        - pyhpc_equation_of_state
+        - pyhpc_isoneutral_mixing
+        - pyhpc_turbulent_kinetic_energy
+        - sam_fast
+    performance:
+      inference: []
+      training:
+        - doctr_det_predictor
+        - doctr_reco_predictor
+        - maml
+        - pyhpc_equation_of_state
+        - pyhpc_isoneutral_mixing
+        - pyhpc_turbulent_kinetic_energy
+        - sam_fast
