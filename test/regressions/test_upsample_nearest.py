@@ -9,10 +9,16 @@
 # Owner(s): ["module: intel"]
 import torch
 from torch.autograd import Variable
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import largeTensorTest
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 device = torch.device("xpu")
 cpu_device = torch.device("cpu")
+
+# Per batch 1024 * 1024 * 800 = 838,860,800 elements (< INT32_MAX),
+# total 3 * 838,860,800 = 2,516,582,400 elements (> INT32_MAX).
+_SMALL_SIZE = (3, 1, 512, 512, 400)
+_LARGE_SIZE = (3, 1, 1024, 1024, 800)
 
 
 class TestTorchMethod(TestCase):
@@ -166,3 +172,107 @@ class TestTorchMethod(TestCase):
         for dtype in test_dtypes:
             test_upsamle_nearest(dtype)
             test_upsample_nearest_exact(dtype)
+
+    def test_upsample_nearest2d_channels_last_many_channels(self):
+        # 8x8 -> 16x16 gives 256 outputs per channel, so C > 256 exceeds the
+        # 65536 work-items the channels_last kernel launches (intel/torch-xpu-ops#5701).
+        for mode in ("nearest", "nearest-exact"):
+            for dtype in (torch.float, torch.bfloat16, torch.float16):
+                for channels in (255, 256, 257, 512):
+                    with self.subTest(mode=mode, dtype=dtype, channels=channels):
+                        x = torch.randn(1, channels, 8, 8).to(dtype)
+                        x = x.contiguous(memory_format=torch.channels_last)
+                        out = torch.nn.functional.interpolate(
+                            x.to(device), scale_factor=2.0, mode=mode
+                        )
+                        ref = torch.nn.functional.interpolate(
+                            x.float(), scale_factor=2.0, mode=mode
+                        ).to(dtype)
+                        self.assertEqual(out.cpu(), ref)
+
+    """
+    Regression tests for large-tensor indexing in upsample_nearest3d forward/backward.
+
+    *_large_size_int64: the kernels walk the batch dim with dst_idx += C * D * H * W,
+    so the flat index exceeds INT32_MAX once N * C * D * H * W > INT32_MAX even if a
+    single batch fits in int32. Each batch is compared against a single-batch launch,
+    which stays on the 32-bit index path.
+
+    *_single_batch_over_uint32: a single batch has more than UINT32_MAX elements, so
+    the launch size (ceil_div of the per-batch numel) must be computed in 64 bits or
+    part of the output is never written.
+    """
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest3d_fwd_large_size_int64(self):
+        x = torch.randint(0, 256, _SMALL_SIZE, dtype=torch.uint8, device="xpu")
+        y = torch.nn.functional.interpolate(x, size=_LARGE_SIZE[2:], mode="nearest")
+        self.assertEqual(y.shape, _LARGE_SIZE)
+
+        for b in range(_SMALL_SIZE[0]):
+            ref = torch.nn.functional.interpolate(
+                x[b : b + 1], size=_LARGE_SIZE[2:], mode="nearest"
+            )
+            self.assertEqual(y[b : b + 1], ref)
+            del ref
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest3d_bwd_large_size_int64(self):
+        # Downsampling backward makes grad_input the large tensor that
+        # selects the int64 path via canUse32BitIndexMath(grad_input).
+        grad_output = torch.randint(
+            0, 256, _SMALL_SIZE, dtype=torch.uint8, device="xpu"
+        )
+        grad_input = torch.ops.aten.upsample_nearest3d_backward(
+            grad_output, _SMALL_SIZE[2:], _LARGE_SIZE
+        )
+        self.assertEqual(grad_input.shape, _LARGE_SIZE)
+
+        for b in range(_SMALL_SIZE[0]):
+            ref = torch.ops.aten.upsample_nearest3d_backward(
+                grad_output[b : b + 1], _SMALL_SIZE[2:], (1, *_LARGE_SIZE[1:])
+            )
+            self.assertEqual(grad_input[b : b + 1], ref)
+            del ref
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest3d_fwd_single_batch_over_uint32(self):
+        # Per-batch output numel 1024 * 1024 * 4100 > UINT32_MAX, so the launch
+        # size must not be computed in 32 bits.
+        out_size = (1024, 1024, 4100)
+        x = torch.randint(
+            0, 256, (1, 1, 1024, 1024, 2050), dtype=torch.uint8, device="xpu"
+        )
+        y = torch.zeros((1, 1, *out_size), dtype=torch.uint8, device="xpu")
+        torch.ops.aten.upsample_nearest3d.out(x, out_size, None, None, None, out=y)
+
+        chunk = 16
+        for d in range(0, out_size[0], chunk):
+            ref = x[:, :, d : d + chunk].repeat_interleave(2, dim=-1)
+            self.assertEqual(y[:, :, d : d + chunk], ref)
+            del ref
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest3d_bwd_single_batch_over_uint32(self):
+        # Per-batch grad_input numel 1024 * 1024 * 4100 > UINT32_MAX. Backward of
+        # a 2x downsample along W: even columns get grad_output, odd columns get 0.
+        in_size = (1, 1, 1024, 1024, 4100)
+        out_size = (1024, 1024, 2050)
+        grad_output = torch.randint(
+            0, 256, (1, 1, *out_size), dtype=torch.uint8, device="xpu"
+        )
+        grad_input = torch.full(in_size, 255, dtype=torch.uint8, device="xpu")
+        torch.ops.aten.upsample_nearest3d_backward.grad_input(
+            grad_output, out_size, in_size, None, None, None, grad_input=grad_input
+        )
+
+        chunk = 16
+        for d in range(0, in_size[2], chunk):
+            ref = torch.zeros_like(grad_input[:, :, d : d + chunk])
+            ref[..., ::2] = grad_output[:, :, d : d + chunk]
+            self.assertEqual(grad_input[:, :, d : d + chunk], ref)
+            del ref
+
+
+if __name__ == "__main__":
+    run_tests()
