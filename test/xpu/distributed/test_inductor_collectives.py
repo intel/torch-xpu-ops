@@ -144,24 +144,34 @@ class TestBucketingTrace(torch._dynamo.test_case.TestCase):
         self.assertTrue(any("u0" in shape for shape in symbolic_shapes))
         self.assertTrue(any("16*((u0//2))" in shape for shape in symbolic_shapes))
 
-    def test_all_gather_bucket_trace_requires_unbacked_chunk_hint(self):
+    def test_all_gather_bucket_trace_accepts_unhinted_unbacked_chunk_numel(self):
         x, y = self._make_hinted_unbacked_chunked_fake_inputs()
 
-        with self.assertRaisesRegex(
-            RuntimeError,
-            "Collective bucketing requires hinted symbolic sizes",
-        ):
-            bucketing_trace(
-                lambda a, b: all_gather_merge_fn_to_trace_custom_ops(
-                    [a, b],
-                    "0",
-                    2,
-                    torch.float32,
-                    [torch.float32, torch.float32],
-                    0,
-                ),
-                (x, y),
+        gm = bucketing_trace(
+            lambda a, b: all_gather_merge_fn_to_trace_custom_ops(
+                [a, b],
+                "0",
+                2,
+                torch.float32,
+                [torch.float32, torch.float32],
+                0,
+            ),
+            (x, y),
+        )
+
+        FileCheck().check("sym_numel").check("_pre_bucket_all_gather").run(gm.code)
+        symbolic_shapes = [
+            str(node.meta["val"].shape)
+            for node in gm.graph.nodes
+            if "val" in node.meta and isinstance(node.meta["val"], torch.Tensor)
+        ]
+        self.assertTrue(any("u0" in shape for shape in symbolic_shapes))
+        self.assertFalse(
+            any(
+                node.target == torch.ops.aten.split_with_sizes_copy.out
+                for node in gm.graph.nodes
             )
+        )
 
     def test_reduce_scatter_bucket_trace_preserves_hinted_unbacked_chunk_shapes(self):
         x, y = self._make_hinted_unbacked_chunked_fake_inputs(hint=8)
@@ -3753,7 +3763,7 @@ class TestNodeGroupNameResolution(torch._dynamo.test_case.TestCase):
             args=(input_node, 2, pg_node),
         )
         ag_node.meta["val"] = torch.empty(8, dtype=torch.float32)
-        self.assertEqual(_ag_group_key(ag_node), ("pg0", torch.float32))
+        self.assertEqual(_ag_group_key(ag_node), ("pg0", torch.float32, None))
 
     def test_rs_group_key_with_node_group_name(self):
         from torch._inductor.fx_passes.bucketing import _rs_group_key
@@ -3764,7 +3774,7 @@ class TestNodeGroupNameResolution(torch._dynamo.test_case.TestCase):
             args=(input_node, "sum", 2, pg_node),
         )
         rs_node.meta["val"] = torch.empty(2, dtype=torch.float32)
-        self.assertEqual(_rs_group_key(rs_node), ("pg0", "sum", torch.float32))
+        self.assertEqual(_rs_group_key(rs_node), ("pg0", "sum", torch.float32, None))
 
     def test_ar_group_key_with_node_group_name(self):
         from torch._inductor.fx_passes.bucketing import _ar_group_key
@@ -3775,7 +3785,7 @@ class TestNodeGroupNameResolution(torch._dynamo.test_case.TestCase):
             args=(input_node, "sum", pg_node),
         )
         ar_node.meta["val"] = torch.empty(4, dtype=torch.float32)
-        self.assertEqual(_ar_group_key(ar_node), ("pg0", "sum", torch.float32))
+        self.assertEqual(_ar_group_key(ar_node), ("pg0", "sum", torch.float32, None))
 
 
 def _build_graph_with_duplicate_rs(

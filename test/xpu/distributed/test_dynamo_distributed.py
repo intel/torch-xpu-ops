@@ -1385,7 +1385,9 @@ class TestMultiProc(DynamoDistributedMultiProcTestCase):
     @unittest.skipIf(not HAS_GPU, "Inductor+gpu needs triton and recent GPU arch")
     @config.patch(enable_compiler_collectives=True)
     def test_compiler_collectives_dim_mismatch(self):
-        with _dynamo_dist_per_rank_init(self.rank, self.world_size):
+        with _dynamo_dist_per_rank_init(
+            self.rank, self.world_size, rdvz_file=self.file_name
+        ):
             torch._dynamo.utils.clear_compilation_metrics()
 
             @torch.compile()
@@ -1494,7 +1496,9 @@ class TestMultiProc(DynamoDistributedMultiProcTestCase):
     @unittest.skipIf(not HAS_GPU, "Inductor+gpu needs triton and recent GPU arch")
     @enable_guard_collectives()
     def test_guard_collective(self):
-        with _dynamo_dist_per_rank_init(self.rank, self.world_size):
+        with _dynamo_dist_per_rank_init(
+            self.rank, self.world_size, rdvz_file=self.file_name
+        ):
             torch._dynamo.utils.clear_compilation_metrics()
 
             @torch.compile()
@@ -2783,7 +2787,7 @@ class TestNNFunctionalCompile(torch._dynamo.test_case.TestCase):
             fn,
             torch.randn(4, 4),
             "all_reduce",
-            suggestion="torch.distributed._functional_collectives.all_reduce",
+            suggestion="torch.distributed.functional_collectives.all_reduce",
         )
 
     def test_nn_functional_all_gather_unsupported(self):
@@ -2797,7 +2801,7 @@ class TestNNFunctionalCompile(torch._dynamo.test_case.TestCase):
             fn,
             torch.randn(4, 4),
             "all_gather",
-            suggestion="torch.distributed._functional_collectives.all_gather_single",
+            suggestion="torch.distributed.functional_collectives.all_gather_single",
         )
 
     def test_nn_functional_reduce_scatter_unsupported(self):
@@ -2812,7 +2816,7 @@ class TestNNFunctionalCompile(torch._dynamo.test_case.TestCase):
             fn,
             [torch.randn(4, 4), torch.randn(4, 4)],
             "reduce_scatter",
-            suggestion="torch.distributed._functional_collectives.reduce_scatter_single",
+            suggestion="torch.distributed.functional_collectives.reduce_scatter_single",
         )
 
     def test_nn_functional_all_to_all_single_unsupported(self):
@@ -2827,7 +2831,7 @@ class TestNNFunctionalCompile(torch._dynamo.test_case.TestCase):
             fn,
             torch.randn(4, 4),
             "all_to_all_single",
-            suggestion="torch.distributed._functional_collectives.all_to_all_single",
+            suggestion="torch.distributed.functional_collectives.all_to_all_single",
         )
 
     def test_nn_functional_broadcast_unsupported(self):
@@ -2841,7 +2845,7 @@ class TestNNFunctionalCompile(torch._dynamo.test_case.TestCase):
             fn,
             torch.randn(4),
             "broadcast",
-            suggestion="torch.distributed._functional_collectives.broadcast",
+            suggestion="torch.distributed.functional_collectives.broadcast",
         )
 
     def test_nn_functional_reduce_unsupported(self):
