@@ -67,6 +67,8 @@ runs:
       uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
+        run-id: 38878458189
+        github-token: ${{ github.token }}
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
