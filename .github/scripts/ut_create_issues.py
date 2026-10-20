@@ -56,6 +56,8 @@ SAFE_BODY_LIMIT = 60000
 MAX_ISSUES_PER_RUN = 15
 
 NO_TRACEBACK = "No traceback was captured in the JUnit XML for this failure."
+# What a model leaves where it meant to come back, e.g. `@@PART2@@`.
+PLACEHOLDER = re.compile(r"@@[A-Z0-9_]+@@")
 
 
 def run(cmd: list[str], check: bool = True) -> str:
@@ -301,9 +303,58 @@ def evidence_block(run: dict, category: str, cls: str, cls_reason: str,
     return "\n".join(lines).strip()
 
 
-def reproduce_for(case: dict, reproduce: dict) -> str:
+# A drafted command is model output that read untrusted failure text, and it
+# lands in a block people paste into a shell. So it may only change directory,
+# set variables and run python or pytest, one command per line.
+_ASSIGN = r"[A-Za-z_][A-Za-z0-9_]*=\S*"
+DRAFTED_LINE = re.compile(
+    rf"^(#.*|cd \S+|export {_ASSIGN}"
+    rf"|(?:{_ASSIGN} )*(?:python3? -m pytest|python3?|pytest) \S.*)$")
+DRAFTED_FORBIDDEN = ("`", ";", "&", "|", "<", ">", "$(", "\\")
+MAX_DRAFTED_LINES = 20
+MAX_DRAFTED_CHARS = 2000
+
+
+def drafted_reproduce(draft: dict, case: dict) -> tuple[str, str]:
+    """The draft's own `reproduce`, checked, or the reason it cannot be used.
+
+    Only consulted when the run recorded nothing for the category. It must
+    name the case it claims to reproduce, and keep to the shape above.
+    """
+    text = draft.get("reproduce")
+    if text is None:
+        return "", ""
+    if not isinstance(text, str) or not text.strip():
+        return "", "`reproduce` is not a non-empty string"
+    lines = [line.rstrip() for line in text.strip().splitlines()]
+    if len(lines) > MAX_DRAFTED_LINES or len(text) > MAX_DRAFTED_CHARS:
+        return "", (f"`reproduce` is longer than {MAX_DRAFTED_LINES} lines "
+                    f"or {MAX_DRAFTED_CHARS} characters")
+    for line in lines:
+        if line and (any(c in line for c in DRAFTED_FORBIDDEN)
+                     or not line.isprintable()
+                     or not DRAFTED_LINE.match(line)):
+            return "", f"`reproduce` has a line outside the allowed shape: `{line[:80]}`"
+    wanted = case["test_name"] if case["class_name"] else case["test_file"]
+    if wanted not in text:
+        return "", f"`reproduce` does not name `{wanted}`, the case it is shown for"
+    return "\n".join(lines), ""
+
+
+def reproduce_for(case: dict, reproduce: dict, drafted: str = "") -> str:
+    """What the UT job recorded for the category; failing that, the draft's.
+
+    `drafted` has already been through drafted_reproduce, and is marked as
+    reconstructed so nobody mistakes it for what the job ran.
+    """
     entry = reproduce.get(case["category"])
     if not entry:
+        if drafted:
+            return "\n".join([
+                f"# Reconstructed from the workflow by the analysis: this run "
+                f"recorded no reproduce command for {case['category']}.",
+                drafted,
+            ])
         return f"# No reproduce command was recorded for {case['category']}."
     module, class_name = case["module"], case["class_name"]
     if class_name and module and class_name.startswith(module + "."):
@@ -376,6 +427,28 @@ def render_body(fields: list[tuple[str, str]], slots: dict[str, str],
 # --------------------------------------------------------------------------- #
 # Drafts, checked before anything is created
 # --------------------------------------------------------------------------- #
+
+
+def unfinished_drafts(doc: dict) -> str:
+    """Why drafts.json is not a finished document, or empty if it is.
+
+    A large drafts.json is sometimes written with a placeholder for a part the
+    analysis meant to fill in later, and the session ends first. What it left
+    is valid JSON, and filing the
+    groups it did write would present half an analysis as all of it.
+    """
+    drafts = doc.get("drafts")
+    if not isinstance(drafts, list):
+        return "`drafts` is not a list"
+    for position, draft in enumerate(drafts):
+        if not isinstance(draft, dict):
+            return f"entry {position} of `drafts` is `{str(draft)[:40]}`, not a draft"
+    for where, value in [("notes", doc.get("notes"))] + [
+            (f"draft {d.get('id', '?')} `{key}`", d.get(key))
+            for d in drafts for key in ("id", "title_text", "summary", "reason")]:
+        if isinstance(value, str) and PLACEHOLDER.search(value):
+            return f"{where} is the placeholder `{PLACEHOLDER.search(value).group()}`"
+    return ""
 
 
 def check_draft(draft: dict, index: dict[str, dict]) -> tuple[list[dict], str]:
@@ -496,7 +569,8 @@ def main() -> int:
     work = Path(args.work_dir)
     work.mkdir(parents=True, exist_ok=True)
     report = {"run_id": run_json["run_id"], "dry_run": args.dry_run,
-              "created": [], "skipped": [], "rejected": [], "misquoted": []}
+              "created": [], "skipped": [], "rejected": [], "misquoted": [],
+              "reproduce_dropped": [], "unplaced": []}
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -510,6 +584,21 @@ def main() -> int:
             "::error::the drafts were written against a different set of "
             "failures than this evidence describes; filing nothing"
         )
+    unfinished = unfinished_drafts(drafts_doc)
+    if unfinished:
+        raise SystemExit(
+            f"::error::drafts.json was not finished ({unfinished}); its groups "
+            "cannot be trusted to be the analysis's last word, filing nothing"
+        )
+    # Not filed and not withheld either: the analysis never got to them. They
+    # keep failing in the nightly report, but say so here too, or a run that
+    # silently dropped a whole category reads as a clean one.
+    in_a_draft = {line for d in drafts_doc["drafts"] for line in d.get("cases") or []}
+    report["unplaced"] = [c["line"] for c in evidence["cases"]
+                          if c["line"] not in in_a_draft]
+    if report["unplaced"]:
+        warn(f"{len(report['unplaced'])} case(s) are in no draft, the first "
+             f"being `{report['unplaced'][0]}`")
 
     gates = run_json.get("gates", {})
     blocking = [name for name, hit in gates.items() if hit]
@@ -561,6 +650,16 @@ def main() -> int:
         category = cases[0]["category"]
         group_contexts = [contexts[c["line"]] for c in cases
                           if c["line"] in contexts]
+        # Only used where the run recorded nothing. The draft wrote it for the
+        # case whose traceback the issue shows, so it is checked against that.
+        drafted = ""
+        if not reproduce.get(category):
+            shown = next((c for c in cases
+                          if c["line"] == draft.get("error_case")), cases[0])
+            drafted, problem = drafted_reproduce(draft, shown)
+            if problem:
+                report["reproduce_dropped"].append({"draft": name, "reason": problem})
+                warn(f"draft {name}: {problem}; filing without it")
 
         def body_of(chunk: list[dict], part: int = 1, parts: int = 1,
                     first: int | None = None) -> str:
@@ -573,7 +672,7 @@ def main() -> int:
                 "cases": cases_section([c["line"] for c in chunk]),
                 "summary": draft["summary"].strip(),
                 "error_log": error_log,
-                "reproduce": f"```bash\n{reproduce_for(chunk[0], reproduce)}\n```",
+                "reproduce": f"```bash\n{reproduce_for(chunk[0], reproduce, drafted)}\n```",
                 "pytorch_version": evidence_block(
                     run_json, category, cls, cases[0].get("cls_reason", ""),
                     group_contexts if part == 1 else []),
@@ -657,6 +756,13 @@ def finish(report: dict, report_dir: Path) -> int:
         lines.append(f"- **Rejected**, `{item['draft']}`: {item['reason']}")
     for item in report.get("misquoted", []):
         lines.append(f"- Filed, but `{item['draft']}` {item['reason']}")
+    for item in report.get("reproduce_dropped", []):
+        lines.append(f"- Filed without its drafted reproduce, `{item['draft']}`: "
+                     f"{item['reason']}")
+    unplaced = report.get("unplaced", [])
+    if unplaced:
+        lines.append(f"- **Unplaced**: {len(unplaced)} case(s) are in no draft, "
+                     f"neither filed nor withheld, e.g. `{unplaced[0]}`")
     summary = "\n".join(lines) + "\n"
     print(summary)
     step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
