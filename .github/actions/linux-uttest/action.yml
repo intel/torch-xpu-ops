@@ -250,30 +250,9 @@ runs:
             exit 1
           fi
         fi
-        # Get the list of done test files for the current category
+        # Get the test files of the current category from ut.txt
         python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
           --category ${category} --${category}-output ${log_dir}/${ut_name}_files.txt > /dev/null
-        # do eager to inductor cases
-        if [[ "${category}" == 'inductor' ]]; then
-          # test_torch not in the done list
-          echo "::group::eager to inductor cases (pytorch/test/run_test.py --inductor xxx)"
-          # Distribute tests across the GPUs listed in ZE_AFFINITY_MASK (e.g. 0,1,2,3,4,5,6,7)
-          IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
-          num_shards=${#gpus[@]}
-          for i in "${!gpus[@]}"; do
-            shard_id=$((i + 1))
-            (
-              ZE_AFFINITY_MASK="${gpus[$i]}" \
-              PYTEST_ADDOPTS="" \
-              python pytorch/test/run_test.py --inductor \
-                --include test_modules test_ops test_ops_gradients \
-                --shard ${shard_id} ${num_shards} \
-                --junit-xml="${{ github.workspace }}/ut_log/upstream_inductor_eager_to_inductor_shard${shard_id}.xml"
-            ) &
-          done
-          wait
-          echo "::endgroup::"
-        fi
         # loop files
         while IFS= read -r test_file; do
           [ -z "${test_file}" ] && continue
