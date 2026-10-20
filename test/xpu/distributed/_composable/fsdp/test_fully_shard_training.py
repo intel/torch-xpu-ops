@@ -29,6 +29,7 @@ from torch.distributed.fsdp import (
     share_comm_ctx,
 )
 from torch.distributed.fsdp._fully_shard._fsdp_collectives import (
+    _default_reduce_scatter_input_fn,
     foreach_all_gather,
     foreach_reduce,
 )
@@ -2564,8 +2565,7 @@ class TestFullyShardShareCommContext(FSDPTest):
             reduce_scatter_group: dist.ProcessGroup,
             reduce_scatter_stream: torch.Stream,
             reduce_scatter_comm: ReduceScatter,
-            orig_dtype: torch.dtype | None,
-            reduce_dtype: torch.dtype | None,
+            reduce_dtype: torch.dtype,
             device: torch.device,
             gradient_divide_factor: float | None,
             all_reduce_group: dist.ProcessGroup | None,  # not `None` iff HSDP
@@ -2574,6 +2574,8 @@ class TestFullyShardShareCommContext(FSDPTest):
             partial_reduce_output: torch.Tensor | None,  # only used for HSDP
             all_reduce_hook: Callable[[torch.Tensor], None] | None,
             force_sum_reduction_for_comms: bool = False,
+            *,
+            prepare_reduce_scatter_inputs: Callable = _default_reduce_scatter_input_fn,
         ):
             nonlocal reduce_scatter_streams
             reduce_scatter_streams.add(reduce_scatter_stream)
@@ -2583,7 +2585,6 @@ class TestFullyShardShareCommContext(FSDPTest):
                 reduce_scatter_group,
                 reduce_scatter_stream,
                 reduce_scatter_comm,
-                orig_dtype,
                 reduce_dtype,
                 device,
                 gradient_divide_factor,
@@ -2593,6 +2594,7 @@ class TestFullyShardShareCommContext(FSDPTest):
                 partial_reduce_output,
                 all_reduce_hook,
                 force_sum_reduction_for_comms,
+                prepare_reduce_scatter_inputs=prepare_reduce_scatter_inputs,
             )
 
         with (
