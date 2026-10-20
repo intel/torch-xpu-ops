@@ -74,6 +74,7 @@ from torch.testing._internal.common_dtype import (
     all_types_complex_float8_and,
     complex_types,
     floating_and_complex_types,
+    floating_and_complex_types_and,
     floating_types,
     floating_types_and,
     get_all_complex_dtypes,
@@ -8472,8 +8473,8 @@ class TestTorch(TestCase):
             self.assertFalse(torch.equal(t_0, t_1))
 
             # Fast path: tensor containing `nan` is not equal to self
-            for dtype in floating_and_complex_types():
-                t = torch.tensor([1.0, float("nan")], dtype=dtype)
+            for dtype in floating_and_complex_types_and(torch.half, torch.bfloat16):
+                t = torch.tensor([1.0, float("nan")], dtype=dtype, device=device)
                 self.assertFalse(torch.equal(t, t))
 
     def test_element_size(self):
