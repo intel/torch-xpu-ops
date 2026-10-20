@@ -580,20 +580,11 @@ void vectorized_layer_norm_kernel_impl(
     }
     Y_vec[i] = out;
   }
-<<<<<<< HEAD
-
-  void sycl_ker_config_convention(sycl::handler & cgh) {
-    const int64_t num_sg = wg_size_ / SIMD;
-    const size_t buf_size = (num_sg == SIMD) ? num_sg * 3 : num_sg * 2;
-    // Only the fast path of tree-reduce fills three num_sg wide SLM
-    buf_ = sycl_local_acc_t<T_ACC>(buf_size, cgh);
-=======
   if (thrx == 0) {
     if constexpr (!rms_norm) {
       mean[i1] = wd.mean;
     }
     rstd[i1] = rstd_val;
->>>>>>> 40357b573 (Refactor LayerNormKernels by free function)
   }
 }
 
@@ -646,7 +637,10 @@ void launch_vectorized_layer_norm_kernel(
   sycl::range<2> local_range{size_t(wg_size / SIMD), SIMD};
   sycl::range<2> global_range(size_t(wg_size / SIMD), M * SIMD);
   auto queue = getCurrentSYCLQueue();
-  size_t slm_sz = sizeof(T_ACC) * (wg_size / SIMD) * 2;
+
+  const int64_t num_sg = wg_size / SIMD;
+  const size_t buf_size = (num_sg == SIMD) ? num_sg * 3 : num_sg * 2;
+  size_t slm_sz = sizeof(T_ACC) * buf_size;
 
   sycl_kernel_submit<vectorized_layer_norm_kernel_impl<T, T_ACC, rms_norm>>(
       global_range,
@@ -1337,7 +1331,9 @@ void layer_norm_backward_kernel_impl(
           local_size_x,
           M,
           N);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else {
       return;
     }
