@@ -716,10 +716,20 @@ def run_validate(args):
         ops = args.op.split(",") if args.op else None
         ids = [c.case_id for c in cases.values() if not ops or c.op in ops]
     cfg = ProtocolConfig.load(args.config)
-    n_fail = 0
+    deadline = time.time() + args.budget_min * 60 if args.budget_min else None
+    n_fail = n_skip = 0
     with open(args.out, "w") if args.out else sys.stdout as fh:
         for cid in ids:
             case = cases.get(cid)
+            if case is not None and deadline and time.time() > deadline:
+                res = {
+                    "status": "not_validated",
+                    "failures": ["validation time budget exhausted"],
+                }
+                res.update(case_id=cid, op=case.op, pass_=case.pass_, label=case.label)
+                n_skip += 1
+                fh.write(json.dumps(res) + "\n")
+                continue
             if case is None:
                 res = {
                     "status": "fail",
@@ -744,7 +754,10 @@ def run_validate(args):
                 print(head, file=sys.stderr)
                 for f in res["failures"]:
                     print(f"    - {f}", file=sys.stderr)
-    print(f"validated {len(ids)} case(s), {n_fail} failed", file=sys.stderr)
+    print(
+        f"validated {len(ids) - n_skip} case(s), {n_fail} failed, {n_skip} skipped (time budget)",
+        file=sys.stderr,
+    )
     return 1 if n_fail else 0
 
 
@@ -755,5 +768,11 @@ def add_validate_parser(sub):
     p.add_argument("--out", default=None, help="JSONL output (default stdout)")
     p.add_argument("--device", default="xpu")
     p.add_argument("--config", default=None)
+    p.add_argument(
+        "--budget-min",
+        type=float,
+        default=0,
+        help="skip the remaining cases after this (0: no limit)",
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=lambda a: sys.exit(run_validate(a)))

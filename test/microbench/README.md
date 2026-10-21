@@ -75,7 +75,9 @@ Rules:
   cases (new history, new calibration).
 * A PR that changes a case module validates (and A/A runs) the cases of the
   ops whose definitions it touches; a change to a shared helper, table or base
-  class covers the whole module.
+  class covers the whole module. Validation takes one dtype per (op, pass,
+  shape), PR-tier cases first, within `--validate-budget-min` (20 min);
+  cases left over are reported as not validated.
 
 ### Table-driven cases
 
@@ -189,9 +191,11 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    ops; honours a maintainer-added `disable_microbench`.
 2. `linux-build` (PR wheel) and `microbench-build-base` (merge-base wheel,
    cached by `(pytorch_sha, merge_base)`), in parallel.
-3. `microbench / microbench-run` (BMG): both wheels in separate venvs, SHA
-   check, frequency lock, environment check, validator, A/B scheduler.
-   Fails only for infrastructure errors or validator failures.
+3. `microbench / microbench-run` (a `bmg-test` runner): both wheels in
+   separate venvs on the same runner, measured on the cards of its
+   `ZE_AFFINITY_MASK` only; SHA check, frequency lock of those cards,
+   environment check, validator, A/B scheduler. Fails only for
+   infrastructure errors or validator failures.
 4. `microbench / microbench-check` (ubuntu): verdicts, report, comment
    payload. Fails only for a blocking regression without a valid override.
 5. `microbench_comment.yml` (`workflow_run`) posts/updates the single

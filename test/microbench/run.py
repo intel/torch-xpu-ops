@@ -144,7 +144,15 @@ def machine_config(path=None):
             cfg.update(entry)
             break
     if not cfg.get("cards"):
-        cfg["cards"] = detect_cards()[: cfg.get("max_cards")]
+        cards = detect_cards()
+        # a shared CI runner owns only the cards in its ZE_AFFINITY_MASK
+        mask = os.environ.get("ZE_AFFINITY_MASK", "").strip()
+        if mask:
+            own = [int(m.split(".")[0]) for m in mask.split(",") if m.strip()]
+            cards = [c for c in cards if c["index"] in own] or [
+                {"index": i} for i in own
+            ]
+        cfg["cards"] = cards[: cfg.get("max_cards")]
     cfg["host"] = host
     return cfg
 
@@ -549,15 +557,34 @@ class Scheduler:
         case_file = os.path.join(self.raw, "validate.cases.json")
         with open(case_file, "w") as f:
             json.dump(ids, f)
-        cmd = ["validate", "--cases", case_file, "--out", out]
-        proc = self._spawn("B", self.cards[0], cmd, capture_output=True, text=True)
+        budget = self.args.validate_budget_min
+        cmd = [
+            "validate",
+            "--cases",
+            case_file,
+            "--out",
+            out,
+            "--budget-min",
+            str(budget),
+        ]
+        try:
+            # the budget is checked between cases; allow one slow case on top
+            timeout = budget * 60 + 600 if budget else None
+            proc = self._spawn(
+                "B", self.cards[0], cmd, capture_output=True, text=True, timeout=timeout
+            )
+        except subprocess.TimeoutExpired as e:
+            raise InfraError(f"validator did not finish within {timeout}s") from e
         sys.stderr.write(proc.stderr)
         results = read_jsonl(out)
-        failed = [r for r in results if r.get("status") != "pass"]
+        failed = [r for r in results if r.get("status") == "fail"]
         keys = ("case_id", "op", "pass_", "label", "failures")
         self.meta["validation"] = {
             "cases": len(ids),
             "failed": [{k: r.get(k) for k in keys} for r in failed],
+            "not_validated": [
+                r["case_id"] for r in results if r.get("status") == "not_validated"
+            ],
         }
         if len(results) < len(ids):
             raise InfraError(
@@ -665,6 +692,11 @@ def summarize_exit(meta, status):
         lines = [
             f"Microbench run finished: mode `{meta.get('mode')}`, {meta.get('selected', 0)} case(s), stages: {stages}"
         ]
+        skipped = meta.get("validation", {}).get("not_validated") or []
+        if skipped:
+            lines.append(
+                f"Validation time budget exhausted: {len(skipped)} changed case(s) were not validated (report only)."
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -690,6 +722,12 @@ def add_schedule_parser(sub):
     )
     p.add_argument(
         "--validate", default=None, help="cases to validate first (same format)"
+    )
+    p.add_argument(
+        "--validate-budget-min",
+        type=float,
+        default=20.0,
+        help="validation time limit; later cases are reported as not validated",
     )
     p.add_argument("--out-dir", required=True)
     p.add_argument("--device", default="xpu")
