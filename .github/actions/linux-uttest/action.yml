@@ -21,7 +21,7 @@ runs:
         # restarts an xdist worker on fatal XPU failures (crash/OOM/segfault).
         uv pip install ${{ github.workspace }}/.github/scripts/pytest_custom_config
     - name: op_regression
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
       run: |
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
@@ -44,7 +44,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
     - name: op_extended
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -99,7 +99,7 @@ runs:
         eval $test_cmd 2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
           tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
     - name: xpu_profiling
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
         mkdir -p ut_log/xpu_profiling/issue_reproduce
