@@ -617,11 +617,11 @@ def _match_inputs(expected, actual):
     return errs
 
 
-def validate_case(case, device, cfg):
+def validate_case(case, dev):
     """Return a result dict with ``status`` ('pass'/'fail') and ``failures``."""
-    dev = Device(device, cfg)
+    device = dev.name
     dev.alloc_flush()
-    torch.manual_seed(cfg.seed)
+    torch.manual_seed(dev.cfg.seed)
     s = case.build(device)
     # warm run so lazy init is not attributed to the case
     case.reset(s)
@@ -715,7 +715,7 @@ def run_validate(args):
     else:
         ops = args.op.split(",") if args.op else None
         ids = [c.case_id for c in cases.values() if not ops or c.op in ops]
-    cfg = ProtocolConfig.load(args.config)
+    dev = Device(args.device, ProtocolConfig.load(args.config))
     deadline = time.time() + args.budget_min * 60 if args.budget_min else None
     n_fail = n_skip = 0
     with open(args.out, "w") if args.out else sys.stdout as fh:
@@ -738,13 +738,17 @@ def run_validate(args):
                 }
             else:
                 try:
-                    res = validate_case(case, args.device, cfg)
+                    res = validate_case(case, dev)
                 except Exception as e:  # noqa: BLE001 - a crashing case is a failing case
                     res = {
                         "status": "fail",
                         "failures": [f"case raised {type(e).__name__}: {e}"],
                         "traceback": traceback.format_exc(limit=6),
                     }
+                # return the case's cached blocks: a later large case must not
+                # run out of memory because earlier cases left the cache full
+                gc.collect()
+                dev.empty_cache()
                 res.update(case_id=cid, op=case.op, pass_=case.pass_, label=case.label)
             n_fail += res["status"] == "fail"
             fh.write(json.dumps(res) + "\n")
