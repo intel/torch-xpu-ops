@@ -1620,7 +1620,6 @@ static void batch_norm_transform_channels_last_1d(
       stride,                                   \
       fuse_relu)
 
-  bool launched_vec2 = false;
   if constexpr (VEC_SIZE == 2) {
     // Only input/output/z are accessed with vector loads/stores; the
     // per-channel parameter arrays are always read element-wise.
@@ -1634,15 +1633,14 @@ static void batch_norm_transform_channels_last_1d(
             syclLocalMemSize();
     if (can_vec && use_slm) {
       LAUNCH_BN_CL_1D(2, true);
-      launched_vec2 = true;
-    } else if (can_vec && stride % 2 == 0) {
+      return;
+    }
+    if (can_vec && stride % 2 == 0) {
       LAUNCH_BN_CL_1D(2, false);
-      launched_vec2 = true;
+      return;
     }
   }
-  if (!launched_vec2) {
-    LAUNCH_BN_CL_1D(1, false);
-  }
+  LAUNCH_BN_CL_1D(1, false);
 #undef LAUNCH_BN_CL_1D
 }
 
