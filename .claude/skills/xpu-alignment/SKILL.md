@@ -13,7 +13,7 @@ Find behavior reported or fixed in `pytorch/pytorch` that may also affect XPU.
 Use source evidence and judgment rather than keyword routing or a fixed research
 procedure. Preserve the upstream oracle, exercise the real XPU target path, and
 leave a concise, auditable handoff. For confirmed independent XPU work without
-an existing tracker, prepare a proposal for `intel/torch-xpu-ops`.
+an open `intel/torch-xpu-ops` tracker, prepare a proposal for that repository.
 
 ## Modes
 
@@ -117,10 +117,11 @@ Review the immutable scan artifact without an expected answer key. Re-check
 source and tracker state with read-only GitHub access. Cover every candidate whose
 local result is `confirmed` or `related-failure`; do not silently omit a difficult
 case. Decide whether the behavior needs independent XPU work, is owned upstream,
-is already fixed or tracked, is not a defect, or lacks sufficient evidence.
+is already fixed or has an open local tracker, is not a defect, or lacks
+sufficient evidence.
 
 Only `needs-xpu-fix` without a reusable canonical tracker may carry a new issue
-payload. When an existing `intel/torch-xpu-ops` issue covers the work, record it
+payload. When an open `intel/torch-xpu-ops` issue covers the work, record it
 as `canonical_tracker` and do not create a payload or comment on the tracker. In
 automation, write only under `review/` and follow the minimal review contract. A
 blocked review produces no publishable payloads.
