@@ -28,7 +28,7 @@ void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params);
 
 template <bool Is_even_M, class T>
 void compute_o_dot_do(
-    T& trait,
+    T& /*trait*/,
     Param<typename T::DType>& param,
     const int m_block,
     const int bidb,
@@ -199,7 +199,7 @@ auto convert_layout_acc_layout(Layout acc_layout) {
 
 template <typename T, class Trait, class MTensor, class TiledMMA>
 auto create_reg(
-    Trait const& trait,
+    Trait const& /*trait*/,
     MTensor const& C,
     TiledMMA const& tiled_mma) {
   auto local_id = int(compat::get_nd_item<1>().get_local_id(0));
@@ -232,7 +232,7 @@ template <
     class TVLayout2,
     class TiledMMA>
 void gemm_kernel(
-    Trait& trait,
+    Trait& /*trait*/,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
     SubgroupTensor<Engine2, Layout2, TVLayout2>& acc,
@@ -525,7 +525,7 @@ template <
     class Engine1,
     class Layout1>
 CUTLASS_DEVICE void mha_copy(
-    Trait& trait,
+    Trait& /*trait*/,
     TiledMma& tiled_mma,
     SubgroupTensor<Engine0, Layout0, TVLayout0>& r,
     Tensor<Engine1, Layout1>& m,
@@ -874,7 +874,7 @@ CUTLASS_DEVICE void convert_type(
 
 template <bool Is_even_M, class T>
 void convert_dq(
-    T& trait,
+    T& /*trait*/,
     Param<typename T::DType>& param,
     int m_block,
     int bidb,

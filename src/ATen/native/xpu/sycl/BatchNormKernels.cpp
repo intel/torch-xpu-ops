@@ -146,7 +146,7 @@ struct InvStd {
 
 struct Var {
   template <typename T>
-  inline T operator()(T var, double epsilon) const {
+  inline T operator()(T var, double /*epsilon*/) const {
     return var;
   }
 };
@@ -2358,9 +2358,9 @@ batch_norm_backward_reduce_channels_last_template(
     const at::Tensor& mean,
     const at::Tensor& inv_std,
     const at::Tensor& weight,
-    const bool input_g,
-    const bool weight_g,
-    const bool bias_g) {
+    const bool /*input_g*/,
+    const bool /*weight_g*/,
+    const bool /*bias_g*/) {
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
 

@@ -737,7 +737,7 @@ void avg_pool3d_backward_kernel(
     IntArrayRef kernel_size,
     IntArrayRef stride,
     IntArrayRef padding,
-    bool ceil_mode,
+    bool /*ceil_mode*/,
     bool count_include_pad,
     std::optional<int64_t> divisor_override,
     const Tensor& gradInput) {

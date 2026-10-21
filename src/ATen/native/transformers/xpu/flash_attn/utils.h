@@ -17,8 +17,8 @@ namespace sycltla {
 
 // deprecated: SYCLTLA flash attention currently supports all layouts
 inline bool check_flash_attention_layout(
-    sdp::sdp_params const& params,
-    bool debug) {
+    sdp::sdp_params const& /*params*/,
+    bool /*debug*/) {
   return true;
 }
 

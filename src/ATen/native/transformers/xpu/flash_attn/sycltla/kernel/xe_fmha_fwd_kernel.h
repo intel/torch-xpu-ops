@@ -154,15 +154,15 @@ class XeFMHAFwdKernel {
         CollectiveEpilogue::can_implement(args.epilogue);
   }
 
-  static int get_workspace_size(Arguments const& args) {
+  static int get_workspace_size(Arguments const& /*args*/) {
     return 0;
   }
 
   static cutlass::Status initialize_workspace(
-      Arguments const& args,
-      void* workspace = nullptr,
-      cudaStream_t stream = nullptr,
-      CudaHostAdapter* cuda_adapter = nullptr) {
+      Arguments const& /*args*/,
+      void* /*workspace*/ = nullptr,
+      cudaStream_t /*stream*/ = nullptr,
+      CudaHostAdapter* /*cuda_adapter*/ = nullptr) {
     return Status::kSuccess;
   }
 

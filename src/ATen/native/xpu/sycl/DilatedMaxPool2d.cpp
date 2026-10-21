@@ -1148,7 +1148,7 @@ void max_pool2d_with_indices_kernel(
     IntArrayRef stride,
     IntArrayRef padding,
     IntArrayRef dilation,
-    bool ceil_mode,
+    bool /*ceil_mode*/,
     const Tensor& output,
     const Tensor& indices) {
   TensorArg output_arg{output, "output", 1};

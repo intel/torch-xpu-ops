@@ -265,7 +265,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelConfig {
   }
 
   static bool valid(
-      int reduction_size,
+      int /*reduction_size*/,
       int n_channels,
       const scalar_t* input,
       acc_t* save_mean,

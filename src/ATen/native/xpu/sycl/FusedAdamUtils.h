@@ -94,7 +94,7 @@ inline void adam_math(
     const double& eps,
     const bool& maximize,
     const float* grad_scale_ptr,
-    const float* found_inf_ptr,
+    const float* /*found_inf_ptr*/,
     const opmath_t& bias_correction1,
     const opmath_t& bias_correction2_sqrt) {
   static_assert(depth == 4 || depth == 5);

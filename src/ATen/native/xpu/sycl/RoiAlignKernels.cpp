@@ -35,7 +35,7 @@ T bilinear_interpolate(
     int width,
     T y,
     T x,
-    int index /* index for debug only*/) {
+    int /*index*/ /* index for debug only*/) {
   // deal with cases that inverse elements are out of feature map boundary
   if (y < -1.0 || y > height || x < -1.0 || x > width) {
     // empty
@@ -235,7 +235,7 @@ void bilinear_interpolate_gradient(
     int& x_high,
     int& y_low,
     int& y_high,
-    int index /* index for debug only*/) {
+    int /*index*/ /* index for debug only*/) {
   // deal with cases that inverse elements are out of feature map boundary
   if (y < -1.0 || y > height || x < -1.0 || x > width) {
     // empty

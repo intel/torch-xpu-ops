@@ -32,7 +32,7 @@ namespace at::native::xpu {
 inline int64_t resolve_root_int(
     int64_t b,
     int64_t cX4,
-    int64_t x,
+    int64_t /*x*/,
     int32_t sign) {
   int64_t bXb_cX4 = b * b - cX4;
   // potential precision loss could occur here when casting int64_t (63 bits
