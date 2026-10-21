@@ -36,6 +36,7 @@ LOCAL_RESULTS = {
 }
 ACTIONABLE_RESULTS = {"confirmed", "related-failure"}
 BLOCKED_RESULTS = LOCAL_RESULTS - ACTIONABLE_RESULTS - {"not-reproduced"}
+TRACKER_RE = re.compile(r"https://github\.com/intel/torch-xpu-ops/issues/[0-9]+")
 VERDICTS = {
     "needs-xpu-fix",
     "track-upstream",
@@ -485,11 +486,15 @@ def _validate_review(
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
         if tracker is not None and (
-            not isinstance(tracker, str)
-            or not tracker.startswith("https://github.com/intel/torch-xpu-ops/issues/")
+            not isinstance(tracker, str) or not TRACKER_RE.fullmatch(tracker)
         ):
             errors.append(f"review-invalid-tracker:{unit_id}")
         payload = entry.get("payload")
+        # Review records only a reusable open local issue as canonical_tracker.
+        if verdict == "duplicate" and tracker is None:
+            errors.append(f"review-invalid-duplicate-tracker:{unit_id}")
+        if verdict == "needs-xpu-fix" and tracker is not None:
+            errors.append(f"review-invalid-needs-xpu-fix-tracker:{unit_id}")
         expects_payload = verdict == "needs-xpu-fix" and tracker is None
         if not expects_payload:
             if payload is not None:
