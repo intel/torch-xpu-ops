@@ -30,7 +30,7 @@ skip_dict = {
     "dynamo/test_export_xpu.py": None,
     "dynamo/test_logging_xpu.py": None,
     "dynamo/test_misc_xpu.py": None,
-    "dynamo/test_recompiles_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_recompiles.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
@@ -38,8 +38,8 @@ skip_dict = {
     "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "export/test_export_strict_xpu.py": None,
-    "export/test_export_training_ir_to_run_decomp_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_export_strict.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_export_training_ir_to_run_decomp.py": None,
     "export/test_retraceability_xpu.py": None,
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
@@ -190,7 +190,7 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/2285
         "_efficient_attention_forward",
     ),
-    "test_mkldnn_fusion_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_mkldnn_fusion.py": None,
     "test_nestedtensor_xpu.py": None,
     "test_nn_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2531
