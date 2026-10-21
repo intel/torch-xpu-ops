@@ -11,7 +11,10 @@
 #pragma once
 
 #include <bit>
+#include <functional>
+#include <type_traits>
 
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
@@ -330,7 +333,7 @@ inline void loop_scan_kernel_func(LSConfig_ cfg_) {
       const int64_t ix = base + lane;
       T val = cfg_.init_;
       if (ix < cfg_.problem_) {
-        val = cfg_.input_.data[batch * cfg_.problem_ + ix];
+        val = static_cast<T>(cfg_.input_.data[batch * cfg_.problem_ + ix]);
       }
 
       for (uint32_t offset = 1; offset < sg_size; offset <<= 1) {
@@ -342,7 +345,8 @@ inline void loop_scan_kernel_func(LSConfig_ cfg_) {
       val = cfg_.func_(carry, val);
 
       if (ix < cfg_.problem_) {
-        cfg_.output_.data[batch * cfg_.problem_ + ix] = val;
+        cfg_.output_.data[batch * cfg_.problem_ + ix] =
+            static_cast<typename LSConfig::OutputInfoType::scalar_t>(val);
       }
 
       carry = sycl::group_broadcast(sg, val, sg_size - 1);
@@ -1217,8 +1221,21 @@ void scan(
   int64_t problem = input_info.sizes[dim_after_collapse];
 
   if (dispatch_to_loop_scan_kernel(problem, stride, batch)) {
-    loop_scan_kernel<Type, true>(
-        input_info, output_info, dim_after_collapse, init, func);
+    using value_t = std::remove_const_t<scalar_t>;
+    if constexpr (std::is_same_v<BinaryFunction, std::plus<value_t>>) {
+      // Sum in opmath precision; std::plus<value_t> would round each partial
+      // sum to value_t.
+      using acc_t = at::opmath_type<value_t>;
+      loop_scan_kernel<Type, true>(
+          input_info,
+          output_info,
+          dim_after_collapse,
+          static_cast<acc_t>(init),
+          std::plus<acc_t>());
+    } else {
+      loop_scan_kernel<Type, true>(
+          input_info, output_info, dim_after_collapse, init, func);
+    }
   } else {
     if (batch == 1 && stride == 1) {
       _segment_scan_kernel<Type, true, true>(
