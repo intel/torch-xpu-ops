@@ -261,7 +261,7 @@ void foreach_norn_kernel_config(
 template <bool apply_root>
 std::vector<Tensor> foreach_norm_kernel_impl(
     TensorList tensors,
-    const Scalar& ord,
+    const Scalar& /*ord*/,
     double p,
     std::optional<ScalarType> dtype) {
   const int ntensors = tensors.size();

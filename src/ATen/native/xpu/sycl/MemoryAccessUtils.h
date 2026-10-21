@@ -49,7 +49,7 @@ struct static_unroll {
 template <template <int i> typename func, int end>
 struct static_unroll<func, end, end> {
   template <typename... Args>
-  static inline C10_HOST_DEVICE void with_args(Args... args) {}
+  static inline C10_HOST_DEVICE void with_args(Args... /*args*/) {}
 };
 
 // helper structs to be used with static_unroll to load arguments
@@ -110,7 +110,7 @@ struct multi_outputs_store_helper {
 
 struct LoadWithoutCast {
   template <typename scalar_t>
-  C10_DEVICE scalar_t load(char* base_ptr, uint32_t offset, int arg) {
+  C10_DEVICE scalar_t load(char* base_ptr, uint32_t offset, int /*arg*/) {
     return c10::load(reinterpret_cast<scalar_t*>(base_ptr) + offset);
   }
 };
@@ -182,7 +182,7 @@ struct StoreWithoutCast {
       scalar_t value,
       char* base_ptr,
       uint32_t offset,
-      int arg = 0) {
+      int /*arg*/ = 0) {
     *(reinterpret_cast<scalar_t*>(base_ptr) + offset) = value;
   }
 };
@@ -194,7 +194,7 @@ struct StoreWithCastFP {
       scalar_t value,
       char* base_ptr,
       uint32_t offset,
-      int arg = 0) {
+      int /*arg*/ = 0) {
     if constexpr (std::is_same_v<scalar_t, float>) {
       *(reinterpret_cast<float*>(base_ptr) + offset) = value;
     }

@@ -719,7 +719,7 @@ void cat_out_kernel(
     int64_t valid,
     bool all_contiguous,
     bool all_same_dtype,
-    bool all_same_sizes_and_stride,
+    bool /*all_same_sizes_and_stride*/,
     MemoryFormat memory_format,
     const Tensor& result) {
   if (result.numel() == 0) {

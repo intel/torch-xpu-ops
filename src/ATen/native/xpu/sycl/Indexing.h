@@ -82,7 +82,7 @@ class IndexKernelConfig : public BatchKernelConfig {
   template <class TarInfo>
   static inline void indexing_problem_mapping(
       TarInfo& tinfo,
-      IdxInfo& iinfo,
+      IdxInfo& /*iinfo*/,
       int dim,
       int64_t index_num,
       int64_t indexing_dimension_size,

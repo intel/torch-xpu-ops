@@ -193,7 +193,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_consecutive_kernel(
     const Tensor& self,
     const bool return_inverse,
     const bool return_counts,
-    std::optional<int64_t> dim) {
+    std::optional<int64_t> /*dim*/) {
   return AT_DISPATCH_V2(
       self.scalar_type(),
       "unique_consecutive",
