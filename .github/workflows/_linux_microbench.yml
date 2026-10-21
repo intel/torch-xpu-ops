@@ -87,13 +87,16 @@ env:
 jobs:
   microbench-run:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: ${{ inputs.mode == 'pr' && 120 || 900 }}
+    # nightly/on-demand: up to 24 h for the full case list (the job token
+    # expires after 24 h); the scheduler's --budget-min leaves room for the
+    # coverage validation and uploads
+    timeout-minutes: ${{ inputs.mode == 'pr' && 120 || 1440 }}
     container:
       image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops (benchmark code of the PR head)
@@ -165,12 +168,11 @@ jobs:
           else
             echo "MB_PY_A=$WS/venv_b/bin/python" >> "${GITHUB_ENV}"
           fi
-      - name: Lock frequencies
-        # only the cards of this runner (ZE_AFFINITY_MASK); other cards of the
-        # host belong to other runners
+      - name: GPU frequency status
+        # the runner hosts lock GPU frequency themselves; --env-check below
+        # verifies min == max on the cards of this runner (ZE_AFFINITY_MASK)
         run: |
-          cd test && python -m microbench env lock
-          python -m microbench env status
+          cd test && python -m microbench env status
       - name: Run microbench
         id: run
         run: |
@@ -202,7 +204,18 @@ jobs:
         continue-on-error: true
         run: |
           cd test
-          "${MB_PY_B}" -m microbench validate --out ${{ github.workspace }}/mb_out/validation_all.jsonl || true
+          # one validator per card of this runner, each on a slice of the cases
+          IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
+          "${MB_PY_B}" -m microbench list --ids 2>/dev/null > /tmp/mb_ids.txt
+          split -n "r/${#gpus[@]}" -d /tmp/mb_ids.txt /tmp/mb_ids_
+          for i in "${!gpus[@]}"; do
+            "${MB_PY_B}" -c 'import json, sys; print(json.dumps(open(sys.argv[1]).read().split()))' \
+              "/tmp/mb_ids_$(printf '%02d' "$i")" > "/tmp/mb_ids_$i.json"
+            ZE_AFFINITY_MASK="${gpus[$i]}" "${MB_PY_B}" -m microbench validate --cases "/tmp/mb_ids_$i.json" \
+              --out "/tmp/mb_validation_$i.jsonl" > "/tmp/mb_validation_$i.log" 2>&1 &
+          done
+          wait || true
+          cat /tmp/mb_validation_*.jsonl > ${{ github.workspace }}/mb_out/validation_all.jsonl
           NF=$("${MB_PY_B}" -c 'import torchgen, os; print(os.path.join(os.path.dirname(torchgen.__file__), "packaged/ATen/native/native_functions.yaml"))')
           cp "$NF" ${{ github.workspace }}/mb_out/native_functions.yaml
           PREV_NF=""
@@ -214,10 +227,9 @@ jobs:
             --out-json ${{ github.workspace }}/mb_out/coverage.json --out-md ${{ github.workspace }}/mb_out/coverage.md \
             --summary "${GITHUB_STEP_SUMMARY}"
           python -m microbench srcmap --summary "${GITHUB_STEP_SUMMARY}"
-      - name: Unlock frequencies
+      - name: Fix workspace ownership
         if: ${{ always() }}
         run: |
-          cd test && python -m microbench env unlock || true
           chown 1000:1000 ${{ github.workspace }} -R || true
       - name: Upload raw data
         if: ${{ !cancelled() }}
@@ -237,7 +249,7 @@ jobs:
   microbench-check:
     needs: [microbench-run]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.mode == 'pr' && 30 || 120 }}
     permissions:
       contents: read
       issues: read

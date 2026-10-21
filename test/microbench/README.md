@@ -193,9 +193,9 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    cached by `(pytorch_sha, merge_base)`), in parallel.
 3. `microbench / microbench-run` (a `bmg-test` runner): both wheels in
    separate venvs on the same runner, measured on the cards of its
-   `ZE_AFFINITY_MASK` only; SHA check, frequency lock of those cards,
-   environment check, validator, A/B scheduler. Fails only for
-   infrastructure errors or validator failures.
+   `ZE_AFFINITY_MASK` only; SHA check, environment check (the hosts lock
+   GPU frequency themselves; the check requires min == max), validator, A/B
+   scheduler. Fails only for infrastructure errors or validator failures.
 4. `microbench / microbench-check` (ubuntu): verdicts, report, comment
    payload. Fails only for a blocking regression without a valid override.
 5. `microbench_comment.yml` (`workflow_run`) posts/updates the single
@@ -218,7 +218,8 @@ is ignored there and the benchmark runs.
 `nightly_ondemand.yml` (`ut` containing `microbench`):
 
 * nightly: all cases, previous nightly wheel (A) vs this nightly (B),
-  coverage report, noise summary and case costs as artifacts;
+  coverage report, noise summary and case costs as artifacts; the job may
+  take up to 24 h (scheduler budget 20 h);
 * on demand: `microbench_base` (commit/branch, `merge-base`, or empty for
   A/A) and `microbench_cases` (`selected`, `core`, `all`, `pr`, or op names).
 

@@ -408,7 +408,8 @@ jobs:
       allow_sha_mismatch: ${{ github.event_name == 'schedule' }}
       head_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.b_sha }}
       base_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.base_sha }}
-      budget_min: ${{ github.event_name == 'schedule' && '780' || '120' }}
+      # nightly runs every case; the job limit is 24 h (1440 min)
+      budget_min: ${{ github.event_name == 'schedule' && '1200' || '120' }}
       coverage: ${{ github.event_name == 'schedule' }}
 
   Windows-Nightly-Ondemand-Build:
