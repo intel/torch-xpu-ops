@@ -668,7 +668,7 @@ void index_functor_kernel_impl(
 }
 
 template <typename func_t>
-void index_kernel_impl(
+void index_functor_kernel(
     TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
@@ -832,7 +832,7 @@ void _index_kernel(
       return;
     }
   }
-  index_kernel_impl<func_t>(iter, index_size, index_stride, f);
+  index_functor_kernel<func_t>(iter, index_size, index_stride, f);
 }
 
 template <typename scalar_t, typename accscalar_t>
