@@ -86,7 +86,8 @@ macro(set_build_flags)
     list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
       -Wno-stringop-overflow
       -Wno-dangling-reference
-      -Wno-error=dangling-reference)
+      -Wno-error=dangling-reference
+      -Wno-interference-size)
     CHECK_SYCL_FLAG("-Wno-maybe-uninitialized;-Werror=unknown-warning-option" SUPPORTS_NO_MAYBE_UNINITIALIZED)
     if(NOT SUPPORTS_NO_MAYBE_UNINITIALIZED)
       list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL -Wno-maybe-uninitialized)
