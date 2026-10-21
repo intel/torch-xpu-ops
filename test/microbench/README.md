@@ -193,8 +193,9 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    cached by `(pytorch_sha, merge_base)`), in parallel.
 3. `microbench / microbench-run` (a `bmg-test` runner): both wheels in
    separate venvs on the same runner, measured on the cards of its
-   `ZE_AFFINITY_MASK` only; SHA check, environment check (the hosts lock
-   GPU frequency themselves; the check requires min == max), validator, A/B
+   `ZE_AFFINITY_MASK` only; SHA check, environment check (idle cards,
+   temperature; the hosts manage GPU frequency themselves and its range is
+   recorded in the report), validator, A/B
    scheduler. Fails only for infrastructure errors or validator failures.
 4. `microbench / microbench-check` (ubuntu): verdicts, report, comment
    payload. Fails only for a blocking regression without a valid override.

@@ -18,7 +18,10 @@ default:
   # pre-run checks (python -m microbench env check)
   limits:
     require_idle: true
-    require_freq_lock: true
+    # bmg-test hosts set the frequency range themselves (e.g. min 1200,
+    # max 2400 MHz), not min == max; the range is recorded in run_meta.json
+    # and the report. Enable on dedicated machines with a fixed frequency.
+    require_freq_lock: false
     # the CPU governor of shared bmg-test hosts is not ours to set; it is
     # still recorded in run_meta.json. Enable on dedicated machines.
     require_cpu_performance: false
