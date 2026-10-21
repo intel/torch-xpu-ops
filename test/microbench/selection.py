@@ -241,6 +241,23 @@ def changed_cases(manifest, case_files, diff_text, read):
     ]
 
 
+def one_dtype_each(manifest, ids):
+    """One case per (op, pass, params without dtype), PR tier preferred and
+    listed first: the dtype loop rarely changes which kernels run, and the
+    validator handles one case at a time."""
+    wanted = set(ids)
+    picked = {}
+    for m in manifest:
+        if m["case_id"] in wanted:
+            params = {k: v for k, v in m["params"].items() if k != "dtype"}
+            key = (m["op"], m["pass"], json.dumps(params, sort_keys=True))
+            if key not in picked or (m["tier"] == "pr" and picked[key]["tier"] != "pr"):
+                picked[key] = m
+    return [
+        m["case_id"] for m in sorted(picked.values(), key=lambda m: m["tier"] != "pr")
+    ]
+
+
 def empty_selection(**kw):
     sel = {
         "need_run": False,
@@ -340,8 +357,9 @@ def select(
         for c in ids:
             prio[c] = min(prio.get(c, p), p)
 
-    sel["validate"] = changed_cases(
-        manifest, kinds["cases"], diff_text if read else "", read
+    sel["validate"] = one_dtype_each(
+        manifest,
+        changed_cases(manifest, kinds["cases"], diff_text if read else "", read),
     )
     if kinds["src"]:
         sel["mode"] = "ab"

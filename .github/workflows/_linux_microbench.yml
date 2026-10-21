@@ -16,8 +16,8 @@ on:
     inputs:
       runner:
         type: string
-        default: 'bmg-microbench'
-        description: Runner label of the BMG benchmark machines
+        default: 'bmg-test'
+        description: Runner label of the BMG machines. Base and PR wheels run on the same runner, on the cards of its ZE_AFFINITY_MASK
       python:
         type: string
         default: ''
@@ -94,6 +94,7 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+              -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops (benchmark code of the PR head)
         uses: actions/checkout@v7
@@ -165,8 +166,9 @@ jobs:
             echo "MB_PY_A=$WS/venv_b/bin/python" >> "${GITHUB_ENV}"
           fi
       - name: Lock frequencies
+        # only the cards of this runner (ZE_AFFINITY_MASK); other cards of the
+        # host belong to other runners
         run: |
-          bash .github/scripts/freq-fixed.sh lock || true
           cd test && python -m microbench env lock
           python -m microbench env status
       - name: Run microbench
@@ -200,7 +202,7 @@ jobs:
         continue-on-error: true
         run: |
           cd test
-          ZE_AFFINITY_MASK=0 "${MB_PY_B}" -m microbench validate --out ${{ github.workspace }}/mb_out/validation_all.jsonl || true
+          "${MB_PY_B}" -m microbench validate --out ${{ github.workspace }}/mb_out/validation_all.jsonl || true
           NF=$("${MB_PY_B}" -c 'import torchgen, os; print(os.path.join(os.path.dirname(torchgen.__file__), "packaged/ATen/native/native_functions.yaml"))')
           cp "$NF" ${{ github.workspace }}/mb_out/native_functions.yaml
           PREV_NF=""
@@ -216,7 +218,6 @@ jobs:
         if: ${{ always() }}
         run: |
           cd test && python -m microbench env unlock || true
-          cd .. && bash .github/scripts/freq-fixed.sh unlock || true
           chown 1000:1000 ${{ github.workspace }} -R || true
       - name: Upload raw data
         if: ${{ !cancelled() }}

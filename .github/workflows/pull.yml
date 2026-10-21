@@ -297,7 +297,7 @@ jobs:
             --base "${{ steps.commits.outputs.merge_base }}" --head HEAD \
             --pr "${{ github.event.pull_request.number }}" --gh-repo "${{ github.repository }}" \
             --out ../selection.json --summary "${GITHUB_STEP_SUMMARY}" \
-            ${REASON:+--disable-reason "$REASON"}
+            --cards 1 ${REASON:+--disable-reason "$REASON"}
       - name: Upload selection
         uses: actions/upload-artifact@v7
         with:
@@ -358,7 +358,7 @@ jobs:
       actions: read
     uses: ./.github/workflows/_linux_microbench.yml
     with:
-      runner: bmg-microbench
+      runner: bmg-test
       mode: pr
       mode_label: ${{ needs.microbench-select.outputs.need_base == 'false' && 'A/A with the PR wheel on both sides (report only)' || '' }}
       selection_artifact: microbench-selection-${{ github.event.pull_request.number }}

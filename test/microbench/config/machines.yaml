@@ -3,7 +3,9 @@
 # `default` applies to every host; a `hosts` entry whose key (a regex) matches
 # the hostname overrides it. Without `cards`, the layout is autodetected from
 # sysfs: Intel display-class DRM devices in PCI order (= ZE_AFFINITY_MASK
-# index), the NUMA node of each card, and an even split of the node's CPUs.
+# index), the NUMA node of each card, and an even split of the node's CPUs,
+# restricted to the cards in ZE_AFFINITY_MASK when it is set (shared CI
+# runners such as bmg-test own a subset of the host's cards).
 default:
   # protocol overrides (measure.py ProtocolConfig)
   protocol:
@@ -17,7 +19,9 @@ default:
   limits:
     require_idle: true
     require_freq_lock: true
-    require_cpu_performance: true
+    # the CPU governor of shared bmg-test hosts is not ours to set; it is
+    # still recorded in run_meta.json. Enable on dedicated machines.
+    require_cpu_performance: false
     max_temp_c: 85
 hosts: {}
 # Example:
