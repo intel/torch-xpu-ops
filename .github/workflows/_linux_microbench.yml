@@ -169,8 +169,8 @@ jobs:
             echo "MB_PY_A=$WS/venv_b/bin/python" >> "${GITHUB_ENV}"
           fi
       - name: GPU frequency status
-        # the runner hosts lock GPU frequency themselves; --env-check below
-        # verifies min == max on the cards of this runner (ZE_AFFINITY_MASK)
+        # the runner hosts manage GPU frequency themselves; logged here and
+        # recorded in run_meta.json for the cards of this runner
         run: |
           cd test && python -m microbench env status
       - name: Run microbench

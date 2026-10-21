@@ -665,10 +665,10 @@ def should_comment(result, ctx):
 
 def _freq(meta):
     vals = {
-        str(d["min"])
+        str(d["min"]) if d["min"] == d["max"] else f"{d['min']}-{d['max']}"
         for card in (meta.get("env_start") or {}).values()
         for d in card.get("freq") or []
-        if d.get("min") and d.get("min") == d.get("max")
+        if d.get("min") and d.get("max")
     }
     return ",".join(sorted(vals)) or None
 
