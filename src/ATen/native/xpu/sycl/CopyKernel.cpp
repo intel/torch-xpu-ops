@@ -145,16 +145,9 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
   }
 }
 
-// Deliberately NOT CastScalarFunc. That template has a partial specialization
-//
-//     template <typename Float8DataType>
-//     struct CastScalarFunc<Half, Float8DataType>
-//
-// whose second parameter is unconstrained despite the name, so
-// CastScalarFunc<Half, float> would select it and pick up the float8
-// workaround that maps -0.0 to +0.0 (IEEE makes `src_val == Half(-0.0)` true
-// for both zeros). A plain fp16->fp32 cast must preserve the sign of zero, so
-// this path uses its own functor.
+// Not CastScalarFunc: its <Half, Float8DataType> partial specialization has an
+// unconstrained second parameter, so CastScalarFunc<Half, float> would select
+// it and inherit the float8 workaround that maps -0.0 to +0.0.
 template <typename in_scalar_t, typename out_scalar_t>
 struct FpCastFunc {
   out_scalar_t operator()(in_scalar_t src_val) const {
@@ -162,53 +155,26 @@ struct FpCastFunc {
   }
 };
 
-// fp32 <-> fp16 is by far the most common cast in practice, so it is worth a
-// special case here.
-//
-// The generic path below reaches copy_kernel through gpu_kernel(), and any
-// cross-dtype copy makes needs_dynamic_casting<>::check(iter) true. In
-// Loops.h that diverts to gpu_kernel_impl()'s casting branch, which only ever
-// calls launch_unrolled_kernel() -- launch_vectorized_kernel() exists solely
-// inside gpu_kernel_impl_nocast(). The result is a scalar kernel:
-//
-//   unrolled_elementwise_kernel<CopyScalarFunc<c10::Half>, ...,
-//                               LoadWithCast<1>, StoreWithCast<1>, 4>
-//
-// (the trailing 4 is item_work_size -- four scalar iterations per work-item,
-// not a vector width).
-//
-// Doing the conversion inside the functor instead makes the functor's arg and
-// result types match the iterator's dtypes exactly, so needs_dynamic_casting
-// is false and gpu_kernel_nocast() can take the vectorized path. Same idea as
-// float8_copy_kernel_xpu above.
-//
-// Measured on CRI (32 MiB LLC, 30 MiB resident working set, 6 B/element so
-// both directions move identical traffic):
-//
-//            torch today   bare SYCL scalar   bare SYCL vec4
-//   f32->f16     983 GB/s          1592 GB/s        4364 GB/s
-//   f16->f32     852 GB/s          1627 GB/s        3308 GB/s
-//
-// Cost: two extra functor instantiations, each expanded over the vec_size
-// switch in launch_vectorized_kernel (vec_size 1/2/4 for 4-byte elements;
-// 8 is excluded by max_scalar_bytes * vec_size <= 16). That binary growth is
-// why this is a named special case rather than something applied to every
-// dtype pair.
-void fp16_fp32_copy_kernel_xpu(TensorIteratorBase& iter) {
-  ScalarType dst_dtype = iter.dtype(0);
-  ScalarType src_dtype = iter.dtype(1);
+void float16_copy_kernel_xpu(TensorIteratorBase& iter) {
+  ScalarType dtype = iter.dtype(0);
+  ScalarType other_dtype = iter.dtype(1);
 
-  if (dst_dtype == kHalf && src_dtype == kFloat) {
+  if (dtype == kHalf && other_dtype == kFloat) {
     gpu_kernel_nocast(iter, FpCastFunc<float, Half>());
-  } else if (dst_dtype == kFloat && src_dtype == kHalf) {
+  } else if (dtype == kBFloat16 && other_dtype == kFloat) {
+    gpu_kernel_nocast(iter, FpCastFunc<float, BFloat16>());
+  } else if (dtype == kFloat && other_dtype == kHalf) {
     gpu_kernel_nocast(iter, FpCastFunc<Half, float>());
+  } else if (dtype == kFloat && other_dtype == kBFloat16) {
+    gpu_kernel_nocast(iter, FpCastFunc<BFloat16, float>());
   } else {
     TORCH_CHECK(
         false,
-        "fp16_fp32_copy_kernel_xpu called with unsupported dtypes: src ",
-        src_dtype,
-        ", dst ",
-        dst_dtype);
+        "Copy from ",
+        other_dtype,
+        " to ",
+        dtype,
+        " has not been supported.");
   }
 }
 
@@ -234,12 +200,11 @@ void copy_kernel(TensorIteratorBase& iter) {
   } else if (iter.dtype(0) == kFloat4_e2m1fn_x2) {
     float4_copy_kernel_xpu(iter);
   } else if (
-      (iter.dtype(0) == kHalf && iter.dtype(1) == kFloat) ||
-      (iter.dtype(0) == kFloat && iter.dtype(1) == kHalf)) {
-    // Keyed on the actual pair, not common_dtype: for fp16<->fp32 the common
-    // dtype promotes to Float either way, so it cannot tell the two
-    // directions apart and would also match a same-dtype fp32 copy.
-    fp16_fp32_copy_kernel_xpu(iter);
+      (iter.dtype(0) == kFloat &&
+       (iter.dtype(1) == kHalf || iter.dtype(1) == kBFloat16)) ||
+      (iter.dtype(1) == kFloat &&
+       (iter.dtype(0) == kHalf || iter.dtype(0) == kBFloat16))) {
+    float16_copy_kernel_xpu(iter);
   } else {
     AT_DISPATCH_V2(
         dtype,
