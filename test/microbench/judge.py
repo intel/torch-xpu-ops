@@ -12,6 +12,7 @@
 for a blocking regression without a valid maintainer override.
 """
 
+import csv
 import json
 import math
 import os
@@ -635,6 +636,9 @@ def render(result, ctx):
         ]
     if ctx.get("run_url"):
         lines.append(f"**Artifacts:** {ctx['run_url']}")
+    lines.append(
+        f"**All {len(rows)} case(s):** `all_cases.md` / `all_cases.csv` in the `microbench-comment-*` artifact"
+    )
     reps = regs or imps
     if reps:
         lines.append(f"**Reproduce:** `{reps[0][0].get('repro')}`")
@@ -647,6 +651,74 @@ def _blocking_cell(r, metric):
     if metric == "e2e":
         return "No (E2E is report-only)"
     return "No (" + ", ".join(r.get("not_blocking_reasons") or ["report-only"]) + ")"
+
+
+ALL_CASES_HEADER = [
+    "Op",
+    "Case",
+    "Pass",
+    "Metric",
+    "Base (us)",
+    "PR (us)",
+    "Ratio",
+    "95% CI",
+    "Verdict",
+    "Reason",
+    "Case id",
+]
+
+
+def all_cases(result):
+    """One row per (case, metric) of every selected case; cases without A/B
+    data get one row with their status."""
+    out = []
+    for r in result["rows"]:
+        head = [r["op"], r["label"], r["pass"]]
+        if r["status"] != "ok":
+            pr = _fmt_us(r["pr_median_us"]) if r.get("pr_median_us") else "-"
+            out.append(
+                head
+                + [
+                    "-",
+                    "-",
+                    pr,
+                    "-",
+                    "-",
+                    r["status"],
+                    r.get("detail", ""),
+                    r["case_id"],
+                ]
+            )
+            continue
+        for metric, m in r["metrics"].items():
+            res = m.get("used") or {}
+            base, pr = _fmt_us(res.get("median_a")), _fmt_us(res.get("median_b"))
+            out.append(
+                head
+                + [
+                    metric,
+                    base,
+                    pr,
+                    *_ratio_ci(res),
+                    m["verdict"],
+                    m.get("reason", ""),
+                    r["case_id"],
+                ]
+            )
+    return out
+
+
+def write_all_cases(result, out_dir):
+    """all_cases.md and all_cases.csv: the full result table (artifact only)."""
+    rows = all_cases(result)
+    with open(os.path.join(out_dir, "all_cases.csv"), "w", newline="") as f:
+        csv.writer(f).writerows([ALL_CASES_HEADER] + rows)
+    md = ["# Microbench results: all cases", ""]
+    md += _table(
+        ALL_CASES_HEADER, [[c.replace("|", "\\|") for c in row] for row in rows]
+    )
+    with open(os.path.join(out_dir, "all_cases.md"), "w") as f:
+        f.write("\n".join(md) + "\n")
 
 
 def should_comment(result, ctx):
@@ -728,6 +800,7 @@ def run_check(args):
         json.dump(result, f, indent=2, default=str)
     with open(os.path.join(args.out_dir, "comment.md"), "w") as f:
         f.write(md)
+    write_all_cases(result, args.out_dir)
     comment = {
         "pr": args.pr,
         "head_sha": args.head_sha,

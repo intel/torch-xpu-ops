@@ -320,7 +320,7 @@ def select(
     added_files=(),
     skip=None,
     read=None,
-    cards=4,
+    cards=8,
     screen_rounds=3,
     confirm_rounds=6,
     budget_min=None,
@@ -580,7 +580,9 @@ def add_select_parser(sub):
     p.add_argument(
         "--disable-reason", default=None, help="force 'no run' with this reason"
     )
-    p.add_argument("--cards", type=int, default=4)
+    p.add_argument(
+        "--cards", type=int, default=8, help="cards of the runner (budget estimate)"
+    )
     p.add_argument("--budget-min", type=float, default=None)
     p.add_argument("--config-dir", default=None)
     p.add_argument("--out", default="selection.json")
