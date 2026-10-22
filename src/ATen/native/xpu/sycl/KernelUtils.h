@@ -11,9 +11,6 @@
 #pragma once
 
 #include <ATen/ceil_div.h>
-#include <comm/DeviceProperties.h>
-
-// Keep XPUContext after the existing host-only SYCL warning suppression.
 #include <ATen/xpu/XPUContext.h>
 #include <algorithm>
 

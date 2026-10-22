@@ -24,8 +24,6 @@
 
 #include <ATen/native/xpu/sycl/SoftMaxKernels.h>
 
-using namespace xpu::sycl;
-
 namespace at {
 namespace native {
 namespace xpu {

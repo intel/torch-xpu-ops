@@ -15,7 +15,6 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ConvUtils.h>
 #include <ATen/native/xpu/sycl/DepthwiseConv3dKernels.h>
-#include <ATen/native/xpu/sycl/KernelUtils.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
