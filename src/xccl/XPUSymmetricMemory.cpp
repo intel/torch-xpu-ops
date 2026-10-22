@@ -186,6 +186,7 @@ void XPUSymmetricMemory::put_signal(
     int channel,
     size_t timeout_ms) {
   check_channel(channel, world_size_);
+  check_rank(dst_rank, world_size_);
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
@@ -206,6 +207,7 @@ void XPUSymmetricMemory::wait_signal(
     int channel,
     size_t timeout_ms) {
   check_channel(channel, world_size_);
+  check_rank(src_rank, world_size_);
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
