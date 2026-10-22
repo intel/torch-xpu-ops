@@ -6,7 +6,17 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+from skip_list_common import PYTORCH_TEST_DIR
+
 skip_dict = {
+    # main-thread stack (1-2 MB) overflows at the c recursion limit this test needs (#5726)
+    f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": (
+        "(test_dynamo_set_recursion_limit and not usage)",
+    ),
+    # main-thread stack (1-2 MB) overflows at the c recursion limit this test needs (#5726)
+    f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
+        "(test_dynamo_set_recursion_limit and not usage)",
+    ),
     # xdist can't serialize nn.Module subclasses on Windows (#3793)
     "nn/test_pruning_xpu.py": (
         "test_pruning_rollback",
