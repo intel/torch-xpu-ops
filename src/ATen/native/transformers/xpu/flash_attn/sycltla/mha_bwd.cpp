@@ -266,7 +266,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
   int seqlen_kv_pad = (seqlen_kv + kBwdNPad - 1) / kBwdNPad * kBwdNPad;
   auto tensor_odo =
       at::empty({batch_size, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));
-  auto tensor_dqaccum = at::zeros(
+  auto tensor_dqaccum = at::empty(
       {batch_size, numhead_qo, seqlen_qo_pad, headsize_padded},
       opts.dtype(at::kFloat));
   auto tensor_pbuff =

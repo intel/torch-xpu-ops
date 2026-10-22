@@ -40,6 +40,9 @@ Tensor embedding_dense_backward_kernel(
 
   auto num_indices = indices.numel();
   auto grad = grad_.contiguous().view({num_indices, grad_.size(-1)});
+  if (num_indices == 0 || grad_.size(-1) == 0) {
+    return at::zeros({num_weights, grad_.size(-1)}, grad_.options());
+  }
 
   auto sorted_indices =
       at::empty_like(indices, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
