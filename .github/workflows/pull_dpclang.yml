@@ -150,6 +150,12 @@ jobs:
         with:
           name: dpclang
           path: install-dpclang.tgz
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          # Root-owned build trees break actions/checkout for later non-container jobs on this runner.
+          rm -rf level-zero intel-llvm pti-gpu "${INSTALL_PREFIX}"
+          chmod -R a+rwX .
 
   build-wheels:
     needs: build-prereq
