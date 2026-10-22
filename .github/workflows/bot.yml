@@ -779,7 +779,7 @@ jobs:
           LINT_TAKE: PYFMT,RUFF,SHFMT,CLANGFORMAT,NEWLINE,SPACES,TABS
           LINT_SCOPE: full
           LINT_APPLY: "1"
-        run: bash .github/scripts/lintrunner.sh || true
+        run: bash tools/linter/lintrunner.sh || true
 
       - name: Commit and push lint fixes
         id: push

@@ -20,13 +20,17 @@ declare -A LINT_GROUPS=(
 LINT_GROUP="${LINT_GROUP:-all}"
 LINT_SCOPE="${LINT_SCOPE:-full}"
 LINT_BASE="${LINT_BASE:-origin/main}"
+# Linter binaries, venv and report all live in the git-ignored .lintbin directory.
+LINT_DIR="${PWD}/.lintbin"
+LINT_JSON="${LINT_DIR}/lint.json"
+mkdir -p "${LINT_DIR}"
 
 if ! command -v uv >/dev/null 2>&1; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="${PATH}:${HOME}/.local/bin"
 fi
-uv venv lint --python 3.12 --clear
-export VIRTUAL_ENV="${PWD}/lint"
+uv venv "${LINT_DIR}/venv" --python 3.12 --clear
+export VIRTUAL_ENV="${LINT_DIR}/venv"
 export PATH="${VIRTUAL_ENV}/bin:${PATH}"
 uv pip install lintrunner pyyaml ruamel.yaml typing-extensions "setuptools<81" wheel
 
@@ -38,12 +42,12 @@ GROUPED=",$(
 ),"
 for code in "${ALL_CODES[@]}"; do
     if [[ "${GROUPED}" != *",${code},"* ]]; then
-        echo "::error file=.github/scripts/lintrunner.sh::Linter ${code} is not assigned to a LINT_GROUPS entry"
+        echo "::error file=tools/linter/lintrunner.sh::Linter ${code} is not assigned to a LINT_GROUPS entry"
         exit 1
     fi
 done
 
-ARGS=(--force-color --tee-json=lint.json)
+ARGS=(--force-color "--tee-json=${LINT_JSON}")
 if [[ -n "${LINT_TAKE:-}" ]]; then
     ARGS+=(--take "${LINT_TAKE}")
 elif [[ "${LINT_GROUP}" != "all" ]]; then
@@ -66,11 +70,11 @@ if [[ "${LINT_APPLY:-0}" == "1" ]]; then
 fi
 
 if [[ -d /tmp/.lintbin ]]; then
-    cp -r /tmp/.lintbin . || true
+    cp -rn /tmp/.lintbin/. "${LINT_DIR}/" || true
 fi
 lintrunner init
 
-rm -f lint.json
+rm -f "${LINT_JSON}"
 RC=0
 if ! lintrunner "${ARGS[@]}"; then
     REPRO="lintrunner ${ARGS[*]:2}"
@@ -83,6 +87,6 @@ fi
 # Surface findings as GitHub annotations.
 jq --raw-output --arg root "${PWD}/" \
     '"::\(if .severity == "advice" or .severity == "disabled" then "warning" else .severity end) file=\((.path // "") | ltrimstr($root)),line=\(.line // 1),col=\(.char // 1),title=\(.code) \(.name)::" + ((.description // "") | gsub("\\n"; "%0A"))' \
-    lint.json || true
+    "${LINT_JSON}" || true
 
 exit "${RC}"

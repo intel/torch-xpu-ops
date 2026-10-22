@@ -325,7 +325,7 @@ lintrunner -m origin/main
 
 # Lint one language group the same way CI does
 # (groups: general, python, cpp, cmake, shell, config)
-LINT_GROUP=python LINT_SCOPE=incremental bash .github/scripts/lintrunner.sh
+LINT_GROUP=python LINT_SCOPE=incremental bash tools/linter/lintrunner.sh
 
 # Auto-apply suggested fixes
 lintrunner -a -m origin/main
