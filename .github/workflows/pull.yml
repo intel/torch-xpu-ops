@@ -297,7 +297,7 @@ jobs:
             --base "${{ steps.commits.outputs.merge_base }}" --head HEAD \
             --pr "${{ github.event.pull_request.number }}" --gh-repo "${{ github.repository }}" \
             --out ../selection.json --summary "${GITHUB_STEP_SUMMARY}" \
-            --cards 1 ${REASON:+--disable-reason "$REASON"}
+            --cards 8 ${REASON:+--disable-reason "$REASON"}
       - name: Upload selection
         uses: actions/upload-artifact@v7
         with:

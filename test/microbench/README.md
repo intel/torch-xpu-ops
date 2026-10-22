@@ -198,7 +198,9 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    recorded in the report), validator, A/B
    scheduler. Fails only for infrastructure errors or validator failures.
 4. `microbench / microbench-check` (ubuntu): verdicts, report, comment
-   payload. Fails only for a blocking regression without a valid override.
+   payload. The `microbench-comment-*` artifact also holds
+   `all_cases.md` / `all_cases.csv` (device and E2E medians, ratio, CI and
+   verdict of every case) and `verdicts.json`. Fails only for a blocking regression without a valid override.
 5. `microbench_comment.yml` (`workflow_run`) posts/updates the single
    `<!-- microbench-report -->` comment, also for fork PRs.
 6. `microbench_override.yml` (`pull_request_target`): a maintainer's

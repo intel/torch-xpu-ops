@@ -332,7 +332,7 @@ jobs:
           NEED_BASE=$([ -n "$BASE_SHA" ] && echo true || echo false)
           if [ "${SPEC:-selected}" == "selected" ]; then
             if [ -n "$BASE_SHA" ] && [ -n "$B_SHA" ]; then
-              python -m microbench select --repo .. --base "$BASE_SHA" --head "$B_SHA" --cards 1 --out ../selection.json --summary "${GITHUB_STEP_SUMMARY}" --github-output /dev/null
+              python -m microbench select --repo .. --base "$BASE_SHA" --head "$B_SHA" --cards 8 --out ../selection.json --summary "${GITHUB_STEP_SUMMARY}" --github-output /dev/null
             else
               echo "No A..B diff available (no microbench_base); selecting the core set." >> "${GITHUB_STEP_SUMMARY}"
               python -m microbench select --spec core --out ../selection.json --summary "${GITHUB_STEP_SUMMARY}" --github-output /dev/null
