@@ -17,7 +17,6 @@
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
-#include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>

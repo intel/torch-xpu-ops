@@ -15,7 +15,6 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 #include <comm/xpu_aten.h>
 
