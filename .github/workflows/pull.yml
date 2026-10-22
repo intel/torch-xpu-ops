@@ -28,8 +28,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  preci-lint-check:
+  lint:
     if: ${{ github.repository_owner == 'intel' }}
+    secrets: inherit
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_lint.yml
+
+  preci-lint-check:
+    needs: lint
+    # Always run so this required check reports failure instead of "skipped" when lint fails.
+    if: ${{ !cancelled() && github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -45,82 +54,18 @@ jobs:
       skip_win: ${{ steps.live-labels.outputs.skip_win }}
       force_win_ut: ${{ steps.live-labels.outputs.force_win_ut }}
     steps:
+      - name: Fail if lint failed
+        if: ${{ needs.lint.result != 'success' }}
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+        run: |
+          echo "::error::Lint check result: ${LINT_RESULT}. See the 'lint / lintrunner' jobs for details."
+          exit 1
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
-      - name: Run lint check
-        id: lint-python
-        continue-on-error: true
-        run: |
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
-          cd ./torch-xpu-ops
-          set -o pipefail
-          bash .github/scripts/lintrunner.sh 2>&1 | tee ${{ github.workspace }}/lint_python_errors.log
-      - name: Checkout PyTorch (for headers)
-        uses: actions/checkout@v7
-        with:
-          repository: pytorch/pytorch
-          path: pytorch-headers
-          fetch-depth: 1
-          submodules: false
-      - name: Run lint check with Clang
-        id: lint-clang
-        continue-on-error: true
-        env:
-          PYTORCH_ROOT: ${{ github.workspace }}/pytorch-headers
-        run: |
-          cd ./torch-xpu-ops
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT,CLANGTIDY --all-files"
-          set -o pipefail
-          bash .github/scripts/lintrunner.sh 2>&1 | tee ${{ github.workspace }}/lint_clang_errors.log
-      - name: Comment on lint failure
-        if: >-
-          ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure')
-          && github.event.pull_request.head.repo.full_name == github.repository
-          && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
-              || github.event.pull_request.user.login == 'copilot[bot]') }}
-        env:
-          GH_TOKEN: ${{ secrets.COPILOT_TOKEN }}
-        run: |
-          FAILED_STEPS=""
-          if [ "${{ steps.lint-python.outcome }}" = "failure" ]; then
-            FAILED_STEPS="Python lint (flake8/ruff)"
-          fi
-          if [ "${{ steps.lint-clang.outcome }}" = "failure" ]; then
-            if [ -n "$FAILED_STEPS" ]; then
-              FAILED_STEPS="${FAILED_STEPS} and Clang format"
-            else
-              FAILED_STEPS="Clang format"
-            fi
-          fi
-          JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          printf -v COMMENT_BODY '%s\n' \
-            "@copilot The ${FAILED_STEPS} check failed. Please fix the lint errors in this PR." \
-            "" \
-            "**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**" \
-            "" \
-            "Lint job log: ${JOB_URL}" \
-            "" \
-            "Instructions:" \
-            "1. Review the lint failure log via the link above" \
-            "2. Fix all lint errors in the relevant source files" \
-            "3. Ensure both Python lint and Clang format checks pass" \
-            "4. Use reply comments to report progress - do NOT modify the PR description plan directly"
-          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
-      - name: Fail if lint failed
-        if: ${{ steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure' }}
-        run: |
-          echo "::error::Lint check failed. Error details below:"
-          if [ "${{ steps.lint-python.outcome }}" = "failure" ]; then
-            echo "=== Python lint (flake8/ruff) errors ==="
-            cat ${{ github.workspace }}/lint_python_errors.log
-          fi
-          if [ "${{ steps.lint-clang.outcome }}" = "failure" ]; then
-            echo "=== Clang format/tidy errors ==="
-            cat ${{ github.workspace }}/lint_clang_errors.log
-          fi
-          exit 1
+          persist-credentials: false
       - name: Check reproducer exists for AI-generated PR
         if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') && github.event.pull_request.head.repo.full_name == github.repository }}
         id: reproducer-check

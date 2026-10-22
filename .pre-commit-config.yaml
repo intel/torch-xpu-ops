@@ -1,0 +1,20 @@
+# Local pre-commit gate mirroring CI. Setup: `pip install pre-commit lintrunner && lintrunner init && pre-commit install`
+repos:
+  - repo: local
+    hooks:
+      - id: lintrunner
+        name: lintrunner (same linters as CI, changed files only)
+        # clang-tidy needs PYTORCH_ROOT and is slow; run it explicitly with `lintrunner --take CLANGTIDY`.
+        entry: lintrunner --skip CLANGTIDY,MERGE_CONFLICTLESS_CSV
+        language: system
+        pass_filenames: true
+        require_serial: true
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.31.1
+    hooks:
+      - id: zizmor
+        args: [--config, .github/zizmor.yml, --min-severity, medium]

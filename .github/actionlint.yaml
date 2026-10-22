@@ -1,0 +1,17 @@
+self-hosted-runner:
+  labels:
+    - build
+    - pvc
+    - pvc-1550
+    - bmg-test
+    - distributed
+    - windows-build
+    - windows-test
+    - xpu-ubuntu-24.04
+    - xpu-agent
+
+paths:
+  .github/workflows/nightly_ondemand.yml:
+    ignore:
+      # Jobs temporarily disabled on purpose with `if: false`
+      - 'constant expression "false" in condition'

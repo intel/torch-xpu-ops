@@ -3,11 +3,9 @@ description: Resolve the shared CI defaults from .github/ci-config/defaults.json
 
 inputs:
   python:
-    type: string
     default: ''
     description: Python version override. Empty resolves to the `python` entry of the config file
   config:
-    type: string
     default: ''
     description: Config file path. Defaults to $BASE_ENV, then .github/ci-config/defaults.json
 

@@ -10,8 +10,8 @@ on:
       - release/*
     paths:
       - .github/workflows/pull_dpclang.yml
-      - ./.github/workflows/_linux_build.yml
-      - ./.github/workflows/_linux_ut.yml
+      - .github/workflows/_linux_build.yml
+      - .github/workflows/_linux_ut.yml
   schedule:
     # 9:00 AM UTC every Sunday
     - cron: '0 9 * * 0'

@@ -1,0 +1,157 @@
+name: Code scanning
+
+on:
+  pull_request:
+    branches:
+      - main
+      - release/*
+  push:
+    branches:
+      - main
+      - release/*
+  schedule:
+    # 03:17 AM UTC every Monday: full-history secret scan and refreshed CodeQL baseline
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, python, c-cpp]
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          # SYCL sources need the oneAPI toolchain, so analyze C++ without a build.
+          build-mode: none
+          queries: security-extended
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  zizmor:
+    name: Workflow security (zizmor)
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pipx run zizmor==1.31.1 --config .github/zizmor.yml \
+            --min-severity medium --format sarif --no-exit-codes . > zizmor.sarif
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+
+  actionlint:
+    name: Workflow lint (actionlint)
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          SHELLCHECK_OPTS: --severity=error
+        run: |
+          bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "${ACTIONLINT_VERSION}" "${RUNNER_TEMP}"
+          "${RUNNER_TEMP}/actionlint" -color \
+            -format '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}},title=actionlint {{$err.Kind}}::{{$err.Message}}{{"\n"}}{{end}}'
+
+  gitleaks:
+    name: Secret scan (gitleaks)
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "${RUNNER_TEMP}" gitleaks
+          # Gate only new commits; scheduled/manual runs scan full history and just report.
+          EXIT_CODE=0
+          LOG_OPTS="--all"
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            LOG_OPTS="${PR_BASE_SHA}..HEAD"
+            EXIT_CODE=1
+          elif [[ "${EVENT_NAME}" == "push" ]]; then
+            if [[ "${PUSH_BEFORE}" =~ ^0+$ ]]; then LOG_OPTS="-1"; else LOG_OPTS="${PUSH_BEFORE}..HEAD"; fi
+            EXIT_CODE=1
+          fi
+          "${RUNNER_TEMP}/gitleaks" git . --redact --no-banner --log-opts="${LOG_OPTS}" \
+            --report-format sarif --report-path gitleaks.sarif --exit-code "${EXIT_CODE}"
+      - name: Upload SARIF
+        if: ${{ !cancelled() && hashFiles('gitleaks.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+  dependency-review:
+    name: Dependency review
+    if: ${{ github.repository_owner == 'intel' && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

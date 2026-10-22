@@ -1,24 +1,21 @@
 name: print-environment
+description: Print the OS, Python, conda and package environment for debugging
 
 inputs:
   conda:
     required: false
-    type: string
     default: ''
     description: "Conda environment to use (must exist beforehand)"
   os_packages:
     required: false
-    type: string
     default: ''
     description: "Space separated list of OS packages to evaluate"
   pip_packages:
     required: false
-    type: string
     default: ''
     description: "Space separated list of PyPi packages to evaluate"
   to:
     required: false
-    type: string
     default: ''
     description: "File to print environment to"
 

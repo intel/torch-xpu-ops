@@ -1,0 +1,77 @@
+name: Lint
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  lintrunner:
+    name: lintrunner (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: python
+            args: --skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files
+            clang: false
+          - name: clang
+            args: --take CLANGFORMAT,CLANGTIDY --all-files
+            clang: true
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          path: torch-xpu-ops
+          persist-credentials: false
+      - name: Checkout PyTorch (for headers)
+        if: ${{ matrix.clang }}
+        uses: actions/checkout@v7
+        with:
+          repository: pytorch/pytorch
+          path: pytorch-headers
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - name: Run lintrunner
+        working-directory: torch-xpu-ops
+        env:
+          ADDITIONAL_LINTRUNNER_ARGS: ${{ matrix.args }}
+          PYTORCH_ROOT: ${{ github.workspace }}/pytorch-headers
+        run: bash .github/scripts/lintrunner.sh
+
+  notify-copilot:
+    needs: lintrunner
+    if: >-
+      ${{ failure() && github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
+          || github.event.pull_request.user.login == 'copilot[bot]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Ask Copilot to fix lint errors
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          JOB_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf -v COMMENT_BODY '%s\n' \
+            "@copilot The lint check (lintrunner: flake8/ruff/clang-format/clang-tidy) failed. Please fix the lint errors in this PR." \
+            "" \
+            "**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**" \
+            "" \
+            "Lint job log: ${JOB_URL}" \
+            "" \
+            "Instructions:" \
+            "1. Review the lint failure log via the link above" \
+            "2. Fix all lint errors in the relevant source files" \
+            "3. Reproduce locally with \`lintrunner -m origin/main\` until it passes" \
+            "4. Use reply comments to report progress - do NOT modify the PR description plan directly"
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "${COMMENT_BODY}"

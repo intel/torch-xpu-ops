@@ -1,0 +1,11 @@
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # First-party actions may use version tags; everything else must be pinned to a commit SHA.
+        "actions/*": ref-pin
+        "github/*": ref-pin
+        "*": hash-pin
+  secrets-inherit:
+    # Enforced repo convention for build/test reusable workflows (see GHA lintrunner check).
+    disable: true
