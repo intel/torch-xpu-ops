@@ -126,7 +126,7 @@ jobs:
           if [[ "${FULL}" != "true" ]]; then
             CHANGED=$(git diff --name-only --diff-filter=ACMR HEAD^1 HEAD)
             # Composite action or config changes can break any workflow, so lint them all.
-            if ! grep -qE '^\.github/(actions/|actionlint\.ya?ml$)' <<< "${CHANGED}"; then
+            if ! grep -qE '^\.github/(actions/|ci-config/actionlint\.yaml$)' <<< "${CHANGED}"; then
               mapfile -t TARGETS < <(grep -E '^\.github/workflows/[^/]+\.ya?ml$' <<< "${CHANGED}" || true)
               if [[ ${#TARGETS[@]} -eq 0 ]]; then
                 echo "No workflow changes to lint."
@@ -135,7 +135,7 @@ jobs:
             fi
           fi
           bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "${ACTIONLINT_VERSION}" "${RUNNER_TEMP}"
-          "${RUNNER_TEMP}/actionlint" -color \
+          "${RUNNER_TEMP}/actionlint" -color -config-file .github/ci-config/actionlint.yaml \
             -format "{{range \$err := .}}::error file={{\$err.Filepath}},line={{\$err.Line}},col={{\$err.Column}},title=actionlint {{\$err.Kind}}::{{\$err.Message}}\n{{end}}" \
             "${TARGETS[@]}"
 
@@ -161,7 +161,7 @@ jobs:
           TARGETS=(.)
           if [[ "${FULL}" != "true" ]]; then
             CHANGED=$(git diff --name-only --diff-filter=ACMR HEAD^1 HEAD)
-            if ! grep -qx '.github/zizmor.yml' <<< "${CHANGED}"; then
+            if ! grep -qx '.github/ci-config/zizmor.yml' <<< "${CHANGED}"; then
               mapfile -t TARGETS < <(grep -E '^\.github/(workflows/[^/]+|actions/.+/action|dependabot)\.ya?ml$' <<< "${CHANGED}" || true)
               if [[ ${#TARGETS[@]} -eq 0 ]]; then
                 echo "No workflow or action changes to audit."
@@ -169,7 +169,7 @@ jobs:
               fi
             fi
           fi
-          pipx run zizmor==1.31.1 --config .github/zizmor.yml --format github "${TARGETS[@]}"
+          pipx run zizmor==1.31.1 --config .github/ci-config/zizmor.yml --format github "${TARGETS[@]}"
 
   gitleaks:
     name: gitleaks

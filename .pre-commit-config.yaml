@@ -17,4 +17,4 @@ repos:
     rev: v1.31.1
     hooks:
       - id: zizmor
-        args: [--config, .github/zizmor.yml]
+        args: [--config, .github/ci-config/zizmor.yml]

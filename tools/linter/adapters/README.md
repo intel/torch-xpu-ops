@@ -7,7 +7,8 @@ These files adapt our various linters to work with `lintrunner`.
 - `tools/linter/lintrunner.sh`: CI/local entrypoint; runs one language group (`LINT_GROUP`) in full or incremental scope.
 - `tools/linter/adapters/`: one adapter per linter, plus `s3_init.py`/`update_s3.py` for prebuilt clang binaries.
 - `.lintbin/` (git-ignored): downloaded binaries, the lint venv and `lint.json`.
-- Tool configs stay where the tools discover them: `.clang-format`, `.clang-tidy`, `.cmakelintrc`, `pyproject.toml`, `.github/actionlint.yaml`, `.github/zizmor.yml`, `.pre-commit-config.yaml`.
+- Tool configs stay where the tools discover them: `.clang-format`, `.clang-tidy`, `.cmakelintrc`, `pyproject.toml`, `.pre-commit-config.yaml`.
+- Workflow checker configs live in `.github/ci-config/` and are passed explicitly: `actionlint -config-file .github/ci-config/actionlint.yaml`, `zizmor --config .github/ci-config/zizmor.yml`.
 
 ## Adding a new linter
 1. init and linter

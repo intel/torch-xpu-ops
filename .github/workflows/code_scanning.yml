@@ -79,7 +79,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          pipx run zizmor==1.31.1 --config .github/zizmor.yml \
+          pipx run zizmor==1.31.1 --config .github/ci-config/zizmor.yml \
             --format sarif --no-exit-codes . > zizmor.sarif
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
