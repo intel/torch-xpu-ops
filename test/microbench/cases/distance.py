@@ -8,6 +8,8 @@
 
 """cdist / pdist."""
 
+import math
+
 from ..case import F, OpBench, rand, State, torch
 
 SHAPES = [
@@ -36,9 +38,17 @@ def _uses_mm(p):
     return False
 
 
+def _bwd_buffer_bytes(p):
+    """_cdist_backward materializes a (batch, r2, r1, m) buffer per input."""
+    *batch, r1, m = p["x1"]
+    return math.prod(batch) * p["x2"][-2] * r1 * m * 4
+
+
 class Cdist(OpBench):
     """For p=2 with the matmul path the forward is ``_euclidean_dist`` (a
-    composite of mm/norm ops, mostly oneDNN), so those cases are forward only."""
+    composite of mm/norm ops, mostly oneDNN), so those cases are forward only.
+    Backward also skips (1, 512, 8192) x (1, 1024, 8192): its 16 GiB buffer
+    does not fit next to the cached allocations on a 24 GiB BMG card."""
 
     op = "cdist"
     family = "distance"
@@ -60,7 +70,9 @@ class Cdist(OpBench):
     ]
 
     def passes_for(self, p):
-        return ("fwd",) if _uses_mm(p) else ("fwd", "bwd")
+        if _uses_mm(p) or _bwd_buffer_bytes(p) > 8 << 30:
+            return ("fwd",)
+        return ("fwd", "bwd")
 
     def expected_ops(self, p, pass_):
         if pass_ == "bwd":
