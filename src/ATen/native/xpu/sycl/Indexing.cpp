@@ -811,7 +811,8 @@ void take_put_kernel_template(
       f);
   auto caller =
       TakePutKernelFunctor<TAKE_PUT_UNROLL_SZIE, decltype(loop_fn)>(N, loop_fn);
-  auto wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   auto num_wg =
       (N + wg_sz * TAKE_PUT_UNROLL_SZIE - 1) / (wg_sz * TAKE_PUT_UNROLL_SZIE);
   sycl_kernel_submit(num_wg * wg_sz, wg_sz, getCurrentSYCLQueue(), caller);
@@ -1293,7 +1294,8 @@ void index_reduce_add_xpu_template(
   }
 
   const bool indContig = index.is_contiguous();
-  int ssc = syclMaxDSSNum();
+  int ssc = at::xpu::getCurrentDeviceProperties()->max_compute_units /
+      at::xpu::getDeviceEUCountPerXeCore();
 
 #define SMALL_INDEX(                                                        \
     TENSOR_TYPE, INDICES_TYPE, TYPE, SELF_DIM, SOURCE_DIM, IDX_DIM, FUNC_T) \
@@ -1633,7 +1635,8 @@ void index_reduce_func_xpu_template(
       reduce_func,                           \
       alpha_value);
 
-  int ssc = syclMaxDSSNum();
+  int ssc = at::xpu::getCurrentDeviceProperties()->max_compute_units /
+      at::xpu::getDeviceEUCountPerXeCore();
 
   if (canUse32BitIndexMath(result) && canUse32BitIndexMath(source) &&
       canUse32BitIndexMath(index)) {
@@ -2170,7 +2173,8 @@ void index_select_out_impl(
   uint64_t selfSelectDimSize = self.dim() == 0 ? 1 : self.size(dim);
   uint64_t sliceSize = outTotalSize / numIndices;
 
-  int ssc = syclMaxDSSNum();
+  int ssc = at::xpu::getCurrentDeviceProperties()->max_compute_units /
+      at::xpu::getDeviceEUCountPerXeCore();
 
 #define SMALL_INDEX(                                            \
     TENSOR_TYPE, INDICES_TYPE, TYPE, DST_DIM, SRC_DIM, IDX_DIM) \

@@ -13,6 +13,7 @@
 #include <ATen/native/xpu/sycl/EmbeddingBackwardKernel.h>
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/DeviceProperties.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingKernels.h>
@@ -158,7 +159,8 @@ void embedding_renorm_template(
     int64_t weights_stride0,
     int64_t weights_stride1,
     int64_t num_unique_indices) {
-  const int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  const int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   constexpr auto kfn = renorm_kernel<scalar_t, accscalar_t, index_t>;
   auto& queue = at::xpu::getCurrentSYCLQueue();
   sycl_kernel_submit<kfn>(
