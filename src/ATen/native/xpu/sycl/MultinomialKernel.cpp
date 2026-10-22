@@ -80,7 +80,9 @@ inline void renormRows(Tensor& t) {
   int64_t cols = t.size(1);
   int subgroup_size = at::xpu::getDeviceMaxSubGroupSize();
   int group_size = std::min(
-      int(syclMaxWorkItemsPerSubSlice()), subgroup_size * subgroup_size);
+      int(at::xpu::getDeviceMaxSubGroupSize() *
+          at::xpu::getDeviceEUCountPerXeCore()),
+      subgroup_size * subgroup_size);
   int num_groups = (rows + group_size - 1) / group_size;
   int hw_max_groups = at::xpu::getDeviceMaxWorkItems() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
@@ -451,7 +453,8 @@ void multinomial_kernel(
 
           // Prefix sum along rows
           at::cumsum_out(prefixSum, normDist, 1);
-          int group_size = syclMaxWorkItemsPerSubSlice();
+          int group_size = at::xpu::getDeviceMaxSubGroupSize() *
+              at::xpu::getDeviceEUCountPerXeCore();
           int group_range_y = numDist;
           int group_range_x = (n_sample - 1) / group_size + 1;
 
