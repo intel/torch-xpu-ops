@@ -20,7 +20,7 @@ runs:
           const { resolve } = require(`${process.env.ACTION_PATH}/../../ci-config/resolve.js`);
           resolve({ core, overrides: { python: process.env.OVERRIDE_PYTHON } });
     - name: Setup python-${{ steps.config.outputs.python }}
-      uses: astral-sh/setup-uv@v9.0.0
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       with:
         python-version: ${{ steps.config.outputs.python }}
         activate-environment: true
@@ -31,7 +31,7 @@ runs:
         uv pip install -U pip wheel "setuptools<81"
     - name: Setup venv paths
       shell: bash -xe {0}
-      run: |
+      run: | # zizmor: ignore[github-env] composite action intentionally exports to the job env
         PYTHON_CMD="$(command -v python || command -v python3)"
         PYTHON_BIN="$("${PYTHON_CMD}" -c 'import sys; print(sys.executable)')"
         BIN_DIR="$(dirname "${PYTHON_BIN}")"

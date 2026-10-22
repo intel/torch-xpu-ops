@@ -106,7 +106,7 @@ jobs:
 
       - name: Triage inventory and prepare immutable reproducers
         id: prepare
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: 'true'
           github_token: ${{ github.token }}
@@ -361,7 +361,7 @@ jobs:
 
       - name: Finalize scan results
         id: finalize
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: 'true'
           github_token: ${{ github.token }}
@@ -505,7 +505,7 @@ jobs:
 
       - name: Independently review actionable results
         id: reviewer
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: 'true'
           github_token: ${{ github.token }}

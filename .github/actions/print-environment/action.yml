@@ -24,13 +24,18 @@ runs:
   steps:
     - name: Print environment
       shell: bash
+      env:
+        INPUT_CONDA: ${{ inputs.conda }}
+        INPUT_OS_PACKAGES: ${{ inputs.os_packages }}
+        INPUT_PIP_PACKAGES: ${{ inputs.pip_packages }}
+        INPUT_TO: ${{ inputs.to }}
       run: |
-        if [ -n "${{ inputs.conda }}" ]; then
-          source activate ${{ inputs.conda }}
+        if [ -n "${INPUT_CONDA}" ]; then
+          source activate ${INPUT_CONDA}
         fi
         to=$GITHUB_STEP_SUMMARY
-        if [ -n "${{ inputs.to }}" ]; then
-          to="${{ inputs.to }}"
+        if [ -n "${INPUT_TO}" ]; then
+          to="${INPUT_TO}"
           mkdir -p $(dirname $to)
         fi
         {
@@ -40,7 +45,7 @@ runs:
           echo "| jobs.$GITHUB_JOB.versions.os | $(source /etc/os-release && echo $VERSION_ID) |"
           echo "| jobs.$GITHUB_JOB.versions.linux-kernel | $(uname -r) |"
           echo "| jobs.$GITHUB_JOB.versions.python | $(python --version | cut -f2 -d' ' || true) |"
-          packages="${{ inputs.os_packages}}"
+          packages="${INPUT_OS_PACKAGES}"
           packages+=" \
             level-zero \
             libigc1 \
@@ -54,7 +59,7 @@ runs:
             package_version="$(dpkg -l | grep $package | grep ii | head -1 | sed 's/  */ /g' | cut -f3 -d" " || true)"
             echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
           done
-          packages="${{ inputs.pip_packages}}"
+          packages="${INPUT_PIP_PACKAGES}"
           packages+=" \
             numpy \
             torch \

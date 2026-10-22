@@ -23,7 +23,11 @@ on:
         type: string
         description: Runner label for build job
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 env:
   USE_XPU: 1
@@ -53,12 +57,15 @@ jobs:
           call conda create -n windows_ci python=%PYTHON_VERSION% cmake ninja -y
       - name: Prepare Pytorch Source
         shell: cmd
+        env:
+          PYTORCH_REF: ${{ inputs.pytorch }}
+          TORCH_XPU_OPS_REF: ${{ inputs.torch_xpu_ops }}
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
           set WORKSPACE=${{ github.workspace }}\..
-          set pytorch=${{ inputs.pytorch }}
-          set torch_xpu_ops=${{ inputs.torch_xpu_ops }}
+          set pytorch=%PYTORCH_REF%
+          set torch_xpu_ops=%TORCH_XPU_OPS_REF%
 
           REM Git config for long paths and symlinks (required for pytorch submodules)
           git config --system core.longpaths true

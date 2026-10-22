@@ -45,7 +45,11 @@ on:
         default: ''
         description: 'Optional tag (e.g. target/baseline) appended to the artifact name'
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 defaults:
   run:
@@ -181,9 +185,11 @@ jobs:
       - name: Get test data types
         if: ${{ contains(inputs.test_type, 'ondemand') }}
         id: dtypes
+        env:
+          TEST_DTYPES: ${{ inputs.dt }}
         run: |
-          e2e_dtypes="$(echo "${{ inputs.dt }}" |sed 's/,int8//;s/int8,//')"
-          pt2e_dtypes="$(echo "${{ inputs.dt }}" |\
+          e2e_dtypes="$(echo "${TEST_DTYPES}" |sed 's/,int8//;s/int8,//')"
+          pt2e_dtypes="$(echo "${TEST_DTYPES}" |\
                   sed -E 's/,(bfloat16|float16|amp_bf16|amp_fp16)//g;s/(bfloat16|float16|amp_bf16|amp_fp16),//g')"
           echo "e2e_dtypes=${e2e_dtypes}" >> ${GITHUB_OUTPUT}
           echo "pt2e_dtypes=${pt2e_dtypes}" >> ${GITHUB_OUTPUT}
@@ -239,18 +245,23 @@ jobs:
       - name: Get archieve files
         if: ${{ ! cancelled() }}
         id: archive
+        env:
+          TEST_TYPE: ${{ inputs.test_type }}
+          TEST_SUITE: ${{ inputs.suite }}
+          TEST_SCENARIO: ${{ inputs.scenario }}
+          TEST_CATEGORY: ${{ inputs.category }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
-          artifact_name="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data"
+          artifact_name="Inductor-${TEST_TYPE}-LTS2-XPU-E2E-Data"
           artifact_name+="-${{ github.event.pull_request.number || github.sha }}"
-          artifact_name+="-${{ inputs.suite }}"
-          if [[ "${{ inputs.scenario }}" != *,* ]]; then
-            artifact_name+="-${{ inputs.scenario }}"
+          artifact_name+="-${TEST_SUITE}"
+          if [[ "${TEST_SCENARIO}" != *,* ]]; then
+            artifact_name+="-${TEST_SCENARIO}"
           fi
-          artifact_name+="-${{ github.run_id }}-${{ github.run_attempt }}"
-          if [[ -n "${{ inputs.category }}" ]]; then
-            artifact_name+="-${{ inputs.category }}"
+          artifact_name+="-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [[ -n "${TEST_CATEGORY}" ]]; then
+            artifact_name+="-${TEST_CATEGORY}"
           fi
           echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
       - name: Cleanup

@@ -34,7 +34,11 @@ on:
         default: ''
         description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 defaults:
   run:
@@ -86,10 +90,12 @@ jobs:
           which pip && pip list
           pip install -U pip wheel "setuptools<81"
       - name: Snapshot open skipped issues at build start
+        env:
+          ISSUE_CATEGORY: ${{ inputs.category }}
         run: |
           touch known_issue_static.log issues_snapshot.log issues_snapshot_bmg.log issues_snapshot_dpclang.log
           bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "${{ inputs.category }}" > issues_snapshot.log
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "${ISSUE_CATEGORY}" > issues_snapshot.log
           # Runner/category specific labels snapshotted separately so the summary job
           # only applies them on the matching runner (avoids masking failures elsewhere).
           bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "" "bmg-test" "extra-only" > issues_snapshot_bmg.log
@@ -124,20 +130,24 @@ jobs:
           echo "USE_DPCLANG=yes" >> $GITHUB_ENV
           echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
       - name: Prepare Pytorch Source
+        env:
+          PYTORCH_INPUT: ${{ inputs.pytorch }}
+          TORCH_XPU_OPS_INPUT: ${{ inputs.torch_xpu_ops }}
+          ONEDNN_INPUT: ${{ inputs.onednn }}
         run: |
-          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-            PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
+          if [[ "${PYTORCH_INPUT}" == *"https://"* ]];then
+            PYTORCH_REPO="$(echo ${PYTORCH_INPUT} |sed 's/@.*//')"
+            PYTORCH_COMMIT="$(echo ${PYTORCH_INPUT} |sed 's/.*@//')"
           else
             PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-            PYTORCH_COMMIT="${{ inputs.pytorch }}"
+            PYTORCH_COMMIT="${PYTORCH_INPUT}"
           fi
-          if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-            TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
+          if [[ "${TORCH_XPU_OPS_INPUT}" == *"https://"* ]];then
+            TORCH_XPU_OPS_REPO="$(echo ${TORCH_XPU_OPS_INPUT} |sed 's/@.*//')"
+            TORCH_XPU_OPS_COMMIT="$(echo ${TORCH_XPU_OPS_INPUT} |sed 's/.*@//')"
           else
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
+            TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_INPUT}"
           fi
           python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/prepare_pytorch.py \
             --workspace="${{ github.workspace }}" \
@@ -145,7 +155,7 @@ jobs:
             --pytorch-commit="${PYTORCH_COMMIT}" \
             --torch-xpu-ops-repo="${TORCH_XPU_OPS_REPO}" \
             --torch-xpu-ops-commit="${TORCH_XPU_OPS_COMMIT}" \
-            --onednn-commit='${{ inputs.onednn }}'
+            --onednn-commit="${ONEDNN_INPUT}"
       - name: Build Pytorch
         run: |
           export USE_XCCL=1
@@ -189,13 +199,15 @@ jobs:
           pip install dist/*.whl
           cp dist/*.whl ${{ github.workspace }}
       - name: Build Triton
+        env:
+          TRITON_INPUT: ${{ inputs.triton }}
         run: |
           cd ./pytorch
           rm -rf triton_xpu-*.whl
-          if [ -z ${{ inputs.triton }} ] || [ "${{ inputs.triton }}" == "pinned" ];then
+          if [ -z ${TRITON_INPUT} ] || [ "${TRITON_INPUT}" == "pinned" ];then
             TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
           else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
+            TRITON_COMMIT_ID="${TRITON_INPUT}"
           fi
           built_version="$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
                   triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{

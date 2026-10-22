@@ -1,6 +1,6 @@
 name: Auto Merge PR by Comment with Checks
 
-on:
+on: # zizmor: ignore[dangerous-triggers] job is gated on OWNER/MEMBER/COLLABORATOR author_association
   issue_comment:
     types: [created]
   pull_request:

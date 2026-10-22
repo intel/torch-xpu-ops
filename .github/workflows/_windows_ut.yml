@@ -32,7 +32,11 @@ on:
         default: '2026.1'
         description: XPU version
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 jobs:
   ut_test:
@@ -58,12 +62,17 @@ jobs:
           path: ${{ github.workspace }}/wheel_artifact
       - name: Install oneAPI (for UT runtime)
         shell: cmd
+        env:
+          XPU_VERSION_INPUT: ${{ inputs.xpu_version }}
         run: |
-          set XPU_VERSION=${{ inputs.xpu_version }}
+          set XPU_VERSION=%XPU_VERSION_INPUT%
           call .github\scripts\install_xpu.bat
           if errorlevel 1 exit /b 1
       - name: Setup Python Environment
         shell: cmd
+        env:
+          PYTORCH_REF: ${{ inputs.pytorch }}
+          TORCH_XPU_OPS_REF: ${{ inputs.torch_xpu_ops }}
         run: |
           echo "C:\ProgramData\miniforge3\Scripts" >> "$GITHUB_PATH"
           echo "C:\ProgramData\miniforge3\Library\bin" >> "$GITHUB_PATH"
@@ -80,8 +89,8 @@ jobs:
           if exist "pytorch" (
             rmdir /s /q pytorch
           )
-          set pytorch=${{ inputs.pytorch }}
-          set torch_xpu_ops=${{ inputs.torch_xpu_ops }}
+          set pytorch=%PYTORCH_REF%
+          set torch_xpu_ops=%TORCH_XPU_OPS_REF%
 
           REM Skip pytorch clone for nightly wheel - will be handled after install
           echo %pytorch% | findstr /C:"_wheel" >nul
@@ -147,10 +156,13 @@ jobs:
           :setup_done
       - name: Install PyTorch Wheel and Dependencies
         shell: cmd
+        env:
+          PYTORCH_REF: ${{ inputs.pytorch }}
+          TORCH_XPU_OPS_REF: ${{ inputs.torch_xpu_ops }}
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ut
-          set PYTORCH_INPUT=${{ inputs.pytorch }}
+          set PYTORCH_INPUT=%PYTORCH_REF%
           echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul
           if %errorlevel% equ 0 (
             echo "Installing PyTorch from nightly wheel..."
@@ -162,7 +174,7 @@ jobs:
             git clone https://github.com/pytorch/pytorch.git pytorch
             cd pytorch && git checkout %TORCH_COMMIT_ID%
             REM Prepare torch-xpu-ops for test scripts
-            set torch_xpu_ops=${{ inputs.torch_xpu_ops }}
+            set torch_xpu_ops=%TORCH_XPU_OPS_REF%
             if "%torch_xpu_ops%" == "pinned" (
               for /f "delims=" %%c in ('type third_party\xpu.txt') do set XPU_OPS_COMMIT=%%c
               cd third_party
@@ -282,10 +294,12 @@ jobs:
           path: ${{ github.workspace }}/ut_log
       - name: UT Test Results Summary
         shell: bash
+        env:
+          UT_SCOPE: ${{ inputs.ut }}
         run: |
           uv pip install junitparser
           find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
-          python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          python ./.github/scripts/check-ut.py -n ${UT_SCOPE} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
           # Check the failure logs
           if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
             echo -e "Exist Failure logs"
@@ -336,6 +350,8 @@ jobs:
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         shell: bash
+        env:
+          UT_SCOPE: ${{ inputs.ut }}
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log
@@ -366,7 +382,7 @@ jobs:
           fi
 
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          for ut_name in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
+          for ut_name in $(echo ${UT_SCOPE} |sed 's/,/ /g')
           do
             touch Known_issue.log
             if [ -f "issues.log" ]; then

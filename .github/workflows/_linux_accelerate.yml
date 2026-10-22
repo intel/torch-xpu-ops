@@ -39,7 +39,11 @@ on:
         default: 'v4.51.3'
         description: Transformers version
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

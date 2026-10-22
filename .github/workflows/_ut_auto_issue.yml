@@ -75,10 +75,13 @@ jobs:
         # and no venv needed. Downloads artifacts and states facts: which cases
         # failed, and how each compares with its category's baseline. It groups
         # nothing and files nothing.
+        env:
+          NIGHTLY_RUN_ID: ${{ inputs.run_id }}
+          TEST_TYPE: ${{ inputs.test_type }}
         run: |
           python3 .github/scripts/ut_collect_evidence.py \
-            --run-id "${{ inputs.run_id }}" \
-            --test-type "${{ inputs.test_type }}" \
+            --run-id "${NIGHTLY_RUN_ID}" \
+            --test-type "${TEST_TYPE}" \
             --work-dir "${WORK_DIR}" \
             --report-dir "${{ github.workspace }}/ut_auto_issue_report" \
             --evidence-dir "${EVIDENCE_DIR}"
@@ -91,7 +94,7 @@ jobs:
         # which mutes nothing and loses nothing - the failures are still in the
         # nightly report and in the uploaded evidence.
         continue-on-error: true
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -138,6 +141,8 @@ jobs:
         # Every run, filing or not: the analysis costs the same either way.
         if: ${{ always() }}
         uses: actions/github-script@v9
+        env:
+          NIGHTLY_RUN_ID: ${{ inputs.run_id }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -165,7 +170,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`ut-auto-issue\`](${jobUrl}) on nightly #${{ inputs.run_id }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`ut-auto-issue\`](${jobUrl}) on nightly #${process.env.NIGHTLY_RUN_ID} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
       - name: Upload report

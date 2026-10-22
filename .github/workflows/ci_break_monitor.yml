@@ -51,14 +51,16 @@ jobs:
         if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOOKBACK_DAYS: ${{ inputs.days || '7' }}
+          MAX_LOOKBACK: ${{ inputs.max_lookback || '14' }}
         run: |
           python .github/scripts/check_nightly_status.py \
-            --days ${{ inputs.days || '7' }} \
+            --days ${LOOKBACK_DAYS} \
             --event schedule \
             --num-runs 2 \
             ${{ (inputs.parse_logs == true || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--parse-logs' || '' }} \
             ${{ (inputs.deep_scan == true || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--deep-scan' || '' }} \
-            --max-lookback ${{ inputs.max_lookback || '14' }} \
+            --max-lookback ${MAX_LOOKBACK} \
             --output ci_results.json \
             --save-all-runs all_runs.json
 

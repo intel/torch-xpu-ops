@@ -55,7 +55,11 @@ on:
         default: false
         description: Analyse this run's UT failures. Evidence only - an on-demand run files no issues
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}
 
@@ -78,26 +82,35 @@ jobs:
     steps:
       - name: Inputs check
         id: inputs-check
+        env:
+          SCHEDULE_CRON: ${{ github.event.schedule }}
+          PYTORCH_REF: ${{ inputs.pytorch }}
+          TORCH_XPU_OPS_REF: ${{ inputs.torch_xpu_ops }}
+          UT_SCOPE: ${{ inputs.ut }}
+          SUITE_INPUT: ${{ inputs.suite }}
+          SCENARIO_INPUT: ${{ inputs.scenario }}
+          TRITON_REF: ${{ inputs.triton }}
+          PYTHON_VERSION_INPUT: ${{ inputs.python }}
         run: |
-          if [ "${{ github.event_name }}" == "schedule" ];then
-            if [ "${{ github.event.schedule }}" == "10 13 * * 0-4" ];then
+          if [ "${GITHUB_EVENT_NAME}" == "schedule" ];then
+            if [ "${SCHEDULE_CRON}" == "10 13 * * 0-4" ];then
               test_type="build-nightly"
               pytorch="main"
               torch_xpu_ops="main"
-            elif [ "${{ github.event.schedule }}" == "30 13 * * 0-4" ];then
+            elif [ "${SCHEDULE_CRON}" == "30 13 * * 0-4" ];then
               test_type="wheel-nightly"
               pytorch="nightly_wheel"
               torch_xpu_ops="pinned"
-            elif [ "${{ github.event.schedule }}" == "10 16 * * 5" ];then
+            elif [ "${SCHEDULE_CRON}" == "10 16 * * 5" ];then
               test_type="build-weekly"
               pytorch="main"
               torch_xpu_ops="main"
-            elif [ "${{ github.event.schedule }}" == "30 16 * * 5" ];then
+            elif [ "${SCHEDULE_CRON}" == "30 16 * * 5" ];then
               test_type="wheel-weekly"
               pytorch="nightly_wheel"
               torch_xpu_ops="pinned"
             else
-              echo "No such scheduler: ${{ github.event.schedule }}"
+              echo "No such scheduler: ${SCHEDULE_CRON}"
               exit 1
             fi
             ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
@@ -110,26 +123,26 @@ jobs:
             triton=''
             python=''
           else
-            pytorch="${{ inputs.pytorch }}"
-            if [ -z ${{ inputs.torch_xpu_ops }} ];then
-              torch_xpu_ops="${{ github.ref_name }}"
+            pytorch="${PYTORCH_REF}"
+            if [ -z ${TORCH_XPU_OPS_REF} ];then
+              torch_xpu_ops="${GITHUB_REF_NAME}"
             else
-              torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
+              torch_xpu_ops="${TORCH_XPU_OPS_REF}"
             fi
-            if [[ "${{ inputs.pytorch }}" == *"_wheel" ]];then
+            if [[ "${PYTORCH_REF}" == *"_wheel" ]];then
               test_type="wheel-ondemand"
             else
               test_type="build-ondemand"
             fi
-            ut="$(echo ${{ inputs.ut }} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
-            suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
-            if [ -n "${{ inputs.scenario }}" ];then
-              scenario="$(echo ${{ inputs.scenario }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            ut="$(echo ${UT_SCOPE} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
+            suite="$(echo ${SUITE_INPUT} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            if [ -n "${SCENARIO_INPUT}" ];then
+              scenario="$(echo ${SCENARIO_INPUT} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
             else
               scenario='["accuracy","performance"]'
             fi
-            triton="${{ inputs.triton }}"
-            python="${{ inputs.python }}"
+            triton="${TRITON_REF}"
+            python="${PYTHON_VERSION_INPUT}"
           fi
           echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
           echo "pytorch=${pytorch}" >> ${GITHUB_OUTPUT}

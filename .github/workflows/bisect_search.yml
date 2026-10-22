@@ -35,7 +35,11 @@ on:
         default: ''
         description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 defaults:
   run:
@@ -80,14 +84,16 @@ jobs:
           bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh status
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
+        env:
+          ONEAPI_INPUT: ${{ inputs.oneapi }}
         run: |
           rm -rf ~/intel ~/.intel ${HOME}/intel
-          if [ "${{ inputs.oneapi }}" == "2025.1" ];then
+          if [ "${ONEAPI_INPUT}" == "2025.1" ];then
             ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/3435dc45-055e-4f7a-86b1-779931772404/intel-deep-learning-essentials-2025.1.3.7_offline.sh"
-          elif [ "${{ inputs.oneapi }}" == "2025.2" ];then
+          elif [ "${ONEAPI_INPUT}" == "2025.2" ];then
             ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/de3686c4-d3e1-41da-bf3b-bf5908da075c/intel-deep-learning-essentials-2025.2.1.24_offline.sh"
           else
-            ONEAPI_URL="${{ inputs.oneapi }}"
+            ONEAPI_URL="${ONEAPI_INPUT}"
           fi
           wget -q -O oneapi.sh "${ONEAPI_URL}"
           bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
@@ -107,12 +113,12 @@ jobs:
           echo "LATEST_XPU_COMMIT=${LATEST_XPU_COMMIT}" >> ${GITHUB_ENV}
       - name: Prepare test env
         run: |
-          if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
+          if [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/huggingface.py"* ]];then
             pip install transformers
-          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
+          elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/timm_models.py"* ]];then
             pip install timm
-          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/torchbench.py"* ]];then
-            model_name="$(echo ${{ inputs.search_case }} |sed 's+.*\--only *++;s/ .*//')"
+          elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/torchbench.py"* ]];then
+            model_name="$(echo ${SEARCH_CASE} |sed 's+.*\--only *++;s/ .*//')"
             git clone https://github.com/pytorch/benchmark gs-benchmark
             cd gs-benchmark
             pip install -r requirements.txt
@@ -129,7 +135,7 @@ jobs:
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
-          pytorch_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*pytorch=++;s+,.*++')"
+          pytorch_commits="$(echo ${SEARCH_COMMITS} |sed 's+.*pytorch=++;s+,.*++')"
           old_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $2}')"
           old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
@@ -162,7 +168,7 @@ jobs:
       - name: Bisect search torch-xpu-ops
         if: ${{ contains(inputs.search_commits, 'xpu-ops') }}
         run: |
-          xpu_ops_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*xpu-ops=++;s+,.*++')"
+          xpu_ops_commits="$(echo ${SEARCH_COMMITS} |sed 's+.*xpu-ops=++;s+,.*++')"
           old_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $2}')"
           old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \

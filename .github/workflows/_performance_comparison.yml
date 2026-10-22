@@ -14,7 +14,11 @@ on:
         default: ''
         description: Baseline run id
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 jobs:
   Performance-Comparison:
@@ -27,12 +31,15 @@ jobs:
       - name: Setup python
         uses: ./.github/actions/setup-python
       - name: Downlaod artifacts
+        env:
+          TARGET_RUN_ID: ${{ inputs.target }}
+          BASELINE_RUN_ID: ${{ inputs.baseline }}
         run: |
           rm -rf target && mkdir target && cd target
-          gh --repo ${GITHUB_REPOSITORY} run download ${{ inputs.target }} -p "Inductor-*-XPU-E2E-*"
+          gh --repo ${GITHUB_REPOSITORY} run download ${TARGET_RUN_ID} -p "Inductor-*-XPU-E2E-*"
           mv Inductor-*-XPU-E2E-*/* . && cd ..
           rm -rf baseline && mkdir baseline && cd baseline
-          gh --repo ${GITHUB_REPOSITORY} run download ${{ inputs.baseline }} -p "Inductor-*-XPU-E2E-*"
+          gh --repo ${GITHUB_REPOSITORY} run download ${BASELINE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
           mv Inductor-*-XPU-E2E-*/* . && cd ..
       - name: Comparison result
         run: |

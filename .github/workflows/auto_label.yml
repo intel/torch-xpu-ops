@@ -1,6 +1,6 @@
 name: auto-label
 
-on:
+on: # zizmor: ignore[dangerous-triggers] only base-branch files are checked out; PR code is never executed
   pull_request_target:
     types: [opened, synchronize]
     branches:

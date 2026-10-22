@@ -21,7 +21,11 @@ on:
         required: false
         default: ''
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && format('pull-rerun-{0}', github.event.inputs.pr_number) || format('{0}-{1}', github.workflow, github.event.pull_request.number) }}
@@ -71,6 +75,7 @@ jobs:
         id: reproducer-check
         env:
           GH_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          PR_USER_LOGIN: ${{ github.event.pull_request.user.login }}
         run: |
           cd ./torch-xpu-ops
           FAIL_MSG=""
@@ -120,7 +125,7 @@ jobs:
           fi
 
           if [ -n "$FAIL_MSG" ]; then
-            PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+            PR_AUTHOR="${PR_USER_LOGIN}"
             printf -v COMMENT_BODY '%s\n' \
               "@${PR_AUTHOR} ${FAIL_MSG}" \
               "" \
@@ -156,7 +161,7 @@ jobs:
     outputs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
     steps:
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: check-files
         with:
           filters: |

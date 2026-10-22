@@ -16,7 +16,11 @@ on:
     # 9:00 AM UTC every Sunday
     - cron: '0 9 * * 0'
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}

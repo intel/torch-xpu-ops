@@ -72,7 +72,11 @@ on:
         default: ''
         description: 'Commit status context to set in callback_repo on completion.'
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: acceptance-${{ github.event.inputs.callback_sha || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
@@ -204,6 +208,12 @@ jobs:
           python: ${{ inputs.python }}
 
       - name: Print configuration
+        env:
+          TARGET_VERSION: ${{ inputs.target_version }}
+          BASELINE_VERSION: ${{ inputs.baseline_version }}
+          PYTORCH_REF: ${{ inputs.pytorch }}
+          TORCH_XPU_OPS_REF: ${{ inputs.torch_xpu_ops }}
+          TRIGGERED_BY: ${{ github.actor }}
         run: |
           {
             echo "## Acceptance comparison"
@@ -211,12 +221,12 @@ jobs:
             echo "| | Value |"
             echo "| --- | --- |"
             echo "| **Component under test** | ${{ inputs.test_component }} |"
-            echo "| Target version   | \`${{ inputs.target_version }}\` |"
-            echo "| Baseline version | \`${{ inputs.baseline_version }}\` |"
-            echo "| Base pytorch     | ${{ inputs.pytorch }} |"
-            echo "| Base torch-xpu-ops | ${{ inputs.torch_xpu_ops }} |"
+            echo "| Target version   | \`${TARGET_VERSION}\` |"
+            echo "| Baseline version | \`${BASELINE_VERSION}\` |"
+            echo "| Base pytorch     | ${PYTORCH_REF} |"
+            echo "| Base torch-xpu-ops | ${TORCH_XPU_OPS_REF} |"
             echo "| Test pattern     | ${{ inputs.test_pattern }} |"
-            echo "| Triggered by     | ${{ github.actor }} |"
+            echo "| Triggered by     | ${TRIGGERED_BY} |"
             echo ""
             echo "Scope: \`${{ inputs.test_pattern }}\` — smoke = op_regression UT + huggingface(BertForMaskedLM); otherwise UT=\`xpu_p0\`, E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)."
           } > "${GITHUB_STEP_SUMMARY}"

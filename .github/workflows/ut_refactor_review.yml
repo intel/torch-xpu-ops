@@ -43,7 +43,7 @@ jobs:
           sparse-checkout: pytorch-test-refactoring
       - name: Run AI review
         id: ai-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -68,6 +68,8 @@ jobs:
       - name: Write review to job summary
         if: steps.ai-review.outputs.execution_file
         uses: actions/github-script@v9
+        env:
+          PYTORCH_PR: ${{ github.event.inputs.pytorch_pr }}
         with:
           script: |
             const fs = require('fs');
@@ -82,7 +84,7 @@ jobs:
               core.setFailed('AI review returned an error or no output.');
               return;
             }
-            const pr = '${{ github.event.inputs.pytorch_pr }}';
+            const pr = process.env.PYTORCH_PR;
             const header = `## ut-review for pytorch/pytorch#${pr}\n\n`;
             await core.summary.addRaw(header + result.result).write();
 
@@ -108,6 +110,8 @@ jobs:
       - name: Report usage cost
         if: always()
         uses: actions/github-script@v9
+        env:
+          PYTORCH_PR: ${{ github.event.inputs.pytorch_pr }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -131,7 +135,7 @@ jobs:
             const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
-            const pr = '${{ github.event.inputs.pytorch_pr }}';
+            const pr = process.env.PYTORCH_PR;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,

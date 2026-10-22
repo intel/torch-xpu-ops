@@ -56,9 +56,11 @@ jobs:
           python: ${{ inputs.python }}
       - name: Get changed reproducer files
         id: changed-repro
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           cd torch-xpu-ops
-          CHANGED_FILES=$(git diff --name-only --diff-filter=AM origin/${{ github.event.pull_request.base.ref }}...HEAD -- test/repro/test_*.py || true)
+          CHANGED_FILES=$(git diff --name-only --diff-filter=AM origin/${PR_BASE_REF}...HEAD -- test/repro/test_*.py || true)
           echo "files<<EOF" >> "$GITHUB_OUTPUT"
           echo "$CHANGED_FILES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"

@@ -26,7 +26,7 @@ runs:
     - name: Prepare dataset
       if: contains(inputs.scenario, 'accuracy')
       shell: bash -xe {0}
-      run: |
+      run: | # zizmor: ignore[github-env] composite action intentionally exports to the job env
         dataset_dir="/opt/_dataset/imagenet"
         if [ ! -d "${dataset_dir}" ]; then
           rm -rf "${dataset_dir}"
@@ -40,6 +40,9 @@ runs:
         echo "dataset_dir=${dataset_dir}" >> "${GITHUB_ENV}"
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
+      env:
+        INPUT_DT: ${{ inputs.dt }}
+        INPUT_SCENARIO: ${{ inputs.scenario }}
       run: |
         set -o pipefail
 
@@ -54,7 +57,7 @@ runs:
         fi
 
         python -m run_pt2e --suite pt2e --mode inference \
-            --dtype "${{ inputs.dt }}" --scenario "${{ inputs.scenario }}" \
+            --dtype "${INPUT_DT}" --scenario "${INPUT_SCENARIO}" \
             --dataset-dir "${dataset_dir}" "${model_list_args[@]}" \
             2>&1 | tee inductor_log/run_pt2e.log || true
         rsync -avz inductor_log/ "${GITHUB_WORKSPACE}/pytorch/inductor_log/"

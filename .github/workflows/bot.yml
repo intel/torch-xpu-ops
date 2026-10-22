@@ -1,6 +1,6 @@
 name: bot
 
-on:
+on: # zizmor: ignore[dangerous-triggers] parse-command gates every command on author_association
   issue_comment:
     types: [created]
   pull_request:
@@ -908,7 +908,7 @@ jobs:
 
       - name: Run AI review
         id: ai-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -1045,7 +1045,7 @@ jobs:
       - name: AI analysis
         id: ai-analysis
         if: steps.collect.outputs.has_data == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -1210,7 +1210,7 @@ jobs:
       needs.parse-command.outputs.command == 'fix'
       && needs.parse-command.outputs.authorized == 'true'
     container:
-      image: ${{ needs.parse-command.outputs.fix_image }}
+      image: ${{ needs.parse-command.outputs.fix_image }} # zizmor: ignore[unpinned-images] tag is validated against Docker Hub in parse-command
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
@@ -1324,7 +1324,7 @@ jobs:
 
       - name: Run AI fix
         id: ai-fix
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -1768,7 +1768,7 @@ jobs:
 
       - name: Run AI labeler
         id: ai-label
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -1978,7 +1978,7 @@ jobs:
 
       - name: Run AI triage
         id: ai-triage
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -2265,7 +2265,7 @@ jobs:
 
       - name: "Test: AWS Bedrock connectivity via Claude Code Action"
         id: bedrock-test
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
