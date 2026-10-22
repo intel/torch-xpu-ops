@@ -255,23 +255,25 @@ struct multi_outputs_unroll {
 } // namespace policies
 
 static inline int preferred_vector_width(at::DeviceIndex dev_id, int elem_sz) {
+  // Hot fix. This is the preferred vector width for GPUs up to LNL/BMG.
+  constexpr uint32_t vec_width = 16;
   size_t ret;
   switch (elem_sz) {
     case 1:
       static_assert(sizeof(char) == 1, "the char size is not 1 bytes");
-      ret = syclPrefVectorWidth<char>(dev_id);
+      ret = vec_width / sizeof(char);
       break;
     case 2:
       static_assert(sizeof(short) == 2, "the short size is not 2 bytes");
-      ret = syclPrefVectorWidth<short>(dev_id);
+      ret = vec_width / sizeof(short);
       break;
     case 4:
-      ret = syclPrefVectorWidth<int>(dev_id);
+      ret = vec_width / sizeof(int);
       static_assert(sizeof(int) == 4, "the long size is not 4 bytes");
       break;
     case 8:
       static_assert(sizeof(int64_t) == 8, "the long size is not 8");
-      ret = syclPrefVectorWidth<int64_t>(dev_id);
+      ret = vec_width / sizeof(int64_t);
       break;
     default:
       // no vectorize
