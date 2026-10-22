@@ -9,7 +9,7 @@ set -xe
 USE_DPCLANG=${USE_DPCLANG:-"no"}
 for var; do
     # shellcheck disable=SC2086
-    eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
+    eval "export $(echo ${var@Q} | sed "s/^'-*//g;s/=/='/")"
 done
 
 WORKSPACE=$(realpath "${WORKSPACE:-/tmp}")
@@ -73,7 +73,7 @@ python -c "import torch; print(torch.__config__.parallel_info())"
 xpu_is_compiled="$(python -c 'import torch; print(torch.xpu._is_compiled())')"
 
 # Save wheel
-if [ "${xpu_is_compiled,,}" == "true" ];then
+if [ "${xpu_is_compiled,,}" == "true" ]; then
     rm -rf "${WORKSPACE}"/torch-*.whl
     cp "${WORKSPACE}/pytorch/dist"/torch-*.whl "${WORKSPACE}"
 else

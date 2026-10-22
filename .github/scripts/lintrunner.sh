@@ -1,67 +1,88 @@
 #!/usr/bin/env bash
-set -ex
+# Run the lintrunner formatters and linters for one language group.
+#
+#   LINT_GROUP  all | general | python | cpp | cmake | shell | config   (default: all)
+#   LINT_SCOPE  full | incremental                                      (default: full)
+#   LINT_BASE   revision to diff against when LINT_SCOPE=incremental   (default: origin/main)
+#   LINT_TAKE   comma-separated linter codes; overrides LINT_GROUP
+#   LINT_APPLY  1 to apply formatter patches (lintrunner -a)
+#   PYTORCH_ROOT  PyTorch source tree, required by CLANGTIDY (cpp group)
+set -euo pipefail
 
-# Creat a venv for lint check
-if ! uv --help > /dev/null 2>&1; then
+declare -A LINT_GROUPS=(
+    [general]="NEWLINE,SPACES,TABS,EXEC,COPYRIGHT,LINTRUNNER_VERSION"
+    [python]="RUFF,PYFMT,TYPEIGNORE,NOQA,ROOT_LOGGING,TESTOWNERS,TEST_HAS_MAIN"
+    [cpp]="CLANGFORMAT,CLANGTIDY,INCLUDE,C10_UNUSED,C10_NODISCARD,PYBIND11_INCLUDE,PYBIND11_SPECIALIZATION,CALL_ONCE,ONCE_FLAG,ATEN_CPU_GPU_AGNOSTIC,CUBINCLUDE,RAWCUDA,RAWCUDADEVICE"
+    [cmake]="CMAKE"
+    [shell]="SHELLCHECK,SHFMT"
+    [config]="SYNTAX,GHA,NO_WORKFLOWS_ON_FORK"
+)
+LINT_GROUP="${LINT_GROUP:-all}"
+LINT_SCOPE="${LINT_SCOPE:-full}"
+LINT_BASE="${LINT_BASE:-origin/main}"
+
+if ! command -v uv >/dev/null 2>&1; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$PATH:$HOME/.local/bin"
+    export PATH="${PATH}:${HOME}/.local/bin"
 fi
 uv venv lint --python 3.12 --clear
-source lint/bin/activate
-uv pip install -U pip "setuptools<81" wheel pyyaml typing-extensions
+export VIRTUAL_ENV="${PWD}/lint"
+export PATH="${VIRTUAL_ENV}/bin:${PATH}"
+uv pip install lintrunner pyyaml ruamel.yaml typing-extensions "setuptools<81" wheel
 
-# Use uv to speed up lintrunner init
-uv pip install ruamel.yaml
-
-CACHE_DIRECTORY="/tmp/.lintbin"
-# Try to recover the cached binaries
-if [[ -d "${CACHE_DIRECTORY}" ]]; then
-    # It's ok to fail this as lintrunner init would download these binaries
-    # again if they do not exist
-    cp -r "${CACHE_DIRECTORY}" . || true
-fi
-
-# if lintrunner is not installed, install it
-if ! command -v lintrunner &> /dev/null; then
-    uv pip install lintrunner
-fi
-
-# Ignoring errors in one specific run
-export SHELLCHECK_OPTS="-e SC2154 -e SC2086 -e SC1091 -e SC2046 -e SC2076 -e SC2034 -e SC2190"
-
-# This has already been cached in the docker image
-lintrunner init 2> /dev/null
-
-# Do build steps necessary for linters
-if [[ "${CLANG}" == "1" ]]; then
-    if [[ -e "third_party/torch-xpu-ops/tools/linter/clang_tidy/generate_build_files.py" ]];then
-        python3 third_party/torch-xpu-ops/tools/linter/clang_tidy/generate_build_files.py
-    else
-        echo "Please run the checker under pytorch source code folder"
+# Every linter must belong to exactly one group, otherwise CI would silently never run it.
+mapfile -t ALL_CODES < <(python3 -c 'import tomllib; print("\n".join(l["code"] for l in tomllib.load(open(".lintrunner.toml", "rb"))["linter"]))')
+GROUPED=",$(
+    IFS=,
+    echo "${LINT_GROUPS[*]}"
+),"
+for code in "${ALL_CODES[@]}"; do
+    if [[ "${GROUPED}" != *",${code},"* ]]; then
+        echo "::error file=.github/scripts/lintrunner.sh::Linter ${code} is not assigned to a LINT_GROUPS entry"
+        exit 1
     fi
-fi
-#uv tools.generate_torch_version --is_debug=false
-#uv tools.pyi.gen_pyi \
-#    --native-functions-path aten/src/ATen/native/native_functions.yaml \
-#    --tags-path aten/src/ATen/native/tags.yaml \
-#    --deprecated-functions-path "tools/autograd/deprecated.yaml"
-#python3 torch/utils/data/datapipes/gen_pyi.py
+done
 
-RC=0
-# Run lintrunner on all files
-# Remove lint.json from a previous run to avoid lintrunner failing with "File exists" error
+ARGS=(--force-color --tee-json=lint.json)
+if [[ -n "${LINT_TAKE:-}" ]]; then
+    ARGS+=(--take "${LINT_TAKE}")
+elif [[ "${LINT_GROUP}" != "all" ]]; then
+    if [[ -z "${LINT_GROUPS[${LINT_GROUP}]+x}" ]]; then
+        echo "Unknown LINT_GROUP '${LINT_GROUP}'. Valid: all ${!LINT_GROUPS[*]}" >&2
+        exit 2
+    fi
+    ARGS+=(--take "${LINT_GROUPS[${LINT_GROUP}]}")
+fi
+case "${LINT_SCOPE}" in
+    full) ARGS+=(--all-files) ;;
+    incremental) ARGS+=(--merge-base-with "${LINT_BASE}") ;;
+    *)
+        echo "Unknown LINT_SCOPE '${LINT_SCOPE}'. Valid: full incremental" >&2
+        exit 2
+        ;;
+esac
+if [[ "${LINT_APPLY:-0}" == "1" ]]; then
+    ARGS+=(-a)
+fi
+
+if [[ -d /tmp/.lintbin ]]; then
+    cp -r /tmp/.lintbin . || true
+fi
+lintrunner init
+
 rm -f lint.json
-if ! lintrunner --force-color --tee-json=lint.json ${ADDITIONAL_LINTRUNNER_ARGS} 2> /dev/null; then
-    echo ""
-    echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner -m origin/main\`. (If you don't get the same results, run \'lintrunner init\' to update your local linter)\e[0m"
-    echo -e "\e[1m\e[36mSee https://github.com/pytorch/pytorch/wiki/lintrunner for setup instructions. To apply suggested patches automatically, use the -a flag. Before pushing another commit,\e[0m"
-    echo -e "\e[1m\e[36mplease verify locally and ensure everything passes.\e[0m"
+RC=0
+if ! lintrunner "${ARGS[@]}"; then
+    REPRO="lintrunner ${ARGS[*]:2}"
+    echo
+    echo -e "\e[1m\e[36mReproduce locally with: ${REPRO/--merge-base-with ${LINT_BASE}/-m origin/main}\e[0m"
+    echo -e "\e[1m\e[36mApply formatter patches with: lintrunner -a ${REPRO#lintrunner }\e[0m"
     RC=1
 fi
 
-# Use jq to massage the JSON lint output into GitHub Actions workflow commands.
+# Surface findings as GitHub annotations.
 jq --raw-output \
     '"::\(if .severity == "advice" or .severity == "disabled" then "warning" else .severity end) file=\(.path),line=\(.line),col=\(.char),title=\(.code) \(.name)::" + (.description | gsub("\\n"; "%0A"))' \
     lint.json || true
 
-exit $RC
+exit "${RC}"

@@ -192,6 +192,7 @@ class BaselineMeta:
     run to six figures of lines, which is more than is worth carrying between
     the two halves of this script.
     """
+
     run_id: int
     created_at: str
     age_in_runs: int
@@ -232,6 +233,7 @@ class Evidence:
     bodies quote rather than the baselines themselves, so nothing after this
     step needs to download a past nightly.
     """
+
     run: RunInfo
     cases: list[Case]
     classification: dict[str, str]
@@ -280,9 +282,20 @@ def pick_artifact(names: list[tuple[str, bool]], prefix: str, ut_job: str, run_i
 def download(run_id: int, artifact: str, dest: Path) -> bool:
     dest.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(
-        ["gh", "run", "download", str(run_id), "--repo", REPO,
-         "--name", artifact, "--dir", str(dest)],
-        capture_output=True, text=True,
+        [
+            "gh",
+            "run",
+            "download",
+            str(run_id),
+            "--repo",
+            REPO,
+            "--name",
+            artifact,
+            "--dir",
+            str(dest),
+        ],
+        capture_output=True,
+        text=True,
     )
     if proc.returncode != 0:
         warn(f"download of {artifact} failed: {proc.stderr.strip()}")
@@ -412,8 +425,10 @@ def jobs_for(jobs: list[tuple[int, str, str, str]], ut_job: str) -> list[tuple]:
     """The workflow jobs of one UT job: ones that ran before skipped ones (a
     distributed job skips its container half), then the container one first."""
     cands = [j for j in jobs if f"({ut_job})" in j[1]]
-    return sorted(cands, key=lambda j: (j[2] == "skipped",
-                                        not j[1].endswith("test-in-container"), j[0]))
+    return sorted(
+        cands,
+        key=lambda j: (j[2] == "skipped", not j[1].endswith("test-in-container"), j[0]),
+    )
 
 
 def job_url(run_id: int, jobs: list[tuple[int, str, str, str]], ut_job: str) -> str:
@@ -437,9 +452,7 @@ def job_runner(jobs: list[tuple[int, str, str, str]], ut_job: str) -> str:
 def read_versions(root: Path) -> tuple[str, str]:
     versions = find_file(root, "versions.txt")
     if versions is not None:
-        kv = dict(
-            line.split("=", 1) for line in read_lines(versions) if "=" in line
-        )
+        kv = dict(line.split("=", 1) for line in read_lines(versions) if "=" in line)
         return kv.get("torch", ""), kv.get("torch_xpu_ops", "")
     # Runs predating the linux-testenv change: collect_env carries an
     # abbreviated torch sha and no torch-xpu-ops sha at all.
@@ -469,13 +482,12 @@ def sample_traceback_targets(cases: list[Case], limit: int) -> list[Case]:
     for case in cases:
         strata.setdefault((case.test_file, case.message), []).append(case)
     ranked = sorted(strata.items(), key=lambda kv: (-len(kv[1]), kv[0]))
-    return [
-        sorted(members, key=lambda c: c.line)[0]
-        for _, members in ranked[:limit]
-    ]
+    return [sorted(members, key=lambda c: c.line)[0] for _, members in ranked[:limit]]
 
 
-def extract_tracebacks(root: Path, wanted: dict[tuple[str, str], str]) -> dict[str, list[str]]:
+def extract_tracebacks(
+    root: Path, wanted: dict[tuple[str, str], str]
+) -> dict[str, list[str]]:
     """Full <failure> text, split into lines, keyed by case line.
 
     The Message column is only the last exception line; the traceback exists
@@ -529,8 +541,10 @@ def within_budget(ranked: list[Case], found: dict[str, list[str]]) -> dict:
         kept[case.line] = lines
         spent += size
     if len(kept) < len(found):
-        print(f"note: kept {len(kept)} of {len(found)} traceback(s), "
-              f"{spent} chars, against a {MAX_TRACEBACK_CHARS} budget")
+        print(
+            f"note: kept {len(kept)} of {len(found)} traceback(s), "
+            f"{spent} chars, against a {MAX_TRACEBACK_CHARS} budget"
+        )
     return kept
 
 
@@ -574,8 +588,9 @@ def baseline_candidates(run_id: int) -> list[dict]:
         ).get("workflow_runs", [])
         for r in rows:
             if int(r["id"]) < run_id and pat.match(r.get("display_title") or ""):
-                out.append({"databaseId": int(r["id"]),
-                            "createdAt": r.get("created_at", "")})
+                out.append(
+                    {"databaseId": int(r["id"]), "createdAt": r.get("created_at", "")}
+                )
         if len(rows) < 100 or len(out) >= MAX_BASELINE_CANDIDATES:
             break
     out.sort(key=lambda r: r["databaseId"], reverse=True)
@@ -617,8 +632,9 @@ def module_counts(lines: set[str]) -> dict[str, int]:
     return counts
 
 
-def resolve_baselines(run_id: int, categories: set[str], work: Path,
-                      report: dict) -> dict[str, Baseline]:
+def resolve_baselines(
+    run_id: int, categories: set[str], work: Path, report: dict
+) -> dict[str, Baseline]:
     """One pass over candidates, accumulating per category.
 
     There is no such thing as "the last good nightly" - only "the last nightly
@@ -653,17 +669,26 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
                 # Recorded but not charged, so that an empty walk is legible:
                 # "nothing to read" and "read and found unhealthy" are the two
                 # ways to reach `unknown` and they call for different fixes.
-                report["baseline_walk"].append({
-                    "run_id": cand_id, "category": category,
-                    "state": "no artifact", "actual": 0,
-                    "expected": EXPECTED_CASES.get(category, 0),
-                })
+                report["baseline_walk"].append(
+                    {
+                        "run_id": cand_id,
+                        "category": category,
+                        "state": "no artifact",
+                        "actual": 0,
+                        "expected": EXPECTED_CASES.get(category, 0),
+                    }
+                )
                 continue
             state, actual, expected = category_state(root, category)
-            report["baseline_walk"].append({
-                "run_id": cand_id, "category": category,
-                "state": state, "actual": actual, "expected": expected,
-            })
+            report["baseline_walk"].append(
+                {
+                    "run_id": cand_id,
+                    "category": category,
+                    "state": state,
+                    "actual": actual,
+                    "expected": expected,
+                }
+            )
             looked[category] += 1
             if state != "complete":
                 if looked[category] >= MAX_BASELINE_LOOKBACK:
@@ -706,8 +731,9 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
 # --------------------------------------------------------------------------- #
 
 
-def classify_case(case: Case, baselines: dict[str, Baseline],
-                  churned: set[tuple[str, str]]) -> tuple[str, str]:
+def classify_case(
+    case: Case, baselines: dict[str, Baseline], churned: set[tuple[str, str]]
+) -> tuple[str, str]:
     """Per case, against its own category's baseline. Exact set membership.
 
     A whole-module row is compared at module granularity instead, because
@@ -767,8 +793,7 @@ def classify_case(case: Case, baselines: dict[str, Baseline],
 # --------------------------------------------------------------------------- #
 
 
-def collection_error_context(case: Case,
-                             baselines: dict[str, Baseline]) -> dict:
+def collection_error_context(case: Case, baselines: dict[str, Baseline]) -> dict:
     """For one whole-module row, what that module used to run."""
     base = baselines.get(case.category)
     if base is None:
@@ -789,9 +814,9 @@ def collection_error_context(case: Case,
     }
 
 
-def record_vanished_cases(work: Path, categories: set[str],
-                          baselines: dict[str, Baseline],
-                          report: dict) -> set[tuple[str, str]]:
+def record_vanished_cases(
+    work: Path, categories: set[str], baselines: dict[str, Baseline], report: dict
+) -> set[tuple[str, str]]:
     """Cases the baseline ran and this run does not have at all.
 
     Three things leave this trace and only this one sees them: a module that
@@ -824,8 +849,7 @@ def record_vanished_cases(work: Path, categories: set[str],
         lost = names_by_module(base.all_cases - tonight)
         gained = names_by_module(tonight - base.all_cases)
         live_modules = set(module_counts(tonight))
-        for module, names in sorted(lost.items(),
-                                    key=lambda kv: (-len(kv[1]), kv[0])):
+        for module, names in sorted(lost.items(), key=lambda kv: (-len(kv[1]), kv[0])):
             arrived = gained.get(module, [])
             if module not in live_modules:
                 kind = "module_gone"
@@ -834,16 +858,18 @@ def record_vanished_cases(work: Path, categories: set[str],
                 churned.add((category, module))
             else:
                 kind = "removed"
-            report["vanished_cases"].append({
-                "category": category,
-                "module": module,
-                "kind": kind,
-                "cases": len(names),
-                "baseline_passed": base.passed_by_module.get(module, 0),
-                "baseline_run": base.meta.run_id,
-                "lost_names": names[:NAME_SAMPLE],
-                "gained_names": arrived[:NAME_SAMPLE],
-            })
+            report["vanished_cases"].append(
+                {
+                    "category": category,
+                    "module": module,
+                    "kind": kind,
+                    "cases": len(names),
+                    "baseline_passed": base.passed_by_module.get(module, 0),
+                    "baseline_run": base.meta.run_id,
+                    "lost_names": names[:NAME_SAMPLE],
+                    "gained_names": arrived[:NAME_SAMPLE],
+                }
+            )
     if report["vanished_cases"]:
         total = sum(v["cases"] for v in report["vanished_cases"])
         warn(
@@ -871,20 +897,29 @@ def names_by_module(lines: set[str]) -> dict[str, list[str]]:
 # --------------------------------------------------------------------------- #
 
 
-def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work: Path,
-                jobs: list, report: dict, current: RunInfo,
-                ut_job_health: dict) -> list[Case]:
+def collect_ut_job(
+    run_id: int,
+    ut_job: str,
+    names: list[tuple[str, bool]],
+    work: Path,
+    jobs: list,
+    report: dict,
+    current: RunInfo,
+    ut_job_health: dict,
+) -> list[Case]:
     """Artifact health checks plus this run's new failures, for one UT job."""
     data_artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, run_id)
     if data_artifact is None:
         report["skipped_ut_jobs"].append(
-            {"ut_job": ut_job, "reason": "no UT data artifact"})
+            {"ut_job": ut_job, "reason": "no UT data artifact"}
+        )
         warn(f"{ut_job}: no usable Inductor-XPU-UT-Data artifact; filing nothing")
         return []
     root = work / f"current-{ut_job}"
     if not download(run_id, data_artifact, root):
         report["skipped_ut_jobs"].append(
-            {"ut_job": ut_job, "reason": "artifact download failed"})
+            {"ut_job": ut_job, "reason": "artifact download failed"}
+        )
         return []
 
     current.job_urls[ut_job] = job_url(run_id, jobs, ut_job)
@@ -897,10 +932,14 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
     healthy_categories = set()
     for category in UT_JOB_CATEGORIES[ut_job]:
         state, actual, expected = category_state(root, category)
-        report["categories"].append({
-            "category": category, "state": state,
-            "actual": actual, "expected": expected,
-        })
+        report["categories"].append(
+            {
+                "category": category,
+                "state": state,
+                "actual": actual,
+                "expected": expected,
+            }
+        )
         if state == "complete":
             healthy_categories.add(category)
         elif state == "truncated":
@@ -971,7 +1010,11 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
     current = RunInfo(
         run_id=args.run_id,
         created_at=run_meta.get("created_at", "")[:10],
-        job_urls={}, torch={}, torch_xpu_ops={}, collect_env={}, runners={},
+        job_urls={},
+        torch={},
+        torch_xpu_ops={},
+        collect_env={},
+        runners={},
     )
     gates = {"build_failed": False, "too_many": False}
     ut_job_health: dict[str, dict] = {}
@@ -986,18 +1029,30 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
             "filing nothing for this run"
         )
         report["skipped_ut_jobs"].append(
-            {"ut_job": "*", "reason": "build not successful"})
+            {"ut_job": "*", "reason": "build not successful"}
+        )
         gates["build_failed"] = True
         return Evidence(
-            run=current, cases=[], classification={}, cls_reason={},
-            collection_context={}, baselines={}, tracebacks={}, reproduce={},
-            ut_job_health=ut_job_health, gates=gates, report=carried_report(report),
+            run=current,
+            cases=[],
+            classification={},
+            cls_reason={},
+            collection_context={},
+            baselines={},
+            tracebacks={},
+            reproduce={},
+            ut_job_health=ut_job_health,
+            gates=gates,
+            report=carried_report(report),
         )
 
     names = list_artifacts(args.run_id)
     for ut_job in UT_JOB_CATEGORIES:
-        cases.extend(collect_ut_job(args.run_id, ut_job, names, work, jobs, report,
-                                 current, ut_job_health))
+        cases.extend(
+            collect_ut_job(
+                args.run_id, ut_job, names, work, jobs, report, current, ut_job_health
+            )
+        )
 
     if len(cases) > TOO_MANY_THRESHOLD:
         warn(
@@ -1008,9 +1063,17 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         report["skipped_ut_jobs"].append({"ut_job": "*", "reason": "too many failures"})
         gates["too_many"] = True
         return Evidence(
-            run=current, cases=cases, classification={}, cls_reason={},
-            collection_context={}, baselines={}, tracebacks={}, reproduce={},
-            ut_job_health=ut_job_health, gates=gates, report=carried_report(report),
+            run=current,
+            cases=cases,
+            classification={},
+            cls_reason={},
+            collection_context={},
+            baselines={},
+            tracebacks={},
+            reproduce={},
+            ut_job_health=ut_job_health,
+            gates=gates,
+            report=carried_report(report),
         )
 
     # Every healthy category, not just the ones with something to file: a
@@ -1019,7 +1082,8 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
     # the night the vanished-case check has to survive to.
     healthy = {c["category"] for c in report["categories"] if c["state"] == "complete"}
     baselines = resolve_baselines(
-        args.run_id, healthy | {c.category for c in cases}, work, report)
+        args.run_id, healthy | {c.category for c in cases}, work, report
+    )
     churned = record_vanished_cases(work, healthy, baselines, report)
 
     verdicts = {c.line: classify_case(c, baselines, churned) for c in cases}
@@ -1027,7 +1091,8 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
     cls_reason = {line: why for line, (_, why) in verdicts.items()}
     context = {
         c.line: collection_error_context(c, baselines)
-        for c in cases if c.is_collection_error
+        for c in cases
+        if c.is_collection_error
     }
 
     tracebacks: dict[str, list[str]] = {}
@@ -1035,10 +1100,16 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
     for ut_job in sorted({c.ut_job for c in samples}):
         root = work / f"current-{ut_job}"
         if root.is_dir():
-            tracebacks.update(extract_tracebacks(root, {
-                (c.class_name, c.test_name): c.line
-                for c in samples if c.ut_job == ut_job
-            }))
+            tracebacks.update(
+                extract_tracebacks(
+                    root,
+                    {
+                        (c.class_name, c.test_name): c.line
+                        for c in samples
+                        if c.ut_job == ut_job
+                    },
+                )
+            )
     tracebacks = within_budget(samples, tracebacks)
 
     reproduce: dict[str, dict] = {}
@@ -1049,16 +1120,21 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
             reproduce[category] = entry
 
     return Evidence(
-        run=current, cases=cases, classification=classification,
-        cls_reason=cls_reason, collection_context=context,
+        run=current,
+        cases=cases,
+        classification=classification,
+        cls_reason=cls_reason,
+        collection_context=context,
         baselines={cat: b.meta for cat, b in baselines.items()},
-        tracebacks=tracebacks, reproduce=reproduce, ut_job_health=ut_job_health,
-        gates=gates, report=carried_report(report),
+        tracebacks=tracebacks,
+        reproduce=reproduce,
+        ut_job_health=ut_job_health,
+        gates=gates,
+        report=carried_report(report),
     )
 
 
-CARRIED_SECTIONS = ("categories", "skipped_ut_jobs", "vanished_cases",
-                    "baseline_walk")
+CARRIED_SECTIONS = ("categories", "skipped_ut_jobs", "vanished_cases", "baseline_walk")
 
 
 def carried_report(report: dict) -> dict:
@@ -1074,49 +1150,53 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
     """One document: everything the skill reads about this run."""
     out.mkdir(parents=True, exist_ok=True)
     run = evidence.run
-    write_json(out / "evidence.json", {
-        "run": {
-            "run_id": run.run_id,
-            "created_at": run.created_at,
-            "digest": evidence.digest,
-            # Per UT job throughout, because a bisect range is per UT job: the
-            # baseline sha and tonight's sha have to come from the same one or
-            # the compare link spans the wrong commits.
-            "job_urls": run.job_urls,
-            "torch": run.torch,
-            "torch_xpu_ops": run.torch_xpu_ops,
-            "runners": run.runners,
-            "collect_env": run.collect_env,
-            "category_ut_job": CATEGORY_UT_JOB,
-            "gates": evidence.gates,
-            "ut_jobs": evidence.ut_job_health,
-            "baselines": {cat: vars(meta)
-                          for cat, meta in evidence.baselines.items()},
-            "report": evidence.report,
+    write_json(
+        out / "evidence.json",
+        {
+            "run": {
+                "run_id": run.run_id,
+                "created_at": run.created_at,
+                "digest": evidence.digest,
+                # Per UT job throughout, because a bisect range is per UT job: the
+                # baseline sha and tonight's sha have to come from the same one or
+                # the compare link spans the wrong commits.
+                "job_urls": run.job_urls,
+                "torch": run.torch,
+                "torch_xpu_ops": run.torch_xpu_ops,
+                "runners": run.runners,
+                "collect_env": run.collect_env,
+                "category_ut_job": CATEGORY_UT_JOB,
+                "gates": evidence.gates,
+                "ut_jobs": evidence.ut_job_health,
+                "baselines": {
+                    cat: vars(meta) for cat, meta in evidence.baselines.items()
+                },
+                "report": evidence.report,
+            },
+            "count": len(evidence.cases),
+            "counts_by_cls": class_counts(evidence.classification),
+            "cases": [
+                {
+                    "line": c.line,
+                    "category": c.category,
+                    "ut_job": c.ut_job,
+                    "class_name": c.class_name,
+                    "test_name": c.test_name,
+                    "test_file": c.test_file,
+                    "module": c.module,
+                    "is_collection_error": c.is_collection_error,
+                    "message": c.message,
+                    "cls": evidence.classification.get(c.line, CLS_UNKNOWN),
+                    "cls_reason": evidence.cls_reason.get(c.line, ""),
+                    "runner_name": run.runners.get(c.ut_job, ""),
+                }
+                for c in evidence.cases
+            ],
+            "collection_context": list(evidence.collection_context.values()),
+            "reproduce": evidence.reproduce,
+            "tracebacks": evidence.tracebacks,
         },
-        "count": len(evidence.cases),
-        "counts_by_cls": class_counts(evidence.classification),
-        "cases": [
-            {
-                "line": c.line,
-                "category": c.category,
-                "ut_job": c.ut_job,
-                "class_name": c.class_name,
-                "test_name": c.test_name,
-                "test_file": c.test_file,
-                "module": c.module,
-                "is_collection_error": c.is_collection_error,
-                "message": c.message,
-                "cls": evidence.classification.get(c.line, CLS_UNKNOWN),
-                "cls_reason": evidence.cls_reason.get(c.line, ""),
-                "runner_name": run.runners.get(c.ut_job, ""),
-            }
-            for c in evidence.cases
-        ],
-        "collection_context": list(evidence.collection_context.values()),
-        "reproduce": evidence.reproduce,
-        "tracebacks": evidence.tracebacks,
-    })
+    )
 
 
 def class_counts(classification: dict[str, str]) -> dict[str, int]:
@@ -1154,8 +1234,10 @@ def main() -> int:
     evidence = collect_evidence(args, work, report)
     emit_evidence(evidence, Path(args.evidence_dir))
     report["counts_by_cls"] = class_counts(evidence.classification)
-    print(f"Wrote evidence for {len(evidence.cases)} new failure(s) to "
-          f"{args.evidence_dir}")
+    print(
+        f"Wrote evidence for {len(evidence.cases)} new failure(s) to "
+        f"{args.evidence_dir}"
+    )
     return finish(report, report_dir)
 
 

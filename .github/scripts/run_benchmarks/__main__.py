@@ -7,12 +7,7 @@ from pathlib import Path
 from . import config
 from .log import banner, log
 from .runner import run_all
-from .tasks import (
-    filter_valid,
-    generate_tasks,
-    load_tasks_from_file,
-    parse_string_list,
-)
+from .tasks import filter_valid, generate_tasks, load_tasks_from_file, parse_string_list
 from .workers import (
     generate_cpu_workers,
     generate_gpu_workers,
@@ -42,32 +37,72 @@ def main() -> None:
             "(float32, bfloat16, float16, amp_bf16, amp_fp16, int8). Empty = all."
         ),
     )
-    parser.add_argument("--mode", default="",
-                        help="Comma- or space-separated modes (inference, training). Empty = all.")
-    parser.add_argument("--scenario", default="",
-                        help="Comma- or space-separated scenarios (accuracy, performance). Empty = all.")
-    parser.add_argument("--model-only", default=None,
-                        help="Run only specific model(s) (overrides list file).")
-    parser.add_argument("--device", default="xpu", help="Device type (xpu, cuda, or cpu)")
-    parser.add_argument("--backend", default="default", choices=sorted(config.VALID_BACKENDS),
-                        help="Inductor backend variant (default, dynamic, cpp_wrapper, freezing, "
-                             "aot_inductor, inductor_deterministic_perf). Applies to inductor suites only.")
-    parser.add_argument("--task-file", default=None,
-                        help="Load tasks from a delimited file. Overrides --suite/--dt/--mode/--scenario/--model-only.")
-    parser.add_argument("--cores-per-instance", type=int, default=None,
-                        help="CPU-only: cores per worker instance. Default = all cores per NUMA node.")
-    parser.add_argument("--numactl-args", default="",
-                        help="Override NUMACTL_ARGS (semicolon-separated per GPU)")
-    parser.add_argument("--dataset-dir", default="",
-                        help="Path to ImageNet dataset directory (required for pt2e accuracy)")
-    parser.add_argument("--gpu-memory-threshold", type=float, default=None,
-                        help="GPU memory utilisation threshold (0.0-1.0) to kill a process. "
-                             "Default: 0.90 on Windows, 0.95 on Linux.")
-    parser.add_argument("--no-gpu-memory-monitor", action="store_true", default=False,
-                        help="Disable GPU memory monitoring (enabled by default).")
-    parser.add_argument("--task-timeout", type=int, default=None,
-                        help="Max wall-clock seconds a single task may run before being killed "
-                             f"(default: {config.task_timeout_seconds}).")
+    parser.add_argument(
+        "--mode",
+        default="",
+        help="Comma- or space-separated modes (inference, training). Empty = all.",
+    )
+    parser.add_argument(
+        "--scenario",
+        default="",
+        help="Comma- or space-separated scenarios (accuracy, performance). Empty = all.",
+    )
+    parser.add_argument(
+        "--model-only",
+        default=None,
+        help="Run only specific model(s) (overrides list file).",
+    )
+    parser.add_argument(
+        "--device", default="xpu", help="Device type (xpu, cuda, or cpu)"
+    )
+    parser.add_argument(
+        "--backend",
+        default="default",
+        choices=sorted(config.VALID_BACKENDS),
+        help="Inductor backend variant (default, dynamic, cpp_wrapper, freezing, "
+        "aot_inductor, inductor_deterministic_perf). Applies to inductor suites only.",
+    )
+    parser.add_argument(
+        "--task-file",
+        default=None,
+        help="Load tasks from a delimited file. Overrides --suite/--dt/--mode/--scenario/--model-only.",
+    )
+    parser.add_argument(
+        "--cores-per-instance",
+        type=int,
+        default=None,
+        help="CPU-only: cores per worker instance. Default = all cores per NUMA node.",
+    )
+    parser.add_argument(
+        "--numactl-args",
+        default="",
+        help="Override NUMACTL_ARGS (semicolon-separated per GPU)",
+    )
+    parser.add_argument(
+        "--dataset-dir",
+        default="",
+        help="Path to ImageNet dataset directory (required for pt2e accuracy)",
+    )
+    parser.add_argument(
+        "--gpu-memory-threshold",
+        type=float,
+        default=None,
+        help="GPU memory utilisation threshold (0.0-1.0) to kill a process. "
+        "Default: 0.90 on Windows, 0.95 on Linux.",
+    )
+    parser.add_argument(
+        "--no-gpu-memory-monitor",
+        action="store_true",
+        default=False,
+        help="Disable GPU memory monitoring (enabled by default).",
+    )
+    parser.add_argument(
+        "--task-timeout",
+        type=int,
+        default=None,
+        help="Max wall-clock seconds a single task may run before being killed "
+        f"(default: {config.task_timeout_seconds}).",
+    )
     args = parser.parse_args()
 
     # Apply GPU memory monitoring settings
@@ -87,7 +122,9 @@ def main() -> None:
     if not Path("benchmarks/dynamo").is_dir() and not args.task_file:
         requested = parse_string_list(args.suite)
         if not requested or set(requested) != {"pt2e"}:
-            sys.exit("ERROR: benchmarks/dynamo directory not found. Are you in the pytorch directory?")
+            sys.exit(
+                "ERROR: benchmarks/dynamo directory not found. Are you in the pytorch directory?"
+            )
 
     if args.task_file:
         tasks = load_tasks_from_file(args.task_file)
@@ -99,13 +136,25 @@ def main() -> None:
         scenarios = sorted({t.scenario for t in tasks})
     else:
         suites = filter_valid(
-            parse_string_list(args.suite) or list(config.VALID_SUITES), config.VALID_SUITES, "suite")
+            parse_string_list(args.suite) or list(config.VALID_SUITES),
+            config.VALID_SUITES,
+            "suite",
+        )
         dts = filter_valid(
-            parse_string_list(args.dt) or list(config.VALID_DT), config.VALID_DT, "data type")
+            parse_string_list(args.dt) or list(config.VALID_DT),
+            config.VALID_DT,
+            "data type",
+        )
         modes = filter_valid(
-            parse_string_list(args.mode) or list(config.VALID_MODES), config.VALID_MODES, "mode")
+            parse_string_list(args.mode) or list(config.VALID_MODES),
+            config.VALID_MODES,
+            "mode",
+        )
         scenarios = filter_valid(
-            parse_string_list(args.scenario) or list(config.VALID_SCENARIOS), config.VALID_SCENARIOS, "scenario")
+            parse_string_list(args.scenario) or list(config.VALID_SCENARIOS),
+            config.VALID_SCENARIOS,
+            "scenario",
+        )
 
         if not all([suites, dts, modes, scenarios]):
             sys.exit("ERROR: No valid combinations left after filtering.")

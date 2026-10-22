@@ -157,7 +157,7 @@ while [[ $# -gt 0 ]]; do
             SKIP_K8S_INSTALL="true"
             shift
             ;;
-        --help|-h)
+        --help | -h)
             usage
             exit 0
             ;;
@@ -245,8 +245,8 @@ memory_to_gib() {
     case "${value}" in
         *Gi) printf '%s\n' "${value%Gi}" ;;
         *G) printf '%s\n' "${value%G}" ;;
-        *Mi) printf '%s\n' "$(( ${value%Mi} / 1024 ))" ;;
-        *M) printf '%s\n' "$(( ${value%M} / 1024 ))" ;;
+        *Mi) printf '%s\n' "$((${value%Mi} / 1024))" ;;
+        *M) printf '%s\n' "$((${value%M} / 1024))" ;;
         *) printf '%s\n' "${value}" ;;
     esac
 }

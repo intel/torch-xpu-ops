@@ -27,7 +27,6 @@ from typing import NamedTuple
 
 from ruamel.yaml import YAML
 
-
 LINTER_CODE = "SYNTAX"
 
 

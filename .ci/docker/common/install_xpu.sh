@@ -31,7 +31,20 @@ trap 'log_error "Script failed at line $LINENO. Command: $BASH_COMMAND"; exit 1'
 
 # Default configuration
 readonly DEFAULT_XPU_DRIVER_TYPE="rolling"
-readonly DEFAULT_XPU_DRIVER_VERSION=""
+
+# Load the os-release fields used below without sourcing the file
+read_os_release() {
+    local key value
+    while IFS='=' read -r key value || [[ -n "${key}" ]]; do
+        value="${value#[\"\']}"
+        value="${value%[\"\']}"
+        case "${key}" in
+            ID) ID="${value}" ;;
+            VERSION_ID) VERSION_ID="${value}" ;;
+            VERSION_CODENAME) VERSION_CODENAME="${value}" ;;
+        esac
+    done </etc/os-release
+}
 
 # Validate environment variables
 validate_environment() {
@@ -47,7 +60,7 @@ validate_environment() {
     export XPU_DRIVER_TYPE="${XPU_DRIVER_TYPE,,}"
 
     case "${XPU_DRIVER_TYPE}" in
-        lts|lts2|rolling*)
+        lts | lts2 | rolling*)
             # Valid driver types
             ;;
         *)
@@ -85,16 +98,16 @@ cleanup() {
     rm -f /usr/share/keyrings/intel-graphics.gpg 2>/dev/null || true
 
     # Clean package manager caches to reduce image size and avoid stale metadata
-    if command -v apt-get &> /dev/null; then
+    if command -v apt-get &>/dev/null; then
         apt-get clean -y 2>/dev/null || true
         rm -rf /var/lib/apt/lists/*
         rm -rf /var/cache/apt/archives/*.deb
         rm -rf /var/cache/apt/archives/partial/*
-    elif command -v dnf &> /dev/null; then
+    elif command -v dnf &>/dev/null; then
         dnf clean all 2>/dev/null || true
         rm -rf /var/cache/dnf/*
         rm -rf /var/cache/yum/*
-    elif command -v zypper &> /dev/null; then
+    elif command -v zypper &>/dev/null; then
         zypper clean -a 2>/dev/null || true
         rm -rf /var/cache/zypp/*
     fi
@@ -118,7 +131,7 @@ install_packages() {
         ubuntu)
             apt-get install -y --no-install-recommends "${packages[@]}"
             ;;
-        rhel|almalinux)
+        rhel | almalinux)
             dnf install -y "${packages[@]}"
             ;;
         sles)
@@ -128,19 +141,19 @@ install_packages() {
 }
 
 function install_ubuntu() {
-    . /etc/os-release
+    read_os_release
 
     local -r supported_lts_versions=("jammy")
     local -r supported_rolling_versions=("jammy" "noble")
 
     if [ "${XPU_DRIVER_TYPE}" == "lts" ]; then
-        if [[ ! " ${supported_lts_versions[*]} " =~ " ${VERSION_CODENAME} " ]]; then
+        if [[ " ${supported_lts_versions[*]} " != *" ${VERSION_CODENAME} "* ]]; then
             log_error "Ubuntu version ${VERSION_CODENAME} with ${XPU_DRIVER_TYPE} not supported"
             log_error "Supported versions for LTS: ${supported_lts_versions[*]}"
             exit 1
         fi
     else
-        if [[ ! " ${supported_rolling_versions[*]} " =~ " ${VERSION_CODENAME} " ]]; then
+        if [[ " ${supported_rolling_versions[*]} " != *" ${VERSION_CODENAME} "* ]]; then
             log_error "Ubuntu version ${VERSION_CODENAME} with ${XPU_DRIVER_TYPE} not supported"
             log_error "Supported versions: ${supported_rolling_versions[*]}"
             exit 1
@@ -167,8 +180,8 @@ function install_ubuntu() {
     # Add repository
     local -r repo_list="/etc/apt/sources.list.d/intel-gpu-${VERSION_CODENAME}.list"
     echo "deb [arch=amd64 signed-by=${keyring_path}] \
-        https://repositories.intel.com/gpu/ubuntu ${VERSION_CODENAME}${XPU_DRIVER_VERSION} unified" \
-        | tee "${repo_list}"
+        https://repositories.intel.com/gpu/ubuntu ${VERSION_CODENAME}${XPU_DRIVER_VERSION} unified" |
+        tee "${repo_list}"
 
     # Update repository index
     apt-get update -y
@@ -215,15 +228,15 @@ function install_ubuntu() {
 }
 
 function install_ubuntu_client() {
-    . /etc/os-release
+    read_os_release
 
-    local -r supported_rolling_versions=("noble" "questing" "resolute" )
+    local -r supported_rolling_versions=("noble" "questing" "resolute")
 
     if [ "${XPU_DRIVER_TYPE}" == "lts" ]; then
         log_error "${XPU_DRIVER_TYPE} not supported for client GPU"
         exit 1
     else
-        if [[ ! " ${supported_rolling_versions[*]} " =~ " ${VERSION_CODENAME} " ]]; then
+        if [[ " ${supported_rolling_versions[*]} " != *" ${VERSION_CODENAME} "* ]]; then
             log_error "Ubuntu version ${VERSION_CODENAME} with ${XPU_DRIVER_TYPE} not supported"
             log_error "Supported versions: ${supported_rolling_versions[*]}"
             exit 1
@@ -259,7 +272,7 @@ function install_ubuntu_client() {
 }
 
 function install_rhel() {
-    . /etc/os-release
+    read_os_release
 
     local -r os_id="${ID}"
     local version_id="${VERSION_ID}"
@@ -276,7 +289,7 @@ function install_rhel() {
             lts)
                 version_id="8.8"
                 ;;
-            lts2|rolling*)
+            lts2 | rolling*)
                 version_id="8.10"
                 ;;
         esac
@@ -284,7 +297,7 @@ function install_rhel() {
     fi
 
     # Check version support
-    if [[ ! " ${supported_versions[${XPU_DRIVER_TYPE}]} " =~ " ${version_id} " ]]; then
+    if [[ " ${supported_versions[${XPU_DRIVER_TYPE}]} " != *" ${version_id} "* ]]; then
         log_error "${os_id^} version ${VERSION_ID} with ${XPU_DRIVER_TYPE} not supported"
         log_error "Supported versions for ${XPU_DRIVER_TYPE}: ${supported_versions[${XPU_DRIVER_TYPE}]}"
         exit 1
@@ -337,7 +350,7 @@ function install_rhel() {
 }
 
 function install_sles() {
-    . /etc/os-release
+    read_os_release
 
     local -r version_sp="${VERSION_ID//./sp}"
 
@@ -347,7 +360,7 @@ function install_sles() {
     supported_versions["lts2"]="15sp4 15sp5 15sp6 15sp7"
     supported_versions["rolling"]="15sp4 15sp5 15sp6"
 
-    if [[ ! " ${supported_versions[${XPU_DRIVER_TYPE}]} " =~ " ${version_sp} " ]]; then
+    if [[ " ${supported_versions[${XPU_DRIVER_TYPE}]} " != *" ${version_sp} "* ]]; then
         log_error "SLES version ${VERSION_ID} with ${XPU_DRIVER_TYPE} not supported"
         log_error "Supported versions for ${XPU_DRIVER_TYPE}: ${supported_versions[${XPU_DRIVER_TYPE}]}"
         exit 1
@@ -406,13 +419,13 @@ main() {
     # Install based on OS
     case "${os_id}" in
         ubuntu)
-            if [ "${XPU_DRIVER_TYPE}" == "rolling-client" ];then
+            if [ "${XPU_DRIVER_TYPE}" == "rolling-client" ]; then
                 install_ubuntu_client
             else
                 install_ubuntu
             fi
             ;;
-        rhel|almalinux)
+        rhel | almalinux)
             install_rhel
             ;;
         sles)
@@ -432,7 +445,7 @@ main() {
 
     # Verify installation
     log_info "Verifying installation..."
-    if command -v xpu-smi &> /dev/null; then
+    if command -v xpu-smi &>/dev/null; then
         log_info "xpu-smi installed successfully"
     else
         log_warn "xpu-smi not found in PATH"

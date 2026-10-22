@@ -1,7 +1,8 @@
 """Check if Level Zero GPU devices are iGPU or dGPU using ZE_DEVICE_PROPERTY_FLAG_INTEGRATED."""
+
 import ctypes
 import sys
-from ctypes import c_uint32, c_uint64, c_char, c_void_p, byref, Structure, POINTER
+from ctypes import byref, c_char, c_uint32, c_uint64, c_void_p, POINTER, Structure
 
 ze = ctypes.CDLL("libze_loader.so.1")
 

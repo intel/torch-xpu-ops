@@ -21,29 +21,35 @@ def get_cpu_topology() -> int:
 def _get_cpu_topology_windows() -> int:
     """Return number of physical cores on Windows via wmic or os.cpu_count fallback."""
     try:
-        output = subprocess.check_output(["wmic", "cpu", "get", "NumberOfCores"], text=True)
+        output = subprocess.check_output(
+            ["wmic", "cpu", "get", "NumberOfCores"], text=True
+        )
         for line in output.splitlines():
             line = line.strip()
             if line.isdigit():
                 physical_cores = int(line)
                 logical = os.cpu_count() or physical_cores
-                log(f"CPU topology (Windows): {logical} logical, {physical_cores} physical cores")
+                log(
+                    f"CPU topology (Windows): {logical} logical, {physical_cores} physical cores"
+                )
                 return physical_cores
     except Exception:
         pass
     logical = os.cpu_count() or 1
     physical_cores = max(logical // 2, 1)
-    log(f"CPU topology (Windows fallback): {logical} logical, ~{physical_cores} physical cores")
+    log(
+        f"CPU topology (Windows fallback): {logical} logical, ~{physical_cores} physical cores"
+    )
     return physical_cores
 
 
 def _parse_cpu_range(range_str: str) -> int:
     """Count CPUs from a range string like '0-7,12-19'."""
     total = 0
-    for seg in range_str.split(','):
+    for seg in range_str.split(","):
         seg = seg.strip()
-        if '-' in seg:
-            lo, hi = map(int, seg.split('-'))
+        if "-" in seg:
+            lo, hi = map(int, seg.split("-"))
             total += hi - lo + 1
         else:
             total += 1
@@ -59,8 +65,8 @@ def _get_cpu_topology_linux() -> int:
 
     fields: dict[str, str] = {}
     for line in output.splitlines():
-        if ':' in line:
-            key, _, val = line.partition(':')
+        if ":" in line:
+            key, _, val = line.partition(":")
             fields[key.strip()] = val.strip()
 
     try:
@@ -70,7 +76,9 @@ def _get_cpu_topology_linux() -> int:
         sys.exit(f"ERROR: Could not parse CPU topology: {e}")
 
     physical_cores = online_cpus // threads_per_core
-    log(f"CPU topology: {online_cpus} logical, {threads_per_core} threads/core → {physical_cores} physical cores")
+    log(
+        f"CPU topology: {online_cpus} logical, {threads_per_core} threads/core → {physical_cores} physical cores"
+    )
     return physical_cores
 
 
@@ -99,12 +107,12 @@ def _parse_ze_affinity_mask(num_gpus: int) -> list[int]:
 
     gpu_list: list[int] = []
     try:
-        for part in ze_mask.split(','):
+        for part in ze_mask.split(","):
             part = part.strip()
             if not part:
                 continue
-            if '-' in part:
-                lo, hi = part.split('-', maxsplit=1)
+            if "-" in part:
+                lo, hi = part.split("-", maxsplit=1)
                 gpu_list.extend(range(int(lo), int(hi) + 1))
             else:
                 gpu_list.append(int(part))
@@ -134,12 +142,20 @@ def generate_gpu_workers(num_gpus: int) -> list[tuple[int, str, dict]]:
         start = idx * cores_per_gpu
         end = min(start + cores_per_gpu - 1, physical_cores - 1)
         if IS_WINDOWS:
-            log(f"  GPU {gpu}: OMP_NUM_THREADS={cores_per_gpu} (numactl N/A on Windows)")
+            log(
+                f"  GPU {gpu}: OMP_NUM_THREADS={cores_per_gpu} (numactl N/A on Windows)"
+            )
             workers.append((gpu, "", {"OMP_NUM_THREADS": str(cores_per_gpu)}))
         else:
             core_range = f"{start}-{end}"
             log(f"  GPU {gpu}: cores {core_range}, OMP_NUM_THREADS={cores_per_gpu}")
-            workers.append((gpu, f"numactl -l -C {core_range}", {"OMP_NUM_THREADS": str(cores_per_gpu)}))
+            workers.append(
+                (
+                    gpu,
+                    f"numactl -l -C {core_range}",
+                    {"OMP_NUM_THREADS": str(cores_per_gpu)},
+                )
+            )
     return workers
 
 
@@ -158,9 +174,9 @@ def _get_numa_nodes() -> list[list[int]]:
     seen_cores: set[tuple[int, int]] = set()
     node_cpus: dict[int, list[int]] = {}
     for line in output.splitlines():
-        if line.startswith('#') or not line.strip():
+        if line.startswith("#") or not line.strip():
             continue
-        parts = line.split(',')
+        parts = line.split(",")
         if len(parts) < 3:
             continue
         try:
@@ -182,7 +198,9 @@ def _get_numa_nodes() -> list[list[int]]:
     return result
 
 
-def generate_cpu_workers(cores_per_instance: int | None = None) -> list[tuple[int, str, dict]]:
+def generate_cpu_workers(
+    cores_per_instance: int | None = None,
+) -> list[tuple[int, str, dict]]:
     """Return (worker_id, cmd_prefix, env_vars) for CPU-only benchmarking.
 
     Workers are created per NUMA node. If *cores_per_instance* is set,
@@ -215,28 +233,40 @@ def generate_cpu_workers(cores_per_instance: int | None = None) -> list[tuple[in
                 break
             core_range = _cores_to_range_str(chunk)
             log(f"  CPU worker {i}: cores {core_range}, OMP_NUM_THREADS={len(chunk)}")
-            workers.append((i, f"numactl -l -C {core_range}", {"OMP_NUM_THREADS": str(len(chunk))}))
+            workers.append(
+                (i, f"numactl -l -C {core_range}", {"OMP_NUM_THREADS": str(len(chunk))})
+            )
         return workers
 
     # Default: one worker per NUMA node
     workers = []
     for node_idx, cores in enumerate(numa_nodes):
         core_range = _cores_to_range_str(cores)
-        log(f"  CPU worker {node_idx} (NUMA {node_idx}): cores {core_range}, OMP_NUM_THREADS={len(cores)}")
-        workers.append((node_idx, f"numactl -m {node_idx} -C {core_range}", {"OMP_NUM_THREADS": str(len(cores))}))
+        log(
+            f"  CPU worker {node_idx} (NUMA {node_idx}): cores {core_range}, OMP_NUM_THREADS={len(cores)}"
+        )
+        workers.append(
+            (
+                node_idx,
+                f"numactl -m {node_idx} -C {core_range}",
+                {"OMP_NUM_THREADS": str(len(cores))},
+            )
+        )
     return workers
 
 
 def parse_numactl_args(numactl_args: str, num_gpus: int) -> list[tuple[int, str, dict]]:
     """Parse user-provided --numactl-args into worker tuples."""
-    prefix_strings = [p.strip().rstrip(';') for p in numactl_args.split(';') if p.strip()]
+    prefix_strings = [
+        p.strip().rstrip(";") for p in numactl_args.split(";") if p.strip()
+    ]
     if not prefix_strings:
         sys.exit("ERROR: --numactl-args produced no valid prefixes.")
     if len(prefix_strings) < num_gpus:
         prefix_strings += [prefix_strings[-1]] * (num_gpus - len(prefix_strings))
     workers: list[tuple[int, str, dict]] = []
     for i, ps in enumerate(prefix_strings):
-        m = re.search(r'ZE_AFFINITY_MASK=(\d+)', ps)
+        m = re.search(r"ZE_AFFINITY_MASK=(\d+)", ps)
         workers.append((int(m.group(1)) if m else i, ps, {}))
     log(f"Using user-provided NUMACTL_ARGS ({len(workers)} workers)")
     return workers
@@ -244,7 +274,7 @@ def parse_numactl_args(numactl_args: str, num_gpus: int) -> list[tuple[int, str,
 
 def get_num_gpus(required: bool = True) -> int | None:
     """Read and validate the NUM_GPUS environment variable."""
-    raw = os.getenv('NUM_GPUS')
+    raw = os.getenv("NUM_GPUS")
     if raw is None:
         if required:
             sys.exit("ERROR: Environment variable NUM_GPUS is not set.")

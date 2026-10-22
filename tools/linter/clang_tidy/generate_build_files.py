@@ -72,7 +72,6 @@ def run_autogen() -> None:
         ]
     )
 
-
     run_cmd(
         [
             sys.executable,
@@ -92,9 +91,8 @@ def run_autogen() -> None:
             "--aoti-install-dir",
             "torch/csrc/inductor/aoti_torch/generated/extend",
         ]
-
-
     )
+
 
 def generate_build_files() -> None:
     update_submodules()

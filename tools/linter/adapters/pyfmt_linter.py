@@ -36,7 +36,6 @@ from typing import Any, NamedTuple
 import isort
 import usort
 
-
 IS_WINDOWS: bool = os.name == "nt"
 REPO_ROOT = Path(__file__).absolute().parents[3]
 

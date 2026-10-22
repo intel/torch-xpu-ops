@@ -35,13 +35,12 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 from typing import Any, NamedTuple, Optional
-from collections.abc import Callable
 
 from yaml import load
-
 
 # Safely load fast C Yaml loader/dumper if they are available
 try:

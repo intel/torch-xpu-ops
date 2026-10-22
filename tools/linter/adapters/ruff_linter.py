@@ -33,7 +33,6 @@ import sys
 import time
 from typing import Any, BinaryIO
 
-
 LINTER_CODE = "RUFF"
 SYNTAX_ERROR = "E999"
 IS_WINDOWS: bool = os.name == "nt"

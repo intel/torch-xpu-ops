@@ -4,6 +4,7 @@
 This module now bundles the script entrypoint, collector helpers, and the small
 data model used by the xpu-ci-health-check skill.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,12 +24,20 @@ DEFAULT_WORKFLOW_FILE = "xpu.yml"
 DEFAULT_RAW_JOB_LOG_BASE = "https://ossci-raw-job-status.s3.amazonaws.com/log"
 
 FAILURE_PATTERNS = [
-    re.compile(r"^FAILED\s+\[(?P<case>(?=[^\]]*(?:/|::))[^\]]+)\](?:\s+-\s+(?P<detail>.*))?$"),
-    re.compile(r"^FAILED\s+\[(?P<duration>\d[^\]]*)\]\s+(?P<case>.+?)(?:\s+-\s+(?P<detail>.*))?$"),
+    re.compile(
+        r"^FAILED\s+\[(?P<case>(?=[^\]]*(?:/|::))[^\]]+)\](?:\s+-\s+(?P<detail>.*))?$"
+    ),
+    re.compile(
+        r"^FAILED\s+\[(?P<duration>\d[^\]]*)\]\s+(?P<case>.+?)(?:\s+-\s+(?P<detail>.*))?$"
+    ),
     re.compile(r"^FAILED\s+(?P<case>[^\s]+)(?:\s+-\s+(?P<detail>.*))?$"),
     re.compile(r"^FAILED\s+(?P<case>.+?)(?:\s+-\s+(?P<detail>.*))?$"),
-    re.compile(r"^ERROR\s+\[(?P<case>(?=[^\]]*(?:/|::))[^\]]+)\](?:\s+-\s+(?P<detail>.*))?$"),
-    re.compile(r"^ERROR\s+\[(?P<duration>\d[^\]]*)\]\s+(?P<case>.+?)(?:\s+-\s+(?P<detail>.*))?$"),
+    re.compile(
+        r"^ERROR\s+\[(?P<case>(?=[^\]]*(?:/|::))[^\]]+)\](?:\s+-\s+(?P<detail>.*))?$"
+    ),
+    re.compile(
+        r"^ERROR\s+\[(?P<duration>\d[^\]]*)\]\s+(?P<case>.+?)(?:\s+-\s+(?P<detail>.*))?$"
+    ),
     re.compile(r"^ERROR\s+(?P<case>[^\s]+)(?:\s+-\s+(?P<detail>.*))?$"),
     re.compile(r"^ERROR\s+(?P<case>.+?)(?:\s+-\s+(?P<detail>.*))?$"),
     re.compile(r"^\s*_{2,}\s*(?P<case>[^_]+?)\s*_{2,}\s*$"),
@@ -182,7 +191,10 @@ def extract_failure_cases_from_raw_log_text(
     raw_lines = raw_log_text.splitlines()
     for index, raw_line in enumerate(raw_lines):
         normalized_line = strip_timestamp_prefix(raw_line)
-        if not ("FAILED [" in normalized_line or normalized_line.lstrip().startswith("FAILED ")):
+        if not (
+            "FAILED [" in normalized_line
+            or normalized_line.lstrip().startswith("FAILED ")
+        ):
             continue
         for pattern in FAILURE_PATTERNS:
             match = pattern.match(normalized_line)
@@ -210,8 +222,6 @@ def extract_failure_cases_from_raw_log_text(
     for failure in failures:
         unique.setdefault(failure.case_id, failure)
     return list(unique.values())
-
-
 
 
 class GitHubActionsClient:
@@ -267,21 +277,27 @@ class GitHubActionsClient:
 
     def _gh_api_endpoint(self, url: str) -> str:
         if not url.startswith(self.api_base.rstrip("/") + "/"):
-            raise ValueError("GitHub CLI fallback only supports the configured GitHub API base URL")
+            raise ValueError(
+                "GitHub CLI fallback only supports the configured GitHub API base URL"
+            )
         return url.removeprefix(self.api_base.rstrip("/") + "/")
 
     def _gh_api_json(self, url: str) -> dict | None:
         if self.api_base.rstrip("/") != DEFAULT_API_BASE or shutil.which("gh") is None:
             return None
         endpoint = self._gh_api_endpoint(url)
-        completed = subprocess.run(["gh", "api", endpoint], check=True, capture_output=True)
+        completed = subprocess.run(
+            ["gh", "api", endpoint], check=True, capture_output=True
+        )
         return json.loads(completed.stdout.decode("utf-8"))
 
     def _gh_api_bytes(self, url: str) -> bytes | None:
         if self.api_base.rstrip("/") != DEFAULT_API_BASE or shutil.which("gh") is None:
             return None
         endpoint = self._gh_api_endpoint(url)
-        completed = subprocess.run(["gh", "api", endpoint], check=True, capture_output=True)
+        completed = subprocess.run(
+            ["gh", "api", endpoint], check=True, capture_output=True
+        )
         return completed.stdout
 
     def _request_json_page(self, url: str, page: int) -> dict:
@@ -379,7 +395,9 @@ class GitHubActionsClient:
         return self._request_bytes(run.logs_url)
 
 
-def collect(owner: str, repo: str, workflow_file: str, run_limit: int, token: str | None) -> dict:
+def collect(
+    owner: str, repo: str, workflow_file: str, run_limit: int, token: str | None
+) -> dict:
     client = GitHubActionsClient(
         owner=owner,
         repo=repo,
@@ -459,7 +477,9 @@ def _short_name(case_id: str) -> str:
     return case_id.split("::")[-1].split("[")[0]
 
 
-def capture_error_excerpt(raw_lines: list[str], case_id: str, max_lines: int = 60) -> str:
+def capture_error_excerpt(
+    raw_lines: list[str], case_id: str, max_lines: int = 60
+) -> str:
     short = _short_name(case_id)
     stripped = [strip_timestamp_prefix(line).rstrip() for line in raw_lines]
 
@@ -477,12 +497,7 @@ def capture_error_excerpt(raw_lines: list[str], case_id: str, max_lines: int = 6
                 return excerpt
 
     for idx, line in enumerate(stripped):
-        if (
-                short in line
-                and "FAILED" in line
-                and not line.strip().endswith("FAILED")
-           ):
-
+        if short in line and "FAILED" in line and not line.strip().endswith("FAILED"):
             block = []
             for follow in stripped[idx : idx + max_lines]:
                 if _SECTION_BREAK.match(follow):
@@ -496,12 +511,21 @@ def capture_error_excerpt(raw_lines: list[str], case_id: str, max_lines: int = 6
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Collect XPU CI failure evidence for AI root-cause analysis.")
+    parser = argparse.ArgumentParser(
+        description="Collect XPU CI failure evidence for AI root-cause analysis."
+    )
     parser.add_argument("--owner", default="pytorch")
     parser.add_argument("--repo", default="pytorch")
     parser.add_argument("--workflow-file", default="xpu.yml")
-    parser.add_argument("--run-limit", type=int, default=1, help="Number of completed main runs to inspect")
-    parser.add_argument("--token", default=None, help="GitHub token (optional; falls back to gh CLI)")
+    parser.add_argument(
+        "--run-limit",
+        type=int,
+        default=1,
+        help="Number of completed main runs to inspect",
+    )
+    parser.add_argument(
+        "--token", default=None, help="GitHub token (optional; falls back to gh CLI)"
+    )
     args = parser.parse_args()
 
     bundle = collect(

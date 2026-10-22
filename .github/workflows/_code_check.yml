@@ -22,7 +22,7 @@ jobs:
       contents: read
     outputs:
       full: ${{ steps.scope.outputs.full }}
-      cpp: ${{ steps.scope.outputs.cpp }}
+      groups: ${{ steps.scope.outputs.groups }}
       github: ${{ steps.scope.outputs.github }}
     steps:
       - name: Checkout torch-xpu-ops
@@ -43,14 +43,20 @@ jobs:
             # pull_request checks out the merge commit; its first parent is the base branch tip.
             git diff --name-only --diff-filter=ACMR HEAD^1 HEAD > "${RUNNER_TEMP}/changed.txt"
             # Linter config changes can surface issues in untouched files.
-            if grep -qE '^(\.lintrunner\.toml|tools/linter/|\.clang-format|\.clang-tidy|\.flake8|pyproject\.toml|\.cmakelintrc|\.github/scripts/lintrunner\.sh)' "${RUNNER_TEMP}/changed.txt"; then
+            if grep -qE '^(\.lintrunner\.toml|tools/linter/|\.clang-format|\.clang-tidy|pyproject\.toml|\.cmakelintrc|\.github/scripts/lintrunner\.sh)' "${RUNNER_TEMP}/changed.txt"; then
               full=true
             fi
           fi
           has() { if [[ "${full}" == "true" ]] || grep -qE "$1" "${RUNNER_TEMP}/changed.txt"; then echo true; else echo false; fi; }
+          groups="{\"general\": true"
+          groups+=", \"python\": $(has '\.pyi?$')"
+          groups+=", \"cpp\": $(has '\.(c|cc|cpp|h|hpp)$')"
+          groups+=", \"cmake\": $(has '(\.cmake(\.in)?|CMakeLists\.txt)$')"
+          groups+=", \"shell\": $(has '\.sh$')"
+          groups+=", \"config\": $(has '\.(json|ya?ml|toml|js)$')}"
           {
             echo "full=${full}"
-            echo "cpp=$(has '\.(c|cc|cpp|h|hpp)$')"
+            echo "groups=${groups}"
             echo "github=$(has '^\.github/')"
           } >> "${GITHUB_OUTPUT}"
           {
@@ -59,7 +65,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   lintrunner:
-    name: lintrunner (${{ matrix.name }})
+    name: lintrunner (${{ matrix.group }})
     needs: scope
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -68,22 +74,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: python
-            args: --skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV
-            clang: false
-          - name: clang
-            args: --take CLANGFORMAT,CLANGTIDY
-            clang: true
+        # Must cover every LINT_GROUPS entry in .github/scripts/lintrunner.sh.
+        group: [general, python, cpp, cmake, shell, config]
     steps:
       - name: Checkout torch-xpu-ops
+        if: ${{ fromJSON(needs.scope.outputs.groups)[matrix.group] }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: torch-xpu-ops
           fetch-depth: 2
           persist-credentials: false
-      - name: Checkout PyTorch (for headers)
-        if: ${{ matrix.clang && needs.scope.outputs.cpp == 'true' }}
+      - name: Checkout PyTorch (for clang-tidy headers)
+        if: ${{ matrix.group == 'cpp' && fromJSON(needs.scope.outputs.groups).cpp }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: pytorch/pytorch
@@ -92,19 +94,14 @@ jobs:
           submodules: false
           persist-credentials: false
       - name: Run lintrunner
-        if: ${{ !matrix.clang || needs.scope.outputs.cpp == 'true' }}
+        if: ${{ fromJSON(needs.scope.outputs.groups)[matrix.group] }}
         working-directory: torch-xpu-ops
         env:
-          LINT_ARGS: ${{ matrix.args }}
-          FULL: ${{ needs.scope.outputs.full }}
+          LINT_GROUP: ${{ matrix.group }}
+          LINT_SCOPE: ${{ needs.scope.outputs.full == 'true' && 'full' || 'incremental' }}
+          LINT_BASE: HEAD^1
           PYTORCH_ROOT: ${{ github.workspace }}/pytorch-headers
-        run: |
-          if [[ "${FULL}" == "true" ]]; then
-            SCOPE_ARGS="--all-files"
-          else
-            SCOPE_ARGS="--merge-base-with HEAD^1"
-          fi
-          ADDITIONAL_LINTRUNNER_ARGS="${LINT_ARGS} ${SCOPE_ARGS}" bash .github/scripts/lintrunner.sh
+        run: bash .github/scripts/lintrunner.sh
 
   actionlint:
     name: actionlint

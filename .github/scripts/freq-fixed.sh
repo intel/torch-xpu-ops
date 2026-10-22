@@ -146,7 +146,7 @@ show_status() {
             fi
             printf "  %-6s  %10b  %10b  %s\n" "$card" "$(color_freq "$min_val" "$min_val" "$max_val")" "$(color_freq "$max_val" "$min_val" "$max_val")" "$(dirname "$f")"
             ((found++)) || true
-        done <<< "$sorted_files"
+        done <<<"$sorted_files"
     fi
 
     if [[ ${#MIN_FREQ_FILES[@]} -gt 0 ]]; then

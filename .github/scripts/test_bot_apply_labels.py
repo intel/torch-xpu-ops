@@ -72,7 +72,9 @@ def test_other_repo_is_refused(tmp_path):
     assert result.returncode == 2
 
 
-@pytest.mark.parametrize("target", ["intel/torch-xpu-ops#47520", "intel/torch-xpu-ops#475"])
+@pytest.mark.parametrize(
+    "target", ["intel/torch-xpu-ops#47520", "intel/torch-xpu-ops#475"]
+)
 def test_neighbouring_issue_numbers_are_refused(tmp_path, target):
     # A substring comparison would let #4752 match #47520.
     path = write_labels_md(tmp_path, target)

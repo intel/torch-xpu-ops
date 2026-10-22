@@ -24,7 +24,6 @@ import time
 from enum import Enum
 from typing import NamedTuple
 
-
 LINTER_CODE = "ACTIONLINT"
 
 

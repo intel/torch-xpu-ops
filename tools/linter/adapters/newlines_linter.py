@@ -23,7 +23,6 @@ import sys
 from enum import Enum
 from typing import NamedTuple
 
-
 NEWLINE = 10  # ASCII "\n"
 CARRIAGE_RETURN = 13  # ASCII "\r"
 LINTER_CODE = "NEWLINE"

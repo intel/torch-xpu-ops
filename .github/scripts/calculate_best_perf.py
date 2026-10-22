@@ -18,12 +18,13 @@ Usage:
             --torch-xpu-ops <Used torch-xpu-ops version>
 """
 
-import re
-import os
-import fnmatch
 import argparse
-import pandas as pd
+import fnmatch
+import os
+import re
 from datetime import date
+
+import pandas as pd
 
 
 def multiple_replace(text):
@@ -78,9 +79,9 @@ def find_best_row(dataframe, category, model, value_type):
         Tuple of (row_index, row_data) or None if not found
     """
     matches = dataframe[
-        (dataframe["Category"] == category) &
-        (dataframe["Model"] == model) &
-        (dataframe["Value Type"] == value_type)
+        (dataframe["Category"] == category)
+        & (dataframe["Model"] == model)
+        & (dataframe["Value Type"] == value_type)
     ]
     if not matches.empty:
         return matches.index[0], matches.iloc[0]
@@ -114,12 +115,13 @@ def create_new_row(category, model, value_type, value, args_dict):
         "Python": args_dict["python"],
         "PyTorch": args_dict["pytorch"],
         "Torch XPU Ops": args_dict["torch_xpu_ops"],
-        "Date": date.today().strftime('%F')
+        "Date": date.today().strftime("%F"),
     }
 
 
-def update_best_performance(best_data, category, model, value_type,
-                          new_value, args_dict):
+def update_best_performance(
+    best_data, category, model, value_type, new_value, args_dict
+):
     """
     Update best performance data with new value if better.
 
@@ -137,7 +139,7 @@ def update_best_performance(best_data, category, model, value_type,
     best_row = find_best_row(best_data, category, model, value_type)
 
     # For performance metrics, lower values are better
-    current_best = best_row[1]["Value"] if best_row else float('inf')
+    current_best = best_row[1]["Value"] if best_row else float("inf")
     is_better = new_value < current_best
 
     if best_row and is_better:
@@ -148,10 +150,7 @@ def update_best_performance(best_data, category, model, value_type,
     elif not best_row:
         # Add new row
         new_row = create_new_row(category, model, value_type, new_value, args_dict)
-        best_data = pd.concat([
-            best_data,
-            pd.DataFrame([new_row])
-        ], ignore_index=True)
+        best_data = pd.concat([best_data, pd.DataFrame([new_row])], ignore_index=True)
 
     return best_data
 
@@ -160,28 +159,22 @@ def main():
     """Main function to calculate and update best performance metrics."""
     parser = argparse.ArgumentParser(
         description="Get Best Performance",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--best", required=True,
-                       help="Saved best performance file")
-    parser.add_argument("--new", required=True,
-                       help="New performance results directory")
-    parser.add_argument("--device", type=str,
-                       help="Device name, such as PVC1100")
-    parser.add_argument("--os", type=str,
-                       help="OS version, such as Ubuntu 22.04")
-    parser.add_argument("--driver", type=str,
-                       help="Driver version, such as 25.05.32567")
-    parser.add_argument("--oneapi", type=str,
-                       help="OneAPI version, such as 2025.1")
-    parser.add_argument("--gcc", type=str,
-                       help="GCC version, such as 11")
-    parser.add_argument("--python", type=str,
-                       help="Python version, such as 3.10")
-    parser.add_argument("--pytorch", type=str,
-                       help="PyTorch version")
-    parser.add_argument("--torch-xpu-ops", type=str,
-                       help="Torch XPU Ops version")
+    parser.add_argument("--best", required=True, help="Saved best performance file")
+    parser.add_argument(
+        "--new", required=True, help="New performance results directory"
+    )
+    parser.add_argument("--device", type=str, help="Device name, such as PVC1100")
+    parser.add_argument("--os", type=str, help="OS version, such as Ubuntu 22.04")
+    parser.add_argument(
+        "--driver", type=str, help="Driver version, such as 25.05.32567"
+    )
+    parser.add_argument("--oneapi", type=str, help="OneAPI version, such as 2025.1")
+    parser.add_argument("--gcc", type=str, help="GCC version, such as 11")
+    parser.add_argument("--python", type=str, help="Python version, such as 3.10")
+    parser.add_argument("--pytorch", type=str, help="PyTorch version")
+    parser.add_argument("--torch-xpu-ops", type=str, help="Torch XPU Ops version")
 
     args = parser.parse_args()
 
@@ -194,14 +187,24 @@ def main():
         "gcc": args.gcc,
         "python": args.python,
         "pytorch": args.pytorch,
-        "torch_xpu_ops": getattr(args, 'torch-xpu-ops', None)
+        "torch_xpu_ops": getattr(args, "torch-xpu-ops", None),
     }
 
     # Define output columns
     best_columns = [
-        "Category", "Model", "Value Type", "Value",
-        "Device", "OS", "Driver", "OneAPI", "GCC", "Python",
-        "PyTorch", "Torch XPU Ops", "Date"
+        "Category",
+        "Model",
+        "Value Type",
+        "Value",
+        "Device",
+        "OS",
+        "Driver",
+        "OneAPI",
+        "GCC",
+        "Python",
+        "PyTorch",
+        "Torch XPU Ops",
+        "Date",
     ]
 
     # Load or initialize best performance data
@@ -235,15 +238,18 @@ def main():
                 # Process eager performance
                 eager_perf = row["abs_latency"] * row["speedup"]
                 best_data = update_best_performance(
-                    best_data, category, model_name, "eager",
-                    eager_perf, system_config
+                    best_data, category, model_name, "eager", eager_perf, system_config
                 )
 
                 # Process inductor performance
                 inductor_perf = row["abs_latency"]
                 best_data = update_best_performance(
-                    best_data, category, model_name, "inductor",
-                    inductor_perf, system_config
+                    best_data,
+                    category,
+                    model_name,
+                    "inductor",
+                    inductor_perf,
+                    system_config,
                 )
 
         except Exception as e:
@@ -251,7 +257,7 @@ def main():
             continue
 
     # Save updated best performance data
-    best_data.to_csv(args.best, sep=',', encoding='utf-8', index=False)
+    best_data.to_csv(args.best, sep=",", encoding="utf-8", index=False)
     print(f"Best performance data saved to: {args.best}")
     print(f"Total records: {len(best_data)}")
 

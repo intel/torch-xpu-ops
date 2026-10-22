@@ -774,11 +774,12 @@ jobs:
           fi
 
       - name: Run lintrunner
-        run: |
-          # CLANGFORMAT excluded: requires PyTorch headers checkout.
-          # PR CI handles clang formatting; bot only fixes Python linters.
-          export ADDITIONAL_LINTRUNNER_ARGS="--take RUFF,PYFMT,NEWLINE -a --all-files"
-          bash .github/scripts/lintrunner.sh || true
+        env:
+          # Formatters only; CLANGTIDY needs a PyTorch checkout and cannot auto-fix.
+          LINT_TAKE: PYFMT,RUFF,SHFMT,CLANGFORMAT,NEWLINE,SPACES,TABS
+          LINT_SCOPE: full
+          LINT_APPLY: "1"
+        run: bash .github/scripts/lintrunner.sh || true
 
       - name: Commit and push lint fixes
         id: push

@@ -12,8 +12,8 @@
 
 # Owner(s): ["module: intel"]
 
-import threading
 import contextlib
+import threading
 import warnings
 from copy import deepcopy
 from functools import partial
@@ -584,23 +584,23 @@ torch.utils.checkpoint.DefaultDeviceType.set_device_type("xpu")
 
 with XPUPatchForImport(False):
     from autograd.test_complex import TestAutogradComplex  # noqa: F401
-    from autograd.test_functional import (  # noqa: F401
+    from autograd.test_functional import (
         base_and_logging_tensor,
-        TestAutogradFunctional,
+        TestAutogradFunctional as TestAutogradFunctional,
     )
     from autograd.test_logging import TestAutogradLogging  # noqa: F401
     from test_autograd import (
+        TestAllowMutationOnSaved,
         TestAutograd,
         TestAutogradDeviceType,
+        TestAutogradForwardMode,
+        TestAutogradForwardModeBatchedGrad,
+        TestAutogradInferenceMode,
         TestAutogradMultipleDispatch,
+        TestAutogradStreamSynchronization,
         TestMultithreadAutograd,
         TestNestedCheckpoint,
         TestSelectiveActivationCheckpoint,
-        TestAllowMutationOnSaved,
-        TestAutogradForwardModeBatchedGrad,
-        TestAutogradForwardMode,
-        TestAutogradInferenceMode,
-        TestAutogradStreamSynchronization,
     )
 
     @base_and_logging_tensor
@@ -699,9 +699,7 @@ with XPUPatchForImport(False):
     TestMultithreadAutograd.test_dataparallel_saved_tensors_hooks = (
         dataparallel_saved_tensors_hooks
     )
-    TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = (
-        custom_function_propagates_errors_from_device_thread
-    )
+    TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = custom_function_propagates_errors_from_device_thread
     TestAutogradMultipleDispatch.test_backward_single_threaded = (
         backward_single_threaded
     )
@@ -713,10 +711,8 @@ with XPUPatchForImport(False):
     TestAutogradFunctional.test_jacobian_vectorize_correctness_different_devices = (
         jacobian_vectorize_correctness_different_devices
     )
-    TestAutogradStreamSynchronization.get_default_streams = (default_streams)
-    TestAutogradStreamSynchronization._test_consumer_to_single_producer_case_3_correctness = (
-        _test_consumer_to_single_producer_case_3_correctness
-    )
+    TestAutogradStreamSynchronization.get_default_streams = default_streams
+    TestAutogradStreamSynchronization._test_consumer_to_single_producer_case_3_correctness = _test_consumer_to_single_producer_case_3_correctness
 instantiate_device_type_tests(
     TestAutogradDeviceType, globals(), only_for="xpu", allow_xpu=True
 )

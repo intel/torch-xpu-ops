@@ -3,20 +3,20 @@
 # Usage: TEST_PLATFORM=linux ./script.sh <test_suite>
 
 # Available suites: op_regression, op_extended, op_ut, test_xpu, upstream_default, upstream_inductor, xpu_distributed, upstream_distributed, skipped_ut
-readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
+readonly ut_suite="${1:-op_regression}" # Default to op_regression if no suite specified
 readonly inputs_pytorch="${2:-nightly_wheel}"
 readonly REPO="intel/torch-xpu-ops"
 readonly NEW_PASSED_ISSUE=2333
 readonly TEST_PLATFORM_RAW="${TEST_PLATFORM:-linux}"
 _test_platform_normalized="${TEST_PLATFORM_RAW,,}"
 case "$_test_platform_normalized" in
-  linux|windows)
-    _final_platform="$_test_platform_normalized"
-    ;;
-  *)
-    echo "⚠️  Unsupported TEST_PLATFORM='${TEST_PLATFORM_RAW}', defaulting to 'linux'" >&2
-    _final_platform="linux"
-    ;;
+    linux | windows)
+        _final_platform="$_test_platform_normalized"
+        ;;
+    *)
+        echo "⚠️  Unsupported TEST_PLATFORM='${TEST_PLATFORM_RAW}', defaulting to 'linux'" >&2
+        _final_platform="linux"
+        ;;
 esac
 readonly TEST_PLATFORM="$_final_platform"
 unset _test_platform_normalized _final_platform
@@ -26,18 +26,18 @@ unset _test_platform_normalized _final_platform
 readonly TEST_RUNNER="${TEST_RUNNER:-}"
 _test_runner_normalized="${TEST_RUNNER,,}"
 case "$TEST_PLATFORM" in
-  windows)
-    _issue_platform="Windows"
-    ;;
-  *)
-    if [[ "$_test_runner_normalized" == *"bmg"* ]]; then
-      _issue_platform="BMG"
-    elif [[ "$_test_runner_normalized" == *"distributed"* ]]; then
-      _issue_platform="distributed"
-    else
-      _issue_platform="Linux"
-    fi
-    ;;
+    windows)
+        _issue_platform="Windows"
+        ;;
+    *)
+        if [[ "$_test_runner_normalized" == *"bmg"* ]]; then
+            _issue_platform="BMG"
+        elif [[ "$_test_runner_normalized" == *"distributed"* ]]; then
+            _issue_platform="distributed"
+        else
+            _issue_platform="Linux"
+        fi
+        ;;
 esac
 readonly ISSUE_PLATFORM="$_issue_platform"
 unset _test_runner_normalized _issue_platform
@@ -69,7 +69,7 @@ IGNORE_TESTS=(
     "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
     "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128"
     "test_python_ref__refs_log2_xpu_complex128"
-    "_jiterator_"  # Pattern to match all jiterator tests
+    "_jiterator_" # Pattern to match all jiterator tests
 )
 
 # Get expected number for op_ut
@@ -92,7 +92,7 @@ check_new_failed() {
         sed -i 's/\r$//' "$ut_file"
     fi
     # Remove known issues from current failures to find new failures
-    grep -vFxf "$known_file" "$ut_file" > "$output_file"
+    grep -vFxf "$known_file" "$ut_file" >"$output_file"
     echo -e "\\n📊 New Failed Cases Summary:"
     if [[ -s "$output_file" ]]; then
         echo -e "❌ New failures found:\\n"
@@ -105,7 +105,8 @@ check_new_failed() {
 # Find known issues that are now passing (regression fixes)
 # Args: passed_tests_file, known_issues_file, [output_file]
 check_passed_known_issues() {
-    local passed_file="$1" known_file="$2" output_file="${3:-${passed_file%.*}_passed_known.log}"
+    local passed_file="$1" known_file="$2"
+    local output_file="${3:-${passed_file%.*}_passed_known.log}"
     if [[ $# -lt 2 ]]; then
         echo "❌ Need 2 files to compare" >&2
         return 1
@@ -115,21 +116,21 @@ check_passed_known_issues() {
         sed -i 's/\r$//' "$passed_file"
     fi
     # Find known issues that are now passing (intersection of passed tests and known issues)
-    grep -Fxf "$passed_file" "$known_file" |sort |uniq > "$output_file"
+    grep -Fxf "$passed_file" "$known_file" | sort | uniq >"$output_file"
     echo -e "\\n📊 New Passing Known Issues:"
     if [[ -s "$output_file" ]]; then
         local count
-        count=$(wc -l < "$output_file")
+        count=$(wc -l <"$output_file")
         cat "$output_file"
         echo -e "✅ ${count} known issues are now passing!"
     else
         echo -e "ℹ️  No known issues are now passing"
     fi
     # Mark passed items in GitHub issues with strikethrough
-    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
+    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ]; then
         mark_passed_issue "$output_file" "issues.log"
     fi
-    rm -f "$output_file"  # Clean up temporary file
+    rm -f "$output_file" # Clean up temporary file
 }
 
 # Append this category's count verdict to $UT_RUN_HEALTH_FILE as JSON Lines.
@@ -147,7 +148,7 @@ record_run_health() {
     mkdir -p "$(dirname "${UT_RUN_HEALTH_FILE}")"
     printf '{"category":"%s","expected":%s,"actual":%s,"ratio":%s,"healthy":%s,"reason":"%s"}\n' \
         "$category" "$expected" "$actual" "$ratio" "$healthy" "$reason" \
-        >> "${UT_RUN_HEALTH_FILE}"
+        >>"${UT_RUN_HEALTH_FILE}"
 }
 
 # Verify test case counts haven't dropped significantly (>5% reduction)
@@ -189,8 +190,8 @@ check_test_cases() {
             fi
             current_category=""
         fi
-    done < "$log_file"
-    echo "$all_pass"  # Return overall status
+    done <"$log_file"
+    echo "$all_pass" # Return overall status
 }
 
 # Clean test case files: extract test names, sort, and remove duplicates
@@ -199,7 +200,7 @@ clean_file() {
     if [[ ! -s "$file" ]]; then
         return 0
     fi
-    awk '{for(i=1;i<=NF;i++) if($i ~ /::.*::/) print $i}' "$file" | sort -u > "${file}.tmp"
+    awk '{for(i=1;i<=NF;i++) if($i ~ /::.*::/) print $i}' "$file" | sort -u >"${file}.tmp"
     mv "${file}.tmp" "$file"
 }
 # Special check for skipped UT suite - detect newly passing tests that were previously skipped
@@ -210,26 +211,26 @@ check_skipped_ut() {
     local new_file="new-passed-issue.cases"
     local result_file="new-passed-this-run.cases"
     # Fetch known passing tests from GitHub issue tracking known passes
-    if gh --repo $REPO issue view "${NEW_PASSED_ISSUE}" --json body -q .body 2>/dev/null | grep "::.*::" > "$known_file"; then
+    if gh --repo $REPO issue view "${NEW_PASSED_ISSUE}" --json body -q .body 2>/dev/null | grep "::.*::" >"$known_file"; then
         echo "✅ Fetched known tests from GitHub"
     else
         echo "⚠️  Using empty known tests file"
-        : > "$known_file"
+        : >"$known_file"
     fi
     if [[ ! -f "$test_file" ]]; then
         echo "❌ Test log not found: ${test_file}" >&2
         return 1
     fi
     # Extract current passing tests from test log
-    if ! grep "PASSED" "$test_file" | grep "::.*::" > "$new_file"; then
-        : > "$new_file"
+    if ! grep "PASSED" "$test_file" | grep "::.*::" >"$new_file"; then
+        : >"$new_file"
     fi
     clean_file "$known_file"
     clean_file "$new_file"
     # Find tests that are passing now but weren't in known passes, excluding ignored tests
-    comm -13 "$known_file" "$new_file" | grep -vFf <(printf '%s\n' "${IGNORE_TESTS[@]}") > "$result_file"
+    comm -13 "$known_file" "$new_file" | grep -vFf <(printf '%s\n' "${IGNORE_TESTS[@]}") >"$result_file"
     local new_count
-    new_count=$(wc -l < "$result_file" 2>/dev/null || echo 0)
+    new_count=$(wc -l <"$result_file" 2>/dev/null || echo 0)
     if [[ "$new_count" -gt 0 ]]; then
         echo "❌ ${new_count} NEW PASSING TESTS:"
         cat "$result_file"
@@ -238,7 +239,7 @@ check_skipped_ut() {
         echo "✅ No new passing tests found"
     fi
     # Update GitHub issue with current passing tests for future reference
-    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
+    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ]; then
         if [ -s "$known_file" ] || [ -s "$new_file" ]; then
             gh --repo $REPO issue edit "${NEW_PASSED_ISSUE}" --body-file "$new_file"
             echo "✅ Successfully updated issue #${NEW_PASSED_ISSUE}"
@@ -267,8 +268,8 @@ run_main_tests() {
     echo -e "\\n🔍 Filtered Cases:"
     if [[ -f "failures_${suite}.log" ]]; then
         local filtered_count
-        grep -noFf "Known_issue.log" "failures_${suite}.log" > "failures_${suite}_removed.log"
-        filtered_count=$(wc -l < "failures_${suite}_removed.log")
+        grep -noFf "Known_issue.log" "failures_${suite}.log" >"failures_${suite}_removed.log"
+        filtered_count=$(wc -l <"failures_${suite}_removed.log")
         if [[ "$filtered_count" -gt 0 ]]; then
             echo "⏩ Skipping ${filtered_count} known issues:"
             awk -F':' '{printf "   Line %3d: %s\n", $1, $2}' "failures_${suite}_removed.log"
@@ -287,10 +288,10 @@ run_main_tests() {
     # Calculate final statistics
     local failed_count=0 passed_count=0
     if [[ -f "failures_${suite}_filtered.log" ]]; then
-        failed_count=$(wc -l < "failures_${suite}_filtered.log")
+        failed_count=$(wc -l <"failures_${suite}_filtered.log")
     fi
     if [[ -f "passed_${suite}.log" ]]; then
-        passed_count=$(wc -l < "passed_${suite}.log")
+        passed_count=$(wc -l <"passed_${suite}.log")
     fi
     # Final test result determination
     echo -e "\\n📈 Final Summary:"
@@ -310,17 +311,17 @@ run_distributed_tests() {
     echo "Running distributed tests for: ${suite}"
     echo "========================================================================="
     # Process distributed test logs (different format than main tests)
-    grep -E "FAILED|ERROR" ${suite}_test*.log > "${suite}_failed.log"
+    grep -E "FAILED|ERROR" "${suite}"_test*.log >"${suite}_failed.log"
     clean_file "${suite}_failed.log"
-    grep "PASSED" ${suite}_test*.log > "${suite}_passed.log"
+    grep "PASSED" "${suite}"_test*.log >"${suite}_passed.log"
     clean_file "${suite}_passed.log"
     echo "📋 Failed Cases:"
     cat "${suite}_failed.log"
     # Identify filtered tests (known issues in distributed tests)
     echo -e "\\n🔍 Filtered Cases:"
     local filtered_count
-    grep -noFf "Known_issue.log" "${suite}_failed.log" > "${suite}_removed.log"
-    filtered_count=$(wc -l < "${suite}_removed.log")
+    grep -noFf "Known_issue.log" "${suite}_failed.log" >"${suite}_removed.log"
+    filtered_count=$(wc -l <"${suite}_removed.log")
     if [[ "$filtered_count" -gt 0 ]]; then
         echo "⏩ Skipping ${filtered_count} known issues"
         awk -F':' '{printf "   Line %3d: %s\n", $1, $2}' "${suite}_removed.log"
@@ -333,9 +334,9 @@ run_distributed_tests() {
     # Calculate final statistics for distributed tests
     local failed_count=0 passed_count=0
     if [[ -f "failures_${suite}_filtered.log" ]]; then
-        failed_count=$(wc -l < "failures_${suite}_filtered.log")
+        failed_count=$(wc -l <"failures_${suite}_filtered.log")
     fi
-    passed_count=$(wc -l < "${suite}_passed.log")
+    passed_count=$(wc -l <"${suite}_passed.log")
     # Final result determination for distributed tests
     if [[ "$failed_count" -gt 0 ]] || [[ "$passed_count" -eq 0 ]]; then
         echo "❌ TEST FAILED: ${suite}"
@@ -351,9 +352,18 @@ mark_passed_issue() {
     local ISSUE_FILE="$2"
     random_issues="$(gh issue list --repo ${REPO} --state 'open' --label 'random' --json number --jq '.[].number')"
     # Cehck before start
-    [[ ! -f "$PASSED_FILE" ]] && { echo "❌ Missing $PASSED_FILE" >&2; exit 1; }
-    [[ ! -f "$ISSUE_FILE" ]] && { echo "❌ Missing $ISSUE_FILE" >&2; exit 1; }
-    command -v gh &>/dev/null || { echo "❌ GitHub CLI required" >&2; exit 1; }
+    [[ ! -f "$PASSED_FILE" ]] && {
+        echo "❌ Missing $PASSED_FILE" >&2
+        exit 1
+    }
+    [[ ! -f "$ISSUE_FILE" ]] && {
+        echo "❌ Missing $ISSUE_FILE" >&2
+        exit 1
+    }
+    command -v gh &>/dev/null || {
+        echo "❌ GitHub CLI required" >&2
+        exit 1
+    }
     echo "🔍 Loading passed items..."
     # Load passed items into array for efficient lookup
     declare -a passed_items
@@ -364,7 +374,10 @@ mark_passed_issue() {
     local in_cases_section=0
     while IFS= read -r line; do
         line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        [[ -z "$line" ]] && { in_cases_section=0; continue;}
+        [[ -z "$line" ]] && {
+            in_cases_section=0
+            continue
+        }
         if [[ "$line" == "Cases:"* ]]; then
             in_cases_section=1
             continue
@@ -375,7 +388,7 @@ mark_passed_issue() {
             continue
         fi
         # Skip random cases check
-        if [ $(echo "${random_issues}" |grep -w "${issue_id}" -c) -ge 1 ];then
+        if [ "$(echo "${random_issues}" | grep -w "${issue_id}" -c)" -ge 1 ]; then
             continue
         fi
         if [[ $in_cases_section -eq 1 && -n "$issue_id" ]]; then
@@ -391,7 +404,7 @@ mark_passed_issue() {
                 fi
             done
         fi
-    done < "$ISSUE_FILE"
+    done <"$ISSUE_FILE"
     echo "✅ Done! Found ${#issue_items[@]} issues with passed items"
     # Print results and update issues
     for issue_id in "${!issue_items[@]}"; do
@@ -399,7 +412,7 @@ mark_passed_issue() {
         uniq_cases=$(echo "${issue_items[$issue_id]}" | tr ' ' '\n' | sort | uniq | tr '\n' ' ')
         echo "📝 Processing issue #${issue_id} with cases: ${uniq_cases}"
         # Get current issue body
-        gh --repo "$REPO" issue view "${issue_id}" --json body -q .body > "issue-body-${issue_id}.txt"
+        gh --repo "$REPO" issue view "${issue_id}" --json body -q .body >"issue-body-${issue_id}.txt"
         # Apply strikethrough to passed cases
         for case in $uniq_cases; do
             sed -i "s|^${case}[[:space:]]*$|~~${case}~~|g" "issue-body-${issue_id}.txt"
@@ -432,7 +445,10 @@ check_profiling_ut() {
     echo "========================================================================="
     local reports=() total_tests=0 total_failures=0 total_errors=0 report_count=0
     # check-ut.py only globs ut_log/*.xml, so the reports live one level above this ut dir
-    mapfile -t reports < <({ find . -type f -name '*.xml'; find .. -maxdepth 1 -type f -name '*.xml'; } | sort -u)
+    mapfile -t reports < <({
+        find . -type f -name '*.xml'
+        find .. -maxdepth 1 -type f -name '*.xml'
+    } | sort -u)
     if [[ "${#reports[@]}" -eq 0 ]]; then
         echo "❌ TEST FAILED: xpu_profiling - no pytest junit xml report found"
         exit 1
@@ -454,7 +470,7 @@ check_profiling_ut() {
         total_errors=$((total_errors + errors))
         if [[ "$failures" -gt 0 ]] || [[ "$errors" -gt 0 ]]; then
             echo "   ❌ ${report}: ${tests} tests, ${failures} failures, ${errors} errors"
-            tr '<' '\n' < "$report" | awk '
+            tr '<' '\n' <"$report" | awk '
                 /^testcase / { match($0, / name="[^"]*"/); name=substr($0, RSTART+7, RLENGTH-8) }
                 /^failure|^error/ { if (name != "") { print "      - " name; name="" } }
             '
@@ -483,7 +499,7 @@ check_profiling_ut() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_ut|test_xpu|upstream_default|upstream_inductor|upstream_distributed)
+    op_regression | op_regression_dev1 | op_extended | op_ut | test_xpu | upstream_default | upstream_inductor | upstream_distributed)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)

@@ -24,7 +24,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, NamedTuple
 
-
 IS_WINDOWS: bool = os.name == "nt"
 
 

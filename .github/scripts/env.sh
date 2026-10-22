@@ -2,11 +2,10 @@
 
 XPU_ONEAPI_PATH="${XPU_ONEAPI_PATH:-"/opt/intel/oneapi"}"
 
-source ${XPU_ONEAPI_PATH}/compiler/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/pti/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/umf/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/tcm/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/ccl/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/mpi/latest/env/vars.sh
+for component in compiler pti umf tcm ccl mpi; do
+    # oneAPI is installed on the runner, outside the repo, so shellcheck cannot follow it.
+    # shellcheck source=/dev/null
+    source "${XPU_ONEAPI_PATH}/${component}/latest/env/vars.sh"
+done
 icpx --version
 sycl-ls

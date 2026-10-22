@@ -14,12 +14,12 @@ from pathlib import Path
 from . import config
 from .config import IS_WINDOWS, TestTask
 from .log import fmt_duration, log
-from .suites import get_suite
 from .monitor import (
     get_gpu_memory_utilization,
     get_host_memory_utilization,
     parse_memory_threshold,
 )
+from .suites import get_suite
 
 
 def _build_cmd_list(cmd: str, cmd_prefix: str) -> tuple[list[str], str]:
@@ -94,13 +94,19 @@ def run_single(
     """Run a single benchmark and return (exit_code, success, test_result, kill_reason)."""
     task.backend = backend
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / f"logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
-    log_csv = log_dir / f"inductor-{task.suite}-{task.dt}-{task.mode}-{device}-{task.scenario}.csv"
+    log_file = (
+        log_dir
+        / f"logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
+    )
+    log_csv = (
+        log_dir
+        / f"inductor-{task.suite}-{task.dt}-{task.mode}-{device}-{task.scenario}.csv"
+    )
 
     suite = get_suite(task)
     tmp_log_csv = None
     if suite.uses_temp_csv:
-        tmp_fd, tmp_log_csv = tempfile.mkstemp(prefix='tmp_', suffix='.csv')
+        tmp_fd, tmp_log_csv = tempfile.mkstemp(prefix="tmp_", suffix=".csv")
         os.close(tmp_fd)
 
     suite.prepare(task)
@@ -121,8 +127,12 @@ def run_single(
     kill_reason_lock = threading.Lock()
 
     popen_kwargs = {
-        "shell": False, "stdout": subprocess.PIPE, "stderr": subprocess.STDOUT,
-        "text": True, "env": env, "bufsize": 1,
+        "shell": False,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "text": True,
+        "env": env,
+        "bufsize": 1,
     }
     if IS_WINDOWS:
         popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -169,7 +179,11 @@ def run_single(
                     if pattern.startswith("Memory>"):
                         continue
                     if pattern.lower() in content:
-                        log(f"Detected '{pattern}' — killing process", level="WARN", worker=worker_id)
+                        log(
+                            f"Detected '{pattern}' — killing process",
+                            level="WARN",
+                            worker=worker_id,
+                        )
                         with kill_reason_lock:
                             kill_reason[0] = pattern
                         proc.kill()
@@ -180,7 +194,9 @@ def run_single(
                     if device == "cpu":
                         mem_util = get_host_memory_utilization(memory_threshold, task)
                     else:
-                        mem_util = get_gpu_memory_utilization(card, memory_threshold, task)
+                        mem_util = get_gpu_memory_utilization(
+                            card, memory_threshold, task
+                        )
                 except Exception as e:
                     log(f"Memory poll error: {e}", level="WARN", worker=worker_id)
                     mem_util = None
@@ -188,7 +204,8 @@ def run_single(
                     mem_kind = "Host" if device == "cpu" else "GPU"
                     log(
                         f"{mem_kind} memory {mem_util:.2%} >= threshold {memory_threshold:.0%} — killing process",
-                        level="WARN", worker=worker_id,
+                        level="WARN",
+                        worker=worker_id,
                     )
                     with kill_reason_lock:
                         kill_reason[0] = f"Memory>{memory_threshold}"
@@ -198,7 +215,11 @@ def run_single(
             time.sleep(3)
 
         if proc.poll() is None:
-            log("Monitor deadline reached — killing process", level="WARN", worker=worker_id)
+            log(
+                "Monitor deadline reached — killing process",
+                level="WARN",
+                worker=worker_id,
+            )
             with kill_reason_lock:
                 kill_reason[0] = "timeout"
             proc.kill()
@@ -215,8 +236,11 @@ def run_single(
     elapsed = time.monotonic() - run_start
     reader_thread.join(timeout=10)
     if reader_thread.is_alive():
-        log("Output reader thread still running after join; some log lines may be lost",
-            level="WARN", worker=worker_id)
+        log(
+            "Output reader thread still running after join; some log lines may be lost",
+            level="WARN",
+            worker=worker_id,
+        )
     if log_f is not None and not log_f.closed:
         log_f.close()
     monitor_thread.join(timeout=1)
@@ -226,9 +250,14 @@ def run_single(
     test_result, success = "exception", False
     try:
         test_result, success = suite.collect_results(
-            log_csv, log_file, tmp_log_csv, device, task, matched_pattern, elapsed)
+            log_csv, log_file, tmp_log_csv, device, task, matched_pattern, elapsed
+        )
     except Exception as e:
-        log(f"CSV collection error for {task.model}: {e}", level="ERROR", worker=worker_id)
+        log(
+            f"CSV collection error for {task.model}: {e}",
+            level="ERROR",
+            worker=worker_id,
+        )
     finally:
         if tmp_log_csv is not None:
             with suppress(OSError):
@@ -259,9 +288,13 @@ def run_all(
     all_threads: list[threading.Thread] = []
     threads_lock = threading.Lock()
 
-    def _spawn_worker(worker_id: int, card: int, cmd_prefix: str, env_vars: dict) -> None:
+    def _spawn_worker(
+        worker_id: int, card: int, cmd_prefix: str, env_vars: dict
+    ) -> None:
         t = threading.Thread(
-            target=_worker, args=(worker_id, card, cmd_prefix, env_vars), daemon=True,
+            target=_worker,
+            args=(worker_id, card, cmd_prefix, env_vars),
+            daemon=True,
         )
         with threads_lock:
             all_threads.append(t)
@@ -279,13 +312,28 @@ def run_all(
             log_dir = base_log_dir / task.suite / task.dt / task.mode / task.scenario
             try:
                 exit_code, success, test_result, kill_reason = run_single(
-                    task=task, card=card, cmd_prefix=cmd_prefix, env_vars=env_vars,
-                    log_dir=log_dir, worker_id=worker_id, device=device,
-                    backend=backend, dataset_dir=dataset_dir,
+                    task=task,
+                    card=card,
+                    cmd_prefix=cmd_prefix,
+                    env_vars=env_vars,
+                    log_dir=log_dir,
+                    worker_id=worker_id,
+                    device=device,
+                    backend=backend,
+                    dataset_dir=dataset_dir,
                 )
             except Exception as e:
-                log(f"Exception running {task.model}: {e}", level="ERROR", worker=worker_id)
-                exit_code, success, test_result, kill_reason = -1, False, "exception", None
+                log(
+                    f"Exception running {task.model}: {e}",
+                    level="ERROR",
+                    worker=worker_id,
+                )
+                exit_code, success, test_result, kill_reason = (
+                    -1,
+                    False,
+                    "exception",
+                    None,
+                )
 
             elapsed = fmt_duration(time.monotonic() - task_start)
             with completed_lock:
@@ -294,13 +342,26 @@ def run_all(
 
             pct = n * 100 // total
             progress = f"[{n}/{total} {pct}%]"
-            model_info = f"{task.suite}/{task.model} ({task.dt}, {task.mode}, {task.scenario})"
+            model_info = (
+                f"{task.suite}/{task.model} ({task.dt}, {task.mode}, {task.scenario})"
+            )
             if success:
-                log(f"{progress} PASS  {model_info} ({elapsed}) → {test_result}", worker=worker_id)
+                log(
+                    f"{progress} PASS  {model_info} ({elapsed}) → {test_result}",
+                    worker=worker_id,
+                )
             elif kill_reason:
-                log(f"{progress} KILL  {model_info} ({elapsed}) → {kill_reason}", level="WARN", worker=worker_id)
+                log(
+                    f"{progress} KILL  {model_info} ({elapsed}) → {kill_reason}",
+                    level="WARN",
+                    worker=worker_id,
+                )
             elif exit_code == 0:
-                log(f"{progress} FAIL  {model_info} ({elapsed}) → {test_result}", level="WARN", worker=worker_id)
+                log(
+                    f"{progress} FAIL  {model_info} ({elapsed}) → {test_result}",
+                    level="WARN",
+                    worker=worker_id,
+                )
             else:
                 log(
                     f"{progress} FAIL  {model_info} ({elapsed}) → exit code {exit_code}",
@@ -316,7 +377,8 @@ def run_all(
             if kill_reason:
                 log(
                     f"Worker killed on '{kill_reason}' — starting replacement worker",
-                    level="WARN", worker=worker_id,
+                    level="WARN",
+                    worker=worker_id,
                 )
                 _spawn_worker(worker_id, card, cmd_prefix, env_vars)
                 return
@@ -337,6 +399,7 @@ def run_all(
 
     # Summary
     from .log import banner
+
     wall_time = fmt_duration(time.monotonic() - wall_start)
     all_results = []
     while True:
@@ -357,11 +420,14 @@ def run_all(
         log("Failed tasks:")
         for task, test_result, kill_reason in failed:
             reason = kill_reason or test_result
-            log(f"  ✗ {task.suite}/{task.model} ({task.dt}, {task.mode}, {task.scenario}) → {reason}")
+            log(
+                f"  ✗ {task.suite}/{task.model} ({task.dt}, {task.mode}, {task.scenario}) → {reason}"
+            )
     else:
         print(flush=True)
         log("All tasks completed successfully.")
 
     if failed:
         import sys
+
         sys.exit(1)

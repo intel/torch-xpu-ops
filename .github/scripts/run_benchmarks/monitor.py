@@ -25,7 +25,7 @@ _xpu_smi_major_lock = threading.Lock()
 def parse_memory_threshold() -> float | None:
     """Extract memory threshold from error_patterns (e.g. 'Memory>0.9' → 0.9)."""
     for pattern in config.error_patterns:
-        m = re.match(r'Memory>(\d+\.?\d*)', pattern)
+        m = re.match(r"Memory>(\d+\.?\d*)", pattern)
         if m:
             return float(m.group(1))
     return None
@@ -48,9 +48,11 @@ def _get_xpu_smi_major_version() -> int:
             try:
                 result = subprocess.run(
                     ["xpu-smi", "-v"],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
-                m = re.search(r'(?:Version:\s*|\bv)(\d+)\.\d+', result.stdout)
+                m = re.search(r"(?:Version:\s*|\bv)(\d+)\.\d+", result.stdout)
                 if m:
                     _xpu_smi_major = int(m.group(1))
             except Exception:
@@ -71,10 +73,15 @@ def _get_tiles_per_device() -> int:
                 try:
                     result = subprocess.run(
                         ["xpu-smi", "stats", "-d", "0"],
-                        capture_output=True, text=True, timeout=10,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
                     )
                     if result.returncode == 0:
-                        tile_ids = {int(m.group(1)) for m in re.finditer(r'Tile\s+(\d+)', result.stdout)}
+                        tile_ids = {
+                            int(m.group(1))
+                            for m in re.finditer(r"Tile\s+(\d+)", result.stdout)
+                        }
                         _tiles_per_device = max(len(tile_ids), 1)
                     else:
                         _tiles_per_device = 1
@@ -102,7 +109,9 @@ def get_gpu_memory_utilization(
 
     try:
         tiles = _get_tiles_per_device()
-        device_id, tile_id = (card // tiles, card % tiles) if tiles > 1 else (card, None)
+        device_id, tile_id = (
+            (card // tiles, card % tiles) if tiles > 1 else (card, None)
+        )
 
         cmd = ["xpu-smi", "dump", "-d", str(device_id)]
         if tile_id is not None:
@@ -125,18 +134,22 @@ def get_gpu_memory_utilization(
         for l in lines:
             if l.startswith("Timestamp"):
                 header_line = l
-            elif header_line is not None and re.match(r'\d{2}:\d{2}:\d{2}', l):
+            elif header_line is not None and re.match(r"\d{2}:\d{2}:\d{2}", l):
                 data_line = l
         if header_line is None or data_line is None:
             return None
 
-        headers = [h.strip() for h in header_line.split(',')]
-        values = [v.strip() for v in data_line.split(',')]
+        headers = [h.strip() for h in header_line.split(",")]
+        values = [v.strip() for v in data_line.split(",")]
 
         def _get_col(*keywords: str) -> str | None:
             for keyword in keywords:
                 idx = next((i for i, h in enumerate(headers) if keyword in h), None)
-                if idx is not None and idx < len(values) and values[idx] not in ("N/A", ""):
+                if (
+                    idx is not None
+                    and idx < len(values)
+                    and values[idx] not in ("N/A", "")
+                ):
                     return values[idx]
             return None
 
@@ -155,7 +168,11 @@ def get_gpu_memory_utilization(
         gpu_temp = _get_col("GPU Core Temperature")
         mem_bw = _get_col("Memory Bandwidth Utilization")
 
-        loc = f"GPU {card} (Device {device_id} Tile {tile_id})" if tiles > 1 else f"GPU {card}"
+        loc = (
+            f"GPU {card} (Device {device_id} Tile {tile_id})"
+            if tiles > 1
+            else f"GPU {card}"
+        )
         thr = f" ({memory_threshold:.0%})" if memory_threshold is not None else ""
         model_name = task.model if task is not None else "N/A"
         extras = []
@@ -211,7 +228,9 @@ def get_host_memory_utilization(
                 for line in f:
                     parts = line.split()
                     if len(parts) >= 2:
-                        meminfo[parts[0].rstrip(':')] = int(parts[1]) * 1024  # kB → bytes
+                        meminfo[parts[0].rstrip(":")] = (
+                            int(parts[1]) * 1024
+                        )  # kB → bytes
             total = meminfo.get("MemTotal", 0)
             avail = meminfo.get("MemAvailable", 0)
 
@@ -219,7 +238,11 @@ def get_host_memory_utilization(
             return None
         val = 1.0 - avail / total
 
-        thr = f" (threshold {memory_threshold:.0%})" if memory_threshold is not None else ""
+        thr = (
+            f" (threshold {memory_threshold:.0%})"
+            if memory_threshold is not None
+            else ""
+        )
         model_name = task.model if task is not None else "N/A"
         log(f"Host memory: {val:.2%}{thr} | {model_name}")
         return val

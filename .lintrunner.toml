@@ -1,145 +1,6 @@
-[[linter]]
-code = 'FLAKE8'
-include_patterns = [
-    '**/*.py',
-]
-exclude_patterns = [
-    'tools/linter/**/*.py',
-    '.git/**',
-    'build/**',
-    'docs/**',
-    'test/xpu/skip_list_*.py',
-    'test/xpu/test_torch_xpu.py',
-    'test/regressions/test_unary.py',
-    'tools/codegen/remove_headers.py',
-    '.github/scripts/*.py',
-]
-command = [
-    'uv',
-    'run',
-    '--script',
-    'tools/linter/adapters/flake8_linter.py',
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-
-[[linter]]
-code = 'CLANGFORMAT'
-include_patterns = [
-    'src/**/*.h',
-    'src/**/*.hpp',
-    'src/**/*.cpp',
-    'test/sycl/**/*.h',
-    'test/sycl/**/*.hpp',
-    'test/sycl/**/*.cpp',
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/s3_init.py',
-    '--config-json=tools/linter/adapters/s3_init_config.json',
-    '--linter=clang-format',
-    '--dry-run={{DRYRUN}}',
-    '--output-dir=.lintbin',
-    '--output-name=clang-format',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/clangformat_linter.py',
-    '--binary=.lintbin/clang-format',
-    '--',
-    '@{{PATHSFILE}}'
-]
-is_formatter = true
-
-[[linter]]
-code = 'CLANGTIDY'
-include_patterns = [
-    'src/**/*.h',
-    'src/**/*.cpp',
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/s3_init.py',
-    '--config-json=tools/linter/adapters/s3_init_config.json',
-    '--linter=clang-tidy',
-    '--dry-run={{DRYRUN}}',
-    '--output-dir=.lintbin',
-    '--output-name=clang-tidy',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/clangtidy_linter.py',
-    '--binary=.lintbin/clang-tidy',
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'TYPEIGNORE'
-include_patterns = ['**/*.py', '**/*.pyi']
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=# type:\s*ignore([^\[]|$)',
-    '--linter-name=TYPEIGNORE',
-    '--error-name=unqualified type: ignore',
-    """--error-description=\
-        This line has an unqualified `type: ignore`; \
-        please convert it to `type: ignore[xxxx]`\
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'TYPENOSKIP'
-include_patterns = ['mypy.ini']
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=follow_imports\s*=\s*skip',
-    '--linter-name=TYPENOSKIP',
-    '--error-name=use of follow_imports = skip',
-    """--error-description=\
-        follow_imports = skip is forbidden from mypy.ini configuration as it \
-        is extremely easy to accidentally turn off type checking unintentionally.  If \
-        you need to suppress type errors, use a top level # mypy: ignore-errors.  \
-        Do not rely on automatic Any substitution; instead, manually # type: ignore \
-        at use sites or define a pyi type stub with more relaxed types. \
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'NOQA'
-include_patterns = ['**/*.py', '**/*.pyi']
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=# noqa([^:]|$)',
-    '--linter-name=NOQA',
-    '--error-name=unqualified noqa',
-    """--error-description=\
-        This line has an unqualified `noqa`; \
-        please convert it to `noqa: XXXX`\
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'GHA'
-include_patterns=['.github/workflows/**/*.yml']
-command = [
-    'uv',
-    'run',
-    '--script',
-    'tools/linter/adapters/gha_linter.py',
-    '--',
-    '@{{PATHSFILE}}'
-]
+# ============================================================================
+# General (all files)
+# ============================================================================
 
 [[linter]]
 code = 'NEWLINE'
@@ -211,6 +72,259 @@ command = [
 ]
 
 [[linter]]
+code = 'EXEC'
+include_patterns = ['**']
+exclude_patterns = [
+    '**/*.so',
+    '**/*.py',
+    '**/*.sh',
+    '**/*.bash',
+    '**/git-pre-commit',
+    '**/git-clang-format',
+    '**/gradlew',
+    'fb/**',
+    '**/fb/**',
+    '.github/workflows/*.yml',
+]
+command = [
+    'python3',
+    'tools/linter/adapters/exec_linter.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+
+[[linter]]
+code = 'COPYRIGHT'
+include_patterns = ['**']
+exclude_patterns = [
+    '.lintrunner.toml',
+]
+command = [
+    'python3',
+    'tools/linter/adapters/grep_linter.py',
+    '--pattern=Confidential and proprietary',
+    '--linter-name=COPYRIGHT',
+    '--error-name=Confidential Code',
+    """--error-description=\
+        Proprietary and confidential source code\
+        should not be contributed to PyTorch codebase\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'LINTRUNNER_VERSION'
+include_patterns = ['**']
+command = [
+    'python3',
+    'tools/linter/adapters/lintrunner_version_linter.py'
+]
+
+# This linter prevents merge conlicts in csv files in pytorch by enforcing
+# three lines of whitespace between entries such that unless people are modifying
+# the same line, merge conflicts should not arise in git or hg
+# ============================================================================
+# Python
+# ============================================================================
+
+[[linter]]
+code = 'RUFF'
+include_patterns = ['**/*.py', '**/*.pyi']
+command = [
+    'uv',
+    'run',
+    '--script',
+    'tools/linter/adapters/ruff_linter.py',
+    '--config=pyproject.toml',
+    '--show-disable',
+    '--',
+    '@{{PATHSFILE}}'
+]
+is_formatter = true
+
+# usort + ruff-format
+[[linter]]
+code = 'PYFMT'
+include_patterns = ['**/*.py', '**/*.pyi']
+command = [
+    'uv',
+    'run',
+    '--script',
+    'tools/linter/adapters/pyfmt_linter.py',
+    '--',
+    '@{{PATHSFILE}}'
+]
+is_formatter = true
+
+[[linter]]
+code = 'TYPEIGNORE'
+include_patterns = ['**/*.py', '**/*.pyi']
+command = [
+    'python3',
+    'tools/linter/adapters/grep_linter.py',
+    '--pattern=# type:\s*ignore([^\[]|$)',
+    '--linter-name=TYPEIGNORE',
+    '--error-name=unqualified type: ignore',
+    """--error-description=\
+        This line has an unqualified `type: ignore`; \
+        please convert it to `type: ignore[xxxx]`\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'NOQA'
+include_patterns = ['**/*.py', '**/*.pyi']
+command = [
+    'python3',
+    'tools/linter/adapters/grep_linter.py',
+    '--pattern=# noqa([^:]|$)',
+    '--linter-name=NOQA',
+    '--error-name=unqualified noqa',
+    """--error-description=\
+        This line has an unqualified `noqa`; \
+        please convert it to `noqa: XXXX`\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'ROOT_LOGGING'
+include_patterns = [
+    '**/*.py',
+]
+# These are not library code, but scripts in their own right, and so
+# therefore are permitted to use logging
+exclude_patterns = [
+    'tools/**',
+    'test/**',
+]
+command = [
+    'python3',
+    'tools/linter/adapters/grep_linter.py',
+    '--pattern=logging\.(debug|info|warn|warning|error|critical|log|exception)\(',
+    '--replace-pattern=s/logging\.(debug|info|warn|warning|error|critical|log|exception)\(/log.\1(/',
+    '--linter-name=ROOT_LOGGING',
+    '--error-name=use of root logger',
+    """--error-description=\
+        Do not use root logger (logging.info, etc) directly; instead \
+        define 'log = logging.getLogger(__name__)' and call, e.g., log.info().
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'TESTOWNERS'
+include_patterns = [
+    'test/**/test_*.py',
+    'test/**/*_test.py',
+]
+command = [
+    'python3',
+    'tools/linter/adapters/testowners_linter.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+
+[[linter]]
+code = 'TEST_HAS_MAIN'
+include_patterns = [
+    'test/**/test_*.py',
+]
+exclude_patterns = [
+    'test/regressions/*.py',
+]
+
+command = [
+    'uv',
+    'run',
+    '--script',
+    'tools/linter/adapters/test_has_main_linter.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+
+# ============================================================================
+# C++ / SYCL
+# ============================================================================
+
+[[linter]]
+code = 'CLANGFORMAT'
+include_patterns = [
+    'src/**/*.h',
+    'src/**/*.hpp',
+    'src/**/*.cpp',
+    'test/sycl/**/*.h',
+    'test/sycl/**/*.hpp',
+    'test/sycl/**/*.cpp',
+]
+init_command = [
+    'python3',
+    'tools/linter/adapters/s3_init.py',
+    '--config-json=tools/linter/adapters/s3_init_config.json',
+    '--linter=clang-format',
+    '--dry-run={{DRYRUN}}',
+    '--output-dir=.lintbin',
+    '--output-name=clang-format',
+]
+command = [
+    'python3',
+    'tools/linter/adapters/clangformat_linter.py',
+    '--binary=.lintbin/clang-format',
+    '--',
+    '@{{PATHSFILE}}'
+]
+is_formatter = true
+
+[[linter]]
+code = 'CLANGTIDY'
+include_patterns = [
+    'src/**/*.h',
+    'src/**/*.cpp',
+]
+init_command = [
+    'python3',
+    'tools/linter/adapters/s3_init.py',
+    '--config-json=tools/linter/adapters/s3_init_config.json',
+    '--linter=clang-tidy',
+    '--dry-run={{DRYRUN}}',
+    '--output-dir=.lintbin',
+    '--output-name=clang-tidy',
+]
+command = [
+    'python3',
+    'tools/linter/adapters/clangtidy_linter.py',
+    '--binary=.lintbin/clang-tidy',
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'INCLUDE'
+include_patterns = [
+    'src/**/*.h',
+    'src/**/*.hpp',
+    'src/**/*.cpp',
+]
+command = [
+    'python3',
+    'tools/linter/adapters/grep_linter.py',
+    '--pattern=#include "',
+    '--linter-name=INCLUDE',
+    '--error-name=quoted include',
+    '--replace-pattern=s/#include "(.*)"$/#include <\1>/',
+    """--error-description=\
+        This #include uses quotes; please convert it to #include <xxxx>\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
 code = 'C10_UNUSED'
 include_patterns = [
     '**/*.cpp',
@@ -251,27 +365,6 @@ command = [
 ]
 
 [[linter]]
-code = 'INCLUDE'
-include_patterns = [
-    'src/**/*.h',
-    'src/**/*.hpp',
-    'src/**/*.cpp',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=#include "',
-    '--linter-name=INCLUDE',
-    '--error-name=quoted include',
-    '--replace-pattern=s/#include "(.*)"$/#include <\1>/',
-    """--error-description=\
-        This #include uses quotes; please convert it to #include <xxxx>\
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
 code = 'PYBIND11_INCLUDE'
 include_patterns = [
     '**/*.cpp',
@@ -294,34 +387,6 @@ command = [
         This #include directly includes pybind11 without also including \
         #include <torch/csrc/utils/pybind.h>;  this means some important \
         specializations may not be included.\
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'ERROR_PRONE_ISINSTANCE'
-include_patterns = [
-    'src/comm/*.py',
-    'src/Aten/**/**/*.py',
-    'src/Aten/**/**/**/*.py',
-]
-
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=isinstance\([^)]+(int|float)\)',
-    '--linter-name=ERROR_PRONE_ISINSTANCE',
-    '--error-name=error prone isinstance',
-    """--error-description=\
-        This line has an isinstance call that directly refers to \
-        int or float.  This is error-prone because you may also \
-        have wanted to allow SymInt or SymFloat in your test.  \
-        To suppress this lint, use an appropriate type alias defined \
-        in torch._prims_common; use IntLike/FloatLike when you would accept \
-        both regular and symbolic numbers, Dim for ints representing \
-        dimensions, or IntWithoutSymInt/FloatWithoutSymFloat if you really \
-        meant to exclude symbolic numbers.
     """,
     '--',
     '@{{PATHSFILE}}'
@@ -355,54 +420,69 @@ command = [
     '@{{PATHSFILE}}'
 ]
 
-#[[linter]]
-#code = 'PYPIDEP'
-#include_patterns = ['.github/**']
-#exclude_patterns = [
-#    '**/*.rst',
-#    '**/*.py',
-#    '**/*.md',
-#    '**/*.diff',
-#    '**/fb/**',
-#]
-#command = [
-#    'python3',
-#    'tools/linter/adapters/grep_linter.py',
-#    """--pattern=\
-#    (pip|pip3|python -m pip|python3 -m pip|python3 -mpip|python -mpip) \
-#    install ([a-zA-Z0-9][A-Za-z0-9\\._\\-]+)([^/=<>~!]+)[A-Za-z0-9\\._\\-\\*\\+\\!]*$\
-#    """,
-#    '--linter-name=PYPIDEP',
-#    '--error-name=unpinned PyPI install',
-#    """--error-description=\
-#        This line has unpinned PyPi installs; \
-#        please pin them to a specific version: e.g. 'thepackage==1.2'\
-#    """,
-#    '--',
-#    '@{{PATHSFILE}}'
-#]
+[[linter]]
+code = 'CALL_ONCE'
+include_patterns = [
+    'src/**',
+]
+
+command = [
+    'python3',
+    'tools/linter/adapters/grep_linter.py',
+    '--pattern=std::call_once',
+    '--linter-name=CALL_ONCE',
+    '--error-name=invalid call_once',
+    '--replace-pattern=s/std::call_once/c10::call_once/',
+    """--error-description=\
+        Use of std::call_once is forbidden and should be replaced with c10::call_once\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
 
 [[linter]]
-code = 'EXEC'
-include_patterns = ['**']
-exclude_patterns = [
-    '**/*.so',
-    '**/*.py',
-    '**/*.sh',
-    '**/*.bash',
-    '**/git-pre-commit',
-    '**/git-clang-format',
-    '**/gradlew',
-    'fb/**',
-    '**/fb/**',
-    '.github/workflows/*.yml',
+code = 'ONCE_FLAG'
+include_patterns = [
+    'src/**',
 ]
 command = [
     'python3',
-    'tools/linter/adapters/exec_linter.py',
+    'tools/linter/adapters/grep_linter.py',
+    '--pattern=std::once_flag',
+    '--linter-name=ONCE_FLAG',
+    '--error-name=invalid once_flag',
+    '--replace-pattern=s/std::once_flag/c10::once_flag/',
+    """--error-description=\
+        Use of std::once_flag is forbidden and should be replaced with c10::once_flag\
+    """,
     '--',
-    '@{{PATHSFILE}}',
+    '@{{PATHSFILE}}'
 ]
+
+[[linter]]
+code = 'ATEN_CPU_GPU_AGNOSTIC'
+include_patterns = [
+    # aten source
+    "src/**/*.cpp",
+    "src/**/*.h",
+]
+
+command = [
+    'python3',
+    'tools/linter/adapters/grep_linter.py',
+    '--pattern=(^#if.*USE_ROCM.*)|(^#if.*USE_CUDA.*)',
+    '--linter-name=ATEN_CPU',
+    '--error-name=aten-cpu should be gpu agnostic',
+    """--error-description=\
+        We strongly discourage the compile-time divergence \
+        on ATen-CPU code for different GPU code. This \
+        disallows sharing the same aten-cpu shared object \
+        between different GPU backends \
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+is_formatter = true
 
 [[linter]]
 code = 'CUBINCLUDE'
@@ -460,50 +540,9 @@ command = [
     '@{{PATHSFILE}}'
 ]
 
-[[linter]]
-code = 'ROOT_LOGGING'
-include_patterns = [
-    '**/*.py',
-]
-# These are not library code, but scripts in their own right, and so
-# therefore are permitted to use logging
-exclude_patterns = [
-    'tools/**',
-    'test/**',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=logging\.(debug|info|warn|warning|error|critical|log|exception)\(',
-    '--replace-pattern=s/logging\.(debug|info|warn|warning|error|critical|log|exception)\(/log.\1(/',
-    '--linter-name=ROOT_LOGGING',
-    '--error-name=use of root logger',
-    """--error-description=\
-        Do not use root logger (logging.info, etc) directly; instead \
-        define 'log = logging.getLogger(__name__)' and call, e.g., log.info().
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'DEPLOY_DETECTION'
-include_patterns = [
-    '**/*.py',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=sys\.executable == .torch_deploy.',
-    '--replace-pattern=s/sys\.executable == .torch_deploy./torch._running_with_deploy\(\)/',
-    '--linter-name=DEPLOY_DETECTION',
-    '--error-name=properly detect deploy runner',
-    """--error-description=\
-        Do not use sys.executable to detect if running within deploy/multipy, use torch._running_with_deploy().
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
+# ============================================================================
+# CMake
+# ============================================================================
 
 [[linter]]
 code = 'CMAKE'
@@ -522,6 +561,40 @@ command = [
     '--',
     '@{{PATHSFILE}}',
 ]
+
+# ============================================================================
+# Shell
+# ============================================================================
+
+[[linter]]
+code = 'SHELLCHECK'
+include_patterns = ['**/*.sh']
+command = [
+    'uv',
+    'run',
+    '--script',
+    'tools/linter/adapters/shellcheck_linter.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+
+# shfmt -i 4 -ci
+[[linter]]
+code = 'SHFMT'
+include_patterns = ['**/*.sh']
+command = [
+    'uv',
+    'run',
+    '--script',
+    'tools/linter/adapters/shfmt_linter.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+is_formatter = true
+
+# ============================================================================
+# Config files (JSON / YAML / TOML / JS) and GitHub Actions
+# ============================================================================
 
 [[linter]]
 code = 'SYNTAX'
@@ -542,156 +615,13 @@ command = [
 ]
 
 [[linter]]
-code = 'SHELLCHECK'
-include_patterns = [
-    '**/*.sh'
-]
-exclude_patterns = [
-    '.github/scripts/lintrunner.sh',
-    '.github/scripts/rpath.sh',
-    '.github/scripts/env.sh'
-]
+code = 'GHA'
+include_patterns=['.github/workflows/**/*.yml']
 command = [
     'uv',
     'run',
     '--script',
-    'tools/linter/adapters/shellcheck_linter.py',
-    '--',
-    '@{{PATHSFILE}}',
-]
-
-#[[linter]]
-#code = 'ACTIONLINT'
-#include_patterns = [
-#    '.github/workflows/*.yml',
-#    '.github/workflows/*.yaml',
-#    # actionlint does not support composite actions yet
-#    # '.github/actions/**/*.yml',
-#    # '.github/actions/**/*.yaml',
-#]
-#exclude_patterns = [
-#    '.github/workflows/_windows_ut.yml',
-#]
-#command = [
-#    'python3',
-#    'tools/linter/adapters/actionlint_linter.py',
-#    '--binary=.lintbin/actionlint',
-#    '--',
-#    '@{{PATHSFILE}}',
-#]
-#init_command = [
-#    'python3',
-#    'tools/linter/adapters/s3_init.py',
-#    '--config-json=tools/linter/adapters/s3_init_config.json',
-#    '--linter=actionlint',
-#    '--dry-run={{DRYRUN}}',
-#    '--output-dir=.lintbin',
-#    '--output-name=actionlint',
-#]
-
-[[linter]]
-code = 'TESTOWNERS'
-include_patterns = [
-    'test/**/test_*.py',
-    'test/**/*_test.py',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/testowners_linter.py',
-    '--',
-    '@{{PATHSFILE}}',
-]
-
-[[linter]]
-code = 'TEST_HAS_MAIN'
-include_patterns = [
-    'test/**/test_*.py',
-]
-exclude_patterns = [
-    'test/regressions/*.py',
-]
-
-command = [
-    'uv',
-    'run',
-    '--script',
-    'tools/linter/adapters/test_has_main_linter.py',
-    '--',
-    '@{{PATHSFILE}}',
-]
-
-[[linter]]
-code = 'CALL_ONCE'
-include_patterns = [
-    'src/**',
-]
-
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=std::call_once',
-    '--linter-name=CALL_ONCE',
-    '--error-name=invalid call_once',
-    '--replace-pattern=s/std::call_once/c10::call_once/',
-    """--error-description=\
-        Use of std::call_once is forbidden and should be replaced with c10::call_once\
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'CONTEXT_DECORATOR'
-include_patterns = [
-    'src/**',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=@.*(dynamo_timed|preserve_rng_state|clear_frame|with_fresh_cache_if_config|use_lazy_graph_module|_disable_current_modes)',
-    '--linter-name=CONTEXT_DECORATOR',
-    '--error-name=avoid context decorator',
-    """--error-description=\
-        Do not use context manager as decorator as it breaks cProfile traces.  Use it as \
-        a context manager instead\
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'ONCE_FLAG'
-include_patterns = [
-    'src/**',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=std::once_flag',
-    '--linter-name=ONCE_FLAG',
-    '--error-name=invalid once_flag',
-    '--replace-pattern=s/std::once_flag/c10::once_flag/',
-    """--error-description=\
-        Use of std::once_flag is forbidden and should be replaced with c10::once_flag\
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'WORKFLOWSYNC'
-include_patterns = [
-    '.github/workflows/pull.yml',
-    '.github/workflows/trunk.yml',
-    '.github/workflows/periodic.yml',
-    '.github/workflows/mac-mps.yml',
-    '.github/workflows/slow.yml',
-]
-command = [
-    'uv',
-    'run',
-    '--script',
-    'tools/linter/adapters/workflow_consistency_linter.py',
+    'tools/linter/adapters/gha_linter.py',
     '--',
     '@{{PATHSFILE}}'
 ]
@@ -713,197 +643,3 @@ command = [
     '--',
     '@{{PATHSFILE}}',
 ]
-
-# usort + ruff-format
-[[linter]]
-code = 'PYFMT'
-include_patterns = [
-    'test/**/*.py',
-    'test/**/*.pyi',
-    'test/**/**/*.py',
-    'test/**/**/*.pyi',
-]
-exclude_patterns = [
-    'tools/linter/adapters/*.py',
-    'test/xpu/test_autograd_xpu.py',
-]
-command = [
-    'uv',
-    'run',
-    '--script',
-    'tools/linter/adapters/pyfmt_linter.py',
-    '--',
-    '@{{PATHSFILE}}'
-]
-is_formatter = true
-
-[[linter]]
-code = 'COPYRIGHT'
-include_patterns = ['**']
-exclude_patterns = [
-    '.lintrunner.toml',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=Confidential and proprietary',
-    '--linter-name=COPYRIGHT',
-    '--error-name=Confidential Code',
-    """--error-description=\
-        Proprietary and confidential source code\
-        should not be contributed to PyTorch codebase\
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'LINTRUNNER_VERSION'
-include_patterns = ['**']
-command = [
-    'python3',
-    'tools/linter/adapters/lintrunner_version_linter.py'
-]
-
-[[linter]]
-code = 'RUFF'
-include_patterns = ['**/*.py', '**/*.pyi']
-#exclude_patterns = [
-#    'caffe2/**',
-#    'functorch/docs/**',
-#    'functorch/notebooks/**',
-#    'torch/_inductor/fx_passes/serialized_patterns/**',
-#    'torch/_inductor/autoheuristic/artifacts/**',
-#    'scripts/**',
-#    'third_party/**',
-#    'fb/**',
-#    '**/fb/**',
-#]
-command = [
-    'uv',
-    'run',
-    '--script',
-    'tools/linter/adapters/ruff_linter.py',
-    '--config=pyproject.toml',
-    '--show-disable',
-    '--',
-    '@{{PATHSFILE}}'
-]
-is_formatter = true
-
-# This linter prevents merge conlicts in csv files in pytorch by enforcing
-# three lines of whitespace between entries such that unless people are modifying
-# the same line, merge conflicts should not arise in git or hg
-[[linter]]
-code = 'MERGE_CONFLICTLESS_CSV'
-include_patterns = ['**/*.csv']
-command = [
-    'python3',
-    'tools/linter/adapters/no_merge_conflict_csv_linter.py',
-    '--',
-    '@{{PATHSFILE}}'
-]
-is_formatter = true
-
-
-[[linter]]
-code = 'META_NO_CREATE_UNBACKED'
-include_patterns = [
-  "**/*.py"
-]
-exclude_patterns = [
-  # Port of upstream test/dynamo/test_misc.py which legitimately calls
-  # ShapeEnv.create_unbacked_* to test ShapeEnv equality.
-  "test/xpu/dynamo/test_misc_xpu.py",
-]
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=create_unbacked',
-    '--linter-name=META_NO_CREATE_UNBACKED',
-    '--error-name=no create_unbacked in meta registrations',
-    """--error-description=\
-        Data-dependent operators should have their meta \
-        registration in torch/_subclasses/fake_impls.py, \
-        not torch/_meta_registrations.py
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'ATEN_CPU_GPU_AGNOSTIC'
-include_patterns = [
-    # aten source
-    "src/**/*.cpp",
-    "src/**/*.h",
-]
-
-command = [
-    'python3',
-    'tools/linter/adapters/grep_linter.py',
-    '--pattern=(^#if.*USE_ROCM.*)|(^#if.*USE_CUDA.*)',
-    '--linter-name=ATEN_CPU',
-    '--error-name=aten-cpu should be gpu agnostic',
-    """--error-description=\
-        We strongly discourage the compile-time divergence \
-        on ATen-CPU code for different GPU code. This \
-        disallows sharing the same aten-cpu shared object \
-        between different GPU backends \
-    """,
-    '--',
-    '@{{PATHSFILE}}'
-]
-is_formatter = true
-
-# `set_linter` detects occurrences of built-in `set` in areas of Python code like
-# _inductor where the instability of iteration in `set` has proven a problem.
-
-[[linter]]
-code = 'SET_LINTER'
-command = [
-    'python3',
-    'tools/linter/adapters/set_linter.py',
-    '--lintrunner',
-    '--',
-    '@{{PATHSFILE}}'
-]
-include_patterns = [
-    'src/comm/*.py',
-    'src/Aten/**/**/*.py',
-    'src/Aten/**/**/**/*.py',
-
-]
-is_formatter = true
-
-# `docstring_linter` reports on long Python classes, methods, and functions
-# whose definitions have very small docstrings or none at all.
-#
-[[linter]]
-code = 'DOCSTRING_LINTER'
-command = [
-    'python3',
-    'tools/linter/adapters/docstring_linter.py',
-    '--lintrunner',
-    '--',
-    '@{{PATHSFILE}}'
-]
-include_patterns = [
-    'src/comm/*.py',
-    'src/Aten/**/**/*.py',
-    'src/Aten/**/**/**/*.py',
-]
-is_formatter = false
-
-# `import_linter` reports on importing disallowed third party libraries.
-[[linter]]
-code = 'IMPORT_LINTER'
-command = [
-    'python3',
-    'tools/linter/adapters/import_linter.py',
-    '--',
-    '@{{PATHSFILE}}'
-]
-include_patterns = [
-]
-is_formatter = false

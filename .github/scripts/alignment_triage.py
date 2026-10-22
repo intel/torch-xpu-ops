@@ -24,8 +24,7 @@ DRY_RUN_UNIT_MARKER = "<!-- alignment-dry-run-unit: {run_id}:{unit_id} -->"
 # Provenance is visible text, not an HTML comment: a triager reading a draft
 # needs the run that produced it in order to re-read the underlying evidence.
 PROVENANCE_LINE = (
-    "<sub>alignment scan `{scan_date}`, "
-    "[workflow run `{run_id}`]({run_url})</sub>"
+    "<sub>alignment scan `{scan_date}`, [workflow run `{run_id}`]({run_url})</sub>"
 )
 FILED_MARKER = "<!-- alignment-unit-filed: #{number} -->"
 FILED_MARKER_RE = re.compile(r"<!-- alignment-unit-filed: #(\d+) -->")
@@ -67,7 +66,12 @@ def list_comments(repo: str, issue: int) -> list[dict]:
     page = 1
     while True:
         payload = json.loads(
-            gh(["api", f"repos/{repo}/issues/{issue}/comments?per_page=100&page={page}"])
+            gh(
+                [
+                    "api",
+                    f"repos/{repo}/issues/{issue}/comments?per_page=100&page={page}",
+                ]
+            )
         )
         comments.extend(payload)
         if len(payload) < 100:
@@ -94,10 +98,7 @@ def render_draft(
     scan_day = date.fromisoformat(scan_date)
     title_text = title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()
     title_text = re.sub(r"^(?:\[\d{2}(?:\d{2})?-\d{2}-\d{2}\]\s*)+", "", title_text)
-    dated_title = (
-        f"{ISSUE_TITLE_PREFIX} [{scan_day.strftime('%y-%m-%d')}] "
-        f"{title_text}"
-    )
+    dated_title = f"{ISSUE_TITLE_PREFIX} [{scan_day.strftime('%y-%m-%d')}] {title_text}"
     return (
         f"{marker}\n"
         f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date, run_url=run_url)}\n"
@@ -108,7 +109,14 @@ def render_draft(
 def post_comment(repo: str, issue: int, body: str) -> int:
     created = json.loads(
         gh(
-            ["api", "-X", "POST", f"repos/{repo}/issues/{issue}/comments", "--input", "-"],
+            [
+                "api",
+                "-X",
+                "POST",
+                f"repos/{repo}/issues/{issue}/comments",
+                "--input",
+                "-",
+            ],
             stdin=json.dumps({"body": body}),
         )
     )
@@ -169,7 +177,9 @@ def parse_draft(body: str, unit_id: str) -> tuple[str, str]:
         fail(f"The draft for `{unit_id}` has no `### <title>` line.")
     title = title_match.group(1).strip()
     if not title.startswith(ISSUE_TITLE_PREFIX):
-        fail(f"The draft title for `{unit_id}` does not start with `{ISSUE_TITLE_PREFIX}`.")
+        fail(
+            f"The draft title for `{unit_id}` does not start with `{ISSUE_TITLE_PREFIX}`."
+        )
     issue_body = body[title_match.end() :].strip()
     if not issue_body:
         fail(f"The draft for `{unit_id}` has an empty body.")
@@ -221,7 +231,9 @@ def find_published_issue(repo: str, unit_id: str) -> dict | None:
 
 def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
     if not title.startswith(ISSUE_TITLE_PREFIX):
-        fail(f"Refusing to file `{title}`: the title must start with `{ISSUE_TITLE_PREFIX}`.")
+        fail(
+            f"Refusing to file `{title}`: the title must start with `{ISSUE_TITLE_PREFIX}`."
+        )
     if not UNIT_ID_RE.fullmatch(unit_id):
         fail(f"Refusing to file an invalid unit id: `{unit_id}`.")
     existing = find_published_issue(repo, unit_id)
@@ -231,12 +243,25 @@ def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
             return issue_url
         if not re.search(rf"{re.escape(issue_url)}(?![0-9])", body):
             body = f"{body.rstrip()}\n\nPreviously filed as {issue_url} (closed)."
-    published_body = f"{PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)}\n{body.rstrip()}\n"
-    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as handle:
+    published_body = (
+        f"{PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)}\n{body.rstrip()}\n"
+    )
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".md", delete=False, encoding="utf-8"
+    ) as handle:
         handle.write(published_body)
         body_file = handle.name
     try:
-        command = ["issue", "create", "--repo", repo, "--title", title, "--body-file", body_file]
+        command = [
+            "issue",
+            "create",
+            "--repo",
+            repo,
+            "--title",
+            title,
+            "--body-file",
+            body_file,
+        ]
         for label in ISSUE_LABELS:
             command += ["--label", label]
         return gh(command).strip().splitlines()[-1].strip()
@@ -246,6 +271,13 @@ def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
 
 def update_comment(repo: str, comment_id: int, body: str) -> None:
     gh(
-        ["api", "-X", "PATCH", f"repos/{repo}/issues/comments/{comment_id}", "--input", "-"],
+        [
+            "api",
+            "-X",
+            "PATCH",
+            f"repos/{repo}/issues/comments/{comment_id}",
+            "--input",
+            "-",
+        ],
         stdin=json.dumps({"body": body}),
     )

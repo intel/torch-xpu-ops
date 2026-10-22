@@ -73,26 +73,31 @@ def parse_files(section):
 def split_files(files):
     distributed = [f for f in files if f.startswith(DISTRIBUTED_PREFIX)]
     inductor = [f for f in files if f.startswith(INDUCTOR_PREFIX)]
-    default = [f for f in files
-               if not f.startswith((DISTRIBUTED_PREFIX, INDUCTOR_PREFIX))]
+    default = [
+        f for f in files if not f.startswith((DISTRIBUTED_PREFIX, INDUCTOR_PREFIX))
+    ]
     return distributed, inductor, default
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", default="intel/torch-xpu-ops",
-                        help="owner/repo of the tracking issue")
-    parser.add_argument("--issue", type=int, default=5205,
-                        help="tracking issue number")
-    parser.add_argument("--category",
-                        choices=["distributed", "inductor", "default", "all"],
-                        default="all", help="which bucket of files to print")
-    parser.add_argument("--distributed-output",
-                        help="write distributed file list to this path")
-    parser.add_argument("--inductor-output",
-                        help="write inductor file list to this path")
-    parser.add_argument("--default-output",
-                        help="write default file list to this path")
+    parser.add_argument(
+        "--repo", default="intel/torch-xpu-ops", help="owner/repo of the tracking issue"
+    )
+    parser.add_argument("--issue", type=int, default=5205, help="tracking issue number")
+    parser.add_argument(
+        "--category",
+        choices=["distributed", "inductor", "default", "all"],
+        default="all",
+        help="which bucket of files to print",
+    )
+    parser.add_argument(
+        "--distributed-output", help="write distributed file list to this path"
+    )
+    parser.add_argument(
+        "--inductor-output", help="write inductor file list to this path"
+    )
+    parser.add_argument("--default-output", help="write default file list to this path")
     args = parser.parse_args()
 
     owner, _, repo = args.repo.partition("/")
@@ -121,11 +126,13 @@ def main():
         with open(args.default_output, "w") as fh:
             fh.write("\n".join(default) + "\n" if default else "")
 
-    print(f"Done test files: {len(files)} "
-          f"(distributed: {len(distributed)}, inductor: {len(inductor)}, "
-          f"default: {len(default)}; "
-          f"excluded {len(done_files) - len(files)} Not Applicable)",
-          file=sys.stderr)
+    print(
+        f"Done test files: {len(files)} "
+        f"(distributed: {len(distributed)}, inductor: {len(inductor)}, "
+        f"default: {len(default)}; "
+        f"excluded {len(done_files) - len(files)} Not Applicable)",
+        file=sys.stderr,
+    )
 
     if args.category == "distributed":
         selected = distributed

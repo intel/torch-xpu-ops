@@ -208,7 +208,6 @@ def trigger_body(comment, issues):
     )
 
 
-
 def self_test():
     rerun = (
         "Commit [`abc`](https://hud.pytorch.org/pytorch/pytorch/commit/abc) - run\n"

@@ -7,13 +7,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
-SCRIPT_NAME="$(basename "$0")"
-readonly SCRIPT_NAME
 
 # Constants
 readonly RED='🔴'
 readonly GREEN='🟢'
-readonly BLUE='🔵'
 readonly YELLOW='🟡'
 
 # Global state
@@ -81,7 +78,7 @@ generate_accuracy_summary() {
     local results_dir="$1"
     local check_file="$SCRIPT_DIR/../ci_expected_accuracy/check_expected.py"
 
-    cat > accuracy.summary.html << EOF
+    cat >accuracy.summary.html <<EOF
 
 #### accuracy
 
@@ -92,7 +89,7 @@ EOF
     while IFS= read -r csv_file; do
         process_csv_file "$check_file" "$csv_file"
     done < <(find "$results_dir" -name "*-accuracy.csv" | sort)
-    echo -e "\n\n" >> accuracy.summary.html
+    echo -e "\n\n" >>accuracy.summary.html
 }
 
 process_csv_file() {
@@ -111,11 +108,11 @@ process_csv_file() {
         --mode "$mode" \
         --dtype "$dtype" \
         --issue_file /tmp/tmp-known-issue.json \
-        --csv_file "$csv_file" > "$tmp_file"
+        --csv_file "$csv_file" >"$tmp_file"
 
     local result
     result=$(parse_test_results "$tmp_file")
-    echo "| $category | $result |" >> accuracy.summary.html
+    echo "| $category | $result |" >>accuracy.summary.html
 }
 
 parse_test_results() {
@@ -149,7 +146,7 @@ generate_accuracy_details() {
     local results_dir="$1"
 
     # Create table headers
-    cat > accuracy.details.html << EOF
+    cat >accuracy.details.html <<EOF
 
 #### accuracy
 
@@ -176,8 +173,8 @@ EOF
         process_suite "$results_dir" "$suite"
     done < <(find "$results_dir" -name "*-accuracy.csv" -exec awk -F, 'NR==2{print $3; exit}' {} \; | sort | uniq)
 
-    echo -e "</tbody></table>\n\n" >> accuracy.details.html
-    echo -e "</tbody></table>\n\n" >> accuracy.regression.html
+    echo -e "</tbody></table>\n\n" >>accuracy.details.html
+    echo -e "</tbody></table>\n\n" >>accuracy.regression.html
 
     # Clear regression file if no issues
     if [[ $accuracy_regression -eq 0 ]]; then
@@ -195,7 +192,7 @@ process_suite() {
 
 get_models_for_suite() {
     local results_dir="$1" suite="$2"
-    find "$results_dir" -name "*-${suite}-*-accuracy.csv" -exec cat {} \; | \
+    find "$results_dir" -name "*-${suite}-*-accuracy.csv" -exec cat {} \; |
         tr -d '\r' | grep "^xpu," | cut -d, -f6 | sort | uniq
 }
 
@@ -215,12 +212,12 @@ process_model() {
     row=$(generate_html_row "$suite" "$model")
 
     if [[ "$row" =~ ${RED}|${GREEN}|${YELLOW} ]]; then
-        echo "$row" | tee -a accuracy.details.html >> accuracy.regression.html
+        echo "$row" | tee -a accuracy.details.html >>accuracy.regression.html
         accuracy_regression=1
-        echo "acc 1" >> /tmp/tmp-acc-result.txt
+        echo "acc 1" >>/tmp/tmp-acc-result.txt
     else
-        echo "$row" >> accuracy.details.html
-        echo "acc 0" >> /tmp/tmp-acc-result.txt
+        echo "$row" >>accuracy.details.html
+        echo "acc 0" >>/tmp/tmp-acc-result.txt
     fi
 }
 
@@ -269,7 +266,7 @@ determine_color() {
 
 generate_html_row() {
     local suite="$1" model="$2"
-    cat << EOF
+    cat <<EOF
 <tr>
     <td>$suite</td>
     <td>$model</td>
@@ -330,7 +327,7 @@ update_best_performance() {
         --pytorch "${TORCH_BRANCH_ID:-}/${TORCH_COMMIT_ID:-}" \
         --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-${GITHUB_SHA:-}}" || true
 
-    echo "performance_regression=$performance_regression" >> "$output_file"
+    echo "performance_regression=$performance_regression" >>"$output_file"
 }
 
 # Report Generation
@@ -342,13 +339,13 @@ generate_report() {
         generate_highlights
         generate_summary
         generate_details
-    } > "$summary_file"
+    } >"$summary_file"
 
     echo "Report generated: $summary_file"
 }
 
 generate_header() {
-    cat << EOF
+    cat <<EOF
 
 #### Note:
 🔴: Failed cases needing investigation
@@ -361,12 +358,12 @@ EOF
 }
 
 generate_highlights() {
-    if (( accuracy_regression + performance_regression > 0 )); then
+    if ((accuracy_regression + performance_regression > 0)); then
         echo -e "### 🎯 Highlight regressions\n"
-        if [[ $accuracy_regression -gt 0 ]];then
+        if [[ $accuracy_regression -gt 0 ]]; then
             cat accuracy.regression.html
         fi
-        if [[ $performance_regression -gt 0 ]];then
+        if [[ $performance_regression -gt 0 ]]; then
             cat performance.regression.html
         fi
     else
@@ -384,7 +381,7 @@ generate_summary() {
 }
 
 generate_details() {
-    cat << EOF
+    cat <<EOF
 ### 📖 Details
 
 <details>

@@ -36,7 +36,7 @@ if ret == 0:
         value_to_keys[value].append(key)
     dist_group = []
     for key, value in value_to_keys.items():
-        if key == ','.join(value_to_keys[key]):
+        if key == ",".join(value_to_keys[key]):
             dist_group.append(key)
     for group in dist_group:
         cpu_aff = []
@@ -44,7 +44,7 @@ if ret == 0:
             if cpu_dict[i] not in cpu_aff:
                 cpu_aff.append(cpu_dict[i])
         if len(cpu_aff) == 1:
-            gpu_cpu_dict[group] = ','.join(cpu_aff)
+            gpu_cpu_dict[group] = ",".join(cpu_aff)
     if len(gpu_cpu_dict) == 0:
         print("No Xelink detected")
         sys.exit(255)
@@ -53,9 +53,11 @@ if ret == 0:
         start_cpu = int(value.split("-")[0])
         end_cpu = int(value.split("-")[1])
         threads = end_cpu - start_cpu + 1
-        pytest_extra_args = pytest_extra_args + \
-            ' --tx popen//env:ZE_AFFINITY_MASK=%s//env:OMP_NUM_THREADS=%d//python="numactl -l -C %s python"'\
-            %(key, threads, value)
+        pytest_extra_args = (
+            pytest_extra_args
+            + ' --tx popen//env:ZE_AFFINITY_MASK=%s//env:OMP_NUM_THREADS=%d//python="numactl -l -C %s python"'
+            % (key, threads, value)
+        )
     print(pytest_extra_args)
 
 else:
