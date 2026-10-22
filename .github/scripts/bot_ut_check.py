@@ -57,7 +57,7 @@ def download_artifacts(repo, run_id, download_dir):
 
     Returns (has_new_failures_artifact, new_failures_dir) where new_failures_dir
     is the directory that holds the authoritative UT-Check artifacts. We track
-    it explicitly because the Inductor-XPU-UT-Data artifact also bundles a copy
+    it explicitly because the UT-Data artifact also bundles a copy
     of the failure list; parsing both would double-count failures.
     """
     run(f"mkdir -p {download_dir}", check=False)
@@ -72,13 +72,13 @@ def download_artifacts(repo, run_id, download_dir):
         check=False,
     )
     has_new_failures_artifact = result.returncode == 0 and any(
-        Path(new_failures_dir).rglob("new_ut_failure_list.csv")
+        Path(new_failures_dir).rglob("new_failures.csv")
     )
 
     # Download UT data artifacts (for passed/skipped logs and category totals).
     subprocess.run(
         f"gh run download {run_id} --repo {repo} --dir {download_dir} "
-        f'--pattern "Inductor-XPU-UT-Data-*"',
+        f'--pattern "UT-Data-*"',
         shell=True,
         capture_output=True,
         text=True,
@@ -89,7 +89,7 @@ def download_artifacts(repo, run_id, download_dir):
 
 
 def parse_new_failures(new_failures_dir):
-    """Parse new_ut_failure_list.csv from the UT-Check-* artifacts.
+    """Parse new_failures.csv from the UT-Check-* artifacts.
 
     These artifacts are the authoritative source for new failures. They are
     produced by the CI check jobs, which filter all failures against the known
@@ -97,13 +97,13 @@ def parse_new_failures(new_failures_dir):
         | Category | Class name | Test name | Status | Message | Source |
 
     Only the UT-Check directory is scanned (not the whole download dir): the
-    Inductor-XPU-UT-Data artifact bundles the unfiltered failure list, and
+    UT-Data artifact bundles the unfiltered failure list, and
     including it would report known failures as new. Results are de-duplicated
     by (category, class, test) as a further safety net against re-run attempts.
     """
     failures = []
     seen = set()
-    for csv_file in Path(new_failures_dir).rglob("new_ut_failure_list.csv"):
+    for csv_file in Path(new_failures_dir).rglob("new_failures.csv"):
         with open(csv_file) as f:
             for line in f:
                 line = line.strip()

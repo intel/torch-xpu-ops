@@ -33,8 +33,7 @@ jobs:
         id: ut
         uses: ./.github/actions/ut-report
         with:
-          check_pattern: UT-Check-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
-          report_artifact: UT-Report-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          category: ${{ inputs.category }}
       - name: Comment on PR for new failures
         if: >-
           ${{ ! cancelled() && github.event_name == 'pull_request'

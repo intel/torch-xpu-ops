@@ -230,7 +230,7 @@ jobs:
       - name: Download target UT logs
         uses: actions/download-artifact@v8
         with:
-          pattern: 'Inductor-XPU-UT-Data-*-target'
+          pattern: 'UT-Data-*-target-[0-9]*'
           path: ${{ github.workspace }}/results/target/ut
 
       - name: Download baseline E2E logs
@@ -242,7 +242,7 @@ jobs:
       - name: Download baseline UT logs
         uses: actions/download-artifact@v8
         with:
-          pattern: 'Inductor-XPU-UT-Data-*-baseline'
+          pattern: 'UT-Data-*-baseline-[0-9]*'
           path: ${{ github.workspace }}/results/baseline/ut
 
       - name: Ensure result directories exist

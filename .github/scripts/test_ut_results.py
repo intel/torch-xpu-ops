@@ -354,28 +354,37 @@ def test_enrich_failures_joins_a_node_id_to_its_junit_row(tmp_path):
         "| failed | boom | XML |"]
 
 
-def seed_artifact(tmp_path, ut="op_regression"):
-    artifact = tmp_path / "artifacts" / f"Inductor-XPU-UT-Data-sha-{ut}-1-1"
-    artifact.mkdir(parents=True)
+def seed_artifact(tmp_path, ut="op_regression", attempt=1, cases=None):
+    artifact = tmp_path / "artifacts" / f"UT-Data-linux-{ut}-{attempt}"
+    (artifact / "junit").mkdir(parents=True)
     (artifact / "ut_meta.env").write_text(
         f"UT_NAME={ut}\nUT_RUNNER=bmg-test\nUT_CATEGORY=\n", encoding="utf-8")
-    write_xml(artifact / f"{ut}.xml", [PASS] * 352 + [FAIL], tests=353, failures=1)
+    if cases is None:
+        cases = [PASS.replace("test_ok", f"test_ok_{i}") for i in range(352)] + [FAIL]
+    write_xml(artifact / "junit" / f"{ut}.xml", cases)
     return tmp_path / "artifacts"
+
+
+def run_check(tmp_path, artifacts):
+    return ut_results.check_run(artifacts, tmp_path / "none", tmp_path / "work",
+                                tmp_path / "out", "main")
 
 
 def test_check_separates_new_from_known_and_fails_on_new(tmp_path, monkeypatch):
     artifacts = seed_artifact(tmp_path)
     monkeypatch.setattr(ut_results.KnownIssues, "_fetch", lambda self, *a: "")
 
-    work = tmp_path / "work"
-    code = ut_results.check_run(artifacts, tmp_path / "none", work, "main")
+    code = run_check(tmp_path, artifacts)
 
     assert code == 1
-    job = work / "op_regression"
-    assert (job / "new_failure_list.txt").read_text() == "op_regression,TestFoo,test_bad\n"
-    assert (job / "new_ut_failure_list.csv").read_text() == \
+    job = tmp_path / "out" / "op_regression"
+    assert (job / "new_failures.txt").read_text() == "op_regression,TestFoo,test_bad\n"
+    assert (job / "new_failures.csv").read_text() == \
         "| op_regression | TestFoo | test_bad | failed | RuntimeError: boom | XML |\n"
-    assert (job / "known_ut_failure_list.csv").read_text() == ""
+    assert (job / "known_failures.csv").read_text() == ""
+    assert sorted(p.name for p in (job / "cases").iterdir()) == [
+        "all_cases_op_regression.log", "category_op_regression.log",
+        "failures_op_regression.log", "passed_op_regression.log", "ut_failure_list.csv"]
     verdict = json.loads((job / "verdict.json").read_text())
     assert verdict["ut_job"] == "op_regression"
     assert verdict["os"] == "linux"
@@ -389,63 +398,89 @@ def test_check_passes_when_the_failure_is_a_known_one(tmp_path, monkeypatch):
     artifacts = seed_artifact(tmp_path)
     monkeypatch.setattr(
         ut_results.KnownIssues, "_fetch",
-        lambda self, *a: "Issue #1: x\nCases:\nop_regression,TestFoo,test_bad\n",
+        lambda self, *a: "" if a[0] == "static"
+        else "Issue #1: x\nCases:\nop_regression,TestFoo,test_bad\n",
     )
 
-    work = tmp_path / "work"
-    code = ut_results.check_run(artifacts, tmp_path / "none", work, "main")
+    code = run_check(tmp_path, artifacts)
 
     assert code == 0
-    job = work / "op_regression"
-    assert (job / "new_ut_failure_list.csv").read_text() == ""
-    assert (job / "known_ut_failure_list.csv").read_text() == \
-        "| op_regression | TestFoo | test_bad | failed | RuntimeError: boom | XML |\n"
+    job = tmp_path / "out" / "op_regression"
+    assert (job / "new_failures.csv").read_text() == ""
+    assert (job / "known_failures.csv").read_text() == (
+        "| op_regression | TestFoo | test_bad | failed | RuntimeError: boom | XML "
+        "| [#1](https://github.com/intel/torch-xpu-ops/issues/1) |\n")
     assert json.loads((job / "verdict.json").read_text())["categories"] == [
         {"category": "op_regression", "total": 353, "known": 1, "new": 0,
          "new_passes": 0, "passed": True}]
 
 
+def test_check_merges_attempts_passed_over_failed_over_skipped(tmp_path, monkeypatch):
+    passes = [PASS.replace("test_ok", f"test_ok_{i}") for i in range(351)]
+    flaky = FAIL.replace("test_bad", "test_flaky")
+    seed_artifact(tmp_path, attempt=1, cases=passes + [FAIL, flaky, SKIP])
+    artifacts = seed_artifact(tmp_path, attempt=2, cases=passes + [
+        FAIL.replace("<failure", "<skipped").replace("</failure>", "</skipped>"),
+        flaky.replace('<failure message="boom">RuntimeError: boom\n  at line 1</failure>', ""),
+        SKIP])
+    monkeypatch.setattr(ut_results.KnownIssues, "_fetch", lambda self, *a: "")
+
+    code = run_check(tmp_path, artifacts)
+
+    assert code == 1
+    job = tmp_path / "out" / "op_regression"
+    assert (job / "new_failures.txt").read_text() == "op_regression,TestFoo,test_bad\n"
+    assert json.loads((job / "verdict.json").read_text())["categories"] == [
+        {"category": "op_regression", "total": 354, "known": 0, "new": 1,
+         "new_passes": 0, "passed": False}]
+
+
 def test_report_has_a_summary_and_three_folded_sections(tmp_path):
-    check = tmp_path / "checks" / "UT-Check-sha-op_ut-1-1" / "op_ut"
+    check = tmp_path / "checks" / "UT-Check-linux-op_ut-1" / "op_ut"
     check.mkdir(parents=True)
     (check / "verdict.json").write_text(json.dumps({
         "ut_job": "op_ut", "runner": "bmg-test", "os": "linux",
         "categories": [{"category": "op_ut", "total": 100, "known": 2, "new": 1,
                         "new_passes": 3, "passed": False}],
     }), encoding="utf-8")
-    ut_results.write_lines(check / "new_ut_failure_list.csv", [
+    ut_results.write_lines(check / "new_failures.csv", [
         "| op_ut | TestFoo | test_new | failed | boom | XML |"])
-    ut_results.write_lines(check / "known_ut_failure_list.csv", [
-        "| op_ut | TestFoo | test_old | failed | bang | XML |",
-        "| op_ut | TestFoo | test_older | failed | bang | XML |"])
-    ut_results.write_lines(check / "new_pass_list.csv", [
-        "| op_ut | TestFoo | test_now_ok |"])
+    ut_results.write_lines(check / "known_failures.csv", [
+        "| op_ut | TestFoo | test_old | failed | bang | XML | [#7](u7) |",
+        "| op_ut | TestFoo | test_older | failed | bang | XML | [#8](u8) |"])
+    ut_results.write_lines(check / "new_passes.csv", [
+        "| op_ut | TestFoo | test_now_ok | [#9](u9) |"])
 
     out = tmp_path / "report" / "ut_report.md"
-    assert ut_results.render_report(tmp_path / "checks", out) == 0
+    assert ut_results.render_report(tmp_path / "checks", out.parent) == 0
 
     report = out.read_text()
     summary, _, folded = report.partition("<details>")
-    assert ("| OS | UT job | Category | Total cases | Known failures | New failures | "
+    assert ("| OS | Category | Total cases | Known failures | New failures | "
             "New passes | Result |") in summary
-    assert "| linux | op_ut | op_ut | 100 | 2 | 1 | 3 | ❌ failed |" in summary
+    assert "| linux | op_ut | 100 | 2 | 1 | 3 | ❌ failed |" in summary
     assert "test_new" not in summary and "test_old" not in summary
     assert "<summary>New failures (1)</summary>" in folded
     assert "<summary>Known failures (2)</summary>" in folded
     assert "<summary>New passes (1)</summary>" in folded
+    assert "| Category | Class name | Test name | Status | Message |\n" in folded
+    assert "| op_ut | TestFoo | test_new | failed | boom |\n" in folded
+    assert "| Category | Class name | Test name | Status | Message | Issue |\n" in folded
+    assert "| op_ut | TestFoo | test_old | failed | bang | [#7](u7) |\n" in folded
     _, _, passes = folded.partition("<summary>New passes (1)</summary>")
-    assert "| Category | Class name | Test name |\n| --- | --- | --- |" in passes
+    assert "| Category | Class name | Test name | Issue |\n| --- | --- | --- | --- |" in passes
+    assert "| op_ut | TestFoo | test_now_ok | [#9](u9) |" in passes
     assert folded.index("test_new") < folded.index("test_old") < folded.index("test_now_ok")
     assert (out.parent / "new_failures.csv").read_text() == \
         "| op_ut | TestFoo | test_new | failed | boom | XML |\n"
     assert (out.parent / "new_passes.csv").read_text() == \
-        "| op_ut | TestFoo | test_now_ok |\n"
+        "| op_ut | TestFoo | test_now_ok | [#9](u9) |\n"
 
 
 def test_report_merges_the_oses_and_groups_them(tmp_path):
     for name, job, os_name in (("win", "op_extended", "windows"),
                                ("lin", "op_ut", "linux")):
-        check = tmp_path / "checks" / f"UT-Check-sha-{name}-1-1" / job
+        check = tmp_path / "checks" / f"UT-Check-{os_name}-{job}-1" / job
         check.mkdir(parents=True)
         (check / "verdict.json").write_text(json.dumps({
             "ut_job": job, "runner": "r", "os": os_name,
@@ -454,15 +489,35 @@ def test_report_merges_the_oses_and_groups_them(tmp_path):
         }), encoding="utf-8")
 
     out = tmp_path / "report" / "ut_report.md"
-    assert ut_results.render_report(tmp_path / "checks", out) == 0
+    assert ut_results.render_report(tmp_path / "checks", out.parent) == 0
 
     summary = out.read_text().partition("<details>")[0]
     assert summary.index("| linux | op_ut |") < summary.index("| windows | op_extended |")
+
+
+def test_report_shows_one_row_per_job_from_the_latest_attempt(tmp_path):
+    for attempt, new, passed in ((1, 2, False), (2, 0, True)):
+        check = tmp_path / "checks" / f"UT-Check-linux-op_ut-{attempt}" / "op_ut"
+        check.mkdir(parents=True)
+        (check / "verdict.json").write_text(json.dumps({
+            "ut_job": "op_ut", "runner": "r", "os": "linux", "attempt": attempt,
+            "categories": [{"category": "op_ut", "total": 9, "known": 1, "new": new,
+                            "new_passes": 0, "passed": passed}],
+        }), encoding="utf-8")
+        ut_results.write_lines(check / "new_failures.csv", [
+            "| op_ut | TestFoo | test_bad | failed | boom | XML |"] * new)
+
+    out = tmp_path / "report" / "ut_report.md"
+    assert ut_results.render_report(tmp_path / "checks", out.parent) == 0
+
+    summary = out.read_text().partition("<details>")[0]
+    assert summary.count("| linux | op_ut |") == 1
+    assert "| linux | op_ut | 9 | 1 | 0 | 0 | ✅ passed |" in summary
+    assert (out.parent / "new_failures.csv").read_text() == ""
 
 
 def test_check_fails_when_no_artifact_names_a_ut_job(tmp_path, monkeypatch):
     (tmp_path / "artifacts" / "junk").mkdir(parents=True)
     monkeypatch.setattr(ut_results.KnownIssues, "_fetch", lambda self, *a: "")
 
-    assert ut_results.check_run(
-        tmp_path / "artifacts", tmp_path / "none", tmp_path / "work", "main") == 1
+    assert run_check(tmp_path, tmp_path / "artifacts") == 1

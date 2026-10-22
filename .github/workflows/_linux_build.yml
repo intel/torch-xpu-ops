@@ -94,11 +94,11 @@ jobs:
           # only applies them on the matching runner (avoids masking failures elsewhere).
           bash torch-xpu-ops/.github/scripts/ut_known_issues.sh open "" "bmg-test" "extra-only" > issues_snapshot_bmg.log
           bash torch-xpu-ops/.github/scripts/ut_known_issues.sh open "dpclang" "" "extra-only" > issues_snapshot_dpclang.log
-      - name: Upload skipped issues snapshot
+      - name: Upload known issues snapshot
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
+          name: UT-Known-Issues${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: |
             known_issue_static.log
             issues_snapshot.log

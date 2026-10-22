@@ -214,8 +214,8 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           python run_test_with_skip_mtl.py
 
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy op_extended.xml %GITHUB_WORKSPACE%\ut_log /Y
+          if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
+          copy op_extended.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run CPP Extensions AOT SYCL UT
         if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
         shell: cmd
@@ -230,8 +230,8 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python -m pytest test_cpp_extensions_aot_xpu.py -v --junit-xml=test_cpp_extensions_aot_xpu.xml
 
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
+          if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
+          copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run Test XPU UT
         if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
         shell: cmd
@@ -243,8 +243,8 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_win_with_skip_mtl.py
 
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
+          if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
+          copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run OP UT
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         shell: cmd
@@ -257,8 +257,8 @@ jobs:
           set PYTEST_ADDOPTS=-v --timeout 600 --timeout_method=thread --max-worker-restart 1000000 -n 1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_with_windows_nightly.py
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
+          if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
+          for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\junit\" >nul 2>&1 || echo "File move completed"
       - name: Record UT job metadata
         if: ${{ ! cancelled() }}
         shell: cmd
@@ -269,11 +269,11 @@ jobs:
           echo UT_NAME=${{ inputs.ut }}> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
           echo UT_RUNNER=${{ inputs.runner }}>> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
           echo UT_CATEGORY=${{ inputs.category }}>> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
-      - name: Upload Inductor XPU UT Log
+      - name: Upload UT data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-windows-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: UT-Data-windows-${{ inputs.ut }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}-${{ github.run_attempt }}
           path: "${{ github.workspace }}/ut_log"
           if-no-files-found: ignore
 
@@ -295,13 +295,13 @@ jobs:
         uses: ./.github/actions/ut-check
         with:
           platform: windows
+          ut: ${{ inputs.ut }}
+          category: ${{ inputs.category }}
           pytorch: ${{ inputs.pytorch }}
-          artifact_pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-windows-${{ inputs.ut }}-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
-          check_artifact: UT-Check-${{ github.event.pull_request.number || github.sha }}-windows-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
       - name: Fail on new failures
         if: ${{ steps.ut.outputs.passed != 'true' }}
         shell: bash {0}
         run: |
           echo "::error::${{ steps.ut.outputs.new_failures }} new UT failures:"
-          cat "${{ steps.ut.outputs.work_dir }}"/*/new_failure_list.txt
+          cat "${{ steps.ut.outputs.work_dir }}"/*/new_failures.txt
           exit 1

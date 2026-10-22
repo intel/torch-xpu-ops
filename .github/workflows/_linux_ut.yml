@@ -78,11 +78,11 @@ jobs:
             echo "UT_RUNNER=${{ inputs.runner }}"
             echo "UT_CATEGORY=${{ inputs.category }}"
           } > "${{ github.workspace }}/ut_log/ut_meta.env"
-      - name: Upload Inductor XPU UT Log
+      - name: Upload UT data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-linux-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: UT-Data-linux-${{ inputs.ut }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Cleanup workspace
@@ -121,11 +121,11 @@ jobs:
             echo "UT_RUNNER=${{ inputs.runner }}"
             echo "UT_CATEGORY=${{ inputs.category }}"
           } > "${{ github.workspace }}/ut_log/ut_meta.env"
-      - name: Upload Inductor XPU UT Log
+      - name: Upload UT data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-linux-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: UT-Data-linux-${{ env.UT_LABEL }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
 
@@ -145,16 +145,14 @@ jobs:
         id: ut
         uses: ./.github/actions/ut-check
         with:
+          ut: ${{ inputs.ut }}
+          category: ${{ inputs.category }}
           pytorch: ${{ inputs.pytorch }}
-          artifact_pattern: |
-            Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-linux-${{ inputs.ut }}-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
-            Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-linux-${{ inputs.ut }}_distributed-${{ github.run_id }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
-          snapshot_artifact: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
-          check_artifact: UT-Check-${{ github.event.pull_request.number || github.sha }}-linux-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          known_issues_snapshot: 'true'
       - name: Fail on new failures
         if: ${{ steps.ut.outputs.passed != 'true' }}
         shell: bash {0}
         run: |
           echo "::error::${{ steps.ut.outputs.new_failures }} new UT failures:"
-          cat "${{ steps.ut.outputs.work_dir }}"/*/new_failure_list.txt
+          cat "${{ steps.ut.outputs.work_dir }}"/*/new_failures.txt
           exit 1

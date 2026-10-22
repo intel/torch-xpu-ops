@@ -1,22 +1,30 @@
 name: UT Check
 description: Compare a UT job's failures with the known-failure list and fail on a new one
 
+# Artifacts, one per UT job attempt (<cat> only when `category` is set):
+#   in   UT-Data-<platform>-<ut>[-<cat>]-<attempt>   every attempt, merged case by case
+#   in   UT-Known-Issues[-<cat>]                     known-failure snapshot from the build
+#   out  UT-Check-<platform>-<ut>[-<cat>]-<attempt>  <ut_job>/ as written by `ut_results.py check`
+#
+# Runner layout:
+#   ut-ci/data/<UT-Data-...>/   ut-ci/known-issues/   ut-ci/work/ (scratch)   ut-ci/check/<ut_job>/
+
 inputs:
-  artifact_pattern:
-    required: true
-    description: UT data artifacts of the job being checked, one glob per line
-  pytorch:
-    default: 'nightly_wheel'
-    description: Pytorch version the UT job ran against, recorded in issue comments
   platform:
     default: 'linux'
     description: linux or windows; selects the expected case counts and issue labels
-  snapshot_artifact:
-    default: ''
-    description: Known-failure snapshot taken at build start. Empty skips it
-  check_artifact:
+  ut:
     required: true
-    description: Name to upload the check under
+    description: UT scope the job ran, as passed to the UT workflow
+  category:
+    default: ''
+    description: Optional artifact tag of the run (dpclang, target, baseline, ...)
+  pytorch:
+    default: 'nightly_wheel'
+    description: Pytorch version the UT job ran against, recorded in issue comments
+  known_issues_snapshot:
+    default: 'false'
+    description: "'true' to use the known-failure snapshot taken at build start"
 
 outputs:
   passed:
@@ -26,73 +34,75 @@ outputs:
     description: How many failures are not known ones
     value: ${{ steps.check.outputs.new_failures }}
   work_dir:
-    description: Directory holding the per-job check output
-    value: ${{ github.workspace }}/ut_check
+    description: Check output, one directory per UT job
+    value: ${{ github.workspace }}/ut-ci/check
 
 runs:
   using: composite
   steps:
-    - name: Download UT artifacts
+    - name: Resolve artifact names
+      id: names
       shell: bash -xe {0}
       env:
-        PATTERNS: ${{ inputs.artifact_pattern }}
+        PLATFORM: ${{ inputs.platform }}
+        UT: ${{ inputs.ut }}
+        TAG: ${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
       run: |
-        mkdir -p "${GITHUB_WORKSPACE}/ut_artifacts"
-        # A scope can produce more than one artifact: xpu_p0 splits its
-        # distributed group onto a second machine.
-        while IFS= read -r pattern; do
-          [ -n "${pattern}" ] || continue
-          gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
-            --dir "${GITHUB_WORKSPACE}/ut_artifacts" -p "${pattern}" || \
-            echo "::warning::no artifact matches ${pattern}"
-        done <<< "${PATTERNS}"
-        ls -al "${GITHUB_WORKSPACE}/ut_artifacts"
-    - name: Download known-failure issues snapshot
+        # [0-9]* pins the attempt, so a tagged artifact never matches an untagged pattern.
+        {
+          echo "data=UT-Data-${PLATFORM}-${UT}${TAG}-[0-9]*"
+          # xpu_p0 runs its distributed group on a second machine, as <ut>_distributed.
+          echo "data_split=UT-Data-${PLATFORM}-${UT}_distributed${TAG}-[0-9]*"
+          echo "known_issues=UT-Known-Issues${TAG}"
+          echo "check=UT-Check-${PLATFORM}-${UT}${TAG}-${GITHUB_RUN_ATTEMPT}"
+        } >> "${GITHUB_OUTPUT}"
+        mkdir -p "${GITHUB_WORKSPACE}/ut-ci"/{data,known-issues,work,check}
+    - name: Download UT data
       shell: bash -xe {0}
       env:
-        SNAPSHOT: ${{ inputs.snapshot_artifact }}
+        DATA: ${{ steps.names.outputs.data }}
+        DATA_SPLIT: ${{ steps.names.outputs.data_split }}
       run: |
-        mkdir -p "${GITHUB_WORKSPACE}/issues_snapshot"
+        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+          --dir "${GITHUB_WORKSPACE}/ut-ci/data" -p "${DATA}" || \
+          echo "::warning::no artifact matches ${DATA}"
+        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+          --dir "${GITHUB_WORKSPACE}/ut-ci/data" -p "${DATA_SPLIT}" || true
+        ls -al "${GITHUB_WORKSPACE}/ut-ci/data"
+    - name: Download known issues snapshot
+      if: ${{ inputs.known_issues_snapshot == 'true' }}
+      shell: bash -xe {0}
+      env:
+        KNOWN_ISSUES: ${{ steps.names.outputs.known_issues }}
+      run: |
         # Without it the check falls back to the live issue list, which misses
         # issues closed while the run was going.
-        [ -n "${SNAPSHOT}" ] || exit 0
         gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
-          --dir "${GITHUB_WORKSPACE}/issues_snapshot" -n "${SNAPSHOT}" || \
-          echo "::warning::no ${SNAPSHOT} artifact; using the live issue list only"
+          --dir "${GITHUB_WORKSPACE}/ut-ci/known-issues" -n "${KNOWN_ISSUES}" || \
+          echo "::warning::no ${KNOWN_ISSUES} artifact; using the live issue list only"
     - name: Check UT failures
       id: check
       shell: bash {0}
       run: |
         set -x
+        ci="${GITHUB_WORKSPACE}/ut-ci"
         if python3 "${GITHUB_ACTION_PATH}/../../scripts/ut_results.py" check \
-          --artifacts "${GITHUB_WORKSPACE}/ut_artifacts" \
-          --work "${GITHUB_WORKSPACE}/ut_check" \
-          --snapshot "${GITHUB_WORKSPACE}/issues_snapshot" \
+          --data "${ci}/data" \
+          --known-issues "${ci}/known-issues" \
+          --work "${ci}/work" \
+          --out "${ci}/check" \
           --pytorch "${{ inputs.pytorch }}" \
           --platform "${{ inputs.platform }}"; then
           echo "passed=true" >> "${GITHUB_OUTPUT}"
         else
           echo "passed=false" >> "${GITHUB_OUTPUT}"
         fi
-        new=$(cat "${GITHUB_WORKSPACE}"/ut_check/*/new_failure_list.txt 2>/dev/null | grep -c . || true)
+        new=$(cat "${ci}"/check/*/new_failures.txt 2>/dev/null | grep -c . || true)
         echo "new_failures=${new:-0}" >> "${GITHUB_OUTPUT}"
     - name: Upload UT check
       if: ${{ ! cancelled() }}
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ inputs.check_artifact }}
-        # What the check concluded. The case logs it read are in the
-        # Inductor-XPU-UT-Data artifact.
-        path: |
-          ${{ github.workspace }}/ut_check/*/verdict.json
-          ${{ github.workspace }}/ut_check/*/run_health.jsonl
-          ${{ github.workspace }}/ut_check/*/new_failure_list.txt
-          ${{ github.workspace }}/ut_check/*/new_ut_failure_list.csv
-          ${{ github.workspace }}/ut_check/*/known_ut_failure_list.csv
-          ${{ github.workspace }}/ut_check/*/new_pass_list.csv
-          ${{ github.workspace }}/ut_check/*/ut_failure_list.csv
-          ${{ github.workspace }}/ut_check/*/failures_*.log
-          ${{ github.workspace }}/ut_check/*/passed_*.log
-          ${{ github.workspace }}/ut_check/*/all_cases_*.log
-          ${{ github.workspace }}/ut_check/*/category_*.log
+        name: ${{ steps.names.outputs.check }}
+        path: ${{ github.workspace }}/ut-ci/check
         if-no-files-found: ignore

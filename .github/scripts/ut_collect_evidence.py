@@ -95,8 +95,8 @@ UT_JOB_CATEGORIES = {
 }
 CATEGORY_UT_JOB = {c: job for job, cats in UT_JOB_CATEGORIES.items() for c in cats}
 
-# Mirrors EXPECTED_CASES in ut_results.py (linux column). Only a fallback:
-# runs predating run_health.jsonl carry no recorded verdict of their own.
+# Mirrors EXPECTED_CASES in ut_results.py (linux column). Only a fallback for a
+# category the check recorded no run_health.jsonl entry for.
 EXPECTED_CASES = {
     "op_extended": 5349,
     "op_regression": 268,
@@ -266,51 +266,28 @@ def list_artifacts(run_id: int) -> list[tuple[str, bool]]:
     return [(r[0], r[1] == "true") for r in rows if len(r) >= 2]
 
 
-def pick_artifact(names: list[tuple[str, bool]], prefix: str, ut_job: str, run_id: int):
-    """Highest run attempt of `<prefix>-<sha>-<ut_job>-<run_id>-<attempt>`."""
-    pat = re.compile(rf"^{re.escape(prefix)}-.+-{re.escape(ut_job)}-{run_id}-(\d+)")
+def pick_artifact(names: list[tuple[str, bool]], prefix: str, ut_job: str):
+    """Highest run attempt of `<prefix>-<platform>-<ut_job>-<attempt>`."""
+    pat = re.compile(rf"^{re.escape(prefix)}-[a-z]+-{re.escape(ut_job)}-(\d+)$")
     best, best_attempt = None, -1
     for name, expired in names:
         m = pat.match(name)
         if m and not expired and int(m.group(1)) > best_attempt:
             best, best_attempt = name, int(m.group(1))
     return best
-
-
-def pick_summary_artifact(names: list[tuple[str, bool]], run_id: int):
-    """Deprecated run-level summary of the runs that had one."""
-    pat = re.compile(rf"^UT-Summary-.+-{run_id}-(\d+)")
-    best, best_attempt = None, -1
-    for name, expired in names:
-        m = pat.match(name)
-        if m and not expired and int(m.group(1)) > best_attempt:
-            best, best_attempt = name, int(m.group(1))
-    return best
-
-
-def fetch_summary(run_id: int, names: list[tuple[str, bool]], work: Path) -> Path | None:
-    """The run's combined UT summary, or None for runs that predate it."""
-    artifact = pick_summary_artifact(names, run_id)
-    if artifact is None:
-        return None
-    root = work / f"summary-{run_id}"
-    return root if download(run_id, artifact, root) else None
 
 
 def merge_check(run_id: int, names: list[tuple[str, bool]], ut_job: str,
-                summary_root: Path | None, dest: Path) -> None:
+                dest: Path) -> None:
     """Put what the check concluded next to the data artifact it read.
 
-    The UT job uploads the reports and case logs; the check job turns them into
-    a verdict, a health record and the new-failure table. Everything downstream
-    reads the two as one tree.
+    The UT job uploads the reports and logs; the check job turns them into a
+    verdict, a health record, the case logs and the new-failure table.
+    Everything downstream reads the two as one tree.
     """
-    artifact = pick_artifact(names, "UT-Check", ut_job, run_id)
-    if artifact is not None and download(run_id, artifact, dest / "check"):
-        return
-    # Runs between the combined summary and the per-job check.
-    if summary_root is not None and (summary_root / ut_job).is_dir():
-        shutil.copytree(summary_root / ut_job, dest / "check", dirs_exist_ok=True)
+    artifact = pick_artifact(names, "UT-Check", ut_job)
+    if artifact is not None:
+        download(run_id, artifact, dest / "check")
 
 
 def download(run_id: int, artifact: str, dest: Path) -> bool:
@@ -327,8 +304,8 @@ def download(run_id: int, artifact: str, dest: Path) -> bool:
 
 
 def find_file(root: Path, name: str) -> Path | None:
-    """Shallowest match. The summary job moves the per-category logs into
-    ut_log/<ut_job>/, so their depth differs before and after it runs."""
+    """Shallowest match: UT-Data keeps files under env/, junit/, logs/<ut>/ and
+    UT-Check under <ut_job>/ and <ut_job>/cases/."""
     hits = sorted(root.rglob(name), key=lambda p: (len(p.parts), str(p)))
     return hits[0] if hits else None
 
@@ -355,7 +332,7 @@ def read_lines(path: Path | None) -> list[str]:
 #                                     an error
 #   H5  case-count health             actual < HEALTH_RATIO * expected: the run
 #                                     is truncated and the machine is suspect
-#   H6  new-failure CSV row count     disagrees with new_failure_list.txt, so
+#   H6  new-failure CSV row count     disagrees with new_failures.txt, so
 #                                     some failures lost their error message
 #
 # H2 needs no code of its own - a cancelled or skipped UT job uploads no artifact,
@@ -369,8 +346,7 @@ def read_lines(path: Path | None) -> list[str]:
 
 
 def read_run_health(root: Path) -> dict[str, dict]:
-    """Last record wins: a re-run of the summary job appends to the copy it
-    downloaded from the previous attempt."""
+    """Per category; the last record of a category wins."""
     path = find_file(root, "run_health.jsonl")
     records: dict[str, dict] = {}
     for line in read_lines(path):
@@ -471,19 +447,11 @@ def job_runner(jobs: list[tuple[int, str, str, str]], ut_job: str) -> str:
 
 
 def read_versions(root: Path) -> tuple[str, str]:
-    versions = find_file(root, "versions.txt")
-    if versions is not None:
-        kv = dict(
-            line.split("=", 1) for line in read_lines(versions) if "=" in line
-        )
-        return kv.get("torch", ""), kv.get("torch_xpu_ops", "")
-    # Runs predating the linux-testenv change: collect_env carries an
-    # abbreviated torch sha and no torch-xpu-ops sha at all.
-    for line in read_lines(find_file(root, "collect_env.log")):
-        m = re.match(r"PyTorch version:.*\+git([0-9a-f]{7,40})", line)
-        if m:
-            return m.group(1), ""
-    return "", ""
+    kv = dict(
+        line.split("=", 1)
+        for line in read_lines(find_file(root, "versions.txt")) if "=" in line
+    )
+    return kv.get("torch", ""), kv.get("torch_xpu_ops", "")
 
 
 def read_collect_env(root: Path) -> str:
@@ -677,13 +645,12 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
         cand_id = int(cand["databaseId"])
         names = list_artifacts(cand_id)
         jobs = resolve_jobs(cand_id)
-        summary_root = fetch_summary(cand_id, names, work)
         dirs: dict[str, Path] = {}
         for ut_job in {CATEGORY_UT_JOB[c] for c in pending}:
-            artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, cand_id)
+            artifact = pick_artifact(names, "UT-Data", ut_job)
             dest = work / f"baseline-{cand_id}-{ut_job}"
             if artifact and download(cand_id, artifact, dest):
-                merge_check(cand_id, names, ut_job, summary_root, dest)
+                merge_check(cand_id, names, ut_job, dest)
                 dirs[ut_job] = dest
         for category in sorted(pending):
             root = dirs.get(CATEGORY_UT_JOB[category])
@@ -793,7 +760,7 @@ def classify_case(case: Case, baselines: dict[str, Baseline],
 #
 # A case can leave the run without failing: a module that will not import
 # erases its cases rather than failing them, and a test removed or renamed in
-# stock pytorch is simply not there. Neither reaches new_ut_failure_list.csv,
+# stock pytorch is simply not there. Neither reaches new_failures.csv,
 # and a few hundred missing cases sit far below the 5% count gate in
 # ut_results.py:Checker.check_case_counts. Comparing this run's roster against
 # the baseline's is the only thing here that sees them.
@@ -911,13 +878,13 @@ def names_by_module(lines: set[str]) -> dict[str, list[str]]:
 
 def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work: Path,
                 jobs: list, report: dict, current: RunInfo,
-                ut_job_health: dict, summary_root: Path | None) -> list[Case]:
+                ut_job_health: dict) -> list[Case]:
     """Artifact health checks plus this run's new failures, for one UT job."""
-    data_artifact = pick_artifact(names, "Inductor-XPU-UT-Data", ut_job, run_id)
+    data_artifact = pick_artifact(names, "UT-Data", ut_job)
     if data_artifact is None:
         report["skipped_ut_jobs"].append(
             {"ut_job": ut_job, "reason": "no UT data artifact"})
-        warn(f"{ut_job}: no usable Inductor-XPU-UT-Data artifact; filing nothing")
+        warn(f"{ut_job}: no usable UT-Data artifact; filing nothing")
         return []
     root = work / f"current-{ut_job}"
     if not download(run_id, data_artifact, root):
@@ -925,10 +892,10 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
             {"ut_job": ut_job, "reason": "artifact download failed"})
         return []
 
-    # The run-level summary holds what the comparison produced for this UT job
-    # (health verdicts, case logs, new failures); the data artifact holds the
-    # reports it was built from.
-    merge_check(run_id, names, ut_job, summary_root, root)
+    # The check holds what the comparison produced for this UT job (health
+    # verdicts, case logs, new failures); the data artifact holds the reports
+    # it was built from.
+    merge_check(run_id, names, ut_job, root)
 
     current.job_urls[ut_job] = job_url(run_id, jobs, ut_job)
     current.runners[ut_job] = job_runner(jobs, ut_job)
@@ -956,22 +923,15 @@ def collect_ut_job(run_id: int, ut_job: str, names: list[tuple[str, bool]], work
         else:
             print(f"note: {category} never ran in this UT job; nothing to file")
 
-    csv_path = find_file(root, "new_ut_failure_list.csv")
+    csv_path = find_file(root, "new_failures.csv")
     if csv_path is None:
-        # Runs predating the combined summary kept the CSV in its own artifact.
-        failures_artifact = pick_artifact(names, "New-UT-Failures", ut_job, run_id)
-        if failures_artifact is None:
-            print(f"note: {ut_job} produced no new failures")
-            return []
-        csv_dir = work / f"current-{ut_job}-newfail"
-        if not download(run_id, failures_artifact, csv_dir):
-            return []
-        csv_path = find_file(csv_dir, "new_ut_failure_list.csv")
+        print(f"note: {ut_job} produced no new failures")
+        return []
     cases = parse_failure_csv(csv_path)
 
     # H6: the CSV is built by grepping ut_failure_list.csv per filtered-log line,
     # so a mismatch means some failures lost their error message.
-    expected_rows = len(read_lines(find_file(root, "new_failure_list.txt")))
+    expected_rows = len(read_lines(find_file(root, "new_failures.txt")))
     if expected_rows and expected_rows != len(cases):
         warn(
             f"{ut_job}: new failure count mismatch: filtered={expected_rows}, "
@@ -1042,10 +1002,9 @@ def collect_evidence(args, work: Path, report: dict) -> Evidence:
         )
 
     names = list_artifacts(args.run_id)
-    summary_root = fetch_summary(args.run_id, names, work)
     for ut_job in UT_JOB_CATEGORIES:
         cases.extend(collect_ut_job(args.run_id, ut_job, names, work, jobs, report,
-                                 current, ut_job_health, summary_root))
+                                 current, ut_job_health))
 
     if len(cases) > TOO_MANY_THRESHOLD:
         warn(

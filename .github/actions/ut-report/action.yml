@@ -1,13 +1,17 @@
 name: UT Report
 description: One report for a run, from what every UT check job concluded
 
+# Artifacts (<cat> only when `category` is set):
+#   in   UT-Check-<platform>-<ut>[-<cat>]-<attempt>   every UT check of the run
+#   out  UT-Report[-<cat>]-<attempt>                  ut_report.md and the failure tables
+#
+# Runner layout:
+#   ut-ci/checks/<UT-Check-...>/<ut_job>/   ut-ci/report/
+
 inputs:
-  check_pattern:
+  category:
     default: ''
-    description: UT check artifacts to report on. Empty means every one of this run
-  report_artifact:
-    required: true
-    description: Name to upload the report under
+    description: Optional artifact tag of the run; empty reports on every untagged check
 
 outputs:
   has_new_failures:
@@ -15,7 +19,7 @@ outputs:
     value: ${{ steps.report.outputs.has_new_failures }}
   work_dir:
     description: Directory holding ut_report.md and the failure tables
-    value: ${{ github.workspace }}/ut_report
+    value: ${{ github.workspace }}/ut-ci/report
   artifact_url:
     description: URL of the uploaded report artifact
     value: ${{ steps.upload.outputs.artifact-url }}
@@ -23,24 +27,40 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Resolve artifact names
+      id: names
+      shell: bash -xe {0}
+      env:
+        CATEGORY: ${{ inputs.category }}
+        TAG: ${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+      run: |
+        {
+          if [ -n "${CATEGORY}" ]; then
+            echo "checks=UT-Check-*-${CATEGORY}-[0-9]*"
+          else
+            echo "checks=UT-Check-*"
+          fi
+          echo "report=UT-Report${TAG}-${GITHUB_RUN_ATTEMPT}"
+        } >> "${GITHUB_OUTPUT}"
+        mkdir -p "${GITHUB_WORKSPACE}/ut-ci"/{checks,report}
     - name: Download UT checks
       shell: bash -xe {0}
       env:
-        PATTERN: ${{ inputs.check_pattern || 'UT-Check-*' }}
+        CHECKS: ${{ steps.names.outputs.checks }}
       run: |
-        mkdir -p "${GITHUB_WORKSPACE}/ut_checks"
         gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
-          --dir "${GITHUB_WORKSPACE}/ut_checks" -p "${PATTERN}"
-        ls -al "${GITHUB_WORKSPACE}/ut_checks"
+          --dir "${GITHUB_WORKSPACE}/ut-ci/checks" -p "${CHECKS}"
+        ls -al "${GITHUB_WORKSPACE}/ut-ci/checks"
     - name: Render the report
       id: report
       shell: bash -xe {0}
       run: |
+        report="${GITHUB_WORKSPACE}/ut-ci/report"
         python3 "${GITHUB_ACTION_PATH}/../../scripts/ut_results.py" summary \
-          --checks "${GITHUB_WORKSPACE}/ut_checks" \
-          --out "${GITHUB_WORKSPACE}/ut_report/ut_report.md"
-        cat "${GITHUB_WORKSPACE}/ut_report/ut_report.md" >> "${GITHUB_STEP_SUMMARY}"
-        if [ -s "${GITHUB_WORKSPACE}/ut_report/new_failures.csv" ]; then
+          --checks "${GITHUB_WORKSPACE}/ut-ci/checks" \
+          --out "${report}"
+        cat "${report}/ut_report.md" >> "${GITHUB_STEP_SUMMARY}"
+        if [ -s "${report}/new_failures.csv" ]; then
           echo "has_new_failures=true" >> "${GITHUB_OUTPUT}"
         else
           echo "has_new_failures=false" >> "${GITHUB_OUTPUT}"
@@ -50,6 +70,6 @@ runs:
       if: ${{ ! cancelled() }}
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ inputs.report_artifact }}
-        path: ${{ github.workspace }}/ut_report
+        name: ${{ steps.names.outputs.report }}
+        path: ${{ github.workspace }}/ut-ci/report
         if-no-files-found: ignore

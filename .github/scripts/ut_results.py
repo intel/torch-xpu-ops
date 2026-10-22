@@ -26,6 +26,9 @@ from pathlib import Path
 REPO = "intel/torch-xpu-ops"
 # Cases that pass despite being skipped, so a newly passing one is visible.
 NEW_PASSED_ISSUE = 2333
+# The issue whose body is the static known-failure list (ut_known_issues.sh).
+STATIC_ISSUE = 1624
+KNOWN_ISSUE_IDS = "known_issue_ids.json"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 OP_UT_EXPECTED = {"linux": 287444, "windows": 105263}
@@ -158,10 +161,23 @@ class Case:
     status: str
     message: str = ""
     source: str = "XML"
+    file: str = ""
 
     @property
     def line(self) -> str:
         return f"{self.category},{self.classname},{self.name}"
+
+    @property
+    def key(self) -> tuple[str, str, str, str]:
+        return self.category, self.file, self.classname, self.name
+
+
+# Which outcome wins when one case ran more than once (reruns, retried jobs).
+STATUS_PRIORITY = {"passed": 0, "failed": 1, "skipped": 2}
+
+
+def status_rank(status: str) -> int:
+    return STATUS_PRIORITY.get(status, len(STATUS_PRIORITY))
 
 
 @dataclass
@@ -326,6 +342,7 @@ class Report:
                     name=normalize(case.get("name")),
                     status=status,
                     message=case_message(result) if status in ("failed", "error") else "",
+                    file=normalize(case.get("file")),
                 ))
 
     def _add_log(self, path: Path) -> None:
@@ -363,6 +380,30 @@ class Report:
             category=category, ut=ut, tests=tests, passed=tests - failures - skipped,
             skipped=skipped, failures=failures, errors=0, source="Log",
         ))
+
+    def dedupe(self) -> None:
+        """One result per case, the best one; junit counts are recounted from it."""
+        best: dict[tuple[str, str, str, str], Case] = {}
+        for case in self.cases:
+            kept = best.get(case.key)
+            if kept is None or status_rank(case.status) < status_rank(kept.status):
+                best[case.key] = case
+        self.cases = list(best.values())
+
+        xml_categories = sorted({s.category for s in self.summaries if s.source == "XML"})
+        self.summaries = [s for s in self.summaries if s.source != "XML"]
+        for category in xml_categories:
+            counts = defaultdict(int)
+            for case in self.cases:
+                if case.category == category and case.source == "XML":
+                    counts[case.status] += 1
+            tests = sum(counts.values())
+            self.summaries.append(SuiteSummary(
+                category=category, ut="merged", tests=tests, passed=counts["passed"],
+                skipped=counts["skipped"], failures=counts["failed"],
+                errors=tests - counts["passed"] - counts["skipped"] - counts["failed"],
+                source="XML",
+            ))
 
     def write_case_logs(self, out_dir: Path) -> None:
         """One file per category per status, each line `category,class,test`.
@@ -436,10 +477,13 @@ class Report:
         return lines
 
 
-def build_report(ut_name: str, inputs: list[Path], out_dir: Path) -> Report:
+def build_report(ut_name: str, inputs: list[Path], out_dir: Path,
+                 dedupe: bool = False) -> Report:
     report = Report(ut_name)
     for path in inputs:
         report.add(path)
+    if dedupe:
+        report.dedupe()
     # skipped_ut is a list of cases expected to fail; its failures are not news.
     if ut_name != "skipped_ut":
         report.write_failure_csv(out_dir / "ut_failure_list.csv")
@@ -496,6 +540,11 @@ class Checker:
     @property
     def known_issues(self) -> list[str]:
         return read_lines(self.path("Known_issue.log"))
+
+    @property
+    def issue_ids(self) -> dict[str, list[str]]:
+        path = self.path(KNOWN_ISSUE_IDS)
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
     # -- building blocks ---------------------------------------------------- #
 
@@ -719,8 +768,10 @@ class Checker:
     def run_distributed(self, category: str) -> CheckResult:
         """The distributed suite prints a pytest console log, not a junit xml."""
         self.banner(category)
-        failures = self.scan_console(category, ("FAILED", "ERROR"))
         passed = self.scan_console(category, ("PASSED",))
+        passed_set = set(passed)
+        failures = [line for line in self.scan_console(category, ("FAILED", "ERROR"))
+                    if line not in passed_set]
         write_lines(self.path(f"{category}_failed.log"), failures)
         write_lines(self.path(f"{category}_passed.log"), passed)
 
@@ -823,10 +874,10 @@ class Checker:
         failed = read_lines(self.path("failures_xpu_profiling.log"))
         new_passes: list[str] = []
         new: list[str] = []
-        if passed and self.known_issues:
+        if passed:
             print("\n✅ Passing Known Issues:")
             new_passes = self.report_passing_known_issues(passed)
-        if failed and self.known_issues:
+        if failed:
             print("\nChecking New Failures:")
             new = self.new_failures("xpu_profiling", failed)
 
@@ -920,38 +971,60 @@ class KnownIssues:
     @staticmethod
     def cases_of(issues_text: str, category: str) -> list[str]:
         """The `Cases:` block of every issue that names this category."""
-        lines = []
+        return [line for _, line in KnownIssues.issue_cases(issues_text, category)]
+
+    @staticmethod
+    def issue_cases(issues_text: str, category: str) -> list[tuple[str, str]]:
+        """`cases_of`, each with the number of the issue that lists it."""
+        pairs = []
+        issue = ""
         in_cases = False
         for raw in issues_text.splitlines():
             line = raw.rstrip()
+            if m := re.match(r"Issue #(\d+)", line):
+                issue, in_cases = m.group(1), False
+                continue
             if not re.search(r"[a-zA-Z0-9]", line):
                 in_cases = False
             elif in_cases:
                 first = line.split()[0]
                 if re.search(category, first):
-                    lines.append(line)
+                    pairs.append((issue, line))
             if "Cases:" in line:
                 in_cases = True
-        return lines
+        return pairs
 
     def write_for(self, category: str, meta: JobMeta, dest: Path) -> None:
         issues = self.open_issues(meta.category, meta.runner)
         (dest.parent / "issues.log").write_text(issues, encoding="utf-8")
+        pairs = self.issue_cases(issues, category)
         dest.write_text(
-            self.static + "\n" + "\n".join(self.cases_of(issues, category)) + "\n",
+            self.static + "\n" + "\n".join(line for _, line in pairs) + "\n",
             encoding="utf-8",
         )
+        ids: dict[str, list[str]] = defaultdict(list)
+        for issue, line in [*((str(STATIC_ISSUE), raw) for raw in self.static.splitlines()),
+                            *pairs]:
+            if line.strip() and issue and issue not in ids[line.strip()]:
+                ids[line.strip()].append(issue)
+        (dest.parent / KNOWN_ISSUE_IDS).write_text(json.dumps(ids), encoding="utf-8")
 
 
 ARTIFACT_SUFFIXES = {".log", ".csv", ".xml"}
 
 
-def collect_job_dir(artifact: Path, job_dir: Path) -> None:
-    """Flatten an artifact: every check reads its inputs from one directory."""
+def collect_job_dir(artifact: Path, job_dir: Path, tag: str = "") -> None:
+    """Flatten an artifact: every check reads its inputs from one directory.
+
+    A log another artifact of the job already brought is kept under `tag`, so
+    console logs of every attempt are scanned; the junit xml is read in place.
+    """
     job_dir.mkdir(parents=True, exist_ok=True)
     for path in sorted(artifact.rglob("*")):
         if path.is_file() and path.suffix in ARTIFACT_SUFFIXES:
             target = job_dir / path.name
+            if target.exists() and tag and path.suffix == ".log":
+                target = job_dir / f"{path.stem}.{tag}{path.suffix}"
             if not target.exists():
                 shutil.copy2(path, target)
 
@@ -963,6 +1036,10 @@ def case_fields(line: str) -> tuple[str, str]:
         return classname, name
     fields = line.split(",", 2)
     return (fields[1], fields[2]) if len(fields) == 3 else ("", line)
+
+
+def issue_links(ids: list[str]) -> str:
+    return ", ".join(f"[#{i}](https://github.com/{REPO}/issues/{i})" for i in ids)
 
 
 def node_id_parts(line: str) -> tuple[str, str]:
@@ -1012,61 +1089,89 @@ def enrich_failures(job_dir: Path, items: list[tuple[str, str]],
 # How much of a failure table the report carries; a step summary is capped at
 # 1MB and a bad night has thousands of rows. The artifact keeps all of them.
 REPORT_FAILURE_LIMIT = 100
-SUMMARY_TABLE_HEADER = ["OS", "UT job", "Category", "Total cases", "Known failures",
+SUMMARY_TABLE_HEADER = ["OS", "Category", "Total cases", "Known failures",
                        "New failures", "New passes", "Result"]
 PASS_HEADER = ["Category", "Class name", "Test name"]
 
+# What a check publishes per UT job; the report reads the same names.
+NEW_FAILURES_TXT = "new_failures.txt"
+NEW_FAILURES_CSV = "new_failures.csv"
+KNOWN_FAILURES_CSV = "known_failures.csv"
+NEW_PASSES_CSV = "new_passes.csv"
+CASE_LOG_KINDS = ("all_cases", "passed", "failures", "category")
 
-def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
+
+def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: Path,
               pytorch: str, platform: str = "linux") -> int:
     """Compare every UT job in `artifacts_dir` with the known-failure list.
 
-    Writes, per UT job: `verdict.json`, the new and known failure tables, and
-    `run_health.jsonl`. Fails when a category has a new failure or did not run
-    healthily.
+    `work_dir` is scratch. `out_dir/<ut_job>/` gets what the check concluded:
+
+        verdict.json  run_health.jsonl
+        new_failures.txt  new_failures.csv  known_failures.csv  new_passes.csv
+        cases/  per-category case logs and ut_failure_list.csv
+
+    Fails when a category has a new failure or did not run healthily.
     """
     work_dir.mkdir(parents=True, exist_ok=True)
     known = KnownIssues(snapshot_dir, work_dir)
     failed = False
     jobs = 0
 
+    # Every attempt of a UT job uploads its own artifact; they are checked as one.
+    by_job: dict[str, list[tuple[Path, JobMeta]]] = defaultdict(list)
     for artifact in sorted(p for p in artifacts_dir.iterdir() if p.is_dir()):
         meta_file = next(iter(sorted(artifact.rglob("ut_meta.env"))), None)
         meta = JobMeta.read(meta_file) if meta_file else None
         if meta is None:
             warn(f"{artifact.name} names no UT job, skipped")
             continue
-        jobs += 1
-        job_dir = work_dir / meta.ut_job.replace(",", "_")
-        collect_job_dir(artifact, job_dir)
+        by_job[meta.ut_job].append((artifact, meta))
 
-        print(f"::group::{meta.ut_job} (runner: {meta.runner or 'unknown'})", flush=True)
+    for ut_job, members in by_job.items():
+        jobs += 1
+        meta = members[0][1]
+        job_dir = work_dir / ut_job.replace(",", "_")
+        out_job = out_dir / ut_job.replace(",", "_")
+        (out_job / "cases").mkdir(parents=True, exist_ok=True)
+        reports: list[Path] = []
+        for index, (artifact, _) in enumerate(members):
+            collect_job_dir(artifact, job_dir, tag=str(index))
+            reports += sorted(artifact.rglob("*.xml"))
+
+        print(f"::group::{ut_job} ({plural(len(members), 'artifact')}, "
+              f"runner: {meta.runner or 'unknown'})", flush=True)
         # The UT job writes these too; rebuilding them keeps the check working
         # on an artifact whose job died before it reported.
-        reports = sorted(job_dir.glob("*.xml"))
         if reports:
-            build_report(meta.ut_job, reports, job_dir)
+            build_report(ut_job, reports, job_dir, dedupe=True)
         else:
-            warn(f"{meta.ut_job} produced no junit report")
+            warn(f"{ut_job} produced no junit report")
 
         checker = Checker(
             work_dir=job_dir, pytorch=pytorch, platform=platform, runner=meta.runner,
-            health_file=job_dir / "run_health.jsonl",
+            health_file=out_job / "run_health.jsonl",
         )
-        verdict = {"ut_job": meta.ut_job, "runner": meta.runner, "os": platform,
+        verdict = {"ut_job": ut_job, "runner": meta.runner, "os": platform,
+                   "attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT") or 0),
                    "categories": []}
         new_lines: list[tuple[str, str]] = []
         known_lines: list[tuple[str, str]] = []
         pass_lines: list[tuple[str, str]] = []
+        links: dict[tuple[str, str], str] = {}
         for category in categories_of(meta.ut_job):
             known.write_for(category, meta, job_dir / "Known_issue.log")
             result = checker.run(category)
             failed = failed or not result.passed
+            # new: failed, no known issue; known: failed, has one; new pass: passed, has one
             new_set = set(result.new_failures)
             was_known = [line for line in result.failures if line not in new_set]
             new_lines += [(category, line) for line in result.new_failures]
             known_lines += [(category, line) for line in was_known]
             pass_lines += [(category, line) for line in result.new_passes]
+            ids = checker.issue_ids
+            for line in [*was_known, *result.new_passes]:
+                links[category, line] = issue_links(ids.get(line.strip(), []))
             verdict["categories"].append({
                 "category": category,
                 "total": result.total,
@@ -1077,16 +1182,22 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
             })
         print("::endgroup::", flush=True)
 
-        write_lines(job_dir / "new_failure_list.txt", [line for _, line in new_lines])
-        write_lines(job_dir / "new_ut_failure_list.csv",
+        write_lines(out_job / NEW_FAILURES_TXT, [line for _, line in new_lines])
+        write_lines(out_job / NEW_FAILURES_CSV,
                     enrich_failures(job_dir, new_lines, "new"))
-        write_lines(job_dir / "known_ut_failure_list.csv",
-                    enrich_failures(job_dir, known_lines, "known"))
-        write_lines(job_dir / "new_pass_list.csv",
-                    [md_row([category, *case_fields(line)])
+        write_lines(out_job / KNOWN_FAILURES_CSV, [
+            f"{row} {links[item]} |" for item, row in
+            zip(known_lines, enrich_failures(job_dir, known_lines, "known"))])
+        write_lines(out_job / NEW_PASSES_CSV,
+                    [md_row([category, *case_fields(line), links[category, line]])
                      for category, line in pass_lines])
-        (job_dir / "verdict.json").write_text(json.dumps(verdict, indent=2),
+        (out_job / "verdict.json").write_text(json.dumps(verdict, indent=2),
                                               encoding="utf-8")
+        case_logs = [job_dir / f"{kind}_{category}.log" for category in
+                     categories_of(ut_job) for kind in CASE_LOG_KINDS]
+        for path in [*case_logs, job_dir / "ut_failure_list.csv"]:
+            if path.is_file():
+                shutil.copy2(path, out_job / "cases" / path.name)
 
     if jobs == 0:
         print("::error::no UT data artifact carried a ut_meta.env; nothing to check")
@@ -1094,33 +1205,54 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path,
     return 1 if failed else 0
 
 
-def render_report(checks_dir: Path, out_file: Path) -> int:
-    """One report for a run, from what every check job concluded."""
+def render_report(checks_dir: Path, out_dir: Path) -> int:
+    """One report for a run, from what every check job concluded.
+
+    Writes `out_dir/`: ut_report.md, new_failures.csv, known_failures.csv,
+    new_passes.csv.
+    """
+    # A rerun check merged every attempt's cases, so the latest one is final.
+    best: dict[tuple[str, str, str], tuple[tuple[int, int], list[str], Path]] = {}
+    for verdict_file in sorted(checks_dir.rglob("verdict.json")):
+        verdict = json.loads(verdict_file.read_text(encoding="utf-8"))
+        for entry in verdict["categories"]:
+            result = entry.get("status") or ("passed" if entry["passed"] else "failed")
+            mark = {"passed": "✅", "failed": "❌", "skipped": "⏭️"}.get(result, "❔")
+            key = (verdict.get("os", "linux"), verdict["ut_job"], entry["category"])
+            row = [
+                key[0], key[2], str(entry.get("total", 0)),
+                str(entry["known"]), str(entry["new"]),
+                str(entry.get("new_passes", 0)),
+                f"{mark} {result}",
+            ]
+            score = (-int(verdict.get("attempt") or 0), status_rank(result))
+            if key not in best or score < best[key][0]:
+                best[key] = (score, row, verdict_file.parent)
+
     rows: list[list[str]] = []
     new_rows: list[str] = []
     known_rows: list[str] = []
     pass_rows: list[str] = []
-    for verdict_file in sorted(checks_dir.rglob("verdict.json")):
-        verdict = json.loads(verdict_file.read_text(encoding="utf-8"))
-        for entry in verdict["categories"]:
-            rows.append([
-                verdict.get("os", "linux"), verdict["ut_job"], entry["category"],
-                str(entry.get("total", 0)),
-                str(entry["known"]), str(entry["new"]),
-                str(entry.get("new_passes", 0)),
-                "✅ passed" if entry["passed"] else "❌ failed",
-            ])
-        new_rows += read_lines(verdict_file.parent / "new_ut_failure_list.csv")
-        known_rows += read_lines(verdict_file.parent / "known_ut_failure_list.csv")
-        pass_rows += read_lines(verdict_file.parent / "new_pass_list.csv")
+    for (_, _, category), (_, row, job_dir) in best.items():
+        rows.append(row)
+        for name, table in ((NEW_FAILURES_CSV, new_rows),
+                            (KNOWN_FAILURES_CSV, known_rows),
+                            (NEW_PASSES_CSV, pass_rows)):
+            table += [line for line in read_lines(job_dir / name)
+                      if line.strip("|").split(" | ")[0].strip() == category]
 
     if not rows:
         warn("no UT check artifact to report on")
     rows.sort(key=lambda row: row[0])  # group the OSes, keep each one's job order
 
-    def fold(title: str, table_rows: list[str],
-             header: list[str] = FAILURE_HEADER) -> list[str]:
+    def fold(title: str, table_rows: list[str], header: list[str]) -> list[str]:
         shown = table_rows[:REPORT_FAILURE_LIMIT]
+        if "Source" in header:
+            # Source is last but one when an Issue column follows it.
+            tail = len(header) - 1 - header.index("Source")
+            header = [h for h in header if h != "Source"]
+            shown = [" | ".join(parts[:1] + parts[2:]) + ("" if tail else " |")
+                     for parts in (row.rsplit(" | ", tail + 1) for row in shown)]
         body = md_table(header, []) + shown
         if len(shown) < len(table_rows):
             body += ["", f"… and {len(table_rows) - len(shown)} more, in the artifact"]
@@ -1128,14 +1260,14 @@ def render_report(checks_dir: Path, out_file: Path) -> int:
 
     report = ["## UT Report", "", "### Summary", "",
               *md_table(SUMMARY_TABLE_HEADER, rows)]
-    report += fold("New failures", new_rows)
-    report += fold("Known failures", known_rows)
-    report += fold("New passes", pass_rows, PASS_HEADER)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    write_lines(out_file, report)
-    write_lines(out_file.parent / "new_failures.csv", new_rows)
-    write_lines(out_file.parent / "known_failures.csv", known_rows)
-    write_lines(out_file.parent / "new_passes.csv", pass_rows)
+    report += fold("New failures", new_rows, FAILURE_HEADER)
+    report += fold("Known failures", known_rows, [*FAILURE_HEADER, "Issue"])
+    report += fold("New passes", pass_rows, [*PASS_HEADER, "Issue"])
+    out_dir.mkdir(parents=True, exist_ok=True)
+    write_lines(out_dir / "ut_report.md", report)
+    write_lines(out_dir / NEW_FAILURES_CSV, new_rows)
+    write_lines(out_dir / KNOWN_FAILURES_CSV, known_rows)
+    write_lines(out_dir / NEW_PASSES_CSV, pass_rows)
     return 0
 
 
@@ -1156,10 +1288,13 @@ def main(argv: list[str] | None = None) -> int:
     report.add_argument("--dir", default=".", help="where the case logs are written")
 
     check = commands.add_parser("check", help="a run's UT jobs against known failures")
-    check.add_argument("--artifacts", required=True, type=Path,
-                       help="downloaded Inductor-XPU-UT-Data artifacts")
-    check.add_argument("--work", required=True, type=Path)
-    check.add_argument("--snapshot", default="", type=Path)
+    check.add_argument("--data", required=True, type=Path,
+                       help="downloaded UT-Data artifacts, one dir each")
+    check.add_argument("--known-issues", default="", type=Path,
+                       help="downloaded UT-Known-Issues snapshot")
+    check.add_argument("--work", required=True, type=Path, help="scratch dir")
+    check.add_argument("--out", required=True, type=Path,
+                       help="where the check output is written, one dir per UT job")
     check.add_argument("--pytorch", default="nightly_wheel")
     check.add_argument("--platform", default="linux", choices=("linux", "windows"))
 
@@ -1167,7 +1302,7 @@ def main(argv: list[str] | None = None) -> int:
     report_run.add_argument("--checks", required=True, type=Path,
                             help="downloaded UT-Check artifacts")
     report_run.add_argument("--out", required=True, type=Path,
-                            help="markdown report to write")
+                            help="where the report is written")
 
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)
@@ -1180,7 +1315,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "check":
-        return check_run(args.artifacts, Path(args.snapshot or "."), args.work,
+        return check_run(args.data, Path(args.known_issues or "."), args.work, args.out,
                          args.pytorch, args.platform)
 
     return render_report(args.checks, args.out)
