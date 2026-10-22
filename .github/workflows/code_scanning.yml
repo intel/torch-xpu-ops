@@ -95,7 +95,7 @@ jobs:
         run: |
           bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "${ACTIONLINT_VERSION}" "${RUNNER_TEMP}"
           "${RUNNER_TEMP}/actionlint" -color \
-            -format '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}},title=actionlint {{$err.Kind}}::{{$err.Message}}{{"\n"}}{{end}}'
+            -format '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}},title=actionlint {{$err.Kind}}::{{$err.Message}}\n{{end}}'
 
   gitleaks:
     name: Secret scan (gitleaks)
