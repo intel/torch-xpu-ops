@@ -9,6 +9,7 @@
 */**/**/**/*.pyc
 */**/**/**/**/*.pyc
 .lintbin
+lint.json
 
 agent_space/
 agent_space_xpu/

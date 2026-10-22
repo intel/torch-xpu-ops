@@ -27,7 +27,6 @@ import sys
 from enum import Enum
 from typing import NamedTuple
 
-
 LINTER_CODE = "SHFMT"
 SHFMT_ARGS = ["-i", "4", "-ci"]
 

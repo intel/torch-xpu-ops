@@ -81,8 +81,8 @@ if ! lintrunner "${ARGS[@]}"; then
 fi
 
 # Surface findings as GitHub annotations.
-jq --raw-output \
-    '"::\(if .severity == "advice" or .severity == "disabled" then "warning" else .severity end) file=\(.path),line=\(.line),col=\(.char),title=\(.code) \(.name)::" + (.description | gsub("\\n"; "%0A"))' \
+jq --raw-output --arg root "${PWD}/" \
+    '"::\(if .severity == "advice" or .severity == "disabled" then "warning" else .severity end) file=\((.path // "") | ltrimstr($root)),line=\(.line // 1),col=\(.char // 1),title=\(.code) \(.name)::" + ((.description // "") | gsub("\\n"; "%0A"))' \
     lint.json || true
 
 exit "${RC}"
