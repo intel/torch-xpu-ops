@@ -78,9 +78,10 @@ jobs:
           docker system df
 
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -114,9 +115,9 @@ jobs:
       - name: Verify and list images
         run: |
           docker images
-          echo "Built image: ${{ env.WORKFLOW_TAG }}"
+          echo "Built image: ${WORKFLOW_TAG}"
 
       - name: Test the built image
         run: |
           # Run a simple test to ensure the image works
-          docker run --rm ${{ env.WORKFLOW_TAG }} echo "Image test successful"
+          docker run --rm "${WORKFLOW_TAG}" echo "Image test successful"

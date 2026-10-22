@@ -26,7 +26,7 @@ runs:
     - name: Prepare dataset
       if: contains(inputs.scenario, 'accuracy')
       shell: bash -xe {0}
-      run: | # zizmor: ignore[github-env] composite action intentionally exports to the job env
+      run: |
         dataset_dir="/opt/_dataset/imagenet"
         if [ ! -d "${dataset_dir}" ]; then
           rm -rf "${dataset_dir}"
@@ -37,12 +37,12 @@ runs:
           tar -xf ILSVRC2012_img_val.tar
           bash valprep.sh
         fi
-        echo "dataset_dir=${dataset_dir}" >> "${GITHUB_ENV}"
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
       env:
         INPUT_DT: ${{ inputs.dt }}
         INPUT_SCENARIO: ${{ inputs.scenario }}
+        dataset_dir: ${{ contains(inputs.scenario, 'accuracy') && '/opt/_dataset/imagenet' || '' }}
       run: |
         set -o pipefail
 

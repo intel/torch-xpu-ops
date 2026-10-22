@@ -9,9 +9,3 @@ self-hosted-runner:
     - windows-test
     - xpu-ubuntu-24.04
     - xpu-agent
-
-paths:
-  .github/workflows/nightly_ondemand.yml:
-    ignore:
-      # Jobs temporarily disabled on purpose with `if: false`
-      - 'constant expression "false" in condition'

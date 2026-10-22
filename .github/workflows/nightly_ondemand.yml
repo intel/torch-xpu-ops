@@ -124,7 +124,7 @@ jobs:
             python=''
           else
             pytorch="${PYTORCH_REF}"
-            if [ -z ${TORCH_XPU_OPS_REF} ];then
+            if [ -z "${TORCH_XPU_OPS_REF}" ];then
               torch_xpu_ops="${GITHUB_REF_NAME}"
             else
               torch_xpu_ops="${TORCH_XPU_OPS_REF}"
@@ -134,29 +134,32 @@ jobs:
             else
               test_type="build-ondemand"
             fi
-            ut="$(echo ${UT_SCOPE} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
-            suite="$(echo ${SUITE_INPUT} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            ut="$(sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/' <<< "${UT_SCOPE}")"
+            suite="$(sed 's/,/","/g;s/^/["/;s/$/"]/' <<< "${SUITE_INPUT}")"
             if [ -n "${SCENARIO_INPUT}" ];then
-              scenario="$(echo ${SCENARIO_INPUT} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+              scenario="$(sed 's/,/","/g;s/^/["/;s/$/"]/' <<< "${SCENARIO_INPUT}")"
             else
               scenario='["accuracy","performance"]'
             fi
             triton="${TRITON_REF}"
             python="${PYTHON_VERSION_INPUT}"
           fi
-          echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
-          echo "pytorch=${pytorch}" >> ${GITHUB_OUTPUT}
-          echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
-          echo "ut=${ut}" >> ${GITHUB_OUTPUT}
-          echo "suite=${suite}" >> ${GITHUB_OUTPUT}
-          echo "scenario=${scenario}" >> ${GITHUB_OUTPUT}
-          echo "triton=${triton}" >> ${GITHUB_OUTPUT}
-          echo "python=${python}" >> ${GITHUB_OUTPUT}
+          {
+            echo "test_type=${test_type}"
+            echo "pytorch=${pytorch}"
+            echo "torch_xpu_ops=${torch_xpu_ops}"
+            echo "ut=${ut}"
+            echo "suite=${suite}"
+            echo "scenario=${scenario}"
+            echo "triton=${triton}"
+            echo "python=${python}"
+          } >> "${GITHUB_OUTPUT}"
 
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
     name: linux-build
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -173,7 +176,10 @@ jobs:
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     permissions:
       contents: read
       issues: write
@@ -202,7 +208,10 @@ jobs:
           && (github.event_name == 'schedule'
               || (inputs.ut_auto_issue && contains(inputs.ut, 'p')))
           && needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel' }}
-    secrets: inherit
+    secrets:
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      MERGE_TOKEN: ${{ secrets.MERGE_TOKEN }}
     permissions:
       actions: read
       contents: read
@@ -221,7 +230,9 @@ jobs:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -234,10 +245,10 @@ jobs:
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       suite: ${{ matrix.suite }}
-      dt: ${{ github.event_name == 'schedule' && '' || inputs.dt }}
-      mode: ${{ github.event_name == 'schedule' && '' || inputs.mode }}
+      dt: ${{ github.event_name != 'schedule' && inputs.dt || '' }}
+      mode: ${{ github.event_name != 'schedule' && inputs.mode || '' }}
       scenario: ${{ matrix.scenario }}
-      model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
+      model: ${{ github.event_name != 'schedule' && inputs.model || '' }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
@@ -255,12 +266,15 @@ jobs:
     name: linux-microbench
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     # if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
-    if: false # Temporarily disabled
+    # Disabled unless the ENABLE_MICROBENCH repository variable is set to 'true'.
+    if: ${{ vars.ENABLE_MICROBENCH == 'true' }}
     permissions:
       actions: read
       contents: read
       issues: write
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -275,7 +289,6 @@ jobs:
     name: windows-build
     needs: [Conditions-Filter]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
-    secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -287,7 +300,6 @@ jobs:
     name: windows-ut
     needs: [Conditions-Filter, Windows-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
-    secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut'

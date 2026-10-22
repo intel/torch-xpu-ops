@@ -91,7 +91,8 @@ jobs:
   # ==================================================================
   target-build:
     name: target / build
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
@@ -106,7 +107,10 @@ jobs:
     name: target / ut
     if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_ut' || inputs.test_pattern == 'test_pt_smoke' }}
     needs: target-build
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     permissions:
       contents: read
       issues: write
@@ -125,7 +129,9 @@ jobs:
     name: target / e2e
     if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_e2e' || inputs.test_pattern == 'test_pt_smoke' }}
     needs: target-build
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: acceptance
@@ -142,7 +148,8 @@ jobs:
   # ==================================================================
   baseline-build:
     name: baseline / build
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
@@ -157,7 +164,10 @@ jobs:
     name: baseline / ut
     if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_ut' || inputs.test_pattern == 'test_pt_smoke' }}
     needs: baseline-build
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     permissions:
       contents: read
       issues: write
@@ -176,7 +186,9 @@ jobs:
     name: baseline / e2e
     if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_e2e' || inputs.test_pattern == 'test_pt_smoke' }}
     needs: baseline-build
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: acceptance
@@ -200,7 +212,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup python
         uses: ./.github/actions/setup-python
@@ -232,37 +246,37 @@ jobs:
           } > "${GITHUB_STEP_SUMMARY}"
 
       - name: Download target E2E logs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*-target'
           path: ${{ github.workspace }}/results/target/e2e
 
       - name: Download target UT logs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: 'Inductor-XPU-UT-Data-*-target'
           path: ${{ github.workspace }}/results/target/ut
 
       - name: Download target UT failure lists
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: 'XPU-UT-Failure-List-*-target'
           path: ${{ github.workspace }}/results/target/ut
 
       - name: Download baseline E2E logs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*-baseline'
           path: ${{ github.workspace }}/results/baseline/e2e
 
       - name: Download baseline UT logs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: 'Inductor-XPU-UT-Data-*-baseline'
           path: ${{ github.workspace }}/results/baseline/ut
 
       - name: Download baseline UT failure lists
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: 'XPU-UT-Failure-List-*-baseline'
           path: ${{ github.workspace }}/results/baseline/ut
@@ -290,7 +304,7 @@ jobs:
 
       - name: Upload acceptance report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: acceptance-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -325,7 +339,10 @@ jobs:
           R_BE2E: ${{ needs.baseline-e2e.result }}
           R_CMP: ${{ needs.compare-results.result }}
         run: |
-          [ -n "$CB_SHA" ] && [ -n "$CB_CONTEXT" ] || { echo "No callback sha/context; skipping."; exit 0; }
+          if [ -z "$CB_SHA" ] || [ -z "$CB_CONTEXT" ]; then
+            echo "No callback sha/context; skipping."
+            exit 0
+          fi
           # Surface an expired/revoked token as such instead of a bare 401 on
           # the status POST below.
           echo "Callback token identity: $(GH_TOKEN="$CB_TOKEN" gh api user --jq .login 2>&1)"

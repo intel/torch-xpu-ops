@@ -2,6 +2,13 @@ name: UT Issue Auto Creation
 
 on:
   workflow_call:
+    secrets:
+      AWS_BEARER_TOKEN_BEDROCK:
+        required: false
+      AWS_REGION:
+        required: false
+      MERGE_TOKEN:
+        required: false
     inputs:
       run_id:
         required: true
@@ -68,7 +75,9 @@ jobs:
       GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Collect evidence
         # Stdlib only, so the runner's system python3 is enough - no setup-python
@@ -83,7 +92,7 @@ jobs:
             --run-id "${NIGHTLY_RUN_ID}" \
             --test-type "${TEST_TYPE}" \
             --work-dir "${WORK_DIR}" \
-            --report-dir "${{ github.workspace }}/ut_auto_issue_report" \
+            --report-dir "${GITHUB_WORKSPACE}/ut_auto_issue_report" \
             --evidence-dir "${EVIDENCE_DIR}"
 
       - name: Draft the issues
@@ -135,19 +144,20 @@ jobs:
             --evidence-dir "${EVIDENCE_DIR}" \
             --drafts "${DRAFTS}" \
             --work-dir "${WORK_DIR}" \
-            --report-dir "${{ github.workspace }}/ut_auto_issue_report"
+            --report-dir "${GITHUB_WORKSPACE}/ut_auto_issue_report"
 
       - name: Report usage cost
         # Every run, filing or not: the analysis costs the same either way.
         if: ${{ always() }}
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           NIGHTLY_RUN_ID: ${{ inputs.run_id }}
+          EXECUTION_FILE: ${{ steps.analyse.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.analyse.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -169,13 +179,13 @@ jobs:
 
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              issue_number: Number(process.env.COST_TRACKING_ISSUE),
               body: `\`${date}\` [\`ut-auto-issue\`](${jobUrl}) on nightly #${process.env.NIGHTLY_RUN_ID} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
       - name: Upload report
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: UT-Auto-Issue-Report-${{ inputs.run_id }}
           path: ${{ github.workspace }}/ut_auto_issue_report

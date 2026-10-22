@@ -2,6 +2,13 @@ name: Linux UT Test
 
 on:
   workflow_call:
+    secrets:
+      COPILOT_TOKEN:
+        required: false
+      DOCKER_HUB_TOKEN:
+        required: false
+      HUGGING_FACE_HUB_TOKEN:
+        required: false
     inputs:
       runner:
         required: true
@@ -59,7 +66,9 @@ jobs:
               -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -74,14 +83,14 @@ jobs:
           skip_summary: ${{ inputs.skip_summary }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
@@ -101,7 +110,9 @@ jobs:
       UT_LABEL: ${{ inputs.ut == 'xpu_p0' && 'xpu_p0_distributed' || inputs.ut }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -116,14 +127,14 @@ jobs:
           skip_summary: ${{ inputs.skip_summary }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_LABEL }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
@@ -140,15 +151,17 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
       - name: Download known-failure issues snapshot
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
           path: ${{ github.workspace }}/issues_snapshot
@@ -160,24 +173,25 @@ jobs:
           UT_RUNNER: ${{ inputs.runner }}
           UT_CATEGORY: ${{ inputs.category }}
           PYTORCH_REF: ${{ inputs.pytorch }}
+          PR_OR_SHA: ${{ github.event.pull_request.number || github.sha }}
         run: |
-          ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log/
+          ls -al "${GITHUB_WORKSPACE}/ut_log"
+          cd "${GITHUB_WORKSPACE}/ut_log/"
           # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${UT_SCOPE}-*" |sort -V |tail -n 1)
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${PR_OR_SHA}-${UT_SCOPE}-*" |sort -V |tail -n 1)
           latest_dir="${latest_dir:-.}"
           cd "${latest_dir}/${UT_SCOPE}"
-          find "${{ github.workspace }}/ut_log" -type f \
+          find "${GITHUB_WORKSPACE}/ut_log" -type f \
               \( -name "failures_*.log" -o \
                 -name "passed_*.log" -o \
                 -name "category_*.log" -o \
                 -name "reproduce_*.log" \) \
               -exec mv {} ./ \; || true
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
+          cp "${GITHUB_WORKSPACE}/.github/scripts/ut_result_check.sh" ./
           # Build the known-issues list by merging two sources:
           #   1. Snapshot captured at build start (covers issues closed mid-run)
           #   2. Current live state (covers new issues opened after build start)
-          snapshot_dir="${{ github.workspace }}/issues_snapshot"
+          snapshot_dir="${GITHUB_WORKSPACE}/issues_snapshot"
           touch issues.log Known_issue.log.tmp
           echo "Restoring snapshotted skipped issues if available."
           cp "${snapshot_dir}/known_issue_static.log" Known_issue.log.tmp || true
@@ -189,8 +203,8 @@ jobs:
             cat "${snapshot_dir}/issues_snapshot_dpclang.log" >> issues.log || true
           fi
           echo "Fetching current known-failure issues from GitHub."
-          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh static >> Known_issue.log.tmp
-          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open "${UT_CATEGORY}" "${UT_RUNNER}" >> issues.log
+          bash "${GITHUB_WORKSPACE}/.github/scripts/fetch_issues.sh" static >> Known_issue.log.tmp
+          bash "${GITHUB_WORKSPACE}/.github/scripts/fetch_issues.sh" open "${UT_CATEGORY}" "${UT_RUNNER}" >> issues.log
           if [ "${UT_SCOPE}" == "basic" ];then
             ut_list="op_regression op_extended op_regression_dev1"
           else
@@ -200,7 +214,7 @@ jobs:
           # ut_result_check.sh appends one health record per category here. The
           # loop's CWD is inside ut_log/<artifact_dir>/<ut_job>/, so the path must
           # be absolute for the file to land in the re-uploaded artifact.
-          export UT_RUN_HEALTH_FILE="${{ github.workspace }}/ut_log/run_health.jsonl"
+          export UT_RUN_HEALTH_FILE="${GITHUB_WORKSPACE}/ut_log/run_health.jsonl"
           : > "${UT_RUN_HEALTH_FILE}"
           check_ret=0
           for ut_name in ${ut_list}
@@ -220,10 +234,11 @@ jobs:
         id: new-failures
         env:
           UT_SCOPE: ${{ inputs.ut }}
+          PR_OR_SHA: ${{ github.event.pull_request.number || github.sha }}
         run: |
-          cd ${{ github.workspace }}/ut_log/
+          cd "${GITHUB_WORKSPACE}/ut_log/"
           # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${UT_SCOPE}-*" |sort -V |tail -n 1)
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${PR_OR_SHA}-${UT_SCOPE}-*" |sort -V |tail -n 1)
           latest_dir="${latest_dir:-.}"
           ut_dir="${latest_dir}/${UT_SCOPE}"
           if [ "${UT_SCOPE}" == "basic" ]; then
@@ -232,7 +247,7 @@ jobs:
             ut_list="${UT_SCOPE}"
           fi
           # Collect new failure case names from filtered logs produced by ut_result_check.sh
-          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          new_failure_list="${GITHUB_WORKSPACE}/ut_log/new_failure_list.txt"
           : > "$new_failure_list"
           for ut_name in ${ut_list}; do
             filtered_file="${ut_dir}/failures_${ut_name}_filtered.log"
@@ -241,15 +256,15 @@ jobs:
             fi
           done
           # Filter ut_failure_list.csv to keep only new failures (with error messages)
-          ut_failure_csv=$(find "${{ github.workspace }}/ut_log" -name "ut_failure_list.csv" -type f | head -1)
-          new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
+          ut_failure_csv=$(find "${GITHUB_WORKSPACE}/ut_log" -name "ut_failure_list.csv" -type f | head -1)
+          new_failure_csv="${GITHUB_WORKSPACE}/ut_log/new_ut_failure_list.csv"
           if [ -s "$new_failure_list" ] && [ -n "$ut_failure_csv" ] && [ -f "$ut_failure_csv" ]; then
             # ut_failure_list.csv is headerless (see check-ut.py print_md_row);
             # build the report from matched rows only.
             : > "$new_failure_csv"
             # Match rows by class_name AND test_name to avoid substring false positives
             # filtered log format: category,class_name,test_name
-            while IFS=',' read -r category class_name test_name; do
+            while IFS=',' read -r _ class_name test_name; do
               [ -z "$test_name" ] && continue
               # Use both class_name and test_name for precise matching in pipe-delimited CSV
               grep -F "| $class_name | $test_name |" "$ut_failure_csv" >> "$new_failure_csv" || true
@@ -267,13 +282,13 @@ jobs:
       - name: Upload new failure report
         if: ${{ ! cancelled() && steps.new-failures.outputs.has_new_failures == 'true' }}
         id: upload-new-failures
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log/new_ut_failure_list.csv
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
@@ -285,9 +300,10 @@ jobs:
           && github.event.pull_request.head.repo.full_name == github.repository
           && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
               || github.event.pull_request.user.login == 'copilot[bot]') }}
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           UT_SCOPE: ${{ inputs.ut }}
+          ARTIFACT_URL: ${{ steps.upload-new-failures.outputs.artifact-url }}
         with:
           github-token: ${{ secrets.COPILOT_TOKEN }}
           script: |
@@ -295,10 +311,10 @@ jobs:
             const prNumber = context.issue.number;
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const ut = process.env.UT_SCOPE;
-            const artifactUrl = '${{ steps.upload-new-failures.outputs.artifact-url }}';
+            const artifactUrl = process.env.ARTIFACT_URL;
 
             // Read and parse new failure list csv (markdown table format)
-            const csvFile = '${{ github.workspace }}/ut_log/new_ut_failure_list.csv';
+            const csvFile = `${process.env.GITHUB_WORKSPACE}/ut_log/new_ut_failure_list.csv`;
             let failureTable = '';
             let totalCount = 0;
             if (fs.existsSync(csvFile)) {
@@ -356,7 +372,7 @@ jobs:
         if: ${{ steps.ut-check.outcome == 'failure' }}
         shell: bash {0}
         run: |
-          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          new_failure_list="${GITHUB_WORKSPACE}/ut_log/new_failure_list.txt"
           if [ -s "$new_failure_list" ]; then
             new_failure_count=$(grep -c . "$new_failure_list")
             echo "::error::UT check failed with ${new_failure_count} new failures:"

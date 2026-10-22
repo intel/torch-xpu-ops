@@ -11,7 +11,7 @@ runs:
   steps:
     - name: Resolve python version
       id: config
-      uses: actions/github-script@v9
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       env:
         ACTION_PATH: ${{ github.action_path }}
         OVERRIDE_PYTHON: ${{ inputs.python }}
@@ -27,11 +27,14 @@ runs:
     - name: Clear venv
       shell: bash -xe {0}
       run: |
-        uv venv --clear --python ${{ steps.config.outputs.python }}
+        uv venv --clear --python ${STEPS_CONFIG_OUTPUTS_PYTHON}
         uv pip install -U pip wheel "setuptools<81"
+      env:
+        STEPS_CONFIG_OUTPUTS_PYTHON: ${{ steps.config.outputs.python }}
     - name: Setup venv paths
+      id: venv
       shell: bash -xe {0}
-      run: | # zizmor: ignore[github-env] composite action intentionally exports to the job env
+      run: |
         PYTHON_CMD="$(command -v python || command -v python3)"
         PYTHON_BIN="$("${PYTHON_CMD}" -c 'import sys; print(sys.executable)')"
         BIN_DIR="$(dirname "${PYTHON_BIN}")"
@@ -41,9 +44,25 @@ runs:
         [ -e "${BIN_DIR}/python" ] || ln -s python3 "${BIN_DIR}/python"
         [ -e "${BIN_DIR}/pip3" ] || ln -s pip "${BIN_DIR}/pip3"
         [ -e "${BIN_DIR}/pip" ] || ln -s pip3 "${BIN_DIR}/pip"
-        echo "${BIN_DIR}" >> "${GITHUB_PATH}"
-        echo "VENV_ROOT=${VENV_ROOT}" >> "${GITHUB_ENV}"
-        echo "LD_LIBRARY_PATH=${VENV_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" >> "${GITHUB_ENV}"
+        echo "bin_dir=${BIN_DIR}" >> "${GITHUB_OUTPUT}"
+        echo "venv_root=${VENV_ROOT}" >> "${GITHUB_OUTPUT}"
+    - name: Export venv paths
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        VENV_BIN_DIR: ${{ steps.venv.outputs.bin_dir }}
+        VENV_ROOT_DIR: ${{ steps.venv.outputs.venv_root }}
+      with:
+        script: |
+          const { VENV_BIN_DIR: bin, VENV_ROOT_DIR: root, LD_LIBRARY_PATH: ld } = process.env;
+          for (const value of [bin, root]) {
+            if (!/^[^\n\r]+$/.test(value || '')) {
+              core.setFailed(`Unexpected venv path: ${JSON.stringify(value)}`);
+              return;
+            }
+          }
+          core.addPath(bin);
+          core.exportVariable('VENV_ROOT', root);
+          core.exportVariable('LD_LIBRARY_PATH', ld ? `${root}/lib:${ld}` : `${root}/lib`);
     - name: Check python and pip version
       shell: bash -xe {0}
       run: |

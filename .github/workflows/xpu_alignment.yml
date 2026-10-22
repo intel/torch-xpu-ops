@@ -37,7 +37,7 @@ jobs:
       scan_date: ${{ steps.context.outputs.scan_date }}
     steps:
       - name: Checkout deterministic collector
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -55,16 +55,17 @@ jobs:
       - name: Collect upstream pages and progress
         env:
           GH_TOKEN: ${{ github.token }}
+          STEPS_CONTEXT_OUTPUTS_SCAN_DATE: ${{ steps.context.outputs.scan_date }}
         run: |
           set -euo pipefail
           python3 .github/scripts/xpu_alignment_collect.py \
             --repository pytorch/pytorch \
-            --scan-date "${{ steps.context.outputs.scan_date }}" \
+            --scan-date "${STEPS_CONTEXT_OUTPUTS_SCAN_DATE}" \
             --output alignment-collection
 
       - name: Upload immutable collection
         if: always() && steps.context.outputs.scan_date != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-collection
           path: alignment-collection/collection/
@@ -86,12 +87,12 @@ jobs:
       usage: ${{ steps.usage.outputs.usage }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
       - name: Restore immutable collection
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-collection
           path: ${{ env.ALIGNMENT_RUN_ROOT }}/${{ needs.collect.outputs.scan_date }}/collection
@@ -196,7 +197,7 @@ jobs:
 
       - name: Upload immutable preparation
         if: always() && needs.collect.outputs.scan_date != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-prepare
           path: |
@@ -223,18 +224,18 @@ jobs:
         -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout deterministic runner
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
       - name: Restore immutable preparation
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-prepare
           path: alignment-run
 
       - name: Restore immutable collection
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-collection
           path: alignment-run/collection
@@ -302,7 +303,7 @@ jobs:
 
       - name: Upload immutable runner evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-runner
           path: alignment-run/runner/
@@ -337,24 +338,24 @@ jobs:
       usage: ${{ steps.usage.outputs.usage }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
       - name: Restore immutable preparation
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-prepare
           path: alignment-run
 
       - name: Restore immutable collection
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-collection
           path: alignment-run/collection
 
       - name: Restore immutable runner evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-runner
           path: alignment-run/runner
@@ -441,7 +442,7 @@ jobs:
 
       - name: Upload final scan
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-scan
           path: |
@@ -465,30 +466,30 @@ jobs:
       usage: ${{ steps.usage.outputs.usage }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
       - name: Restore immutable preparation
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-prepare
           path: alignment-run
 
       - name: Restore immutable collection
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-collection
           path: alignment-run/collection
 
       - name: Restore immutable runner evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-runner
           path: alignment-run/runner
 
       - name: Restore final scan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-scan
           path: alignment-run
@@ -583,7 +584,7 @@ jobs:
 
       - name: Upload independent review
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-review
           path: alignment-run/review/
@@ -605,41 +606,41 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
       - name: Restore original preparation
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-prepare
           path: prepare_snapshot
 
       - name: Restore original collection
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-collection
           path: collection_snapshot/collection
 
       - name: Restore original runner evidence
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-runner
           path: runner_snapshot/runner
 
       - name: Restore final scan
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-scan
           path: scan_snapshot
 
       - name: Restore independent review
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-review
           path: review_snapshot/review
@@ -697,7 +698,7 @@ jobs:
 
       - name: Upload gate artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-gate
           path: gate/
@@ -719,7 +720,7 @@ jobs:
 
       - name: Report alignment usage cost
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           ALIGNMENT_MODE: ${{ github.event_name == 'schedule' && 'schedule' || 'dry-run' }}
           COST_ISSUE: ${{ env.ALIGNMENT_COST_ISSUE }}

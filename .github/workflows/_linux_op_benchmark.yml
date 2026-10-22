@@ -2,6 +2,11 @@ name: Linux OP Benchmark Test
 
 on:
   workflow_call:
+    secrets:
+      DOCKER_HUB_TOKEN:
+        required: false
+      HUGGING_FACE_HUB_TOKEN:
+        required: false
     inputs:
       runner:
         required: true
@@ -42,7 +47,9 @@ jobs:
               -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -59,7 +66,7 @@ jobs:
           filename=$(find -- *.py)
           for i in $filename
           do
-            python ${i%.*}.py > ${{ github.workspace }}/op_benchmark/${i%.*}.log
+            python "${i%.*}.py" > "${{ github.workspace }}/op_benchmark/${i%.*}.log"
           done
           uv pip install pandas openpyxl
           # Summary forward op time
@@ -73,7 +80,7 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Inductor XPU OP benchmark Log
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
@@ -91,13 +98,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install gh rsync ca-certificates -y
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Setup python
         uses: ./.github/actions/setup-python
         with:
           python: ${{ inputs.python }}
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*
           path: ${{ github.workspace }}/op_benchmark_tmp
@@ -111,9 +120,9 @@ jobs:
           mkdir -p ${{ github.workspace }}/op_benchmark
           mv "${{ github.workspace }}/op_benchmark_tmp/${latest_dir}"/* ${{ github.workspace }}/op_benchmark
           # baseline
-          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+          REFERENCE_RUN_ID="$(gh --repo "${GITHUB_REPOSITORY}" issue view "${reference_issue}" \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
-          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
+          gh --repo "${GITHUB_REPOSITORY}" run download "${REFERENCE_RUN_ID}" -p "Inductor-XPU-OP-Benchmark-Data-*"
           rm -rf ${{ github.workspace }}/reference
           mkdir -p ${{ github.workspace }}/reference
           mv -f Inductor-XPU-OP-Benchmark-Data-*-Updated/* ${{ github.workspace }}/reference
@@ -144,12 +153,12 @@ jobs:
           cp -r ${{ github.workspace }}/new_baseline ${{ github.workspace }}/op_benchmark
       - name: Upload Inductor XPU OP benchmark Log
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-Updated-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
       - name: Upload Reference Run ID
         run: |
-          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
+          gh --repo "${GITHUB_REPOSITORY}" issue view "${reference_issue}" --json body -q .body | \
             sed "s/Inductor-XPU-OP-Benchmark-Data:.*/Inductor-XPU-OP-Benchmark-Data: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
-          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
+          gh --repo "${GITHUB_REPOSITORY}" issue edit "${reference_issue}" --body-file new_body.txt

@@ -34,7 +34,8 @@ concurrency:
 jobs:
   code-check:
     if: ${{ github.repository_owner == 'intel' }}
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
     permissions:
       contents: read
     uses: ./.github/workflows/_code_check.yml
@@ -66,7 +67,7 @@ jobs:
           echo "::error::Code check result: ${CODE_CHECK_RESULT}. See the 'code-check / *' jobs for details."
           exit 1
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: torch-xpu-ops
           persist-credentials: false
@@ -112,12 +113,14 @@ jobs:
           fi
 
           # Export for later steps
-          echo "has_repro_files=$HAS_REPRO_FILES" >> "$GITHUB_OUTPUT"
-          echo "has_pr_cmd=$HAS_PR_CMD" >> "$GITHUB_OUTPUT"
-          # Use delimiter for multiline output
-          echo "pr_cmd<<ENDOFCMD" >> "$GITHUB_OUTPUT"
-          echo "$PR_CMD" >> "$GITHUB_OUTPUT"
-          echo "ENDOFCMD" >> "$GITHUB_OUTPUT"
+          {
+            echo "has_repro_files=$HAS_REPRO_FILES"
+            echo "has_pr_cmd=$HAS_PR_CMD"
+            # Use delimiter for multiline output
+            echo "pr_cmd<<ENDOFCMD"
+            echo "$PR_CMD"
+            echo "ENDOFCMD"
+          } >> "$GITHUB_OUTPUT"
 
           # Fail only if neither source is available
           if [ "$HAS_REPRO_FILES" = false ] && [ "$HAS_PR_CMD" = false ] && [ -z "$FAIL_MSG" ]; then
@@ -147,12 +150,14 @@ jobs:
             --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
           echo "Live PR labels: $LABELS"
           has() { echo "$LABELS" | tr ',' '\n' | grep -qx "$1" && echo "true" || echo "false"; }
-          echo "skip_all=$(has disable_all)" >> "$GITHUB_OUTPUT"
-          echo "skip_ut=$(has disable_ut)" >> "$GITHUB_OUTPUT"
-          echo "skip_e2e=$(has disable_e2e)" >> "$GITHUB_OUTPUT"
-          echo "skip_distributed=$(has disable_distributed)" >> "$GITHUB_OUTPUT"
-          echo "skip_win=$(has disable_win)" >> "$GITHUB_OUTPUT"
-          echo "force_win_ut=$(has windows_ci)" >> "$GITHUB_OUTPUT"
+          {
+            echo "skip_all=$(has disable_all)"
+            echo "skip_ut=$(has disable_ut)"
+            echo "skip_e2e=$(has disable_e2e)"
+            echo "skip_distributed=$(has disable_distributed)"
+            echo "skip_win=$(has disable_win)"
+            echo "force_win_ut=$(has windows_ci)"
+          } >> "$GITHUB_OUTPUT"
 
   conditions-filter-win:
     if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
@@ -179,7 +184,8 @@ jobs:
   linux-build:
     needs: preci-lint-check
     if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && needs.preci-lint-check.outputs.skip_all != 'true' }}
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -192,7 +198,8 @@ jobs:
   reproducer-test:
     needs: [linux-build, preci-lint-check]
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' }}
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
     permissions:
       contents: read
       issues: write
@@ -207,7 +214,10 @@ jobs:
   linux-ut:
     needs: [linux-build, reproducer-test, preci-lint-check]
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_ut != 'true' }}
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     permissions:
       contents: read
       issues: write
@@ -226,7 +236,10 @@ jobs:
   linux-distributed:
     needs: [linux-build, reproducer-test, preci-lint-check]
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_distributed != 'true' }}
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     permissions:
       contents: read
       issues: write
@@ -246,7 +259,9 @@ jobs:
     name: linux-e2e
     needs: [linux-build, reproducer-test, preci-lint-check]
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_e2e != 'true' }}
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -279,7 +294,6 @@ jobs:
       ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false
       && needs.preci-lint-check.outputs.skip_all != 'true'
       && needs.preci-lint-check.outputs.skip_win != 'true' }}
-    secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
       runner: windows-build
@@ -295,7 +309,6 @@ jobs:
       && (needs.preci-lint-check.outputs.force_win_ut == 'true'
       || (needs.preci-lint-check.outputs.skip_ut != 'true'
       && needs.conditions-filter-win.outputs.src_changed == 'true')) }}
-    secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: op_extended,test_xpu

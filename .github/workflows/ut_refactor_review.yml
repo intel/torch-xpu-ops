@@ -25,22 +25,25 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout pytorch/pytorch (provides the /pr-review skill)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: pytorch/pytorch
           path: pytorch
           sparse-checkout: .claude/skills/pr-review
+          persist-credentials: false
       - name: Checkout intel/torch-xpu-ops (provides the /ut-refactor-review skill)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: torch-xpu-ops
           sparse-checkout: .claude/skills/ut-refactor-review
+          persist-credentials: false
       - name: Checkout KarhouTam/agent-skills (provides the /review-test-refactoring skill)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: KarhouTam/agent-skills
           path: agent-skills
           sparse-checkout: pytorch-test-refactoring
+          persist-credentials: false
       - name: Run AI review
         id: ai-review
         uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
@@ -67,13 +70,14 @@ jobs:
 
       - name: Write review to job summary
         if: steps.ai-review.outputs.execution_file
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PYTORCH_PR: ${{ github.event.inputs.pytorch_pr }}
+          EXECUTION_FILE: ${{ steps.ai-review.outputs.execution_file }}
         with:
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) {
               core.setFailed('No execution file produced by the AI review.');
               return;
@@ -89,13 +93,14 @@ jobs:
             await core.summary.addRaw(header + result.result).write();
 
       - name: "Verify: AI review succeeded"
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+          EXECUTION_FILE: ${{ steps.ai-review.outputs.execution_file }}
         with:
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             let ok = false;
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -109,14 +114,15 @@ jobs:
 
       - name: Report usage cost
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PYTORCH_PR: ${{ github.event.inputs.pytorch_pr }}
+          EXECUTION_FILE: ${{ steps.ai-review.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -139,6 +145,6 @@ jobs:
 
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              issue_number: Number(process.env.COST_TRACKING_ISSUE),
               body: `\`${date}\` [\`ut-review\`](${jobUrl}) on **pytorch/pytorch[#${pr}]** — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });

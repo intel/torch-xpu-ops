@@ -44,231 +44,84 @@ jobs:
     timeout-minutes: 1000
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Resolve python version
         uses: ./.github/actions/ci-config
         with:
           python: ${{ inputs.python }}
       - name: Clean old wheel artifacts
         if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-        shell: cmd
+        shell: pwsh
         run: |
-          if exist "%GITHUB_WORKSPACE%\wheel_artifact" rmdir /s /q "%GITHUB_WORKSPACE%\wheel_artifact"
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\clean_wheel_artifacts.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Download Torch Wheel
         if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-*
           path: ${{ github.workspace }}/wheel_artifact
       - name: Install oneAPI (for UT runtime)
-        shell: cmd
+        shell: pwsh
         env:
           XPU_VERSION_INPUT: ${{ inputs.xpu_version }}
         run: |
-          set XPU_VERSION=%XPU_VERSION_INPUT%
-          call .github\scripts\install_xpu.bat
-          if errorlevel 1 exit /b 1
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\install_oneapi_ut.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Setup Python Environment
-        shell: cmd
+        shell: pwsh
         env:
           PYTORCH_REF: ${{ inputs.pytorch }}
           TORCH_XPU_OPS_REF: ${{ inputs.torch_xpu_ops }}
         run: |
-          echo "C:\ProgramData\miniforge3\Scripts" >> "$GITHUB_PATH"
-          echo "C:\ProgramData\miniforge3\Library\bin" >> "$GITHUB_PATH"
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          rmdir /s /q "C:\ProgramData\miniforge3\envs\windows_ut"
-          call conda clean -ay
-          call conda remove --all -y -n windows_ut
-          call conda create -n windows_ut python=%PYTHON_VERSION% -y
-          call conda activate windows_ut
-          python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist
-          call conda install -y libuv
-          call conda install -y rust
-          cd ..
-          if exist "pytorch" (
-            rmdir /s /q pytorch
-          )
-          set pytorch=%PYTORCH_REF%
-          set torch_xpu_ops=%TORCH_XPU_OPS_REF%
-
-          REM Skip pytorch clone for nightly wheel - will be handled after install
-          echo %pytorch% | findstr /C:"_wheel" >nul
-          if %errorlevel% equ 0 (
-            echo "Nightly wheel mode: skipping pytorch clone (will clone after install)"
-            goto :setup_done
-          )
-
-          echo %pytorch% | findstr /C:"https://" >nul
-          if %errorlevel% equ 0 (
-              echo %pytorch% | findstr "@" >nul
-              if %errorlevel% equ 0 (
-                  for /f "tokens=1,2 delims=@" %%a in ("%pytorch%") do (
-                      set PYTORCH_REPO=%%a
-                      set PYTORCH_COMMIT=%%b
-                  )
-              ) else (
-                  set PYTORCH_REPO=%pytorch%
-                  set PYTORCH_COMMIT=main
-              )
-          ) else (
-              set PYTORCH_REPO=https://github.com/pytorch/pytorch.git
-              set PYTORCH_COMMIT=%pytorch%
-          )
-
-          echo %torch_xpu_ops% | findstr /C:"https://" >nul
-          if %errorlevel% equ 0 (
-              echo %torch_xpu_ops% | findstr "@" >nul
-              if %errorlevel% equ 0 (
-                  for /f "tokens=1,2 delims=@" %%a in ("%torch_xpu_ops%") do (
-                      set TORCH_XPU_OPS_REPO=%%a
-                      set TORCH_XPU_OPS_COMMIT=%%b
-                  )
-              ) else (
-                  set TORCH_XPU_OPS_REPO=%torch_xpu_ops%
-                  set TORCH_XPU_OPS_COMMIT=main
-              )
-          ) else (
-              set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
-              set TORCH_XPU_OPS_COMMIT=%torch_xpu_ops%
-          )
-          git clone %PYTORCH_REPO% pytorch
-          cd pytorch && git checkout %PYTORCH_COMMIT%
-          if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
-            echo "Don't replace torch-xpu-ops!"
-          ) else (
-            echo "Replace torch-xpu-ops!"
-            cd third_party
-            if exist "torch-xpu-ops" (
-              rmdir /s /q torch-xpu-ops
-            )
-            cd ..
-            if "%GITHUB_EVENT_NAME%" == "pull_request" (
-              Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
-            ) else (
-              git clone "%TORCH_XPU_OPS_REPO%" "third_party\torch-xpu-ops"
-              cd "third_party\torch-xpu-ops"
-              git checkout "%TORCH_XPU_OPS_COMMIT%"
-              cd ../..
-            )
-            powershell -Command "(Get-Content caffe2/CMakeLists.txt) -replace 'checkout --quiet \${TORCH_XPU_OPS_COMMIT}', 'log -n 1' | Set-Content caffe2/CMakeLists.txt"
-          )
-          :setup_done
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\setup_ut_python_env.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install PyTorch Wheel and Dependencies
-        shell: cmd
+        shell: pwsh
         env:
           PYTORCH_REF: ${{ inputs.pytorch }}
           TORCH_XPU_OPS_REF: ${{ inputs.torch_xpu_ops }}
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call conda activate windows_ut
-          set PYTORCH_INPUT=%PYTORCH_REF%
-          echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul
-          if %errorlevel% equ 0 (
-            echo "Installing PyTorch from nightly wheel..."
-            python -m pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-            REM Clone pytorch source at the installed version's commit for test infra
-            for /f "delims=" %%v in ('python -c "import torch; print(torch.version.git_version)"') do set TORCH_COMMIT_ID=%%v
-            echo "Installed torch commit: %TORCH_COMMIT_ID%"
-            cd %GITHUB_WORKSPACE%\..
-            git clone https://github.com/pytorch/pytorch.git pytorch
-            cd pytorch && git checkout %TORCH_COMMIT_ID%
-            REM Prepare torch-xpu-ops for test scripts
-            set torch_xpu_ops=%TORCH_XPU_OPS_REF%
-            if "%torch_xpu_ops%" == "pinned" (
-              for /f "delims=" %%c in ('type third_party\xpu.txt') do set XPU_OPS_COMMIT=%%c
-              cd third_party
-              if exist "torch-xpu-ops" rmdir /s /q torch-xpu-ops
-              cd ..
-              git clone "https://github.com/intel/torch-xpu-ops.git" "third_party\torch-xpu-ops"
-              cd "third_party\torch-xpu-ops"
-              git checkout "%XPU_OPS_COMMIT%"
-              cd ../..
-            ) else (
-              cd third_party
-              if exist "torch-xpu-ops" rmdir /s /q torch-xpu-ops
-              cd ..
-              git clone "https://github.com/intel/torch-xpu-ops.git" "third_party\torch-xpu-ops"
-              cd "third_party\torch-xpu-ops"
-              git checkout "%torch_xpu_ops%"
-              cd ../..
-            )
-          ) else (
-            REM Install in the loop body: %TORCH_WHL% would expand when cmd
-            REM parses this block, before the for has assigned it.
-            for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do python -m pip install "%%f"
-            python -c "import torch" || exit /b 1
-          )
-          cd %GITHUB_WORKSPACE%\..\pytorch
-          python -m pip install -r .ci\docker\requirements-ci.txt
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\install_torch_wheel_and_deps.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Torch Config Check
-        shell: cmd
+        shell: pwsh
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call conda activate windows_ut
-          python -c "import torch; print(torch.__config__.show())"
-          python -c "import torch; print(torch.__config__.parallel_info())"
-          python -c "import torch; print(torch.xpu.device_count())"
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\torch_config_check.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
-        shell: cmd
+        shell: pwsh
         continue-on-error: true
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          call conda activate windows_ut
-          set PYTORCH_TEST_WITH_SLOW=1
-          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
-          python run_test_with_skip_mtl.py
-
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy op_extended.xml %GITHUB_WORKSPACE%\ut_log /Y
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\run_op_extended_ut.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run CPP Extensions AOT SYCL UT
         if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
-        shell: cmd
+        shell: pwsh
         continue-on-error: true
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
-          call conda activate windows_ut
-          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
-          python -m pytest test_cpp_extensions_aot_xpu.py -v --junit-xml=test_cpp_extensions_aot_xpu.xml
-
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\run_cpp_extensions_aot_ut.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run Test XPU UT
         if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
-        shell: cmd
+        shell: pwsh
         continue-on-error: true
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          call conda activate windows_ut
-          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
-          python run_test_win_with_skip_mtl.py
-
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\run_test_xpu_ut.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run OP UT
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
-        shell: cmd
+        shell: pwsh
         continue-on-error: true
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          call conda activate windows_ut
-          set PYTORCH_TEST_WITH_SLOW=1
-          set PYTEST_ADDOPTS=-v --timeout 600 --timeout_method=thread --max-worker-restart 1000000 -n 1
-          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
-          python run_test_with_windows_nightly.py
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
+          & cmd.exe /d /e:on /v:off /s /c "call `"$env:GITHUB_WORKSPACE\.github\scripts\windows\run_op_ut.bat`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: "${{ github.workspace }}/ut_log"
@@ -282,13 +135,15 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Setup python
         uses: ./.github/actions/setup-python
         with:
           python: ${{ inputs.python }}
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
@@ -298,15 +153,15 @@ jobs:
           UT_SCOPE: ${{ inputs.ut }}
         run: |
           uv pip install junitparser
-          find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
-          python ./.github/scripts/check-ut.py -n ${UT_SCOPE} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          find . -type f -name "*.xml" -exec mv {} "${GITHUB_WORKSPACE}/ut_log/" \; || true
+          python ./.github/scripts/check-ut.py -n "${UT_SCOPE}" -i "${GITHUB_WORKSPACE}"/ut_log/*.xml >> "${GITHUB_STEP_SUMMARY}" || true
           # Check the failure logs
-          if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
+          if ls "${GITHUB_WORKSPACE}"/failures*.log 1> /dev/null 2>&1; then
             echo -e "Exist Failure logs"
             echo "Found Failure logs as below: "
-            for file in ${{ github.workspace }}/failures*.log; do
+            for file in "${GITHUB_WORKSPACE}"/failures*.log; do
               echo "  - $file"
-              cp "$file" ${{ github.workspace }}/ut_log
+              cp "$file" "${GITHUB_WORKSPACE}/ut_log"
             done
             echo -e "Failure logs Copied"
           else
@@ -314,21 +169,21 @@ jobs:
           fi
           # Copied the passed logs
           if ls passed*.log 1> /dev/null 2>&1; then
-            cp passed*.log ${{ github.workspace }}/ut_log
+            cp passed*.log "${GITHUB_WORKSPACE}/ut_log"
             echo -e "Passed logs Copied"
           else
             echo -e "No Passed logs"
           fi
           # Copied the Summary logs
           if ls category*.log 1> /dev/null 2>&1; then
-            cp category*.log ${{ github.workspace }}/ut_log
+            cp category*.log "${GITHUB_WORKSPACE}/ut_log"
             echo -e "Category logs Copied"
           else
             echo -e "No Category logs"
           fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
@@ -342,9 +197,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
@@ -352,14 +209,15 @@ jobs:
         shell: bash
         env:
           UT_SCOPE: ${{ inputs.ut }}
+          PR_OR_SHA: ${{ github.event.pull_request.number || github.sha }}
         run: |
-          ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log
+          ls -al "${GITHUB_WORKSPACE}/ut_log"
+          cd "${GITHUB_WORKSPACE}/ut_log"
           # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*" |sort -V |tail -n 1)
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${PR_OR_SHA}-Windows-*" |sort -V |tail -n 1)
           latest_dir="${latest_dir:-.}"
           cd "${latest_dir}"
-          find "${{ github.workspace }}/ut_log" -type f \
+          find "${GITHUB_WORKSPACE}/ut_log" -type f \
               \( -name "failures_*.log" -o \
                 -name "passed_*.log" -o \
                 -name "category_*.log" \) \
@@ -369,7 +227,7 @@ jobs:
           count_linux=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
           if [ "$count_linux" -gt 0 ]; then
             echo -e "$count_linux issues on linux with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?labels=skipped" \
               --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
           fi
 
@@ -377,12 +235,13 @@ jobs:
           count_windows_only=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped_windows+state:open" --jq '.total_count')
           if [ "$count_windows_only" -gt 0 ]; then
             echo -e "$count_windows_only windows only issues with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" \
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?labels=skipped_windows" \
               --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' >> issues.log
           fi
 
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          for ut_name in $(echo ${UT_SCOPE} |sed 's/,/ /g')
+          cp "${GITHUB_WORKSPACE}/.github/scripts/ut_result_check.sh" ./
+          IFS=', ' read -r -a ut_names <<< "${UT_SCOPE}"
+          for ut_name in "${ut_names[@]}"
           do
             touch Known_issue.log
             if [ -f "issues.log" ]; then
@@ -394,11 +253,11 @@ jobs:
             else
               echo "Info: issues.log not found or empty, using empty Known_issue.log"
             fi
-            TEST_PLATFORM=windows bash ut_result_check.sh ${ut_name}
+            TEST_PLATFORM=windows bash ut_result_check.sh "${ut_name}"
           done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log

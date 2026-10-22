@@ -103,13 +103,14 @@ jobs:
           # version as pytorch packages may have tricky dependencies. Instead
           # we dry run install packages and get versions which would be installed.
           # See: https://github.com/pytorch/pytorch/issues/154687
-          pip install --dry-run --ignore-installed $TORCH_INDEX \
+          read -ra torch_index <<< "$TORCH_INDEX"
+          pip install --dry-run --ignore-installed "${torch_index[@]}" \
             torch torchvision torchaudio pytorch-triton-xpu >_log.txt
 
-          torch=$(cat _log.txt | grep "Would install" | sed -E "s/.*torch-([^ ]*).*/\1/")
-          torchvision=$(cat _log.txt | grep "Would install" | sed -E "s/.*torchvision-([^ ]*).*/\1/")
-          torchaudio=$(cat _log.txt | grep "Would install" | sed -E "s/.*torchaudio-([^ ]*).*/\1/")
-          triton=$(cat _log.txt | grep "Would install" | sed -E "s/.*pytorch-triton-xpu-([^ ]*).*/\1/")
+          torch=$(grep "Would install" _log.txt | sed -E "s/.*torch-([^ ]*).*/\1/")
+          torchvision=$(grep "Would install" _log.txt | sed -E "s/.*torchvision-([^ ]*).*/\1/")
+          torchaudio=$(grep "Would install" _log.txt | sed -E "s/.*torchaudio-([^ ]*).*/\1/")
+          triton=$(grep "Would install" _log.txt | sed -E "s/.*pytorch-triton-xpu-([^ ]*).*/\1/")
           echo "torch=$torch" | tee -a "$GITHUB_OUTPUT"
           echo "torchvision=$torchvision" | tee -a "$GITHUB_OUTPUT"
           echo "torchaudio=$torchaudio" | tee -a "$GITHUB_OUTPUT"
@@ -176,43 +177,46 @@ jobs:
             filter: 'not test_load_img_url_timeout'
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: torch-xpu-ops
+          persist-credentials: false
       - name: Detect devices
         run: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/detect-devices.sh --pytest-others-args '-rsf'
       - name: Checkout Transformers
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: huggingface/transformers
           ref: ${{ env.transformers }}
           path: transformers
+          persist-credentials: false
       - name: Prepare test vars
         run: |
-          echo "HF_HOME=$HOME/.hf_home_of_transformers_test" >> $GITHUB_ENV
-          echo "TEST_CASE=${{matrix.test.test_case}}" >> $GITHUB_ENV
+          echo "HF_HOME=$HOME/.hf_home_of_transformers_test" >> "$GITHUB_ENV"
+          echo "TEST_CASE=${{matrix.test.test_case}}" >> "$GITHUB_ENV"
       - name: Report HF cache directory
         run: |
           if [ -d "$HF_HOME" ]; then
-            ls -al ${{ env.HF_HOME }}
-            du -sh ${{ env.HF_HOME }}
+            ls -al "${HF_HOME}"
+            du -sh "${HF_HOME}"
           fi
       - name: Prepare OS environment
         run: |
           # as jobs might run in parallel on the same system, apt-get might
           # step into the lock hold by other job
           start_time=$SECONDS
+          read -r -d '' -a packages <<< "$PACKAGES" || true
           while ! sudo apt-get update; do
             sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
+            if (( SECONDS - start_time > 60 )); then false; fi
           done
-          while ! sudo apt-get install -y $PACKAGES; do
+          while ! sudo apt-get install -y "${packages[@]}"; do
             sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
+            if (( SECONDS - start_time > 60 )); then false; fi
           done
           while ! git lfs install; do
             sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
+            if (( SECONDS - start_time > 60 )); then false; fi
           done
       - name: Setup python
         uses: ./torch-xpu-ops/.github/actions/setup-python
@@ -221,18 +225,24 @@ jobs:
       - name: Prepare pytorch and deps
         run: |
           uv pip install junitparser
-          uv pip install $TORCH_INDEX \
-            torch==${{ needs.prepare.outputs.torch }} \
-            torchvision==${{ needs.prepare.outputs.torchvision }} \
-            torchaudio==${{ needs.prepare.outputs.torchaudio }} \
-            pytorch-triton-xpu==${{needs.prepare.outputs.triton }}
+          read -ra torch_index <<< "$TORCH_INDEX"
+          uv pip install "${torch_index[@]}" \
+            "torch==${NEEDS_PREPARE_OUTPUTS_TORCH}" \
+            "torchvision==${NEEDS_PREPARE_OUTPUTS_TORCHVISION}" \
+            "torchaudio==${NEEDS_PREPARE_OUTPUTS_TORCHAUDIO}" \
+            "pytorch-triton-xpu==${NEEDS_PREPARE_OUTPUTS_TRITON}"
+        env:
+          NEEDS_PREPARE_OUTPUTS_TORCH: ${{ needs.prepare.outputs.torch }}
+          NEEDS_PREPARE_OUTPUTS_TORCHVISION: ${{ needs.prepare.outputs.torchvision }}
+          NEEDS_PREPARE_OUTPUTS_TORCHAUDIO: ${{ needs.prepare.outputs.torchaudio }}
+          NEEDS_PREPARE_OUTPUTS_TRITON: ${{needs.prepare.outputs.triton }}
       - name: Prepare Transformers
         run: |
           pwd
           cd transformers
           uv pip install \
-            accelerate==${{ env.accelerate }} \
-            datasets==${{ env.datasets }}
+            "accelerate==${accelerate}" \
+            "datasets==${datasets}"
           uv pip install -e .
           uv pip install -e ".[dev-torch,testing,video]"
           rm -rf logs && mkdir -p logs
@@ -262,7 +272,7 @@ jobs:
       - name: Run tests
         run: |
           cd transformers
-          python -m pytest --make-reports=${TEST_CASE} --junit-xml=reports/${TEST_CASE}.xml \
+          python -m pytest --make-reports="${TEST_CASE}" --junit-xml=reports/"${TEST_CASE}".xml \
                   -k "${{ matrix.test.filter}}" ${{ matrix.test.cmd }} || true
       - name: Check for errors in tests
         run: |
@@ -277,20 +287,20 @@ jobs:
         if: ${{ always() }}
         run: |
           if [ -d "$HF_HOME" ]; then
-            ls -al ${{ env.HF_HOME }}
-            du -sh ${{ env.HF_HOME }}
-            rm -rf ${{ env.HF_HOME }}
+            ls -al "${HF_HOME}"
+            du -sh "${HF_HOME}"
+            rm -rf "${HF_HOME}"
           fi
           chown 1000:1000 /__w /github ./ -R
       - name: Upload reports
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reports-${{ matrix.test.test_case }}-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/transformers/reports
       - name: Upload logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: logs-${{ matrix.test.test_case }}-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/transformers/logs
@@ -301,23 +311,24 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download reports
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: 'reports-*'
           path: 'transformers/reports/'
           merge-multiple: true
       - name: Download logs
         if: ${{ ! cancelled() }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: 'logs-*'
           path: 'transformers/logs/'
           merge-multiple: true
       - name: Checkout torch-xpu-ops
         if: ${{ ! cancelled() }}
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: torch-xpu-ops
+          persist-credentials: false
       - name: Setup python
         uses: ./torch-xpu-ops/.github/actions/setup-python
         with:
@@ -333,31 +344,30 @@ jobs:
           # Call as follows:
           #   parse_stat $line "failed"
           function parse_stat() {
-            stat=$(cat $1 | grep $2 | sed "s/.* \([0-9]*\) $2.*/\1/")
-            if [ -n "$stat" ]; then echo $stat; else echo "0"; fi
+            stat=$(grep "$2" "$1" | sed "s/.* \([0-9]*\) $2.*/\1/")
+            if [ -n "$stat" ]; then echo "$stat"; else echo "0"; fi
           }
           cd transformers
           {
             echo "### Results"
             echo "| Test group | Errors | Failed | Deselected | Passed | Skipped |"
             echo "| --- | --- | --- | --- | --- | --- |"
-            for stat in $(find reports -name stats.txt); do
+            while IFS= read -r -d '' stat; do
               # Each stat.txt is located in: reports/$test_group/stats.txt
-              test_group=$(echo $stat | cut -f 2 -d/)
+              test_group=$(cut -f 2 -d/ <<< "$stat")
               # Get failed, passed, skipped, etc. counters
-              failed=$(parse_stat $stat failed)
-              passed=$(parse_stat $stat passed)
-              deselected=$(parse_stat $stat deselected)
-              skipped=$(parse_stat $stat skipped)
-              warnings=$(parse_stat $stat warnings)
-              errors=$(parse_stat $stat errors)
+              failed=$(parse_stat "$stat" failed)
+              passed=$(parse_stat "$stat" passed)
+              deselected=$(parse_stat "$stat" deselected)
+              skipped=$(parse_stat "$stat" skipped)
+              errors=$(parse_stat "$stat" errors)
               echo "| $test_group | $errors | $failed | $deselected | $passed | $skipped |"
-            done
-          } >> $GITHUB_STEP_SUMMARY
+            done < <(find reports -name stats.txt -print0)
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Print baseline difference
         if: ${{ ! cancelled() }}
         run: |
-          python torch-xpu-ops/.github/scripts/check-transformers.py transformers/reports/*.xml >> $GITHUB_STEP_SUMMARY || true
+          python torch-xpu-ops/.github/scripts/check-transformers.py transformers/reports/*.xml >> "$GITHUB_STEP_SUMMARY" || true
       - name: Print failure lines
         if: ${{ ! cancelled() }}
         run: |
@@ -367,26 +377,28 @@ jobs:
             echo "| Test group |File | Error | Comment |"
             echo "| --- | --- | --- | --- |"
             rm -rf _failures.txt
-            for failure in $(find reports -name failures_line.txt); do
+            while IFS= read -r -d '' failure; do
               # Each failure_line.txt is located in: reports/$test_group/failure_line.txt
-              test_group=$(echo $failure | cut -f2 -d/)
-              tail -n +2 $failure | sed "s/^/$test_group /" >> _failures.txt
-            done
+              test_group=$(cut -f2 -d/ <<< "$failure")
+              tail -n +2 "$failure" | sed "s/^/$test_group /" >> _failures.txt
+            done < <(find reports -name failures_line.txt -print0)
             # failures_line.txt file does not have test case information,
             # so we can just sort the output and report uniq values
             sort _failures.txt | uniq > _failures_uniq.txt
-            while read line; do
-              test_group=$(echo $line | cut -f1 -d" ")
-              file=$(echo $line | cut -f2 -d" " | sed "s/\(.*\):$/\1/")
-              error=$(echo $line | cut -f3 -d" " | sed "s/\(.*\):$/\1/")
+            while read -ra fields; do
+              # Fields re-joined with single spaces so cut -d" " sees no empty fields
+              line="${fields[*]}"
+              test_group=$(cut -f1 -d" " <<< "$line")
+              file=$(cut -f2 -d" " <<< "$line" | sed "s/\(.*\):$/\1/")
+              error=$(cut -f3 -d" " <<< "$line" | sed "s/\(.*\):$/\1/")
               # Failure comments often contain special characters which complicate
               # parsing failure lines. But fortunately we know for sure where comments
               # start. So we just output all contents starting from this position and
               # wrap everything in <pre></pre> to avoid collisions with Markdown formatting.
-              comment="<pre>$(echo $line | cut -f4- -d' ' | sed 's/\(.*\):$/\1/')</pre>"
+              comment="<pre>$(cut -f4- -d' ' <<< "$line" | sed 's/\(.*\):$/\1/')</pre>"
               echo "| $test_group | $file | $error | $comment |"
             done <_failures_uniq.txt
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Print not implemented XPU backend ops
         if: ${{ ! cancelled() }}
         run: |
@@ -396,31 +408,31 @@ jobs:
             echo "| Test group | Operator | Status |"
             echo "| --- | --- | --- |"
             rm -rf _ops.txt && touch _ops.txt
-            for log in $(find reports -name failures_line.txt); do
+            while IFS= read -r -d '' log; do
               # Each failure_line.txt is located in: reports/$test_group/failure_line.txt
-              test_group=$(echo $log | cut -f2 -d/)
-              ops=$(grep NotImplementedError $log | grep "for the XPU device" | sed "s/.*The operator '\(.*\)' is not.*/\1/")
+              test_group=$(cut -f2 -d/ <<< "$log")
+              ops=$(grep NotImplementedError "$log" | grep "for the XPU device" | sed "s/.*The operator '\(.*\)' is not.*/\1/")
               for op in $ops; do
                 echo "| $test_group | <pre>$op</pre> | not implemented |" >> _ops.txt
               done
-            done
-            for log in $(find reports -name warnings.txt); do
+            done < <(find reports -name failures_line.txt -print0)
+            while IFS= read -r -d '' log; do
               # Each warnings.txt is located in: reports/$test_group/warnings.txt
-              test_group=$(echo $log | cut -f2 -d/)
-              ops=$(grep UserWarning $log | grep "on the XPU backend" | sed "s/.*The operator '\(.*\) on the XPU.*/\1/")
+              test_group=$(cut -f2 -d/ <<< "$log")
+              ops=$(grep UserWarning "$log" | grep "on the XPU backend" | sed "s/.*The operator '\(.*\) on the XPU.*/\1/")
               for op in $ops; do
                 echo "| $test_group | <pre>$op</pre> | fallback to CPU happens |" >> _ops.txt
               done
-            done
+            done < <(find reports -name warnings.txt -print0)
             sort _ops.txt | uniq
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Print environment
         if: ${{ ! cancelled() }}
         run: |
           first_md=$(find transformers/logs -name "environment-*.md" | head -1)
-          cat $first_md >> $GITHUB_STEP_SUMMARY
+          cat "$first_md" >> "$GITHUB_STEP_SUMMARY"
           # we expect environments to be identical except for the ZE_AFFINITY_MASK line
-          find transformers/logs -name "environment-*.md" | xargs sed -i '/ZE_AFFINITY_MASK/d'
-          for f in $(find transformers/logs -name "environment-*.md"); do
-             diff $f $first_md
-          done
+          find transformers/logs -name "environment-*.md" -print0 | xargs -0 sed -i '/ZE_AFFINITY_MASK/d'
+          while IFS= read -r -d '' f; do
+             diff "$f" "$first_md"
+          done < <(find transformers/logs -name "environment-*.md" -print0)

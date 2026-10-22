@@ -36,25 +36,26 @@ jobs:
         language: [actions, python, c-cpp]
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: ${{ matrix.language }}
           # SYCL sources need the oneAPI toolchain, so analyze C++ without a build.
           build-mode: none
           queries: security-extended
       - name: Analyze
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: /language:${{ matrix.language }}
 
   full-check:
     name: Weekly full code check
     if: ${{ github.repository_owner == 'intel' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
     permissions:
       contents: read
     uses: ./.github/workflows/_code_check.yml
@@ -71,7 +72,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Run zizmor
@@ -81,7 +82,7 @@ jobs:
           pipx run zizmor==1.31.1 --config .github/zizmor.yml \
             --format sarif --no-exit-codes . > zizmor.sarif
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: zizmor.sarif
           category: zizmor
@@ -95,10 +96,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Review dependency changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
         with:
           fail-on-severity: high
