@@ -30,6 +30,9 @@ include_patterns = [
     'src/**/*.h',
     'src/**/*.hpp',
     'src/**/*.cpp',
+    'test/sycl/**/*.h',
+    'test/sycl/**/*.hpp',
+    'test/sycl/**/*.cpp',
 ]
 init_command = [
     'python3',
@@ -516,6 +519,24 @@ command = [
     '--script',
     'tools/linter/adapters/cmake_linter.py',
     '--config=.cmakelintrc',
+    '--',
+    '@{{PATHSFILE}}',
+]
+
+[[linter]]
+code = 'SYNTAX'
+include_patterns = [
+    '**/*.json',
+    '**/*.yaml',
+    '**/*.yml',
+    '**/*.toml',
+    '**/*.js',
+]
+command = [
+    'uv',
+    'run',
+    '--script',
+    'tools/linter/adapters/syntax_linter.py',
     '--',
     '@{{PATHSFILE}}',
 ]

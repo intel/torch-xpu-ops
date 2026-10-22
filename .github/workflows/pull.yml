@@ -32,15 +32,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  code-check:
     if: ${{ github.repository_owner == 'intel' }}
     secrets: inherit
     permissions:
       contents: read
-    uses: ./.github/workflows/_lint.yml
+    uses: ./.github/workflows/_code_check.yml
 
   preci-lint-check:
-    needs: lint
+    needs: code-check
     # Always run so this required check reports failure instead of "skipped" when lint fails.
     if: ${{ !cancelled() && github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
@@ -58,12 +58,12 @@ jobs:
       skip_win: ${{ steps.live-labels.outputs.skip_win }}
       force_win_ut: ${{ steps.live-labels.outputs.force_win_ut }}
     steps:
-      - name: Fail if lint failed
-        if: ${{ needs.lint.result != 'success' }}
+      - name: Fail if code check failed
+        if: ${{ needs.code-check.result != 'success' }}
         env:
-          LINT_RESULT: ${{ needs.lint.result }}
+          CODE_CHECK_RESULT: ${{ needs.code-check.result }}
         run: |
-          echo "::error::Lint check result: ${LINT_RESULT}. See the 'lint / lintrunner' jobs for details."
+          echo "::error::Code check result: ${CODE_CHECK_RESULT}. See the 'code-check / *' jobs for details."
           exit 1
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
