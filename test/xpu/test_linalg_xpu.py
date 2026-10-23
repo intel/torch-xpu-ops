@@ -36,7 +36,6 @@ from torch.testing._internal.common_dtype import (
 )
 from torch.testing._internal.common_mkldnn import reduced_f32_on_and_off
 from torch.testing._internal.common_utils import (
-    IS_WINDOWS,
     make_fullrank_matrices_with_distinct_singular_values,
     parametrize,
     run_tests,
@@ -267,7 +266,6 @@ def addbmm(self, device, dtype):
         self._test_addbmm_baddbmm("addbmm", b1, b2, ref, out_tensor)
 
 
-@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
 @parametrize("k", [16, 32])
 @parametrize("n", [16, 32])
 @parametrize("use_transpose_a", [True, False])
@@ -313,11 +311,16 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
         _test(17, k, n, use_transpose_a, use_transpose_b)
 
 
-@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
 @parametrize("m", [1, 32, 64, 1024])
 @parametrize("k", [32, 64, 128, 256, 512, 1024])
 @parametrize("n", [32, 48, 64, 128, 256, 512, 1024])
-def _int4_mm(self, device, m, k, n):
+@parametrize("group_size", [32, 64, 128])
+def _int4_mm(self, device, m, k, n, group_size):
+    if k % group_size != 0:
+        self.skipTest(
+            f"k={k} must be divisible by group_size={group_size} for INT4 quantization"
+        )
+
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         return _group_quantize_tensor_impl(w, n_bit=n_bit, q_group_size=q_group_size)
 
@@ -349,7 +352,7 @@ def _int4_mm(self, device, m, k, n):
             self.assertTrue(b_int4pack.dim() == 4)
             return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
 
-    q_group = 32
+    q_group = group_size
     inner_k_tiles = 2
 
     torch.manual_seed(1)
@@ -374,7 +377,6 @@ def _int4_mm(self, device, m, k, n):
         self.assertTrue(mean_err < 0.05)
 
 
-@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
 @parametrize("m", [32, 64])
 @parametrize("k", [32, 64])
 @parametrize("n", [48, 64])
@@ -662,7 +664,6 @@ def pinv_errors_and_warnings(self, device, dtype):
         torch.linalg.pinv(a, rtol=rtol)
 
 
-@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
 def _int_mm_errors(self, device):
     def genf_int(x, y):
         return torch.empty((x, y), dtype=torch.int8, device=device)
