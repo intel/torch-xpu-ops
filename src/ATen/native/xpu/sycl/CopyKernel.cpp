@@ -150,16 +150,20 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
 // Not CastScalarFunc: its <Half, Float8DataType> partial specialization has an
 // unconstrained second parameter, so CastScalarFunc<Half, float> would select
 // it and inherit the float8 workaround that maps -0.0 to +0.0.
+template <typename in_scalar_t, typename out_scalar_t>
+inline constexpr bool is_fp32_16bit_cast_v =
+    (std::is_same_v<in_scalar_t, float> &&
+     (std::is_same_v<out_scalar_t, Half> ||
+      std::is_same_v<out_scalar_t, BFloat16>)) ||
+    (std::is_same_v<out_scalar_t, float> &&
+     (std::is_same_v<in_scalar_t, Half> ||
+      std::is_same_v<in_scalar_t, BFloat16>));
+
 template <
     typename in_scalar_t,
     typename out_scalar_t,
-    typename = std::enable_if_t<
-        (std::is_same_v<in_scalar_t, float> &&
-         (std::is_same_v<out_scalar_t, Half> ||
-          std::is_same_v<out_scalar_t, BFloat16>)) ||
-        ((std::is_same_v<in_scalar_t, Half> ||
-          std::is_same_v<in_scalar_t, BFloat16>) &&
-         std::is_same_v<out_scalar_t, float>)>>
+    typename =
+        std::enable_if_t<is_fp32_16bit_cast_v<in_scalar_t, out_scalar_t>>>
 struct FpCastFunc {
   out_scalar_t operator()(in_scalar_t src_val) const {
     return static_cast<out_scalar_t>(src_val);
