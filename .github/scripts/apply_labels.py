@@ -72,8 +72,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _LABELS_JSON_CANDIDATES = [
     os.path.join(HERE, "..", "reference", "labels.json"),
     os.path.join(
-        HERE, "..", "..", ".claude", "skills", "label-issue",
-        "reference", "labels.json",
+        HERE,
+        "..",
+        "..",
+        ".claude",
+        "skills",
+        "label-issue",
+        "reference",
+        "labels.json",
     ),
 ]
 LABELS_JSON = next(
@@ -147,9 +153,7 @@ def load_known_labels():
     with open(LABELS_JSON) as f:
         d = json.load(f)
     return {
-        lb["name"]
-        for cat in d["categories"].values()
-        for lb in cat.get("labels", [])
+        lb["name"] for cat in d["categories"].values() for lb in cat.get("labels", [])
     }
 
 
@@ -199,9 +203,7 @@ def classify(rows, priority_order):
     the individual sub-issues, not the umbrella issue, so they are dropped here
     and left for the post-split sub-issues.
     """
-    need_split = any(
-        axis == "triage" and value == "need_split" for axis, value in rows
-    )
+    need_split = any(axis == "triage" and value == "need_split" for axis, value in rows)
     # axis names (parsed, lowercased) suppressed on a need_split issue
     split_drop_axes = {"module", "dtype", "dependency component", "symptom"}
 
@@ -235,8 +237,7 @@ def classify(rows, priority_order):
     for axis, vals in single.items():
         if len(vals) > 1:
             sys.stderr.write(
-                f"warning: groups disagree on {axis} {vals}; "
-                f"applying no {axis} label\n"
+                f"warning: groups disagree on {axis} {vals}; applying no {axis} label\n"
             )
             continue
         if vals[0] not in labels:
@@ -253,9 +254,7 @@ def classify(rows, priority_order):
     priority_tier = None
     if priorities:
         # most urgent = smallest rank; unknown tiers sort last
-        priority_tier = min(
-            priorities, key=lambda t: priority_order.get(t, 99)
-        )
+        priority_tier = min(priorities, key=lambda t: priority_order.get(t, 99))
         if len(priorities) > 1:
             sys.stderr.write(
                 f"warning: multiple priority values {priorities}; "
@@ -273,11 +272,17 @@ def issue_node_id(repo, issue_id):
       }
     }"""
     cmd = [
-        "gh", "api", "graphql",
-        "-f", f"query={q}",
-        "-F", f"owner={owner}",
-        "-F", f"name={name}",
-        "-F", f"num={issue_id}",
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        f"query={q}",
+        "-F",
+        f"owner={owner}",
+        "-F",
+        f"name={name}",
+        "-F",
+        f"num={issue_id}",
     ]
     out = run(cmd, check=False)
     if out is None:
@@ -311,9 +316,7 @@ def resolve_issue_priority_field(org):
     if out is None:
         return None
     data = json.loads(out).get("data") or {}
-    nodes = ((data.get("organization") or {}).get("issueFields") or {}).get(
-        "nodes"
-    )
+    nodes = ((data.get("organization") or {}).get("issueFields") or {}).get("nodes")
     if not nodes:
         return None
     for n in nodes:
@@ -378,7 +381,7 @@ def read_issue_field_values(node_id):
     for n in fv.get("nodes") or []:
         if not n:
             continue
-        name = ((n.get("field") or {}).get("name"))
+        name = (n.get("field") or {}).get("name")
         # exactly one value key is present per node, depending on the field type
         val = next(
             (n[k] for k in ("name", "text", "number", "date") if n.get(k) is not None),
@@ -402,11 +405,17 @@ def read_issue_type(repo, issue_id):
       }
     }"""
     cmd = [
-        "gh", "api", "graphql",
-        "-f", f"query={q}",
-        "-F", f"owner={owner}",
-        "-F", f"name={name}",
-        "-F", f"num={issue_id}",
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        f"query={q}",
+        "-F",
+        f"owner={owner}",
+        "-F",
+        f"name={name}",
+        "-F",
+        f"num={issue_id}",
     ]
     out = run(cmd, check=False)
     if out is None:
@@ -428,11 +437,17 @@ def set_issue_priority(issue_id, field_id, option_id):
       }){ issue{ id } }
     }"""
     cmd = [
-        "gh", "api", "graphql",
-        "-f", f"query={q}",
-        "-f", f"issue={issue_id}",
-        "-f", f"field={field_id}",
-        "-f", f"opt={option_id}",
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        f"query={q}",
+        "-f",
+        f"issue={issue_id}",
+        "-f",
+        f"field={field_id}",
+        "-f",
+        f"opt={option_id}",
     ]
     return run(cmd, check=False)
 
@@ -440,12 +455,21 @@ def set_issue_priority(issue_id, field_id, option_id):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("labels_md", help="path to a labels.md artifact")
-    ap.add_argument("--apply", action="store_true",
-                    help="actually write to GitHub (default: dry run)")
-    ap.add_argument("--no-comment", action="store_true",
-                    help="do not post the labels.md content as an issue comment")
-    ap.add_argument("--expect", metavar="REPO#ID",
-                    help="refuse to write unless labels.md targets this issue")
+    ap.add_argument(
+        "--apply",
+        action="store_true",
+        help="actually write to GitHub (default: dry run)",
+    )
+    ap.add_argument(
+        "--no-comment",
+        action="store_true",
+        help="do not post the labels.md content as an issue comment",
+    )
+    ap.add_argument(
+        "--expect",
+        metavar="REPO#ID",
+        help="refuse to write unless labels.md targets this issue",
+    )
     args = ap.parse_args()
 
     priority_order = load_priority_order()
@@ -488,8 +512,9 @@ def main():
     print(f"  labels     : {labels}")
     print(f"  type       : {native_type}")
     print(f"  priority   : {priority_tier}")
-    print(f"  comment    : {'no' if args.no_comment else 'yes'} "
-          f"({len(full_text)} chars)")
+    print(
+        f"  comment    : {'no' if args.no_comment else 'yes'} ({len(full_text)} chars)"
+    )
 
     if not args.apply:
         print("\n-- dry run; re-run with --apply to write to GitHub --")
@@ -528,8 +553,11 @@ def main():
     # 1. labels + native type; apply each separately so one unknown label
     # (which makes gh reject the whole command) cannot drop the others or --type.
     for lb in labels:
-        rc = run(["gh", "issue", "edit", issue_id, "--repo", repo,
-                  "--add-label", lb], check=False, capture=False)
+        rc = run(
+            ["gh", "issue", "edit", issue_id, "--repo", repo, "--add-label", lb],
+            check=False,
+            capture=False,
+        )
         if rc is None:
             print(f"  warning: failed to add label {lb!r}; skipped")
         else:
@@ -537,8 +565,11 @@ def main():
     if native_type and not apply_type:
         print(f"  Type already set on {repo}#{issue_id}; leaving it unchanged")
     elif apply_type:
-        rc = run(["gh", "issue", "edit", issue_id, "--repo", repo,
-                  "--type", native_type], check=False, capture=False)
+        rc = run(
+            ["gh", "issue", "edit", issue_id, "--repo", repo, "--type", native_type],
+            check=False,
+            capture=False,
+        )
         if rc is None:
             print(f"  warning: failed to set type {native_type!r}; skipped")
         else:
@@ -554,16 +585,17 @@ def main():
                 "disagree with this analysis -- please reconcile manually:\n"
                 + "\n".join(f"> {n}" for n in mismatch_notes)
             )
-        run(["gh", "issue", "comment", issue_id, "--repo", repo,
-             "--body", body], capture=False)
+        run(
+            ["gh", "issue", "comment", issue_id, "--repo", repo, "--body", body],
+            capture=False,
+        )
         print("  posted comment")
     elif mismatch_notes:
         # The comment is their only GitHub-side channel, so with --no-comment
         # print them instead of losing the disagreement entirely.
         sys.stderr.write(
             "warning: native field(s) already set and NOT changed; the values "
-            "below disagree with this analysis:\n"
-            + "\n".join(mismatch_notes) + "\n"
+            "below disagree with this analysis:\n" + "\n".join(mismatch_notes) + "\n"
         )
 
     # 3. native org Priority issue field. Best-effort: the native issue-fields
@@ -575,8 +607,9 @@ def main():
         org = repo.split("/", 1)[0]
         resolved = resolve_issue_priority_field(org) if node_id else None
         if node_id is None or resolved is None:
-            print("  warning: could not resolve native Priority field; "
-                  "Priority skipped")
+            print(
+                "  warning: could not resolve native Priority field; Priority skipped"
+            )
         else:
             field_id, options = resolved
             if priority_tier not in options:
@@ -589,9 +622,13 @@ def main():
                 # the pre-mutation snapshot for replace detection below
                 # (None = read degraded, verification skipped).
                 before = field_values
-                if set_issue_priority(node_id, field_id, options[priority_tier]) is None:
-                    print(f"  warning: failed to set Priority = {priority_tier}; "
-                          "skipped")
+                if (
+                    set_issue_priority(node_id, field_id, options[priority_tier])
+                    is None
+                ):
+                    print(
+                        f"  warning: failed to set Priority = {priority_tier}; skipped"
+                    )
                 else:
                     print(f"  set Priority = {priority_tier}")
                     # setIssueFieldValue's issueFields:[...] merge-vs-replace
@@ -603,7 +640,8 @@ def main():
                         after = read_issue_field_values(node_id)
                         if after is not None:
                             cleared = [
-                                f for f in before
+                                f
+                                for f in before
                                 if f != PRIORITY_FIELD_NAME and f not in after
                             ]
                             if cleared:

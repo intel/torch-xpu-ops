@@ -2,6 +2,9 @@ name: Linux PyTorch XPU Build
 
 on:
   workflow_call:
+    secrets:
+      DOCKER_HUB_TOKEN:
+        required: false
     inputs:
       runner:
         required: true
@@ -34,7 +37,11 @@ on:
         default: ''
         description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 defaults:
   run:
@@ -70,9 +77,10 @@ jobs:
           # cleanup files
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: torch-xpu-ops
+          persist-credentials: false
       - name: Resolve python version
         uses: ./torch-xpu-ops/.github/actions/ci-config
         with:
@@ -80,23 +88,25 @@ jobs:
       - name: Setup python-${{ env.PYTHON_VERSION }}
         run: |
           rm -rf /tmp/xpu-tool/myvenv
-          local_python=$(echo ${PYTHON_VERSION} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
+          local_python=$(echo "${PYTHON_VERSION}" |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
+          "/opt/python/${local_python}/bin/python" -m venv /tmp/xpu-tool/myvenv
           which python && python -V
           which pip && pip list
           pip install -U pip wheel "setuptools<81"
       - name: Snapshot open skipped issues at build start
+        env:
+          ISSUE_CATEGORY: ${{ inputs.category }}
         run: |
           touch known_issue_static.log issues_snapshot.log issues_snapshot_bmg.log issues_snapshot_dpclang.log
           bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "${{ inputs.category }}" > issues_snapshot.log
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "${ISSUE_CATEGORY}" > issues_snapshot.log
           # Runner/category specific labels snapshotted separately so the summary job
           # only applies them on the matching runner (avoids masking failures elsewhere).
           bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "" "bmg-test" "extra-only" > issues_snapshot_bmg.log
           bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "dpclang" "" "extra-only" > issues_snapshot_dpclang.log
       - name: Upload skipped issues snapshot
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
           path: |
@@ -106,7 +116,7 @@ jobs:
             issues_snapshot_dpclang.log
       - name: Download dpclang
         if: ${{ inputs.category == 'dpclang' }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dpclang
       # NOTE: placement of this step is important as some environment variables it sets
@@ -117,27 +127,33 @@ jobs:
         run: |
           rm -rf install-dpclang && mkdir install-dpclang
           tar xzvf install-dpclang.tgz -C install-dpclang
-          echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
-          echo "USE_DPCLANG=yes" >> $GITHUB_ENV
-          echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
+          {
+            echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang"
+            echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH"
+            echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH"
+            echo "PATH=$(pwd)/install-dpclang/bin:$PATH"
+            echo "USE_DPCLANG=yes"
+          } >> "$GITHUB_ENV"
+          echo "$(pwd)/install-dpclang/bin" >> "$GITHUB_PATH"
       - name: Prepare Pytorch Source
+        env:
+          PYTORCH_INPUT: ${{ inputs.pytorch }}
+          TORCH_XPU_OPS_INPUT: ${{ inputs.torch_xpu_ops }}
+          ONEDNN_INPUT: ${{ inputs.onednn }}
         run: |
-          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-            PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
+          if [[ "${PYTORCH_INPUT}" == *"https://"* ]];then
+            PYTORCH_REPO="${PYTORCH_INPUT%%@*}"
+            PYTORCH_COMMIT="${PYTORCH_INPUT##*@}"
           else
             PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-            PYTORCH_COMMIT="${{ inputs.pytorch }}"
+            PYTORCH_COMMIT="${PYTORCH_INPUT}"
           fi
-          if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-            TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
+          if [[ "${TORCH_XPU_OPS_INPUT}" == *"https://"* ]];then
+            TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_INPUT%%@*}"
+            TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_INPUT##*@}"
           else
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
+            TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_INPUT}"
           fi
           python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/prepare_pytorch.py \
             --workspace="${{ github.workspace }}" \
@@ -145,7 +161,7 @@ jobs:
             --pytorch-commit="${PYTORCH_COMMIT}" \
             --torch-xpu-ops-repo="${TORCH_XPU_OPS_REPO}" \
             --torch-xpu-ops-commit="${TORCH_XPU_OPS_COMMIT}" \
-            --onednn-commit='${{ inputs.onednn }}'
+            --onednn-commit="${ONEDNN_INPUT}"
       - name: Build Pytorch
         run: |
           export USE_XCCL=1
@@ -159,7 +175,7 @@ jobs:
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
             2>&1 |tee ${{ github.workspace }}/build_pytorch.log
-          if [ $(ls ${{ github.workspace }} |grep -c "torch-.*.whl") -eq 0 ];then
+          if ! compgen -G "${{ github.workspace }}/*torch-*?whl*" > /dev/null;then
             echo "Build pytorch got failed"
             exit 1
           fi
@@ -171,34 +187,36 @@ jobs:
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
           git clone --single-branch -b main https://github.com/pytorch/vision.git xpu-vision
-          cd xpu-vision && git checkout ${TORCHVISION_COMMIT_ID}
-          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_vision_${TRITON_COMMIT_ID}.log
-          if [ $(ls dist/ |grep -c "torchvision-.*.whl") -eq 0 ];then
+          cd xpu-vision && git checkout "${TORCHVISION_COMMIT_ID}"
+          python setup.py bdist_wheel 2>&1 |tee "${{ github.workspace }}/build_vision_${TRITON_COMMIT_ID}.log"
+          if ! compgen -G "dist/*torchvision-*?whl*" > /dev/null;then
             echo "Build torchvision got failed"
             exit 1
           fi
           pip install dist/*.whl
           cp dist/*.whl ${{ github.workspace }}
           git clone --single-branch -b main https://github.com/pytorch/audio.git xpu-audio
-          cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT_ID}
-          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_audio_${TRITON_COMMIT_ID}.log
-          if [ $(ls dist/ |grep -c "torchaudio-.*.whl") -eq 0 ];then
+          cd xpu-audio && git checkout "${TORCHAUDIO_COMMIT_ID}"
+          python setup.py bdist_wheel 2>&1 |tee "${{ github.workspace }}/build_audio_${TRITON_COMMIT_ID}.log"
+          if ! compgen -G "dist/*torchaudio-*?whl*" > /dev/null;then
             echo "Build torchaudio got failed"
             exit 1
           fi
           pip install dist/*.whl
           cp dist/*.whl ${{ github.workspace }}
       - name: Build Triton
+        env:
+          TRITON_INPUT: ${{ inputs.triton }}
         run: |
           cd ./pytorch
           rm -rf triton_xpu-*.whl
-          if [ -z ${{ inputs.triton }} ] || [ "${{ inputs.triton }}" == "pinned" ];then
+          if [ -z "${TRITON_INPUT}" ] || [ "${TRITON_INPUT}" == "pinned" ];then
             TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
           else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
+            TRITON_COMMIT_ID="${TRITON_INPUT}"
           fi
           built_version="$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
-                  triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{
+                  triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo "${TRITON_COMMIT_ID}" |awk '{print substr($1,0,7)}')" 'BEGIN{
             v = "None";
           }{
             for (i=1;i<=NF;i++) {if ($i ~ p) {v = $i;}};
@@ -206,20 +224,20 @@ jobs:
             printf("%s", v);
           }')"
           if [ "${built_version}" != "None" ];then
-            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre triton-xpu==${built_version} --dest ${{ github.workspace }}/
+            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre "triton-xpu==${built_version}" --dest ${{ github.workspace }}/
             pip install ${{ github.workspace }}/*triton*.whl
           else
             TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
+              curl -sSL "https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py" 2>&1 |\
                       grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
             )"
             # gcc 13
             source /opt/rh/gcc-toolset-13/enable
             dnf install -y zlib-devel
             pip install cmake ninja pybind11
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
-              2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
-            if [ $(ls |grep -c "triton_xpu-.*.whl") -eq 0 ];then
+            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash "${TRITON_COMMIT_ID}" --triton-version "${TRITON_VERSION_NAME}" \
+              2>&1 |tee "${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log"
+            if ! compgen -G "*triton_xpu-*?whl*" > /dev/null;then
               echo "Build triton got failed"
               exit 1
             fi
@@ -239,13 +257,13 @@ jobs:
           pip list |grep -E 'torch|intel'
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/build_*.log

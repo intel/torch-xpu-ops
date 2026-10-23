@@ -29,6 +29,11 @@ runs:
         uv pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -xe {0}
+      env:
+        INPUT_SUITE: ${{ inputs.suite }}
+        INPUT_DT: ${{ inputs.dt }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_SCENARIO: ${{ inputs.scenario }}
       run: |
         set -o pipefail
         cd ./pytorch
@@ -38,7 +43,7 @@ runs:
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_e2e/
 
         model_list_args=()
-        if [ "${{ github.event_name }}" != "pull_request" ]; then
+        if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
           rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmarks/ ./benchmarks/dynamo/
           model_list_args=(--model-only ./benchmarks/dynamo/full_model_list.csv)
         fi
@@ -48,9 +53,9 @@ runs:
 
         rm -rf torch && mkdir -p inductor_log
         python -m run_e2e \
-            --suite "${{ inputs.suite }}" \
-            --dtype "${{ inputs.dt }}" \
-            --mode "${{ inputs.mode }}" \
-            --scenario "${{ inputs.scenario }}" \
+            --suite "${INPUT_SUITE}" \
+            --dtype "${INPUT_DT}" \
+            --mode "${INPUT_MODE}" \
+            --scenario "${INPUT_SCENARIO}" \
             "${model_list_args[@]}" \
             2>&1 | tee inductor_log/run_e2e.log || true

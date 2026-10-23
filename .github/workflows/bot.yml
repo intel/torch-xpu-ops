@@ -1,6 +1,6 @@
 name: bot
 
-on:
+on: # zizmor: ignore[dangerous-triggers] parse-command gates every command on author_association
   issue_comment:
     types: [created]
   pull_request:
@@ -46,6 +46,7 @@ jobs:
       fixes: ${{ steps.parse.outputs.fixes }}
       fix_runner: ${{ steps.parse.outputs.fix_runner }}
       fix_image: ${{ steps.parse.outputs.fix_image }}
+      fix_digest: ${{ steps.parse.outputs.fix_digest }}
       dry_run: ${{ steps.parse.outputs.dry_run }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
       issue_number: ${{ steps.parse.outputs.issue_number }}
@@ -55,7 +56,7 @@ jobs:
       authorized: ${{ steps.parse.outputs.authorized }}
     steps:
       - name: Acknowledge Command
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -68,7 +69,7 @@ jobs:
 
       - name: Parse Command
         id: parse
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const body = context.payload.comment.body;
@@ -154,6 +155,7 @@ jobs:
             let fixes = '';
             let fixRunner = '';
             let fixImage = '';
+            let fixDigest = '';
 
             if (command === 'merge') {
               if (args.includes('-f')) {
@@ -250,8 +252,14 @@ jobs:
                 reject(`Could not check \`intel/omix:${tag}\`: Docker Hub (${tagUrl}) returned HTTP ${res.status}. Retry later.`);
                 return;
               }
+              const { digest } = await res.json();
+              if (!/^sha256:[0-9a-f]{64}$/.test(digest || '')) {
+                reject(`Could not resolve a digest for \`intel/omix:${tag}\` from Docker Hub (${tagUrl}). Retry later.`);
+                return;
+              }
               fixRunner = runner;
               fixImage = `intel/omix:${tag}`;
+              fixDigest = digest;
             }
 
             core.setOutput('command', normalizedCommand);
@@ -265,6 +273,7 @@ jobs:
             core.setOutput('fixes', fixes);
             core.setOutput('fix_runner', fixRunner);
             core.setOutput('fix_image', fixImage);
+            core.setOutput('fix_digest', fixDigest);
             core.setOutput('authorized', String(authorized));
 
   invalid-command:
@@ -273,7 +282,7 @@ jobs:
     if: needs.parse-command.outputs.command == 'invalid'
     steps:
       - name: Post invalid command message
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INVALID_REASON: ${{ needs.parse-command.outputs.invalid_reason }}
           ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
@@ -299,12 +308,16 @@ jobs:
       && needs.parse-command.outputs.authorized == 'false'
     steps:
       - name: Post permission denied message
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          COMMAND: ${{ needs.parse-command.outputs.command }}
+          FORCE: ${{ needs.parse-command.outputs.force }}
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const cmd = '${{ needs.parse-command.outputs.command }}';
-            const force = '${{ needs.parse-command.outputs.force }}';
+            const cmd = process.env.COMMAND;
+            const force = process.env.FORCE;
             let msg = `You do not have permission to use \`@torchxpubot ${cmd}\`. `;
             msg += 'This command requires OWNER, MEMBER, or COLLABORATOR association.';
             if (cmd === 'merge' && force === 'true') {
@@ -315,7 +328,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.issue_number }},
+              issue_number: Number(process.env.ISSUE_NUMBER),
               body: msg
             });
 
@@ -325,11 +338,14 @@ jobs:
     if: needs.parse-command.outputs.command == 'help'
     steps:
       - name: Post help message
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          IS_PR: ${{ needs.parse-command.outputs.is_pr }}
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const isPR = '${{ needs.parse-command.outputs.is_pr }}' === 'true';
+            const isPR = process.env.IS_PR === 'true';
             const prCommands = `## @torchxpubot Commands (pull request)
 
             | Command | Description |
@@ -383,7 +399,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.issue_number }},
+              issue_number: Number(process.env.ISSUE_NUMBER),
               body: helpText.replace(/^ +/gm, '')
             });
 
@@ -400,25 +416,29 @@ jobs:
       statuses: read
     steps:
       - name: Get PR Info
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         id: prinfo
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: ${{ needs.parse-command.outputs.pr_number }}
+              pull_number: Number(process.env.PR_NUMBER)
             });
             core.setOutput('head_sha', pr.data.head.sha);
             core.setOutput('mergeable', String(pr.data.mergeable));
 
       - name: Check Reviews
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const prNumber = Number(process.env.PR_NUMBER);
             const reviews = await github.paginate(
               github.rest.pulls.listReviews,
               { owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber }
@@ -439,12 +459,15 @@ jobs:
 
       - name: Check CI Status
         if: needs.parse-command.outputs.force != 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.prinfo.outputs.head_sha }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
-            const sha = '${{ steps.prinfo.outputs.head_sha }}';
+            const prNumber = Number(process.env.PR_NUMBER);
+            const sha = process.env.HEAD_SHA;
             const [checks, statuses] = await Promise.all([
               github.rest.checks.listForRef({
                 owner: context.repo.owner, repo: context.repo.repo, ref: sha, per_page: 100
@@ -488,12 +511,15 @@ jobs:
             }
 
       - name: Check Merge Conflicts
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
+          MERGEABLE: ${{ steps.prinfo.outputs.mergeable }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
-            let mergeable = '${{ steps.prinfo.outputs.mergeable }}';
+            const prNumber = Number(process.env.PR_NUMBER);
+            let mergeable = process.env.MERGEABLE;
             if (mergeable === 'null') {
               await new Promise(r => setTimeout(r, 5000));
               const pr = await github.rest.pulls.get({
@@ -511,13 +537,17 @@ jobs:
 
       - name: Merge PR
         if: success()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
+          ACTOR: ${{ needs.parse-command.outputs.actor }}
+          FORCE: ${{ needs.parse-command.outputs.force }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
-            const actor = '${{ needs.parse-command.outputs.actor }}';
-            const force = '${{ needs.parse-command.outputs.force }}' === 'true';
+            const prNumber = Number(process.env.PR_NUMBER);
+            const actor = process.env.ACTOR;
+            const force = process.env.FORCE === 'true';
             try {
               await github.rest.pulls.merge({
                 owner: context.repo.owner, repo: context.repo.repo,
@@ -544,34 +574,38 @@ jobs:
     steps:
       - name: Validate revert reason
         if: needs.parse-command.outputs.revert_reason == ''
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: Number(process.env.PR_NUMBER),
               body: 'Missing revert reason. Usage: `@torchxpubot revert -m "reason for revert"`'
             });
             core.setFailed('Missing revert reason');
 
       - name: Checkout repository
         if: needs.parse-command.outputs.revert_reason != ''
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Run revert script
         if: needs.parse-command.outputs.revert_reason != ''
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
           REVERT_REASON: ${{ needs.parse-command.outputs.revert_reason }}
+          NEEDS_PARSE_COMMAND_OUTPUTS_PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         run: |
           python .github/scripts/bot_revert.py \
-            --pr-number ${{ needs.parse-command.outputs.pr_number }} \
+            --pr-number "${NEEDS_PARSE_COMMAND_OUTPUTS_PR_NUMBER}" \
             --reason "$REVERT_REASON" \
-            --repo ${{ github.repository }}
+            --repo "${GITHUB_REPOSITORY}"
 
   rebase:
     needs: parse-command
@@ -581,11 +615,13 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Check fork status and rebase
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const prNumber = Number(process.env.PR_NUMBER);
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -615,10 +651,11 @@ jobs:
             core.exportVariable('PR_IS_FORK', String(isFork));
 
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Rebase and push
         env:
@@ -647,25 +684,29 @@ jobs:
 
       - name: Post success
         if: success()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: Number(process.env.PR_NUMBER),
               body: 'Successfully rebased onto latest `main`.'
             });
 
       - name: Post failure
         if: failure()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: Number(process.env.PR_NUMBER),
               body: 'Rebase failed. There may be conflicts that need manual resolution.'
             });
 
@@ -677,11 +718,13 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Check fork status
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const prNumber = Number(process.env.PR_NUMBER);
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -710,11 +753,12 @@ jobs:
             core.exportVariable('PR_IS_FORK', String(isFork));
 
       - name: Checkout PR branch
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
           ref: ${{ needs.parse-command.outputs.pr_number && format('refs/pull/{0}/head', needs.parse-command.outputs.pr_number) || '' }}
+          persist-credentials: true
 
       - name: Checkout correct branch for push
         run: |
@@ -730,11 +774,12 @@ jobs:
           fi
 
       - name: Run lintrunner
-        run: |
-          # CLANGFORMAT excluded: requires PyTorch headers checkout.
-          # PR CI handles clang formatting; bot only fixes Python linters.
-          export ADDITIONAL_LINTRUNNER_ARGS="--take RUFF,PYFMT,NEWLINE -a --all-files"
-          bash .github/scripts/lintrunner.sh || true
+        env:
+          # Formatters only; CLANGTIDY needs a PyTorch checkout and cannot auto-fix.
+          LINT_TAKE: PYFMT,RUFF,SHFMT,CLANGFORMAT,NEWLINE,SPACES,TABS
+          LINT_SCOPE: full
+          LINT_APPLY: "1"
+        run: bash tools/linter/lintrunner.sh || true
 
       - name: Commit and push lint fixes
         id: push
@@ -753,17 +798,20 @@ jobs:
           fi
 
       - name: Post result
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          HAS_CHANGES: ${{ steps.push.outputs.has_changes }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const hasChanges = '${{ steps.push.outputs.has_changes }}' === 'true';
+            const hasChanges = process.env.HAS_CHANGES === 'true';
             const msg = hasChanges
               ? 'Lint fixes have been applied and pushed.'
               : 'No lint issues found. Code is clean.';
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: Number(process.env.PR_NUMBER),
               body: msg
             });
 
@@ -775,13 +823,17 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Rerun CI
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
+          RERUN_MODE: ${{ needs.parse-command.outputs.rerun_mode }}
+          PYTORCH_REF: ${{ needs.parse-command.outputs.pytorch_ref }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
-            const mode = '${{ needs.parse-command.outputs.rerun_mode }}';
-            const pytorchRef = '${{ needs.parse-command.outputs.pytorch_ref }}';
+            const prNumber = Number(process.env.PR_NUMBER);
+            const mode = process.env.RERUN_MODE;
+            const pytorchRef = process.env.PYTORCH_REF;
 
             // Get PR head SHA
             const pr = await github.rest.pulls.get({
@@ -904,11 +956,13 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run AI review
         id: ai-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -927,12 +981,15 @@ jobs:
 
       - name: Post review comment
         if: steps.ai-review.outputs.execution_file
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXECUTION_FILE: ${{ steps.ai-review.outputs.execution_file }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -958,19 +1015,21 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: Number(process.env.PR_NUMBER),
               body: header + foldDetails(result.result, core.warning) + footer
             });
 
       - name: "Verify: AI review succeeded"
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+          EXECUTION_FILE: ${{ steps.ai-review.outputs.execution_file }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             let ok = false;
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -982,7 +1041,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: ${{ needs.parse-command.outputs.pr_number }},
+                issue_number: Number(process.env.PR_NUMBER),
                 body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot review\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
               });
               core.setFailed('AI review failed.');
@@ -990,12 +1049,15 @@ jobs:
 
       - name: Report usage cost
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXECUTION_FILE: ${{ steps.ai-review.outputs.execution_file }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -1017,8 +1079,8 @@ jobs:
 
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`review\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              issue_number: Number(process.env.COST_TRACKING_ISSUE),
+              body: `\`${date}\` [\`review\`](${jobUrl}) on #${process.env.PR_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   ut-check:
@@ -1030,22 +1092,25 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Collect UT data
         id: collect
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          NEEDS_PARSE_COMMAND_OUTPUTS_PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         run: |
           python3 .github/scripts/bot_ut_check.py \
-            --pr-number ${{ needs.parse-command.outputs.pr_number }} \
-            --repo ${{ github.repository }} \
+            --pr-number "${NEEDS_PARSE_COMMAND_OUTPUTS_PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
             --output /tmp/ut_data.json
 
       - name: AI analysis
         id: ai-analysis
         if: steps.collect.outputs.has_data == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -1065,12 +1130,15 @@ jobs:
 
       - name: Post analysis comment
         if: steps.collect.outputs.has_data == 'true' && steps.ai-analysis.outputs.execution_file
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXECUTION_FILE: ${{ steps.ai-analysis.outputs.execution_file }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-analysis.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -1096,20 +1164,22 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: Number(process.env.PR_NUMBER),
               body: header + foldDetails(result.result, core.warning) + footer
             });
 
       - name: "Verify: AI analysis succeeded"
         if: steps.collect.outputs.has_data == 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+          EXECUTION_FILE: ${{ steps.ai-analysis.outputs.execution_file }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-analysis.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             let ok = false;
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -1121,7 +1191,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: ${{ needs.parse-command.outputs.pr_number }},
+                issue_number: Number(process.env.PR_NUMBER),
                 body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot ut-check\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
               });
               core.setFailed('AI analysis failed.');
@@ -1129,12 +1199,15 @@ jobs:
 
       - name: Report usage cost
         if: always() && steps.collect.outputs.has_data == 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXECUTION_FILE: ${{ steps.ai-analysis.outputs.execution_file }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-analysis.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -1156,18 +1229,19 @@ jobs:
 
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`ut-check\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              issue_number: Number(process.env.COST_TRACKING_ISSUE),
+              body: `\`${date}\` [\`ut-check\`](${jobUrl}) on #${process.env.PR_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
       - name: Deterministic fallback
         if: steps.collect.outputs.has_data == 'true' && failure()
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          NEEDS_PARSE_COMMAND_OUTPUTS_PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
         run: |
           python3 .github/scripts/bot_ut_check.py \
-            --pr-number ${{ needs.parse-command.outputs.pr_number }} \
-            --repo ${{ github.repository }} \
+            --pr-number "${NEEDS_PARSE_COMMAND_OUTPUTS_PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
             --deterministic
 
   cherry-pick:
@@ -1179,10 +1253,11 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Cherry-pick onto the release branch
         env:
@@ -1210,7 +1285,7 @@ jobs:
       needs.parse-command.outputs.command == 'fix'
       && needs.parse-command.outputs.authorized == 'true'
     container:
-      image: ${{ needs.parse-command.outputs.fix_image }}
+      image: intel/omix@${{ needs.parse-command.outputs.fix_digest }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
@@ -1247,7 +1322,7 @@ jobs:
     steps:
       - name: Post starting message
         id: start-comment
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1263,17 +1338,20 @@ jobs:
             core.setOutput('comment_id', String(comment.data.id));
 
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Configure git identity
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
           # Keep the workspace checkout trusted (the previous job's cleanup chowns it to another uid).
-          git config --global --add safe.directory "${{ github.workspace }}"
+          git config --global --add safe.directory "${WORKSPACE}"
           # A source-build fix clones PyTorch as root under agent_space_xpu/; /* covers every nested repo there.
-          git config --global --add safe.directory "${{ github.workspace }}/agent_space_xpu/*"
+          git config --global --add safe.directory "${WORKSPACE}/agent_space_xpu/*"
           git config --global user.name "torchxpubot"
           git config --global user.email "torchxpubot@intel.com"
 
@@ -1295,7 +1373,7 @@ jobs:
         run: |
           vars=/opt/intel/oneapi/compiler/latest/env/vars.sh
           test -f "$vars" || { echo "oneAPI vars.sh not found at $vars in this image" >&2; exit 1; }
-          . "$vars"
+          . /opt/intel/oneapi/compiler/latest/env/vars.sh
           icpx --version
           command -v python3 >/dev/null || { echo "python3 missing; Export step needs it" >&2; exit 1; }
           command -v perl >/dev/null || { echo "perl missing; redact step needs it" >&2; exit 1; }
@@ -1324,7 +1402,7 @@ jobs:
 
       - name: Run AI fix
         id: ai-fix
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -1487,9 +1565,10 @@ jobs:
       # a public issue.
       - name: Backfill session comment
         if: always() && steps.redact.outcome == 'success' && steps.ai-fix.outputs.execution_file
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           SESSION_COMMENT_ID: ${{ steps.start-comment.outputs.comment_id }}
+          EXECUTION_FILE: ${{ steps.ai-fix.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1502,7 +1581,7 @@ jobs:
             // Finished: the agent's own summary is in, keep the comment as is.
             if (old.includes('<!-- agent:summary -->')) return;
             const fs = require('fs');
-            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!fs.existsSync(file)) return;
             const result = JSON.parse(fs.readFileSync(file, 'utf8'))
               .filter(e => e.type === 'result').pop();
@@ -1538,7 +1617,7 @@ jobs:
           ID: ${{ steps.start-comment.outputs.comment_id }}
         run: |
           [ -n "$ID" ] || exit 0
-          C="/repos/${{ github.repository }}/issues/comments/$ID"
+          C="/repos/${GITHUB_REPOSITORY}/issues/comments/$ID"
           gh api "$C" --jq .body > body.md
           grep -q '<!-- agent:review -->' body.md && exit 0
           cat >> body.md <<'EOF'
@@ -1596,16 +1675,17 @@ jobs:
 
       - name: "Verify: AI fix succeeded"
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           AI_FIX_OUTCOME: ${{ steps.ai-fix.outcome }}
           BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+          EXECUTION_FILE: ${{ steps.ai-fix.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
             const outcome = process.env.AI_FIX_OUTCOME || 'skipped';
-            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
 
             let resultEvent = null;
             if (file && fs.existsSync(file)) {
@@ -1659,12 +1739,14 @@ jobs:
 
       - name: Report usage cost
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXECUTION_FILE: ${{ steps.ai-fix.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -1685,7 +1767,7 @@ jobs:
             const status = result.is_error ? 'error' : 'ok';
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              issue_number: Number(process.env.COST_TRACKING_ISSUE),
               body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
@@ -1696,7 +1778,7 @@ jobs:
         # Only upload when redaction actually succeeded; a failed/skipped redact
         # must never publish an unredacted transcript to a public artifact.
         if: always() && steps.redact.outcome == 'success' && steps.ai-fix.outputs.execution_file
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-transcript
           path: ${{ steps.ai-fix.outputs.execution_file }}
@@ -1710,7 +1792,7 @@ jobs:
       - name: Upload fix result metadata
         # Gated on redaction success, same as the transcript upload.
         if: always() && steps.redact.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-result
           path: |
@@ -1721,7 +1803,7 @@ jobs:
       # Persist the fix itself as a downloadable patch (it is never pushed).
       - name: Upload fix patch
         if: always() && steps.redact.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-patch
           path: ${{ runner.temp }}/fixpatch/**/*.patch
@@ -1764,11 +1846,13 @@ jobs:
       ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run AI labeler
         id: ai-label
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -1820,7 +1904,7 @@ jobs:
 
       - name: Upload labels.md
         if: always() && steps.apply.outputs.labels_md
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: labels-${{ needs.parse-command.outputs.issue_number }}
           path: ${{ steps.apply.outputs.labels_md }}
@@ -1829,15 +1913,16 @@ jobs:
         # always(), so a refused or failed apply still delivers the analysis --
         # that is the run where the proposed labels are most worth reading.
         if: always() && steps.ai-label.outputs.execution_file
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           DRY_RUN: ${{ needs.parse-command.outputs.dry_run }}
           APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          EXECUTION_FILE: ${{ steps.ai-label.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-label.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -1882,16 +1967,17 @@ jobs:
 
       - name: "Verify: AI labeling succeeded"
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           AI_LABEL_OUTCOME: ${{ steps.ai-label.outcome }}
           BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+          EXECUTION_FILE: ${{ steps.ai-label.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
             const outcome = process.env.AI_LABEL_OUTCOME || 'skipped';
-            const file = '${{ steps.ai-label.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
 
             let result = null;
             if (file && fs.existsSync(file)) {
@@ -1934,12 +2020,14 @@ jobs:
 
       - name: Report usage cost
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXECUTION_FILE: ${{ steps.ai-label.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-label.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -1961,8 +2049,8 @@ jobs:
 
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`label\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              issue_number: Number(process.env.COST_TRACKING_ISSUE),
+              body: `\`${date}\` [\`label\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   triage:
@@ -1974,11 +2062,13 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run AI triage
         id: ai-triage
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -1998,14 +2088,15 @@ jobs:
 
       - name: Post triage report
         if: steps.ai-triage.outcome == 'success'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+          EXECUTION_FILE: ${{ steps.ai-triage.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const resultEvent = data.filter(e => e.type === 'result').pop();
@@ -2091,16 +2182,18 @@ jobs:
 
       - name: "Verify: AI triage succeeded"
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           AI_TRIAGE_OUTCOME: ${{ steps.ai-triage.outcome }}
           BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+          EXECUTION_FILE: ${{ steps.ai-triage.outputs.execution_file }}
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
             const outcome = process.env.AI_TRIAGE_OUTCOME || 'skipped';
-            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
 
             let result = null;
             if (file && fs.existsSync(file)) {
@@ -2136,7 +2229,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.issue_number }},
+              issue_number: Number(process.env.ISSUE_NUMBER),
               body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot triage\` failed: ${reason}\n\nSee the [\`triage\` job](${jobUrl}) for details.`
             });
             if (outcome !== 'cancelled') {
@@ -2145,12 +2238,15 @@ jobs:
 
       - name: Report usage cost
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXECUTION_FILE: ${{ steps.ai-triage.outputs.execution_file }}
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -2172,8 +2268,8 @@ jobs:
 
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`triage\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              issue_number: Number(process.env.COST_TRACKING_ISSUE),
+              body: `\`${date}\` [\`triage\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   # Unit-test the bot scripts that carry non-trivial logic. The fix pipeline's
@@ -2187,7 +2283,9 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Python
         uses: ./.github/actions/setup-python
@@ -2203,10 +2301,12 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: "Test: MERGE_TOKEN has PR read/write access"
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -2265,7 +2365,7 @@ jobs:
 
       - name: "Test: AWS Bedrock connectivity via Claude Code Action"
         id: bedrock-test
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
@@ -2280,14 +2380,15 @@ jobs:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
       - name: "Verify: Bedrock test actually succeeded"
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+          EXECUTION_FILE: ${{ steps.bedrock-test.outputs.execution_file }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.bedrock-test.outputs.execution_file }}';
+            const file = process.env.EXECUTION_FILE;
             let ok = false;
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));

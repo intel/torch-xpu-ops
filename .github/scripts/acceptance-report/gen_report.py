@@ -40,7 +40,11 @@ def _split_component_version(label):
 
 # Component under test and its two versions, derived from the labels (or set
 # ACC_COMPONENT explicitly) so the report is not tied to any specific component.
-COMPONENT = os.environ.get("ACC_COMPONENT") or _split_component_version(TARGET_LABEL)[0] or "component"
+COMPONENT = (
+    os.environ.get("ACC_COMPONENT")
+    or _split_component_version(TARGET_LABEL)[0]
+    or "component"
+)
 TARGET_VERSION = _split_component_version(TARGET_LABEL)[1]
 BASE_VERSION = _split_component_version(BASE_LABEL)[1]
 
@@ -50,12 +54,15 @@ BASE_VERSION = _split_component_version(BASE_LABEL)[1]
 REMOVED_MSG = "Deselected on target (pytest did not collect this case)"
 CRASH_MSG = "Collection failure: file crashed at import, no cases run"
 NOT_RUN_MSG = "Baseline passed but target did not run (collectable but skipped, not a code regression)"
-TIMEOUT_MSG = ("xdist worker crashed on setup (hung / timed-out case on the same "
-               "worker); tracked as a timeout / hang, not a code regression")
+TIMEOUT_MSG = (
+    "xdist worker crashed on setup (hung / timed-out case on the same "
+    "worker); tracked as a timeout / hang, not a code regression"
+)
 # pytest-xdist reports a hung/timed-out case (and its collateral cases on the
 # same worker) as `failed on setup with "worker 'gwN' crashed while running ..."`.
 WORKER_CRASH_RE = re.compile(
-    r"worker '?gw\d+'? crashed while running|failed on setup with", re.IGNORECASE)
+    r"worker '?gw\d+'? crashed while running|failed on setup with", re.IGNORECASE
+)
 
 
 def load_removed_list(path):
@@ -86,11 +93,19 @@ REMOVED_LIST_FILE = ""
 
 PASS_ACC = {"pass", "pass_due_to_skip"}
 # accuracy statuses where the model never really ran / couldn't be compared
-NOTRUN_ACC = {"eager_fail_to_run", "fail_to_run", "model_fail_to_load",
-              "eager_1st_run_OOM", "eager_2nd_run_OOM", "out of memory",
-              "timeout", "Memory>0.9", "UR_RESULT_ERROR"}
-PERF_REG_THRESHOLD = 0.90   # target/base below this = regression
-PERF_IMP_THRESHOLD = 1.10   # target/base above this = improvement
+NOTRUN_ACC = {
+    "eager_fail_to_run",
+    "fail_to_run",
+    "model_fail_to_load",
+    "eager_1st_run_OOM",
+    "eager_2nd_run_OOM",
+    "out of memory",
+    "timeout",
+    "Memory>0.9",
+    "UR_RESULT_ERROR",
+}
+PERF_REG_THRESHOLD = 0.90  # target/base below this = regression
+PERF_IMP_THRESHOLD = 1.10  # target/base above this = improvement
 
 
 # --------------------------------------------------------------------------- #
@@ -110,7 +125,8 @@ def find_files(root, pattern):
 # in the per-suite filename: inductor_<suite>_<dtype>_<mode>_xpu_<scenario>.csv
 # (the source filename is also appended as the last column of every row).
 _E2E_FNAME_RX = re.compile(
-    r"inductor_(huggingface|timm_models|torchbench|pt2e)_(.+)_(inference|training)_xpu_(accuracy|performance)")
+    r"inductor_(huggingface|timm_models|torchbench|pt2e)_(.+)_(inference|training)_xpu_(accuracy|performance)"
+)
 
 
 def _e2e_meta(row, path):
@@ -126,7 +142,6 @@ def _e2e_meta(row, path):
         if m:
             return m.group(1), m.group(2), m.group(3), m.group(4)
     return suite, dtype, mode, scenario
-
 
 
 def _brief_msg(text, limit=280):
@@ -169,7 +184,7 @@ def _canon_xpu_file(segments):
     '_xpu' suffix. Returns None when the segments are not a 'test.*' path."""
     segs = [s for s in segments if s]
     if "test" in segs:
-        segs = segs[segs.index("test"):]
+        segs = segs[segs.index("test") :]
     if len(segs) < 2 or segs[0] != "test":
         return None
     sub = segs[1:]
@@ -250,7 +265,14 @@ def parse_ut(root):
     """
     # priority when a case appears more than once:
     # passed > skipped > xfail > others > failed(failure) > error  (higher kept)
-    order = {"passed": 6, "skipped": 5, "xfail": 4, "others": 3, "failure": 2, "error": 1}
+    order = {
+        "passed": 6,
+        "skipped": 5,
+        "xfail": 4,
+        "others": 3,
+        "failure": 2,
+        "error": 1,
+    }
     result = {}
     messages = {}
     for path in find_files(root, r"\.xml$"):
@@ -293,6 +315,7 @@ def parse_ut(root):
 def ut_status_summary(status_map):
     """Per-version status breakdown."""
     from collections import Counter
+
     c = Counter(status_map.values())
     total = sum(c.values())
     failure = c.get("failure", 0)
@@ -327,19 +350,26 @@ def acc_value_map(acc_map):
 def acc_status_summary(value_map):
     """Status columns: Total, Passed, Passrate, Failed, Notrun."""
     from collections import Counter
+
     c = Counter(acc_bucket(v) for v in value_map.values())
     total = sum(c.values())
     passed = c.get("Passed", 0)
     failed = c.get("Failed", 0)
     notrun = c.get("Notrun", 0)
     passrate = (total - failed - notrun) / total if total else 0.0
-    return {"Total": total, "Passed": passed, "Passrate": passrate,
-            "Failed": failed, "Notrun": notrun}
+    return {
+        "Total": total,
+        "Passed": passed,
+        "Passrate": passrate,
+        "Failed": failed,
+        "Notrun": notrun,
+    }
 
 
 def acc_suite_summary(value_map):
     """Per-suite breakdown -> {suite: summary}."""
     from collections import defaultdict
+
     groups = defaultdict(dict)
     for key, v in value_map.items():
         groups[key[0]][key] = v
@@ -375,7 +405,7 @@ def compare_acc(base_vmap, target_vmap):
 
 
 def _strip_ts(line):
-    return re.sub(r'^\[\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d\]\s*', '', line).rstrip()
+    return re.sub(r"^\[\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d\]\s*", "", line).rstrip()
 
 
 def _extract_log_msg(path, limit=300):
@@ -385,39 +415,47 @@ def _extract_log_msg(path, limit=300):
             lines = [_strip_ts(l) for l in fh]
     except OSError:
         return ""
-    err_re = re.compile(r'^[A-Za-z_][\w.]*(?:Error|Exception)\b')
-    for l in lines:                       # root-cause exception (first in the chain)
+    err_re = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception)\b")
+    for l in lines:  # root-cause exception (first in the chain)
         s = l.strip()
         if err_re.match(s):
             return s[:limit]
-    for l in lines:                       # accuracy failures report an RMSE line
+    for l in lines:  # accuracy failures report an RMSE line
         if "RMSE" in l:
-            return l[l.index("RMSE"):].strip()[:limit]
+            return l[l.index("RMSE") :].strip()[:limit]
     nonempty = [l.strip() for l in lines if l.strip()]
 
     def _is_noise_tail(t):
         # progress bars (tqdm), trailing status tokens, speedup ratios, bare numbers
-        if "%|" in t or "█" in t or re.search(r'\d+/\d+\s*\[\d+:\d+', t) or "it/s]" in t:
+        if (
+            "%|" in t
+            or "█" in t
+            or re.search(r"\d+/\d+\s*\[\d+:\d+", t)
+            or "it/s]" in t
+        ):
             return True
-        return (bool(re.fullmatch(r'[A-Za-z0-9_>.%]+', t)) and "_" in t) \
-            or bool(re.fullmatch(r'-?\d+(?:\.\d+)?x?', t)) \
-            or bool(re.fullmatch(r'-?\d+(?:\.\d+)?\s*(?:x|ms|s|us|it/s)?', t))
+        return (
+            (bool(re.fullmatch(r"[A-Za-z0-9_>.%]+", t)) and "_" in t)
+            or bool(re.fullmatch(r"-?\d+(?:\.\d+)?x?", t))
+            or bool(re.fullmatch(r"-?\d+(?:\.\d+)?\s*(?:x|ms|s|us|it/s)?", t))
+        )
 
     while nonempty and _is_noise_tail(nonempty[-1]):
-        nonempty.pop()                    # drop trailing bare status / speedup tokens
+        nonempty.pop()  # drop trailing bare status / speedup tokens
     return nonempty[-1][:limit] if nonempty else ""
 
 
 def build_log_index(root, leaf):
     """Map (suite, dtype, mode, model) -> logs-*.log path under */<leaf>/ (accuracy|performance)."""
     idx = {}
-    for path in find_files(root, r'^logs-.*\.log$'):
+    for path in find_files(root, r"^logs-.*\.log$"):
         parts = path.split(os.sep)
         if len(parts) < 5 or parts[-2] != leaf:
             continue
         suite, dtype, mode = parts[-5], parts[-4], parts[-3]
-        m = re.match(r'^logs-(.*?)-worker\d+-card\d+\.log$', parts[-1]) \
-            or re.match(r'^logs-(.*?)\.log$', parts[-1])
+        m = re.match(r"^logs-(.*?)-worker\d+-card\d+\.log$", parts[-1]) or re.match(
+            r"^logs-(.*?)\.log$", parts[-1]
+        )
         model = m.group(1) if m else parts[-1]
         idx[(suite, dtype, mode, model)] = path
     return idx
@@ -427,7 +465,9 @@ def build_acc_log_index(root):
     return build_log_index(root, "accuracy")
 
 
-_STATUS_TOKENS = PASS_ACC | NOTRUN_ACC | {"fail_accuracy", "eager_two_runs_differ", "fail"}
+_STATUS_TOKENS = (
+    PASS_ACC | NOTRUN_ACC | {"fail_accuracy", "eager_two_runs_differ", "fail"}
+)
 
 
 def log_status_token(path):
@@ -538,7 +578,7 @@ def parse_perf_e2e(root):
     """
     result = {}
     best = {}
-    for path in find_files(root, r'performance\.csv$'):
+    for path in find_files(root, r"performance\.csv$"):
         if "pt2e" in os.path.basename(path):
             continue
         vrank = _verified_rank(path)
@@ -551,10 +591,15 @@ def parse_perf_e2e(root):
                     return float(x)
                 except (TypeError, ValueError):
                     return None
+
             pr = _prio_pos_small(row.get("abs_latency"), vrank)
             if key not in result or pr > best[key]:
-                result[key] = {"abs": f(row.get("abs_latency")), "speedup": f(row.get("speedup")),
-                               "bs": row.get("batch_size", ""), "raw": row}
+                result[key] = {
+                    "abs": f(row.get("abs_latency")),
+                    "speedup": f(row.get("speedup")),
+                    "bs": row.get("batch_size", ""),
+                    "raw": row,
+                }
                 best[key] = pr
     return result
 
@@ -569,15 +614,32 @@ def perf_metrics(entry):
     return (bs, ind, eag)
 
 
-PERF_CATS = ["stable", "both_fail", "bs_change", "new_pass", "new_fail", "improve", "drop"]
+PERF_CATS = [
+    "stable",
+    "both_fail",
+    "bs_change",
+    "new_pass",
+    "new_fail",
+    "improve",
+    "drop",
+]
 PERF_CAT_LABEL = {
-    "bs_change": "BS Change", "both_fail": "Both Fail", "stable": "Stable",
-    "new_pass": "New Pass", "new_fail": "New Fail",
-    "improve": "Improves", "drop": "Drops",
+    "bs_change": "BS Change",
+    "both_fail": "Both Fail",
+    "stable": "Stable",
+    "new_pass": "New Pass",
+    "new_fail": "New Fail",
+    "improve": "Improves",
+    "drop": "Drops",
 }
 PERF_CAT_CLS = {
-    "bs_change": "unk", "both_fail": "fail", "stable": "pass",
-    "new_pass": "imp", "new_fail": "reg", "improve": "imp", "drop": "reg",
+    "bs_change": "unk",
+    "both_fail": "fail",
+    "stable": "pass",
+    "new_pass": "imp",
+    "new_fail": "reg",
+    "improve": "imp",
+    "drop": "reg",
 }
 
 
@@ -591,13 +653,17 @@ def perf_status(bt, bb, ind_t, ind_b, eag_t, eag_b):
         return "new_fail"
     if it and not ib:
         return "new_pass"
-    if not (it and ib):        # both failed
+    if not (it and ib):  # both failed
         return "both_fail"
     # both passed -> a drop/improve on EITHER metric classifies the row (drop wins)
     ind_r = ind_b / ind_t
     eag_r = (eag_b / eag_t) if (et and eb) else None
-    dropped = ind_r < PERF_REG_THRESHOLD or (eag_r is not None and eag_r < PERF_REG_THRESHOLD)
-    improved = ind_r > PERF_IMP_THRESHOLD or (eag_r is not None and eag_r > PERF_IMP_THRESHOLD)
+    dropped = ind_r < PERF_REG_THRESHOLD or (
+        eag_r is not None and eag_r < PERF_REG_THRESHOLD
+    )
+    improved = ind_r > PERF_IMP_THRESHOLD or (
+        eag_r is not None and eag_r > PERF_IMP_THRESHOLD
+    )
     if dropped:
         return "drop"
     if improved:
@@ -613,8 +679,18 @@ def compare_perf2(base_map, target_map):
         bt, ind_t, eag_t = perf_metrics(target_map.get(key))
         cat = perf_status(bt, bb, ind_t, ind_b, eag_t, eag_b)
         counts[cat] += 1
-        rows.append({"key": key, "bt": bt, "bb": bb, "ind_t": ind_t, "ind_b": ind_b,
-                     "eag_t": eag_t, "eag_b": eag_b, "cat": cat})
+        rows.append(
+            {
+                "key": key,
+                "bt": bt,
+                "bb": bb,
+                "ind_t": ind_t,
+                "ind_b": ind_b,
+                "eag_t": eag_t,
+                "eag_b": eag_b,
+                "cat": cat,
+            }
+        )
     return rows, counts
 
 
@@ -627,8 +703,12 @@ def _geomean(ratios):
 
 def perf_geomeans(rows):
     """(eager_geomean, inductor_geomean) of baseline/target over rows passed in both."""
-    eag = _geomean([r["eag_b"] / r["eag_t"] for r in rows if _pos(r["eag_t"]) and _pos(r["eag_b"])])
-    ind = _geomean([r["ind_b"] / r["ind_t"] for r in rows if _pos(r["ind_t"]) and _pos(r["ind_b"])])
+    eag = _geomean(
+        [r["eag_b"] / r["eag_t"] for r in rows if _pos(r["eag_t"]) and _pos(r["eag_b"])]
+    )
+    ind = _geomean(
+        [r["ind_b"] / r["ind_t"] for r in rows if _pos(r["ind_t"]) and _pos(r["ind_b"])]
+    )
     return eag, ind
 
 
@@ -657,12 +737,18 @@ def perf_ver_summary(perf_map, notrun_status):
         else:
             failed += 1
     passrate = (total - failed - notrun) / total if total else 0.0
-    return {"Total": total, "Passed": passed, "Passrate": passrate,
-            "Failed": failed, "Notrun": notrun}
+    return {
+        "Total": total,
+        "Passed": passed,
+        "Passrate": passrate,
+        "Failed": failed,
+        "Notrun": notrun,
+    }
 
 
 def perf_suite_summary(perf_map, notrun_status):
     from collections import defaultdict as _dd
+
     groups = _dd(dict)
     for key, e in perf_map.items():
         groups[key[0]][key] = e
@@ -722,7 +808,19 @@ def parse_accuracy(root, pt2e=False):
 # --------------------------------------------------------------------------- #
 # Comparison
 # --------------------------------------------------------------------------- #
-CATEGORY_ORDER = ["regression", "improvement", "new", "removed", "crash", "timeout", "not_run", "fail", "pass", "others", "unknown"]
+CATEGORY_ORDER = [
+    "regression",
+    "improvement",
+    "new",
+    "removed",
+    "crash",
+    "timeout",
+    "not_run",
+    "fail",
+    "pass",
+    "others",
+    "unknown",
+]
 CATEGORY_LABEL = {
     "regression": "Regression",
     "improvement": "Improvement",
@@ -758,7 +856,7 @@ def compare_ut(base_map, target_map):
         t = target_map.get(key)
         bp, tp = b == "passed", t == "passed"
         if tp and not bp:
-            cat = "improvement"          # target passed, baseline not passed / null
+            cat = "improvement"  # target passed, baseline not passed / null
         elif bp and not tp:
             # a pass -> skipped / xfail is an intentional non-run, not a regression
             cat = "others" if t in ("skipped", "xfail") else "regression"
@@ -785,14 +883,31 @@ def esc(x):
 
 
 CAT_CLASS = {
-    "regression": "reg", "improvement": "imp", "new": "new",
-    "removed": "rem", "crash": "crash", "timeout": "timeout", "not_run": "notrun", "fail": "fail", "pass": "pass",
-    "others": "unk", "unknown": "unk",
+    "regression": "reg",
+    "improvement": "imp",
+    "new": "new",
+    "removed": "rem",
+    "crash": "crash",
+    "timeout": "timeout",
+    "not_run": "notrun",
+    "fail": "fail",
+    "pass": "pass",
+    "others": "unk",
+    "unknown": "unk",
 }
 
 
 def ut_summary_table_html(base_sum, target_sum):
-    cols = ["Total", "Passed", "Passrate", "Skipped", "Failure", "Error", "Xfail", "Others"]
+    cols = [
+        "Total",
+        "Passed",
+        "Passrate",
+        "Skipped",
+        "Failure",
+        "Error",
+        "Xfail",
+        "Others",
+    ]
 
     def fmt(sm, c):
         v = sm[c]
@@ -800,8 +915,11 @@ def ut_summary_table_html(base_sum, target_sum):
 
     def row(label, sm, cls, worse=False):
         tds = "".join(
-            f'<td class="pr-worse">{fmt(sm, c)}</td>' if (worse and c == "Passrate")
-            else f"<td>{fmt(sm, c)}</td>" for c in cols)
+            f'<td class="pr-worse">{fmt(sm, c)}</td>'
+            if (worse and c == "Passrate")
+            else f"<td>{fmt(sm, c)}</td>"
+            for c in cols
+        )
         return f'<tr class="{cls}"><td class="rowlbl">{label}</td>{tds}</tr>'
 
     def delta_cell(c):
@@ -817,14 +935,17 @@ def ut_summary_table_html(base_sum, target_sum):
         cls = ""
         if d != 0:
             up = d > 0
-            cls = "d-up" if (up and good_up) or (not up and good_down) else \
-                  ("d-down" if (up and good_down) or (not up and good_up) else "")
+            cls = (
+                "d-up"
+                if (up and good_up) or (not up and good_down)
+                else ("d-down" if (up and good_down) or (not up and good_up) else "")
+            )
         return f'<td class="{cls}">{sign}{d}</td>'
 
     head = "".join(f"<th>{c}</th>" for c in cols)
     delta = "".join(delta_cell(c) for c in cols)
     worse = target_sum["Passrate"] < base_sum["Passrate"]
-    return f'''
+    return f"""
     <h3 class="subh">Status summary (Passrate = (Total − Failure − Error) / Total)</h3>
     <div class="table-wrap small">
       <table class="data summary-tbl">
@@ -835,7 +956,7 @@ def ut_summary_table_html(base_sum, target_sum):
           <tr class="row-delta"><td class="rowlbl">Δ Target − Baseline</td>{delta}</tr>
         </tbody>
       </table>
-    </div>'''
+    </div>"""
 
 
 ACC_SUM_COLS = ["Total", "Passed", "Passrate", "Failed", "Notrun"]
@@ -849,8 +970,11 @@ def acc_summary_table_html(base_sum, target_sum, title="Status summary"):
 
     def row(label, sm, cls, worse=False):
         tds = "".join(
-            f'<td class="pr-worse">{fmt(sm, c)}</td>' if (worse and c == "Passrate")
-            else f"<td>{fmt(sm, c)}</td>" for c in cols)
+            f'<td class="pr-worse">{fmt(sm, c)}</td>'
+            if (worse and c == "Passrate")
+            else f"<td>{fmt(sm, c)}</td>"
+            for c in cols
+        )
         return f'<tr class="{cls}"><td class="rowlbl">{label}</td>{tds}</tr>'
 
     def delta_cell(c):
@@ -864,14 +988,17 @@ def acc_summary_table_html(base_sum, target_sum, title="Status summary"):
         cls = ""
         if d != 0:
             up = d > 0
-            cls = "d-up" if (up and good_up) or (not up and good_down) else \
-                  ("d-down" if (up and good_down) or (not up and good_up) else "")
+            cls = (
+                "d-up"
+                if (up and good_up) or (not up and good_down)
+                else ("d-down" if (up and good_down) or (not up and good_up) else "")
+            )
         return f'<td class="{cls}">{"+" if d > 0 else ""}{d}</td>'
 
     head = "".join(f"<th>{c}</th>" for c in cols)
     delta = "".join(delta_cell(c) for c in cols)
     worse = target_sum["Passrate"] < base_sum["Passrate"]
-    return f'''
+    return f"""
     <h3 class="subh">{esc(title)} <span class="hint">(Passrate = (Total − Failed − Notrun) / Total)</span></h3>
     <div class="table-wrap small">
       <table class="data summary-tbl">
@@ -882,7 +1009,7 @@ def acc_summary_table_html(base_sum, target_sum, title="Status summary"):
           <tr class="row-delta"><td class="rowlbl">Δ Target − Baseline</td>{delta}</tr>
         </tbody>
       </table>
-    </div>'''
+    </div>"""
 
 
 def acc_suite_breakdown_html(base_vmap, target_vmap):
@@ -893,9 +1020,15 @@ def acc_suite_breakdown_html(base_vmap, target_vmap):
 
     def cells(sm, worse=False):
         return "".join(
-            (f'<td class="pr-worse">{sm[c] * 100:.2f}%</td>' if worse else f'<td>{sm[c] * 100:.2f}%</td>')
-            if c == "Passrate" else f"<td>{sm[c]}</td>"
-            for c in cols)
+            (
+                f'<td class="pr-worse">{sm[c] * 100:.2f}%</td>'
+                if worse
+                else f"<td>{sm[c] * 100:.2f}%</td>"
+            )
+            if c == "Passrate"
+            else f"<td>{sm[c]}</td>"
+            for c in cols
+        )
 
     body = []
     empty = {"Total": 0, "Passed": 0, "Passrate": 0.0, "Failed": 0, "Notrun": 0}
@@ -905,17 +1038,18 @@ def acc_suite_breakdown_html(base_vmap, target_vmap):
         worse = tb["Passrate"] < bb["Passrate"]
         body.append(
             f'<tr class="row-target{" worse" if worse else ""}"><td class="rowlbl" rowspan="2">{esc(suite)}</td>'
-            f'<td>Target</td>{cells(tb, worse)}</tr>'
-            f'<tr class="row-base"><td>Baseline</td>{cells(bb)}</tr>')
+            f"<td>Target</td>{cells(tb, worse)}</tr>"
+            f'<tr class="row-base"><td>Baseline</td>{cells(bb)}</tr>'
+        )
     head = "".join(f"<th>{c}</th>" for c in cols)
-    return f'''
+    return f"""
     <h3 class="subh">Breakdown by suite</h3>
     <div class="table-wrap small">
       <table class="data summary-tbl">
         <thead><tr><th>Suite</th><th>Category</th>{head}</tr></thead>
-        <tbody>{''.join(body)}</tbody>
+        <tbody>{"".join(body)}</tbody>
       </table>
-    </div>'''
+    </div>"""
 
 
 PERF_SUM_COLS = ["Total", "Passed", "Passrate", "Failed", "Notrun", "Eager", "Inductor"]
@@ -941,8 +1075,11 @@ def perf_summary_table_html(base_sum, target_sum, eag_gm, ind_gm):
 
     def mrow(sm, worse=False):
         return "".join(
-            f'<td class="pr-worse">{fmt(sm, c)}</td>' if (worse and c == "Passrate")
-            else f"<td>{fmt(sm, c)}</td>" for c in metric_cols)
+            f'<td class="pr-worse">{fmt(sm, c)}</td>'
+            if (worse and c == "Passrate")
+            else f"<td>{fmt(sm, c)}</td>"
+            for c in metric_cols
+        )
 
     def delta_cell(c):
         d = target_sum[c] - base_sum[c]
@@ -954,31 +1091,35 @@ def perf_summary_table_html(base_sum, target_sum, eag_gm, ind_gm):
         cls = ""
         if d != 0:
             up = d > 0
-            cls = "d-up" if (up and good_up) or (not up and good_down) else \
-                  ("d-down" if (up and good_down) or (not up and good_up) else "")
+            cls = (
+                "d-up"
+                if (up and good_up) or (not up and good_down)
+                else ("d-down" if (up and good_down) or (not up and good_up) else "")
+            )
         return f'<td class="{cls}">{"+" if d > 0 else ""}{d}</td>'
 
     head = "".join(f"<th>{c}</th>" for c in PERF_SUM_COLS)
     delta = "".join(delta_cell(c) for c in metric_cols)
     worse = target_sum["Passrate"] < base_sum["Passrate"]
-    return f'''
+    return f"""
     <h3 class="subh">Status summary <span class="hint">(Passrate=(Total−Failed−Notrun)/Total · Eager/Inductor = geomean baseline/target latency · Inductor latency=abs_latency, Eager=abs_latency×speedup)</span></h3>
     <div class="table-wrap small">
       <table class="data summary-tbl">
         <thead><tr><th>Category</th>{head}</tr></thead>
         <tbody>
-          <tr class="row-target{' worse' if worse else ''}"><td class="rowlbl">{esc(TARGET_LABEL)} (Target)</td>{mrow(target_sum, worse)}{_gm_cell(eag_gm)}{_gm_cell(ind_gm)}</tr>
+          <tr class="row-target{" worse" if worse else ""}"><td class="rowlbl">{esc(TARGET_LABEL)} (Target)</td>{mrow(target_sum, worse)}{_gm_cell(eag_gm)}{_gm_cell(ind_gm)}</tr>
           <tr class="row-base"><td class="rowlbl">{esc(BASE_LABEL)} (Baseline)</td>{mrow(base_sum)}<td>/</td><td>/</td></tr>
           <tr class="row-delta"><td class="rowlbl">Δ Target − Baseline</td>{delta}<td></td><td></td></tr>
         </tbody>
       </table>
-    </div>'''
+    </div>"""
 
 
 def perf_suite_breakdown_html(base_map, target_map, rows, base_notrun, target_notrun):
     base_by = perf_suite_summary(base_map, base_notrun)
     target_by = perf_suite_summary(target_map, target_notrun)
     from collections import defaultdict as _dd
+
     suite_rows = _dd(list)
     for r in rows:
         suite_rows[r["key"][0]].append(r)
@@ -987,9 +1128,15 @@ def perf_suite_breakdown_html(base_map, target_map, rows, base_notrun, target_no
 
     def cells(sm, worse=False):
         return "".join(
-            (f'<td class="pr-worse">{sm[c] * 100:.2f}%</td>' if worse else f'<td>{sm[c] * 100:.2f}%</td>')
-            if c == "Passrate" else f"<td>{sm[c]}</td>"
-            for c in metric_cols)
+            (
+                f'<td class="pr-worse">{sm[c] * 100:.2f}%</td>'
+                if worse
+                else f"<td>{sm[c] * 100:.2f}%</td>"
+            )
+            if c == "Passrate"
+            else f"<td>{sm[c]}</td>"
+            for c in metric_cols
+        )
 
     empty = {"Total": 0, "Passed": 0, "Passrate": 0.0, "Failed": 0, "Notrun": 0}
     body = []
@@ -999,20 +1146,23 @@ def perf_suite_breakdown_html(base_map, target_map, rows, base_notrun, target_no
         worse = tb["Passrate"] < bb["Passrate"]
         body.append(
             f'<tr class="row-target{" worse" if worse else ""}"><td class="rowlbl" rowspan="2">{esc(suite)}</td>'
-            f'<td>Target</td>{cells(tb, worse)}{_gm_cell(eag_gm)}{_gm_cell(ind_gm)}</tr>'
-            f'<tr class="row-base"><td>Baseline</td>{cells(bb)}<td>/</td><td>/</td></tr>')
+            f"<td>Target</td>{cells(tb, worse)}{_gm_cell(eag_gm)}{_gm_cell(ind_gm)}</tr>"
+            f'<tr class="row-base"><td>Baseline</td>{cells(bb)}<td>/</td><td>/</td></tr>'
+        )
     head = "".join(f"<th>{c}</th>" for c in PERF_SUM_COLS)
-    return f'''
+    return f"""
     <h3 class="subh">Breakdown by suite</h3>
     <div class="table-wrap small">
       <table class="data summary-tbl">
         <thead><tr><th>Suite</th><th>Category</th>{head}</tr></thead>
-        <tbody>{''.join(body)}</tbody>
+        <tbody>{"".join(body)}</tbody>
       </table>
-    </div>'''
+    </div>"""
 
 
-def summary_cards_html(title, counts, cards=None, onclick="utCardFilter", default="regression"):
+def summary_cards_html(
+    title, counts, cards=None, onclick="utCardFilter", default="regression"
+):
     if cards is not None:
         # 3-tuple (label, value, css) -> static;  4-tuple adds a filter id -> clickable
         parts = []
@@ -1023,22 +1173,27 @@ def summary_cards_html(title, counts, cards=None, onclick="utCardFilter", defaul
                 parts.append(
                     f'<div class="card {cls} clickable{sel}" data-f="{fid}" '
                     f'onclick="{onclick}(this)"><span class="num">{val}</span>'
-                    f'<span class="lbl">{esc(label)}</span></div>')
+                    f'<span class="lbl">{esc(label)}</span></div>'
+                )
             else:
                 label, val, cls = c
                 parts.append(
                     f'<div class="card {cls}"><span class="num">{val}</span>'
-                    f'<span class="lbl">{esc(label)}</span></div>')
+                    f'<span class="lbl">{esc(label)}</span></div>'
+                )
         return f'<div class="cards">{"".join(parts)}</div>'
     total = sum(counts.values())
-    html_cards = [f'<div class="card total"><span class="num">{total}</span><span class="lbl">Total</span></div>']
+    html_cards = [
+        f'<div class="card total"><span class="num">{total}</span><span class="lbl">Total</span></div>'
+    ]
     for cat in CATEGORY_ORDER:
         if counts.get(cat, 0) == 0 and cat in ("unknown",):
             continue
         n = counts.get(cat, 0)
         html_cards.append(
             f'<div class="card {CAT_CLASS[cat]}"><span class="num">{n}</span>'
-            f'<span class="lbl">{CATEGORY_LABEL[cat]}</span></div>')
+            f'<span class="lbl">{CATEGORY_LABEL[cat]}</span></div>'
+        )
     return f'<div class="cards">{"".join(html_cards)}</div>'
 
 
@@ -1081,21 +1236,26 @@ def overview_html(summary, caption=""):
         pills = "".join(
             f'<div class="ov-pill"><span class="ovp-v {_t(t, v)}">{esc(str(v))}</span>'
             f'<span class="ovp-l">{esc(l)}</span></div>'
-            for l, v, t in ms[1:])
+            for l, v, t in ms[1:]
+        )
         cards.append(
             f'<div class="ov-card">'
             f'<div class="ov-top"><span class="ov-name">{esc(g["title"])}</span>{tag}</div>'
             f'<div class="ov-hero"><span class="ovh-v {_t(hero_t, hero_v)}">{esc(str(hero_v))}</span>'
             f'<span class="ovh-l">{esc(hero_l)}</span></div>'
-            f'<div class="ov-pills">{pills}</div></div>')
+            f'<div class="ov-pills">{pills}</div></div>'
+        )
     cap = f'<p class="ov-cap">{esc(caption)}</p>' if caption else ""
-    return ('<section class="overview"><div class="ov-titlebar">'
-            f'<h2 class="ov-title">Summary</h2>{cap}</div>'
-            f'<div class="ov-grid">{"".join(cards)}</div></section>')
+    return (
+        '<section class="overview"><div class="ov-titlebar">'
+        f'<h2 class="ov-title">Summary</h2>{cap}</div>'
+        f'<div class="ov-grid">{"".join(cards)}</div></section>'
+    )
 
 
-def compute_gate(scope, ut_rows, ut_counts, acc_rows, acc_counts, acc_passed,
-                 perf_rows, perf_counts):
+def compute_gate(
+    scope, ut_rows, ut_counts, acc_rows, acc_counts, acc_passed, perf_rows, perf_counts
+):
     """Reasons the acceptance job fails (empty list == pass). A section is only
     checked when it is in `scope` (the tested sections):
       1. UT regression                       4. tested section with TOTAL == 0
@@ -1134,10 +1294,11 @@ def compute_gate(scope, ut_rows, ut_counts, acc_rows, acc_counts, acc_passed,
 def gate_banner_html(reasons):
     if reasons:
         items = "".join(f"<li>{esc(r)}</li>" for r in reasons)
-        return ('<section class="gate gate-fail"><div class="gate-hd">&#10060; Acceptance gate FAILED</div>'
-                f'<ul class="gate-list">{items}</ul></section>')
+        return (
+            '<section class="gate gate-fail"><div class="gate-hd">&#10060; Acceptance gate FAILED</div>'
+            f'<ul class="gate-list">{items}</ul></section>'
+        )
     return '<section class="gate gate-pass"><div class="gate-hd">&#9989; Acceptance gate PASSED</div></section>'
-
 
 
 def ut_detail_html(rows, issues, lookup, target_msg):
@@ -1148,8 +1309,20 @@ def ut_detail_html(rows, issues, lookup, target_msg):
     Extra columns track intel/torch-xpu-ops issues and a brief target failure message.
     """
     import json
+
     ST = ["passed", "failure", "error", "skipped", "xfail", "others"]
-    CATS = ["pass", "fail", "regression", "improvement", "new", "removed", "crash", "timeout", "not_run", "others"]
+    CATS = [
+        "pass",
+        "fail",
+        "regression",
+        "improvement",
+        "new",
+        "removed",
+        "crash",
+        "timeout",
+        "not_run",
+        "others",
+    ]
     st_i = {s: i for i, s in enumerate(ST)}
     cat_i = {c: i for i, c in enumerate(CATS)}
     files, fidx = [], {}
@@ -1181,7 +1354,7 @@ def ut_detail_html(rows, issues, lookup, target_msg):
         "const UT_ROWS=" + json.dumps(data, separators=(",", ":")) + ";"
     ).replace("</", "<\\/")
 
-    table = f'''
+    table = f"""
     <h3 class="subh">Case-level comparison <span class="hint">(all cases loaded · click a card above to filter · showing regressions by default)</span></h3>
     <div class="toolbar">
       <button class="exportbtn" onclick="utExportCSV()">⬇ Export CSV</button>
@@ -1197,13 +1370,13 @@ def ut_detail_html(rows, issues, lookup, target_msg):
     </div>
     <div class="pager">Showing <b id="ut_shown">0</b> of <b id="ut_match">0</b> matched
       &nbsp;·&nbsp; <span id="ut_total"></span> total
-      <button id="ut_more" class="loadmore" onclick="utMore()">Load more</button></div>'''
+      <button id="ut_more" class="loadmore" onclick="utMore()">Load more</button></div>"""
 
-    script = f'<script>{blob}\n{UT_TABLE_JS}</script>'
+    script = f"<script>{blob}\n{UT_TABLE_JS}</script>"
     return table + script
 
 
-UT_TABLE_JS = r'''
+UT_TABLE_JS = r"""
 let UT_FILTER='regression', UT_SEARCH='', UT_LIMIT=1000;
 let UT_COLF=[], UT_SC=-1, UT_SD=1; const UT_NUM=[];
 const UT_CATLBL={pass:'Both Pass',fail:'Both Fail',regression:'Regression',
@@ -1334,11 +1507,25 @@ function utCopyCmd(btn){
   utCopyText(cmd,btn);
 }
 document.addEventListener('DOMContentLoaded',()=>{ gMakeFilters('tbl_ut',7,utColF); gMakeSort('tbl_ut',utSortBy); utRender(true); });
-'''
+"""
 
 
-ACC_NS = {"P": "ACC", "p": "acc", "tid": "tbl_accd", "bid": "accd", "panel": "acc", "csv": "accuracy"}
-PF_NS = {"P": "PF", "p": "pf", "tid": "tbl_pfd", "bid": "pfd", "panel": "perf", "csv": "performance"}
+ACC_NS = {
+    "P": "ACC",
+    "p": "acc",
+    "tid": "tbl_accd",
+    "bid": "accd",
+    "panel": "acc",
+    "csv": "accuracy",
+}
+PF_NS = {
+    "P": "PF",
+    "p": "pf",
+    "tid": "tbl_pfd",
+    "bid": "pfd",
+    "panel": "perf",
+    "csv": "performance",
+}
 
 
 def _ns_js(js, old, new):
@@ -1350,13 +1537,16 @@ def _ns_js(js, old, new):
     js = js.replace(".panel#" + old["panel"] + " ", ".panel#" + new["panel"] + " ")
     js = js.replace("'" + old["csv"] + "_'", "'" + new["csv"] + "_'")
     js = js.replace(old["P"] + "_", new["P"] + "_")
-    js = re.sub(r'\b' + re.escape(old["p"]) + r'([A-Z][A-Za-z0-9_]*)', new["p"] + r'\1', js)
+    js = re.sub(
+        r"\b" + re.escape(old["p"]) + r"([A-Z][A-Za-z0-9_]*)", new["p"] + r"\1", js
+    )
     return js
 
 
 def acc_detail_html(rows, issues, lookup, target_msg, ns=None):
     """Client-rendered accuracy case-level table with cards-as-filters."""
     import json
+
     ns = ns or ACC_NS
     P, p, tid, bid = ns["P"], ns["p"], ns["tid"], ns["bid"]
     CATS = ["pass", "fail", "regression", "improvement"]
@@ -1377,7 +1567,11 @@ def acc_detail_html(rows, issues, lookup, target_msg, ns=None):
     data = []
     for r in rows:
         suite, dtype, mode, name, scenario = r["key"]
-        for lst, ix, val in ((suites, sidx, suite), (dtypes, didx, dtype), (modes, midx, mode)):
+        for lst, ix, val in (
+            (suites, sidx, suite),
+            (dtypes, didx, dtype),
+            (modes, midx, mode),
+        ):
             if val not in ix:
                 ix[val] = len(lst)
                 lst.append(val)
@@ -1385,8 +1579,21 @@ def acc_detail_html(rows, issues, lookup, target_msg, ns=None):
         issue_idx = hit[0] if hit else -1
         fixed = 1 if (hit and hit[1]) else 0
         msg = target_msg.get(r["key"], "") if r["cat"] in ("regression", "fail") else ""
-        data.append([sidx[suite], didx[dtype], midx[mode], name, scenario,
-                     vi(r["base"]), vi(r["target"]), cat_i[r["cat"]], issue_idx, fixed, msg])
+        data.append(
+            [
+                sidx[suite],
+                didx[dtype],
+                midx[mode],
+                name,
+                scenario,
+                vi(r["base"]),
+                vi(r["target"]),
+                cat_i[r["cat"]],
+                issue_idx,
+                fixed,
+                msg,
+            ]
+        )
 
     issues_js = [[i["id"], i["url"], i["state"]] for i in issues]
     blob = (
@@ -1416,11 +1623,11 @@ def acc_detail_html(rows, issues, lookup, target_msg, ns=None):
       &nbsp;·&nbsp; <span id="{bid}_total"></span> total
       <button id="{bid}_more" class="loadmore" onclick="{p}More()">Load more</button></div>'''
 
-    script = f'<script>{blob}\n{_ns_js(ACC_TABLE_JS, ACC_NS, ns)}</script>'
+    script = f"<script>{blob}\n{_ns_js(ACC_TABLE_JS, ACC_NS, ns)}</script>"
     return table + script
 
 
-ACC_TABLE_JS = r'''
+ACC_TABLE_JS = r"""
 let ACC_FILTER='regression', ACC_SEARCH='', ACC_LIMIT=1000;
 let ACC_COLF=[], ACC_SC=-1, ACC_SD=1; const ACC_NUM=[];
 const ACC_CATLBL={pass:'No Change',fail:'Both Fail',regression:'Regression',improvement:'Improvement'};
@@ -1521,12 +1728,13 @@ function accExportCSV(){
   csvDownload(lines.join('\n'),'accuracy_'+ACC_FILTER+'.csv');
 }
 document.addEventListener('DOMContentLoaded',()=>{ gMakeFilters('tbl_accd',8,accColF); gMakeSort('tbl_accd',accSortBy); accRender(true); });
-'''
+"""
 
 
 def perf2_detail_html(rows, issues, lookup, target_msg, ns=None):
     """Client-rendered performance case-level table (eager/inductor) with cards-as-filters."""
     import json
+
     ns = ns or PF_NS
     P, p, tid, bid = ns["P"], ns["p"], ns["tid"], ns["bid"]
     cat_i = {c: i for i, c in enumerate(PERF_CATS)}
@@ -1540,7 +1748,11 @@ def perf2_detail_html(rows, issues, lookup, target_msg, ns=None):
     data = []
     for r in rows:
         suite, dtype, mode, name, scenario = r["key"]
-        for lst, ix, val in ((suites, sidx, suite), (dtypes, didx, dtype), (modes, midx, mode)):
+        for lst, ix, val in (
+            (suites, sidx, suite),
+            (dtypes, didx, dtype),
+            (modes, midx, mode),
+        ):
             if val not in ix:
                 ix[val] = len(lst)
                 lst.append(val)
@@ -1549,9 +1761,24 @@ def perf2_detail_html(rows, issues, lookup, target_msg, ns=None):
         fixed = 1 if (hit and hit[1]) else 0
         tfail = not _pos(r["ind_t"])
         msg = target_msg.get(r["key"], "") if tfail else ""
-        data.append([sidx[suite], didx[dtype], midx[mode], name,
-                     str(r["bt"]), str(r["bb"]), num(r["ind_t"]), num(r["ind_b"]),
-                     num(r["eag_t"]), num(r["eag_b"]), cat_i[r["cat"]], issue_idx, fixed, msg])
+        data.append(
+            [
+                sidx[suite],
+                didx[dtype],
+                midx[mode],
+                name,
+                str(r["bt"]),
+                str(r["bb"]),
+                num(r["ind_t"]),
+                num(r["ind_b"]),
+                num(r["eag_t"]),
+                num(r["eag_b"]),
+                cat_i[r["cat"]],
+                issue_idx,
+                fixed,
+                msg,
+            ]
+        )
 
     issues_js = [[i["id"], i["url"], i["state"]] for i in issues]
     blob = (
@@ -1584,11 +1811,11 @@ def perf2_detail_html(rows, issues, lookup, target_msg, ns=None):
       &nbsp;·&nbsp; <span id="{bid}_total"></span> total
       <button id="{bid}_more" class="loadmore" onclick="{p}More()">Load more</button></div>'''
 
-    script = f'<script>{blob}\n{_ns_js(PERF2_TABLE_JS, PF_NS, ns)}</script>'
+    script = f"<script>{blob}\n{_ns_js(PERF2_TABLE_JS, PF_NS, ns)}</script>"
     return table + script
 
 
-PERF2_TABLE_JS = r'''
+PERF2_TABLE_JS = r"""
 let PF_FILTER='drop', PF_SEARCH='', PF_LIMIT=1000;
 let PF_COLF=[], PF_SC=-1, PF_SD=1; const PF_NUM=[4,5,6,7,8,9,10,11];
 function pfEsc(s){return String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
@@ -1698,30 +1925,39 @@ function pfExportCSV(){
   csvDownload(lines.join('\n'),'performance_'+PF_FILTER+'.csv');
 }
 document.addEventListener('DOMContentLoaded',()=>{ gMakeFilters('tbl_pfd',14,pfColF); gMakeSort('tbl_pfd',pfSortBy); pfRender(true); });
-'''
+"""
 
 
 def build_html(sections, meta):
     nav = "".join(
         f'<button class="tab{" active" if i == 0 else ""}" data-tab="{s["id"]}" onclick="showTab(\'{s["id"]}\', this)">{esc(s["title"])}'
         f'<span class="tab-badge {"warn" if s.get("badge") else ""}">{s.get("badge", 0)}</span></button>'
-        for i, s in enumerate(sections))
+        for i, s in enumerate(sections)
+    )
 
     panels = []
     for i, s in enumerate(sections):
-        cards_html = ("" if s.get("cards") is False else
-                      summary_cards_html(s["title"], s["counts"], s.get("cards"),
-                                         s.get("card_onclick", "utCardFilter"),
-                                         s.get("card_default", "regression")))
+        cards_html = (
+            ""
+            if s.get("cards") is False
+            else summary_cards_html(
+                s["title"],
+                s["counts"],
+                s.get("cards"),
+                s.get("card_onclick", "utCardFilter"),
+                s.get("card_default", "regression"),
+            )
+        )
         panels.append(
             f'<section id="{s["id"]}" class="panel{" active" if i == 0 else ""}">'
-            f'<h2>{esc(s["title"])}</h2>'
+            f"<h2>{esc(s['title'])}</h2>"
             f'<p class="desc">{esc(s["desc"])}</p>'
-            f'{cards_html}'
-            f'{s["table"]}'
-            f'</section>')
+            f"{cards_html}"
+            f"{s['table']}"
+            f"</section>"
+        )
 
-    return f'''<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -1906,7 +2142,7 @@ footer {{ text-align:center; color:var(--muted); font-size:12px; padding:24px; }
 {gate_banner_html(meta.get("gate_reasons", []))}
 {overview_html(meta.get("summary", []), meta.get("summary_caption", ""))}
 <nav class="tabs">{nav}</nav>
-<main>{''.join(panels)}</main>
+<main>{"".join(panels)}</main>
 <footer>Generated by gen_report.py · perf regression &lt; {int(PERF_REG_THRESHOLD * 100)}% · improvement &gt; {int(PERF_IMP_THRESHOLD * 100)}% of baseline speedup</footer>
 <script>
 function showTab(id, btn) {{
@@ -2017,8 +2253,7 @@ document.querySelectorAll('table.data thead th').forEach((th, idx) => {{
 }});
 </script>
 </body>
-</html>'''
-
+</html>"""
 
 
 # --------------------------------------------------------------------------- #
@@ -2064,15 +2299,21 @@ def main():
         for r in ut_rows:
             if id(r) in _seen:
                 continue
-            if r["key"][0] in _crashed and r["base"] is not None and r["target"] is None:
+            if (
+                r["key"][0] in _crashed
+                and r["base"] is not None
+                and r["target"] is None
+            ):
                 if r["cat"] != "crash":
                     ut_counts[r["cat"]] -= 1
                     ut_counts["crash"] += 1
                 r["cat"] = "crash"
                 ut_target_msg.setdefault(r["key"], CRASH_MSG)
                 _ncase += 1
-        print(f"  UT collection-failure: {len(_crashed)} crashed files, "
-              f"{_ncase} member cases")
+        print(
+            f"  UT collection-failure: {len(_crashed)} crashed files, "
+            f"{_ncase} member cases"
+        )
     # Timeout / hang: a case pytest-xdist reports as `failed on setup with
     # "worker 'gwN' crashed while running ..."` is the root (hung / timed-out) or
     # collateral of a case that took down the xdist worker, not a code
@@ -2084,7 +2325,8 @@ def main():
         if r["cat"] == "crash":
             continue
         if r["target"] in ("failure", "error") and WORKER_CRASH_RE.search(
-                ut_target_msg.get(r["key"], "")):
+            ut_target_msg.get(r["key"], "")
+        ):
             if r["cat"] != "timeout":
                 ut_counts[r["cat"]] -= 1
                 ut_counts["timeout"] += 1
@@ -2099,7 +2341,11 @@ def main():
         for r in ut_rows:
             if r["cat"] == "crash":
                 continue
-            if r["base"] == "passed" and r["target"] is None and r["key"] in _removed_keys:
+            if (
+                r["base"] == "passed"
+                and r["target"] is None
+                and r["key"] in _removed_keys
+            ):
                 if r["cat"] == "regression":
                     ut_counts["regression"] -= 1
                     ut_counts["removed"] += 1
@@ -2140,19 +2386,46 @@ def main():
     perf_eag_gm, perf_ind_gm = perf_geomeans(perf_rows)
 
     ts = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M %Z")
-    meta = {"base": BASE_LABEL, "target": TARGET_LABEL,
-            "component": COMPONENT, "target_version": TARGET_VERSION,
-            "base_version": BASE_VERSION, "ts": ts}
+    meta = {
+        "base": BASE_LABEL,
+        "target": TARGET_LABEL,
+        "component": COMPONENT,
+        "target_version": TARGET_VERSION,
+        "base_version": BASE_VERSION,
+        "ts": ts,
+    }
 
     # Sections in scope (tested) for the gate; default = all three.
-    scope = {s.strip() for s in (os.environ.get("ACC_SECTIONS") or "ut,acc,perf").split(",") if s.strip()}
-    gate_reasons = compute_gate(scope, ut_rows, ut_counts, acc_rows, acc_counts,
-                                acc_target_sum["Passed"], perf_rows, perf_counts)
+    scope = {
+        s.strip()
+        for s in (os.environ.get("ACC_SECTIONS") or "ut,acc,perf").split(",")
+        if s.strip()
+    }
+    gate_reasons = compute_gate(
+        scope,
+        ut_rows,
+        ut_counts,
+        acc_rows,
+        acc_counts,
+        acc_target_sum["Passed"],
+        perf_rows,
+        perf_counts,
+    )
     meta["gate_reasons"] = gate_reasons
 
-    _ut_tone = {"regression": "reg", "improvement": "imp", "new": "new",
-                "removed": "rem", "crash": "crash", "timeout": "timeout", "not_run": "notrun",
-                "fail": "fail", "pass": "pass", "others": "other", "unknown": "other"}
+    _ut_tone = {
+        "regression": "reg",
+        "improvement": "imp",
+        "new": "new",
+        "removed": "rem",
+        "crash": "crash",
+        "timeout": "timeout",
+        "not_run": "notrun",
+        "fail": "fail",
+        "pass": "pass",
+        "others": "other",
+        "unknown": "other",
+    }
     ut_cards = [("Total", len(ut_rows), "total", "all")]
     for cat in CATEGORY_ORDER:
         n = ut_counts.get(cat, 0)
@@ -2185,70 +2458,131 @@ def main():
         ("BS Change", pc.get("bs_change", 0), "other", "bs_change"),
         ("Stable", pc.get("stable", 0), "pass", "stable"),
         ("Both Fail", pc.get("both_fail", 0), "fail", "both_fail"),
-        ("Inductor geomean (B/T)", _gm(perf_ind_gm),
-         "imp" if (perf_ind_gm or 1) > 1.05 else ("reg" if (perf_ind_gm or 1) < 0.95 else "pass")),
-        ("Eager geomean (B/T)", _gm(perf_eag_gm),
-         "imp" if (perf_eag_gm or 1) > 1.05 else ("reg" if (perf_eag_gm or 1) < 0.95 else "pass")),
+        (
+            "Inductor geomean (B/T)",
+            _gm(perf_ind_gm),
+            "imp"
+            if (perf_ind_gm or 1) > 1.05
+            else ("reg" if (perf_ind_gm or 1) < 0.95 else "pass"),
+        ),
+        (
+            "Eager geomean (B/T)",
+            _gm(perf_eag_gm),
+            "imp"
+            if (perf_eag_gm or 1) > 1.05
+            else ("reg" if (perf_eag_gm or 1) < 0.95 else "pass"),
+        ),
     ]
 
     sections = [
-        {"id": "ut", "title": "Unit Tests",
-         "desc": "JUnit xml results. Key = (test file, test class, test name). "
-                 "Regression = passed in baseline but failed/error in target. "
-                 "All cases are loaded below; the table shows regressions by default.",
-         "counts": ut_counts, "cards": ut_cards,
-         "badge": ut_counts.get("regression", 0),
-         "table": ut_summary_table_html(ut_base_sum, ut_target_sum) + ut_detail_html(ut_rows, ut_issues, ut_issue_lookup, ut_target_msg)},
-        {"id": "acc", "title": "Accuracy",
-         "desc": "E2E accuracy from *accuracy.csv. Key = (suite, dtype, mode, name, scenario). "
-                 "Improvement = target passes but baseline does not (or null); regression is the opposite; "
-                 "both pass = No Change; both not pass = Both Fail.",
-         "counts": acc_counts, "cards": acc_cards, "card_onclick": "accCardFilter",
-         "badge": acc_counts.get("regression", 0),
-         "table": (acc_summary_table_html(acc_base_sum, acc_target_sum)
-                   + acc_suite_breakdown_html(acc_bvm, acc_tvm)
-                   + acc_detail_html(acc_rows, acc_issues, acc_issue_lookup, acc_target_msg))},
-        {"id": "perf", "title": "Performance",
-         "desc": "E2E performance from *performance.csv. Key = (suite, dtype, mode, name, scenario). "
-                 "Inductor latency = abs_latency; Eager = abs_latency × speedup; ratio = baseline/target latency; "
-                 f"improve > {PERF_IMP_THRESHOLD:.1f}, drop < {PERF_REG_THRESHOLD:.1f}. Showing Inductor Drop by default.",
-         "counts": perf_counts, "cards": perf_cards,
-         "card_onclick": "pfCardFilter", "card_default": "drop",
-         "badge": pc.get("drop", 0) + pc.get("new_fail", 0),
-         "table": (perf_summary_table_html(perf_base_sum, perf_target_sum, perf_eag_gm, perf_ind_gm)
-                   + perf_suite_breakdown_html(perf_base, perf_target, perf_rows, perf_base_notrun, perf_target_notrun)
-                   + perf2_detail_html(perf_rows, perf_issues, perf_issue_lookup, perf_target_msg))},
+        {
+            "id": "ut",
+            "title": "Unit Tests",
+            "desc": "JUnit xml results. Key = (test file, test class, test name). "
+            "Regression = passed in baseline but failed/error in target. "
+            "All cases are loaded below; the table shows regressions by default.",
+            "counts": ut_counts,
+            "cards": ut_cards,
+            "badge": ut_counts.get("regression", 0),
+            "table": ut_summary_table_html(ut_base_sum, ut_target_sum)
+            + ut_detail_html(ut_rows, ut_issues, ut_issue_lookup, ut_target_msg),
+        },
+        {
+            "id": "acc",
+            "title": "Accuracy",
+            "desc": "E2E accuracy from *accuracy.csv. Key = (suite, dtype, mode, name, scenario). "
+            "Improvement = target passes but baseline does not (or null); regression is the opposite; "
+            "both pass = No Change; both not pass = Both Fail.",
+            "counts": acc_counts,
+            "cards": acc_cards,
+            "card_onclick": "accCardFilter",
+            "badge": acc_counts.get("regression", 0),
+            "table": (
+                acc_summary_table_html(acc_base_sum, acc_target_sum)
+                + acc_suite_breakdown_html(acc_bvm, acc_tvm)
+                + acc_detail_html(
+                    acc_rows, acc_issues, acc_issue_lookup, acc_target_msg
+                )
+            ),
+        },
+        {
+            "id": "perf",
+            "title": "Performance",
+            "desc": "E2E performance from *performance.csv. Key = (suite, dtype, mode, name, scenario). "
+            "Inductor latency = abs_latency; Eager = abs_latency × speedup; ratio = baseline/target latency; "
+            f"improve > {PERF_IMP_THRESHOLD:.1f}, drop < {PERF_REG_THRESHOLD:.1f}. Showing Inductor Drop by default.",
+            "counts": perf_counts,
+            "cards": perf_cards,
+            "card_onclick": "pfCardFilter",
+            "card_default": "drop",
+            "badge": pc.get("drop", 0) + pc.get("new_fail", 0),
+            "table": (
+                perf_summary_table_html(
+                    perf_base_sum, perf_target_sum, perf_eag_gm, perf_ind_gm
+                )
+                + perf_suite_breakdown_html(
+                    perf_base,
+                    perf_target,
+                    perf_rows,
+                    perf_base_notrun,
+                    perf_target_notrun,
+                )
+                + perf2_detail_html(
+                    perf_rows, perf_issues, perf_issue_lookup, perf_target_msg
+                )
+            ),
+        },
     ]
 
     def _pct(v):
         return f"{v * 100:.2f}%"
 
     meta["summary"] = [
-        {"id": "ut", "title": "Unit Tests", "metrics": [
-            ("Pass rate", _pct(ut_target_sum["Passrate"]),
-             _rate_tone(ut_target_sum["Passrate"], ut_base_sum["Passrate"])),
-            ("New failures", ut_counts.get("regression", 0), "reg"),
-            ("New passes", ut_counts.get("improvement", 0), "imp"),
-        ]},
-        {"id": "acc", "title": "Accuracy", "metrics": [
-            ("Pass rate", _pct(acc_target_sum["Passrate"]),
-             _rate_tone(acc_target_sum["Passrate"], acc_base_sum["Passrate"])),
-            ("New failures", acc_counts.get("regression", 0), "reg"),
-            ("New passes", acc_counts.get("improvement", 0), "imp"),
-        ]},
-        {"id": "perf", "title": "Performance", "metrics": [
-            ("Inductor geomean (B/T)", _gm(perf_ind_gm), _gm_tone(perf_ind_gm)),
-            ("Eager geomean (B/T)", _gm(perf_eag_gm), _gm_tone(perf_eag_gm)),
-            ("New failures", perf_counts.get("new_fail", 0), "reg"),
-            ("Drops", perf_counts.get("drop", 0), "reg"),
-            ("New passes", perf_counts.get("new_pass", 0), "imp"),
-            ("Improves", perf_counts.get("improve", 0), "imp"),
-        ]},
+        {
+            "id": "ut",
+            "title": "Unit Tests",
+            "metrics": [
+                (
+                    "Pass rate",
+                    _pct(ut_target_sum["Passrate"]),
+                    _rate_tone(ut_target_sum["Passrate"], ut_base_sum["Passrate"]),
+                ),
+                ("New failures", ut_counts.get("regression", 0), "reg"),
+                ("New passes", ut_counts.get("improvement", 0), "imp"),
+            ],
+        },
+        {
+            "id": "acc",
+            "title": "Accuracy",
+            "metrics": [
+                (
+                    "Pass rate",
+                    _pct(acc_target_sum["Passrate"]),
+                    _rate_tone(acc_target_sum["Passrate"], acc_base_sum["Passrate"]),
+                ),
+                ("New failures", acc_counts.get("regression", 0), "reg"),
+                ("New passes", acc_counts.get("improvement", 0), "imp"),
+            ],
+        },
+        {
+            "id": "perf",
+            "title": "Performance",
+            "metrics": [
+                ("Inductor geomean (B/T)", _gm(perf_ind_gm), _gm_tone(perf_ind_gm)),
+                ("Eager geomean (B/T)", _gm(perf_eag_gm), _gm_tone(perf_eag_gm)),
+                ("New failures", perf_counts.get("new_fail", 0), "reg"),
+                ("Drops", perf_counts.get("drop", 0), "reg"),
+                ("New passes", perf_counts.get("new_pass", 0), "imp"),
+                ("Improves", perf_counts.get("improve", 0), "imp"),
+            ],
+        },
     ]
     meta["summary_caption"] = "Accuracy & Performance cover all tested models."
 
     html_out = build_html(sections, meta)
-    _slug = f"{COMPONENT}_{TARGET_VERSION}_vs_{BASE_VERSION}_report".replace(" ", "_").replace("/", "-")
+    _slug = f"{COMPONENT}_{TARGET_VERSION}_vs_{BASE_VERSION}_report".replace(
+        " ", "_"
+    ).replace("/", "-")
     os.makedirs(OUT_DIR, exist_ok=True)
     html_path = os.path.join(OUT_DIR, _slug + ".html")
     with open(html_path, "w") as fh:
@@ -2258,24 +2592,34 @@ def main():
     print("\n=== Summary (regression / improvement / new / removed / total) ===")
     for s in sections:
         c = s["counts"]
-        print(f"  {s['title']:<18} reg={c.get('regression', 0):<4} "
-              f"imp={c.get('improvement', 0):<4} new={c.get('new', 0):<4} "
-              f"rem={c.get('removed', 0):<4} total={sum(c.values())}")
+        print(
+            f"  {s['title']:<18} reg={c.get('regression', 0):<4} "
+            f"imp={c.get('improvement', 0):<4} new={c.get('new', 0):<4} "
+            f"rem={c.get('removed', 0):<4} total={sum(c.values())}"
+        )
 
     gh_sum = os.environ.get("GITHUB_STEP_SUMMARY")
     if gh_sum:
-        lines = ["## Acceptance report", "",
-                 f"**Component:** `{COMPONENT}` &nbsp;&nbsp; **Target:** `{TARGET_VERSION}` &nbsp;&nbsp; **Baseline:** `{BASE_VERSION}`", "",
-                 "| Section | Regression | Improvement | New | Removed | Total |",
-                 "| --- | --- | --- | --- | --- | --- |"]
+        lines = [
+            "## Acceptance report",
+            "",
+            f"**Component:** `{COMPONENT}` &nbsp;&nbsp; **Target:** `{TARGET_VERSION}` &nbsp;&nbsp; **Baseline:** `{BASE_VERSION}`",
+            "",
+            "| Section | Regression | Improvement | New | Removed | Total |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
         for s in sections:
             c = s["counts"]
-            lines.append(f"| {s['title']} | {c.get('regression', 0)} | "
-                         f"{c.get('improvement', 0)} | {c.get('new', 0)} | "
-                         f"{c.get('removed', 0)} | {sum(c.values())} |")
+            lines.append(
+                f"| {s['title']} | {c.get('regression', 0)} | "
+                f"{c.get('improvement', 0)} | {c.get('new', 0)} | "
+                f"{c.get('removed', 0)} | {sum(c.values())} |"
+            )
         lines += ["", f"Full report: `{os.path.basename(html_path)}` in artifacts."]
         if gate_reasons:
-            lines += ["", "### ❌ Acceptance gate FAILED"] + [f"- {r}" for r in gate_reasons]
+            lines += ["", "### ❌ Acceptance gate FAILED"] + [
+                f"- {r}" for r in gate_reasons
+            ]
         else:
             lines += ["", "### ✅ Acceptance gate PASSED"]
         with open(gh_sum, "a") as fh:

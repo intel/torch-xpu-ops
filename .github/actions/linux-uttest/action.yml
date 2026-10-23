@@ -26,8 +26,10 @@ runs:
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
+      env:
+        INPUT_UT_NAME: ${{ inputs.ut_name }}
       run: |
-        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        log_dir="${GITHUB_WORKSPACE}/ut_log/${INPUT_UT_NAME}"
         mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/regressions
         pytest --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
@@ -37,8 +39,10 @@ runs:
     - name: op_regression_dev1
       shell: timeout 300 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
+      env:
+        INPUT_UT_NAME: ${{ inputs.ut_name }}
       run: |
-        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        log_dir="${GITHUB_WORKSPACE}/ut_log/${INPUT_UT_NAME}"
         mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/regressions
         timeout 180 pytest test_operation_on_device_1.py \
@@ -49,9 +53,11 @@ runs:
     - name: op_extended
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
+      env:
+        INPUT_UT_NAME: ${{ inputs.ut_name }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
-        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        log_dir="${GITHUB_WORKSPACE}/ut_log/${INPUT_UT_NAME}"
         mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/xpu/extended
         python run_test_with_skip.py \
@@ -223,10 +229,12 @@ runs:
     - name: upstream_ut
       shell: timeout 72000 bash -eu -o pipefail {0}
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
+      env:
+        INPUT_UT_NAME: ${{ inputs.ut_name }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        ut_name="${{ inputs.ut_name }}"
+        ut_name="${INPUT_UT_NAME}"
         log_dir="${{ github.workspace }}/ut_log/${ut_name}"
         mkdir -p ${log_dir}
         case "${ut_name}" in
@@ -290,9 +298,11 @@ runs:
     - name: UT Test Results Summary
       if: ${{ !cancelled() && inputs.skip_summary != 'true' }}
       shell: timeout 180 bash -xe {0}
+      env:
+        INPUT_UT_NAME: ${{ inputs.ut_name }}
       run: |
         uv pip install junitparser
-        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+        python ./.github/scripts/check-ut.py -n ${INPUT_UT_NAME} -i ${GITHUB_WORKSPACE}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs
         if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
           echo -e "Exist Failure logs"

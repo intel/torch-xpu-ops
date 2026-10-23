@@ -17,7 +17,6 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Protocol
 
-
 SOURCES = (
     "issues-created",
     "prs-created",
@@ -169,7 +168,9 @@ class GitHubGraphQL:
                 else:
                     delay = 60
                 reset_at = (
-                    datetime.fromtimestamp(int(reset), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    datetime.fromtimestamp(int(reset), timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    )
                     if reset is not None
                     else None
                 )
@@ -207,7 +208,9 @@ class GitHubGraphQL:
             """,
             {"owner": owner, "name": name},
         )
-        branch = payload.get("data", {}).get("repository", {}).get("defaultBranchRef", {})
+        branch = (
+            payload.get("data", {}).get("repository", {}).get("defaultBranchRef", {})
+        )
         name_value = branch.get("name") if isinstance(branch, dict) else None
         target = branch.get("target") if isinstance(branch, dict) else None
         head = target.get("oid") if isinstance(target, dict) else None
@@ -291,9 +294,15 @@ class GitHubGraphQL:
                 if isinstance(repository_data, dict)
                 else None
             )
-            result = object_data.get("result") if isinstance(object_data, dict) else None
+            result = (
+                object_data.get("result") if isinstance(object_data, dict) else None
+            )
         else:
-            result = repository_data.get("result") if isinstance(repository_data, dict) else None
+            result = (
+                repository_data.get("result")
+                if isinstance(repository_data, dict)
+                else None
+            )
         rate = data.get("rateLimit") if isinstance(data, dict) else None
         if not isinstance(result, dict) or not isinstance(rate, dict):
             raise ValueError(f"{connection}: malformed GitHub response")
@@ -328,7 +337,9 @@ class GitHubGraphQL:
                 {
                     "id": f"{prefix}-{number}",
                     "kind": kind,
-                    "title": node.get("messageHeadline") if kind == "commit" else node.get("title"),
+                    "title": node.get("messageHeadline")
+                    if kind == "commit"
+                    else node.get("title"),
                     "url": node.get("url"),
                     "event_at": event_at,
                     **({"order_at": order_at} if order_at is not None else {}),
@@ -340,14 +351,19 @@ class GitHubGraphQL:
                 "has_next_page": page_info.get("hasNextPage"),
                 "end_cursor": page_info.get("endCursor"),
             },
-            "rate": {"remaining": rate.get("remaining"), "reset_at": rate.get("resetAt")},
+            "rate": {
+                "remaining": rate.get("remaining"),
+                "reset_at": rate.get("resetAt"),
+            },
             "raw": payload,
         }
 
 
 def _write_json(path: Path, value: object) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
@@ -356,7 +372,9 @@ def sha256(path: Path) -> str:
 
 
 def _timestamp(value: object) -> datetime:
-    return datetime.strptime(str(value), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return datetime.strptime(str(value), "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc
+    )
 
 
 def _collection_manifest(
@@ -459,7 +477,9 @@ def collect(
             if cursor is not None:
                 seen_cursors.add(cursor)
             try:
-                response = github.page(repository, source, cursor, snapshot, scan_window)
+                response = github.page(
+                    repository, source, cursor, snapshot, scan_window
+                )
                 nodes = response["nodes"]
                 page_info = response["page_info"]
                 rate = response["rate"]
@@ -519,7 +539,9 @@ def collect(
                 malformed["status"] = "malformed"
                 _write_json(output / "collection/collection.json", malformed)
                 raise ValueError(f"{source}: malformed response: {error}") from error
-            page_path = Path("collection/pages") / source / f"page_{len(pages) + 1:04d}.json"
+            page_path = (
+                Path("collection/pages") / source / f"page_{len(pages) + 1:04d}.json"
+            )
             digest = _write_json(output / page_path, response["raw"])
             next_cursor = page_info.get("end_cursor")
             pages.append(
@@ -661,7 +683,9 @@ def validate_collection(
         fetched = 0
         for index, page in enumerate(pages):
             if not isinstance(page, dict) or page.get("cursor") != cursor:
-                raise CollectionError(f"{name}: cursor chain is invalid at page {index + 1}")
+                raise CollectionError(
+                    f"{name}: cursor chain is invalid at page {index + 1}"
+                )
             if cursor is not None:
                 if cursor in seen_cursors:
                     raise CollectionError(
@@ -737,24 +761,28 @@ def validate_collection(
         for name, source in sources.items()
         if source["status"] == "partial"
     ]
-    if (
-        (status == "partial") != any_partial
-        or blockers != expected_blockers
-    ):
+    if (status == "partial") != any_partial or blockers != expected_blockers:
         raise CollectionError("collection status does not match source progress")
     raw_inventory = manifest.get("inventory")
     if not isinstance(raw_inventory, list):
         raise CollectionError("collection inventory is invalid")
     inventory: dict[str, dict[str, object]] = {}
     observed = 0
-    start, end = _timestamp(expected_window["start"]), _timestamp(expected_window["end"])
+    start, end = (
+        _timestamp(expected_window["start"]),
+        _timestamp(expected_window["end"]),
+    )
     for item in raw_inventory:
         if not isinstance(item, dict):
             raise CollectionError("collection inventory item is invalid")
         unit_id, kind, events = item.get("id"), item.get("kind"), item.get("events")
         if not isinstance(unit_id, str) or not unit_id or unit_id in inventory:
             raise CollectionError(f"collection inventory id is invalid: {unit_id}")
-        if kind not in {"issue", "pr", "commit"} or not isinstance(events, list) or not events:
+        if (
+            kind not in {"issue", "pr", "commit"}
+            or not isinstance(events, list)
+            or not events
+        ):
             raise CollectionError(f"{unit_id}: collection inventory shape is invalid")
         if kind == "issue":
             valid_id = unit_id.startswith("issue-") and unit_id[6:].isdigit()
@@ -779,11 +807,15 @@ def validate_collection(
             or not item["title"].strip()
             or item.get("url") != expected_url
         ):
-            raise CollectionError(f"{unit_id}: collection inventory metadata is invalid")
+            raise CollectionError(
+                f"{unit_id}: collection inventory metadata is invalid"
+            )
         seen_events: set[tuple[str, str]] = set()
         for event in events:
             if not isinstance(event, dict) or event.get("type") not in allowed_events:
-                raise CollectionError(f"{unit_id}: collection event metadata is invalid")
+                raise CollectionError(
+                    f"{unit_id}: collection event metadata is invalid"
+                )
             event_key = (str(event["type"]), str(event.get("at")))
             if event_key in seen_events:
                 raise CollectionError(f"{unit_id}: collection event is duplicated")
@@ -795,10 +827,14 @@ def validate_collection(
                     f"{unit_id}: collection event timestamp is invalid"
                 ) from error
             if not start <= event_time < end:
-                raise CollectionError(f"{unit_id}: collection event is outside the scan window")
+                raise CollectionError(
+                    f"{unit_id}: collection event is outside the scan window"
+                )
             observed += 1
         inventory[unit_id] = item
-    if manifest.get("observed_count") != observed or manifest.get("unique_count") != len(inventory):
+    if manifest.get("observed_count") != observed or manifest.get(
+        "unique_count"
+    ) != len(inventory):
         raise CollectionError("collection inventory counts do not match")
     return path, manifest, inventory
 

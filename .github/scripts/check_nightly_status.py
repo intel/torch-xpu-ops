@@ -7,13 +7,15 @@ Outputs a failure list if any tests failed, otherwise outputs ALL_PASS.
 Supports filtering by trigger event type (schedule/push/pull_request),
 and saves all collected run summaries for downstream bisect usage.
 """
-import os
-import sys
-import json
-import re
+
 import argparse
-import requests
+import json
+import os
+import re
+import sys
 from datetime import datetime, timedelta, timezone
+
+import requests
 
 # ============================================================================
 # Global Configuration
@@ -48,8 +50,10 @@ def _resolve_workflow_id():
     if resp.status_code == 200:
         return XPU_WORKFLOW_FILE
     # Fallback: search all workflows by name
-    print(f"  WARNING: workflow file '{XPU_WORKFLOW_FILE}' not found "
-          f"(HTTP {resp.status_code}), falling back to name lookup")
+    print(
+        f"  WARNING: workflow file '{XPU_WORKFLOW_FILE}' not found "
+        f"(HTTP {resp.status_code}), falling back to name lookup"
+    )
     url = f"{API_BASE}/actions/workflows"
     resp = requests.get(url, headers=HEADERS, params={"per_page": 100}, timeout=60)
     resp.raise_for_status()
@@ -66,6 +70,7 @@ XPU_WORKFLOW_ID = _resolve_workflow_id()
 # API Functions
 # ============================================================================
 
+
 def get_latest_xpu_runs(days=1, event=None):
     """Fetch XPU CI workflow runs from the last N days.
 
@@ -78,7 +83,9 @@ def get_latest_xpu_runs(days=1, event=None):
         list: Array of workflow_run objects containing id, head_sha,
               conclusion, event, created_at, etc.
     """
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
     url = f"{API_BASE}/actions/workflows/{XPU_WORKFLOW_ID}/runs"
     params = {
@@ -112,8 +119,11 @@ def get_failed_jobs(run_id):
     params = {"per_page": 100, "filter": "latest"}
     resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
     resp.raise_for_status()
-    return [j for j in resp.json().get("jobs", [])
-            if j["conclusion"] not in ("success", "skipped", None)]
+    return [
+        j
+        for j in resp.json().get("jobs", [])
+        if j["conclusion"] not in ("success", "skipped", None)
+    ]
 
 
 def get_failed_test_cases(job_id):
@@ -137,9 +147,14 @@ def get_failed_test_cases(job_id):
         resp = requests.get(url, headers=HEADERS, allow_redirects=False, timeout=60)
         if resp.status_code in (301, 302, 303, 307, 308):
             resp = requests.get(resp.headers["Location"], timeout=60)  # no auth header
-    except (requests.exceptions.SSLError, requests.exceptions.ConnectionError,
-            requests.exceptions.Timeout) as e:
-        print(f"    WARNING: Failed to download log for job {job_id}: {e.__class__.__name__}")
+    except (
+        requests.exceptions.SSLError,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.Timeout,
+    ) as e:
+        print(
+            f"    WARNING: Failed to download log for job {job_id}: {e.__class__.__name__}"
+        )
         return []
     if resp.status_code != 200:
         return []
@@ -157,6 +172,7 @@ def get_failed_test_cases(job_id):
 # ============================================================================
 # Data Processing Functions
 # ============================================================================
+
 
 def parse_failure_info(job):
     """Extract key information from a failed job object.
@@ -214,8 +230,10 @@ def process_runs(runs, parse_logs=False, label=""):
         commit_sha = run["head_sha"]
         event = run["event"]
         branch = run["head_branch"]
-        print(f"\n  [{label}] Run: {run['name']} (commit: {commit_sha[:12]}, "
-              f"event: {event}, branch: {branch}, conclusion: {run['conclusion']})")
+        print(
+            f"\n  [{label}] Run: {run['name']} (commit: {commit_sha[:12]}, "
+            f"event: {event}, branch: {branch}, conclusion: {run['conclusion']})"
+        )
 
         failed_jobs = get_failed_jobs(run["id"])
         if not failed_jobs:
@@ -248,6 +266,7 @@ def process_runs(runs, parse_logs=False, label=""):
 # Deep-scan: trace back to find first-fail run for EXISTING failures
 # ============================================================================
 
+
 def _test_file_from_id(test_id):
     """Extract test file path from a full test ID.
 
@@ -257,7 +276,9 @@ def _test_file_from_id(test_id):
     return test_id.split("::")[0] if "::" in test_id else test_id
 
 
-def deep_scan_existing_failures(existing_tests, already_checked_runs, event, days, max_lookback=14):
+def deep_scan_existing_failures(
+    existing_tests, already_checked_runs, event, days, max_lookback=14
+):
     """For EXISTING failures, look back through older runs to find the first-fail commit scope.
 
     Results are aggregated by test file. Each test file entry contains:
@@ -290,19 +311,31 @@ def deep_scan_existing_failures(existing_tests, already_checked_runs, event, day
     init_ff_url = oldest_checked.get("html_url") if oldest_checked else None
 
     # Track per-test-case results first, then aggregate by file
-    per_case = {t: {"first_fail_sha": init_ff_sha, "first_fail_run_url": init_ff_url,
-                     "last_pass_sha": None, "last_pass_run_url": None,
-                     "lookback_exhausted": False} for t in remaining}
+    per_case = {
+        t: {
+            "first_fail_sha": init_ff_sha,
+            "first_fail_run_url": init_ff_url,
+            "last_pass_sha": None,
+            "last_pass_run_url": None,
+            "lookback_exhausted": False,
+        }
+        for t in remaining
+    }
     checked_ids = {r["id"] for r in already_checked_runs}
 
     # Fetch more runs with a wider time window
     wider_days = max(days * 2, 14)
-    print(f"\n=== Deep-scan: checking up to {max_lookback} older [{event}] runs "
-          f"(window: {wider_days} days) for {len(remaining)} EXISTING test(s) ===")
+    print(
+        f"\n=== Deep-scan: checking up to {max_lookback} older [{event}] runs "
+        f"(window: {wider_days} days) for {len(remaining)} EXISTING test(s) ==="
+    )
 
     all_runs = get_latest_xpu_runs(wider_days, event=event)
-    older_runs = [r for r in all_runs
-                  if r["id"] not in checked_ids and r["conclusion"] != "cancelled"]
+    older_runs = [
+        r
+        for r in all_runs
+        if r["id"] not in checked_ids and r["conclusion"] != "cancelled"
+    ]
 
     scanned = 0
     for run in older_runs:
@@ -310,8 +343,10 @@ def deep_scan_existing_failures(existing_tests, already_checked_runs, event, day
             break
         scanned += 1
         sha = run["head_sha"]
-        print(f"  Deep-scan run {scanned}/{max_lookback}: "
-              f"{run['created_at']}  {sha[:12]}  {run['conclusion']}")
+        print(
+            f"  Deep-scan run {scanned}/{max_lookback}: "
+            f"{run['created_at']}  {sha[:12]}  {run['conclusion']}"
+        )
 
         failed_jobs = get_failed_jobs(run["id"])
         run_failed_tests = set()
@@ -338,6 +373,7 @@ def deep_scan_existing_failures(existing_tests, already_checked_runs, event, day
 
     # Aggregate by test file
     from collections import defaultdict
+
     file_groups = defaultdict(list)
     for test_id in existing_tests:
         file_groups[_test_file_from_id(test_id)].append(test_id)
@@ -348,7 +384,9 @@ def deep_scan_existing_failures(existing_tests, already_checked_runs, event, day
     # participates in ordering and won't be silently dropped.
     run_order = {}
     for idx, run in enumerate(already_checked_runs):
-        run_order[run["head_sha"]] = idx - len(already_checked_runs)  # negative indices = newer
+        run_order[run["head_sha"]] = idx - len(
+            already_checked_runs
+        )  # negative indices = newer
     for idx, run in enumerate(older_runs):
         run_order[run["head_sha"]] = idx
 
@@ -388,13 +426,17 @@ def deep_scan_existing_failures(existing_tests, already_checked_runs, event, day
             "test_cases": sorted(cases),
         }
         status = "EXHAUSTED" if exhausted else "FOUND"
-        print(f"    [{status}] {test_file} ({len(cases)} cases): "
-              f"first_fail={first_fail_sha[:12] if first_fail_sha else 'N/A'}, "
-              f"last_pass={last_pass_sha[:12] if last_pass_sha else 'N/A'}")
+        print(
+            f"    [{status}] {test_file} ({len(cases)} cases): "
+            f"first_fail={first_fail_sha[:12] if first_fail_sha else 'N/A'}, "
+            f"last_pass={last_pass_sha[:12] if last_pass_sha else 'N/A'}"
+        )
 
-    print(f"  Deep-scan complete: {len(result)} test files, "
-          f"{sum(1 for v in result.values() if not v['lookback_exhausted'])} resolved, "
-          f"{sum(1 for v in result.values() if v['lookback_exhausted'])} exhausted")
+    print(
+        f"  Deep-scan complete: {len(result)} test files, "
+        f"{sum(1 for v in result.values() if not v['lookback_exhausted'])} resolved, "
+        f"{sum(1 for v in result.values() if v['lookback_exhausted'])} exhausted"
+    )
     return result
 
 
@@ -402,27 +444,52 @@ def deep_scan_existing_failures(existing_tests, already_checked_runs, event, day
 # Main
 # ============================================================================
 
+
 def main():
     parser = argparse.ArgumentParser(description="Check PyTorch XPU nightly CI status")
 
     parser.add_argument("--days", type=int, default=1, help="Look back N days")
     parser.add_argument("--output", type=str, default=None, help="Output JSON file")
-    parser.add_argument("--event", type=str, default="schedule",
-                        help="Primary event type to check (default: schedule). "
-                             "Push runs are always collected as bisect reference.")
-    parser.add_argument("--num-runs", type=int, default=2,
-                        help="Number of recent non-cancelled schedule runs to compare (default: 2). "
-                             "Compares latest vs previous to identify NEW failures.")
-    parser.add_argument("--parse-logs", action="store_true", default=False,
-                        help="Parse job logs to extract specific test case names")
-    parser.add_argument("--save-all-runs", type=str, default=None,
-                        help="Save all collected run summaries (schedule + push) to this JSON file "
-                             "for downstream bisect usage")
-    parser.add_argument("--deep-scan", action="store_true", default=False,
-                        help="For EXISTING failures, look back further to find the first "
-                             "failing run and narrow the commit scope")
-    parser.add_argument("--max-lookback", type=int, default=14,
-                        help="Max number of older runs to check during deep-scan (default: 14)")
+    parser.add_argument(
+        "--event",
+        type=str,
+        default="schedule",
+        help="Primary event type to check (default: schedule). "
+        "Push runs are always collected as bisect reference.",
+    )
+    parser.add_argument(
+        "--num-runs",
+        type=int,
+        default=2,
+        help="Number of recent non-cancelled schedule runs to compare (default: 2). "
+        "Compares latest vs previous to identify NEW failures.",
+    )
+    parser.add_argument(
+        "--parse-logs",
+        action="store_true",
+        default=False,
+        help="Parse job logs to extract specific test case names",
+    )
+    parser.add_argument(
+        "--save-all-runs",
+        type=str,
+        default=None,
+        help="Save all collected run summaries (schedule + push) to this JSON file "
+        "for downstream bisect usage",
+    )
+    parser.add_argument(
+        "--deep-scan",
+        action="store_true",
+        default=False,
+        help="For EXISTING failures, look back further to find the first "
+        "failing run and narrow the commit scope",
+    )
+    parser.add_argument(
+        "--max-lookback",
+        type=int,
+        default=14,
+        help="Max number of older runs to check during deep-scan (default: 14)",
+    )
 
     args = parser.parse_args()
 
@@ -437,7 +504,7 @@ def main():
 
     # Filter out cancelled runs, take the most recent N
     valid_runs = [r for r in all_primary_runs if r["conclusion"] != "cancelled"]
-    selected_runs = valid_runs[:args.num_runs]
+    selected_runs = valid_runs[: args.num_runs]
     if not selected_runs:
         print("ERROR: No non-cancelled runs found in the time window.", file=sys.stderr)
         result = {"status": "NO_RUNS_FOUND", "event": args.event}
@@ -454,7 +521,8 @@ def main():
     # Process the latest run (full log parsing)
     latest_run = selected_runs[:1]
     primary_failures, primary_summaries = process_runs(
-        latest_run, parse_logs=args.parse_logs, label=f"{args.event}-latest")
+        latest_run, parse_logs=args.parse_logs, label=f"{args.event}-latest"
+    )
 
     # Process previous run(s) for comparison (to identify NEW failures)
     prev_runs = selected_runs[1:]
@@ -463,7 +531,8 @@ def main():
     if prev_runs:
         print(f"\n=== Previous [{args.event}] run(s) for comparison ===")
         prev_failures, prev_summaries = process_runs(
-            prev_runs, parse_logs=args.parse_logs, label=f"{args.event}-prev")
+            prev_runs, parse_logs=args.parse_logs, label=f"{args.event}-prev"
+        )
         primary_summaries.extend(prev_summaries)
 
     # Phase 2: Collect push runs as bisect reference
@@ -515,9 +584,9 @@ def main():
             "existing_failure_scope": {},
         }
     else:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"RESULTS for [{args.event}] runs")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Total failed tests: {len(latest_tests)}")
         if prev_tests:
             print(f"  [NEW]      {len(new_tests)} (not in previous run)")
@@ -542,8 +611,7 @@ def main():
 
         # Use run metadata for prev_commit_sha so it's available even when
         # the previous run was all-PASS (prev_failures would be empty).
-        prev_commit = (selected_runs[1]["head_sha"]
-                       if len(selected_runs) > 1 else None)
+        prev_commit = selected_runs[1]["head_sha"] if len(selected_runs) > 1 else None
         result = {
             "status": "HAS_FAILURES",
             "event": args.event,

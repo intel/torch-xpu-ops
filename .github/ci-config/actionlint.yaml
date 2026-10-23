@@ -1,0 +1,11 @@
+self-hosted-runner:
+  labels:
+    - build
+    - pvc
+    - pvc-1550
+    - bmg-test
+    - distributed
+    - windows-build
+    - windows-test
+    - xpu-ubuntu-24.04
+    - xpu-agent

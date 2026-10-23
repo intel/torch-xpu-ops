@@ -1,24 +1,20 @@
 name: Setup Test Environment
+description: Prepare PyTorch, torch-xpu-ops and Python dependencies for Linux XPU tests
 
 inputs:
   pytorch:
-    type: string
     default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
-    type: string
     default: 'main'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
-    type: string
     default: ''
     description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
   suite:
-    type: string
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
   category:
-    type: string
     default: ''
     description: 'Optional tag (e.g. target/baseline) used to select the matching wheel artifact'
 
@@ -40,50 +36,69 @@ runs:
       with:
         python: ${{ inputs.python }}
     - name: Checkout torch-xpu-ops
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         path: torch-xpu-ops
+        persist-credentials: false
     - name: Download dpclang
       if: ${{ inputs.category == 'dpclang' }}
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         name: dpclang
     # NOTE: placement of this step is important as some environment variables it sets
     # might be overriden or reset by certain actions. For example, PKG_CONFIG_PATH is
     # overriden by actions/setup-python.
     - name: Setup dpclang
+      id: dpclang
       if: ${{ inputs.category == 'dpclang' }}
       shell: bash -xe {0}
       run: |
         rm -rf install-dpclang && mkdir install-dpclang
         tar xzvf install-dpclang.tgz -C install-dpclang
-        echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
-        echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
+        echo "prefix=$(pwd)/install-dpclang" >> "${GITHUB_OUTPUT}"
+    - name: Export dpclang environment
+      if: ${{ inputs.category == 'dpclang' }}
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        DPCLANG_PREFIX: ${{ steps.dpclang.outputs.prefix }}
+      with:
+        script: |
+          const prefix = process.env.DPCLANG_PREFIX;
+          if (!/^\/[^\n\r:]+$/.test(prefix)) {
+            core.setFailed(`Unexpected dpclang prefix: ${JSON.stringify(prefix)}`);
+            return;
+          }
+          const prepend = (name, value) =>
+            core.exportVariable(name, process.env[name] ? `${value}:${process.env[name]}` : value);
+          core.exportVariable('CMAKE_PREFIX_PATH', prefix);
+          prepend('PKG_CONFIG_PATH', `${prefix}/lib/pkgconfig`);
+          prepend('LD_LIBRARY_PATH', `${prefix}/lib`);
+          core.addPath(`${prefix}/bin`);
     - name: Download Pytorch wheel
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch
+      id: stock-pytorch
       shell: bash -xe {0}
+      env:
+        INPUT_PYTORCH: ${{ inputs.pytorch }}
       run: |
         # install pytorch
-        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
+        if [ $(echo "${INPUT_PYTORCH}" |grep -w "release_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
+        elif [ $(echo "${INPUT_PYTORCH}" |grep -w "test_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
+        elif [ $(echo "${INPUT_PYTORCH}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           uv pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-        if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+        if [[ "${INPUT_PYTORCH}" == *"https://"* ]];then
+          PYTORCH_REPO="$(echo ${INPUT_PYTORCH} |sed 's/@.*//')"
         else
           PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
         fi
@@ -94,25 +109,39 @@ runs:
         uv pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
-        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
+        echo "torch_commit_id=${TORCH_COMMIT_ID}" >> "${GITHUB_OUTPUT}"
+    - name: Export torch commit
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        STOCK_TORCH_COMMIT_ID: ${{ steps.stock-pytorch.outputs.torch_commit_id }}
+      with:
+        script: |
+          const commit = process.env.STOCK_TORCH_COMMIT_ID;
+          if (!/^[0-9a-f]{7,40}$/.test(commit)) {
+            core.setFailed(`Unexpected torch commit id: ${JSON.stringify(commit)}`);
+            return;
+          }
+          core.exportVariable('TORCH_COMMIT_ID', commit);
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
+      env:
+        INPUT_TORCH_XPU_OPS: ${{ inputs.torch_xpu_ops }}
       run: |
         cd pytorch
         rm -rf third_party/torch-xpu-ops
-        if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-          TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-          TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
+        if [[ "${INPUT_TORCH_XPU_OPS}" == *"https://"* ]];then
+          TORCH_XPU_OPS_REPO="$(echo ${INPUT_TORCH_XPU_OPS} |sed 's/@.*//')"
+          TORCH_XPU_OPS_COMMIT="$(echo ${INPUT_TORCH_XPU_OPS} |sed 's/.*@//')"
         else
           TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-          if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
+          if [ "${INPUT_TORCH_XPU_OPS}" == "pinned" ];then
             TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
           else
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
+            TORCH_XPU_OPS_COMMIT="${INPUT_TORCH_XPU_OPS}"
           fi
         fi
-        if [ "${{ github.event_name }}" == "pull_request" ];then
-          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
+        if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
+          cp -r ${GITHUB_WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
         else
           git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
@@ -121,16 +150,20 @@ runs:
         fi
         git status && git diff && git show -s
     - name: Install E2E Requirements
+      id: e2e-requirements
       shell: bash -xe {0}
+      env:
+        INPUT_SUITE: ${{ inputs.suite }}
+        INPUT_PYTORCH: ${{ inputs.pytorch }}
       run: |
         # common
         uv pip install pandas psutil scipy pyyaml
         cd pytorch
         # huggingface, timm_models and torchbench all run against the transformers/timm
         # versions pinned by pytorch, so the three suites stay comparable.
-        if [[ "${{ inputs.suite }}" == *"huggingface"* || \
-              "${{ inputs.suite }}" == *"timm_models"* || \
-              "${{ inputs.suite }}" == *"torchbench"* ]];then
+        if [[ "${INPUT_SUITE}" == *"huggingface"* || \
+              "${INPUT_SUITE}" == *"timm_models"* || \
+              "${INPUT_SUITE}" == *"torchbench"* ]];then
           # for new LLM models
           uv pip install accelerate
           uv pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt
@@ -140,7 +173,7 @@ runs:
           PINNED_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
           echo "Pinned by pytorch: transformers/timm ${PINNED_VERSIONS}"
         fi
-        if [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+        if [[ "${INPUT_SUITE}" == *"torchbench"* ]];then
           TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
           cd ../
           rm -rf ./benchmark
@@ -158,14 +191,14 @@ runs:
           uv pip install -U "pip" "setuptools<81" "wheel"
           # Follow with standard installation path
           uv pip install -r requirements.txt
-          if [ "${{ github.event_name }}" == "pull_request" ];then
+          if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
             while read line; do
               python install.py $(echo $line |awk -F, '{printf $1}')
             done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
           else
             python install.py --continue_on_fail $(echo "${MODEL_ONLY_NAME}" |sed 's/,/ /g')
           fi
-          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
+          echo "pythonpath=${PWD}" >> "${GITHUB_OUTPUT}"
           # for dlrm
           uv pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs uv pip install
@@ -173,7 +206,7 @@ runs:
           # for soft_actor_critic, temp fix
           uv pip install git+https://github.com/nocoding03/gym@fix-np
           cd ../pytorch
-        elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
+        elif [[ "${INPUT_SUITE}" == *"pt2e"* ]];then
           cd ../
           rm -rf ./pt2e-performance ./pt2e-accuracy
           git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
@@ -183,7 +216,7 @@ runs:
           sed -i 's/^ *pynvml.*//' requirements.txt
           uv pip install -r requirements.txt
           # python install.py --continue_on_fail
-          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
+          echo "pythonpath=${PWD}" >> "${GITHUB_OUTPUT}"
           uv pip install dominate
           python install.py Super_SloMo
           # for dlrm
@@ -191,7 +224,7 @@ runs:
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs uv pip install
           uv pip uninstall fbgemm_gpu_nightly-cpu
           cd ../pytorch
-        elif [[ "${{ inputs.suite }}" != *"huggingface"* && "${{ inputs.suite }}" != *"timm_models"* ]];then
+        elif [[ "${INPUT_SUITE}" != *"huggingface"* && "${INPUT_SUITE}" != *"timm_models"* ]];then
           # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
           sed -i '/mkl/d' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
@@ -206,18 +239,32 @@ runs:
         fi
         # install the corresponding torchao
         uv pip uninstall torchao
-        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
+        if [ $(echo "${INPUT_PYTORCH}" |grep -w "release_wheel" -c) -ne 0 ];then
           uv pip install torchao --pre --index-url https://download.pytorch.org/whl/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
+        elif [ $(echo "${INPUT_PYTORCH}" |grep -w "test_wheel" -c) -ne 0 ];then
           uv pip install torchao --pre --index-url https://download.pytorch.org/whl/test/xpu
         else
           uv pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         fi
-        if [ "${{ inputs.suite }}" != "None" ];then
+        if [ "${INPUT_SUITE}" != "None" ];then
           # To install numpy 1.x for benchmarks as CUDA
           # yolov requires numpy>=1.23
           uv pip install -U numpy==1.26.4 scipy==1.11.4
         fi
+    - name: Export benchmark PYTHONPATH
+      if: ${{ steps.e2e-requirements.outputs.pythonpath != '' }}
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        BENCHMARK_DIR: ${{ steps.e2e-requirements.outputs.pythonpath }}
+      with:
+        script: |
+          const dir = process.env.BENCHMARK_DIR;
+          if (!/^\/[^\n\r:]+$/.test(dir)) {
+            core.setFailed(`Unexpected benchmark directory: ${JSON.stringify(dir)}`);
+            return;
+          }
+          const current = process.env.PYTHONPATH;
+          core.exportVariable('PYTHONPATH', current ? `${dir}:${current}` : `${dir}:`);
     - name: Detect devices
       shell: bash -euo pipefail {0}
       run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'

@@ -1,24 +1,21 @@
 name: print-environment
+description: Print the OS, Python, conda and package environment for debugging
 
 inputs:
   conda:
     required: false
-    type: string
     default: ''
     description: "Conda environment to use (must exist beforehand)"
   os_packages:
     required: false
-    type: string
     default: ''
     description: "Space separated list of OS packages to evaluate"
   pip_packages:
     required: false
-    type: string
     default: ''
     description: "Space separated list of PyPi packages to evaluate"
   to:
     required: false
-    type: string
     default: ''
     description: "File to print environment to"
 
@@ -27,13 +24,18 @@ runs:
   steps:
     - name: Print environment
       shell: bash
+      env:
+        INPUT_CONDA: ${{ inputs.conda }}
+        INPUT_OS_PACKAGES: ${{ inputs.os_packages }}
+        INPUT_PIP_PACKAGES: ${{ inputs.pip_packages }}
+        INPUT_TO: ${{ inputs.to }}
       run: |
-        if [ -n "${{ inputs.conda }}" ]; then
-          source activate ${{ inputs.conda }}
+        if [ -n "${INPUT_CONDA}" ]; then
+          source activate ${INPUT_CONDA}
         fi
         to=$GITHUB_STEP_SUMMARY
-        if [ -n "${{ inputs.to }}" ]; then
-          to="${{ inputs.to }}"
+        if [ -n "${INPUT_TO}" ]; then
+          to="${INPUT_TO}"
           mkdir -p $(dirname $to)
         fi
         {
@@ -43,7 +45,7 @@ runs:
           echo "| jobs.$GITHUB_JOB.versions.os | $(source /etc/os-release && echo $VERSION_ID) |"
           echo "| jobs.$GITHUB_JOB.versions.linux-kernel | $(uname -r) |"
           echo "| jobs.$GITHUB_JOB.versions.python | $(python --version | cut -f2 -d' ' || true) |"
-          packages="${{ inputs.os_packages}}"
+          packages="${INPUT_OS_PACKAGES}"
           packages+=" \
             level-zero \
             libigc1 \
@@ -57,7 +59,7 @@ runs:
             package_version="$(dpkg -l | grep $package | grep ii | head -1 | sed 's/  */ /g' | cut -f3 -d" " || true)"
             echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
           done
-          packages="${{ inputs.pip_packages}}"
+          packages="${INPUT_PIP_PACKAGES}"
           packages+=" \
             numpy \
             torch \

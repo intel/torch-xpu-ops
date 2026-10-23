@@ -35,7 +35,11 @@ on:
         default: ''
         description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 defaults:
   run:
@@ -66,9 +70,10 @@ jobs:
         USE_KINETO: 0
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: gs-scripts
+          persist-credentials: false
       - name: Prepare test env
         uses: ./gs-scripts/.github/actions/linux-testenv
         with:
@@ -80,18 +85,20 @@ jobs:
           bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh status
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
+        env:
+          ONEAPI_INPUT: ${{ inputs.oneapi }}
         run: |
-          rm -rf ~/intel ~/.intel ${HOME}/intel
-          if [ "${{ inputs.oneapi }}" == "2025.1" ];then
+          rm -rf ~/intel ~/.intel "${HOME}"/intel
+          if [ "${ONEAPI_INPUT}" == "2025.1" ];then
             ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/3435dc45-055e-4f7a-86b1-779931772404/intel-deep-learning-essentials-2025.1.3.7_offline.sh"
-          elif [ "${{ inputs.oneapi }}" == "2025.2" ];then
+          elif [ "${ONEAPI_INPUT}" == "2025.2" ];then
             ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/de3686c4-d3e1-41da-bf3b-bf5908da075c/intel-deep-learning-essentials-2025.2.1.24_offline.sh"
           else
-            ONEAPI_URL="${{ inputs.oneapi }}"
+            ONEAPI_URL="${ONEAPI_INPUT}"
           fi
           wget -q -O oneapi.sh "${ONEAPI_URL}"
-          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
-          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
+          bash oneapi.sh -a -s --eula accept --action install --install-dir "${HOME}"/intel/oneapi
+          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> "${GITHUB_ENV}"
 
       - name: Summary file
         run: |
@@ -103,21 +110,23 @@ jobs:
           LATEST_PT_COMMIT="$(git rev-parse HEAD)"
           cd third_party/torch-xpu-ops
           LATEST_XPU_COMMIT="$(git rev-parse HEAD)"
-          echo "LATEST_PT_COMMIT=${LATEST_PT_COMMIT}" >> ${GITHUB_ENV}
-          echo "LATEST_XPU_COMMIT=${LATEST_XPU_COMMIT}" >> ${GITHUB_ENV}
+          echo "LATEST_PT_COMMIT=${LATEST_PT_COMMIT}" >> "${GITHUB_ENV}"
+          echo "LATEST_XPU_COMMIT=${LATEST_XPU_COMMIT}" >> "${GITHUB_ENV}"
       - name: Prepare test env
         run: |
-          if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
+          if [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/huggingface.py"* ]];then
             pip install transformers
-          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
+          elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/timm_models.py"* ]];then
             pip install timm
-          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/torchbench.py"* ]];then
-            model_name="$(echo ${{ inputs.search_case }} |sed 's+.*\--only *++;s/ .*//')"
+          elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/torchbench.py"* ]];then
+            model_name="${SEARCH_CASE##*--only}"
+            model_name="${model_name#"${model_name%%[![:space:]]*}"}"
+            model_name="${model_name%%[[:space:]]*}"
             git clone https://github.com/pytorch/benchmark gs-benchmark
             cd gs-benchmark
             pip install -r requirements.txt
-            echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
-            python install.py ${model_name}
+            echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> "${GITHUB_ENV}"
+            python install.py ${model_name:+"${model_name}"}
             cd ..
           fi
           pip uninstall -y torchvision torchaudio
@@ -129,27 +138,28 @@ jobs:
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
-          pytorch_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*pytorch=++;s+,.*++')"
-          old_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $1}')"
-          new_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $2}')"
+          pytorch_commits="$(sed 's+.*pytorch=++;s+,.*++' <<< "${SEARCH_COMMITS}")"
+          old_commit="$(awk -F '/' '{print $1}' <<< "${pytorch_commits}")"
+          new_commit="$(awk -F '/' '{print $2}' <<< "${pytorch_commits}")"
           old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${old_commit}" \
                   --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
-                  > ${{ github.workspace }}/gs-logs/search-${old_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
+                  > ${{ github.workspace }}/gs-logs/search-"${old_commit}"-"${LATEST_XPU_COMMIT}".log 2>&1 && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
-          export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
+          SEARCH_GOOD_VALUE="$(awk -F, '{print $3}' <<< "${old_result}")"
+          export SEARCH_GOOD_VALUE
           new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${new_commit}" \
                   --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
-                  > ${{ github.workspace }}/gs-logs/search-${new_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
-          new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
+                  > ${{ github.workspace }}/gs-logs/search-"${new_commit}"-"${LATEST_XPU_COMMIT}".log 2>&1 && echo $? || echo $?)"
+          tail -n 1 ${{ github.workspace }}/gs-search/result.csv
           if [ "${old_status}" != "${new_status}" ];then
             cd pytorch
             git reset --hard
             rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
-            git bisect start ${new_commit} ${old_commit}
+            git bisect start "${new_commit}" "${old_commit}"
             git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="search" \
@@ -162,27 +172,28 @@ jobs:
       - name: Bisect search torch-xpu-ops
         if: ${{ contains(inputs.search_commits, 'xpu-ops') }}
         run: |
-          xpu_ops_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*xpu-ops=++;s+,.*++')"
-          old_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $1}')"
-          new_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $2}')"
+          xpu_ops_commits="$(sed 's+.*xpu-ops=++;s+,.*++' <<< "${SEARCH_COMMITS}")"
+          old_commit="$(awk -F '/' '{print $1}' <<< "${xpu_ops_commits}")"
+          new_commit="$(awk -F '/' '{print $2}' <<< "${xpu_ops_commits}")"
           old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_VERSION="${old_commit}" \
-                  > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${old_commit}.log && echo $? || echo $?)"
+                  > ${{ github.workspace }}/gs-logs/search-"${LATEST_PT_COMMIT}"-"${old_commit}".log && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
-          export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
+          SEARCH_GOOD_VALUE="$(awk -F, '{print $3}' <<< "${old_result}")"
+          export SEARCH_GOOD_VALUE
           new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_VERSION="${new_commit}" \
-                  > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${new_commit}.log && echo $? || echo $?)"
-          new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
+                  > ${{ github.workspace }}/gs-logs/search-"${LATEST_PT_COMMIT}"-"${new_commit}".log && echo $? || echo $?)"
+          tail -n 1 ${{ github.workspace }}/gs-search/result.csv
           if [ "${old_status}" != "${new_status}" ];then
             cd pytorch
             git reset --hard
             rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
-            git bisect start ${new_commit} ${old_commit}
+            git bisect start "${new_commit}" "${old_commit}"
             git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
@@ -194,12 +205,12 @@ jobs:
           fi
       - name: Summary
         run: |
-          cat gs-logs/summary.csv |tee -a ${GITHUB_STEP_SUMMARY}
-          for reulst_log in $(find  gs-logs -name "result-*.log")
+          tee -a "${GITHUB_STEP_SUMMARY}" < gs-logs/summary.csv
+          while IFS= read -r -d '' reulst_log
           do
-            echo -e "\n\n\n${reulst_log}" |tee -a ${GITHUB_STEP_SUMMARY}
-            cat ${reulst_log} |tee -a ${GITHUB_STEP_SUMMARY}
-          done
+            echo -e "\n\n\n${reulst_log}" |tee -a "${GITHUB_STEP_SUMMARY}"
+            tee -a "${GITHUB_STEP_SUMMARY}" < "${reulst_log}"
+          done < <(find gs-logs -name "result-*.log" -print0)
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
@@ -207,7 +218,7 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bisect-search
           path: ${{ github.workspace }}/gs-logs

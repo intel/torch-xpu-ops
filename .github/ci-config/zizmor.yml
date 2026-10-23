@@ -1,0 +1,4 @@
+rules:
+  self-repository:
+    # The `uses: $/...` syntax is rejected by actionlint (<= 1.7.12); re-enable once actionlint supports it.
+    disable: true

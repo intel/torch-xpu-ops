@@ -20,7 +20,6 @@ from pathlib import Path
 
 import yaml
 
-
 # Comment styles for different file types
 COMMENT_STYLES = {
     "python": {"start": "#", "middle": "#", "end": "#", "block": False},
@@ -80,18 +79,18 @@ def normalize_header_text(text: str) -> str:
     false mismatches.
     """
     # Remove block comment markers
-    text = re.sub(r'/\*|\*/', '', text)
+    text = re.sub(r"/\*|\*/", "", text)
     # Remove line comment markers (both // and # and leading *)
-    text = re.sub(r'^[ \t]*(?://|#|\*)+[ \t]?', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^[ \t]*(?://|#|\*)+[ \t]?", "", text, flags=re.MULTILINE)
     # Split into paragraphs (separated by blank lines), normalize each
-    paragraphs = re.split(r'\n\s*\n', text.strip())
+    paragraphs = re.split(r"\n\s*\n", text.strip())
     normalized = []
     for para in paragraphs:
         # Collapse all whitespace within each paragraph into single spaces
-        words = ' '.join(para.split())
+        words = " ".join(para.split())
         if words:
             normalized.append(words.lower())
-    return '\n\n'.join(normalized)
+    return "\n\n".join(normalized)
 
 
 def get_file_type(filepath: Path) -> str | None:
@@ -116,7 +115,10 @@ def format_header(header_text: str, file_type: str) -> str:
         formatted_lines.append(style["end"])
         return "\n".join(formatted_lines) + "\n\n"
     else:
-        formatted_lines = [f"{style['start']} {line}" if line.strip() else style["start"] for line in lines]
+        formatted_lines = [
+            f"{style['start']} {line}" if line.strip() else style["start"]
+            for line in lines
+        ]
         return "\n".join(formatted_lines) + "\n\n"
 
 
@@ -127,7 +129,7 @@ def extract_existing_header(content: str, file_type: str) -> str | None:
     if file_type == "python" and content.startswith("#!"):
         first_newline = content.find("\n")
         if first_newline != -1:
-            check_content = content[first_newline + 1:].lstrip()
+            check_content = content[first_newline + 1 :].lstrip()
 
     # For C/C++ files, prefer block comments for license headers
     if file_type in ("c", "cpp"):
@@ -304,12 +306,16 @@ def load_configs(config_dir: Path, pattern: str, verbose: bool = False) -> dict:
         if config.get("custom_headers"):
             merged_config["custom_headers"].extend(config["custom_headers"])
             if verbose:
-                print(f"    (adds {len(config['custom_headers'])} custom header groups)")
+                print(
+                    f"    (adds {len(config['custom_headers'])} custom header groups)"
+                )
 
     return merged_config
 
 
-def collect_files(root: Path, extensions: set[str], exclude_patterns: list[str]) -> list[Path]:
+def collect_files(
+    root: Path, extensions: set[str], exclude_patterns: list[str]
+) -> list[Path]:
     """Collect all files matching extensions, excluding patterns."""
     files = []
     exclude_set = set()
@@ -365,13 +371,15 @@ Config file structure:
         """,
     )
     parser.add_argument(
-        "-c", "--config",
+        "-c",
+        "--config",
         type=Path,
         default=None,
         help="Path to single config YAML file (mutually exclusive with -p)",
     )
     parser.add_argument(
-        "-p", "--pattern",
+        "-p",
+        "--pattern",
         type=str,
         default="*.yaml",
         help="Glob pattern to match config files (default: *.yaml)",
@@ -383,7 +391,8 @@ Config file structure:
         help="Directory containing config files (default: script directory)",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         type=Path,
         default=Path.cwd(),
         help="Root directory to process (default: current directory)",
@@ -404,7 +413,8 @@ Config file structure:
         help="Check mode: exit with code 1 if any files need changes",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show all files, including those already correct",
     )

@@ -41,7 +41,9 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || vars.CI_MONITOR_ENABLED == 'true' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-python
       - run: uv pip install requests
 
@@ -51,20 +53,22 @@ jobs:
         if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOOKBACK_DAYS: ${{ inputs.days || '7' }}
+          MAX_LOOKBACK: ${{ inputs.max_lookback || '14' }}
         run: |
           python .github/scripts/check_nightly_status.py \
-            --days ${{ inputs.days || '7' }} \
+            --days "${LOOKBACK_DAYS}" \
             --event schedule \
             --num-runs 2 \
             ${{ (inputs.parse_logs == true || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--parse-logs' || '' }} \
             ${{ (inputs.deep_scan == true || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--deep-scan' || '' }} \
-            --max-lookback ${{ inputs.max_lookback || '14' }} \
+            --max-lookback "${MAX_LOOKBACK}" \
             --output ci_results.json \
             --save-all-runs all_runs.json
 
       - name: Upload scan results
         if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-scan-results
           path: |

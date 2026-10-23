@@ -1,6 +1,6 @@
 name: auto-label
 
-on:
+on: # zizmor: ignore[dangerous-triggers] only base-branch files are checked out; PR code is never executed
   pull_request_target:
     types: [opened, synchronize]
     branches:
@@ -37,29 +37,34 @@ jobs:
         id: existing-labels
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          EXISTING=$(gh pr view ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} \
+          EXISTING=$(gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
             --json labels --jq '[.labels[].name | select(test("^disable_"))] | join(",")')
           echo "labels=${EXISTING}" >> "$GITHUB_OUTPUT"
           echo "Existing disable labels: ${EXISTING:-none}"
 
       - name: Checkout repo (for skill file)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .claude/skills/auto-label
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Get changed files
         id: changed-files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          FILES=$(gh pr diff ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} --name-only)
-          echo "files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$FILES" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          FILES=$(gh pr diff "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" --name-only)
+          {
+            echo "files<<EOF"
+            echo "$FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "Changed files:"
           echo "$FILES"
 
@@ -113,18 +118,22 @@ jobs:
 
           # Try GitHub Models API (requires PAT with models scope)
           echo "Trying GitHub Models API..."
-          RESPONSE=$(curl -sf --max-time 30 \
+          if RESPONSE=$(curl -sf --max-time 30 \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $MODELS_TOKEN" \
             -d "$(jq -nc --arg model "openai/gpt-4o-mini" --arg content "$PROMPT" \
               '{model: $model, messages: [{role: "user", content: $content}]}')" \
             "https://models.github.ai/inference/chat/completions" | \
-            jq -r '.choices[0].message.content' 2>/dev/null) && {
+            jq -r '.choices[0].message.content' 2>/dev/null); then
             echo "GitHub Models API succeeded"
-            parse_llm_response "$RESPONSE" && LLM_SUCCESS=true
-          } || {
+            if parse_llm_response "$RESPONSE"; then
+              LLM_SUCCESS=true
+            else
+              echo "GitHub Models API failed: $RESPONSE"
+            fi
+          else
             echo "GitHub Models API failed: $RESPONSE"
-          }
+          fi
 
           # Fallback: rule-based deterministic logic
           if [ "$LLM_SUCCESS" = false ]; then
@@ -145,7 +154,7 @@ jobs:
             [ -z "$file" ] && continue
             case "$file" in
               src/xccl/*) HAS_SRC=true; HAS_XCCL=true ;;
-              src/*.cmake|src/CMakeLists.txt|src/Build*.cmake) HAS_CMAKE=true ;;
+              src/*.cmake|src/CMakeLists.txt) HAS_CMAKE=true ;;
               src/*) HAS_SRC=true ;;
               CMakeLists.txt|cmake/*|tools/*) HAS_CMAKE=true ;;
               test/agentic/*) HAS_GITHUB_META=true ;;
@@ -209,9 +218,12 @@ jobs:
         id: apply-labels
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STEPS_DETERMINE_LABELS_OUTPUTS_LABELS: ${{ steps.determine-labels.outputs.labels }}
+          STEPS_EXISTING_LABELS_OUTPUTS_LABELS: ${{ steps.existing-labels.outputs.labels }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          NEW_LABELS="${{ steps.determine-labels.outputs.labels }}"
-          EXISTING="${{ steps.existing-labels.outputs.labels }}"
+          NEW_LABELS="${STEPS_DETERMINE_LABELS_OUTPUTS_LABELS}"
+          EXISTING="${STEPS_EXISTING_LABELS_OUTPUTS_LABELS}"
 
           # Merge new labels with existing (union)
           if [ -n "$EXISTING" ]; then
@@ -249,11 +261,13 @@ jobs:
             ARGS+=(--add-label "$label")
           done
 
-          gh pr edit ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} "${ARGS[@]}"
+          gh pr edit "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" "${ARGS[@]}"
           echo "Applied new labels: $TO_ADD (total: $ALL_LABELS)"
 
       - name: Dry-run output (pull_request trigger)
         if: ${{ github.event_name == 'pull_request' }}
         run: |
-          echo "::notice::DRY-RUN: Would apply labels: ${{ steps.determine-labels.outputs.labels }}"
+          echo "::notice::DRY-RUN: Would apply labels: ${STEPS_DETERMINE_LABELS_OUTPUTS_LABELS}"
+        env:
+          STEPS_DETERMINE_LABELS_OUTPUTS_LABELS: ${{ steps.determine-labels.outputs.labels }}

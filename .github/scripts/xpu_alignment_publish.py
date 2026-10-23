@@ -23,22 +23,21 @@ from pathlib import Path
 
 from alignment_triage import (
     AUTO_FILE_LIMIT,
-    FILED_MARKER_RE,
     create_issue,
     fail,
     filed_body,
+    FILED_MARKER_RE,
     find_published_issue,
     find_run_note,
     find_unit_comments,
     is_open_issue,
     list_comments,
+    parse_draft,
     post_comment,
     render_draft,
     render_run_note,
-    parse_draft,
     update_comment,
 )
-
 
 RUN_STATES = {"complete", "complete-with-warnings", "partial", "failed"}
 UNIT_BLOCKER_PREFIX = "scan-blocked-result:"
@@ -149,7 +148,10 @@ def run_note(
 
     if publication_failures:
         lines += ["", f"- Publication failures: {len(publication_failures)}"]
-        lines += [f"  - `{unit_id}` — issue publication failed; see the workflow log" for unit_id in publication_failures]
+        lines += [
+            f"  - `{unit_id}` — issue publication failed; see the workflow log"
+            for unit_id in publication_failures
+        ]
 
     excluded, unrecognized = _excluded_units(decision)
     if excluded or unrecognized:
@@ -256,14 +258,20 @@ def main() -> int:
         comments = find_unit_comments(existing, unit_id) if mode == "schedule" else []
         try:
             filed_comment = next(
-                (comment for comment in reversed(comments) if FILED_MARKER_RE.search(comment["body"])),
+                (
+                    comment
+                    for comment in reversed(comments)
+                    if FILED_MARKER_RE.search(comment["body"])
+                ),
                 None,
             )
             filed_issue_url = None
             previous_issue_url = None
             if filed_comment is not None:
                 filed_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
-                previous_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
+                previous_issue_url = (
+                    f"https://github.com/{args.repo}/issues/{filed_number}"
+                )
                 if is_open_issue(args.repo, filed_number):
                     filed_issue_url = previous_issue_url
             if verdict == "triage" and filed_issue_url is None:

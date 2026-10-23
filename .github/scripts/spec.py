@@ -1,6 +1,6 @@
 import torch
 
-DEVICE_NAME = 'xpu'
+DEVICE_NAME = "xpu"
 
 MANUAL_SEED_FN = torch.xpu.manual_seed
 EMPTY_CACHE_FN = torch.xpu.empty_cache

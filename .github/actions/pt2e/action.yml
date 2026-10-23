@@ -37,9 +37,12 @@ runs:
           tar -xf ILSVRC2012_img_val.tar
           bash valprep.sh
         fi
-        echo "dataset_dir=${dataset_dir}" >> "${GITHUB_ENV}"
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
+      env:
+        INPUT_DT: ${{ inputs.dt }}
+        INPUT_SCENARIO: ${{ inputs.scenario }}
+        dataset_dir: ${{ contains(inputs.scenario, 'accuracy') && '/opt/_dataset/imagenet' || '' }}
       run: |
         set -o pipefail
 
@@ -54,7 +57,7 @@ runs:
         fi
 
         python -m run_pt2e --suite pt2e --mode inference \
-            --dtype "${{ inputs.dt }}" --scenario "${{ inputs.scenario }}" \
+            --dtype "${INPUT_DT}" --scenario "${INPUT_SCENARIO}" \
             --dataset-dir "${dataset_dir}" "${model_list_args[@]}" \
             2>&1 | tee inductor_log/run_pt2e.log || true
         rsync -avz inductor_log/ "${GITHUB_WORKSPACE}/pytorch/inductor_log/"

@@ -147,7 +147,11 @@ def main():
         )
         if fetched.returncode != 0:
             git(
-                "-C", str(onednn_dir), "fetch", "--no-tags", "origin",
+                "-C",
+                str(onednn_dir),
+                "fetch",
+                "--no-tags",
+                "origin",
                 "+refs/pull/*/head:refs/pull/*/head",
                 "+refs/pull/*/merge:refs/pull/*/merge",
             )

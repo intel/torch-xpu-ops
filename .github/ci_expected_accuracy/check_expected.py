@@ -5,20 +5,21 @@ Compares test results against reference data and calculates pass rates.
 Reference last updated: https://github.com/intel/torch-xpu-ops/pull/1223
 """
 
-import json
 import argparse
-import pandas as pd
+import json
 from pathlib import Path
+
+import pandas as pd
 
 
 def load_data(csv_file):
     """Load CSV file with comment support."""
-    return pd.read_csv(csv_file, comment='#')
+    return pd.read_csv(csv_file, comment="#")
 
 
 def find_model_row(dataframe, model_name):
     """Find row for a specific model in dataframe."""
-    matches = dataframe[dataframe['name'] == model_name]
+    matches = dataframe[dataframe["name"] == model_name]
     return matches.iloc[0] if not matches.empty else None
 
 
@@ -37,7 +38,7 @@ def get_test_result(data, suite, dtype, mode, model):
         Test result or "N/A" if not found
     """
     for issue in data:
-        for row in issue.get('table_rows', []):
+        for row in issue.get("table_rows", []):
             if len(row) >= 6 and row[:4] == [suite, dtype, mode, model]:
                 return row[4]
     return "N/A"
@@ -46,7 +47,7 @@ def get_test_result(data, suite, dtype, mode, model):
 def load_known_data(issue_file):
     """Load known test data from JSON file."""
     try:
-        with open(issue_file, encoding='utf-8') as file:
+        with open(issue_file, encoding="utf-8") as file:
             return json.load(file)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Error loading known data from {issue_file}: {e}")
@@ -66,16 +67,18 @@ def update_reference_dataframe(refer_data, model_name, dtype, accuracy):
     Returns:
         Updated dataframe
     """
-    mask = refer_data['name'] == model_name
+    mask = refer_data["name"] == model_name
     if mask.any():
         refer_data.loc[mask, dtype] = accuracy
     else:
-        new_row = {'name': model_name, dtype: accuracy}
+        new_row = {"name": model_name, dtype: accuracy}
         refer_data = pd.concat([refer_data, pd.DataFrame([new_row])], ignore_index=True)
     return refer_data
 
 
-def categorize_model(model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models):
+def categorize_model(
+    model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models
+):
     """
     Categorize a model based on its test results.
 
@@ -87,13 +90,13 @@ def categorize_model(model_name, test_accuracy, refer_accuracy, known_accuracy, 
 
     if test_accuracy == "N/A":
         return "lost", False
-    elif 'pass' in test_accuracy:
+    elif "pass" in test_accuracy:
         if refer_accuracy == "N/A":
             return "new", True
-        elif 'pass' not in refer_accuracy:
+        elif "pass" not in refer_accuracy:
             return "new_pass", True
         return "passed", False
-    elif 'timeout' in test_accuracy:
+    elif "timeout" in test_accuracy:
         if refer_accuracy == "N/A":
             return "new", True
         return "timeout", False
@@ -113,17 +116,27 @@ def print_results_summary(suite, dtype, mode, categories):
     print(f"============ Summary for {suite} {dtype} {mode} accuracy ============")
     print(f"Total models: {len(categories['all_models'])}")
     print(f"Passed models: {len(categories['passed'])}")
-    print(f"Real failed models: {len(categories['real_failed'])} , {categories['real_failed']}")
-    print(f"Expected failed models: {len(categories['expected_failed'])} , {categories['expected_failed']}")
-    print(f"Warning timeout models: {len(categories['timeout'])} , {categories['timeout']}")
+    print(
+        f"Real failed models: {len(categories['real_failed'])} , {categories['real_failed']}"
+    )
+    print(
+        f"Expected failed models: {len(categories['expected_failed'])} , {categories['expected_failed']}"
+    )
+    print(
+        f"Warning timeout models: {len(categories['timeout'])} , {categories['timeout']}"
+    )
     print(f"New models: {len(categories['new'])} , {categories['new']}")
-    print(f"Failed to passed models: {len(categories['new_pass'])} , {categories['new_pass']}")
-    print(f"Skipped check models: {len(categories['skipped'])} , {categories['skipped']}")
+    print(
+        f"Failed to passed models: {len(categories['new_pass'])} , {categories['new_pass']}"
+    )
+    print(
+        f"Skipped check models: {len(categories['skipped'])} , {categories['skipped']}"
+    )
     print(f"Not run/in models: {len(categories['lost'])} , {categories['lost']}")
 
-    total_models = len(categories['all_models'])
+    total_models = len(categories["all_models"])
     if total_models > 0:
-        pass_rate = len(categories['passed']) / total_models * 100
+        pass_rate = len(categories["passed"]) / total_models * 100
         print(f"Pass rate: {pass_rate:.2f}%")
 
 
@@ -131,16 +144,34 @@ def main():
     """Main function to run accuracy comparison."""
     parser = argparse.ArgumentParser(
         description="Accuracy Check",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--driver", type=str, default="rolling", help="rolling or lts")
     parser.add_argument("--category", type=str, default="inductor", help="inductor")
-    parser.add_argument("--suite", type=str, required=True, help="huggingface, timm_models or torchbench")
+    parser.add_argument(
+        "--suite",
+        type=str,
+        required=True,
+        help="huggingface, timm_models or torchbench",
+    )
     parser.add_argument("--mode", type=str, required=True, help="inference or training")
-    parser.add_argument("--dtype", type=str, required=True, help="float32, bfloat16, float16, amp_bf16 or amp_fp16")
-    parser.add_argument("--csv_file", type=str, required=True, help="Test results CSV file path")
-    parser.add_argument("--issue_file", type=str, required=True, help="Known test data JSON file path")
-    parser.add_argument('--update', action='store_true', help="Whether to update new pass and new failed info")
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        required=True,
+        help="float32, bfloat16, float16, amp_bf16 or amp_fp16",
+    )
+    parser.add_argument(
+        "--csv_file", type=str, required=True, help="Test results CSV file path"
+    )
+    parser.add_argument(
+        "--issue_file", type=str, required=True, help="Known test data JSON file path"
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Whether to update new pass and new failed info",
+    )
 
     args = parser.parse_args()
 
@@ -156,26 +187,31 @@ def main():
     refer_data = load_data(refer_file)
 
     # Get model names
-    test_names = test_data['name'].tolist()
-    refer_names = refer_data['name'].tolist()
+    test_names = test_data["name"].tolist()
+    refer_names = refer_data["name"].tolist()
     model_names = set(refer_names + test_names)
 
     # Initialize result categories
     categories = {
-        'all_models': list(model_names),
-        'passed': [],
-        'real_failed': [],
-        'expected_failed': [],
-        'new': [],
-        'new_pass': [],
-        'lost': [],
-        'skipped': [],
-        'timeout': []
+        "all_models": list(model_names),
+        "passed": [],
+        "real_failed": [],
+        "expected_failed": [],
+        "new": [],
+        "new_pass": [],
+        "lost": [],
+        "skipped": [],
+        "timeout": [],
     }
     # detectron2: cuda not run it
     # torchrec_dlrm: fbgemm_gpu not incompatable
     # stable_diffusion: stabilityai/stable-diffusion-2 is not a valid model identifier listed on 'https://huggingface.co/models'
-    skipped_models = ['detectron2', 'torchrec_dlrm', 'stable_diffusion_text_encoder', 'stable_diffusion_unet']
+    skipped_models = [
+        "detectron2",
+        "torchrec_dlrm",
+        "stable_diffusion_text_encoder",
+        "stable_diffusion_unet",
+    ]
     needs_update = False
 
     # Process each model
@@ -183,9 +219,11 @@ def main():
         test_row = find_model_row(test_data, model_name)
         refer_row = find_model_row(refer_data, model_name)
 
-        test_accuracy = str(test_row['accuracy']) if test_row is not None else "N/A"
+        test_accuracy = str(test_row["accuracy"]) if test_row is not None else "N/A"
         refer_accuracy = str(refer_row[args.dtype]) if refer_row is not None else "N/A"
-        known_accuracy = get_test_result(test_known_data, suite, dtype, mode, model_name)
+        known_accuracy = get_test_result(
+            test_known_data, suite, dtype, mode, model_name
+        )
 
         # Debug print (optional)
         # print(f"{model_name}: test={test_accuracy}, ref={refer_accuracy}, known={known_accuracy}")
@@ -209,7 +247,7 @@ def main():
 
     # Update reference CSV if requested
     if needs_update:
-        refer_data.to_csv(refer_file, sep=',', encoding='utf-8', index=False)
+        refer_data.to_csv(refer_file, sep=",", encoding="utf-8", index=False)
         print(f"Reference file updated: {refer_file}")
 
 

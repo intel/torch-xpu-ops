@@ -91,10 +91,13 @@ def parse_cases_block(body: str) -> set[str]:
     if start == -1 or end == -1 or end < start:
         return set()
     live = set()
-    for raw in body[start + len(CASES_BEGIN):end].splitlines():
+    for raw in body[start + len(CASES_BEGIN) : end].splitlines():
         line = raw.strip()
-        if line and line != "Cases:" and not (
-                line.startswith("~~") and line.endswith("~~")):
+        if (
+            line
+            and line != "Cases:"
+            and not (line.startswith("~~") and line.endswith("~~"))
+        ):
             live.add(line)
     return live
 
@@ -168,17 +171,18 @@ def form_labels(text: str) -> list[str]:
     match = re.search(r"^labels:\s*\[(.*?)\]\s*$", text, re.MULTILINE)
     if not match:
         raise SystemExit(f"::error::no labels: line in {SKIP_FORM}")
-    return [name.strip().strip("\"'") for name in match.group(1).split(",")
-            if name.strip()]
+    return [
+        name.strip().strip("\"'") for name in match.group(1).split(",") if name.strip()
+    ]
 
 
 def bot_labels(text: str) -> dict[str, str]:
-    found = dict(re.findall(r"^#\s*bot-label\s+(\S+):\s*(\S+)\s*$", text,
-                            re.MULTILINE))
+    found = dict(re.findall(r"^#\s*bot-label\s+(\S+):\s*(\S+)\s*$", text, re.MULTILINE))
     missing = {"bmg-runner", "cls-regression", "cls-new_case_failure"} - set(found)
     if missing:
         raise SystemExit(
-            f"::error::{SKIP_FORM} declares no bot-label for {sorted(missing)}")
+            f"::error::{SKIP_FORM} declares no bot-label for {sorted(missing)}"
+        )
     return found
 
 
@@ -193,8 +197,9 @@ def is_bmg(runner: str) -> bool:
     return "bmg" in runner.lower()
 
 
-def labels_for(cls: str, runner: str, base: list[str],
-               extra: dict[str, str]) -> list[str]:
+def labels_for(
+    cls: str, runner: str, base: list[str], extra: dict[str, str]
+) -> list[str]:
     """A `persistent` or `unknown` group gets no classification label, because
     neither "it used to pass" nor "it is a new case" is true of it."""
     labels = list(base)
@@ -212,7 +217,7 @@ def title_for(text: str, cls: str, collection_error: bool) -> str:
     prefix += CLS_PREFIX.get(cls, "")
     room = MAX_TITLE - len(prefix)
     body = " ".join(text.split()).encode("ascii", "replace").decode()
-    return prefix + (body if len(body) <= room else body[:room - 3] + "...")
+    return prefix + (body if len(body) <= room else body[: room - 3] + "...")
 
 
 # --------------------------------------------------------------------------- #
@@ -224,8 +229,9 @@ def commit_link(repo: str, sha: str) -> str:
     return f"[`{sha[:8]}`]({SERVER}/{repo}/commit/{sha})" if sha else "unknown"
 
 
-def evidence_block(run: dict, category: str, cls: str, cls_reason: str,
-                   contexts: list[dict]) -> str:
+def evidence_block(
+    run: dict, category: str, cls: str, cls_reason: str, contexts: list[dict]
+) -> str:
     """When the failure started, and what it cost, for one group's category.
 
     The bisect range is why this is rendered rather than left to a reader: the
@@ -258,12 +264,16 @@ def evidence_block(run: dict, category: str, cls: str, cls_reason: str,
             "",
         ]
         if base["torch"] and run["torch"].get(ut_job):
-            link = (f"Changes in range: [pytorch]({SERVER}/{PYTORCH_REPO}/compare/"
-                    f"{base['torch']}...{run['torch'][ut_job]})")
+            link = (
+                f"Changes in range: [pytorch]({SERVER}/{PYTORCH_REPO}/compare/"
+                f"{base['torch']}...{run['torch'][ut_job]})"
+            )
             if base["torch_xpu_ops"] and run["torch_xpu_ops"].get(ut_job):
-                link += (f" - [torch-xpu-ops]({SERVER}/{REPO}/compare/"
-                         f"{base['torch_xpu_ops']}..."
-                         f"{run['torch_xpu_ops'][ut_job]})")
+                link += (
+                    f" - [torch-xpu-ops]({SERVER}/{REPO}/compare/"
+                    f"{base['torch_xpu_ops']}..."
+                    f"{run['torch_xpu_ops'][ut_job]})"
+                )
             lines += [link, ""]
         # A stale baseline keeps `regression` true but makes the range much
         # weaker evidence, so say so rather than presenting a five-night range
@@ -279,8 +289,11 @@ def evidence_block(run: dict, category: str, cls: str, cls_reason: str,
                 "",
             ]
     if cls == "persistent":
-        lines += [f"Classified `persistent`: {cls_reason}. The range above is "
-                  "not this failure's onset.", ""]
+        lines += [
+            f"Classified `persistent`: {cls_reason}. The range above is "
+            "not this failure's onset.",
+            "",
+        ]
     if cls == "unknown":
         lines += [f"Unclassified: {cls_reason}.", ""]
     if contexts:
@@ -307,8 +320,9 @@ def reproduce_for(case: dict, reproduce: dict) -> str:
         return f"# No reproduce command was recorded for {case['category']}."
     module, class_name = case["module"], case["class_name"]
     if class_name and module and class_name.startswith(module + "."):
-        target = (f"{case['test_file']}::{class_name[len(module) + 1:]}"
-                  f"::{case['test_name']}")
+        target = (
+            f"{case['test_file']}::{class_name[len(module) + 1 :]}::{case['test_name']}"
+        )
     elif class_name:
         target = f"{case['test_file']}::{class_name}::{case['test_name']}"
     else:
@@ -332,16 +346,21 @@ def error_log_for(cases: list[dict], tracebacks: dict, chosen: str = "") -> str:
     for case in order:
         text = tracebacks.get(case["line"])
         if text:
-            return "\n".join([
-                f"#### {case['message'] or 'No message was recorded.'}",
-                "",
-                "```",
-                *text,
-                "```",
-            ])
+            return "\n".join(
+                [
+                    f"#### {case['message'] or 'No message was recorded.'}",
+                    "",
+                    "```",
+                    *text,
+                    "```",
+                ]
+            )
     message = next((c["message"] for c in order if c["message"]), "")
-    heading = f"#### {message}" if message else (
-        "#### No message was recorded for this failure.")
+    heading = (
+        f"#### {message}"
+        if message
+        else ("#### No message was recorded for this failure.")
+    )
     return "\n".join([heading, "", NO_TRACEBACK])
 
 
@@ -355,8 +374,9 @@ def cases_section(lines: list[str]) -> str:
     return "\n".join([CASES_BEGIN, "Cases:", *lines, "", CASES_END])
 
 
-def render_body(fields: list[tuple[str, str]], slots: dict[str, str],
-                marker: str) -> str:
+def render_body(
+    fields: list[tuple[str, str]], slots: dict[str, str], marker: str
+) -> str:
     """One `### <label>` section per form field, in the form's order.
 
     A field the script has nothing for is still rendered, empty, rather than
@@ -365,8 +385,7 @@ def render_body(fields: list[tuple[str, str]], slots: dict[str, str],
     """
     unknown = set(slots) - {field_id for field_id, _ in fields}
     if unknown:
-        raise SystemExit(
-            f"::error::{SKIP_FORM} has no field for {sorted(unknown)}")
+        raise SystemExit(f"::error::{SKIP_FORM} has no field for {sorted(unknown)}")
     out: list[str] = []
     for field_id, label in fields:
         out += [f"### {label}", "", slots.get(field_id, ""), ""]
@@ -396,8 +415,10 @@ def check_draft(draft: dict, index: dict[str, dict]) -> tuple[list[dict], str]:
         return [], "no title"
     unknown = [ln for ln in lines if ln not in index]
     if unknown:
-        return [], (f"{len(unknown)} case line(s) name no case in this run's "
-                    f"evidence, the first being `{unknown[0]}`")
+        return [], (
+            f"{len(unknown)} case line(s) name no case in this run's "
+            f"evidence, the first being `{unknown[0]}`"
+        )
     cases = [index[ln] for ln in dict.fromkeys(lines)]
     chosen = draft.get("error_case") or ""
     if chosen and chosen not in {c["line"] for c in cases}:
@@ -430,8 +451,10 @@ def quoted_traceback_matches(draft: dict, tracebacks: dict) -> str:
     if actual is None:
         return f"quotes a traceback for `{chosen}`, which has none in the evidence"
     if list(quoted) != list(actual):
-        return (f"quotes {len(quoted)} line(s) for `{chosen}` where the "
-                f"evidence has {len(actual)}, and they do not match")
+        return (
+            f"quotes {len(quoted)} line(s) for `{chosen}` where the "
+            f"evidence has {len(actual)}, and they do not match"
+        )
     return ""
 
 
@@ -443,8 +466,10 @@ def split(cases: list[dict], body_of) -> list[list[dict]]:
     every night with an issue that claims to cover them.
     """
     parts: list[list[dict]] = []
-    queue = [cases[i:i + MAX_CASES_PER_ISSUE]
-             for i in range(0, len(cases), MAX_CASES_PER_ISSUE)]
+    queue = [
+        cases[i : i + MAX_CASES_PER_ISSUE]
+        for i in range(0, len(cases), MAX_CASES_PER_ISSUE)
+    ]
     while queue:
         chunk = queue.pop(0)
         if len(chunk) > 1 and len(body_of(chunk)) > SAFE_BODY_LIMIT:
@@ -463,8 +488,17 @@ def split(cases: list[dict], body_of) -> list[list[dict]]:
 def create_issue(title: str, body: str, labels: list[str], work: Path) -> int:
     path = work / "body.md"
     path.write_text(body, encoding="utf-8")
-    cmd = ["gh", "issue", "create", "--repo", REPO, "--title", title,
-           "--body-file", str(path)]
+    cmd = [
+        "gh",
+        "issue",
+        "create",
+        "--repo",
+        REPO,
+        "--title",
+        title,
+        "--body-file",
+        str(path),
+    ]
     for label in labels:
         cmd += ["--label", label]
     url = run(cmd).strip().splitlines()[-1]
@@ -472,8 +506,10 @@ def create_issue(title: str, body: str, labels: list[str], work: Path) -> int:
 
 
 def comment(number: int, text: str) -> None:
-    run(["gh", "issue", "comment", str(number), "--repo", REPO, "--body", text],
-        check=False)
+    run(
+        ["gh", "issue", "comment", str(number), "--repo", REPO, "--body", text],
+        check=False,
+    )
 
 
 def main() -> int:
@@ -482,8 +518,11 @@ def main() -> int:
     parser.add_argument("--drafts", required=True)
     parser.add_argument("--report-dir", default="ut_auto_issue_report")
     parser.add_argument("--work-dir", default="ut_auto_issue_work")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="render and check everything, create nothing")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="render and check everything, create nothing",
+    )
     args = parser.parse_args()
 
     evidence = json.loads((Path(args.evidence_dir) / "evidence.json").read_text())
@@ -495,8 +534,14 @@ def main() -> int:
 
     work = Path(args.work_dir)
     work.mkdir(parents=True, exist_ok=True)
-    report = {"run_id": run_json["run_id"], "dry_run": args.dry_run,
-              "created": [], "skipped": [], "rejected": [], "misquoted": []}
+    report = {
+        "run_id": run_json["run_id"],
+        "dry_run": args.dry_run,
+        "created": [],
+        "skipped": [],
+        "rejected": [],
+        "misquoted": [],
+    }
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -528,7 +573,8 @@ def main() -> int:
         name = draft.get("id") or draft.get("title_text", "?")
         if not draft.get("file"):
             report["skipped"].append(
-                {"draft": name, "reason": draft.get("reason") or "not for filing"})
+                {"draft": name, "reason": draft.get("reason") or "not for filing"}
+            )
             continue
         cases, problem = check_draft(draft, index)
         if problem:
@@ -538,75 +584,105 @@ def main() -> int:
         misquote = quoted_traceback_matches(draft, tracebacks)
         if misquote:
             report["misquoted"].append({"draft": name, "reason": misquote})
-            warn(f"draft {name} {misquote}; the issue still renders the "
-                 "evidence, but review the summary against it")
+            warn(
+                f"draft {name} {misquote}; the issue still renders the "
+                "evidence, but review the summary against it"
+            )
 
         placed = [c for c in cases if c["line"] in muted]
         cases = [c for c in cases if c["line"] not in muted]
         if not cases:
             report["skipped"].append(
-                {"draft": name,
-                 "reason": f"all {len(placed)} case(s) are already muted by an "
-                           f"open issue, e.g. #{muted[placed[0]['line']]}"})
+                {
+                    "draft": name,
+                    "reason": f"all {len(placed)} case(s) are already muted by an "
+                    f"open issue, e.g. #{muted[placed[0]['line']]}",
+                }
+            )
             continue
         if len(report["created"]) >= MAX_ISSUES_PER_RUN:
             report["skipped"].append(
-                {"draft": name,
-                 "reason": f"past the {MAX_ISSUES_PER_RUN} issues one run may file"})
+                {
+                    "draft": name,
+                    "reason": f"past the {MAX_ISSUES_PER_RUN} issues one run may file",
+                }
+            )
             continue
 
         cls = cases[0]["cls"]
         runner = cases[0]["runner_name"]
         labels = labels_for(cls, runner, base_labels, extra_labels)
         category = cases[0]["category"]
-        group_contexts = [contexts[c["line"]] for c in cases
-                          if c["line"] in contexts]
+        group_contexts = [contexts[c["line"]] for c in cases if c["line"] in contexts]
 
-        def body_of(chunk: list[dict], part: int = 1, parts: int = 1,
-                    first: int | None = None) -> str:
-            error_log = (f"See #{first} for the failure text." if first
-                         else error_log_for(chunk, tracebacks,
-                                            draft.get("error_case", "")))
+        def body_of(
+            chunk: list[dict], part: int = 1, parts: int = 1, first: int | None = None
+        ) -> str:
+            error_log = (
+                f"See #{first} for the failure text."
+                if first
+                else error_log_for(chunk, tracebacks, draft.get("error_case", ""))
+            )
             collect_env = run_json["collect_env"].get(
-                cases[0]["ut_job"], "collect_env was not captured.")
-            return render_body(fields, {
-                "cases": cases_section([c["line"] for c in chunk]),
-                "summary": draft["summary"].strip(),
-                "error_log": error_log,
-                "reproduce": f"```bash\n{reproduce_for(chunk[0], reproduce)}\n```",
-                "pytorch_version": evidence_block(
-                    run_json, category, cls, cases[0].get("cls_reason", ""),
-                    group_contexts if part == 1 else []),
-                "versions": ("<details><summary>Detail</summary>\n\n```\n"
-                             f"{collect_env}\n```\n\n</details>"),
-            }, MARKER.format(version=MARKER_VERSION,
-                             run_id=run_json["run_id"],
-                             part=part, parts=parts))
+                cases[0]["ut_job"], "collect_env was not captured."
+            )
+            return render_body(
+                fields,
+                {
+                    "cases": cases_section([c["line"] for c in chunk]),
+                    "summary": draft["summary"].strip(),
+                    "error_log": error_log,
+                    "reproduce": f"```bash\n{reproduce_for(chunk[0], reproduce)}\n```",
+                    "pytorch_version": evidence_block(
+                        run_json,
+                        category,
+                        cls,
+                        cases[0].get("cls_reason", ""),
+                        group_contexts if part == 1 else [],
+                    ),
+                    "versions": (
+                        "<details><summary>Detail</summary>\n\n```\n"
+                        f"{collect_env}\n```\n\n</details>"
+                    ),
+                },
+                MARKER.format(
+                    version=MARKER_VERSION,
+                    run_id=run_json["run_id"],
+                    part=part,
+                    parts=parts,
+                ),
+            )
 
         chunks = split(cases, body_of)
         numbers: list[int] = []
         for position, chunk in enumerate(chunks, 1):
-            title = title_for(draft["title_text"], cls,
-                              cases[0]["is_collection_error"])
+            title = title_for(draft["title_text"], cls, cases[0]["is_collection_error"])
             if len(chunks) > 1:
                 title = f"{title} (part {position}/{len(chunks)})"
-            body = body_of(chunk, position, len(chunks),
-                           numbers[0] if numbers else None)
+            body = body_of(
+                chunk, position, len(chunks), numbers[0] if numbers else None
+            )
             if args.dry_run:
                 preview = report_dir / "drafts"
                 preview.mkdir(parents=True, exist_ok=True)
                 (preview / f"{name}-{position}.md").write_text(
                     f"# {title}\n# labels: {', '.join(labels)}\n\n{body}",
-                    encoding="utf-8")
+                    encoding="utf-8",
+                )
                 number = 0
             else:
                 number = create_issue(title, body, labels, work)
             numbers.append(number)
-            report["created"].append({
-                "draft": name, "issue": number, "title": title,
-                "labels": labels, "cases": len(chunk),
-                "part": f"{position}/{len(chunks)}",
-            })
+            report["created"].append(
+                {
+                    "draft": name,
+                    "issue": number,
+                    "title": title,
+                    "labels": labels,
+                    "cases": len(chunk),
+                    "part": f"{position}/{len(chunks)}",
+                }
+            )
             for case in chunk:
                 muted[case["line"]] = number
         if placed:
@@ -626,24 +702,34 @@ def cross_link(created: list[tuple[dict, list[int]]]) -> None:
     """
     by_id = {d.get("id"): numbers for d, numbers in created if d.get("id")}
     for draft, numbers in created:
-        related = [n for rid in draft.get("related") or []
-                   for n in by_id.get(rid, []) if n not in numbers]
+        related = [
+            n
+            for rid in draft.get("related") or []
+            for n in by_id.get(rid, [])
+            if n not in numbers
+        ]
         if related and numbers:
             links = ", ".join(f"#{n}" for n in related)
-            comment(numbers[0],
-                    f"Same root cause as {links}, split because the cases do "
-                    "not share a classification or a row shape.")
+            comment(
+                numbers[0],
+                f"Same root cause as {links}, split because the cases do "
+                "not share a classification or a row shape.",
+            )
 
 
 def finish(report: dict, report_dir: Path) -> int:
     (report_dir / "created.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8")
-    lines = ["## UT auto-issue - filing", "",
-             f"Run `{report['run_id']}`"
-             + (" (dry run, nothing created)" if report["dry_run"] else ""), ""]
+        json.dumps(report, indent=2), encoding="utf-8"
+    )
+    lines = [
+        "## UT auto-issue - filing",
+        "",
+        f"Run `{report['run_id']}`"
+        + (" (dry run, nothing created)" if report["dry_run"] else ""),
+        "",
+    ]
     if report["created"]:
-        lines += ["| Issue | Title | Labels | Cases | Part |",
-                  "|---|---|---|---|---|"]
+        lines += ["| Issue | Title | Labels | Cases | Part |", "|---|---|---|---|---|"]
         lines += [
             f"| {'(dry run)' if report['dry_run'] else '#' + str(c['issue'])} "
             f"| {c['title']} | {', '.join(c['labels'])} "

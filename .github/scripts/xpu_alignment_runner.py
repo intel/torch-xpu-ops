@@ -20,7 +20,6 @@ from pathlib import Path
 
 from xpu_alignment_collect import CollectionError, sha256, validate_collection
 
-
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 MAX_TIMEOUT_SECONDS = 120
@@ -119,11 +118,17 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         if not isinstance(entry, dict):
             raise PlanError(f"execution {index} is not an object")
         unit_id = entry.get("id")
-        if not isinstance(unit_id, str) or not UNIT_ID_RE.fullmatch(unit_id) or unit_id in seen:
+        if (
+            not isinstance(unit_id, str)
+            or not UNIT_ID_RE.fullmatch(unit_id)
+            or unit_id in seen
+        ):
             raise PlanError(f"invalid or duplicate unit id: {unit_id!r}")
         script = _inside(root, entry.get("script"), existing=True)
         expected_digest = entry.get("script_sha256")
-        if not isinstance(expected_digest, str) or not SHA256_RE.fullmatch(expected_digest):
+        if not isinstance(expected_digest, str) or not SHA256_RE.fullmatch(
+            expected_digest
+        ):
             raise PlanError(f"{unit_id}: invalid script digest")
         if sha256(script) != expected_digest:
             raise PlanError(f"{unit_id}: script digest does not match")
@@ -313,7 +318,9 @@ def _become_child_subreaper() -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         error = ctypes.get_errno()
-        raise PlanError(f"cannot establish reproducer process boundary: {os.strerror(error)}")
+        raise PlanError(
+            f"cannot establish reproducer process boundary: {os.strerror(error)}"
+        )
 
 
 def _direct_children() -> list[int]:
@@ -376,9 +383,10 @@ def run_plan(
         returncode: int | None = None
         timed_out = False
         error: str | None = None
-        with log.open("wb") as output, tempfile.TemporaryDirectory(
-            prefix=f"xpu-alignment-{unit_id}-"
-        ) as scratch:
+        with (
+            log.open("wb") as output,
+            tempfile.TemporaryDirectory(prefix=f"xpu-alignment-{unit_id}-") as scratch,
+        ):
             child_environment, process_options = _execution_context(scratch, identity)
             if sha256(script) != entry["script_sha256"]:
                 error = "script bytes changed after prepare validation"
@@ -450,7 +458,9 @@ def main() -> int:
         results = results.resolve()
         results.relative_to(root)
         entries = load_prepare(root, prepare)
-        payload = run_plan(root, args.python.resolve(), prepare, entries, _identity(args.user))
+        payload = run_plan(
+            root, args.python.resolve(), prepare, entries, _identity(args.user)
+        )
     except (OSError, PlanError, ValueError) as error:
         print(f"prepare artifact rejected: {error}")
         return 2

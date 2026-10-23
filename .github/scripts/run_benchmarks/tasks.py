@@ -4,16 +4,11 @@ import os
 import re
 import subprocess
 import sys
-from functools import lru_cache, cache
+from functools import cache, lru_cache
 from itertools import product
 from pathlib import Path
 
-from .config import (
-    IS_WINDOWS,
-    INDUCTOR_DT,
-    PT2E_DT,
-    TestTask,
-)
+from .config import INDUCTOR_DT, IS_WINDOWS, PT2E_DT, TestTask
 from .log import log
 
 
@@ -21,7 +16,7 @@ def parse_string_list(s: str) -> list[str]:
     """Split a comma/space/'-k'-separated string into non-empty trimmed items."""
     if not s:
         return []
-    parts = re.split(r'\s*-k\s*|,|\s+', s)
+    parts = re.split(r"\s*-k\s*|,|\s+", s)
     return [token.strip() for token in parts if token.strip()]
 
 
@@ -37,8 +32,15 @@ def get_torch_version() -> str:
     """Return the installed PyTorch version string."""
     pip_cmd = "pip.exe" if IS_WINDOWS else "pip"
     try:
-        result = subprocess.run([pip_cmd, "list", "--format=freeze"], capture_output=True, text=True, check=True)
-        torch_line = next((l for l in result.stdout.splitlines() if l.startswith("torch==")), None)
+        result = subprocess.run(
+            [pip_cmd, "list", "--format=freeze"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        torch_line = next(
+            (l for l in result.stdout.splitlines() if l.startswith("torch==")), None
+        )
         return torch_line.split("==")[1].split("+")[0] if torch_line else "0.0.0"
     except Exception:
         return "0.0.0"
@@ -64,11 +66,15 @@ def get_skipped_models(suite: str) -> frozenset[str]:
             elif item is not None:
                 yield str(item)
 
-    return frozenset(flatten(skip.get("all"))) | frozenset(flatten((skip.get("device") or {}).get("xpu")))
+    return frozenset(flatten(skip.get("all"))) | frozenset(
+        flatten((skip.get("device") or {}).get("xpu"))
+    )
 
 
 @cache
-def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str | None = None) -> list[str]:
+def get_model_list(
+    suite: str, mode: str, model_only: str | None, scenario: str | None = None
+) -> list[str]:
     """Retrieve model names from a CSV file, string list, or default text file.
 
     Cached: callers must treat the returned list as read-only.
@@ -76,6 +82,7 @@ def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str 
     if model_only is not None:
         if os.path.isfile(model_only):
             import pandas as pd
+
             df = pd.read_csv(model_only)
             if suite == "pt2e":
                 col_header = f"pt2e {scenario}" if scenario else "pt2e accuracy"
@@ -85,12 +92,14 @@ def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str 
                 col_header = suite
             if col_header not in df.columns:
                 available = ", ".join(df.columns)
-                raise ValueError(f"Column '{col_header}' not found in {model_only}. Available: {available}")
+                raise ValueError(
+                    f"Column '{col_header}' not found in {model_only}. Available: {available}"
+                )
             models = df[col_header].dropna().astype(str).str.strip().tolist()
         else:
             models = parse_string_list(model_only)
     else:
-        base = suite.replace('_models', '')
+        base = suite.replace("_models", "")
         list_file = Path(f"benchmarks/dynamo/{base}_models_list.txt")
         if not list_file.exists():
             raise FileNotFoundError(f"Model list file not found: {list_file}")
@@ -99,14 +108,17 @@ def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str 
             models = [
                 parts[0].strip()
                 for raw in f
-                if (line := raw.split('#', 1)[0].strip())
+                if (line := raw.split("#", 1)[0].strip())
                 and (parts := parse_string_list(line))
                 and parts[0].strip()
             ]
 
     skipped = get_skipped_models(suite)
     if dropped := sorted(set(models) & skipped):
-        log(f"Skipping {suite} models disabled in {suite}.yaml: {', '.join(dropped)}", level="WARN")
+        log(
+            f"Skipping {suite} models disabled in {suite}.yaml: {', '.join(dropped)}",
+            level="WARN",
+        )
     return [model for model in models if model not in skipped]
 
 
@@ -138,7 +150,7 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
-            fields = re.split(r'[,;\t]\s*|\s+', line)
+            fields = re.split(r"[,;\t]\s*|\s+", line)
             fields = [f.strip() for f in fields if f.strip()]
 
             # Auto-detect format from header row
@@ -152,18 +164,36 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
             if output_format:
                 # Output CSV: dev, backend, suite, dtype, mode, name, scenario, batch_size, elapsed, ...
                 if len(fields) < 8:
-                    log(f"Skipping line {lineno}: expected 8+ fields, got {len(fields)}: {line!r}", level="WARN")
+                    log(
+                        f"Skipping line {lineno}: expected 8+ fields, got {len(fields)}: {line!r}",
+                        level="WARN",
+                    )
                     continue
-                suite, dt, mode, model, scenario = fields[2], fields[3], fields[4], fields[5], fields[6]
+                suite, dt, mode, model, scenario = (
+                    fields[2],
+                    fields[3],
+                    fields[4],
+                    fields[5],
+                    fields[6],
+                )
                 backend = fields[1] if len(fields) >= 2 else "default"
                 quant = fields[10] if len(fields) >= 11 else ""
                 tasks.append(TestTask(suite, dt, mode, scenario, model, quant, backend))
             else:
                 # Legacy: suite, dtype, mode, model, result
                 if len(fields) < 5:
-                    log(f"Skipping line {lineno}: expected 5+ fields, got {len(fields)}: {line!r}", level="WARN")
+                    log(
+                        f"Skipping line {lineno}: expected 5+ fields, got {len(fields)}: {line!r}",
+                        level="WARN",
+                    )
                     continue
-                suite, dt, mode, model, result = fields[0], fields[1], fields[2], fields[3], fields[4]
+                suite, dt, mode, model, result = (
+                    fields[0],
+                    fields[1],
+                    fields[2],
+                    fields[3],
+                    fields[4],
+                )
                 scenario = "performance" if _is_numeric(result) else "accuracy"
                 tasks.append(TestTask(suite, dt, mode, scenario, model))
 
@@ -190,7 +220,9 @@ def generate_tasks(
     inductor_dts = [d for d in dts if d in INDUCTOR_DT]
     tasks = [
         TestTask(suite, dt, mode, scenario, model)
-        for suite, mode, dt, scenario in product(non_pt2e_suites, modes, inductor_dts, scenarios)
+        for suite, mode, dt, scenario in product(
+            non_pt2e_suites, modes, inductor_dts, scenarios
+        )
         for model in sorted(set(get_model_list(suite, mode, model_only)))
     ]
 
@@ -199,11 +231,17 @@ def generate_tasks(
         pt2e_dts = [d for d in dts if d in PT2E_DT]
         for scenario in scenarios:
             for dt in pt2e_dts:
-                models = sorted(set(get_model_list("pt2e", "inference", model_only, scenario)))
+                models = sorted(
+                    set(get_model_list("pt2e", "inference", model_only, scenario))
+                )
                 for model in models:
                     if dt == "int8" and scenario == "performance":
-                        tasks.append(TestTask("pt2e", dt, "inference", scenario, model, "symm"))
-                        tasks.append(TestTask("pt2e", dt, "inference", scenario, model, "asymm"))
+                        tasks.append(
+                            TestTask("pt2e", dt, "inference", scenario, model, "symm")
+                        )
+                        tasks.append(
+                            TestTask("pt2e", dt, "inference", scenario, model, "asymm")
+                        )
                     else:
                         tasks.append(TestTask("pt2e", dt, "inference", scenario, model))
     return tasks

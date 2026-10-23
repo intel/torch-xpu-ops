@@ -8,13 +8,14 @@ Usage:
                              --baseline /path/to/reference/dir
 """
 
-import re
-import os
-import fnmatch
 import argparse
-import pandas as pd
+import fnmatch
+import os
+import re
 from statistics import geometric_mean
 from typing import Any, Optional
+
+import pandas as pd
 
 
 def multiple_replace(text: str) -> str:
@@ -77,7 +78,9 @@ def color_result(input_val: float) -> str:
         return f"{input_val:.3f}"
 
 
-def blank_invalid_values(dataframe: pd.DataFrame, numeric_columns: list[str]) -> pd.DataFrame:
+def blank_invalid_values(
+    dataframe: pd.DataFrame, numeric_columns: list[str]
+) -> pd.DataFrame:
     """
     Round numeric columns and blank out non-positive values.
 
@@ -93,12 +96,13 @@ def blank_invalid_values(dataframe: pd.DataFrame, numeric_columns: list[str]) ->
     """
     cleaned = dataframe.copy()
     values = cleaned[numeric_columns]
-    cleaned[numeric_columns] = values.round(3).mask(values <= 0, '')
+    cleaned[numeric_columns] = values.round(3).mask(values <= 0, "")
     return cleaned
 
 
-def write_report(cases: pd.DataFrame, filename: str,
-                 message: str, write_mode: str) -> None:
+def write_report(
+    cases: pd.DataFrame, filename: str, message: str, write_mode: str
+) -> None:
     """
     Helper function to write reports to HTML files.
 
@@ -110,7 +114,7 @@ def write_report(cases: pd.DataFrame, filename: str,
     """
     if not cases.empty:
         output = cases.to_html(index=False)
-        with open(filename, write_mode, encoding='utf-8') as file:
+        with open(filename, write_mode, encoding="utf-8") as file:
             file.write(f"\n\n{message}\n\n{output}\n\n")
 
 
@@ -149,8 +153,9 @@ def find_matching_row(dataframe: pd.DataFrame, model_name: str) -> Optional[pd.S
     return matches.iloc[0] if not matches.empty else None
 
 
-def calculate_comparison_ratios(xpu_value: Optional[pd.Series],
-                               refer_value: Optional[pd.Series]) -> tuple[float, float]:
+def calculate_comparison_ratios(
+    xpu_value: Optional[pd.Series], refer_value: Optional[pd.Series]
+) -> tuple[float, float]:
     """
     Calculate performance comparison ratios between target and baseline.
 
@@ -170,13 +175,18 @@ def calculate_comparison_ratios(xpu_value: Optional[pd.Series],
     eager_ratio = refer_eager / xpu_eager if xpu_eager > 0 else 0.0
 
     # Calculate inductor comparison
-    inductor_ratio = (refer_value["abs_latency"] / xpu_value["abs_latency"]
-                     if xpu_value["abs_latency"] > 0 else 0.0)
+    inductor_ratio = (
+        refer_value["abs_latency"] / xpu_value["abs_latency"]
+        if xpu_value["abs_latency"] > 0
+        else 0.0
+    )
 
     return eager_ratio, inductor_ratio
 
 
-def process_comparison_data(args: argparse.Namespace) -> tuple[list[list[Any]], list[str]]:
+def process_comparison_data(
+    args: argparse.Namespace,
+) -> tuple[list[list[Any]], list[str]]:
     """
     Process and compare performance data between target and baseline.
 
@@ -187,10 +197,16 @@ def process_comparison_data(args: argparse.Namespace) -> tuple[list[list[Any]], 
         Tuple of (output_data, output_header)
     """
     output_header = [
-        "Category", "Model", "Target eager", "Target inductor",
-        "Inductor vs. Eager [Target]", "Baseline eager", "Baseline inductor",
-        "Inductor vs. Eager [Baseline]", "Target vs. Baseline [Eager]",
-        "Target vs. Baseline [Inductor]"
+        "Category",
+        "Model",
+        "Target eager",
+        "Target inductor",
+        "Inductor vs. Eager [Target]",
+        "Baseline eager",
+        "Baseline inductor",
+        "Inductor vs. Eager [Baseline]",
+        "Target vs. Baseline [Eager]",
+        "Target vs. Baseline [Inductor]",
     ]
     output_data = []
 
@@ -222,8 +238,12 @@ def process_comparison_data(args: argparse.Namespace) -> tuple[list[list[Any]], 
     return output_data, output_header
 
 
-def process_matching_models(xpu_data: pd.DataFrame, refer_data: pd.DataFrame,
-                           category: str, output_data: list[list[Any]]) -> None:
+def process_matching_models(
+    xpu_data: pd.DataFrame,
+    refer_data: pd.DataFrame,
+    category: str,
+    output_data: list[list[Any]],
+) -> None:
     """
     Process models that exist in both target and baseline.
     """
@@ -237,18 +257,29 @@ def process_matching_models(xpu_data: pd.DataFrame, refer_data: pd.DataFrame,
 
         (xpu_eager, xpu_inductor, xpu_ratio) = calculate_latencies(xpu_value)
         (refer_eager, refer_inductor, refer_ratio) = calculate_latencies(refer_value)
-        eager_ratio, inductor_ratio = calculate_comparison_ratios(xpu_value, refer_value)
+        eager_ratio, inductor_ratio = calculate_comparison_ratios(
+            xpu_value, refer_value
+        )
 
-        output_data.append([
-            category, model_name,
-            xpu_eager, xpu_inductor, xpu_ratio,
-            refer_eager, refer_inductor, refer_ratio,
-            eager_ratio, inductor_ratio
-        ])
+        output_data.append(
+            [
+                category,
+                model_name,
+                xpu_eager,
+                xpu_inductor,
+                xpu_ratio,
+                refer_eager,
+                refer_inductor,
+                refer_ratio,
+                eager_ratio,
+                inductor_ratio,
+            ]
+        )
 
 
-def process_target_only_models(xpu_data: pd.DataFrame, category: str,
-                              output_data: list[list[Any]]) -> None:
+def process_target_only_models(
+    xpu_data: pd.DataFrame, category: str, output_data: list[list[Any]]
+) -> None:
     """
     Process models that only exist in target data.
     """
@@ -256,15 +287,25 @@ def process_target_only_models(xpu_data: pd.DataFrame, category: str,
         xpu_value = find_matching_row(xpu_data, model_name)
         if xpu_value is not None:
             xpu_eager = xpu_value["speedup"] * xpu_value["abs_latency"]
-            output_data.append([
-                category, model_name,
-                xpu_eager, xpu_value["abs_latency"], xpu_value["speedup"],
-                -1, -1, -1, -1, -1
-            ])
+            output_data.append(
+                [
+                    category,
+                    model_name,
+                    xpu_eager,
+                    xpu_value["abs_latency"],
+                    xpu_value["speedup"],
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                ]
+            )
 
 
-def process_baseline_only_models(args: argparse.Namespace,
-                                output_data: list[list[Any]]) -> None:
+def process_baseline_only_models(
+    args: argparse.Namespace, output_data: list[list[Any]]
+) -> None:
     """
     Process models that only exist in baseline data.
     """
@@ -284,18 +325,28 @@ def process_baseline_only_models(args: argparse.Namespace,
                 refer_value = find_matching_row(refer_data, model_name)
                 if refer_value is not None:
                     refer_eager = refer_value["speedup"] * refer_value["abs_latency"]
-                    output_data.append([
-                        category, model_name,
-                        -1, -1, -1,
-                        refer_eager, refer_value["abs_latency"],
-                        refer_value["speedup"], -1, -1
-                    ])
+                    output_data.append(
+                        [
+                            category,
+                            model_name,
+                            -1,
+                            -1,
+                            -1,
+                            refer_eager,
+                            refer_value["abs_latency"],
+                            refer_value["speedup"],
+                            -1,
+                            -1,
+                        ]
+                    )
         except Exception as e:
             print(f"Error processing baseline file {refer_file}: {e}")
             continue
 
 
-def generate_summary(output_data: pd.DataFrame, args: argparse.Namespace) -> pd.DataFrame:
+def generate_summary(
+    output_data: pd.DataFrame, args: argparse.Namespace
+) -> pd.DataFrame:
     """
     Generate performance summary statistics.
 
@@ -310,22 +361,23 @@ def generate_summary(output_data: pd.DataFrame, args: argparse.Namespace) -> pd.
         "all": [],
         "huggingface": [],
         "timm_models": [],
-        "torchbench": []
+        "torchbench": [],
     }
 
     comparison_columns = [
         "Target vs. Baseline [Inductor]",
         "Target vs. Baseline [Eager]",
-        "Inductor vs. Eager [Target]"
+        "Inductor vs. Eager [Target]",
     ]
     comparison_data = output_data.loc[
-        (output_data['Target inductor'] > 0) & (output_data['Baseline inductor'] > 0)
+        (output_data["Target inductor"] > 0) & (output_data["Baseline inductor"] > 0)
     ]
 
     for column_name in comparison_columns:
         # Overall geometric mean
         valid_data = [
-            row[column_name] for _, row in comparison_data.iterrows()
+            row[column_name]
+            for _, row in comparison_data.iterrows()
             if row[column_name] > 0
         ]
         geomean_results["all"].append(
@@ -335,9 +387,9 @@ def generate_summary(output_data: pd.DataFrame, args: argparse.Namespace) -> pd.
         # Per-category geometric means
         for category in ["huggingface", "timm_models", "torchbench"]:
             category_data = [
-                row[column_name] for _, row in comparison_data.iterrows()
-                if (row[column_name] > 0 and
-                    re.match(category, row["Category"]))
+                row[column_name]
+                for _, row in comparison_data.iterrows()
+                if (row[column_name] > 0 and re.match(category, row["Category"]))
             ]
             geomean_results[category].append(
                 color_result(geometric_mean(category_data)) if category_data else None
@@ -349,7 +401,9 @@ def generate_summary(output_data: pd.DataFrame, args: argparse.Namespace) -> pd.
     return pd.DataFrame(geomean_results, index=comparison_columns).T
 
 
-def generate_regression_reports(output_data: pd.DataFrame, args: argparse.Namespace) -> None:
+def generate_regression_reports(
+    output_data: pd.DataFrame, args: argparse.Namespace
+) -> None:
     """
     Generate regression analysis reports.
 
@@ -362,23 +416,29 @@ def generate_regression_reports(output_data: pd.DataFrame, args: argparse.Namesp
 
     # Regression cases for full report
     regression_cases = output_data.loc[
-        ((output_data['Target vs. Baseline [Inductor]'] < criteria_medium) |
-         (output_data['Target vs. Baseline [Eager]'] < criteria_medium)) &
-        (output_data['Target inductor'] > 0) &
-        (output_data['Baseline inductor'] > 0)
+        (
+            (output_data["Target vs. Baseline [Inductor]"] < criteria_medium)
+            | (output_data["Target vs. Baseline [Eager]"] < criteria_medium)
+        )
+        & (output_data["Target inductor"] > 0)
+        & (output_data["Baseline inductor"] > 0)
     ]
 
-    write_report(blank_invalid_values(regression_cases, list(regression_cases.columns[2:])),
-                 'performance.regression.html',
-                 "#### Performance Regression", "w")
+    write_report(
+        blank_invalid_values(regression_cases, list(regression_cases.columns[2:])),
+        "performance.regression.html",
+        "#### Performance Regression",
+        "w",
+    )
 
     # PR-specific reports
     if args.pr:
         generate_pr_report(output_data, criteria_high, criteria_medium)
 
 
-def generate_pr_report(output_data: pd.DataFrame, criteria_high: float,
-                      criteria_medium: float) -> None:
+def generate_pr_report(
+    output_data: pd.DataFrame, criteria_high: float, criteria_medium: float
+) -> None:
     """
     Generate PR-specific performance report.
 
@@ -387,56 +447,66 @@ def generate_pr_report(output_data: pd.DataFrame, criteria_high: float,
         criteria_high: High regression threshold
         criteria_medium: Medium regression threshold
     """
-    pr_data = output_data.loc[(output_data['Target inductor'] > 0) & (output_data['Baseline inductor'] > 0)]
-    pr_data = pr_data[[
-        "Category", "Model", "Target vs. Baseline [Eager]",
-        "Target vs. Baseline [Inductor]"
-    ]].round(3)
+    pr_data = output_data.loc[
+        (output_data["Target inductor"] > 0) & (output_data["Baseline inductor"] > 0)
+    ]
+    pr_data = pr_data[
+        [
+            "Category",
+            "Model",
+            "Target vs. Baseline [Eager]",
+            "Target vs. Baseline [Inductor]",
+        ]
+    ].round(3)
 
     # High regression cases
     high_regression = pr_data.loc[
-        (pr_data['Target vs. Baseline [Inductor]'] < criteria_high) |
-        (pr_data['Target vs. Baseline [Eager]'] < criteria_high)
+        (pr_data["Target vs. Baseline [Inductor]"] < criteria_high)
+        | (pr_data["Target vs. Baseline [Eager]"] < criteria_high)
     ]
 
     # Medium regression cases
     medium_regression = pr_data.loc[
-        ((pr_data['Target vs. Baseline [Inductor]'] < criteria_medium) |
-         (pr_data['Target vs. Baseline [Eager]'] < criteria_medium)) &
-        (pr_data['Target vs. Baseline [Inductor]'] >= criteria_high) &
-        (pr_data['Target vs. Baseline [Eager]'] >= criteria_high)
+        (
+            (pr_data["Target vs. Baseline [Inductor]"] < criteria_medium)
+            | (pr_data["Target vs. Baseline [Eager]"] < criteria_medium)
+        )
+        & (pr_data["Target vs. Baseline [Inductor]"] >= criteria_high)
+        & (pr_data["Target vs. Baseline [Eager]"] >= criteria_high)
     ]
 
     if not high_regression.empty or not medium_regression.empty:
-        with open('performance.regression.pr.html', 'w', encoding='utf-8') as f:
+        with open("performance.regression.pr.html", "w", encoding="utf-8") as f:
             f.write("\n### Performance outliers, please check!\n")
 
-        write_report(high_regression, 'performance.regression.pr.html',
-                    "- 🔴 [-1, 80%), should be regression", 'a')
-        write_report(medium_regression, 'performance.regression.pr.html',
-                    "- 🟡 [80%, 90%), may be fluctuations", 'a')
+        write_report(
+            high_regression,
+            "performance.regression.pr.html",
+            "- 🔴 [-1, 80%), should be regression",
+            "a",
+        )
+        write_report(
+            medium_regression,
+            "performance.regression.pr.html",
+            "- 🟡 [80%, 90%), may be fluctuations",
+            "a",
+        )
 
 
 def main():
     """Main function to run performance comparison."""
     args = argparse.ArgumentParser(
         description="Performance Analysis",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     args.add_argument(
-        "--target",
-        required=True,
-        help="XPU performance result csv files directory"
+        "--target", required=True, help="XPU performance result csv files directory"
     )
     args.add_argument(
-        "--baseline",
-        required=True,
-        help="XPU reference result csv files directory"
+        "--baseline", required=True, help="XPU reference result csv files directory"
     )
     args.add_argument(
-        "--pr",
-        action="store_true",
-        help="Only show results that XPU has"
+        "--pr", action="store_true", help="Only show results that XPU has"
     )
     args = args.parse_args()
 
@@ -446,19 +516,27 @@ def main():
 
     # Sort by performance ratios
     output_df = output_df.sort_values(
-        ['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'],
-        ascending=[True, True]
+        ["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]"],
+        ascending=[True, True],
     )
 
     # Generate summary report
     summary_df = generate_summary(output_df, args)
-    with open('performance.summary.html', 'w', encoding='utf-8') as f:
-        f.write("\n\n#### Performance Summary\n\n" + summary_df.to_html(header=True) + "\n\n")
+    with open("performance.summary.html", "w", encoding="utf-8") as f:
+        f.write(
+            "\n\n#### Performance Summary\n\n"
+            + summary_df.to_html(header=True)
+            + "\n\n"
+        )
 
     # Generate detailed report
     output_df_clean = blank_invalid_values(output_df, output_header[2:])
-    with open('performance.details.html', 'w', encoding='utf-8') as f:
-        f.write("\n\n#### Performance Details\n\n" + output_df_clean.to_html(index=False) + "\n\n")
+    with open("performance.details.html", "w", encoding="utf-8") as f:
+        f.write(
+            "\n\n#### Performance Details\n\n"
+            + output_df_clean.to_html(index=False)
+            + "\n\n"
+        )
 
     # Generate regression reports
     generate_regression_reports(output_df, args)

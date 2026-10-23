@@ -175,14 +175,14 @@ apt-get install -y --no-install-recommends \
 # Terraform
 # ============================================================
 
-curl -fsSL https://apt.releases.hashicorp.com/gpg \
-    | gpg --dearmor \
-    -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+curl -fsSL https://apt.releases.hashicorp.com/gpg |
+    gpg --dearmor \
+        -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
 
 echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
 https://apt.releases.hashicorp.com \
 $(. /etc/os-release && echo "$VERSION_CODENAME") main" \
-    > /etc/apt/sources.list.d/hashicorp.list
+    >/etc/apt/sources.list.d/hashicorp.list
 
 apt-get update
 

@@ -38,16 +38,30 @@ ACC_CSV_COLS = ["dev", "name", "batch_size", "accuracy"]
 PERF_CSV_COLS = ["dev", "name", "batch_size", "speedup", "abs_latency"]
 
 ACC_OUTPUT_COLS = [
-    "suite", "data_type", "mode", "model",
-    "batch_size_target", "accuracy_target",
-    "batch_size_baseline", "accuracy_baseline",
+    "suite",
+    "data_type",
+    "mode",
+    "model",
+    "batch_size_target",
+    "accuracy_target",
+    "batch_size_baseline",
+    "accuracy_baseline",
     "comparison",
 ]
 PERF_OUTPUT_COLS = [
-    "suite", "data_type", "mode", "model",
-    "batch_size_target", "inductor_target", "eager_target",
-    "batch_size_baseline", "inductor_baseline", "eager_baseline",
-    "inductor_ratio", "eager_ratio", "comparison",
+    "suite",
+    "data_type",
+    "mode",
+    "model",
+    "batch_size_target",
+    "inductor_target",
+    "eager_target",
+    "batch_size_baseline",
+    "inductor_baseline",
+    "eager_baseline",
+    "inductor_ratio",
+    "eager_ratio",
+    "comparison",
 ]
 
 SUMMARY_LEVELS = [
@@ -96,13 +110,13 @@ def parse_filename(filename: str) -> tuple[str, str, str, str]:
     base = filename[:-4]
     if not base.startswith("inductor_"):
         raise ValueError(f"Filename does not start with 'inductor': {filename}")
-    rest = base[len("inductor_"):]
+    rest = base[len("inductor_") :]
 
     def _match_prefix(rest: str, candidates: set[str]) -> tuple[str | None, str]:
         """Match longest known prefix followed by '_', return (match, remainder)."""
         for c in sorted(candidates, key=len, reverse=True):
             if rest.startswith(c + "_"):
-                return c, rest[len(c) + 1:]
+                return c, rest[len(c) + 1 :]
         return None, rest
 
     suite, rest = _match_prefix(rest, KNOWN_SUITES)
@@ -146,6 +160,7 @@ def _best_performance_record(records: list[dict]) -> dict:
     Priority: both positive > one positive > zero > NaN/negative.
     Among equally-ranked records, prefer smaller inductor latency.
     """
+
     def _sort_key(r):
         ind = r.get("inductor")
         eag = r.get("eager")
@@ -154,8 +169,7 @@ def _best_performance_record(records: list[dict]) -> dict:
         if ind_ok and eag_ok:
             return (0, ind, eag)
         if ind_ok or eag_ok:
-            return (1, ind if ind_ok else float("inf"),
-                    eag if eag_ok else float("inf"))
+            return (1, ind if ind_ok else float("inf"), eag if eag_ok else float("inf"))
         if (pd.notna(ind) and ind == 0) or (pd.notna(eag) and eag == 0):
             return (2, 0, 0)
         return (3, float("inf"), float("inf"))
@@ -168,14 +182,21 @@ def _read_csv_safe(path: str, usecols: list[str]) -> pd.DataFrame:
     """Read a CSV with graceful fallback for older pandas versions."""
     try:
         return pd.read_csv(
-            path, usecols=usecols, on_bad_lines="skip",
-            engine="c", encoding="utf-8",
+            path,
+            usecols=usecols,
+            on_bad_lines="skip",
+            engine="c",
+            encoding="utf-8",
         )
     except TypeError:
         # Older pandas without on_bad_lines
         return pd.read_csv(
-            path, usecols=usecols, error_bad_lines=False,
-            warn_bad_lines=True, engine="python", encoding="utf-8",
+            path,
+            usecols=usecols,
+            error_bad_lines=False,
+            warn_bad_lines=True,
+            engine="python",
+            encoding="utf-8",
         )
 
 
@@ -210,8 +231,10 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
 
             key = (suite, data_type, mode, row["name"])
             rec = {
-                "suite": suite, "data_type": data_type,
-                "mode": mode, "model": row["name"],
+                "suite": suite,
+                "data_type": data_type,
+                "mode": mode,
+                "model": row["name"],
                 "batch_size": row["batch_size"],
             }
 
@@ -223,7 +246,8 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
                 if pd.isna(speedup) or pd.isna(abs_lat):
                     log.debug(
                         "Missing speedup/abs_latency for %s in %s",
-                        row.get("name"), fpath,
+                        row.get("name"),
+                        fpath,
                     )
                     rec.update(eager=np.nan, inductor=np.nan, speedup=np.nan)
                 else:
@@ -236,7 +260,9 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
             raw.setdefault(key, []).append(rec)
 
     # Deduplicate
-    picker = _best_accuracy_record if result_type == "accuracy" else _best_performance_record
+    picker = (
+        _best_accuracy_record if result_type == "accuracy" else _best_performance_record
+    )
     return [picker(recs) for recs in raw.values()]
 
 
@@ -282,20 +308,21 @@ def _classify_accuracy(row: pd.Series) -> str:
     if tgt_pass and bsl_pass:
         return "no_changed"
     if tgt_pass and bsl_fail:
-        return "new_passed"       # was failing, now passes
+        return "new_passed"  # was failing, now passes
     if tgt_pass and not bsl_fail:
-        return "new_case"         # target passes, baseline absent
+        return "new_case"  # target passes, baseline absent
     if bsl_pass and tgt_fail:
-        return "new_failed"       # REGRESSION
+        return "new_failed"  # REGRESSION
     if bsl_pass and not tgt_fail:
-        return "not_run"          # baseline passes, target absent
+        return "not_run"  # baseline passes, target absent
     if tgt_fail and not bsl_fail and not bsl_pass:
         return "new_case_failed"  # new test that fails, baseline absent
     return "no_changed"
 
 
 def merge_accuracy(
-    target_records: list[dict], baseline_records: list[dict],
+    target_records: list[dict],
+    baseline_records: list[dict],
 ) -> pd.DataFrame:
     """Outer-join target and baseline accuracy records, classify each model."""
     tgt = pd.DataFrame(target_records)
@@ -305,12 +332,20 @@ def merge_accuracy(
         return pd.DataFrame(columns=ACC_OUTPUT_COLS)
 
     if tgt.empty:
-        tgt = pd.DataFrame(columns=["suite", "data_type", "mode", "model", "batch_size", "accuracy"])
+        tgt = pd.DataFrame(
+            columns=["suite", "data_type", "mode", "model", "batch_size", "accuracy"]
+        )
     if bsl.empty:
-        bsl = pd.DataFrame(columns=["suite", "data_type", "mode", "model", "batch_size", "accuracy"])
+        bsl = pd.DataFrame(
+            columns=["suite", "data_type", "mode", "model", "batch_size", "accuracy"]
+        )
 
     merged = pd.merge(
-        tgt, bsl, on=MERGE_KEYS, how="outer", suffixes=("_target", "_baseline"),
+        tgt,
+        bsl,
+        on=MERGE_KEYS,
+        how="outer",
+        suffixes=("_target", "_baseline"),
     )
     for col in ("batch_size_target", "batch_size_baseline"):
         if col in merged.columns:
@@ -343,11 +378,13 @@ def _classify_performance(row: pd.Series, threshold: float) -> str:
     if tgt_ok and bsl_ok:
         ind_r = row.get("inductor_ratio")
         eag_r = row.get("eager_ratio")
-        if (pd.notna(ind_r) and ind_r < 1 - threshold) or \
-           (pd.notna(eag_r) and eag_r < 1 - threshold):
+        if (pd.notna(ind_r) and ind_r < 1 - threshold) or (
+            pd.notna(eag_r) and eag_r < 1 - threshold
+        ):
             return "new_dropped"
-        if (pd.notna(ind_r) and ind_r > 1 + threshold) or \
-           (pd.notna(eag_r) and eag_r > 1 + threshold):
+        if (pd.notna(ind_r) and ind_r > 1 + threshold) or (
+            pd.notna(eag_r) and eag_r > 1 + threshold
+        ):
             return "new_improved"
         return "no_changed"
     if tgt_ok:
@@ -358,7 +395,8 @@ def _classify_performance(row: pd.Series, threshold: float) -> str:
 
 
 def merge_performance(
-    target_records: list[dict], baseline_records: list[dict],
+    target_records: list[dict],
+    baseline_records: list[dict],
     threshold: float,
 ) -> pd.DataFrame:
     """Outer-join target and baseline performance records, compute ratios, classify."""
@@ -369,12 +407,38 @@ def merge_performance(
         return pd.DataFrame(columns=PERF_OUTPUT_COLS)
 
     if tgt.empty:
-        tgt = pd.DataFrame(columns=["suite", "data_type", "mode", "model", "batch_size", "eager", "inductor", "speedup"])
+        tgt = pd.DataFrame(
+            columns=[
+                "suite",
+                "data_type",
+                "mode",
+                "model",
+                "batch_size",
+                "eager",
+                "inductor",
+                "speedup",
+            ]
+        )
     if bsl.empty:
-        bsl = pd.DataFrame(columns=["suite", "data_type", "mode", "model", "batch_size", "eager", "inductor", "speedup"])
+        bsl = pd.DataFrame(
+            columns=[
+                "suite",
+                "data_type",
+                "mode",
+                "model",
+                "batch_size",
+                "eager",
+                "inductor",
+                "speedup",
+            ]
+        )
 
     merged = pd.merge(
-        tgt, bsl, on=MERGE_KEYS, how="outer", suffixes=("_target", "_baseline"),
+        tgt,
+        bsl,
+        on=MERGE_KEYS,
+        how="outer",
+        suffixes=("_target", "_baseline"),
     )
     for col in ("batch_size_target", "batch_size_baseline"):
         if col in merged.columns:
@@ -393,7 +457,12 @@ def merge_performance(
                 np.nan,
             )
 
-    for col in ("inductor_target", "inductor_baseline", "eager_target", "eager_baseline"):
+    for col in (
+        "inductor_target",
+        "inductor_baseline",
+        "eager_target",
+        "eager_baseline",
+    ):
         if col in merged.columns:
             merged[col] = merged[col].round(4)
     for col in ("inductor_ratio", "eager_ratio"):
@@ -401,7 +470,8 @@ def merge_performance(
             merged[col] = merged[col].round(3)
 
     merged["comparison"] = merged.apply(
-        lambda r: _classify_performance(r, threshold), axis=1,
+        lambda r: _classify_performance(r, threshold),
+        axis=1,
     )
 
     for c in PERF_OUTPUT_COLS:
@@ -432,11 +502,13 @@ def _group_metrics(group: pd.DataFrame, is_perf: bool) -> pd.Series:
     }
     if is_perf:
         result["ind_ratio"] = _geomean(
-            group["inductor_ratio"] if "inductor_ratio" in group.columns
+            group["inductor_ratio"]
+            if "inductor_ratio" in group.columns
             else pd.Series(dtype=float)
         )
         result["eag_ratio"] = _geomean(
-            group["eager_ratio"] if "eager_ratio" in group.columns
+            group["eager_ratio"]
+            if "eager_ratio" in group.columns
             else pd.Series(dtype=float)
         )
     if not is_perf:
@@ -445,7 +517,8 @@ def _group_metrics(group: pd.DataFrame, is_perf: bool) -> pd.Series:
 
 
 def generate_summary(
-    acc_merged: pd.DataFrame, perf_merged: pd.DataFrame,
+    acc_merged: pd.DataFrame,
+    perf_merged: pd.DataFrame,
 ) -> pd.DataFrame:
     """Generate summary at all grouping levels and combine."""
     frames = []
@@ -484,8 +557,15 @@ def generate_summary(
     ).round(2)
 
     # Integer columns
-    for c in ("target_passed", "baseline_passed", "total",
-              "new_fail", "new_drop", "new_pass", "new_improve"):
+    for c in (
+        "target_passed",
+        "baseline_passed",
+        "total",
+        "new_fail",
+        "new_drop",
+        "new_pass",
+        "new_improve",
+    ):
         if c in combined.columns:
             combined[c] = pd.to_numeric(combined[c], errors="coerce").astype("Int64")
     for c in ("ind_ratio", "eag_ratio"):
@@ -498,11 +578,20 @@ def generate_summary(
     combined.sort_values(["_sort", "Type", "Category"], inplace=True)
 
     cols = [
-        "Level", "Type", "Category",
-        "target_passed", "baseline_passed", "total",
-        "target_passrate", "baseline_passrate",
-        "new_fail", "new_drop", "new_pass", "new_improve",
-        "ind_ratio", "eag_ratio",
+        "Level",
+        "Type",
+        "Category",
+        "target_passed",
+        "baseline_passed",
+        "total",
+        "target_passrate",
+        "baseline_passrate",
+        "new_fail",
+        "new_drop",
+        "new_pass",
+        "new_improve",
+        "ind_ratio",
+        "eag_ratio",
     ]
     for c in cols:
         if c not in combined.columns:
@@ -527,8 +616,11 @@ def _fmt_ratio(val: Any, threshold: float) -> str:
 
 
 def _html_table(
-    df: pd.DataFrame, columns: list[str], cond_col: str,
-    fail_vals: set[str], pass_vals: set[str],
+    df: pd.DataFrame,
+    columns: list[str],
+    cond_col: str,
+    fail_vals: set[str],
+    pass_vals: set[str],
 ) -> str:
     """Render an HTML table with conditional row background colours."""
     lines = ["<table>", "<thead><tr>"]
@@ -561,10 +653,7 @@ def _md_table(df: pd.DataFrame, columns: list[str]) -> str:
     lines.append("| " + " | ".join(columns) + " |")
     lines.append("| " + " | ".join(["---"] * len(columns)) + " |")
     for _, row in df.iterrows():
-        cells = [
-            str(row.get(c, "")) if pd.notna(row.get(c)) else ""
-            for c in columns
-        ]
+        cells = [str(row.get(c, "")) if pd.notna(row.get(c)) else "" for c in columns]
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
@@ -576,8 +665,10 @@ PASS_LABELS = {"new_passed", "new_improved"}
 
 def write_markdown(
     summary: pd.DataFrame,
-    acc_df: pd.DataFrame, perf_df: pd.DataFrame,
-    threshold: float, filename: str,
+    acc_df: pd.DataFrame,
+    perf_df: pd.DataFrame,
+    threshold: float,
+    filename: str,
 ) -> None:
     """Write a single Markdown report: summary -> failures -> improvements."""
 
@@ -587,7 +678,11 @@ def write_markdown(
 
         # ── Overall summary table ──
         f.write("## Summary\n\n")
-        overall = summary[summary["Category"] == "Overall"] if not summary.empty else pd.DataFrame()
+        overall = (
+            summary[summary["Category"] == "Overall"]
+            if not summary.empty
+            else pd.DataFrame()
+        )
         if not overall.empty:
             f.write(
                 "| Type | Total | Target Pass | Baseline Pass "
@@ -620,7 +715,11 @@ def write_markdown(
             f.write("No summary data available.\n\n")
 
         # ── Suite-level overview (collapsible) ──
-        by_suite = summary[summary["Level"] == "By Suite"] if not summary.empty else pd.DataFrame()
+        by_suite = (
+            summary[summary["Level"] == "By Suite"]
+            if not summary.empty
+            else pd.DataFrame()
+        )
         if not by_suite.empty:
             f.write("<details>\n<summary><b>Overview by Suite</b></summary>\n\n")
             f.write(
@@ -651,15 +750,18 @@ def write_markdown(
         # ── NEW FAILURES & REGRESSIONS (shown first, most important) ──
         acc_fails = (
             acc_df[acc_df["comparison"] == "new_failed"]
-            if not acc_df.empty else pd.DataFrame()
+            if not acc_df.empty
+            else pd.DataFrame()
         )
         perf_dropped = (
             perf_df[perf_df["comparison"] == "new_dropped"]
-            if not perf_df.empty else pd.DataFrame()
+            if not perf_df.empty
+            else pd.DataFrame()
         )
         perf_failed = (
             perf_df[perf_df["comparison"] == "new_failed"]
-            if not perf_df.empty else pd.DataFrame()
+            if not perf_df.empty
+            else pd.DataFrame()
         )
         n_issues = len(acc_fails) + len(perf_dropped) + len(perf_failed)
 
@@ -670,45 +772,82 @@ def write_markdown(
         else:
             if not acc_fails.empty:
                 f.write(f"### Accuracy Failures ({len(acc_fails)} models)\n\n")
-                cols = [c for c in [
-                    "suite", "data_type", "mode", "model",
-                    "accuracy_target", "accuracy_baseline", "comparison",
-                ] if c in acc_fails.columns]
-                f.write(_html_table(acc_fails, cols, "comparison", FAIL_LABELS, PASS_LABELS))
+                cols = [
+                    c
+                    for c in [
+                        "suite",
+                        "data_type",
+                        "mode",
+                        "model",
+                        "accuracy_target",
+                        "accuracy_baseline",
+                        "comparison",
+                    ]
+                    if c in acc_fails.columns
+                ]
+                f.write(
+                    _html_table(acc_fails, cols, "comparison", FAIL_LABELS, PASS_LABELS)
+                )
                 f.write("\n\n")
 
-            perf_cols = [c for c in [
-                "suite", "data_type", "mode", "model",
-                "inductor_target", "eager_target",
-                "inductor_baseline", "eager_baseline",
-                "inductor_ratio", "eager_ratio", "comparison",
-            ] if c in perf_df.columns] if not perf_df.empty else []
+            perf_cols = (
+                [
+                    c
+                    for c in [
+                        "suite",
+                        "data_type",
+                        "mode",
+                        "model",
+                        "inductor_target",
+                        "eager_target",
+                        "inductor_baseline",
+                        "eager_baseline",
+                        "inductor_ratio",
+                        "eager_ratio",
+                        "comparison",
+                    ]
+                    if c in perf_df.columns
+                ]
+                if not perf_df.empty
+                else []
+            )
 
             if not perf_dropped.empty:
                 f.write(
                     f"### Performance Regressions "
-                    f"({len(perf_dropped)} models, ratio < {(1-threshold)*100:.0f}%)\n\n"
+                    f"({len(perf_dropped)} models, ratio < {(1 - threshold) * 100:.0f}%)\n\n"
                 )
-                f.write(_html_table(perf_dropped, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS))
+                f.write(
+                    _html_table(
+                        perf_dropped, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS
+                    )
+                )
                 f.write("\n\n")
 
             if not perf_failed.empty:
                 f.write(f"### Performance Failures ({len(perf_failed)} models)\n\n")
-                f.write(_html_table(perf_failed, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS))
+                f.write(
+                    _html_table(
+                        perf_failed, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS
+                    )
+                )
                 f.write("\n\n")
 
         # ── NEW PASSES & IMPROVEMENTS (shown second) ──
         acc_passes = (
             acc_df[acc_df["comparison"] == "new_passed"]
-            if not acc_df.empty else pd.DataFrame()
+            if not acc_df.empty
+            else pd.DataFrame()
         )
         perf_improved = (
             perf_df[perf_df["comparison"] == "new_improved"]
-            if not perf_df.empty else pd.DataFrame()
+            if not perf_df.empty
+            else pd.DataFrame()
         )
         perf_new_pass = (
             perf_df[perf_df["comparison"] == "new_passed"]
-            if not perf_df.empty else pd.DataFrame()
+            if not perf_df.empty
+            else pd.DataFrame()
         )
         n_good = len(acc_passes) + len(perf_improved) + len(perf_new_pass)
 
@@ -719,46 +858,91 @@ def write_markdown(
         else:
             if not acc_passes.empty:
                 f.write(f"### Accuracy New Passes ({len(acc_passes)} models)\n\n")
-                cols = [c for c in [
-                    "suite", "data_type", "mode", "model",
-                    "accuracy_target", "accuracy_baseline", "comparison",
-                ] if c in acc_passes.columns]
-                f.write(_html_table(acc_passes, cols, "comparison", FAIL_LABELS, PASS_LABELS))
+                cols = [
+                    c
+                    for c in [
+                        "suite",
+                        "data_type",
+                        "mode",
+                        "model",
+                        "accuracy_target",
+                        "accuracy_baseline",
+                        "comparison",
+                    ]
+                    if c in acc_passes.columns
+                ]
+                f.write(
+                    _html_table(
+                        acc_passes, cols, "comparison", FAIL_LABELS, PASS_LABELS
+                    )
+                )
                 f.write("\n\n")
 
-            perf_cols = [c for c in [
-                "suite", "data_type", "mode", "model",
-                "inductor_target", "eager_target",
-                "inductor_baseline", "eager_baseline",
-                "inductor_ratio", "eager_ratio", "comparison",
-            ] if c in perf_df.columns] if not perf_df.empty else []
+            perf_cols = (
+                [
+                    c
+                    for c in [
+                        "suite",
+                        "data_type",
+                        "mode",
+                        "model",
+                        "inductor_target",
+                        "eager_target",
+                        "inductor_baseline",
+                        "eager_baseline",
+                        "inductor_ratio",
+                        "eager_ratio",
+                        "comparison",
+                    ]
+                    if c in perf_df.columns
+                ]
+                if not perf_df.empty
+                else []
+            )
 
             if not perf_improved.empty:
                 f.write(
                     f"### Performance Improvements "
-                    f"({len(perf_improved)} models, ratio > {(1+threshold)*100:.0f}%)\n\n"
+                    f"({len(perf_improved)} models, ratio > {(1 + threshold) * 100:.0f}%)\n\n"
                 )
-                f.write(_html_table(perf_improved, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS))
+                f.write(
+                    _html_table(
+                        perf_improved, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS
+                    )
+                )
                 f.write("\n\n")
 
             if not perf_new_pass.empty:
                 f.write(f"### Performance New Passes ({len(perf_new_pass)} models)\n\n")
-                f.write(_html_table(perf_new_pass, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS))
+                f.write(
+                    _html_table(
+                        perf_new_pass, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS
+                    )
+                )
                 f.write("\n\n")
 
         # ── Not-run models (collapsible) ──
         acc_missing = (
             acc_df[acc_df["comparison"] == "not_run"]
-            if not acc_df.empty else pd.DataFrame()
+            if not acc_df.empty
+            else pd.DataFrame()
         )
         if not acc_missing.empty:
             f.write(
                 f"<details>\n"
                 f"<summary><b>⚠️ Not Run in Target ({len(acc_missing)} models)</b></summary>\n\n"
             )
-            cols = [c for c in [
-                "suite", "data_type", "mode", "model", "accuracy_baseline",
-            ] if c in acc_missing.columns]
+            cols = [
+                c
+                for c in [
+                    "suite",
+                    "data_type",
+                    "mode",
+                    "model",
+                    "accuracy_baseline",
+                ]
+                if c in acc_missing.columns
+            ]
             f.write(_md_table(acc_missing, cols))
             f.write("\n\n</details>\n\n")
 
@@ -767,9 +951,12 @@ def write_markdown(
 
 # ── Console Output ────────────────────────────────────────────────────
 def print_report(
-    target_acc_n: int, target_perf_n: int,
-    baseline_acc_n: int, baseline_perf_n: int,
-    acc_merged: pd.DataFrame, perf_merged: pd.DataFrame,
+    target_acc_n: int,
+    target_perf_n: int,
+    baseline_acc_n: int,
+    baseline_perf_n: int,
+    acc_merged: pd.DataFrame,
+    perf_merged: pd.DataFrame,
     output_file: str,
 ) -> None:
     """Print a structured summary to stdout."""
@@ -793,8 +980,12 @@ def print_report(
 
         print(f"  ACCURACY ({total} models)")
         if total:
-            print(f"    Target pass rate:    {tgt_pass}/{total} ({tgt_pass/total*100:.1f}%)")
-            print(f"    Baseline pass rate:  {bsl_pass}/{total} ({bsl_pass/total*100:.1f}%)")
+            print(
+                f"    Target pass rate:    {tgt_pass}/{total} ({tgt_pass / total * 100:.1f}%)"
+            )
+            print(
+                f"    Baseline pass rate:  {bsl_pass}/{total} ({bsl_pass / total * 100:.1f}%)"
+            )
 
         for label, emoji in [
             ("new_failed", "❌ New failures"),
@@ -814,8 +1005,12 @@ def print_report(
 
         print(f"  PERFORMANCE ({total} models)")
         if total:
-            print(f"    Target pass rate:    {tgt_pass}/{total} ({tgt_pass/total*100:.1f}%)")
-            print(f"    Baseline pass rate:  {bsl_pass}/{total} ({bsl_pass/total*100:.1f}%)")
+            print(
+                f"    Target pass rate:    {tgt_pass}/{total} ({tgt_pass / total * 100:.1f}%)"
+            )
+            print(
+                f"    Baseline pass rate:  {bsl_pass}/{total} ({bsl_pass / total * 100:.1f}%)"
+            )
 
         for label, emoji in [
             ("new_failed", "❌ New failures"),
@@ -828,11 +1023,13 @@ def print_report(
                 print(f"    {emoji + ':':<24} {count}")
 
         ind_gm = _geomean(
-            perf_merged["inductor_ratio"] if "inductor_ratio" in perf_merged.columns
+            perf_merged["inductor_ratio"]
+            if "inductor_ratio" in perf_merged.columns
             else pd.Series(dtype=float)
         )
         eag_gm = _geomean(
-            perf_merged["eager_ratio"] if "eager_ratio" in perf_merged.columns
+            perf_merged["eager_ratio"]
+            if "eager_ratio" in perf_merged.columns
             else pd.Series(dtype=float)
         )
         if pd.notna(ind_gm):
@@ -847,24 +1044,36 @@ def print_report(
 
 # ── File Output (Excel / CSV) ────────────────────────────────────────
 def write_excel(
-    summary: pd.DataFrame, acc: pd.DataFrame, perf: pd.DataFrame, path: str,
+    summary: pd.DataFrame,
+    acc: pd.DataFrame,
+    perf: pd.DataFrame,
+    path: str,
 ) -> None:
     placeholder = pd.DataFrame({"Info": ["No data available"]})
     with pd.ExcelWriter(path, engine="openpyxl") as w:
         (summary if not summary.empty else placeholder).to_excel(
-            w, sheet_name="Summary", index=False,
+            w,
+            sheet_name="Summary",
+            index=False,
         )
         (acc if not acc.empty else placeholder).to_excel(
-            w, sheet_name="Accuracy Details", index=False,
+            w,
+            sheet_name="Accuracy Details",
+            index=False,
         )
         (perf if not perf.empty else placeholder).to_excel(
-            w, sheet_name="Performance Details", index=False,
+            w,
+            sheet_name="Performance Details",
+            index=False,
         )
     log.info("Excel written to %s", path)
 
 
 def write_csv(
-    summary: pd.DataFrame, acc: pd.DataFrame, perf: pd.DataFrame, base: str,
+    summary: pd.DataFrame,
+    acc: pd.DataFrame,
+    perf: pd.DataFrame,
+    base: str,
 ) -> None:
     for df, suffix in [
         (summary, "_summary"),
@@ -892,25 +1101,45 @@ Examples:
   %(prog)s -t target/ -b baseline/ -o out.xlsx --mode inference --data-type bfloat16
 """,
     )
-    parser.add_argument("-t", "--target-dir",
-                        help="Directory with target (new) CSV results")
-    parser.add_argument("-b", "--baseline-dir",
-                        help="Directory with baseline (reference) CSV results")
-    parser.add_argument("-o", "--output", required=True,
-                        help="Output file (.xlsx or .csv)")
-    parser.add_argument("-m", "--markdown",
-                        help="Markdown report filename (e.g. report.md)")
-    parser.add_argument("--threshold", type=float,
-                        default=DEFAULT_PERF_THRESHOLD,
-                        help=f"Performance change threshold (default: {DEFAULT_PERF_THRESHOLD})")
-    parser.add_argument("--suite", nargs="*", choices=sorted(KNOWN_SUITES),
-                        help="Filter to specific suites")
-    parser.add_argument("--mode", nargs="*", choices=sorted(KNOWN_MODES),
-                        help="Filter to specific modes")
-    parser.add_argument("--data-type", nargs="*", choices=sorted(KNOWN_DATA_TYPES),
-                        help="Filter to specific data types")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Verbose logging output")
+    parser.add_argument(
+        "-t", "--target-dir", help="Directory with target (new) CSV results"
+    )
+    parser.add_argument(
+        "-b", "--baseline-dir", help="Directory with baseline (reference) CSV results"
+    )
+    parser.add_argument(
+        "-o", "--output", required=True, help="Output file (.xlsx or .csv)"
+    )
+    parser.add_argument(
+        "-m", "--markdown", help="Markdown report filename (e.g. report.md)"
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=DEFAULT_PERF_THRESHOLD,
+        help=f"Performance change threshold (default: {DEFAULT_PERF_THRESHOLD})",
+    )
+    parser.add_argument(
+        "--suite",
+        nargs="*",
+        choices=sorted(KNOWN_SUITES),
+        help="Filter to specific suites",
+    )
+    parser.add_argument(
+        "--mode",
+        nargs="*",
+        choices=sorted(KNOWN_MODES),
+        help="Filter to specific modes",
+    )
+    parser.add_argument(
+        "--data-type",
+        nargs="*",
+        choices=sorted(KNOWN_DATA_TYPES),
+        help="Filter to specific data types",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Verbose logging output"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -919,7 +1148,9 @@ Examples:
     )
 
     if not args.target_dir and not args.baseline_dir:
-        parser.error("At least one of -t/--target-dir or -b/--baseline-dir is required.")
+        parser.error(
+            "At least one of -t/--target-dir or -b/--baseline-dir is required."
+        )
 
     out_base, out_ext = os.path.splitext(args.output)
     if out_ext not in (".xlsx", ".csv"):
@@ -970,14 +1201,19 @@ Examples:
         write_csv(summary, acc_merged, perf_merged, out_base)
 
     if args.markdown:
-        md_file = args.markdown if args.markdown.endswith(".md") else args.markdown + ".md"
+        md_file = (
+            args.markdown if args.markdown.endswith(".md") else args.markdown + ".md"
+        )
         write_markdown(summary, acc_merged, perf_merged, args.threshold, md_file)
 
     # ── Console report ──
     print_report(
-        len(target_acc), len(target_perf),
-        len(baseline_acc), len(baseline_perf),
-        acc_merged, perf_merged,
+        len(target_acc),
+        len(target_perf),
+        len(baseline_acc),
+        len(baseline_perf),
+        acc_merged,
+        perf_merged,
         args.output,
     )
 

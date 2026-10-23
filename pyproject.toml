@@ -18,7 +18,6 @@ target-version = "py310"
 line-length = 88
 
 [tool.ruff.lint]
-# NOTE: Synchoronize the ignores with .flake8
 ignore = [
     # these ignores are from flake8-bugbear; please fix!
     "B007", "B008", "B017",

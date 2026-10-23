@@ -28,8 +28,7 @@ import sys
 
 def git(repo, *args):
     """Run a git command in `repo` and return the CompletedProcess."""
-    return subprocess.run(["git", "-C", repo, *args],
-                          capture_output=True, text=True)
+    return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
 
 
 def slug_for(fix_result_path):
@@ -38,7 +37,7 @@ def slug_for(fix_result_path):
     `fix_result.json` -> "single"; `fix_result-<slug>.json` -> "<slug>".
     """
     name = os.path.basename(fix_result_path)
-    return name[len("fix_result"):].lstrip("-").removesuffix(".json") or "single"
+    return name[len("fix_result") :].lstrip("-").removesuffix(".json") or "single"
 
 
 def dest_name(branch, fix_result_path, target_repo=""):
@@ -83,8 +82,12 @@ def fix_branches(root_dir):
     found = []
     for root, dirs, files in os.walk(root_dir):
         if ".git" in dirs or ".git" in files:
-            r = git(root, "for-each-ref", "--format=%(refname:short)",
-                    "refs/heads/agent/fix-*")
+            r = git(
+                root,
+                "for-each-ref",
+                "--format=%(refname:short)",
+                "refs/heads/agent/fix-*",
+            )
             if r.returncode == 0:
                 found += [f"{root}:{b}" for b in r.stdout.split() if b]
             dirs[:] = [d for d in dirs if d != ".git"]
@@ -128,18 +131,32 @@ def export(agent_space, out, root_dir):
             repo = d.get("fix_repo_dir") or ""
             branch = d.get("branch") or ""
             base = d.get("base_sha") or ""
-            if (repo and branch and base and os.path.isdir(repo)
-                    and git(repo, "rev-parse", "--verify", branch).returncode == 0
-                    and git(repo, "rev-parse", "--verify", base).returncode == 0):
-                dest = os.path.join(out, "unverified",
-                                    dest_name(branch, fr, d.get("target_repo")))
+            if (
+                repo
+                and branch
+                and base
+                and os.path.isdir(repo)
+                and git(repo, "rev-parse", "--verify", branch).returncode == 0
+                and git(repo, "rev-parse", "--verify", base).returncode == 0
+            ):
+                dest = os.path.join(
+                    out, "unverified", dest_name(branch, fr, d.get("target_repo"))
+                )
                 os.makedirs(dest, exist_ok=True)
-                git(repo, "format-patch", f"--base={base}", f"{base}..{branch}",
-                    "-o", dest)
+                git(
+                    repo,
+                    "format-patch",
+                    f"--base={base}",
+                    f"{base}..{branch}",
+                    "-o",
+                    dest,
+                )
                 if any(f.endswith(".patch") for f in os.listdir(dest)):
                     salvaged += 1
-                    print(f"{fr}: verdict={verdict or 'MISSING'} -> salvaged "
-                          f"UNVERIFIED patch from {branch} ({base[:12]}..)")
+                    print(
+                        f"{fr}: verdict={verdict or 'MISSING'} -> salvaged "
+                        f"UNVERIFIED patch from {branch} ({base[:12]}..)"
+                    )
                     continue
             print(f"{fr}: verdict={verdict or 'MISSING'} -> no patch expected")
             continue
@@ -149,9 +166,16 @@ def export(agent_space, out, root_dir):
         branch = d.get("branch") or ""
         base = d.get("base_sha") or ""
         changed = d.get("changed_files") or []
-        missing = [k for k, v in
-                   (("fix_repo_dir", repo), ("branch", branch),
-                    ("base_sha", base), ("changed_files", changed)) if not v]
+        missing = [
+            k
+            for k, v in (
+                ("fix_repo_dir", repo),
+                ("branch", branch),
+                ("base_sha", base),
+                ("changed_files", changed),
+            )
+            if not v
+        ]
         if missing:
             errors.append(f"{fr}: PASSED but missing {', '.join(missing)}")
             continue
@@ -170,9 +194,11 @@ def export(agent_space, out, root_dir):
         # in each, so the second would overwrite the first by subject collision
         # and this function would still count both.
         if os.path.exists(dest):
-            errors.append(f"{fr}: patch directory {dest} is already another "
-                          f"unit's -- two fix_results name the same branch and "
-                          f"target_repo")
+            errors.append(
+                f"{fr}: patch directory {dest} is already another "
+                f"unit's -- two fix_results name the same branch and "
+                f"target_repo"
+            )
             continue
         os.makedirs(dest)
         git(repo, "format-patch", f"--base={base}", f"{base}..{branch}", "-o", dest)
@@ -180,8 +206,9 @@ def export(agent_space, out, root_dir):
             made += 1
             print(f"{fr}: exported {branch} ({base[:12]}..)")
         else:
-            errors.append(f"{fr}: PASSED but format-patch produced nothing "
-                          f"({base}..{branch})")
+            errors.append(
+                f"{fr}: PASSED but format-patch produced nothing ({base}..{branch})"
+            )
 
     return made, salvaged, errors
 
@@ -194,9 +221,12 @@ def main():
     if not sorted(glob.glob(os.path.join(agent_space, "fix_result*.json"))):
         branches = fix_branches(root_dir)
         if branches:
-            print("ERROR: fix branch(es) exist but no fix_result*.json was "
-                  "written -- the fix was committed then lost:\n  "
-                  + "\n  ".join(branches), file=sys.stderr)
+            print(
+                "ERROR: fix branch(es) exist but no fix_result*.json was "
+                "written -- the fix was committed then lost:\n  "
+                + "\n  ".join(branches),
+                file=sys.stderr,
+            )
             sys.exit(1)
         print("no fix_result*.json and no fix branch; nothing to export")
         sys.exit(0)
@@ -204,8 +234,9 @@ def main():
     made, salvaged, errors = export(agent_space, out, root_dir)
 
     if errors:
-        print("ERROR: patch export problems:\n  " + "\n  ".join(errors),
-              file=sys.stderr)
+        print(
+            "ERROR: patch export problems:\n  " + "\n  ".join(errors), file=sys.stderr
+        )
         sys.exit(1)
     # made==0 with fix_result(s) present is fine: those files record a
     # non-PASSED outcome (FAILED / NEEDS_HUMAN / PENDING_VERIFY) that the agent
@@ -214,9 +245,11 @@ def main():
     # before any file is read.
     print(f"exported {made} patch series")
     if salvaged:
-        print(f"WARNING: also salvaged {salvaged} UNVERIFIED patch series "
-              f"under unverified/ -- a fix was committed but never passed "
-              f"verification. Review before applying.")
+        print(
+            f"WARNING: also salvaged {salvaged} UNVERIFIED patch series "
+            f"under unverified/ -- a fix was committed but never passed "
+            f"verification. Review before applying."
+        )
 
 
 if __name__ == "__main__":

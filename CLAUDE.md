@@ -323,15 +323,26 @@ lintrunner init
 # Lint all changed files vs main
 lintrunner -m origin/main
 
-# Lint all files (skip clang-based linters for speed)
-lintrunner --skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files
+# Lint one language group the same way CI does
+# (groups: general, python, cpp, cmake, shell, config)
+LINT_GROUP=python LINT_SCOPE=incremental bash tools/linter/lintrunner.sh
 
 # Auto-apply suggested fixes
 lintrunner -a -m origin/main
 ```
 
-Active linters: FLAKE8, CLANGFORMAT, CLANGTIDY, MYPY, RUFF, PYFMT (usort+ruff-format),
-SHELLCHECK, CMAKE, NEWLINE, SPACES, TABS, plus custom grep-based checks.
+Linters by language (`.lintrunner.toml` is organized in the same sections):
+
+| Group | Formatter | Linters |
+|---|---|---|
+| general | - | NEWLINE, SPACES, TABS, EXEC, COPYRIGHT, LINTRUNNER_VERSION |
+| python | PYFMT (usort + ruff-format) | RUFF, TYPEIGNORE, NOQA, ROOT_LOGGING, TESTOWNERS, TEST_HAS_MAIN |
+| cpp | CLANGFORMAT | CLANGTIDY and grep checks (INCLUDE, C10_*, CALL_ONCE, RAWCUDA, ...) |
+| cmake | - | CMAKE (cmakelint) |
+| shell | SHFMT (`shfmt -i 4 -ci`) | SHELLCHECK |
+| config | - | SYNTAX (JSON/YAML/TOML/JS), GHA, NO_WORKFLOWS_ON_FORK |
+
+Workflows are additionally checked by actionlint and zizmor in `.github/workflows/_code_check.yml`.
 
 You can also use commands provided via `spin` for linting.
 Use `spin help` to list available commands.
@@ -488,8 +499,8 @@ REGISTER_XPU_DISPATCH(my_stub, &xpu::my_kernel);
 ### Python Code Style
 
 #### Formatting
-- Max line length: 120 (configured in ruff/flake8)
-- Formatter: ruff-format + usort (for test files)
+- Max line length: 88 (ruff-format, `pyproject.toml`)
+- Formatter: ruff-format + usort (all Python files)
 - 4-space indentation
 
 #### Imports

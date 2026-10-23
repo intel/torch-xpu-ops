@@ -16,17 +16,39 @@ from pathlib import Path
 
 from packaging import version
 
-from .config import BACKEND_FLAGS, TestTask, csv_lock
+from .config import BACKEND_FLAGS, csv_lock, TestTask
 from .log import log
 from .tasks import get_torch_version
 
 # Common leading columns shared by every result CSV.
-CSV_PREFIX = ["dev", "backend", "suite", "dtype", "mode", "name", "scenario", "batch_size", "elapsed"]
+CSV_PREFIX = [
+    "dev",
+    "backend",
+    "suite",
+    "dtype",
+    "mode",
+    "name",
+    "scenario",
+    "batch_size",
+    "elapsed",
+]
 
 
-def _prefix_row(device: str, task: TestTask, batch_size: str = "0", elapsed: float = 0.0) -> list[str]:
+def _prefix_row(
+    device: str, task: TestTask, batch_size: str = "0", elapsed: float = 0.0
+) -> list[str]:
     """Build the leading CSV cells common to every suite."""
-    return [device, task.backend, task.suite, task.dt, task.mode, task.model, task.scenario, batch_size, f"{elapsed:.3f}"]
+    return [
+        device,
+        task.backend,
+        task.suite,
+        task.dt,
+        task.mode,
+        task.model,
+        task.scenario,
+        batch_size,
+        f"{elapsed:.3f}",
+    ]
 
 
 def _append_row(log_csv: Path, header: list[str], row: list[str]) -> None:
@@ -56,15 +78,25 @@ class BenchmarkSuite(ABC):
 
     @abstractmethod
     def build_command(
-        self, task: TestTask, device: str, backend: str,
-        dataset_dir: str, output_csv: str | None,
+        self,
+        task: TestTask,
+        device: str,
+        backend: str,
+        dataset_dir: str,
+        output_csv: str | None,
     ) -> str:
         """Return the shell command that runs *task*."""
 
     @abstractmethod
     def collect_results(
-        self, log_csv: Path, log_file: Path, tmp_csv: str | None,
-        device: str, task: TestTask, kill_reason: str | None, elapsed: float,
+        self,
+        log_csv: Path,
+        log_file: Path,
+        tmp_csv: str | None,
+        device: str,
+        task: TestTask,
+        kill_reason: str | None,
+        elapsed: float,
     ) -> tuple[str, bool]:
         """Parse the run output, append one row to *log_csv*, and return
         ``(test_result, success)``."""
@@ -85,8 +117,10 @@ class InductorSuite(BenchmarkSuite):
             mode_flag = ""
 
         # amp_bf16/amp_fp16 → --amp --amp-dtype ...
-        dt_map = {"amp_bf16": ("amp", "--amp-dtype bfloat16"),
-                  "amp_fp16": ("amp", "--amp-dtype float16")}
+        dt_map = {
+            "amp_bf16": ("amp", "--amp-dtype bfloat16"),
+            "amp_fp16": ("amp", "--amp-dtype float16"),
+        }
         real_dt, dt_extra = dt_map.get(task.dt, (task.dt, ""))
 
         # Dynamic shapes are selected via the "dynamic" backend, not a separate flag.
@@ -122,20 +156,28 @@ class InductorSuite(BenchmarkSuite):
         if not last:
             return "None", False
         test_result = last.split()[-1]
-        success = test_result in ("pass", "pass_due_to_skip") or bool(re.fullmatch(r"[0-9.]+x", test_result))
+        success = test_result in ("pass", "pass_due_to_skip") or bool(
+            re.fullmatch(r"[0-9.]+x", test_result)
+        )
         return test_result, success
 
-    def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed):
+    def collect_results(
+        self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed
+    ):
         header, row = self._read_last_matching_row(tmp_csv, device)
         if task.scenario == "performance":
-            final_header, final_row = self._performance_row(header, row, device, task, elapsed)
+            final_header, final_row = self._performance_row(
+                header, row, device, task, elapsed
+            )
         elif row:
             # Benchmark CSV row: dev, name, batch_size, <result_cols...>
             # Reorder to the common prefix plus the result columns.
             final_header = CSV_PREFIX + header[3:]
             final_row = _prefix_row(device, task, row[2], elapsed) + row[3:]
         else:
-            final_header, final_row = self._fallback_row(device, task, kill_reason, elapsed)
+            final_header, final_row = self._fallback_row(
+                device, task, kill_reason, elapsed
+            )
         _append_row(log_csv, final_header, final_row)
         # Success is judged from the run log's final line, independent of the CSV.
         return self._check_status(log_file)
@@ -146,7 +188,11 @@ class InductorSuite(BenchmarkSuite):
         eager_latency (= abs_latency * speedup)."""
         perf_header = CSV_PREFIX + ["speedup", "abs_latency", "eager_latency"]
         if not row:
-            return perf_header, _prefix_row(device, task, elapsed=elapsed) + ["0", "0", "0"]
+            return perf_header, _prefix_row(device, task, elapsed=elapsed) + [
+                "0",
+                "0",
+                "0",
+            ]
 
         def _col(name):
             try:
@@ -159,8 +205,11 @@ class InductorSuite(BenchmarkSuite):
             eager = float(abs_latency) * float(speedup)
         except ValueError:
             eager = 0.0
-        return perf_header, _prefix_row(device, task, row[2], elapsed) + [speedup, abs_latency, f"{eager:.6f}"]
-
+        return perf_header, _prefix_row(device, task, row[2], elapsed) + [
+            speedup,
+            abs_latency,
+            f"{eager:.6f}",
+        ]
 
     @staticmethod
     def _read_last_matching_row(tmp_csv, device):
@@ -229,22 +278,29 @@ class PT2ESuite(BenchmarkSuite):
                 parts.append("--quantization pt2e")
         return " ".join(parts)
 
-    def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed):
+    def collect_results(
+        self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed
+    ):
         if task.scenario == "accuracy":
-            acc1, acc5 = ("failed", "failed") if kill_reason else self._parse_accuracy(log_file)
+            acc1, acc5 = (
+                ("failed", "failed") if kill_reason else self._parse_accuracy(log_file)
+            )
             header = CSV_PREFIX + ["top1", "top5"]
             row = _prefix_row(device, task, elapsed=elapsed) + [acc1, acc5]
             result = (f"acc1={acc1}", True) if acc1 != "failed" else ("failed", False)
         else:  # performance
             output_dir = getattr(task, self._OUTPUT_ATTR, None)
             try:
-                throughput = "failed" if kill_reason else self._parse_throughput(output_dir)
+                throughput = (
+                    "failed" if kill_reason else self._parse_throughput(output_dir)
+                )
             finally:
                 if output_dir:
                     shutil.rmtree(
                         output_dir,
                         onerror=lambda func, path, exc: log(
-                            f"Failed to remove {path}: {exc[1]}", level="WARN"),
+                            f"Failed to remove {path}: {exc[1]}", level="WARN"
+                        ),
                     )
             header = CSV_PREFIX + ["throughput", "quantization"]
             row = _prefix_row(device, task, elapsed=elapsed) + [throughput, task.quant]
@@ -278,7 +334,9 @@ class PT2ESuite(BenchmarkSuite):
         try:
             for root, _dirs, files in os.walk(output_dir):
                 for fname in files:
-                    content = (Path(root) / fname).read_text(encoding="utf-8", errors="ignore")
+                    content = (Path(root) / fname).read_text(
+                        encoding="utf-8", errors="ignore"
+                    )
                     for line in content.splitlines():
                         if "eval_throughput" in line:
                             return line.strip().split()[-1].rstrip(",")

@@ -17,7 +17,6 @@ from pathlib import Path
 from alignment_triage import AUTO_FILE_LIMIT
 from xpu_alignment_collect import CollectionError, validate_collection
 
-
 SCHEMA_VERSION = 1
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -80,7 +79,9 @@ def _one(root: Path, pattern: str, label: str, errors: list[str]) -> Path | None
     return matches[0]
 
 
-def _inside_file(root: Path, value: object, label: str, errors: list[str]) -> Path | None:
+def _inside_file(
+    root: Path, value: object, label: str, errors: list[str]
+) -> Path | None:
     if not isinstance(value, str) or not value:
         errors.append(f"{label}-path-invalid")
         return None
@@ -176,7 +177,9 @@ def _validate_prepare(
     collection_path: Path | None,
     collection: dict[str, object],
     inventory: dict[str, dict[str, object]],
-) -> tuple[Path | None, dict[str, dict[str, object]], dict[str, dict[str, object]], list[str]]:
+) -> tuple[
+    Path | None, dict[str, dict[str, object]], dict[str, dict[str, object]], list[str]
+]:
     errors: list[str] = []
     path = _one(root, "prepare.json", "prepare", errors)
     if path is None:
@@ -237,22 +240,37 @@ def _validate_prepare(
             if not isinstance(unit_id, str) or unit_id in executions:
                 errors.append(f"execution-invalid-id:{unit_id}")
                 continue
-            if unit_id not in decisions or decisions[unit_id].get("triage") != "validate":
+            if (
+                unit_id not in decisions
+                or decisions[unit_id].get("triage") != "validate"
+            ):
                 errors.append(f"execution-not-validated:{unit_id}")
-            script = _inside_file(root, entry.get("script"), f"script:{unit_id}", errors)
+            script = _inside_file(
+                root, entry.get("script"), f"script:{unit_id}", errors
+            )
             script_digest = entry.get("script_sha256")
-            if not isinstance(script_digest, str) or not SHA256_RE.fullmatch(script_digest):
+            if not isinstance(script_digest, str) or not SHA256_RE.fullmatch(
+                script_digest
+            ):
                 errors.append(f"execution-invalid-digest:{unit_id}")
             elif script is not None and _sha256(script) != script_digest:
                 errors.append(f"execution-digest-mismatch:{unit_id}")
             timeout = entry.get("timeout_seconds")
-            if not isinstance(timeout, int) or isinstance(timeout, bool) or not 1 <= timeout <= 120:
+            if (
+                not isinstance(timeout, int)
+                or isinstance(timeout, bool)
+                or not 1 <= timeout <= 120
+            ):
                 errors.append(f"execution-invalid-timeout:{unit_id}")
             for field in ("oracle", "target_path"):
                 if not str(entry.get(field, "")).strip():
                     errors.append(f"execution-missing-{field}:{unit_id}")
             executions[unit_id] = entry
-    validated = {unit_id for unit_id, item in decisions.items() if item.get("triage") == "validate"}
+    validated = {
+        unit_id
+        for unit_id, item in decisions.items()
+        if item.get("triage") == "validate"
+    }
     if set(executions) != validated:
         errors.append("execution-coverage-mismatch")
     return path, inventory, executions, errors
@@ -278,9 +296,13 @@ def _validate_runner(
         errors.append("runner-invalid-version")
     if runner.get("status") != "complete":
         errors.append(f"runner-not-complete:{runner.get('status', 'missing')}")
-    if collection_path is not None and runner.get("collection_sha256") != _sha256(collection_path):
+    if collection_path is not None and runner.get("collection_sha256") != _sha256(
+        collection_path
+    ):
         errors.append("runner-collection-digest-mismatch")
-    if prepare_path is not None and runner.get("prepare_sha256") != _sha256(prepare_path):
+    if prepare_path is not None and runner.get("prepare_sha256") != _sha256(
+        prepare_path
+    ):
         errors.append("runner-prepare-digest-mismatch")
     environment = _validate_environment(runner.get("environment"), errors)
     results: dict[str, dict[str, object]] = {}
@@ -293,7 +315,11 @@ def _validate_runner(
                 errors.append("runner-result-not-object")
                 continue
             unit_id = result.get("id")
-            if not isinstance(unit_id, str) or unit_id in results or unit_id not in executions:
+            if (
+                not isinstance(unit_id, str)
+                or unit_id in results
+                or unit_id not in executions
+            ):
                 errors.append(f"runner-invalid-unit:{unit_id}")
                 continue
             execution = executions[unit_id]
@@ -341,7 +367,9 @@ def _validate_scan(
     scan = _read_json(path, "scan", errors)
     if scan.get("schema_version") != SCHEMA_VERSION:
         errors.append("scan-invalid-version")
-    if collection_path is not None and scan.get("collection_sha256") != _sha256(collection_path):
+    if collection_path is not None and scan.get("collection_sha256") != _sha256(
+        collection_path
+    ):
         errors.append("scan-collection-digest-mismatch")
     if scan.get("collection_status") != collection.get("status"):
         errors.append("scan-collection-status-mismatch")
@@ -366,7 +394,11 @@ def _validate_scan(
                 errors.append("scan-candidate-not-object")
                 continue
             unit_id = candidate.get("id")
-            if not isinstance(unit_id, str) or unit_id in candidates or unit_id not in executions:
+            if (
+                not isinstance(unit_id, str)
+                or unit_id in candidates
+                or unit_id not in executions
+            ):
                 errors.append(f"scan-invalid-unit:{unit_id}")
                 continue
             result = candidate.get("local_result")
@@ -374,7 +406,10 @@ def _validate_scan(
                 errors.append(f"scan-invalid-result:{unit_id}")
             runner_result = results.get(unit_id, {})
             if result in ACTIONABLE_RESULTS | {"not-reproduced"}:
-                if runner_result.get("timed_out") or runner_result.get("error") is not None:
+                if (
+                    runner_result.get("timed_out")
+                    or runner_result.get("error") is not None
+                ):
                     errors.append(f"scan-result-contradicts-runner:{unit_id}")
                 if candidate.get("target_path_verified") is not True:
                     errors.append(f"scan-target-unverified:{unit_id}")
@@ -450,7 +485,9 @@ def _validate_review(
     review = _read_json(path, "review", errors)
     if review.get("schema_version") != SCHEMA_VERSION:
         errors.append("review-invalid-version")
-    if collection_path is not None and review.get("collection_sha256") != _sha256(collection_path):
+    if collection_path is not None and review.get("collection_sha256") != _sha256(
+        collection_path
+    ):
         errors.append("review-collection-digest-mismatch")
     if review.get("collection_status") != collection.get("status"):
         errors.append("review-collection-status-mismatch")
@@ -472,7 +509,11 @@ def _validate_review(
             errors.append("review-unit-not-object")
             continue
         unit_id, verdict = entry.get("id"), entry.get("verdict")
-        if not isinstance(unit_id, str) or unit_id in verdicts or unit_id not in actionable:
+        if (
+            not isinstance(unit_id, str)
+            or unit_id in verdicts
+            or unit_id not in actionable
+        ):
             errors.append(f"review-invalid-unit:{unit_id}")
             continue
         if verdict not in VERDICTS:
@@ -512,7 +553,9 @@ def _validate_review(
             errors.append(f"payload-empty-body:{unit_id}")
         if payload.get("labels") != ISSUE_LABELS:
             errors.append(f"payload-invalid-labels:{unit_id}")
-        payloads.append({"unit_id": unit_id, "title": title, "body": body, "labels": ISSUE_LABELS})
+        payloads.append(
+            {"unit_id": unit_id, "title": title, "body": body, "labels": ISSUE_LABELS}
+        )
     if sorted(verdicts) != actionable:
         errors.append("review-coverage-mismatch")
     return payloads, dict(sorted(verdicts.items())), errors
@@ -532,8 +575,8 @@ def build_decision(
 ) -> dict[str, object]:
     if mode not in {"schedule", "dry-run"}:
         raise ValueError(f"unsupported mode: {mode}")
-    collection_path, collection, inventory, progress, collection_errors = _validate_collection(
-        collection_root, scan_date
+    collection_path, collection, inventory, progress, collection_errors = (
+        _validate_collection(collection_root, scan_date)
     )
     prepare_path, _, executions, prepare_errors = _validate_prepare(
         prepare_root, scan_date, collection_path, collection, inventory
@@ -556,11 +599,7 @@ def build_decision(
         review_root, collection_path, collection, scan_path, actionable
     )
     validation_errors = (
-        collection_errors
-        + prepare_errors
-        + runner_errors
-        + scan_errors
-        + review_errors
+        collection_errors + prepare_errors + runner_errors + scan_errors + review_errors
     )
     if not producers_clean:
         validation_errors.append("producer-job-failed")

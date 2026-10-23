@@ -26,8 +26,9 @@ import bot_export_fix_patch as ex  # noqa: E402
 
 
 def git(repo, *args):
-    subprocess.run(["git", "-C", str(repo), *args], check=True,
-                   capture_output=True, text=True)
+    subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    )
 
 
 def make_repo(path, with_fix_branch=True, branch="agent/fix-issue-1"):
@@ -42,8 +43,9 @@ def make_repo(path, with_fix_branch=True, branch="agent/fix-issue-1"):
     (path / "f.txt").write_text("base\n")
     git(path, "add", ".")
     git(path, "commit", "-qm", "base")
-    base = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"],
-                          capture_output=True, text=True).stdout.strip()
+    base = subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
     if with_fix_branch:
         git(path, "checkout", "-qb", branch)
         (path / "f.txt").write_text("base\nfix\n")
@@ -52,8 +54,9 @@ def make_repo(path, with_fix_branch=True, branch="agent/fix-issue-1"):
     return base, branch
 
 
-def write_result(agent_space, repo, base, branch, verdict="PASSED",
-                 slug=None, **overrides):
+def write_result(
+    agent_space, repo, base, branch, verdict="PASSED", slug=None, **overrides
+):
     """Write a fix_result JSON; `slug=None` means the single-bug file name."""
     agent_space.mkdir(parents=True, exist_ok=True)
     name = "fix_result.json" if slug is None else f"fix_result-{slug}.json"
@@ -79,8 +82,11 @@ def space(tmp_path):
 def patches(out):
     found = []
     for root, _, files in os.walk(out):
-        found += [os.path.relpath(os.path.join(root, f), out)
-                  for f in files if f.endswith(".patch")]
+        found += [
+            os.path.relpath(os.path.join(root, f), out)
+            for f in files
+            if f.endswith(".patch")
+        ]
     return sorted(found)
 
 
@@ -142,8 +148,11 @@ def test_branch_in_a_dot_git_file_submodule_is_detected(tmp_path):
     sub = tmp_path / "outer" / "sub"
     sub.mkdir(parents=True)
     real_git = tmp_path / "realgit"
-    subprocess.run(["git", "init", "-q", f"--separate-git-dir={real_git}", str(sub)],
-                   check=True, capture_output=True)
+    subprocess.run(
+        ["git", "init", "-q", f"--separate-git-dir={real_git}", str(sub)],
+        check=True,
+        capture_output=True,
+    )
     git(sub, "config", "user.email", "t@t")
     git(sub, "config", "user.name", "t")
     (sub / "g.txt").write_text("base\n")
@@ -164,8 +173,8 @@ def test_branch_outside_agent_space_is_detected(tmp_path):
     AGENT_SPACE is a subdirectory of it and holds only the build tree, so a
     walk rooted at AGENT_SPACE could not see the fix at all.
     """
-    make_repo(tmp_path)                                  # fix at the root
-    (tmp_path / "agent_space_xpu").mkdir()               # scratch dir, no repo
+    make_repo(tmp_path)  # fix at the root
+    (tmp_path / "agent_space_xpu").mkdir()  # scratch dir, no repo
 
     assert ex.fix_branches(str(tmp_path / "agent_space_xpu")) == []
     assert any("agent/fix-issue-1" in b for b in ex.fix_branches(str(tmp_path)))
@@ -175,8 +184,7 @@ def test_pending_verify_is_salvaged_as_unverified(tmp_path, space):
     """A committed-but-unverified fix must survive, not vanish with the runner."""
     agent_space, out = space
     base, branch = make_repo(tmp_path / "repo")
-    write_result(agent_space, tmp_path / "repo", base, branch,
-                 verdict="PENDING_VERIFY")
+    write_result(agent_space, tmp_path / "repo", base, branch, verdict="PENDING_VERIFY")
 
     made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
 
@@ -188,8 +196,13 @@ def test_pending_verify_is_salvaged_as_unverified(tmp_path, space):
 def test_non_passed_with_unusable_contract_is_not_fatal(tmp_path, space):
     agent_space, out = space
     base, _ = make_repo(tmp_path / "repo")
-    write_result(agent_space, tmp_path / "repo", base, "agent/fix-issue-absent",
-                 verdict="CANNOT_VERIFY")
+    write_result(
+        agent_space,
+        tmp_path / "repo",
+        base,
+        "agent/fix-issue-absent",
+        verdict="CANNOT_VERIFY",
+    )
 
     made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
 
@@ -205,15 +218,17 @@ def test_upstream_filed_bug_is_named_after_the_upstream_issue(tmp_path, space):
     a PR would close.
     """
     agent_space, out = space
-    base, branch = make_repo(tmp_path / "repo",
-                             branch="agent/fix-pytorch-issue-197334-test_foo")
+    base, branch = make_repo(
+        tmp_path / "repo", branch="agent/fix-pytorch-issue-197334-test_foo"
+    )
     write_result(agent_space, tmp_path / "repo", base, branch, slug="test_foo")
 
     made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
 
     assert (made, salvaged, errors) == (1, 0, [])
     assert patches(out)[0].startswith(
-        "fix-pytorch-issue-197334-test_foo-torch-xpu-ops" + os.sep)
+        "fix-pytorch-issue-197334-test_foo-torch-xpu-ops" + os.sep
+    )
     # the lost-fix trap must still see the non-`fix-issue-` name
     assert any(branch in b for b in ex.fix_branches(str(tmp_path)))
 
@@ -229,7 +244,9 @@ def test_batch_exports_one_series_per_slug(tmp_path, space):
 
     assert (made, salvaged, errors) == (2, 0, [])
     assert [p.split(os.sep)[0] for p in patches(out)] == [
-        "fix-issue-1-1-aa-torch-xpu-ops", "fix-issue-1-2-bb-torch-xpu-ops"]
+        "fix-issue-1-1-aa-torch-xpu-ops",
+        "fix-issue-1-2-bb-torch-xpu-ops",
+    ]
 
 
 def test_two_repo_fix_keeps_both_halves(tmp_path, space):
@@ -245,14 +262,22 @@ def test_two_repo_fix_keeps_both_halves(tmp_path, space):
     base_x, _ = make_repo(tmp_path / "xpuops", branch=branch)
     base_p, _ = make_repo(tmp_path / "pytorch", branch=branch)
     write_result(agent_space, tmp_path / "xpuops", base_x, branch, slug="gs")
-    write_result(agent_space, tmp_path / "pytorch", base_p, branch, slug="gs-pytorch",
-                 target_repo="pytorch")
+    write_result(
+        agent_space,
+        tmp_path / "pytorch",
+        base_p,
+        branch,
+        slug="gs-pytorch",
+        target_repo="pytorch",
+    )
 
     made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
 
     assert (made, salvaged, errors) == (2, 0, [])
     assert [p.split(os.sep)[0] for p in patches(out)] == [
-        "fix-pytorch-issue-197521-pytorch", "fix-pytorch-issue-197521-torch-xpu-ops"]
+        "fix-pytorch-issue-197521-pytorch",
+        "fix-pytorch-issue-197521-torch-xpu-ops",
+    ]
 
 
 def test_two_units_claiming_one_directory_is_an_error(tmp_path, space):

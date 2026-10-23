@@ -11,8 +11,8 @@ if [ -z "$PYTORCH_ROOT_DIR" ]; then
     echo "Please set it to the root of your PyTorch repository before running this script."
     exit 1
 fi
-XML_OUTPUT_DIR="${XML_OUTPUT_DIR:-./test-reports}"        # where JUnit XML files go
-XML_PREFIX="${XML_PREFIX:-op_p0_with_}"                   # prefix for XML filenames
+XML_OUTPUT_DIR="${XML_OUTPUT_DIR:-./test-reports}" # where JUnit XML files go
+XML_PREFIX="${XML_PREFIX:-op_p0_with_}"            # prefix for XML filenames
 mkdir -p "$XML_OUTPUT_DIR"
 
 # Known failures tracked by issues, plus the current AOTInductor package failures.

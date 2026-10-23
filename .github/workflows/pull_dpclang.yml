@@ -10,13 +10,17 @@ on:
       - release/*
     paths:
       - .github/workflows/pull_dpclang.yml
-      - ./.github/workflows/_linux_build.yml
-      - ./.github/workflows/_linux_ut.yml
+      - .github/workflows/_linux_build.yml
+      - .github/workflows/_linux_ut.yml
   schedule:
     # 9:00 AM UTC every Sunday
     - cron: '0 9 * * 0'
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -36,41 +40,46 @@ jobs:
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
     steps:
       - name: Checkout level-zero
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: oneapi-src/level-zero
           ref: v1.33.1
           path: level-zero
+          persist-credentials: false
       - name: Checkout intel-llvm
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intel/llvm
           ref: v7.1.0
           path: intel-llvm
+          persist-credentials: false
       - name: Checkout pti-gpu
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intel/pti-gpu
           ref: pti-1.1.0
           path: pti-gpu
+          persist-credentials: false
       - name: Install prerequisites
         run: |
           rm -rf /tmp/xpu-tool/myvenv
-          rm -rf $INSTALL_PREFIX
+          rm -rf "$INSTALL_PREFIX"
           /opt/python/cp314-cp314/bin/python3 -m venv /tmp/xpu-tool/myvenv
           pip install cmake ninja
           dnf install -y libtool libzstd-devel
-          echo "CMAKE_PREFIX_PATH=$INSTALL_PREFIX" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$INSTALL_PREFIX/lib/pkgconfig" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$INSTALL_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PATH=$INSTALL_PREFIX:$PATH" >> $GITHUB_ENV
-          echo "$INSTALL_PREFIX/bin" >> $GITHUB_PATH
+          {
+            echo "CMAKE_PREFIX_PATH=$INSTALL_PREFIX"
+            echo "PKG_CONFIG_PATH=$INSTALL_PREFIX/lib/pkgconfig"
+            echo "LD_LIBRARY_PATH=$INSTALL_PREFIX/lib:$LD_LIBRARY_PATH"
+            echo "PATH=$INSTALL_PREFIX:$PATH"
+          } >> "$GITHUB_ENV"
+          echo "$INSTALL_PREFIX/bin" >> "$GITHUB_PATH"
       - name: Build level-zero
         run: |
           source /opt/rh/gcc-toolset-13/enable
           cmake -B _build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
             -DCMAKE_INSTALL_LIBDIR=lib
           cmake --build _build
           cmake --install _build
@@ -88,7 +97,7 @@ jobs:
           source /opt/rh/gcc-toolset-13/enable
           cmake -B _build -S llvm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
             -DCMAKE_INSTALL_LIBDIR=lib \
             -DBUILD_SHARED_LIBS=ON \
             -DLLVM_BUILD_TOOLS=ON \
@@ -106,12 +115,12 @@ jobs:
             -DSYCL_ENABLE_MAJOR_RELEASE_PREVIEW_LIB=OFF \
             -DSYCL_ENABLE_WERROR=OFF \
             -DSYCL_ENABLE_XPTI_TRACING=ON \
-            -DLLVM_EXTERNAL_LIBDEVICE_SOURCE_DIR=$(pwd)/libdevice \
-            -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR=$(pwd)/llvm-spirv \
-            -DLLVM_EXTERNAL_SYCL_JIT_SOURCE_DIR=$(pwd)/sycl-jit \
-            -DLLVM_EXTERNAL_SYCL_SOURCE_DIR=$(pwd)/sycl \
-            -DLLVM_EXTERNAL_XPTI_SOURCE_DIR=$(pwd)/xpti \
-            -DLLVM_EXTERNAL_XPTIFW_SOURCE_DIR=$(pwd)/xptifw \
+            -DLLVM_EXTERNAL_LIBDEVICE_SOURCE_DIR="$(pwd)/libdevice" \
+            -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR="$(pwd)/llvm-spirv" \
+            -DLLVM_EXTERNAL_SYCL_JIT_SOURCE_DIR="$(pwd)/sycl-jit" \
+            -DLLVM_EXTERNAL_SYCL_SOURCE_DIR="$(pwd)/sycl" \
+            -DLLVM_EXTERNAL_XPTI_SOURCE_DIR="$(pwd)/xpti" \
+            -DLLVM_EXTERNAL_XPTIFW_SOURCE_DIR="$(pwd)/xptifw" \
             -DSYCL_INCLUDE_TESTS=OFF \
             -DXPTI_ENABLE_WERROR=OFF
           cmake --build _build
@@ -125,7 +134,7 @@ jobs:
           source /opt/rh/gcc-toolset-13/enable
           cmake -B _build -S sdk -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
             -DCMAKE_INSTALL_LIBDIR=lib \
             -DPTI_BUILD_SAMPLES=OFF \
             -DPTI_BUILD_TESTING=OFF
@@ -135,17 +144,24 @@ jobs:
       - name: Compress output
         run: |
           # Compressing manually to preserve access permissions for executables
-          tar czvf install-dpclang.tgz -C $INSTALL_PREFIX .
+          tar czvf install-dpclang.tgz -C "$INSTALL_PREFIX" .
       - name: Upload dpclang
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dpclang
           path: install-dpclang.tgz
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          # Root-owned build trees break actions/checkout for later non-container jobs on this runner.
+          rm -rf level-zero intel-llvm pti-gpu "${INSTALL_PREFIX}"
+          chmod -R a+rwX .
 
   build-wheels:
     needs: build-prereq
     if: ${{ github.repository_owner == 'intel' }}
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     uses: ./.github/workflows/_linux_build.yml
     with:
       category: dpclang
@@ -154,7 +170,10 @@ jobs:
 
   linux-ut:
     needs: build-wheels
-    secrets: inherit
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     permissions:
       contents: read
       issues: write
@@ -168,5 +187,5 @@ jobs:
       category: dpclang
       runner: bmg-test
       pytorch: ${{ github.base_ref || github.ref_name }}
-      torch_xpu_ops: ${{ 'main' }}
+      torch_xpu_ops: main
       ut: ${{ matrix.ut_name }}
