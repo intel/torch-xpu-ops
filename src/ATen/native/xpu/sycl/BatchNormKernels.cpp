@@ -3415,57 +3415,83 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
 
         if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
           auto weight_ptr = weight.const_data_ptr<accscalar_t>();
-#define RUN_BWD_CL_1D(INDEX_T)                                       \
-  batch_norm_backward_elemt_channels_last_1d<                        \
-      scalar_t,                                                      \
-      accscalar_t,                                                   \
-      accscalar_t,                                                   \
-      false,                                                         \
-      INDEX_T>(                                                      \
-      grad_output_ptr,                                               \
-      input_ptr,                                                     \
-      mean_ptr,                                                      \
-      inv_std_ptr,                                                   \
-      weight_ptr,                                                    \
-      sum_dy_ptr,                                                    \
-      sum_dy_xmu_ptr,                                                \
-      grad_input_ptr,                                                \
-      static_cast<accscalar_t>(norm_fct),                           \
-      reduction_size,                                                \
-      stride)
           if (can_use_32bit_index) {
-            RUN_BWD_CL_1D(int32_t);
+            batch_norm_backward_elemt_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                false,
+                int32_t>(
+                grad_output_ptr,
+                input_ptr,
+                mean_ptr,
+                inv_std_ptr,
+                weight_ptr,
+                sum_dy_ptr,
+                sum_dy_xmu_ptr,
+                grad_input_ptr,
+                static_cast<accscalar_t>(norm_fct),
+                reduction_size,
+                stride);
           } else {
-            RUN_BWD_CL_1D(int64_t);
+            batch_norm_backward_elemt_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                false,
+                int64_t>(
+                grad_output_ptr,
+                input_ptr,
+                mean_ptr,
+                inv_std_ptr,
+                weight_ptr,
+                sum_dy_ptr,
+                sum_dy_xmu_ptr,
+                grad_input_ptr,
+                static_cast<accscalar_t>(norm_fct),
+                reduction_size,
+                stride);
           }
-#undef RUN_BWD_CL_1D
         } else {
           auto weight_ptr =
               weight.defined() ? weight.const_data_ptr<scalar_t>() : nullptr;
-#define RUN_BWD_CL_1D(INDEX_T)                                       \
-  batch_norm_backward_elemt_channels_last_1d<                        \
-      scalar_t,                                                      \
-      accscalar_t,                                                   \
-      scalar_t,                                                      \
-      false,                                                         \
-      INDEX_T>(                                                      \
-      grad_output_ptr,                                               \
-      input_ptr,                                                     \
-      mean_ptr,                                                      \
-      inv_std_ptr,                                                   \
-      weight_ptr,                                                    \
-      sum_dy_ptr,                                                    \
-      sum_dy_xmu_ptr,                                                \
-      grad_input_ptr,                                                \
-      static_cast<accscalar_t>(norm_fct),                           \
-      reduction_size,                                                \
-      stride)
           if (can_use_32bit_index) {
-            RUN_BWD_CL_1D(int32_t);
+            batch_norm_backward_elemt_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                false,
+                int32_t>(
+                grad_output_ptr,
+                input_ptr,
+                mean_ptr,
+                inv_std_ptr,
+                weight_ptr,
+                sum_dy_ptr,
+                sum_dy_xmu_ptr,
+                grad_input_ptr,
+                static_cast<accscalar_t>(norm_fct),
+                reduction_size,
+                stride);
           } else {
-            RUN_BWD_CL_1D(int64_t);
+            batch_norm_backward_elemt_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                false,
+                int64_t>(
+                grad_output_ptr,
+                input_ptr,
+                mean_ptr,
+                inv_std_ptr,
+                weight_ptr,
+                sum_dy_ptr,
+                sum_dy_xmu_ptr,
+                grad_input_ptr,
+                static_cast<accscalar_t>(norm_fct),
+                reduction_size,
+                stride);
           }
-#undef RUN_BWD_CL_1D
         }
       });
   return grad_input;
@@ -3505,32 +3531,47 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
           auto input_ptr = input.const_data_ptr<scalar_t>();
           auto grad_input_ptr = grad_input.mutable_data_ptr<scalar_t>();
           auto weight_ptr = weight.const_data_ptr<accscalar_t>();
-#define RUN_BWD_CL_1D(INDEX_T)                                       \
-  batch_norm_backward_elemt_channels_last_1d<                        \
-      scalar_t,                                                      \
-      accscalar_t,                                                   \
-      accscalar_t,                                                   \
-      true,                                                          \
-      INDEX_T>(                                                      \
-      grad_output_ptr,                                               \
-      input_ptr,                                                     \
-      mean.const_data_ptr<accscalar_t>(),                           \
-      inv_std.const_data_ptr<accscalar_t>(),                        \
-      weight_ptr,                                                    \
-      sum_dy.const_data_ptr<accscalar_t>(),                         \
-      sum_dy_xmu.const_data_ptr<accscalar_t>(),                     \
-      grad_input_ptr,                                                \
-      accscalar_t(0),                                                \
-      reduction_size,                                                \
-      stride,                                                        \
-      count.const_data_ptr<int>(),                                  \
-      count.numel())
           if (can_use_32bit_index) {
-            RUN_BWD_CL_1D(int32_t);
+            batch_norm_backward_elemt_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                true,
+                int32_t>(
+                grad_output_ptr,
+                input_ptr,
+                mean.const_data_ptr<accscalar_t>(),
+                inv_std.const_data_ptr<accscalar_t>(),
+                weight_ptr,
+                sum_dy.const_data_ptr<accscalar_t>(),
+                sum_dy_xmu.const_data_ptr<accscalar_t>(),
+                grad_input_ptr,
+                accscalar_t(0),
+                reduction_size,
+                stride,
+                count.const_data_ptr<int>(),
+                count.numel());
           } else {
-            RUN_BWD_CL_1D(int64_t);
+            batch_norm_backward_elemt_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                true,
+                int64_t>(
+                grad_output_ptr,
+                input_ptr,
+                mean.const_data_ptr<accscalar_t>(),
+                inv_std.const_data_ptr<accscalar_t>(),
+                weight_ptr,
+                sum_dy.const_data_ptr<accscalar_t>(),
+                sum_dy_xmu.const_data_ptr<accscalar_t>(),
+                grad_input_ptr,
+                accscalar_t(0),
+                reduction_size,
+                stride,
+                count.const_data_ptr<int>(),
+                count.numel());
           }
-#undef RUN_BWD_CL_1D
         });
   } else {
     if (weight.defined()) {
@@ -3553,32 +3594,47 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
           auto grad_input_ptr = grad_input.mutable_data_ptr<scalar_t>();
           auto weight_ptr =
               weight.defined() ? weight.const_data_ptr<scalar_t>() : nullptr;
-#define RUN_BWD_CL_1D(INDEX_T)                                       \
-  batch_norm_backward_elemt_channels_last_1d<                        \
-      scalar_t,                                                      \
-      accscalar_t,                                                   \
-      scalar_t,                                                      \
-      true,                                                          \
-      INDEX_T>(                                                      \
-      grad_output_ptr,                                               \
-      input_ptr,                                                     \
-      mean.const_data_ptr<accscalar_t>(),                           \
-      inv_std.const_data_ptr<accscalar_t>(),                        \
-      weight_ptr,                                                    \
-      sum_dy.const_data_ptr<accscalar_t>(),                         \
-      sum_dy_xmu.const_data_ptr<accscalar_t>(),                     \
-      grad_input_ptr,                                                \
-      accscalar_t(0),                                                \
-      reduction_size,                                                \
-      stride,                                                        \
-      count.const_data_ptr<int>(),                                  \
-      count.numel())
           if (can_use_32bit_index) {
-            RUN_BWD_CL_1D(int32_t);
+            batch_norm_backward_elemt_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                true,
+                int32_t>(
+                grad_output_ptr,
+                input_ptr,
+                mean.const_data_ptr<accscalar_t>(),
+                inv_std.const_data_ptr<accscalar_t>(),
+                weight_ptr,
+                sum_dy.const_data_ptr<accscalar_t>(),
+                sum_dy_xmu.const_data_ptr<accscalar_t>(),
+                grad_input_ptr,
+                accscalar_t(0),
+                reduction_size,
+                stride,
+                count.const_data_ptr<int>(),
+                count.numel());
           } else {
-            RUN_BWD_CL_1D(int64_t);
+            batch_norm_backward_elemt_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                true,
+                int64_t>(
+                grad_output_ptr,
+                input_ptr,
+                mean.const_data_ptr<accscalar_t>(),
+                inv_std.const_data_ptr<accscalar_t>(),
+                weight_ptr,
+                sum_dy.const_data_ptr<accscalar_t>(),
+                sum_dy_xmu.const_data_ptr<accscalar_t>(),
+                grad_input_ptr,
+                accscalar_t(0),
+                reduction_size,
+                stride,
+                count.const_data_ptr<int>(),
+                count.numel());
           }
-#undef RUN_BWD_CL_1D
         });
   }
 
