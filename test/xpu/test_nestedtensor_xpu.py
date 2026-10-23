@@ -94,9 +94,6 @@ TestNestedTensorSubclass.test_sdpa_with_packed_in_proj = skipIfXpu(
 TestNestedTensorSubclass.test_sdpa_flop_counter = skipIfXpu(
     msg="XPU does not support NestedTensor SDPA flop-counter coverage in this test."
 )(TestNestedTensorSubclass.test_sdpa_flop_counter)
-TestNestedTensorSubclass.test_dummy_mha_with_nt = skipIfXpu(
-    msg="XPU does not support NestedTensor for SDPA operations."
-)(TestNestedTensorSubclass.test_dummy_mha_with_nt)
 
 
 # ======================================================================
