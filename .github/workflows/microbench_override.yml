@@ -1,6 +1,6 @@
 name: Microbench Override
 
-# perf_regression_accepted (plan 8.5):
+# perf_regression_accepted:
 #   labeled      a maintainer accepts the regression of the current head:
 #                record the approved SHA in a PR comment and rerun only the
 #                microbench-check job, which then reads the label and passes.

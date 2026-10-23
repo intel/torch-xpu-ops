@@ -45,6 +45,10 @@ on:
         type: string
         default: ''
         description: 'If set, reuse wheels cached under this key and skip the build (microbench base wheel).'
+      torch_only:
+        type: boolean
+        default: false
+        description: 'Build only the torch wheel (microbench base / P'' wheels): torchvision, torchaudio and Triton come from the wheel set it is compared with, whose PyTorch commit (and so pins) is the same.'
 
 permissions: read-all
 
@@ -200,7 +204,7 @@ jobs:
             exit 1
           fi
       - name: Build Torchvision and Torchaudio
-        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' && !inputs.torch_only }}
         run: |
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
@@ -226,7 +230,7 @@ jobs:
           pip install dist/*.whl
           cp dist/*.whl ${{ github.workspace }}
       - name: Build Triton
-        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' && !inputs.torch_only }}
         run: |
           cd ./pytorch
           rm -rf triton_xpu-*.whl
@@ -265,7 +269,7 @@ jobs:
             cp triton_xpu-*.whl ${{ github.workspace }}
           fi
       - name: Torch Config
-        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.wheel-cache.outputs.cache-hit != 'true' && !inputs.torch_only }}
         run: |
           printenv
           python -c "import torch; print(torch.__config__.show())"
