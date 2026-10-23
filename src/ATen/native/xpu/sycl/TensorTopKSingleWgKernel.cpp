@@ -118,7 +118,7 @@ C10_NOINLINE void count_radix_using_mask(
       RadixT val = TopKTypeConfig<scalar_t>::convert(src[v]);
       if ((val & desiredMask) == desired) {
         RadixT digit =
-            Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
+            Bitfield<RadixT, SBTOPK_RADIX_BITS>::getBitfield(val, digitPos);
         counts[digit]++;
       }
     }
@@ -128,7 +128,7 @@ C10_NOINLINE void count_radix_using_mask(
     RadixT val = TopKTypeConfig<scalar_t>::convert(data[idx]);
     if ((val & desiredMask) == desired) {
       RadixT digit =
-          Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
+          Bitfield<RadixT, SBTOPK_RADIX_BITS>::getBitfield(val, digitPos);
       counts[digit]++;
     }
   }
@@ -318,20 +318,20 @@ C10_NOINLINE typename TopKTypeConfig<scalar_t>::RadixType radix_select(
 
         // found_unique: return from radixSelect
         if (count == 1 && kToFind == 1) {
-          desired = Bitfield<RadixT>::setBitfield(
-              desired, i, digitPos, SBTOPK_RADIX_BITS);
-          desiredMask = Bitfield<RadixT>::setBitfield(
-              desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+          desired = Bitfield<RadixT, SBTOPK_RADIX_BITS>::setBitfield(
+              desired, i, digitPos);
+          desiredMask = Bitfield<RadixT, SBTOPK_RADIX_BITS>::setBitfield(
+              desiredMask, SBTOPK_RADIX_MASK, digitPos);
           return find_pattern(
               item, smem, data, sliceSize, desired, desiredMask);
         }
 
         // found_non_unique: break inner loop, continue outer
         if (count >= kToFind) {
-          desired = Bitfield<RadixT>::setBitfield(
-              desired, i, digitPos, SBTOPK_RADIX_BITS);
-          desiredMask = Bitfield<RadixT>::setBitfield(
-              desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+          desired = Bitfield<RadixT, SBTOPK_RADIX_BITS>::setBitfield(
+              desired, i, digitPos);
+          desiredMask = Bitfield<RadixT, SBTOPK_RADIX_BITS>::setBitfield(
+              desiredMask, SBTOPK_RADIX_MASK, digitPos);
           break;
         }
 
@@ -343,19 +343,19 @@ C10_NOINLINE typename TopKTypeConfig<scalar_t>::RadixType radix_select(
         IndexT count = counts[i];
 
         if (count == 1 && kToFind == 1) {
-          desired = Bitfield<RadixT>::setBitfield(
-              desired, i, digitPos, SBTOPK_RADIX_BITS);
-          desiredMask = Bitfield<RadixT>::setBitfield(
-              desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+          desired = Bitfield<RadixT, SBTOPK_RADIX_BITS>::setBitfield(
+              desired, i, digitPos);
+          desiredMask = Bitfield<RadixT, SBTOPK_RADIX_BITS>::setBitfield(
+              desiredMask, SBTOPK_RADIX_MASK, digitPos);
           return find_pattern(
               item, smem, data, sliceSize, desired, desiredMask);
         }
 
         if (count >= kToFind) {
-          desired = Bitfield<RadixT>::setBitfield(
-              desired, i, digitPos, SBTOPK_RADIX_BITS);
-          desiredMask = Bitfield<RadixT>::setBitfield(
-              desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
+          desired = Bitfield<RadixT, SBTOPK_RADIX_BITS>::setBitfield(
+              desired, i, digitPos);
+          desiredMask = Bitfield<RadixT, SBTOPK_RADIX_BITS>::setBitfield(
+              desiredMask, SBTOPK_RADIX_MASK, digitPos);
           break;
         }
 
@@ -386,9 +386,9 @@ template <
     int ELEMS_PER_THREAD,
     int SIMD,
     typename IndexT>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((intelex::grf_size<128>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void sbtopk_gather_kernel(
     const scalar_t* inputData,
     scalar_t* topKData,

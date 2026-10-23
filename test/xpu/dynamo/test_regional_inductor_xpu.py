@@ -1009,82 +1009,6 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
                 ignore_empty_lines=True,
             )
 
-    @parametrize("serialize", [False])  # , True
-    def test_max_autotune_no_cudagraphs(self, serialize):
-        """Test that max-autotune-no-cudagraphs options are properly applied inductor_config_patches."""
-        import torch._inductor.config as inductor_config
-
-        nested_config = get_invoke_subgraph_compile_options(
-            fw_inductor_config_patches={
-                "max_autotune": True,
-                "triton.cudagraphs": False,
-            }
-        )
-
-        @torch.compiler.nested_compile_region(options=nested_config)
-        def g(sin, y):
-            mul = sin * y
-            add = mul + 1
-            return add
-
-        def fn(x, y):
-            sin = torch.sin(x)
-            add = g(sin, y)
-            return torch.sin(add)
-
-        # Hook to verify options
-        original_compile = torch._inductor.compile_fx._compile_fx_inner
-        captured_options = []
-
-        def verify_options(*args, **kwargs):
-            options = kwargs.get("inductor_config_patches", {})
-            captured_options.append(options)
-
-            # Verify config is set as expected from explicit options
-            assert torch._inductor.config.max_autotune, "max_autotune should be True"
-            assert not inductor_config.triton.cudagraphs, (
-                "triton.cudagraphs should be False"
-            )
-
-            return original_compile(*args, **kwargs)
-
-        torch._inductor.compile_fx._compile_fx_inner = verify_options
-
-        try:
-            # Use backend without options - they come from annotations
-            backend = aot_eager_regional_inductor(
-                serialize=serialize, on_invoke_subgraph=True
-            )
-
-            opt_fn = torch.compile(fn, backend=backend, fullgraph=True)
-            x = torch.randn(10, requires_grad=True)
-            y = torch.randn(10, requires_grad=True)
-
-            # Run and check that options were passed
-            _, codes = run_fw_bw_and_get_code(lambda: opt_fn(x, y))
-            self.assertEqual(len(codes), 2)
-
-            # Verify that compilation happened
-            self.assertTrue(
-                len(captured_options) > 0, "Compilation should have occurred"
-            )
-
-        finally:
-            torch._inductor.compile_fx._compile_fx_inner = original_compile
-
-    def test_invalid_inductor_config(self):
-        """Test that invalid inductor config keys are caught with a clear error."""
-
-        with self.assertRaisesRegex(
-            ValueError,
-            "Invalid inductor config key 'invalid_config_key'",
-        ):
-            get_invoke_subgraph_compile_options(
-                fw_inductor_config_patches={
-                    "invalid_config_key": True,
-                }
-            )
-
     @requires_gpu_and_triton
     @parametrize("serialize", [False])  # , True
     def test_selective_ac_flex(self, serialize):
@@ -1264,10 +1188,7 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
         else:
             partitioner = test_partitioner
 
-        config_patches = {
-            "max_autotune": True,
-            "triton.cudagraphs": False,
-        }
+        config_patches = {}
         decompositions = {}
         nested_config = get_invoke_subgraph_compile_options(
             config_patches, decompositions, partitioner

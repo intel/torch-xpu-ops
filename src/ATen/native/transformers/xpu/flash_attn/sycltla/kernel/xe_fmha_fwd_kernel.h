@@ -190,36 +190,17 @@ class XeFMHAFwdKernel {
     }
   }
 
-  // Find the length of the longest non masked sequence within that subgroup
+  // Find the length of the longest non masked sequence within that subgroup.
+  // Under the bottom-right causal mask the last row of the tile attends to
+  // columns up to last_seq_coord + (seq_len_kv - seq_len_qo).
   CUTLASS_DEVICE
   int calculate_longest_non_masked_length(
       const int& seq_len_kv,
       const int& seq_len_qo,
-      const int& last_seq_coord,
-      const int& first_non_masked_sequence) {
-    int longest_non_masked_length = 0;
-
-    if (seq_len_kv > seq_len_qo) {
-      // Find out how many elements have to be calculated in the first sequence
-      int elements_in_first_line = seq_len_kv - (seq_len_qo - 1);
-      longest_non_masked_length = elements_in_first_line +
-          last_seq_coord; // the number of elements increased with the sequence
-                          // row number.
-    }
-    if (seq_len_qo > seq_len_kv) {
-      longest_non_masked_length = cute::min(
-          seq_len_kv,
-          cute::max(0, last_seq_coord - first_non_masked_sequence + 1));
-    }
-    if (seq_len_qo == seq_len_kv) {
-      longest_non_masked_length = cute::min(
-          seq_len_kv,
-          cute::max(0, last_seq_coord - first_non_masked_sequence + 1));
-    }
-
-    longest_non_masked_length =
-        cute::min(seq_len_kv, longest_non_masked_length);
-    return longest_non_masked_length;
+      const int& last_seq_coord) {
+    const int diagonal_offset = seq_len_kv - seq_len_qo;
+    return cute::min(
+        seq_len_kv, cute::max(0, last_seq_coord + diagonal_offset + 1));
   }
 
   CUTLASS_DEVICE
@@ -275,24 +256,18 @@ class XeFMHAFwdKernel {
 
       int seq_coord =
           cute::min(seq_len_qo, (blk_q * get<0>(TileShapeQK{}) + q_offset_sg));
-      int first_non_masked_sequence = seq_len_qo - seq_len_kv;
       int last_seq_coord = seq_coord + q_sg_tile - 1;
-
-      // Optimization - Skip computations as this current block will not affect
-      // the output
-      if (CollectiveMainloop::CausalMask &&
-          first_non_masked_sequence > last_seq_coord) {
-        continue;
-      }
 
       const int seq_len = CollectiveMainloop::CausalMask
           ? calculate_longest_non_masked_length(
-                seq_len_kv,
-                seq_len_qo,
-                last_seq_coord,
-                first_non_masked_sequence)
+                seq_len_kv, seq_len_qo, last_seq_coord)
           : seq_len_kv;
       const int k_blocks = cute::ceil_div(seq_len, get<1>(TileShapeQK{}));
+
+      // Optimization - Skip the main loop when the causal mask rejects every
+      // column of this tile. The epilogue still runs, so that O and LSE are
+      // written for these rows instead of being left uninitialized.
+      const bool fully_masked = CollectiveMainloop::CausalMask && seq_len == 0;
 
       int offset_q = 0, offset_k = 0, offset_v = 0, offset_o = 0;
       if constexpr (is_var_len) {
@@ -352,29 +327,34 @@ class XeFMHAFwdKernel {
       // Main loop
       int l_coord = is_var_len ? 0 : idx_b;
       CollectiveMainloop mainloop(params.mainloop, shared_storage.mainloop);
-      if (mainloop.params.p_ptr)
-        mainloop.params.p_ptr +=
-            (l_coord * s.num_heads_q + head_q) * seq_len_qo * seq_len_kv;
-      mainloop(
-          Q(_, _, head_q, l_coord),
-          K(_, _, head, l_coord),
-          V(_, _, head, l_coord),
-          tArA,
-          tA_max,
-          tA_sum,
-          blk_qv,
-          0,
-          k_blocks,
-          k_blocks,
-          thr_id,
-          seq_len,
-          seq_len_qo,
-          seq_len_kv,
-          idx_b,
-          tile_row_idx,
-          rows_of_maxima,
-          is_dropout,
-          dropout);
+      if (fully_masked) {
+        mainloop.init_fully_masked_tile(
+            tArA, tA_max, tA_sum, thr_id, rows_of_maxima, tile_row_idx);
+      } else {
+        if (mainloop.params.p_ptr)
+          mainloop.params.p_ptr +=
+              (l_coord * s.num_heads_q + head_q) * seq_len_qo * seq_len_kv;
+        mainloop(
+            Q(_, _, head_q, l_coord),
+            K(_, _, head, l_coord),
+            V(_, _, head, l_coord),
+            tArA,
+            tA_max,
+            tA_sum,
+            blk_qv,
+            0,
+            k_blocks,
+            k_blocks,
+            thr_id,
+            seq_len,
+            seq_len_qo,
+            seq_len_kv,
+            idx_b,
+            tile_row_idx,
+            rows_of_maxima,
+            is_dropout,
+            dropout);
+      }
 
       if constexpr (
           !is_empty_v<MainloopSharedStorage> &&

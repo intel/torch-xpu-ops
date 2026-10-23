@@ -16,7 +16,6 @@
 
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_bwd.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_common.h>
-#include <limits>
 #include <numbers>
 
 namespace cute {
@@ -102,6 +101,12 @@ void compute_o_dot_do(
   Tensor thr_tile_o_S = thr_load_odo.partition_S(mO);
   Tensor thr_tile_dq_D = thr_load_dq.partition_D(mdQaccum);
   Tensor rdQ = make_fragment_like(thr_tile_dq_D);
+
+  clear(rdQ);
+  for (int m = 0; m < size<1>(thr_tile_dq_D); ++m) {
+    copy(rdQ(_, m, _), thr_tile_dq_D(_, m, _));
+  }
+
   Tensor rdO = make_fragment_like<DType>(rdQ);
   Tensor rO = make_fragment_like<DType>(rdQ);
   Tensor cO = make_identity_tensor(dQ_shape);
@@ -455,9 +460,10 @@ CUTLASS_DEVICE void scale_apply_exp2(
       }
     }
     const float row_max = max(m);
-    const float max_scaled = row_max == -std::numeric_limits<float>::infinity()
-        ? 0.f
-        : row_max * std::numbers::log2e_v<float>;
+    // A fully masked row carries LSE = +inf (the forward's sentinel). Every
+    // entry of such a row was set to -inf by apply_mask, so exp2f(-inf - inf)
+    // = 0 falls out naturally.
+    const float max_scaled = row_max * std::numbers::log2e_v<float>;
     CUTLASS_PRAGMA_UNROLL
     for (int ni = 0; ni < size<1>(tensor); ++ni) {
       tensor(mi, ni) = exp2f(tensor(mi, ni) * scale_softmax_log2 - max_scaled);
@@ -578,14 +584,23 @@ void dq_dk_dv_1colblock(
   auto group = compat::get_nd_item<1>().get_group();
   auto bofst = Boffset(param);
 
-  const index_t q_offset = bofst.q_offset(bidb, bidh, 0);
+  const int max_m_block = ceil_div(param.seq_len_q, kBlockM);
+  int first_m_block = 0;
+  if constexpr (is_causal) {
+    // Retain the boundary tile; only wholly masked query tiles are skipped.
+    const int first_q =
+        n_block * kBlockN - (param.seq_len_kv - param.seq_len_q);
+    first_m_block = first_q > 0 ? first_q / kBlockM : 0;
+  }
+  const int first_m_row = first_m_block * kBlockM;
+  const index_t q_offset = bofst.q_offset(bidb, bidh, first_m_row);
   const index_t k_offset = bofst.k_offset(bidb, bidhkv, n_block * kBlockN);
   const index_t v_offset = bofst.v_offset(bidb, bidhkv, n_block * kBlockN);
   const index_t dk_offset = bofst.dk_offset(bidb, bidh, n_block * kBlockN);
   const index_t dv_offset = bofst.dv_offset(bidb, bidh, n_block * kBlockN);
-  const index_t do_offset = bofst.do_offset(bidb, bidh, 0);
-  const index_t dqaccum_offset = bofst.dqaccum_offset(bidb, bidh, 0);
-  const index_t lse_offset = bofst.lse_offset(bidb, bidh, 0);
+  const index_t do_offset = bofst.do_offset(bidb, bidh, first_m_row);
+  const index_t dqaccum_offset = bofst.dqaccum_offset(bidb, bidh, first_m_row);
+  const index_t lse_offset = bofst.lse_offset(bidb, bidh, first_m_row);
   const index_t pb_offset =
       (bidb * param.num_head_q * param.seq_len_kv_pad * kBlockM +
        bidh * param.seq_len_kv_pad * kBlockM + n_block * kBlockN * kBlockM) *
@@ -684,14 +699,13 @@ void dq_dk_dv_1colblock(
   Tensor taccScS = thr_mma_sdp.partition_C(caccS);
   Tensor taccScS_rt = logical_divide(taccScS, Shape<_1>{});
 
-  const int max_m_block = ceil_div(param.seq_len_q, kBlockM);
   const int tail_m = param.seq_len_q % kBlockM;
 
   auto rdV = create_reg<V>(trait, mdV, tiled_mma_dkv);
   auto rdK = create_reg<V>(trait, mdK, tiled_mma_dkv);
   clear(rdV);
   clear(rdK);
-  for (int m_block = 0; m_block < max_m_block; ++m_block) {
+  for (int m_block = first_m_block; m_block < max_m_block; ++m_block) {
     const bool Is_even_M = not((m_block == max_m_block - 1) and (tail_m != 0));
     if (not Is_even_M) {
       mQ = make_tensor(

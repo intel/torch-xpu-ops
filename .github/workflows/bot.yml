@@ -19,8 +19,11 @@ env:
 permissions:
   contents: read
 
+# GitHub keeps only one pending run per group and cancels older pending ones.
+# #5272 receives every DISABLED-queue trigger, so give each comment its own group
+# there; runs then wait on the xpu-agent runner pool instead of cancelling each other.
 concurrency:
-  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}
+  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ github.event.issue.number == 5272 && format('-{0}', github.event.comment.id) || '' }}
   cancel-in-progress: false
 
 jobs:
