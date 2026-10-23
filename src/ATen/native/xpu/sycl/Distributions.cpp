@@ -231,7 +231,11 @@ void launch_standard_gamma_grad_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct DirichletKernelFunctor {
   scalar_t operator()(scalar_t gamma, scalar_t gamma_sum) const {
-    auto ret_val = gamma / gamma_sum;
+    float g = gamma;
+    float s = gamma_sum;
+    float q = g / s;
+    q = sycl::fma(sycl::fma(-s, q, g), 1.0f / s, q);
+    scalar_t ret_val = static_cast<scalar_t>(q);
     auto min_value = std::numeric_limits<scalar_t>::min();
     auto max_value = 1 - std::numeric_limits<scalar_t>::epsilon();
     ret_val = (min_value > ret_val) ? min_value : ret_val;
