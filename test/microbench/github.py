@@ -6,7 +6,7 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-"""GitHub side of the gate: labels, override record, PR comment (plan 8.5, 8.6, 8.1).
+"""GitHub side of the gate: labels, override record, PR comment.
 
 ``python -m microbench.github comment|labeled|synchronize`` runs in the
 privileged workflows (``workflow_run`` / ``pull_request_target``) that never

@@ -80,7 +80,7 @@ def run_local(args):
 
 
 def main(argv=None):
-    from . import judge, measure, run, selection
+    from . import judge, measure, reference, run, selection
     from .tools import maintenance
 
     parser = argparse.ArgumentParser(prog="python -m microbench", description=__doc__)
@@ -113,6 +113,8 @@ def main(argv=None):
     run.add_env_parser(sub)
     judge.add_check_parser(sub)
     selection.add_select_parser(sub)
+    run.add_ci_parser(sub)
+    reference.add_reference_parser(sub)
     maintenance.add_parsers(sub)
     args = parser.parse_args(argv)
     return args.func(args)

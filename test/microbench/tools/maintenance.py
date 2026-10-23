@@ -8,8 +8,8 @@
 
 """Maintenance tools (report only, never fail a job).
 
-``coverage``  XPU dispatch op coverage (plan 5.3);
-``srcmap``    kernel files missing from op_source_map.yaml (plan 6);
+``coverage``  XPU dispatch op coverage;
+``srcmap``    kernel files missing from op_source_map.yaml;
 ``noise``     A/A calibration into history.json, nightly noise and case costs.
 """
 
@@ -27,7 +27,7 @@ from ..case import expected_names, functional_name, manifest
 from ..selection import match_any
 
 # ---------------------------------------------------------------------------
-# Coverage report (plan 5.3)
+# Coverage report
 # ---------------------------------------------------------------------------
 # XPU dispatch ops are the functional names of ``native_functions.yaml``
 # entries with an XPU, SparseXPU, SparseCsrXPU or NestedTensorXPU kernel,
@@ -254,7 +254,7 @@ def run_coverage(args):
 
 
 # ---------------------------------------------------------------------------
-# op_source_map.yaml completeness (plan 6, report only)
+# op_source_map.yaml completeness (report only)
 # ---------------------------------------------------------------------------
 
 KERNEL_DIRS = (
@@ -298,7 +298,7 @@ def run_srcmap(args):
 
 
 # ---------------------------------------------------------------------------
-# Noise calibration and case costs (plan 7.2, 8.7-8.8, 9)
+# Noise calibration and case costs
 # ---------------------------------------------------------------------------
 # ``calibrate``  A/A runs (same wheel on both sides, e.g. 50+ on-demand A/A
 #                runs) -> per-case delta, CI width and false-positive count.

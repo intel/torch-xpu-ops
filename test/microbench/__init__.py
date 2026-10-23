@@ -22,6 +22,18 @@ CONFIG_DIR = PACKAGE_DIR / "config"
 REPO_ROOT = PACKAGE_DIR.parent.parent
 CANARY_ID = "__canary__"
 
+# Bump on any framework change that changes measured values (flush, timed
+# region, warmup, iteration rule, device-time accounting, input rotation):
+# reference records of another version are never compared.
+PROTOCOL_VERSION = 1
+# Files whose changes may need a PROTOCOL_VERSION bump; they also count as
+# "related" for reference-data code equivalence.
+MEASUREMENT_FILES = (
+    "test/microbench/measure.py",
+    "test/microbench/case.py",
+    "test/microbench/config/machines.yaml",
+)
+
 # cost estimate of a case without history (seconds per worker process)
 DEFAULT_CASE_SECONDS = 4.0
 WORKER_START_SECONDS = 10.0

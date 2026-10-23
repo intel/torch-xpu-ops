@@ -1,4 +1,4 @@
-# machines.yaml - benchmark host layout and protocol (plan 3.3 / 3.4).
+# machines.yaml - benchmark host layout and protocol.
 #
 # `default` applies to every host; a `hosts` entry whose key (a regex) matches
 # the hostname overrides it. Without `cards`, the layout is autodetected from

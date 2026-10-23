@@ -1,4 +1,4 @@
-# gating.yaml - statistical decision parameters (plan section 7).
+# gating.yaml - statistical decision parameters.
 #
 # A case blocks a PR only if all hold: A/B run, PR tier, op not excluded from
 # gating, not quarantined, A/A calibrated (history.json noise_stats "calibrated"),
@@ -28,11 +28,7 @@ canary_drift: 0.03
 canary_history_tol: 0.05
 n_boot: 2000
 
-budget:
-  # PR test time budget (minutes, excluding builds) used to truncate selection
-  test_minutes: 30
-
-# Cases/ops whose results are reported but never block (plan 7.2: high-noise
+# Cases/ops whose results are reported but never block (high-noise
 # cases that stay above their threshold after extra rounds). Filled from
 # nightly noise statistics; each entry needs a reason, e.g.
 #   cases: [{case_id: 0123456789ab, reason: "nightly A/A CI width 14%"}]
@@ -40,3 +36,76 @@ budget:
 quarantine:
   cases: []
   ops: []
+
+# ---------------------------------------------------------------------------
+# Screening against reference data (PR) and nightly detection.
+#
+# Thresholds per case: sigma_tot^2 = sigma_run^2 + sigma_proc^2 / n + sigma_ref^2
+# (+ sigma_card^2 when the reference is not from the same card);
+# t = min(t_max, 0.10 - z * sigma_tot). A case whose t falls below t_min is
+# too noisy to screen and is treated as suspicious (and should be listed in
+# always_ab). Noise statistics come from the reference state (nightly
+# measure records); default_noise covers cases without enough records.
+
+pr_vs_reference:
+  z: 2.33
+  t_max: 0.05
+  t_min: 0.02
+  # reference records older than this are not used
+  freshness_days: 7
+  # at least min_records nightly runs and min_processes processes, at most
+  # max_records runs (the most recent ones)
+  min_records: 2
+  max_records: 5
+  min_processes: 6
+  # PR side: processes per case, plus extra processes for a ratio within one
+  # sigma of the threshold
+  processes: 3
+  extra_processes: 2
+  # relative spread (log std) of the PR-side process medians above which the
+  # case is screen_invalid
+  max_process_spread: 0.05
+  # always_ab: cases whose cross-day / cross-card noise is too high for
+  # screening; selecting one that can block makes the PR A/B directly.
+  # Suggested by the nightly report, confirmed by a maintainer.
+  #   - {case_id: 0123456789ab, reason: "sigma_run 4.1% (14 nightlies)"}
+  always_ab: []
+
+nightly_detect:
+  z: 2.33
+  t_max: 0.05
+  t_min: 0.02
+  reference_runs: 5
+  min_records: 2
+  # fraction of PR-tier cases also measured as A/A each night (one week covers all)
+  aa_fraction: 0.14
+  # when more cases than this have no reference (driver upgrade, protocol
+  # bump), recheck only PR-tier and core-set cases
+  max_no_reference_recheck: 300
+
+# auto: confirm suspect improvements only when the base is built anyway;
+# always: build the base for improvements too; never: report them unconfirmed
+confirm_improvements: auto
+
+# Skip screening and A/B against the merge-base directly when
+direct_ab:
+  # a case that can block has no reference record at select time
+  no_screen_reference: true
+  # a case that can block is listed in always_ab
+  always_ab: true
+  # a common or global file changed
+  common_files: false
+
+# relative noise used when the reference state has too few records
+default_noise:
+  run: 0.02
+  card: 0.03
+  proc: 0.01
+  ab: 0.01
+
+# PR test budget in minutes: single-sided screening, A/B of the
+# suspicious cases, and the two-stage direct A/B
+budget:
+  screen_minutes: 15
+  confirm_minutes: 15
+  direct_ab_minutes: 30

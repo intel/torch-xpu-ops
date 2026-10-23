@@ -1,7 +1,11 @@
 # torch-xpu-ops microbench
 
-Operator microbenchmarks with an A/B performance gate for PR CI and the same
-framework for nightly runs. Run every command from `test/`:
+Operator microbenchmarks with a performance gate for PR CI and a nightly
+regression detector. PRs are screened against reference data of the last
+nightlies and A/B-tested against their merge-base only when suspicious;
+nightlies detect steps against earlier nightlies, recheck them with A/B,
+attribute them to torch-xpu-ops or PyTorch and file issues. Run every
+command from `test/`:
 
 ```bash
 cd test
@@ -14,13 +18,14 @@ python -m microbench <command> --help
 |---|---|
 | `case.py` | Case model (`OpBench`, `Case`, stable `case_id`), input helpers, case discovery |
 | `measure.py` | Measurement protocol (cache flush, input rotation, E2E and device time), worker, case validator, canary |
-| `run.py` | A/B scheduler over cards (`A B / B A` rounds); card layout, GPU frequency lock (xe and i915), pre-run checks |
-| `judge.py` | Hierarchical bootstrap, Holm, two-stage verdicts, English report, check job |
-| `selection.py` | Case selection from a diff, new XPU op detection |
+| `run.py` | Scheduler over cards: A/B (`A B / B A` rounds), single-sided and multi-wheel rounds; records (`records.jsonl`) and per-case logs; card layout and identity, GPU frequency, pre-run checks; `ci-run`, the microbench-run CI job of each scope |
+| `judge.py` | Hierarchical bootstrap, Holm, two-stage verdicts, PR conclusion matrix, English report, check job (PR / on-demand, and the nightly check: attribution, state update, nightly report, issue evidence) |
+| `selection.py` | Case selection from a diff, new XPU op detection, reference matching (code equivalence), direct A/B decision, candidate commits |
+| `reference.py` | Reference state (nightly measurements and confirmed jumps), noise statistics, screening / detection against it |
 | `github.py` | Labels, maintainers, override record, PR comment (privileged workflows) |
 | `tools/` | `maintenance.py` (coverage report, unmapped-file report for `op_source_map.yaml`, noise calibration) and the config consistency check `test_registry.py` |
 | `cases/` | One module per op family (`elementwise.py`, `pooling.py`, ...); one `OpBench` class per op and pass set |
-| `config/` | `op_source_map.yaml`, `core_set.yaml`, `coverage_exclude.yaml`, `gating.yaml` (thresholds, budget, quarantine), `machines.yaml`, `history.json` (A/A noise statistics, case costs, canary history) |
+| `config/` | `op_source_map.yaml`, `core_set.yaml`, `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, direct A/B switches, PR budgets), `machines.yaml`, `history.json` (A/A calibration, case costs, canary history) |
 
 Listing and selecting cases never imports torch: cases reach torch through
 lazy proxies in `case.py`, so the ubuntu CI jobs only need `pyyaml` and `numpy`.
@@ -72,7 +77,9 @@ Rules:
 * Keep single tensors under ~512M elements (BMG memory with backward and
   input rotation); scale the batch down and say so in a comment.
 * `case_id` is a hash of `(op, pass, params)`. Changing params creates new
-  cases (new history, new calibration).
+  cases (new history, new calibration). `case_code_hash` hashes the case
+  module: editing a module keeps the ids but its cases lose their reference
+  records until the next nightlies measure them again.
 * A PR that changes a case module validates (and A/A runs) the cases of the
   ops whose definitions it touches; a change to a shared helper, table or base
   class covers the whole module. Validation takes one dtype per (op, pass,
@@ -132,6 +139,18 @@ Per iteration: `reset()` (in-place only), sync, `torch.sum(flush_buffer)`
   of free memory), cycled every iteration.
 * **Warmup** by time (>= 200 ms) until three consecutive windows agree within
   5%; at least 50 iterations and 40 ms of op time; one sample per iteration.
+* **`PROTOCOL_VERSION`** (`__init__.py`): bump it with any change that moves
+  measured values; reference records of another version are never compared.
+  Changing `measure.py`, `case.py` or `machines.yaml` without a bump gives a
+  report-only warning.
+
+Every run writes, per case, `logs/<case_id>/summary.log` (configuration,
+commits and card of each side, per-process device/E2E statistics, errors with
+the worker's stderr, A/B ratio and CI, screening/detection result),
+`samples.jsonl` (every iteration) and `<side>_<stage>_proc<k>_e2e.log` /
+`_device.log` (warmup, every timed iteration with its input set, every device
+event counted or dropped as flush, why a sample is invalid). `--keep-traces`
+also keeps the chrome traces (large).
 
 ## Validator
 
@@ -154,24 +173,49 @@ python -m microbench env status                          # GPU freq / temperatur
 sudo python -m microbench env lock --ratio 0.95          # pin min=max at 95% of RP0
 
 # A/B: two venvs with the base and the PR wheel (same PyTorch commit)
-python -m microbench select --base origin/main --head HEAD --out sel.json
+python -m microbench select --base origin/main --head HEAD --flow ab --out sel.json
 python -m microbench schedule --python-a venv_base/bin/python --python-b venv_pr/bin/python \
     --cases sel.json --validate sel.json --out-dir out --env-check --canary
-python -m microbench check --data-dir out --selection sel.json --out-dir report
+python -m microbench check --ab-dir out --selection sel.json --out-dir report
+
+# screening as in PR CI: reference state of the last nightly, then the PR wheel only
+python -m microbench reference fetch --repo intel/torch-xpu-ops --out-dir ref
+python -m microbench select --repo .. --base $(git merge-base origin/main HEAD) --head HEAD \
+    --reference-state ref/<run>/reference.jsonl --out sel.json
+python -m microbench ci-run --scope pr-vs-reference --selection sel.json \
+    --python venv_pr/bin/python --out-dir screen
+python -m microbench ci-run --scope pr-vs-base --selection sel.json --screen screen/screen.json \
+    --python venv_pr/bin/python --python-base venv_base/bin/python --out-dir ab
+python -m microbench check --screen-dir screen --ab-dir ab --out-dir report
 ```
 
-`schedule` without `--python-a` runs A/A with one wheel. `--device cpu --quick
---binding none` gives a functional smoke test without a GPU.
+`schedule` without `--python-a` runs A/A with one wheel, `--single` measures
+one wheel, `--wheel NAME=PYTHON` (repeated) alternates several wheels.
+`--device cpu --quick --binding none` gives a functional smoke test without a
+GPU.
 
 ## Statistics
 
-`r = median(B) / median(A)` of device time. The 95% CI and one-sided p-values
-come from a hierarchical bootstrap (processes first, then iterations). A case
-is a regression only if `r > 1.10`, the CI lower bound exceeds `1 + delta`
-(per-case noise), the Holm-adjusted p-value is below 0.05, and both the
-screening stage (3 processes per side) and the confirmation stage (6 per
-side, B first, on another card) agree. E2E is report-only. A canary that
-drifts makes the run inconclusive. Parameters live in `config/gating.yaml`.
+**A/B (confirmation).** `r = median(B) / median(A)` of device time. The 95%
+CI and one-sided p-values come from a hierarchical bootstrap (processes first,
+then iterations). A case is a regression only if `r > 1.10`, the CI lower
+bound exceeds `1 + delta` (per-case noise) and the Holm-adjusted p-value is
+below 0.05. Cases without a screening direction need two A/B stages that
+agree (3 processes per side, then 6, B first, on another card); cases that
+screening flagged need one 6-process A/B in the same direction. E2E is
+report-only. A drifting canary makes the run inconclusive. Parameters:
+`config/gating.yaml`.
+
+**Screening (PR) and detection (nightly)** compare the median of the
+process medians with the reference value: the median over the most recent
+(2-5) nightly records of the same environment key, preferably the same card,
+after the case's last confirmed jump. For PRs the records must also come from
+commits that equal the merge-base in every file related to the case.
+Threshold `t = min(0.05, 0.10 - 2.33 * sigma_tot)` (a real 10% step is caught
+with 99% probability); `sigma_tot` combines the cross-run, cross-card and
+process noise of the case, computed from the reference state. Screening only
+decides whether to build the base and A/B; only A/B results block a PR or
+file an issue. Parameters: the screening sections of `config/gating.yaml`.
 
 Only cases with A/A calibration data (`noise_stats` in `config/history.json`,
 `calibrated: true`) can block a PR:
@@ -184,57 +228,87 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
 
 `pull.yml`:
 
-1. `microbench-select` (ubuntu): config consistency check
-   (`tools/test_registry.py`); resolves the PyTorch SHA once
-   (both builds use it) and the merge-base; selects cases from the diff
-   (`config/op_source_map.yaml`, `config/core_set.yaml`); detects new XPU
-   ops; honours a maintainer-added `disable_microbench`.
-2. `linux-build` (PR wheel) and `microbench-build-base` (merge-base wheel,
-   cached by `(pytorch_sha, merge_base)`), in parallel.
-3. `microbench / microbench-run` (a `bmg-test` runner): both wheels in
-   separate venvs on the same runner, measured on the cards of its
-   `ZE_AFFINITY_MASK` only; SHA check, environment check (idle cards,
-   temperature; the hosts manage GPU frequency themselves and its range is
-   recorded in the report), validator, A/B
-   scheduler. Fails only for infrastructure errors or validator failures.
-4. `microbench / microbench-check` (ubuntu): verdicts, report, comment
-   payload. The `microbench-comment-*` artifact also holds
-   `all_cases.md` / `all_cases.csv` (device and E2E medians, ratio, CI and
-   verdict of every case) and `verdicts.json`. Fails only for a blocking regression without a valid override.
-5. `microbench_comment.yml` (`workflow_run`) posts/updates the single
+1. `microbench-select` (ubuntu, parallel with lint): config consistency check;
+   resolves the PyTorch SHA once (both builds use it) and the merge-base;
+   selects cases (`op_source_map.yaml`, `core_set.yaml`); detects new XPU
+   ops; honours a maintainer-added `disable_microbench`; reads the latest
+   reference state and matches code-equivalent records; picks the path:
+   `vs-reference`, or `vs-base` (direct A/B: a case that can block has no
+   reference or is `always_ab`).
+2. `microbench / microbench-run (pr-vs-reference)` (`bmg-test`): the PR wheel
+   only, screened against the reference data; output `suspect`.
+3. `microbench-build-base`: the merge-base, torch only, same PyTorch commit;
+   after linux-build (direct A/B) or after screening found suspects.
+4. `microbench / microbench-run (pr-vs-base)`: A/B of all cases (direct A/B) or
+   the suspects.
+5. `microbench / microbench-check` (ubuntu): final verdict, report,
+   comment payload (`microbench-comment-<pr>` with `all_cases.md/csv` and
+   `verdicts.json`). Fails only for a blocking regression without a valid
+   override.
+6. `microbench_comment.yml` (`workflow_run`) posts/updates the single
    `<!-- microbench-report -->` comment, also for fork PRs.
-6. `microbench_override.yml` (`pull_request_target`): a maintainer's
+7. `microbench_override.yml` (`pull_request_target`): a maintainer's
    `perf_regression_accepted` records the approved head SHA and reruns only
    the check job; new pushes remove the label.
 
+Run jobs upload `microbench-data-<id>-<scope>-<attempt>` (results, raw
+samples, `records.jsonl`) and `microbench-logs-<id>-<scope>-<attempt>`
+(per-case logs).
+
 Required checks: `linux-build`, `microbench-select`,
-`microbench-build-base / build-status-check`, `microbench / microbench-run`,
-`microbench / microbench-check`. A skipped job counts as passed, so each job
-that can fail must be required.
+`microbench / microbench-run (pr-vs-reference)`,
+`microbench-build-base / build-status-check`,
+`microbench / microbench-run (pr-vs-base)`, `microbench / microbench-check`.
+A skipped job counts as passed, so each job that can fail must be required.
 
-Labels: `disable_microbench` (maintainers only; skips build-base, run and
-check), `perf_regression_accepted` (maintainers only; accepts the regressions
-of the current head commit). Neither can be applied by auto-label. On fork
-PRs the select job's token cannot look up maintainers, so `disable_microbench`
-is ignored there and the benchmark runs.
+Labels: `disable_microbench` (maintainers only; skips everything),
+`perf_regression_accepted` (maintainers only; accepts the regressions of the
+current head commit). Neither can be applied by auto-label. On fork PRs the
+select job's token cannot look up maintainers, so `disable_microbench` is
+ignored there and the benchmark runs.
 
-`nightly_ondemand.yml` (`ut` containing `microbench`):
+`nightly_ondemand.yml`, build-nightly and build-weekly:
 
-* nightly: all cases, previous nightly wheel (A) vs this nightly (B),
-  coverage report, noise summary and case costs as artifacts; the job may
-  take up to 24 h (scheduler budget 20 h);
-* on demand: `microbench_base` (commit/branch, `merge-base`, or empty for
-  A/A) and `microbench_cases` (`selected`, `core`, `all`, `pr`, or op names).
+1. `microbench / microbench-run (nightly-vs-reference)`, one job per shard
+   (`MICROBENCH_NIGHTLY_SHARDS`, default 4): every case of this nightly wheel
+   N (3 processes), A/A of a rotating seventh of the PR-tier cases, the
+   case validator (coverage), detection against the reference state, recheck
+   1 of the suspects against the previous nightly wheel P on the same card,
+   candidate commits (P..N commits touching files related to the case).
+2. `microbench-build-base` builds P' (P's xpu-ops, N's PyTorch, torch only)
+   when a confirmed regression has candidates, and
+   `microbench / microbench-run (nightly-xpu-ops-vs-pytorch)` alternates P,
+   P' and N.
+3. `microbench / microbench-check`: attribution (xpu-ops / pytorch / mixed),
+   new reference state (`microbench-reference-state`: this night's
+   measurements and confirmed jumps, 30 days), nightly report, coverage
+   report, `always_ab` / quarantine suggestions, issue evidence
+   (`microbench-nightly-<run>`).
+4. `microbench-auto-issue` (`_microbench_auto_issue.yml`): evidence, LLM
+   drafts (`microbench-issue-authoring` skill), checked filing. Issues are
+   filed only when `MICROBENCH_AUTO_ISSUE_ENABLED` is `true`; otherwise the
+   drafts are in the report artifact.
+
+On demand (`ut` containing `microbench`): `microbench_base` empty runs the PR
+flow against `main`'s merge-base; a commit/branch or `merge-base` runs a
+direct A/B; `none` an A/A; `nightly` simulates a nightly (its state is
+uploaded as `microbench-reference-state-ondemand`, which only
+`microbench_reference_run` reads; no issues). `microbench_cases`: `selected`,
+`core`, `all`, `pr`, or op names. With `MICROBENCH_REFERENCE_WRITE_DISPATCH`
+set, a `nightly` dispatch on `main` publishes the real state (rebuild after a
+driver upgrade).
 
 ## Configuration files
 
 * `op_source_map.yaml`: changed file -> ops, maintained by hand;
   `python -m microbench srcmap` lists unmapped kernel files (report only).
-* `core_set.yaml`: 1-2 cases per shared code path (plan 6.1); maintainer review.
+* `core_set.yaml`: 1-2 cases per shared code path; maintainer review.
 * `coverage_exclude.yaml`: `excluded` / `deferred` XPU ops with reasons;
   `python -m microbench coverage --native-functions <yaml>` reports coverage.
-* `gating.yaml`: verdict thresholds, PR time budget, and the `quarantine` list
-  (cases/ops reported but never blocking).
+* `gating.yaml`: A/B verdict thresholds, the `quarantine` list (cases/ops
+  reported but never blocking), screening / detection thresholds,
+  `always_ab` cases (suggested by the nightly report, confirmed by a
+  maintainer), direct A/B switches, the improvements policy and the PR budgets.
 * `history.json`: A/A noise statistics (which cases may block), measured case
   costs (LPT sharding, budget), canary history per host/card.
 * `machines.yaml`: per-host cards, NUMA/CPU binding, L2 size, limits.

@@ -97,8 +97,13 @@ def _device_events(events):
             yield e, e.get("args") or {}
 
 
-def attribute_device_time(events):
-    """Per-iteration device time (us; ``None`` = invalid) plus diagnostics."""
+def attribute_device_time(events, detail=False):
+    """Per-iteration device time (us; ``None`` = invalid) plus diagnostics.
+
+    ``detail`` adds ``iter_events`` (the device events counted per iteration)
+    and ``flush_events`` (the events dropped per flush window), as
+    ``(name, category, dur_us)`` tuples, for the per-case device log.
+    """
     flush_w = _annotations(events, FLUSH_TAG)
     iter_w = _annotations(events, ITER_TAG)
     windows = _Windows(
@@ -122,6 +127,8 @@ def attribute_device_time(events):
     n = len(iter_w)
     samples, iter_kernels = [0.0] * n, [0] * n
     flush_kernels = [0] * len(flush_w)
+    iter_events = [[] for _ in range(n)]
+    flush_events = [[] for _ in flush_w]
     unattributed = 0
     for e, args in _device_events(events):
         w = ext_window.get(args.get("External id")) or corr_window.get(
@@ -129,11 +136,15 @@ def attribute_device_time(events):
         )
         if w is None:
             unattributed += 1
-        elif w[0] == "flush":
+            continue
+        ev = (e.get("name"), e.get("cat"), round(float(e.get("dur", 0)), 3))
+        if w[0] == "flush":
             flush_kernels[w[1]] += 1
+            flush_events[w[1]].append(ev)
         else:
             samples[w[1]] += float(e.get("dur", 0))
             iter_kernels[w[1]] += 1
+            iter_events[w[1]].append(ev)
     # flush window i precedes iteration window i
     out = [
         samples[i]
@@ -141,7 +152,7 @@ def attribute_device_time(events):
         else None
         for i in range(n)
     ]
-    return {
+    res = {
         "samples": out,
         "iterations": n,
         "invalid": out.count(None),
@@ -149,6 +160,9 @@ def attribute_device_time(events):
         "iter_kernels": iter_kernels,
         "flush_kernels": flush_kernels,
     }
+    if detail:
+        res.update(iter_events=iter_events, flush_events=flush_events)
+    return res
 
 
 def host_ops_in_iterations(events):
@@ -205,7 +219,7 @@ def subtree_kernels(ops):
 
 
 # ---------------------------------------------------------------------------
-# Measurement protocol (plan 3.2)
+# Measurement protocol
 # ---------------------------------------------------------------------------
 # Every iteration, in both passes:
 #
@@ -354,6 +368,7 @@ def warmup(case, dev, sets):
                 "iters": i,
                 "ms": round(elapsed_ms, 1),
                 "stable": stable,
+                "window_medians_us": [round(m, 3) for m in medians],
             }
 
 
@@ -392,8 +407,12 @@ def profile_iters(case, dev, sets, n, keep_trace=None):
     return events
 
 
-def measure(case, dev, keep_trace=None):
-    """Full measurement of one case in this process. Returns a result dict."""
+def measure(case, dev, keep_trace=None, detail=False):
+    """Full measurement of one case in this process. Returns a result dict.
+
+    ``detail`` adds ``_device_detail`` (per-iteration device events, see
+    ``attribute_device_time``) for the per-case log; the worker strips it.
+    """
     dev.alloc_flush()
     sets, per_set = build_input_sets(case, dev)
     est, wu = warmup(case, dev, sets)
@@ -404,12 +423,16 @@ def measure(case, dev, keep_trace=None):
     ]
     rec["device_us"], rec["device_status"] = None, "unavailable"
     if dev.cfg.device_pass and dev.name != "cpu":
-        att = attribute_device_time(profile_iters(case, dev, sets, n, keep_trace))
+        att = attribute_device_time(
+            profile_iters(case, dev, sets, n, keep_trace), detail=detail
+        )
         rec["device_us"] = [None if x is None else round(x, 3) for x in att["samples"]]
         rec["device_invalid"] = att["invalid"]
         rec["device_unattributed"] = att["unattributed_device_events"]
         ok = att["invalid"] <= dev.cfg.max_invalid_frac * max(1, n)
         rec["device_status"] = "ok" if ok else "invalid_flush_separation"
+        if detail:
+            rec["_device_detail"] = att
     del sets
     gc.collect()
     dev.empty_cache()
@@ -417,7 +440,7 @@ def measure(case, dev, keep_trace=None):
 
 
 # ---------------------------------------------------------------------------
-# Canary (plan 3.4)
+# Canary
 # ---------------------------------------------------------------------------
 # A fixed kernel run on every card at the start and end of a run. A canary
 # that deviates from the card's history (or drifts between start and end)
@@ -480,6 +503,68 @@ def env_info(device):
     return info
 
 
+def process_log_name(side, stage, rnd, kind):
+    """``logs/<case_id>/`` file of one worker process."""
+    return f"{side}_{stage}_proc{rnd}_{kind}.log"
+
+
+def write_process_logs(log_dir, case, tag, rec, env):
+    """E2E and device-time raw logs of one case measured in this process."""
+    os.makedirs(log_dir, exist_ok=True)
+    head = [
+        f"case {case.case_id} {case.op}/{case.pass_} {case.label}",
+        f"side {tag['side']} stage {tag['stage']} process {tag['round']} card {tag['card']} "
+        f"pid {os.getpid()} torch {env.get('torch_git_version')}",
+    ]
+    wu = rec.get("warmup") or {}
+    n_sets = rec.get("input_sets") or 1
+    lines = head + [
+        f"input sets: {n_sets} ({rec.get('set_bytes')} bytes each), rotated every iteration",
+        f"warmup: {wu.get('iters')} iterations in {wu.get('ms')} ms, stable={wu.get('stable')}",
+        "warmup window medians (us): "
+        + " ".join(str(m) for m in wu.get("window_medians_us") or []),
+        f"iterations: {rec.get('iters')}",
+        "iter input_set e2e_us",
+    ]
+    lines += [f"{i} {i % n_sets} {v}" for i, v in enumerate(rec.get("e2e_us") or [])]
+    side, stage, rnd = tag["side"], tag["stage"], tag["round"]
+    with open(
+        os.path.join(log_dir, process_log_name(side, stage, rnd, "e2e")), "w"
+    ) as f:
+        f.write("\n".join(lines) + "\n")
+    det = rec.get("_device_detail")
+    lines = head + [f"device status: {rec.get('device_status')}"]
+    if det is None:
+        lines.append("no device pass (device time unavailable on this device)")
+    else:
+        lines.append(
+            f"iterations {det['iterations']}, invalid {det['invalid']}, "
+            f"unattributed device events {det['unattributed_device_events']}"
+        )
+        for i, sample in enumerate(det["samples"]):
+            flush = det["flush_events"][i] if i < len(det["flush_events"]) else []
+            if sample is None:
+                why = (
+                    "no flush kernel in the preceding flush window"
+                    if not flush
+                    else "no device event attributed to the iteration"
+                )
+                lines.append(f"iter {i}: INVALID ({why})")
+            else:
+                lines.append(f"iter {i}: {sample:.3f} us")
+            lines += [
+                f"  counted {cat} {name} {dur}"
+                for name, cat, dur in det["iter_events"][i]
+            ]
+            lines += [
+                f"  flush-excluded {cat} {name} {dur}" for name, cat, dur in flush
+            ]
+    with open(
+        os.path.join(log_dir, process_log_name(side, stage, rnd, "device")), "w"
+    ) as f:
+        f.write("\n".join(lines) + "\n")
+
+
 def run_worker(args):
     # The tracing layer must be on before the Level Zero driver initializes.
     if args.device == "xpu":
@@ -497,8 +582,9 @@ def run_worker(args):
         "card": args.card,
         "stage": args.stage,
     }
+    env = env_info(args.device)
     with open(args.out, "a") as fh:
-        _emit(fh, dict(env_info(args.device), **tag))
+        _emit(fh, dict(env, **tag))
         for cid in wanted:
             case = cases.get(cid)
             base = dict(tag, case_id=cid, pid=os.getpid())
@@ -507,8 +593,23 @@ def run_worker(args):
                 continue
             _emit(fh, dict(base, type="start", time=time.time()))
             t0 = time.time()
+            case_logs = os.path.join(args.log_dir, cid) if args.log_dir else None
+            trace = None
+            if case_logs and args.keep_traces:
+                os.makedirs(case_logs, exist_ok=True)
+                trace = os.path.join(
+                    case_logs,
+                    process_log_name(
+                        args.side, args.stage, args.round, "trace"
+                    ).replace(".log", ".json"),
+                )
             try:
-                rec, status = measure(case, dev), "ok"
+                rec, status = (
+                    measure(case, dev, keep_trace=trace, detail=bool(case_logs)),
+                    "ok",
+                )
+                if case_logs:
+                    write_process_logs(case_logs, case, tag, rec, env)
             except Exception as e:  # noqa: BLE001 - record and continue
                 rec = {
                     "error": f"{type(e).__name__}: {e}",
@@ -516,6 +617,7 @@ def run_worker(args):
                 }
                 status = "error"
                 dev.empty_cache()
+            rec.pop("_device_detail", None)
             rec.update(base, type="result", status=status, op=case.op, pass_=case.pass_)
             rec["seconds"] = round(time.time() - t0, 3)
             _emit(fh, rec)
@@ -533,11 +635,19 @@ def add_worker_parser(sub):
     p.add_argument("--card", default="0")
     p.add_argument("--stage", default="screen")
     p.add_argument("--quick", action="store_true", help="3 iterations, no warmup")
+    p.add_argument(
+        "--log-dir", default=None, help="write per-case raw logs under <dir>/<case_id>/"
+    )
+    p.add_argument(
+        "--keep-traces",
+        action="store_true",
+        help="also save the device-pass chrome trace (debug)",
+    )
     p.set_defaults(func=lambda a: sys.exit(run_worker(a)))
 
 
 # ---------------------------------------------------------------------------
-# Case validator (plan 4.2)
+# Case validator
 # ---------------------------------------------------------------------------
 # Runs each case once, untimed, and checks that it measures what it claims:
 #
@@ -546,9 +656,9 @@ def add_worker_parser(sub):
 # 2. the first expected op receives the declared dtype/shape/stride;
 # 3. ``run()`` does not build inputs (random factories, host/device copies)
 #    unless the op under test is such an op;
-# 4. flush kernels separate cleanly from the trace (3.2.1).
+# 4. flush kernels separate cleanly from the trace.
 #
-# The dispatched-op log doubles as the coverage source (5.3).
+# The dispatched-op log doubles as the coverage source.
 
 CONSTRUCTION_OPS = {
     "randn",

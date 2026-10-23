@@ -18,7 +18,10 @@ import itertools
 import json
 import math
 import pkgutil
+import sys
 from types import SimpleNamespace
+
+from . import CONFIG_DIR, load_yaml
 
 
 class LazyModule:
@@ -215,15 +218,26 @@ class OpBench:
 
 
 class Case:
-    """One (op, params, pass) benchmark unit."""
+    """One (op, params, pass) benchmark unit.
 
-    def __init__(self, bench, params, pass_, module=None):
+    ``case_code_hash`` hashes the source of the case module: a change to
+    ``setup``/``reset``/``run`` keeps the ``case_id`` but invalidates its
+    reference records. ``screen_mode`` comes from
+    ``config/gating.yaml``: ``always_ab`` cases are never screened against
+    reference data.
+    """
+
+    def __init__(
+        self, bench, params, pass_, module=None, code_hash="", screen_mode="reference"
+    ):
         self.bench = bench
         self.op = bench.op
         self.family = bench.family or bench.op
         self.params = params
         self.pass_ = pass_
         self.module = module
+        self.case_code_hash = code_hash
+        self.screen_mode = screen_mode
         self.case_id = make_case_id(self.op, pass_, params)
         key = canonical_params(params)
         is_pr = bench.gating and any(canonical_params(q) == key for q in bench.pr)
@@ -253,6 +267,8 @@ class Case:
             "composite": b.composite,
             "gating": b.gating,
             "module": self.module,
+            "case_code_hash": self.case_code_hash,
+            "screen_mode": self.screen_mode,
             "repro": self.repro(),
         }
 
@@ -272,7 +288,7 @@ class Case:
 
 
 # ---------------------------------------------------------------------------
-# aten op names (plan 5.1)
+# aten op names
 # ---------------------------------------------------------------------------
 
 
@@ -553,16 +569,36 @@ def _check_bench(where, bench):
     return errors
 
 
+def module_code_hash(mod_name):
+    """sha1 (12 hex) of the source of ``cases/<mod_name>.py``."""
+    path = sys.modules[f"{__package__}.cases.{mod_name}"].__file__
+    with open(path, "rb") as f:
+        return hashlib.sha1(f.read()).hexdigest()[:12]
+
+
+def always_ab_cases(path=None):
+    data = load_yaml(path or CONFIG_DIR / "gating.yaml", {}) or {}
+    entries = (data.get("pr_vs_reference") or {}).get("always_ab") or []
+    return {e["case_id"] for e in entries}
+
+
 def load_cases(strict=True):
     """``{case_id: Case}`` for every registered case."""
-    cases, ops, errors = {}, {}, []
+    cases, ops, errors, hashes = {}, {}, [], {}
+    always_ab = always_ab_cases()
     for mod_name, bench in iter_benches():
         if ops.setdefault(bench.op, mod_name) != mod_name:
             errors.append(f"op {bench.op!r} defined in {ops[bench.op]} and {mod_name}")
         errors += _check_bench(f"{mod_name}:{bench.op}", bench)
+        if mod_name not in hashes:
+            hashes[mod_name] = module_code_hash(mod_name)
         for p in bench.params:
             for pass_ in bench.passes_for(p):
-                case = Case(bench, dict(p), pass_, module=mod_name)
+                case = Case(
+                    bench, dict(p), pass_, module=mod_name, code_hash=hashes[mod_name]
+                )
+                if case.case_id in always_ab:
+                    case.screen_mode = "always_ab"
                 if case.case_id in cases:
                     errors.append(f"case_id collision: {case} vs {cases[case.case_id]}")
                 cases[case.case_id] = case
