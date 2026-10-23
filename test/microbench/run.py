@@ -48,7 +48,7 @@ from .selection import candidate_commits, Config, estimate_minutes
 # ---------------------------------------------------------------------------
 # Machine layout, GPU frequency, pre-run checks
 # ---------------------------------------------------------------------------
-# Cards, NUMA nodes and CPU sets come from ``config/machines.yaml`` when the
+# Cards, NUMA nodes and CPU sets come from ``machines`` in ``config/gating.yaml`` when the
 # host has an entry there, otherwise from sysfs. Frequency control supports
 # xe (BMG: ``device/tile*/gt*/freq0/*_freq``) and i915 (``gt_*_freq_mhz``).
 # ``lock`` pins min=max at ``ratio * RP0`` (default 0.95), slightly below the
@@ -146,7 +146,8 @@ def detect_cards():
 def machine_config(path=None):
     """Card layout and settings for this host; config entries win over sysfs."""
     host = socket.gethostname()
-    data = load_yaml(path or os.path.join(CONFIG_DIR, "machines.yaml"), {})
+    data = load_yaml(path or os.path.join(CONFIG_DIR, "gating.yaml"), {})
+    data = data.get("machines", data)
     cfg = dict(data.get("default", {}))
     for pattern, entry in (data.get("hosts") or {}).items():
         if re.fullmatch(pattern, host):
@@ -339,7 +340,11 @@ def run_env(args):
 def add_env_parser(sub):
     p = sub.add_parser("env", help="machine layout, GPU frequency lock, pre-run checks")
     p.add_argument("action", choices=["show", "status", "lock", "unlock", "check"])
-    p.add_argument("--machines", default=None, help="default: config/machines.yaml")
+    p.add_argument(
+        "--machines",
+        default=None,
+        help="default: the machines section of config/gating.yaml",
+    )
     p.add_argument("--ratio", type=float, default=0.95, help="lock at ratio * RP0")
     p.add_argument("--mhz", type=int, default=None, help="lock at this frequency")
     p.set_defaults(func=lambda a: sys.exit(run_env(a)))
