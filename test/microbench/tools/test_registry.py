@@ -17,6 +17,7 @@ the source tree. Run: ``cd test && python -m pytest microbench/tools/test_regist
 import fnmatch
 import os
 import sys
+import warnings
 
 import pytest
 import yaml
@@ -27,6 +28,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from microbench import CONFIG_DIR, REPO_ROOT
 from microbench.case import canonical_params, expected_names, load_cases, make_case_id
 from microbench.run import lpt_shards, round_order
+from microbench.selection import git_changes, protocol_note
 
 
 @pytest.fixture(scope="module")
@@ -71,14 +73,14 @@ def test_plan_ops_have_cases(cases):
     ops = {c.op for c in cases.values()} | expected_names(
         e for c in cases.values() for e in c.expected_aten_ops
     )
-    plan = """abs addcmul bitwise_and bitwise_not bitwise_or clamp cos div eq exp floor ge gt isin isinf le log log2 lt
+    wanted = """abs addcmul bitwise_and bitwise_not bitwise_or clamp cos div eq exp floor ge gt isin isinf le log log2 lt
     maximum minimum mul nan_to_num ne neg pow reciprocal rsqrt rsub sgn sin sqrt sub where gelu gelu_backward hardsigmoid
     hardsigmoid_backward hardswish hardswish_backward hardtanh hardtanh_backward leaky_relu leaky_relu_backward relu sigmoid
     sigmoid_backward silu silu_backward all any argmax mean std _log_softmax _log_softmax_backward_data _safe_softmax
     nll_loss2d_forward nll_loss2d_backward cat repeat_interleave unfold_backward fill arange linspace _foreach_add
     _foreach_addcdiv _foreach_addcmul _foreach_div _foreach_lerp _foreach_mul _foreach_sqrt
     _scaled_dot_product_flash_attention _scaled_dot_product_flash_attention_backward nms roi_align _fft_c2c""".split()
-    assert not set(plan) - ops
+    assert not set(wanted) - ops
 
 
 def test_oneDNN_matmul_never_gates(cases):
@@ -134,6 +136,28 @@ def test_coverage_exclude_has_reasons():
         assert all(isinstance(v, str) and v for v in excl[section].values())
 
 
+def test_screening_config(cases):
+    scr = load("gating.yaml")
+    for e in scr["pr_vs_reference"]["always_ab"] or []:
+        assert e["case_id"] in cases and e.get("reason"), e
+    assert all(len(c.case_code_hash) == 12 for c in cases.values())
+
+
+def test_protocol_version_bumped_with_measurement_changes():
+    """Report only: a warning, never a failure. The select job
+    sets MICROBENCH_DIFF_BASE to the merge-base."""
+    base = os.environ.get("MICROBENCH_DIFF_BASE")
+    if not base:
+        pytest.skip("MICROBENCH_DIFF_BASE not set")
+    try:
+        changed, _, diff, _ = git_changes(str(REPO_ROOT), base, "HEAD")
+    except Exception as e:  # noqa: BLE001 - report only
+        pytest.skip(f"git diff unavailable: {e}")
+    note = protocol_note(changed, diff)
+    if note:
+        warnings.warn(note, stacklevel=1)
+
+
 def test_lpt_and_round_order():
     shards, load_ = lpt_shards(
         ["a", "b", "c", "d"], {"a": 10, "b": 9, "c": 2, "d": 1}, 2
@@ -141,6 +165,11 @@ def test_lpt_and_round_order():
     assert sorted(load_) == [11, 11]
     assert [round_order(r) for r in range(3)] == [["A", "B"], ["B", "A"], ["A", "B"]]
     assert round_order(0, first="B") == ["B", "A"]
+    sides = ("P", "Pp", "N")
+    assert [round_order(r, "P", sides) for r in range(2)] == [
+        ["P", "Pp", "N"],
+        ["N", "Pp", "P"],
+    ]
 
 
 def run_tests(path):

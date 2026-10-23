@@ -1,4 +1,4 @@
-# core_set.yaml - core representative set (plan 6.1).
+# core_set.yaml - core representative set.
 #
 # Runs when a PR touches a common/global file, adds an XPU op, or changes an
 # unmapped kernel file. One group per shared code path; common_files must
@@ -307,4 +307,4 @@ groups:
     - random
     - uniform
     cases: []
-    note: random-number ops are noise_class random and cannot be in the core set (6.1.2)
+    note: random-number ops are noise_class random and cannot be in the core set

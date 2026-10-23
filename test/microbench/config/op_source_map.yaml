@@ -1,11 +1,11 @@
 # op_source_map.yaml - which microbench ops a changed source file selects.
 #
-# Generated from kernel file names (local tooling, see plan 6) and reviewed
+# Generated from kernel file names (local tooling) and reviewed
 # by hand. Paths are fnmatch globs relative to the repository root ('*' also
 # matches '/').
 #
 #   global          build-wide files: run the full core set
-#   common_groups   shared kernel paths (plan 6.1.1), one group per code path:
+#   common_groups   shared kernel paths, one group per code path:
 #                   one group touched -> its ops' PR cases + core set;
 #                   several groups -> full core set. Keep in sync with core_set.yaml.
 #   no_bench        files whose changes never run microbench

@@ -13,20 +13,30 @@ for a blocking regression without a valid maintainer override.
 """
 
 import csv
+import hashlib
 import json
 import math
 import os
 import statistics
 import sys
+import time
 
 import numpy as np
 
-from . import CANARY_ID, CONFIG_DIR, load_history, load_json, load_yaml, read_jsonl
+from . import (
+    CANARY_ID,
+    CONFIG_DIR,
+    load_history,
+    load_json,
+    load_yaml,
+    read_jsonl,
+    reference,
+)
 from .case import load_cases
 from .github import OVERRIDE_LABEL, REPORT_MARKER as COMMENT_MARKER
 
 # ---------------------------------------------------------------------------
-# A/B statistics (plan 7)
+# A/B statistics
 # ---------------------------------------------------------------------------
 # * Point estimate: ``r = median(B) / median(A)`` over pooled samples.
 # * Uncertainty: hierarchical bootstrap. Processes are resampled first, then
@@ -165,7 +175,8 @@ def holm(pvals):
 
 
 def group_samples(records, metric="device_us"):
-    """{(case_id, stage): {"A": [[...], ...], "B": [[...], ...]}} from worker records."""
+    """{(case_id, stage): {side: [[...], ...]}} from worker records ("A" and
+    "B" are always present)."""
     out = {}
     for r in records:
         if r.get("type") != "result" or r.get("status") != "ok":
@@ -175,12 +186,14 @@ def group_samples(records, metric="device_us"):
         vals = [v for v in r.get(metric) or [] if v is not None]
         if vals:
             key = (r["case_id"], r.get("stage", "screen"))
-            out.setdefault(key, {"A": [], "B": []})[r["side"]].append(vals)
+            out.setdefault(key, {"A": [], "B": []}).setdefault(r["side"], []).append(
+                vals
+            )
     return out
 
 
 # ---------------------------------------------------------------------------
-# Per-case verdicts (plan 7)
+# Per-case verdicts
 # ---------------------------------------------------------------------------
 
 
@@ -243,6 +256,25 @@ def evaluate_canary(recs, meta, gating, history):
     return ok, details
 
 
+def not_blocking_reasons(man, gating, noise, quarantine=None):
+    """Why a case (manifest or verdict row) cannot block a PR; empty = it can."""
+    q_ids, q_ops = quarantine or gating.get("quarantine", ({}, {}))
+    return [
+        reason
+        for reason, cond in (
+            ("nightly tier", man.get("tier") != "pr"),
+            ("op excluded from gating", not man.get("gating", True)),
+            ("quarantined", man.get("case_id") in q_ids or man.get("op") in q_ops),
+            (
+                "not A/A calibrated yet",
+                gating["require_calibration"]
+                and not (noise.get(man.get("case_id")) or {}).get("calibrated"),
+            ),
+        )
+        if cond
+    ]
+
+
 def _final(screen, confirm, gating, delta, p_adj=None):
     """Two-stage decision. Returns (verdict, reason, result_used)."""
     kw = dict(
@@ -252,12 +284,17 @@ def _final(screen, confirm, gating, delta, p_adj=None):
         alpha=gating["alpha"],
     )
     flagged = ("regression", "improvement")
+    p_reg, p_imp = p_adj or (None, None)
+    if screen is None:
+        # confirm-only: the direction came from screening against reference
+        # data; combine_pr checks that the two agree
+        v_c, why_c = classify(confirm, p_reg_adj=p_reg, p_imp_adj=p_imp, **kw)
+        return v_c, why_c, confirm
     v_s, why_s = classify(screen, **kw)
     if confirm is None:
         if v_s in flagged:
             return "inconclusive", "flagged in screening, no confirmation data", screen
         return v_s, why_s, screen
-    p_reg, p_imp = p_adj or (None, None)
     v_c, why_c = classify(confirm, p_reg_adj=p_reg, p_imp_adj=p_imp, **kw)
     if v_s == v_c and v_s in flagged:
         return v_c, "", confirm
@@ -297,9 +334,9 @@ def judge(
     for r in recs:
         if r.get("type") != "result" or r.get("case_id") == CANARY_ID:
             continue
-        status.setdefault(r["case_id"], {"A": set(), "B": set()})[r["side"]].add(
-            r.get("status")
-        )
+        status.setdefault(r["case_id"], {"A": set(), "B": set()}).setdefault(
+            r["side"], set()
+        ).add(r.get("status"))
         if r.get("status") != "ok":
             errors.setdefault(
                 (r["case_id"], r["side"]),
@@ -358,10 +395,11 @@ def judge(
                 }
 
     # Holm over the final-stage p-values of the device metric.
+    def has_data(m):
+        return bool(m and (m.get("screen") or m.get("confirm")))
+
     ok_rows = [
-        r
-        for r in rows
-        if r["status"] == "ok" and (r["metrics"].get("device") or {}).get("screen")
+        r for r in rows if r["status"] == "ok" and has_data(r["metrics"].get("device"))
     ]
     final = [
         r["metrics"]["device"]["confirm"] or r["metrics"]["device"]["screen"]
@@ -380,7 +418,7 @@ def judge(
             continue
         e2e_gates = r["noise_class"] in gating["e2e_blocking_noise_classes"]
         for m, mres in r["metrics"].items():
-            if not mres.get("screen"):
+            if not has_data(mres):
                 mres["verdict"], mres["reason"] = "inconclusive", "no valid samples"
                 continue
             thr = (
@@ -404,31 +442,40 @@ def judge(
         r["verdict"] = (
             r["metrics"].get("device") or r["metrics"].get("e2e") or {}
         ).get("verdict")
-        reasons = [
-            reason
-            for reason, cond in (
-                ("A/A run", mode != "ab"),
-                ("nightly tier", r["tier"] != "pr"),
-                ("op excluded from gating", not r.get("gating", True)),
-                ("quarantined", r["case_id"] in q_ids or r["op"] in q_ops),
-                (
-                    "not A/A calibrated yet",
-                    gating["require_calibration"]
-                    and not (noise.get(r["case_id"]) or {}).get("calibrated"),
-                ),
-            )
-            if cond
-        ]
-        r["blocking_eligible"] = not reasons
-        r["not_blocking_reasons"] = reasons
-        r["blocking_metrics"] = [
-            m
-            for m in ("device", "e2e")
-            if not reasons
-            and (m == "device" or e2e_gates)
-            and (r["metrics"].get(m) or {}).get("verdict") == "regression"
-        ]
-        r["blocking"] = bool(r["blocking_metrics"])
+        set_blocking(r, gating, noise, (q_ids, q_ops), mode)
+
+    return summarize_rows(
+        {
+            "mode": mode,
+            "canary_ok": canary_ok,
+            "canary": canary,
+            "rows": rows,
+            "gating": gating,
+        }
+    )
+
+
+def set_blocking(r, gating, noise, quarantine, mode):
+    """Blocking flags of one verdict row: only device-time regressions (E2E
+    for noise classes listed in gating.yaml) of cases that can block."""
+    e2e_gates = r.get("noise_class") in gating["e2e_blocking_noise_classes"]
+    reasons = (["A/A run"] if mode != "ab" else []) + not_blocking_reasons(
+        r, gating, noise, quarantine
+    )
+    r["blocking_eligible"] = not reasons
+    r["not_blocking_reasons"] = reasons
+    r["blocking_metrics"] = [
+        m
+        for m in ("device", "e2e")
+        if not reasons
+        and (m == "device" or e2e_gates)
+        and (r["metrics"].get(m) or {}).get("verdict") == "regression"
+    ]
+    r["blocking"] = bool(r["blocking_metrics"])
+
+
+def summarize_rows(result):
+    rows = result["rows"]
 
     def with_verdict(v):
         return [
@@ -437,20 +484,125 @@ def judge(
             if any(m.get("verdict") == v for m in r["metrics"].values())
         ]
 
-    return {
-        "mode": mode,
-        "canary_ok": canary_ok,
-        "canary": canary,
-        "rows": rows,
-        "blocking": [r["case_id"] for r in rows if r.get("blocking")],
-        "regressions": with_verdict("regression"),
-        "improvements": with_verdict("improvement"),
-        "gating": gating,
-    }
+    result.update(
+        blocking=[r["case_id"] for r in rows if r.get("blocking")],
+        regressions=with_verdict("regression"),
+        improvements=with_verdict("improvement"),
+        unconfirmed_improvements=[
+            r["case_id"] for r in rows if r.get("verdict") == "unconfirmed_improvement"
+        ],
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Report and PR comment (plan 8.1)
+# PR conclusion matrix
+# ---------------------------------------------------------------------------
+# | screening                  | A/B                        | conclusion          |
+# |----------------------------|----------------------------|---------------------|
+# | not suspicious             | -                          | no change (screened)|
+# | suspect_regression         | regression                 | regression          |
+# | suspect_regression         | no change                  | no change (screened |
+# |                            |                            | but not confirmed)  |
+# | suspect_regression         | inconclusive / improvement | inconclusive        |
+# | undirected / direct A/B    | two-stage A/B              | its verdict         |
+# | suspect_improvement        | improvement                | improvement         |
+# | suspect_improvement        | not A/B-tested             | unconfirmed improv. |
+# | suspicious, not A/B-tested | -                          | inconclusive        |
+
+
+def _screened_row(cid, man, gating, noise, s, truncated):
+    nc = man.get("noise_class", "normal")
+    row = _row(
+        cid,
+        man,
+        (noise.get(cid) or {}).get("delta") or gating["default_delta"].get(nc, 0.03),
+    )
+    row.update(status="screened", screen=s)
+    st = s.get("status")
+    if st == "error":
+        row.update(
+            status="error",
+            verdict=None,
+            detail=s.get("reason") or "error on the PR wheel",
+        )
+    elif st == "no_change":
+        row.update(verdict="no_change_screened", reason="")
+    elif st == "suspect_improvement" and cid not in truncated:
+        row.update(verdict="unconfirmed_improvement", reason="vs reference, no A/B")
+    elif cid in truncated:
+        row.update(
+            verdict="inconclusive",
+            reason="suspicious in screening; A/B truncated by the time budget",
+        )
+    else:
+        why = s.get("reason") or st
+        row.update(
+            verdict="inconclusive",
+            reason=f"suspicious in screening ({why}); not A/B-tested (report only)",
+        )
+    if row.get("verdict") == "inconclusive" and st in (
+        "suspect_regression",
+        "suspect_improvement",
+    ):
+        row["reason"] += f", screen ratio {s.get('ratio', 0):.3f}"
+    return row
+
+
+def combine_pr(result, screen_doc, ab_doc, manifest, gating, noise, ab_possible=True):
+    """Merge screening (pr-vs-reference) and A/B (pr-vs-base) (final verdict table above)."""
+    screen = (screen_doc or {}).get("cases") or {}
+    truncated = set((ab_doc or {}).get("truncated") or [])
+    rows = {r["case_id"]: r for r in result["rows"]}
+    q = gating.get("quarantine", ({}, {}))
+    unknown = {
+        "op": "?",
+        "pass": "?",
+        "tier": "nightly",
+        "noise_class": "normal",
+        "gating": False,
+    }
+    for cid, s in screen.items():
+        r = rows.get(cid)
+        if r is None:
+            r = _screened_row(
+                cid,
+                manifest.get(cid) or dict(unknown, label=cid),
+                gating,
+                noise,
+                s,
+                truncated,
+            )
+            result["rows"].append(r)
+            rows[cid] = r
+            set_blocking(r, gating, noise, q, "ab" if ab_possible else "aa")
+            continue
+        r["screen"] = s
+        st, dev = s.get("status"), r["metrics"].get("device") or r["metrics"].get("e2e")
+        if not dev or r["status"] != "ok":
+            continue
+        v = dev.get("verdict")
+        if st == "suspect_regression" and v == "no_change":
+            r["screened_not_confirmed"] = True
+        elif st == "suspect_regression" and v != "regression":
+            dev.update(
+                verdict="inconclusive",
+                reason=f"screening said regression, A/B said {v}",
+            )
+        elif st == "suspect_improvement" and v != "improvement" and v != "no_change":
+            dev.update(
+                verdict="inconclusive",
+                reason=f"screening said improvement, A/B said {v}",
+            )
+        r["verdict"] = dev.get("verdict")
+        set_blocking(r, gating, noise, q, result["mode"])
+    if screen and not ab_possible:
+        result["mode"] = "aa"
+    return summarize_rows(result)
+
+
+# ---------------------------------------------------------------------------
+# Report and PR comment
 # ---------------------------------------------------------------------------
 
 
@@ -487,13 +639,30 @@ def _table(header, rows):
     ]
 
 
+def _screen_ratio(r):
+    s = r.get("screen") or {}
+    return f"{s['ratio']:.3f}" if s.get("ratio") is not None else "-"
+
+
+def _ref_runs(s):
+    runs = s.get("reference_runs") or []
+    return (
+        ", ".join(f"run {rid} {d} (`{(sha or '?')[:10]}`)" for rid, d, sha in runs)
+        or "-"
+    )
+
+
 def render(result, ctx):
-    """Markdown report. ``ctx`` keys: mode_label, override, env, selection, new_ops, run_url."""
+    """Markdown report. ``ctx`` keys: mode_label, override, env, selection,
+    new_ops, run_url, flow, notes."""
     rows = result["rows"]
     regs, imps = _entries(rows, "regression"), _entries(rows, "improvement")
+    unconf = [r for r in rows if r.get("verdict") == "unconfirmed_improvement"]
     blocking = [r for r in rows if r.get("blocking")]
     override = ctx.get("override") or {}
     counts = f"{len({r['case_id'] for r, _ in regs})} regression(s), {len({r['case_id'] for r, _ in imps})} improvement(s)"
+    if unconf:
+        counts += f", {len(unconf)} unconfirmed improvement(s)"
     if result["mode"] != "ab":
         status = f"PASS (A/A run, report only) - {counts}"
     elif blocking and override.get("valid"):
@@ -503,7 +672,7 @@ def render(result, ctx):
         )
     elif blocking:
         status = f"FAIL - blocking regression detected ({len(blocking)} blocking case(s); {counts})"
-    elif regs or imps:
+    elif regs or imps or unconf:
         status = f"PASS - no blocking regression ({counts})"
     else:
         status = "PASS - no significant change in this run"
@@ -514,7 +683,8 @@ def render(result, ctx):
     lines += [
         f"**Result:** {status}",
         f"_Threshold: {thr}% on device time (E2E is report-only). "
-        f"Maintainers can add label `{OVERRIDE_LABEL}` to accept a regression for the current commit._",
+        + (f"{ctx['flow']} " if ctx.get("flow") else "")
+        + f"Maintainers can add label `{OVERRIDE_LABEL}` to accept a regression for the current commit._",
     ]
     if not result.get("canary_ok", True):
         lines += [
@@ -524,6 +694,8 @@ def render(result, ctx):
         ]
     if override.get("ignored"):
         lines += ["", f"_Override label ignored: {override['ignored']}_"]
+    if ctx.get("notes"):
+        lines += ["", *(f"**Note:** {n}" for n in ctx["notes"])]
 
     def cells(r, m):
         res = r["metrics"][m].get("used") or {}
@@ -532,27 +704,77 @@ def render(result, ctx):
             _fmt_us(res.get("median_a")),
             _fmt_us(res.get("median_b")),
             *_ratio_ci(res),
+            _screen_ratio(r),
         ]
 
-    header = ["Op", "Case", "Pass", "Metric", "Base (us)", "PR (us)", "Ratio", "95% CI"]
+    header = [
+        "Op",
+        "Case",
+        "Pass",
+        "Metric",
+        "Base (us)",
+        "PR (us)",
+        "Ratio",
+        "95% CI",
+        "Screen ratio",
+    ]
     if regs:
         lines += ["", "### Regressions"]
         lines += _table(
-            header + ["Blocking"],
-            [cells(r, m) + [_blocking_cell(r, m)] for r, m in regs],
+            header + ["Blocking", "Log"],
+            [
+                cells(r, m) + [_blocking_cell(r, m), f"`logs/{r['case_id']}/`"]
+                for r, m in regs
+            ],
         )
     if imps:
         lines += ["", "### Improvements"] + _table(
-            header, [cells(r, m) for r, m in imps]
+            header + ["Log"],
+            [cells(r, m) + [f"`logs/{r['case_id']}/`"] for r, m in imps],
+        )
+    if unconf:
+        lines += ["", "### Unconfirmed improvements (vs reference, no A/B)"]
+        lines += _table(
+            [
+                "Op",
+                "Case",
+                "Pass",
+                "Reference (us)",
+                "PR (us)",
+                "Ratio",
+                "Reference nightlies",
+            ],
+            [
+                [
+                    f"`{r['op']}`",
+                    r["label"],
+                    r["pass"],
+                    _fmt_us(r["screen"].get("reference_us")),
+                    _fmt_us(r["screen"].get("new_us")),
+                    _screen_ratio(r),
+                    _ref_runs(r["screen"]),
+                ]
+                for r in unconf
+            ],
         )
 
     inconc = _entries(rows, "inconclusive")
-    others = [r for r in rows if r["status"] != "ok"]
+    inconc_screen = [
+        r
+        for r in rows
+        if r.get("status") == "screened" and r.get("verdict") == "inconclusive"
+    ]
+    not_confirmed = [r for r in rows if r.get("screened_not_confirmed")]
+    others = [r for r in rows if r["status"] not in ("ok", "screened")]
     sel = ctx.get("selection") or {}
     truncated = sel.get("truncated") or []
-    if inconc or others or truncated:
-        lines += ["", "<details><summary>Inconclusive / skipped cases</summary>", ""]
-        if inconc:
+    if inconc or inconc_screen or not_confirmed or others or truncated:
+        lines += [
+            "",
+            "<details><summary>Inconclusive / screened-but-not-confirmed / truncated cases</summary>",
+            "",
+        ]
+        if inconc or inconc_screen:
             lines += _table(
                 ["Op", "Case", "Pass", "Metric", "Ratio", "95% CI", "Reason"],
                 [
@@ -565,8 +787,29 @@ def render(result, ctx):
                         r["metrics"][m]["reason"],
                     ]
                     for r, m in inconc
+                ]
+                + [
+                    [
+                        f"`{r['op']}`",
+                        r["label"],
+                        r["pass"],
+                        "device",
+                        _screen_ratio(r),
+                        "-",
+                        r["reason"],
+                    ]
+                    for r in inconc_screen
                 ],
             )
+        if not_confirmed:
+            lines += [
+                "",
+                f"Screened as suspicious but no change in the A/B ({len(not_confirmed)}): "
+                + ", ".join(
+                    f"`{r['op']}` {r['label']} (screen {_screen_ratio(r)})"
+                    for r in not_confirmed[:30]
+                ),
+            ]
         if others:
             lines += [""] + _table(
                 ["Op", "Case", "Pass", "Status", "Detail"],
@@ -588,7 +831,8 @@ def render(result, ctx):
         if truncated:
             lines += [
                 "",
-                f"Truncated by the time budget ({len(truncated)} case(s)): "
+                f"Truncated by the time budget ({len(truncated)} case(s)); run an on-demand A/B "
+                "(`nightly_ondemand.yml`, `ut=microbench`, `microbench_base=merge-base`) for the full list: "
                 + ", ".join(f"`{t}`" for t in truncated[:50]),
             ]
         lines += ["", "</details>"]
@@ -616,6 +860,48 @@ def render(result, ctx):
             "</details>",
         ]
 
+    screened = [r for r in rows if r.get("screen")]
+    if screened:
+        by_status = {}
+        for r in screened:
+            by_status.setdefault(r["screen"].get("status"), []).append(r)
+        lines += [
+            "",
+            "<details><summary>Reference data used</summary>",
+            "",
+            f"Reference state of nightly run `{sel.get('reference_run') or 'none'}`. Screening: "
+            + ", ".join(f"{k} {len(v)}" for k, v in sorted(by_status.items())),
+            "",
+        ]
+        flagged = [r for r in screened if r["screen"].get("status") != "no_change"][:50]
+        if flagged:
+            lines += _table(
+                [
+                    "Op",
+                    "Case",
+                    "Pass",
+                    "Screening",
+                    "Screen ratio",
+                    "Threshold",
+                    "Reference nightlies",
+                ],
+                [
+                    [
+                        f"`{r['op']}`",
+                        r["label"],
+                        r["pass"],
+                        r["screen"].get("status"),
+                        _screen_ratio(r),
+                        f"{r['screen']['threshold']:.3f}"
+                        if r["screen"].get("threshold") is not None
+                        else "-",
+                        _ref_runs(r["screen"]),
+                    ]
+                    for r in flagged
+                ],
+            )
+        lines += ["", "</details>"]
+
     if ctx.get("new_ops"):
         lines += [
             "",
@@ -637,7 +923,8 @@ def render(result, ctx):
     if ctx.get("run_url"):
         lines.append(f"**Artifacts:** {ctx['run_url']}")
     lines.append(
-        f"**All {len(rows)} case(s):** `all_cases.md` / `all_cases.csv` in the `microbench-comment-*` artifact"
+        f"**All {len(rows)} case(s):** `all_cases.md` / `all_cases.csv` in the `microbench-comment-*` artifact; "
+        "per-case logs (`logs/<case_id>/`) in the `microbench-logs-*` artifacts"
     )
     reps = regs or imps
     if reps:
@@ -662,6 +949,8 @@ ALL_CASES_HEADER = [
     "PR (us)",
     "Ratio",
     "95% CI",
+    "Screening",
+    "Screen ratio",
     "Verdict",
     "Reason",
     "Case id",
@@ -670,24 +959,33 @@ ALL_CASES_HEADER = [
 
 def all_cases(result):
     """One row per (case, metric) of every selected case; cases without A/B
-    data get one row with their status."""
+    data get one row with their status (screened cases: reference vs PR)."""
     out = []
     for r in result["rows"]:
         head = [r["op"], r["label"], r["pass"]]
+        scr = [(r.get("screen") or {}).get("status", "-"), _screen_ratio(r)]
+        if r["status"] == "screened":
+            s = r["screen"]
+            out.append(
+                head
+                + [
+                    "device",
+                    _fmt_us(s.get("reference_us")),
+                    _fmt_us(s.get("new_us")),
+                    _screen_ratio(r),
+                    "-",
+                ]
+                + scr
+                + [r.get("verdict") or "-", r.get("reason", ""), r["case_id"]]
+            )
+            continue
         if r["status"] != "ok":
             pr = _fmt_us(r["pr_median_us"]) if r.get("pr_median_us") else "-"
             out.append(
                 head
-                + [
-                    "-",
-                    "-",
-                    pr,
-                    "-",
-                    "-",
-                    r["status"],
-                    r.get("detail", ""),
-                    r["case_id"],
-                ]
+                + ["-", "-", pr, "-", "-"]
+                + scr
+                + [r["status"], r.get("detail", ""), r["case_id"]]
             )
             continue
         for metric, m in r["metrics"].items():
@@ -695,15 +993,9 @@ def all_cases(result):
             base, pr = _fmt_us(res.get("median_a")), _fmt_us(res.get("median_b"))
             out.append(
                 head
-                + [
-                    metric,
-                    base,
-                    pr,
-                    *_ratio_ci(res),
-                    m["verdict"],
-                    m.get("reason", ""),
-                    r["case_id"],
-                ]
+                + [metric, base, pr, *_ratio_ci(res)]
+                + scr
+                + [m["verdict"], m.get("reason", ""), r["case_id"]]
             )
     return out
 
@@ -715,7 +1007,7 @@ def write_all_cases(result, out_dir):
         csv.writer(f).writerows([ALL_CASES_HEADER] + rows)
     md = ["# Microbench results: all cases", ""]
     md += _table(
-        ALL_CASES_HEADER, [[c.replace("|", "\\|") for c in row] for row in rows]
+        ALL_CASES_HEADER, [[str(c).replace("|", "\\|") for c in row] for row in rows]
     )
     with open(os.path.join(out_dir, "all_cases.md"), "w") as f:
         f.write("\n".join(md) + "\n")
@@ -723,13 +1015,433 @@ def write_all_cases(result, out_dir):
 
 def should_comment(result, ctx):
     """Post when there is something to say; otherwise only refresh an existing comment."""
-    if result.get("regressions") or result.get("improvements") or ctx.get("new_ops"):
+    if (
+        result.get("regressions")
+        or result.get("improvements")
+        or result.get("unconfirmed_improvements")
+        or ctx.get("new_ops")
+    ):
         return "post"
     return "update_only"
 
 
 # ---------------------------------------------------------------------------
-# Check job
+# Nightly check
+# ---------------------------------------------------------------------------
+# ``python -m microbench check --scope nightly``: the nightly microbench-check.
+#
+# Merges the ``nightly-vs-reference`` shards (detection, recheck, candidate
+# commits) and the optional ``nightly-xpu-ops-vs-pytorch`` run, attributes each
+# confirmed regression, appends the night's measurements and
+# confirmed jumps to the reference state, writes the nightly
+# report and the issue evidence.
+#
+# Attribution from the three-wheel run (P' = previous xpu-ops built with this
+# nightly's PyTorch):
+#
+# | r_xpu = N / P'          | r_pt = P' / P              | attribution  |
+# |-------------------------|----------------------------|--------------|
+# | significantly slower    | significantly slower       | mixed        |
+# | regression (>= 10%)     | no change                  | xpu-ops      |
+# | no change               | regression or slower       | pytorch      |
+# | anything else           |                            | inconclusive |
+#
+# A confirmed regression without candidate commits (no related xpu-ops file
+# changed between P and N) is attributed to PyTorch without the three-wheel
+# run ("inferred").
+
+ISSUE_LABELS = {
+    "xpu-ops": ["microbench-regression"],
+    "pytorch": ["microbench-regression-upstream"],
+    "mixed": ["microbench-regression", "microbench-regression-upstream"],
+}
+
+
+def load_shards(nightly_dir):
+    """[(dir, nightly.json)] of every shard below ``nightly_dir``."""
+    out = []
+    for root, _, files in sorted(os.walk(nightly_dir or "")):
+        if "nightly.json" in files:
+            out.append((root, load_json(os.path.join(root, "nightly.json"), {})))
+    return out
+
+
+def attribute(r_xpu, r_pt, gating, delta):
+    kw = dict(
+        threshold=gating["threshold"], delta=delta, max_ci_width=gating["max_ci_width"]
+    )
+    vx, _ = classify(r_xpu, **kw)
+    vp, _ = classify(r_pt, **kw)
+
+    def slower(r):
+        return r is not None and r["ci_lo"] > 1 + delta
+
+    if slower(r_xpu) and slower(r_pt):
+        return "mixed"
+    if vx == "regression" and vp == "no_change":
+        return "xpu-ops"
+    if vx == "no_change" and (vp == "regression" or slower(r_pt)):
+        return "pytorch"
+    return "inconclusive"
+
+
+def attribution_results(attr_dir, gating, noise, metric):
+    """{case_id: {"attribution", "r_xpu", "r_pt"}} from the P / P' / N run."""
+    raw = os.path.join(attr_dir or "", "raw")
+    if not attr_dir or not os.path.isdir(raw):
+        return {}
+    groups = group_samples(load_records(raw), metric)
+    out = {}
+    for (cid, stage), g in groups.items():
+        if stage != "attribution" or not all(g.get(s) for s in ("P", "Pp", "N")):
+            continue
+        delta = (noise.get(cid) or {}).get("delta") or gating["default_delta"]["normal"]
+        r_xpu = compare(g["Pp"], g["N"], delta, gating["n_boot"])
+        r_pt = compare(g["P"], g["Pp"], delta, gating["n_boot"], seed=1)
+        out[cid] = {
+            "attribution": attribute(r_xpu, r_pt, gating, delta),
+            "r_xpu": r_xpu,
+            "r_pt": r_pt,
+        }
+    return out
+
+
+def _key_hash(text):
+    return hashlib.sha1(text.encode()).hexdigest()[:12]
+
+
+def issue_key(cat, candidates, prev_pt, cur_pt):
+    shas = ",".join(sorted(c["sha"] for c in candidates or []))
+    rng = f"{(prev_pt or '?')[:12]}..{(cur_pt or '?')[:12]}"
+    if cat == "xpu-ops":
+        return f"xpu-ops:{_key_hash(shas)}"
+    if cat == "pytorch":
+        return f"pytorch:{rng}"
+    return f"mixed:{_key_hash(shas)}:{rng}"
+
+
+def suggestions(state, screening, man):
+    """screen_mode / quarantine suggestions from the noise statistics."""
+    stats = reference.noise_stats(state, screening["default_noise"])
+    cfg = screening["pr_vs_reference"]
+    always = {e["case_id"] for e in cfg.get("always_ab") or []}
+    out = {"always_ab": [], "quarantine": []}
+    for cid, st in sorted(stats.items()):
+        m = man.get(cid)
+        if not m:
+            continue
+        if m.tier == "pr" and st["runs"] >= 7 and cid not in always:
+            sig = reference.sigmas(st, screening["default_noise"])
+            fake_ref = [
+                {"run_id": i, "procs": [1.0] * 3} for i in range(cfg["max_records"])
+            ]
+            t, _ = reference.threshold(sig, cfg["processes"], fake_ref, True, cfg)
+            if t < cfg["t_min"]:
+                out["always_ab"].append(
+                    {
+                        "case_id": cid,
+                        "reason": f"sigma_run {sig['run']:.3f}, t_s {t:.3f} ({st['runs']} nightlies)",
+                    }
+                )
+        if st.get("delta") is not None and st["delta"] > 0.08:
+            out["quarantine"].append(
+                {
+                    "case_id": cid,
+                    "reason": f"A/A delta {st['delta']:.3f} over {st['aa_runs']} runs",
+                }
+            )
+    return out
+
+
+def _fmt(x, nd=3):
+    return "-" if x is None else f"{x:.{nd}f}"
+
+
+def _case_entry(cid, case, det, rc, attr, kernels, shard_dir):
+    ra, rp = (attr or {}).get("r_xpu"), (attr or {}).get("r_pt")
+    return {
+        "case_id": cid,
+        "op": case.op if case else None,
+        "pass": case.pass_ if case else None,
+        "label": case.label if case else cid,
+        "params": case.params if case else None,
+        "tier": case.tier if case else None,
+        "before_us": rc.get("before_us"),
+        "after_us": rc.get("after_us"),
+        "ratio": rc.get("ratio"),
+        "ci": rc.get("ci"),
+        "detect_ratio": det.get("ratio"),
+        "detect_reference_runs": det.get("reference_runs"),
+        "r_xpu": {k: ra[k] for k in ("ratio", "ci_lo", "ci_hi")} if ra else None,
+        "r_pt": {k: rp[k] for k in ("ratio", "ci_lo", "ci_hi")} if rp else None,
+        "kernels": kernels or [],
+        "log": f"logs/{cid}/ and recheck/logs/{cid}/ in {os.path.basename(shard_dir)}",
+        "repro": case.repro() if case else None,
+    }
+
+
+def run_nightly_check(args):
+    os.makedirs(args.out_dir, exist_ok=True)
+    gating = load_gating(args.gating)
+    hist = load_history(args.history)
+    screening = reference.load_screening()
+    man = load_cases()
+    shards = load_shards(args.nightly_dir)
+    if not shards:
+        print("no nightly-vs-reference results")
+        return 1
+    first = shards[0][1]
+    metric = first.get("metric", "device_us")
+    cur = dict(first.get("cur") or {})
+    prev = {}
+    for _, d in shards:
+        prev.update({k: v for k, v in (d.get("prev") or {}).items() if v})
+    now = time.time()
+
+    detect, recheck, candidates, kernels, shard_of = {}, {}, {}, {}, {}
+    new_entries, invalid = [], {}
+    for sdir, d in shards:
+        for cid in d.get("detect") or {}:
+            shard_of[cid] = sdir
+        detect.update(d.get("detect") or {})
+        recheck.update(d.get("recheck") or {})
+        candidates.update(d.get("candidates") or {})
+        kernels.update(d.get("kernels") or {})
+        bad = set(d.get("invalid_cards") or [])
+        if bad:
+            invalid[os.path.basename(sdir)] = sorted(bad)
+        recs = read_jsonl(os.path.join(sdir, "records.jsonl")) + read_jsonl(
+            os.path.join(sdir, "aa", "records.jsonl")
+        )
+        new_entries += reference.measure_entries(
+            recs, args.run_id or cur.get("run_id"), now, bad, metric
+        )
+    attr = attribution_results(
+        args.attribution_dir, gating, hist["noise_stats"], metric
+    )
+
+    # classify confirmed regressions
+    confirmed = {c: v for c, v in recheck.items() if v.get("verdict") == "regression"}
+    improvements = {
+        c: v for c, v in recheck.items() if v.get("verdict") == "improvement"
+    }
+    cat, inferred = {}, set()
+    for cid in confirmed:
+        cands = candidates.get(cid)
+        if cands is None:
+            cat[cid] = "unknown"
+        elif not cands:
+            cat[cid] = "pytorch"
+            inferred.add(cid)
+        else:
+            cat[cid] = (attr.get(cid) or {}).get("attribution", "inconclusive")
+    false_alarms = [
+        c
+        for c, r in detect.items()
+        if r.get("status") in ("suspect_regression", "suspect_improvement")
+        and (recheck.get(c) or {}).get("verdict")
+        not in ("regression", "improvement", None)
+    ]
+
+    # jumps: confirmed regressions with an attribution, and improvements
+    jumps = []
+    for cid, c in cat.items():
+        if c in ISSUE_LABELS:
+            jumps.append(
+                reference.jump_entry(
+                    cid,
+                    prev,
+                    cur,
+                    c,
+                    [x["sha"] for x in candidates.get(cid) or []],
+                    now,
+                    inferred=cid in inferred,
+                )
+            )
+    for cid in improvements:
+        jumps.append(reference.jump_entry(cid, prev, cur, "improvement", (), now))
+    state = reference.load_state(args.state)
+    new_state = reference.roll(state, new_entries + jumps, now)
+    if args.state_out:
+        reference.save_state(args.state_out, new_state)
+
+    # issue groups
+    groups = {}
+    report_only = []
+    for cid, c in sorted(cat.items()):
+        case = man.get(cid)
+        why = [
+            r
+            for r in not_blocking_reasons(
+                case.manifest() if case else {"case_id": cid},
+                gating,
+                hist["noise_stats"],
+            )
+            if r != "nightly tier"
+        ]
+        if c not in ISSUE_LABELS or why:
+            report_only.append((cid, c, ", ".join(why) or c))
+            continue
+        key = issue_key(
+            c, candidates.get(cid), prev.get("pytorch_sha"), cur.get("pytorch_sha")
+        )
+        g = groups.setdefault(
+            key,
+            {
+                "key": key,
+                "attribution": c,
+                "inferred": cid in inferred,
+                "labels": ISSUE_LABELS[c],
+                "candidates": candidates.get(cid) or [],
+                "pytorch_range": [prev.get("pytorch_sha"), cur.get("pytorch_sha")],
+                "compare_url": f"https://github.com/pytorch/pytorch/compare/{prev.get('pytorch_sha')}...{cur.get('pytorch_sha')}"
+                if c in ("pytorch", "mixed")
+                else None,
+                "cases": [],
+            },
+        )
+        g["cases"].append(
+            _case_entry(
+                cid,
+                case,
+                detect.get(cid) or {},
+                confirmed[cid],
+                attr.get(cid),
+                kernels.get(cid),
+                shard_of.get(cid, ""),
+            )
+        )
+    evidence = {
+        "run_id": args.run_id,
+        "run_url": args.run_url,
+        "test_type": args.test_type,
+        "date": time.strftime("%Y-%m-%d", time.gmtime(now)),
+        "prev": prev,
+        "cur": cur,
+        "threshold": gating["threshold"],
+        "groups": list(groups.values()),
+        "report_only": [
+            {"case_id": c, "attribution": a, "reason": w} for c, a, w in report_only
+        ],
+    }
+    with open(os.path.join(args.out_dir, "issue_evidence.json"), "w") as f:
+        json.dump(evidence, f, indent=1, default=str)
+
+    sugg = suggestions(new_state, screening, man)
+    counts = {}
+    for r in detect.values():
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    lines = [
+        "## Microbench nightly report",
+        "",
+        f"Run `{args.run_id}` ({args.test_type or 'nightly'}); this nightly: xpu-ops `{cur.get('xpu_ops_sha')}`, "
+        f"PyTorch `{cur.get('pytorch_sha')}`; previous nightly (P): run `{prev.get('run_id')}`, xpu-ops "
+        f"`{prev.get('xpu_ops_sha')}`, PyTorch `{prev.get('pytorch_sha')}`.",
+        f"Reference state: run `{args.state_run or 'none'}` ({len(state)} entries) -> "
+        f"{len(new_state)} entries ({len(new_entries)} measurements, {len(jumps)} jumps added)"
+        + ("" if args.state_out else " (not written)"),
+        "",
+        "### Measurement",
+        f"- {len(detect)} case(s) over {len(shards)} shard(s); invalid cards (canary): {invalid or 'none'}",
+        "- detection: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())),
+        f"- recheck (P vs N, same card): {len(recheck)} case(s), {len(confirmed)} regression(s), "
+        f"{len(improvements)} improvement(s), {len(false_alarms)} detection false alarm(s)",
+    ]
+    for _, d in shards:
+        if d.get("recheck_skipped"):
+            lines.append(
+                f"- shard {d.get('shard')}: recheck skipped ({d['recheck_skipped']})"
+            )
+        if d.get("no_reference_not_rechecked"):
+            lines.append(
+                f"- shard {d.get('shard')}: {len(d['no_reference_not_rechecked'])} nightly-tier case(s) without "
+                "reference not rechecked (too many)"
+            )
+    if confirmed:
+        lines += [
+            "",
+            "### Confirmed regressions",
+            "",
+            "| Op | Case | Pass | Before (us) | After (us) | Ratio | 95% CI | N/P' | P'/P | Attribution | Candidates | Log |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        ]
+        for cid, v in sorted(
+            confirmed.items(), key=lambda kv: -(kv[1].get("ratio") or 0)
+        ):
+            case, a = man.get(cid), attr.get(cid) or {}
+            ci = v.get("ci") or [None, None]
+            cands = candidates.get(cid)
+            lines.append(
+                f"| `{case.op if case else '?'}` | {case.label if case else cid} | {case.pass_ if case else '?'} | "
+                f"{_fmt(v.get('before_us'))} | {_fmt(v.get('after_us'))} | {_fmt(v.get('ratio'))} | "
+                f"[{_fmt(ci[0])}, {_fmt(ci[1])}] | {_fmt((a.get('r_xpu') or {}).get('ratio'))} | "
+                f"{_fmt((a.get('r_pt') or {}).get('ratio'))} | {cat[cid]}{' (inferred)' if cid in inferred else ''} | "
+                f"{'unavailable' if cands is None else ', '.join(c['sha'][:10] for c in cands) or '-'} | `logs/{cid}/` |"
+            )
+    if improvements:
+        lines += ["", f"### Confirmed improvements ({len(improvements)})", ""]
+        lines += [
+            f"- `{man[c].op if c in man else '?'}` {man[c].label if c in man else c}: ratio {_fmt(v.get('ratio'))}"
+            for c, v in sorted(improvements.items())
+        ]
+    lines += ["", f"### Issues: {len(groups)} group(s) for the auto-issue job"]
+    for g in groups.values():
+        lines.append(
+            f"- `{g['key']}` {g['attribution']}{' (inferred)' if g['inferred'] else ''}: {len(g['cases'])} case(s), "
+            f"{len(g['candidates'])} candidate commit(s)"
+        )
+    if report_only:
+        lines += [
+            "",
+            f"Report only ({len(report_only)}): "
+            + ", ".join(f"`{c}` ({w})" for c, _, w in report_only[:40]),
+        ]
+    if false_alarms:
+        lines += [
+            "",
+            f"Detection false alarms ({len(false_alarms)}): "
+            + ", ".join(f"`{c}`" for c in false_alarms[:60]),
+        ]
+    if sugg["always_ab"] or sugg["quarantine"]:
+        lines += [
+            "",
+            "### Suggestions for config/gating.yaml (maintainer review)",
+            "",
+        ]
+        lines += [
+            f"- always_ab: `{s['case_id']}` ({s['reason']})"
+            for s in sugg["always_ab"][:50]
+        ]
+        lines += [
+            f"- quarantine: `{s['case_id']}` ({s['reason']})"
+            for s in sugg["quarantine"][:50]
+        ]
+    md = "\n".join(lines) + "\n"
+    with open(os.path.join(args.out_dir, "nightly_report.md"), "w") as f:
+        f.write(md)
+    summary = {
+        "detect": detect,
+        "recheck": recheck,
+        "attribution": {c: {"attribution": a["attribution"]} for c, a in attr.items()},
+        "categories": cat,
+        "false_alarms": false_alarms,
+        "suggestions": sugg,
+        "invalid_cards": invalid,
+    }
+    with open(os.path.join(args.out_dir, "nightly_summary.json"), "w") as f:
+        json.dump(summary, f, indent=1, default=str)
+    if args.summary:
+        with open(args.summary, "a") as f:
+            f.write(md)
+    print(md)
+    if args.github_output:
+        with open(args.github_output, "a") as f:
+            f.write(f"has_regressions={str(bool(groups)).lower()}\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Check job (scope pr / ondemand; nightly: run_nightly_check above)
 # ---------------------------------------------------------------------------
 # Exit 1 only for a blocking regression without a valid override. Everything
 # else (A/A runs, inconclusive cases, environment anomalies) passes.
@@ -745,22 +1457,111 @@ def _freq(meta):
     return ",".join(sorted(vals)) or None
 
 
+def flow_text(selection, screen_doc, ab_doc):
+    path = (ab_doc or {}).get("path") or selection.get("path")
+    n_ab = len((ab_doc or {}).get("cases") or [])
+    if path == "aa":
+        return "Flow: A/A, the same wheel on both sides (report only)."
+    if path == "vs-base":
+        why = "; ".join(selection.get("direct_ab") or []) or "requested"
+        return f"Flow: direct A/B ({why}), screening skipped: {n_ab} case(s) A/B-tested against the merge-base build."
+    if not screen_doc:
+        return ""
+    n = len(screen_doc.get("cases") or {})
+    if not selection.get("ab_possible", True):
+        return f"Flow: A/A (only microbench code changed): {n} case(s) of the PR wheel compared with reference data (report only)."
+    if ab_doc:
+        return (
+            f"Flow: screened {n} case(s) against reference data from the last nightlies; "
+            f"{len(screen_doc.get('ab_cases') or [])} suspicious case(s), {n_ab} confirmed by A/B against the merge-base build."
+        )
+    return f"Flow: screened {n} case(s) against reference data from the last nightlies; none needed an A/B."
+
+
+def report_notes(selection, screen_doc):
+    notes = []
+    if selection.get("protocol_note"):
+        notes.append(selection["protocol_note"])
+    cases = (screen_doc or {}).get("cases") or {}
+    if cases:
+        sus = [
+            c for c, s in cases.items() if s.get("status") not in ("no_change", "error")
+        ]
+        frac = len(sus) / len(cases)
+        if frac > 0.5:
+            notes.append(
+                f"{len(sus)}/{len(cases)} cases were suspicious in screening: check the environment, the "
+                "reference data and the PyTorch commit difference."
+            )
+        if not selection.get("ab_possible", True) and frac > 0.3:
+            notes.append(
+                "Many cases moved against the reference data while only microbench code changed: if the "
+                "framework change affects measured values, bump PROTOCOL_VERSION."
+            )
+    return notes
+
+
+def _dir_file(d, name):
+    return (
+        os.path.join(d, name) if d and os.path.exists(os.path.join(d, name)) else None
+    )
+
+
 def run_check(args):
+    if args.scope == "nightly":
+        return run_nightly_check(args)
     os.makedirs(args.out_dir, exist_ok=True)
-    meta = load_json(os.path.join(args.data_dir, "run_meta.json"), {})
-    selection = load_json(args.selection, {})
+    ab_dir = (
+        args.data_dir
+        if args.data_dir and os.path.isdir(os.path.join(args.data_dir, "raw"))
+        else None
+    )
+    screen_doc = load_json(_dir_file(args.screen_dir, "screen.json"), None)
+    ab_doc = load_json(_dir_file(ab_dir, "ab_cases.json"), None)
+    selection = load_json(args.selection, None) or load_json(
+        _dir_file(args.screen_dir, "selection.json")
+        or _dir_file(ab_dir, "selection.json"),
+        {},
+    )
+    meta = load_json(
+        _dir_file(ab_dir, "run_meta.json")
+        or _dir_file(args.screen_dir, "run_meta.json"),
+        {},
+    )
     gating = load_gating(args.gating)
     if args.require_calibration is not None:
         gating["require_calibration"] = args.require_calibration == "true"
     hist = load_history(args.history)
-    result = judge(
-        os.path.join(args.data_dir, "raw"),
-        {cid: c.manifest() for cid, c in load_cases().items()},
-        meta,
-        selection=selection,
-        gating=gating,
-        noise=hist["noise_stats"],
-        canary_history=hist["canary"],
+    manifest = {cid: c.manifest() for cid, c in load_cases().items()}
+    if ab_dir:
+        cases = (ab_doc or {}).get("cases") or selection.get("cases")
+        result = judge(
+            os.path.join(ab_dir, "raw"),
+            manifest,
+            meta,
+            selection={"cases": cases},
+            gating=gating,
+            noise=hist["noise_stats"],
+            canary_history=hist["canary"],
+        )
+    else:
+        result = summarize_rows(
+            {
+                "mode": "ab",
+                "canary_ok": (screen_doc or {}).get("canary_ok", True),
+                "canary": (screen_doc or {}).get("canary", []),
+                "rows": [],
+                "gating": gating,
+            }
+        )
+    result = combine_pr(
+        result,
+        screen_doc,
+        ab_doc,
+        manifest,
+        gating,
+        hist["noise_stats"],
+        selection.get("ab_possible", True),
     )
 
     override = {"valid": False}
@@ -774,20 +1575,27 @@ def run_check(args):
         except RuntimeError as e:
             override = {"valid": False, "ignored": f"could not read labels: {e}"}
 
+    shas = meta.get("torch_git_version") or {}
     ctx = {
         "mode_label": args.mode_label,
         "override": override,
         "env": {
-            "runner": meta.get("host"),
-            "cards": ",".join(str(c.get("index")) for c in meta.get("cards", [])),
+            "runner": meta.get("machine_id") or meta.get("host"),
+            "cards": ",".join(
+                f"{c.get('index')} ({c.get('card_id')})" for c in meta.get("cards", [])
+            ),
             "GPU freq (MHz)": _freq(meta),
             "base": args.base_sha or selection.get("base"),
             "PR": args.head_sha or selection.get("head"),
-            "PyTorch": (meta.get("torch_git_version") or {}).get("B"),
+            "PyTorch": shas.get("B")
+            or shas.get("single")
+            or selection.get("pytorch_sha"),
         },
         "selection": selection,
         "new_ops": selection.get("new_ops"),
         "run_url": args.run_url,
+        "flow": flow_text(selection, screen_doc, ab_doc),
+        "notes": report_notes(selection, screen_doc),
     }
     md = render(result, ctx)
     failed = (
@@ -818,9 +1626,19 @@ def run_check(args):
 
 
 def add_check_parser(sub):
-    p = sub.add_parser("check", help="judge raw A/B data, render the report")
+    p = sub.add_parser(
+        "check", help="final verdicts: PR / on-demand report, or the nightly report"
+    )
+    p.add_argument("--scope", choices=["pr", "ondemand", "nightly"], default="pr")
     p.add_argument(
-        "--data-dir", required=True, help="scheduler output (run_meta.json, raw/)"
+        "--data-dir",
+        "--ab-dir",
+        dest="data_dir",
+        default=None,
+        help="A/B run output (run_meta.json, raw/, ab_cases.json)",
+    )
+    p.add_argument(
+        "--screen-dir", default=None, help="pr-vs-reference output (screen.json)"
     )
     p.add_argument("--selection", default=None)
     p.add_argument("--out-dir", required=True)
@@ -835,6 +1653,23 @@ def add_check_parser(sub):
         "--override-json", default=None, help="precomputed override status (tests)"
     )
     p.add_argument("--run-url", default=None)
+    p.add_argument("--run-id", default=None)
     p.add_argument("--mode-label", default=None)
+    # nightly
+    p.add_argument(
+        "--nightly-dir", default=None, help="nightly: shard outputs (nightly.json)"
+    )
+    p.add_argument("--attribution-dir", default=None, help="nightly: P/P'/N run output")
+    p.add_argument("--state", default=None, help="nightly: previous reference.jsonl")
+    p.add_argument("--state-run", default=None, help="nightly: run id of that state")
+    p.add_argument(
+        "--state-out", default=None, help="nightly: write the new state here"
+    )
+    p.add_argument(
+        "--test-type",
+        default=None,
+        help="nightly: build-nightly / build-weekly / ondemand",
+    )
     p.add_argument("--summary", default=os.environ.get("GITHUB_STEP_SUMMARY"))
+    p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
     p.set_defaults(func=lambda a: sys.exit(run_check(a)))

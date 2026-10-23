@@ -4,11 +4,11 @@
 #             their XPU building blocks are counted instead), ops implemented
 #             by oneDNN on the PyTorch side, and view/metadata/allocation ops.
 #   deferred: real XPU kernels without parameters in the model op dumps
-#             (plan 5.3). Re-check when the dumps are refreshed; ops that gain
+#. Re-check when the dumps are refreshed; ops that gain
 #             parameters become cases.
 #
 # Report only: nothing in CI fails because of this file. Names are functional
-# op names (in-place/out variants folded, plan 5.1).
+# op names (in-place/out variants folded).
 deferred:
   __ilshift__: no parameters in the model op dumps (ww38)
   __irshift__: no parameters in the model op dumps (ww38)
