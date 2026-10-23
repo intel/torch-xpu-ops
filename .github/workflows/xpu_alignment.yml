@@ -523,7 +523,7 @@ jobs:
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
             existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
-            If an existing intel/torch-xpu-ops tracker covers the same work,
+            If an open intel/torch-xpu-ops tracker covers the same work,
             record it as `canonical_tracker`; do not create a payload or comment
             on it.
 

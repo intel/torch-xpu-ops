@@ -75,7 +75,7 @@ on:
 permissions: read-all
 
 concurrency:
-  group: acceptance-${{ github.event.inputs.caller || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
+  group: acceptance-${{ github.event.inputs.callback_sha || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
   cancel-in-progress: true
 
 run-name: >-
@@ -300,7 +300,8 @@ jobs:
     steps:
       - name: Post result commit status to caller
         env:
-          GH_TOKEN: ${{ secrets.ONEDNN_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          CB_TOKEN: ${{ secrets.ONEDNN_DISPATCH_TOKEN }}
           CB_REPO: ${{ inputs.callback_repo }}
           CB_SHA: ${{ inputs.callback_sha }}
           CB_CONTEXT: ${{ inputs.callback_context }}
@@ -315,6 +316,9 @@ jobs:
           R_CMP: ${{ needs.compare-results.result }}
         run: |
           [ -n "$CB_SHA" ] && [ -n "$CB_CONTEXT" ] || { echo "No callback sha/context; skipping."; exit 0; }
+          # Surface an expired/revoked token as such instead of a bare 401 on
+          # the status POST below.
+          echo "Callback token identity: $(GH_TOKEN="$CB_TOKEN" gh api user --jq .login 2>&1)"
           # The concurrency group (caller) is the unique key: only the newest run
           # for this caller owns the status, so an older/superseded run never
           # clobbers the single active run per PR.
@@ -330,7 +334,7 @@ jobs:
           for r in "$R_TUT" "$R_TE2E" "$R_BUT" "$R_BE2E" "$R_CMP"; do
             case "$r" in success|skipped) ;; *) state=failure ;; esac
           done
-          gh api -X POST "repos/${CB_REPO}/statuses/${CB_SHA}" \
+          GH_TOKEN="$CB_TOKEN" gh api -X POST "repos/${CB_REPO}/statuses/${CB_SHA}" \
             -f state="$state" \
             -f context="$CB_CONTEXT" \
             -f target_url="$RUN_URL" \
