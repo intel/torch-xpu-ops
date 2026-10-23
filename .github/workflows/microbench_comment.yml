@@ -1,6 +1,6 @@
 name: Microbench PR Comment
 
-# Posts / updates the single microbench comment of a PR (plan 8.1).
+# Posts / updates the single microbench comment of a PR.
 #
 # The check job of pull.yml only writes the comment as an artifact, because
 # pull_request runs from forks get a read-only token. This workflow runs from
