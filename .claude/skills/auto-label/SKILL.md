@@ -25,6 +25,8 @@ These labels control which CI jobs run, reducing unnecessary CI load.
 
 Note: Only labels consumed by `pull.yml` are in scope. Other labels (`disable_accelerate`, `disable_transformers`) are used by separate workflows and not managed here.
 
+**Never apply `disable_microbench`** (and never `perf_regression_accepted`). Microbench is a required performance gate; skipping it is a maintainer decision. The microbench jobs only honor these labels when a maintainer added them and report bot-added ones as ignored.
+
 ## Decision Rules
 
 Evaluate the file paths changed in the PR and apply labels using the following logic.
@@ -147,3 +149,4 @@ none
 1. **`disable_auto` label** — When manually added to a PR, auto-labeling is completely disabled for that PR. The workflow will skip without allocating a runner. This label should only be added manually by humans (never by automation) to opt out of auto-labeling when full manual control over CI labels is needed.
 2. **PRs with `ai_generated` label** should still follow these rules (they need CI validation).
 3. **When in doubt, disable less.** It's better to run unnecessary CI than to miss a regression.
+4. **`disable_microbench` and `perf_regression_accepted` are maintainer-only.** Never output them, whatever the changed files are.

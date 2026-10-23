@@ -1,0 +1,65 @@
+name: Microbench Override
+
+# perf_regression_accepted:
+#   labeled      a maintainer accepts the regression of the current head:
+#                record the approved SHA in a PR comment and rerun only the
+#                microbench-check job, which then reads the label and passes.
+#                Labels from non-maintainers are ignored (and said so).
+#   synchronize  new commits: remove the label; the approval covered the old
+#                head only.
+#
+# pull_request_target runs the workflow file of the base branch with a write
+# token; it must never check out or execute PR code. Only the base branch's
+# microbench helpers run here.
+
+on:
+  pull_request_target:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: microbench-override-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  override:
+    if: >-
+      ${{ github.repository_owner == 'intel' &&
+      ((github.event.action == 'labeled' && github.event.label.name == 'perf_regression_accepted') ||
+       (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'perf_regression_accepted'))) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MICROBENCH_MAINTAINER_TEAM: ${{ vars.MICROBENCH_MAINTAINER_TEAM }}
+    steps:
+      - name: Checkout base branch (scripts only, no PR code)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+      - name: Accept regression for the current head
+        if: ${{ github.event.action == 'labeled' }}
+        run: |
+          cd test
+          python -m microbench.github labeled \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --label "${{ github.event.label.name }}" \
+            --sender "${{ github.event.sender.login }}" \
+            --head-sha "${{ github.event.pull_request.head.sha }}"
+      - name: Drop the approval after new commits
+        if: ${{ github.event.action == 'synchronize' }}
+        run: |
+          cd test
+          python -m microbench.github synchronize \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}"

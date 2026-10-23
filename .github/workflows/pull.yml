@@ -226,9 +226,116 @@ jobs:
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
 
+  # Microbench. microbench-select runs in
+  # parallel with lint: it pins the PyTorch commit of both builds, computes
+  # the merge-base, selects cases, matches nightly reference data and decides
+  # the path: vs-reference (screen the PR wheel, A/B only the suspects) or
+  # vs-base (A/B directly, screening skipped).
+  microbench-select:
+    name: microbench-select
+    if: ${{ github.repository_owner == 'intel' && github.event_name == 'pull_request' && github.event.pull_request.draft == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      pytorch_sha: ${{ steps.commits.outputs.pytorch_sha }}
+      merge_base: ${{ steps.commits.outputs.merge_base }}
+      need_run: ${{ steps.select.outputs.need_run }}
+      ab_possible: ${{ steps.select.outputs.ab_possible }}
+      path: ${{ steps.select.outputs.path }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+      - name: Install dependencies
+        run: uv pip install pyyaml numpy pytest
+      - name: Resolve PyTorch SHA and merge-base
+        id: commits
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          MERGE_BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          PYTORCH_SHA=""
+          if [ "${{ contains(github.event.pull_request.labels.*.name, 'disable_build') }}" != "true" ]; then
+            # Resolved once per run; linux-build and microbench-build-base both build this commit.
+            PYTORCH_SHA=$(git ls-remote https://github.com/pytorch/pytorch.git "refs/heads/${{ github.base_ref }}" | cut -f1)
+            if [ -z "${PYTORCH_SHA}" ]; then
+              echo "::error::cannot resolve pytorch/pytorch ${{ github.base_ref }}"
+              exit 1
+            fi
+          fi
+          echo "pytorch_sha=${PYTORCH_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "merge_base=${MERGE_BASE}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "## Microbench commits"
+            echo "- PyTorch \`${PYTORCH_SHA:-nightly wheel}\` (${{ github.base_ref }})"
+            echo "- base (merge-base) \`${MERGE_BASE}\`"
+            echo "- PR head \`${{ github.event.pull_request.head.sha }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+      - name: Microbench config consistency check
+        env:
+          # report-only warning when measurement code changes without a
+          # PROTOCOL_VERSION bump
+          MICROBENCH_DIFF_BASE: ${{ steps.commits.outputs.merge_base }}
+        run: |
+          cd test
+          python -m pytest microbench/tools/test_registry.py -q -rw
+      - name: Fetch the nightly reference state
+        id: state
+        # unavailable state: every case counts as no_reference (direct A/B), so a
+        # failure here only costs a base build
+        continue-on-error: true
+        run: |
+          cd test
+          python -m microbench reference fetch --repo "${{ github.repository }}" --out-dir ../mb_reference \
+            --github-output "${GITHUB_OUTPUT}"
+      - name: Select cases
+        id: select
+        env:
+          MICROBENCH_MAINTAINER_TEAM: ${{ vars.MICROBENCH_MAINTAINER_TEAM }}
+        run: |
+          cd test
+          # live labels: a label added after the push still counts on rerun
+          LABELS=$(gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} \
+            --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
+          has() { echo "$LABELS" | tr ',' '\n' | grep -qx "$1"; }
+          REASON=""
+          if has disable_all; then
+            REASON="Microbench skipped: CI disabled by label 'disable_all'."
+          elif has disable_build; then
+            REASON="Microbench skipped: label 'disable_build' replaces linux-build with the nightly wheel, so there is no PR wheel to compare."
+          fi
+          STATE=()
+          if [ -n "${{ steps.state.outputs.state }}" ]; then
+            STATE=(--reference-state "${{ steps.state.outputs.state }}" --reference-run "${{ steps.state.outputs.state_run }}")
+          fi
+          python -m microbench select --repo .. \
+            --base "${{ steps.commits.outputs.merge_base }}" --head HEAD \
+            --pr "${{ github.event.pull_request.number }}" --gh-repo "${{ github.repository }}" \
+            --pytorch-sha "${{ steps.commits.outputs.pytorch_sha }}" "${STATE[@]}" \
+            --out ../selection.json --summary "${GITHUB_STEP_SUMMARY}" \
+            --cards 8 ${REASON:+--disable-reason "$REASON"}
+      - name: Upload selection
+        uses: actions/upload-artifact@v7
+        with:
+          name: microbench-selection-${{ github.event.pull_request.number }}
+          path: selection.json
+          overwrite: true
+
   linux-build:
-    needs: preci-lint-check
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && needs.preci-lint-check.outputs.skip_all != 'true' }}
+    needs: [preci-lint-check, microbench-select]
+    # !cancelled(): build even if microbench-select failed (it then passes no
+    # PyTorch SHA, i.e. the previous HEAD behavior); lint must still pass.
+    if: ${{ !cancelled() && needs.preci-lint-check.result == 'success' && github.repository_owner == 'intel' && github.event.pull_request.draft == false && needs.preci-lint-check.outputs.skip_all != 'true' }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -238,6 +345,100 @@ jobs:
     with:
       runner: build
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch_sha: ${{ needs.microbench-select.outputs.pytorch_sha }}
+
+  # Screening: the PR wheel only, against nightly reference data.
+  # microbench / microbench-run (pr-vs-reference). Required check.
+  microbench-run-pr-vs-reference:
+    name: microbench
+    needs: [microbench-select, linux-build]
+    if: >-
+      ${{ !cancelled() &&
+      needs.microbench-select.outputs.need_run == 'true' &&
+      needs.microbench-select.outputs.path == 'vs-reference' &&
+      needs.linux-build.result == 'success' }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/_linux_microbench.yml
+    with:
+      scope: pr-vs-reference
+      runner: bmg-test
+      selection_artifact: microbench-selection-${{ github.event.pull_request.number }}
+      artifact_id: ${{ github.event.pull_request.number }}
+      pytorch_sha: ${{ needs.microbench-select.outputs.pytorch_sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      budget_min: '20'
+
+  # Base wheel: the merge-base built against the same PyTorch
+  # commit, torch only. After linux-build for a direct A/B, after screening when it
+  # found suspects. Required check: when it fails, the A/B is skipped.
+  microbench-build-base:
+    name: microbench-build-base
+    needs: [microbench-select, linux-build, microbench-run-pr-vs-reference]
+    if: >-
+      ${{ !cancelled() && needs.linux-build.result == 'success' &&
+      needs.microbench-select.outputs.need_run == 'true' &&
+      (needs.microbench-select.outputs.path == 'vs-base' ||
+       (needs.microbench-run-pr-vs-reference.result == 'success' &&
+        needs.microbench-run-pr-vs-reference.outputs.suspect == 'true')) }}
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      runner: build
+      pytorch: ${{ github.base_ref }}
+      pytorch_sha: ${{ needs.microbench-select.outputs.pytorch_sha }}
+      torch_xpu_ops: ${{ needs.microbench-select.outputs.merge_base }}
+      checkout_torch_xpu_ops: true
+      torch_only: true
+      category: baseline
+      wheel_cache_key: microbench-base-torch-${{ needs.microbench-select.outputs.pytorch_sha }}-${{ needs.microbench-select.outputs.merge_base }}
+
+  # A/B: microbench / microbench-run (pr-vs-base). Required check.
+  microbench-run-pr-vs-base:
+    name: microbench
+    needs: [microbench-select, linux-build, microbench-run-pr-vs-reference, microbench-build-base]
+    if: ${{ !cancelled() && needs.microbench-build-base.result == 'success' }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/_linux_microbench.yml
+    with:
+      scope: pr-vs-base
+      runner: bmg-test
+      selection_artifact: microbench-selection-${{ github.event.pull_request.number }}
+      artifact_id: ${{ github.event.pull_request.number }}
+      pytorch_sha: ${{ needs.microbench-select.outputs.pytorch_sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      base_sha: ${{ needs.microbench-select.outputs.merge_base }}
+      budget_min: ${{ needs.microbench-select.outputs.path == 'vs-base' && '35' || '20' }}
+
+  # Final verdict: microbench / microbench-check. Required check;
+  # microbench_override.yml reruns only this job.
+  microbench-check:
+    name: microbench
+    needs: [microbench-select, microbench-run-pr-vs-reference, microbench-build-base, microbench-run-pr-vs-base]
+    if: >-
+      ${{ !cancelled() &&
+      (needs.microbench-run-pr-vs-base.result == 'success' ||
+       (needs.microbench-run-pr-vs-reference.result == 'success' &&
+        needs.microbench-run-pr-vs-reference.outputs.suspect != 'true')) }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    uses: ./.github/workflows/_linux_microbench_check.yml
+    with:
+      scope: pr
+      artifact_id: ${{ github.event.pull_request.number }}
+      pr_number: ${{ github.event.pull_request.number }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      base_sha: ${{ needs.microbench-select.outputs.merge_base }}
+      mode_label: ${{ needs.microbench-select.outputs.ab_possible == 'false' && 'A/A - only microbench code changed, the PR wheel against reference data (report only)' || '' }}
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
