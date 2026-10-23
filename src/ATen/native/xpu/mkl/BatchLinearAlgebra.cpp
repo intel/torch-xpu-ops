@@ -123,6 +123,31 @@ void mkl_getrf(
 }
 
 template <typename scalar_t>
+void mkl_getrfnp(
+    sycl::queue& queue,
+    int64_t m,
+    int64_t n,
+    scalar_t* a,
+    int64_t lda,
+    int64_t stride_a,
+    int64_t batch_size,
+    scalar_t* scratchpad,
+    int64_t scratchpadsize) {
+  SYCL_ONEMKL_SUBMIT(
+      queue,
+      oneapi::mkl::lapack::getrfnp_batch,
+      queue,
+      m,
+      n,
+      a,
+      lda,
+      stride_a,
+      batch_size,
+      scratchpad,
+      scratchpadsize);
+}
+
+template <typename scalar_t>
 void mkl_getrs(
     sycl::queue& queue,
     oneapi::mkl::transpose trans,
@@ -173,6 +198,18 @@ int64_t mkl_getrf_scratchpad(
 }
 
 template <typename scalar_t>
+int64_t mkl_getrfnp_scratchpad(
+    sycl::queue& queue,
+    int64_t m,
+    int64_t n,
+    int64_t lda,
+    int64_t stride_a,
+    int64_t batch_size) {
+  return oneapi::mkl::lapack::getrfnp_batch_scratchpad_size<scalar_t>(
+      queue, m, n, lda, stride_a, batch_size);
+}
+
+template <typename scalar_t>
 int64_t mkl_getrs_scratchpad(
     sycl::queue& queue,
     oneapi::mkl::transpose trans,
@@ -200,8 +237,9 @@ int64_t mkl_getrs_scratchpad(
 template <typename scalar_t>
 static void apply_lu_xpu_(
     const Tensor& self_,
-    Tensor& pivots_,
-    int32_t* info_data) {
+    const Tensor& pivots_,
+    int32_t* info_data,
+    bool get_pivots) {
   // do nothing if empty input.
   if (self_.numel() == 0)
     return;
@@ -212,27 +250,48 @@ static void apply_lu_xpu_(
   int64_t n = self_.size(-1);
   int64_t lda = m;
   int64_t stride_a = lda * n;
-  int64_t stride_ipiv = (m < n) ? m : n;
   scalar_t* a = reinterpret_cast<scalar_t*>(self_.data_ptr());
-  int64_t* ipiv = pivots_.data_ptr<int64_t>();
-  int64_t scratchpadsize = mkl_getrf_scratchpad<scalar_t>(
-      queue, m, n, lda, stride_a, stride_ipiv, batch_size);
-  Tensor scratchpad_at = at::empty({scratchpadsize}, self_.options());
-  try {
-    mkl_getrf<scalar_t>(
-        queue,
-        m,
-        n,
-        a,
-        lda,
-        stride_a,
-        ipiv,
-        stride_ipiv,
-        batch_size,
-        reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
-        scratchpadsize);
-  } catch (const oneapi::mkl::lapack::batch_error& be) {
-    error_handle(info_data, be);
+
+  if (get_pivots) {
+    int64_t stride_ipiv = (m < n) ? m : n;
+    int64_t* ipiv = pivots_.data_ptr<int64_t>();
+    int64_t scratchpadsize = mkl_getrf_scratchpad<scalar_t>(
+        queue, m, n, lda, stride_a, stride_ipiv, batch_size);
+    Tensor scratchpad_at = at::empty({scratchpadsize}, self_.options());
+    try {
+      mkl_getrf<scalar_t>(
+          queue,
+          m,
+          n,
+          a,
+          lda,
+          stride_a,
+          ipiv,
+          stride_ipiv,
+          batch_size,
+          reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
+          scratchpadsize);
+    } catch (const oneapi::mkl::lapack::batch_error& be) {
+      error_handle(info_data, be);
+    }
+  } else {
+    int64_t scratchpadsize = mkl_getrfnp_scratchpad<scalar_t>(
+        queue, m, n, lda, stride_a, batch_size);
+    Tensor scratchpad_at = at::empty({scratchpadsize}, self_.options());
+    try {
+      mkl_getrfnp<scalar_t>(
+          queue,
+          m,
+          n,
+          a,
+          lda,
+          stride_a,
+          batch_size,
+          reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
+          scratchpadsize);
+    } catch (const oneapi::mkl::lapack::batch_error& be) {
+      error_handle(info_data, be);
+    }
   }
 }
 
@@ -392,21 +451,21 @@ void lu_factor_mkl(
       "torch.lu_factor: Expected tensor with 2 or more dimensions. Got size: ",
       LU.sizes(),
       " instead");
-  TORCH_CHECK(
-      pivot,
-      "linalg.lu_factor: LU without pivoting is not implemented on the XPU");
 
   // handle the info
   Tensor info_ = at::zeros_like(info, Device(at::kCPU));
   int32_t* info_data = info_.data_ptr<int32_t>();
 
-  // oneMKL requires Long for pivots but PyTorch provides Int
-  Tensor pivots_ = at::empty(pivots.sizes(), pivots.options().dtype(kLong));
+  // oneMKL requires Long for pivots but PyTorch provides Int.
+  Tensor pivots_;
+  if (pivot) {
+    pivots_ = at::empty(pivots.sizes(), pivots.options().dtype(kLong));
+  }
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_xpu", [&] {
     using T = get_mkl_type<scalar_t>::type;
     if (!at::isnan(LU).any().item<bool>()) {
-      apply_lu_xpu_<T>(LU, pivots_, info_data);
+      apply_lu_xpu_<T>(LU, pivots_, info_data, pivot);
     } else {
       // Has NaN, temporarily replace NaNs to avoid MKL crashes, run batched LU
       // then restore NaNs for the affected batches.
@@ -423,18 +482,29 @@ void lu_factor_mkl(
       auto nan_mask_expanded = nan_mask_batch.view({batch_size, 1, 1});
       LU.copy_(at::where(nan_mask_expanded, identity, LU));
 
-      apply_lu_xpu_<T>(LU, pivots_, info_data);
+      apply_lu_xpu_<T>(LU, pivots_, info_data, pivot);
 
       // Restore NaN for batches that originally had NaN
       LU.masked_fill_(
           nan_mask_expanded.expand({batch_size, m, n}),
           create_quiet_nan<scalar_t>());
     }
+
+    // Match CUDA non-pivot behavior: backend-generated NaNs are replaced by 0.
+    if (!pivot) {
+      LU.copy_(at::where(LU.eq(LU), LU, at::zeros({}, LU.options())));
+    }
   });
 
   // Copy to original info and pivots tensor
   info.copy_(info_);
-  pivots.copy_(pivots_);
+  if (pivot) {
+    pivots.copy_(pivots_);
+  } else {
+    const auto k = std::min(LU.size(-2), LU.size(-1));
+    const auto pivots_tmp = at::arange(1, k + 1, pivots.options());
+    pivots.copy_(pivots_tmp.expand_as(pivots));
+  }
 }
 
 template <typename T>

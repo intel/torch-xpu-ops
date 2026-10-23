@@ -57,3 +57,31 @@ class TestLinalg(TestCase):
         S = 0.5 * (data - data.transpose(1, 2))
         I = torch.eye(4).unsqueeze(0).expand(4, 4, 4)
         self._assert_results_match(I + S, I - S)
+
+    def test_linalg_lu_factor_no_pivot_regression(self):
+        """Regression test for issue 3951: lu_factor should support pivot=False on XPU."""
+        A = torch.tensor(
+            [
+                [[4.0, 2.0, 3.0], [3.0, 1.0, 2.0], [2.0, 1.0, 5.0]],
+                [[3.0, 1.0, 2.0], [5.0, 2.0, 1.0], [1.0, 4.0, 2.0]],
+            ],
+            device=xpu_device,
+            dtype=torch.float,
+        )
+
+        LU, pivots = torch.linalg.lu_factor(A, pivot=False)
+        LU_ex, pivots_ex, info = torch.linalg.lu_factor_ex(A, pivot=False)
+
+        k = min(A.shape[-2], A.shape[-1])
+        expected_pivots = torch.arange(
+            1, 1 + k, device=xpu_device, dtype=torch.int32
+        ).expand(A.shape[:-2] + (k,))
+
+        self.assertEqual(pivots, expected_pivots)
+        self.assertEqual(pivots_ex, expected_pivots)
+        self.assertEqual(LU, LU_ex)
+        self.assertEqual(info, torch.zeros_like(info))
+
+        _, L, U = torch.lu_unpack(LU, pivots, unpack_pivots=False)
+        self.assertEqual(L @ U, A)
+
