@@ -59,8 +59,8 @@ jobs:
             if (fs.existsSync(csvFile)) {
               const dataLines = fs.readFileSync(csvFile, 'utf8').trim().split('\n').filter(l => l.trim());
               totalCount = dataLines.length;
-              const header = '| Category | Class name | Test name | Status | Message |';
-              const separator = '| --- | --- | --- | --- | --- |';
+              const header = '| OS | Category | Class name | Test name | Status | Message |';
+              const separator = '| --- | --- | --- | --- | --- | --- |';
               const rows = dataLines.slice(0, 5).map(line => line.split(' | ').slice(0, -1).join(' | '));
               failureTable = [header, separator, ...rows].join('\n');
               if (totalCount > 5) {

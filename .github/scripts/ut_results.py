@@ -1233,13 +1233,14 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
     new_rows: list[str] = []
     known_rows: list[str] = []
     pass_rows: list[str] = []
-    for (_, _, category), (_, row, job_dir) in best.items():
+    for (os_name, _, category), (_, row, job_dir) in best.items():
         rows.append(row)
         for name, table in ((NEW_FAILURES_CSV, new_rows),
                             (KNOWN_FAILURES_CSV, known_rows),
                             (NEW_PASSES_CSV, pass_rows)):
-            table += [line for line in read_lines(job_dir / name)
-                      if line.strip("|").split(" | ")[0].strip() == category]
+            # A check artifact is one OS, so the OS is only a column once merged.
+            table += [f"| {os_name} {line}" for line in read_lines(job_dir / name)
+                     if line.strip("|").split(" | ")[0].strip() == category]
 
     if not rows:
         warn("no UT check artifact to report on")
@@ -1260,9 +1261,9 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
 
     report = ["## UT Report", "", "### Summary", "",
               *md_table(SUMMARY_TABLE_HEADER, rows)]
-    report += fold("New failures", new_rows, FAILURE_HEADER)
-    report += fold("Known failures", known_rows, [*FAILURE_HEADER, "Issue"])
-    report += fold("New passes", pass_rows, [*PASS_HEADER, "Issue"])
+    report += fold("New failures", new_rows, ["OS", *FAILURE_HEADER])
+    report += fold("Known failures", known_rows, ["OS", *FAILURE_HEADER, "Issue"])
+    report += fold("New passes", pass_rows, ["OS", *PASS_HEADER, "Issue"])
     out_dir.mkdir(parents=True, exist_ok=True)
     write_lines(out_dir / "ut_report.md", report)
     write_lines(out_dir / NEW_FAILURES_CSV, new_rows)

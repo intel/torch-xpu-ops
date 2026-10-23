@@ -463,18 +463,19 @@ def test_report_has_a_summary_and_three_folded_sections(tmp_path):
     assert "<summary>New failures (1)</summary>" in folded
     assert "<summary>Known failures (2)</summary>" in folded
     assert "<summary>New passes (1)</summary>" in folded
-    assert "| Category | Class name | Test name | Status | Message |\n" in folded
-    assert "| op_ut | TestFoo | test_new | failed | boom |\n" in folded
-    assert "| Category | Class name | Test name | Status | Message | Issue |\n" in folded
-    assert "| op_ut | TestFoo | test_old | failed | bang | [#7](u7) |\n" in folded
+    assert "| OS | Category | Class name | Test name | Status | Message |\n" in folded
+    assert "| linux | op_ut | TestFoo | test_new | failed | boom |\n" in folded
+    assert "| OS | Category | Class name | Test name | Status | Message | Issue |\n" in folded
+    assert "| linux | op_ut | TestFoo | test_old | failed | bang | [#7](u7) |\n" in folded
     _, _, passes = folded.partition("<summary>New passes (1)</summary>")
-    assert "| Category | Class name | Test name | Issue |\n| --- | --- | --- | --- |" in passes
-    assert "| op_ut | TestFoo | test_now_ok | [#9](u9) |" in passes
+    assert ("| OS | Category | Class name | Test name | Issue |\n"
+            "| --- | --- | --- | --- | --- |") in passes
+    assert "| linux | op_ut | TestFoo | test_now_ok | [#9](u9) |" in passes
     assert folded.index("test_new") < folded.index("test_old") < folded.index("test_now_ok")
     assert (out.parent / "new_failures.csv").read_text() == \
-        "| op_ut | TestFoo | test_new | failed | boom | XML |\n"
+        "| linux | op_ut | TestFoo | test_new | failed | boom | XML |\n"
     assert (out.parent / "new_passes.csv").read_text() == \
-        "| op_ut | TestFoo | test_now_ok | [#9](u9) |\n"
+        "| linux | op_ut | TestFoo | test_now_ok | [#9](u9) |\n"
 
 
 def test_report_merges_the_oses_and_groups_them(tmp_path):
