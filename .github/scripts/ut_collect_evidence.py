@@ -80,15 +80,12 @@ MAX_TRACEBACK_CHARS = 300_000
 NAME_SAMPLE = 20
 HEALTH_RATIO = 0.95
 
-# Covered UT jobs. xpu_distributed is deliberately excluded: it reports through
-# run_distributed_tests in ut_result_check.sh, which produces neither the
-# per-category passed/failed logs nor a case count, so neither the health
-# gate nor the baseline comparison has anything to read. The upstream_* jobs
-# run weekly only; upstream_distributed goes through run_main_tests like the rest.
+# Covered UT jobs. The upstream_* jobs run weekly only.
 UT_JOB_CATEGORIES = {
     "basic": ["op_regression", "op_regression_dev1", "op_extended"],
     "op_ut": ["op_ut"],
     "xpu_profiling": ["xpu_profiling"],
+    "xpu_distributed": ["xpu_distributed"],
     "upstream_default": ["upstream_default"],
     "upstream_inductor": ["upstream_inductor"],
     "upstream_distributed": ["upstream_distributed"],
