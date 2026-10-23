@@ -22,6 +22,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import _dynamo as torchdynamo
+from torch._inductor.utils import fresh_cache
 from torch.autograd import (
     _record_function_with_args_enter,
     _record_function_with_args_exit,
@@ -488,11 +489,6 @@ class TestExecutionTrace(TestCase):
         },
     )
     def test_execution_trace_env_enabled_with_pt2(self, device):
-        # clean up the local cache for triton kernel
-        from torch._inductor.codecache import PyCodeCache
-
-        PyCodeCache.cache_clear(purge=True)
-
         @torchdynamo.optimize("inductor")
         def fn(a, b, c):
             x = torch.nn.functional.linear(a, b)
@@ -502,22 +498,23 @@ class TestExecutionTrace(TestCase):
         a, b, c = (torch.randn(4, 4, requires_grad=True).to(device) for _ in range(3))
 
         inputs = [a, b, c]
-        with torch._inductor.config.patch(
-            compile_threads=1, fx_graph_cache=False, fx_graph_remote_cache=False
-        ):
-            fn(*inputs)
+        with fresh_cache():
+            with torch._inductor.config.patch(
+                compile_threads=1, fx_graph_cache=False, fx_graph_remote_cache=False
+            ):
+                fn(*inputs)
 
-        with profile(
-            activities=torch.profiler.supported_activities(),
-            record_shapes=True,
-            schedule=torch.profiler.schedule(
-                skip_first=3, wait=1, warmup=1, active=2, repeat=1
-            ),
-        ) as p:
-            for idx in range(10):
-                with record_function(f"## LOOP {idx} ##"):
-                    fn(*inputs)
-                p.step()
+            with profile(
+                activities=torch.profiler.supported_activities(),
+                record_shapes=True,
+                schedule=torch.profiler.schedule(
+                    skip_first=3, wait=1, warmup=1, active=2, repeat=1
+                ),
+            ) as p:
+                for idx in range(10):
+                    with record_function(f"## LOOP {idx} ##"):
+                        fn(*inputs)
+                    p.step()
 
         et_path = p.execution_trace_observer.get_output_file_path()
         et_res_path = p.execution_trace_observer.get_resources_dir(et_path)
@@ -553,11 +550,6 @@ class TestExecutionTrace(TestCase):
     )
     @skipCPUIf(True, "skip CPU device for testing profiling triton")
     def test_triton_fx_graph_with_et(self, device):
-        # clean up the local cache for triton kernel
-        from torch._inductor.codecache import PyCodeCache
-
-        PyCodeCache.cache_clear(purge=True)
-
         @torchdynamo.optimize("inductor")
         def fn(a, b, c):
             x = torch.nn.functional.linear(a, b)
@@ -570,29 +562,30 @@ class TestExecutionTrace(TestCase):
             for _ in range(3)
         )
 
-        with torch._inductor.config.patch(
-            compile_threads=1, fx_graph_cache=False, fx_graph_remote_cache=False
-        ):
-            fn(a, b, c)
+        with fresh_cache():
+            with torch._inductor.config.patch(
+                compile_threads=1, fx_graph_cache=False, fx_graph_remote_cache=False
+            ):
+                fn(a, b, c)
 
-        et = ExecutionTraceObserver()
-        with tempfile.NamedTemporaryFile(
-            "w+t", suffix="fx_graph_et.json", delete=False
-        ) as fp:
-            et.register_callback(fp.name)
-        et.set_extra_resource_collection(True)
-        with profile(
-            activities=torch.profiler.supported_activities(),
-            record_shapes=True,
-            schedule=torch.profiler.schedule(
-                skip_first=0, wait=1, warmup=1, active=1, repeat=1
-            ),
-            execution_trace_observer=et,
-        ) as p:
-            for idx in range(10):
-                with record_function(f"## LOOP {idx} ##"):
-                    fn(a, b, c)
-                p.step()
+            et = ExecutionTraceObserver()
+            with tempfile.NamedTemporaryFile(
+                "w+t", suffix="fx_graph_et.json", delete=False
+            ) as fp:
+                et.register_callback(fp.name)
+            et.set_extra_resource_collection(True)
+            with profile(
+                activities=torch.profiler.supported_activities(),
+                record_shapes=True,
+                schedule=torch.profiler.schedule(
+                    skip_first=0, wait=1, warmup=1, active=1, repeat=1
+                ),
+                execution_trace_observer=et,
+            ) as p:
+                for idx in range(10):
+                    with record_function(f"## LOOP {idx} ##"):
+                        fn(a, b, c)
+                    p.step()
 
         et_path = p.execution_trace_observer.get_output_file_path()
         et_res_path = p.execution_trace_observer.get_resources_dir(et_path)
