@@ -10,7 +10,7 @@
 """Config consistency check (run in the microbench-select CI job).
 
 Cases must load without torch, keep stable case_ids and declare expected aten
-ops; core_set.yaml and op_source_map.yaml must match the registered cases and
+ops; op_source_map.yaml (with the core set) must match the registered cases and
 the source tree. Run: ``cd test && python -m pytest microbench/tools/test_registry.py``
 """
 
@@ -92,13 +92,12 @@ def test_oneDNN_matmul_never_gates(cases):
 
 
 def test_core_set(cases):
-    core = load("core_set.yaml")
     srcmap = load("op_source_map.yaml")
     ops = {c.op for c in cases.values()}
     n = 0
-    for name, g in core["groups"].items():
+    assert set(srcmap["core_set"]) == set(srcmap["common_groups"])
+    for name, g in srcmap["core_set"].items():
         assert set(g["ops"]) <= ops, name
-        assert g["common_files"] == srcmap["common_groups"].get(name, []), name
         for e in g["cases"]:
             c = cases[e["case_id"]]
             assert (

@@ -31,7 +31,6 @@ PROTOCOL_VERSION = 1
 MEASUREMENT_FILES = (
     "test/microbench/measure.py",
     "test/microbench/case.py",
-    "test/microbench/config/machines.yaml",
 )
 
 # cost estimate of a case without history (seconds per worker process)

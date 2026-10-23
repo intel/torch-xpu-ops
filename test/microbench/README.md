@@ -25,7 +25,7 @@ python -m microbench <command> --help
 | `github.py` | Labels, maintainers, override record, PR comment (privileged workflows) |
 | `tools/` | `maintenance.py` (coverage report, unmapped-file report for `op_source_map.yaml`, noise calibration) and the config consistency check `test_registry.py` |
 | `cases/` | One module per op family (`elementwise.py`, `pooling.py`, ...); one `OpBench` class per op and pass set |
-| `config/` | `op_source_map.yaml`, `core_set.yaml`, `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, direct A/B switches, PR budgets), `machines.yaml`, `history.json` (A/A calibration, case costs, canary history) |
+| `config/` | `op_source_map.yaml` (changed file -> ops, core set), `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, direct A/B switches, PR budgets, machines); optional `history.json` written by `noise calibrate` (A/A calibration, case costs, canary history) |
 
 Listing and selecting cases never imports torch: cases reach torch through
 lazy proxies in `case.py`, so the ubuntu CI jobs only need `pyyaml` and `numpy`.
@@ -141,7 +141,7 @@ Per iteration: `reset()` (in-place only), sync, `torch.sum(flush_buffer)`
   5%; at least 50 iterations and 40 ms of op time; one sample per iteration.
 * **`PROTOCOL_VERSION`** (`__init__.py`): bump it with any change that moves
   measured values; reference records of another version are never compared.
-  Changing `measure.py`, `case.py` or `machines.yaml` without a bump gives a
+  Changing `measure.py` or `case.py` without a bump gives a
   report-only warning.
 
 Every run writes, per case, `logs/<case_id>/summary.log` (configuration,
@@ -230,7 +230,7 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
 
 1. `microbench-select` (ubuntu, parallel with lint): config consistency check;
    resolves the PyTorch SHA once (both builds use it) and the merge-base;
-   selects cases (`op_source_map.yaml`, `core_set.yaml`); detects new XPU
+   selects cases (`op_source_map.yaml`); detects new XPU
    ops; honours a maintainer-added `disable_microbench`; reads the latest
    reference state and matches code-equivalent records; picks the path:
    `vs-reference`, or `vs-base` (direct A/B: a case that can block has no
@@ -300,15 +300,17 @@ driver upgrade).
 
 ## Configuration files
 
-* `op_source_map.yaml`: changed file -> ops, maintained by hand;
+* `op_source_map.yaml`: changed file -> ops, maintained by hand, and the
+  core set (1-2 cases per shared code path; maintainer review);
   `python -m microbench srcmap` lists unmapped kernel files (report only).
-* `core_set.yaml`: 1-2 cases per shared code path; maintainer review.
 * `coverage_exclude.yaml`: `excluded` / `deferred` XPU ops with reasons;
   `python -m microbench coverage --native-functions <yaml>` reports coverage.
 * `gating.yaml`: A/B verdict thresholds, the `quarantine` list (cases/ops
   reported but never blocking), screening / detection thresholds,
   `always_ab` cases (suggested by the nightly report, confirmed by a
-  maintainer), direct A/B switches, the improvements policy and the PR budgets.
-* `history.json`: A/A noise statistics (which cases may block), measured case
-  costs (LPT sharding, budget), canary history per host/card.
-* `machines.yaml`: per-host cards, NUMA/CPU binding, L2 size, limits.
+  maintainer), direct A/B switches, the improvements policy, the PR budgets,
+  and `machines` (per-host cards, NUMA/CPU binding, protocol overrides,
+  pre-run limits).
+* `history.json` (optional, written by `noise calibrate`): A/A noise
+  statistics (which cases may block), measured case costs (LPT sharding,
+  budget), canary history per host/card.

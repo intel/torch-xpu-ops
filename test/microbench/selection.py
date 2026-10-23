@@ -134,9 +134,7 @@ class Config:
     def __init__(self, config_dir=None):
         d = config_dir or CONFIG_DIR
         self.srcmap = load_yaml(os.path.join(d, "op_source_map.yaml"), {})
-        self.groups = (
-            load_yaml(os.path.join(d, "core_set.yaml"), {}).get("groups") or {}
-        )
+        self.groups = self.srcmap.get("core_set") or {}
         excl = load_yaml(os.path.join(d, "coverage_exclude.yaml"), {})
         self.excluded = excl.get("excluded") or {}
         self.deferred = excl.get("deferred") or {}
