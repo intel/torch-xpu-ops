@@ -50,7 +50,7 @@ void histogramdd_kernel(
     int64_t input_dim,
     const int64_t* num_bin_edges,
     int64_t total_bin_size,
-    int64_t wg_size,
+    int64_t /*wg_size*/,
     int64_t batch_num,
     int64_t batch_wg_size,
     int64_t scan_size) {

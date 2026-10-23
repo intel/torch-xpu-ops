@@ -33,7 +33,7 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
 void upsample_bicubic2d_kernel(
     PackedTensorAccessor64<scalar_t, 4> out_data,
     const PackedTensorAccessor64<const scalar_t, 4> in_data,
-    int64_t onum,
+    int64_t /*onum*/,
     bool align_corners,
     accscalar_t height_scale,
     accscalar_t width_scale) {

@@ -163,7 +163,7 @@ struct RangeFunctor {
 
 Tensor& range_kernel(
     const Scalar& start,
-    const Scalar& end,
+    const Scalar& /*end*/,
     const Scalar& step,
     Tensor& result) {
   AT_DISPATCH_ALL_TYPES_AND(

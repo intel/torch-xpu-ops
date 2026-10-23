@@ -111,7 +111,7 @@ void reflection_pad1d_template(
     scalar_t* output,
     int64_t input_w,
     int64_t pad_l,
-    int64_t pad_r,
+    int64_t /*pad_r*/,
     int64_t nbatch,
     int64_t nplane,
     int64_t output_w) {
@@ -155,7 +155,7 @@ void reflection_pad1d_backward_template(
     const scalar_t* grad_output,
     int64_t input_w,
     int64_t pad_l,
-    int64_t pad_r,
+    int64_t /*pad_r*/,
     int64_t nbatch,
     int64_t nplane,
     int64_t output_w) {

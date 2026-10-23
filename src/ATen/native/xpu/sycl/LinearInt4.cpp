@@ -34,12 +34,12 @@ void linear_int4_kernel_(
     const uint8_t* B,
     scalar_t* C,
     const scalar_t* ScaleAndZeros,
-    int m,
+    int /*m*/,
     int n,
     int k,
-    int lda,
-    int ldb,
-    int ldc) {
+    int /*lda*/,
+    int /*ldb*/,
+    int /*ldc*/) {
   // clang-format on
   int constexpr Unroll = 2;
   int constexpr SgSize = 16;
