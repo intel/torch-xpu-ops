@@ -1,0 +1,75 @@
+name: UT Report
+description: One report for a run, from what every UT check job concluded
+
+# Artifacts (<cat> only when `category` is set):
+#   in   UT-Check-<platform>-<ut>[-<cat>]-<attempt>   every UT check of the run
+#   out  UT-Report[-<cat>]-<attempt>                  ut_report.md and the failure tables
+#
+# Runner layout:
+#   ut-ci/checks/<UT-Check-...>/<ut_job>/   ut-ci/report/
+
+inputs:
+  category:
+    default: ''
+    description: Optional artifact tag of the run; empty reports on every untagged check
+
+outputs:
+  has_new_failures:
+    description: "'true' when the run hit a failure that is not a known one"
+    value: ${{ steps.report.outputs.has_new_failures }}
+  work_dir:
+    description: Directory holding ut_report.md and the failure tables
+    value: ${{ github.workspace }}/ut-ci/report
+  artifact_url:
+    description: URL of the uploaded report artifact
+    value: ${{ steps.upload.outputs.artifact-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve artifact names
+      id: names
+      shell: bash -xe {0}
+      env:
+        CATEGORY: ${{ inputs.category }}
+        TAG: ${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+      run: |
+        {
+          if [ -n "${CATEGORY}" ]; then
+            echo "checks=UT-Check-*-${CATEGORY}-[0-9]*"
+          else
+            echo "checks=UT-Check-*"
+          fi
+          echo "report=UT-Report${TAG}-${GITHUB_RUN_ATTEMPT}"
+        } >> "${GITHUB_OUTPUT}"
+        mkdir -p "${GITHUB_WORKSPACE}/ut-ci"/{checks,report}
+    - name: Download UT checks
+      shell: bash -xe {0}
+      env:
+        CHECKS: ${{ steps.names.outputs.checks }}
+      run: |
+        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+          --dir "${GITHUB_WORKSPACE}/ut-ci/checks" -p "${CHECKS}"
+        ls -al "${GITHUB_WORKSPACE}/ut-ci/checks"
+    - name: Render the report
+      id: report
+      shell: bash -xe {0}
+      run: |
+        report="${GITHUB_WORKSPACE}/ut-ci/report"
+        python3 "${GITHUB_ACTION_PATH}/../../scripts/ut_results.py" summary \
+          --checks "${GITHUB_WORKSPACE}/ut-ci/checks" \
+          --out "${report}"
+        cat "${report}/ut_report.md" >> "${GITHUB_STEP_SUMMARY}"
+        if [ -s "${report}/new_failures.csv" ]; then
+          echo "has_new_failures=true" >> "${GITHUB_OUTPUT}"
+        else
+          echo "has_new_failures=false" >> "${GITHUB_OUTPUT}"
+        fi
+    - name: Upload UT report
+      id: upload
+      if: ${{ ! cancelled() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.names.outputs.report }}
+        path: ${{ github.workspace }}/ut-ci/report
+        if-no-files-found: ignore

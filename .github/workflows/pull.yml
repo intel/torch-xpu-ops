@@ -259,6 +259,7 @@ jobs:
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_ut != 'true' }}
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
@@ -278,6 +279,7 @@ jobs:
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_distributed != 'true' }}
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
@@ -291,6 +293,20 @@ jobs:
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
+
+  ut-report:
+    name: ut-report
+    needs: [linux-ut, linux-distributed, windows-ut, preci-lint-check]
+    if: >-
+      ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true'
+      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.linux-distributed.result, 'ed')
+      || !endsWith(needs.windows-ut.result, 'ed')) }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/_ut_report.yml
 
   linux-e2e:
     name: linux-e2e
