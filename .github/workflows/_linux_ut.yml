@@ -11,6 +11,10 @@ on:
         type: string
         default: 'main'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      pytorch_version:
+        type: string
+        default: ''
+        description: Only for '*_wheel' pytorch. Pin torch version, e.g. 'torch==2.14.0' or '2.14.0'
       torch_xpu_ops:
         type: string
         default: 'main'
@@ -79,6 +83,7 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
+          pytorch_version: ${{ inputs.pytorch_version }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
@@ -119,6 +124,7 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
+          pytorch_version: ${{ inputs.pytorch_version }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}

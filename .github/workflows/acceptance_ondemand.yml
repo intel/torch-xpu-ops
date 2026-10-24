@@ -25,6 +25,10 @@ on:
         type: string
         default: 'nightly_wheel'
         description: "PyTorch version. 'release_wheel'/'test_wheel'/'nightly_wheel' for public wheels, or 'commit/branch', or 'repo@commit/repo@branch'"
+      pytorch_version:
+        type: string
+        default: ''
+        description: "Only for '*_wheel' pytorch. Pin torch version, e.g. 'torch==2.14.0' or '2.14.0'. Empty means latest"
       torch_xpu_ops:
         type: string
         default: 'pinned'
@@ -47,7 +51,7 @@ on:
 
 permissions: read-all
 
-run-name: P0-Scope / ${{ inputs.pytorch }}
+run-name: P0-Scope / ${{ inputs.pytorch }}${{ inputs.pytorch_version != '' && format(' {0}', inputs.pytorch_version) || '' }}
 
 jobs:
   # ==================================================================
@@ -92,6 +96,7 @@ jobs:
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
       pytorch: ${{ inputs.pytorch }}
+      pytorch_version: ${{ inputs.pytorch_version }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
       ut: p0
@@ -109,6 +114,7 @@ jobs:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
       test_type: ${{ endsWith(inputs.pytorch, '_wheel') && 'wheel-acceptance' || 'build-acceptance' }}
       pytorch: ${{ inputs.pytorch }}
+      pytorch_version: ${{ inputs.pytorch_version }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
       scenario: accuracy,performance

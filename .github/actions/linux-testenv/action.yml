@@ -5,6 +5,10 @@ inputs:
     type: string
     default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+  pytorch_version:
+    type: string
+    default: ''
+    description: Only for '*_wheel' pytorch. Pin torch version, e.g. 'torch==2.14.0' or '2.14.0'
   torch_xpu_ops:
     type: string
     default: 'main'
@@ -59,14 +63,20 @@ runs:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
+      env:
+        PYTORCH_VERSION: ${{ inputs.pytorch_version }}
       run: |
-        # install pytorch
+        # install pytorch, optionally pinned to a specific version for wheels
+        TORCH_PKG="torch"
+        if [ -n "${PYTORCH_VERSION}" ];then
+          TORCH_PKG="torch==${PYTORCH_VERSION#torch==}"
+        fi
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+          pip install "${TORCH_PKG}" torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
+          pip install "${TORCH_PKG}" torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install "${TORCH_PKG}" torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
