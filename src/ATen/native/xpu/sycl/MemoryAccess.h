@@ -292,7 +292,6 @@ static inline int preferred_vector_width(int elem_sz) {
 template <typename scalar_t>
 inline int can_vectorize_up_to(const char* pointer) {
   int elem_size = sizeof(scalar_t);
-  at::DeviceIndex dev_id = c10::xpu::current_device();
   int preferred_width = preferred_vector_width(elem_size);
   uint64_t address = reinterpret_cast<uint64_t>(pointer);
   constexpr int vec2_alignment =
