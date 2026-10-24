@@ -255,7 +255,6 @@ struct multi_outputs_unroll {
 } // namespace policies
 
 static inline int preferred_vector_width(int elem_sz) {
-  // Hot fix. This is the preferred vector width for GPUs up to LNL/BMG.
   constexpr uint32_t vec_width = 16;
   size_t ret;
   switch (elem_sz) {
