@@ -261,7 +261,6 @@ static inline int preferred_vector_width(int elem_sz) {
   switch (elem_sz) {
     case 1:
     case 2:
-      break;
     case 4:
     case 8:
       ret = vec_width / elem_sz;
