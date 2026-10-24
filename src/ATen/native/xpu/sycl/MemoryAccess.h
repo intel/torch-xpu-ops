@@ -276,7 +276,6 @@ static inline int preferred_vector_width(int elem_sz) {
 // specific vector size preference queried from SYCL runtime to feed
 // memory bandwidth well on the specified hardward platform.
 // In `Vectorized` policy, using definite vector size for some data type could
-// get enough payloads without outer loop. Outer loop may bring additional
 // In `Vectorized` policy, using definite vector size for some data type could
 // get enough payloads without outer loop. Outer loop may bring additional
 // instructions and potential registers usage.
