@@ -347,7 +347,8 @@ class LoopScanConfig {
         glb_range_y_(0),
         wg_range_x_(std::min<size_t>(32, std::bit_ceil(problem))),
         wg_range_y_(0) {
-    size_t wg_size = syclMaxWorkItemsPerSubSlice();
+    size_t wg_size = at::xpu::getDeviceMaxSubGroupSize() *
+        at::xpu::getDeviceEUCountPerXeCore();
     wg_range_y_ = wg_size / wg_range_x_;
     const int64_t target_global_size = at::xpu::getDeviceMaxWorkItems();
     ;

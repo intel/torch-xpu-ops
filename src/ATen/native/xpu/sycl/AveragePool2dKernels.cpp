@@ -17,6 +17,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Pool.h>
+#include <ATen/xpu/XPUContext.h>
 
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -178,8 +179,9 @@ void launch_avg_pool2d_channels_last_kernel(
   const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const int64_t group_size =
-      static_cast<int64_t>(syclMaxWorkItemsPerSubSlice());
+  const int64_t group_size = static_cast<int64_t>(
+      at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore());
   const int64_t global_range =
       xpuKernelLoopGroupRange(total_elements, group_size) * group_size;
 
@@ -231,8 +233,9 @@ void launch_avg_pool2d_kernel(
   const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const int64_t group_size =
-      static_cast<int64_t>(syclMaxWorkItemsPerSubSlice());
+  const int64_t group_size = static_cast<int64_t>(
+      at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore());
   const int64_t global_range =
       xpuKernelLoopGroupRange(total_elements, group_size) * group_size;
 
@@ -420,8 +423,9 @@ void launch_avg_pool2d_backward_channels_last_kernel(
   scalar_t* bottom_data = grad_input.mutable_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const int64_t group_size =
-      static_cast<int64_t>(syclMaxWorkItemsPerSubSlice());
+  const int64_t group_size = static_cast<int64_t>(
+      at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore());
   const int64_t global_range =
       xpuKernelLoopGroupRange(total_elements, group_size) * group_size;
 
@@ -475,8 +479,9 @@ void launch_avg_pool2d_backward_kernel(
   scalar_t* bottom_data = grad_input.mutable_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const int64_t group_size =
-      static_cast<int64_t>(syclMaxWorkItemsPerSubSlice());
+  const int64_t group_size = static_cast<int64_t>(
+      at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore());
   const int64_t global_range =
       xpuKernelLoopGroupRange(total_elements, group_size) * group_size;
 

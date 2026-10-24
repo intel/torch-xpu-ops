@@ -325,7 +325,8 @@ static void launch_legacy_group_range_kernel(int64_t N, const func_t& f) {
 
   auto ker = ElementwiseGroupRangeKernel<vec_size, func_t>(N, f);
 
-  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
@@ -339,7 +340,8 @@ static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
 
   auto ker = ElementwiseGlobalRangeKernel<func_t>(N, f);
 
-  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t num_wg = ceil_div<int64_t>(N, wg_sz);
   int64_t hw_max_num_wg = at::xpu::getDeviceMaxWorkItems() / wg_sz;
   num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
@@ -366,7 +368,8 @@ static inline void launch_unrolled_kernel(
   auto ker = UnrolledElementwiseKernel(N, f, data, ic, oc, l, s);
   using ker_t = decltype(ker);
 
-  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t num_wg = ceil_div<int64_t>(N, wg_sz * ker_t::item_work_size);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
@@ -400,7 +403,8 @@ static inline void launch_vectorized_kernel(
   constexpr auto max_scalar_bytes = max_scalar_size<func_t>();
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
   using traits = function_traits<func_t>;
-  auto wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
 
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
@@ -468,7 +472,8 @@ static inline void launch_unrolled_kernel_for_multi_outputs(
       out_calc_t>(N, f, data, ic, oc);
   using ker_t = decltype(ker);
 
-  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t num_wg = ceil_div<int64_t>(N, ker_t::item_work_size * wg_sz);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
@@ -524,8 +529,10 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
   bool contiguous = iter.is_contiguous();
-  bool latency_case = numel <= syclMaxWorkItemsPerSubSlice() *
-          4; /* on tuning for different data types */
+  int64_t max_work_items_per_sub_slice = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
+  bool latency_case = numel <=
+      max_work_items_per_sub_slice * 4; /* on tuning for different data types */
 
   int vec_size;
   if (contiguous) {
