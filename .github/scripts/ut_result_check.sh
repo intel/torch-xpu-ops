@@ -310,9 +310,9 @@ run_distributed_tests() {
     echo "Running distributed tests for: ${suite}"
     echo "========================================================================="
     # Process distributed test logs (different format than main tests)
-    grep -E "FAILED|ERROR" ${suite}_test*.log > "${suite}_failed.log"
+    grep -hE "FAILED|ERROR" ${suite}_test*.log > "${suite}_failed.log"
     clean_file "${suite}_failed.log"
-    grep "PASSED" ${suite}_test*.log > "${suite}_passed.log"
+    grep -h "PASSED" ${suite}_test*.log > "${suite}_passed.log"
     clean_file "${suite}_passed.log"
     echo "📋 Failed Cases:"
     cat "${suite}_failed.log"
