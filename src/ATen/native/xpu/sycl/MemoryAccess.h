@@ -278,6 +278,8 @@ static inline int preferred_vector_width(int elem_sz) {
 // memory bandwidth well on the specified hardward platform.
 // In `Vectorized` policy, using definite vector size for some data type could
 // get enough payloads without outer loop. Outer loop may bring additional
+// In `Vectorized` policy, using definite vector size for some data type could
+// get enough payloads without outer loop. Outer loop may bring additional
 // instructions and potential registers usage.
 template <typename scalar_t>
 inline int can_vectorize_up_to(const char* pointer) {
