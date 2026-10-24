@@ -20,7 +20,7 @@ from alignment_triage import (
     create_issue,
     fail,
     filed_body,
-    find_draft,
+    find_unit_comments,
     list_comments,
     parse_draft,
     update_comment,
@@ -41,7 +41,10 @@ def main() -> int:
     if not UNIT_ID_RE.fullmatch(args.unit_id):
         fail(f"`{args.unit_id}` is not a valid unit id.")
 
-    comment = find_draft(list_comments(args.repo, args.triage_issue), args.unit_id)
+    comments = find_unit_comments(list_comments(args.repo, args.triage_issue), args.unit_id)
+    if not comments:
+        fail(f"No draft comment carries the marker for `{args.unit_id}`.")
+    comment = comments[-1]
     title, body = parse_draft(comment["body"], args.unit_id)
     issue_url = create_issue(args.repo, title, body, args.unit_id)
     update_comment(args.repo, comment["id"], filed_body(comment["body"], args.unit_id, issue_url))
