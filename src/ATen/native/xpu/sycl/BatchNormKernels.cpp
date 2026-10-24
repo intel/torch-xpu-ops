@@ -213,7 +213,7 @@ int get_prefer_simd(int numPlane, int nHw) {
   int64_t target_tile_size = at::xpu::getDeviceMaxWorkItems(dev_id);
   // for work group barrier perf
   int64_t wg_size = at::xpu::getDeviceMaxSubGroupSize(dev_id) *
-      at::xpu::getDeviceProperties(dev_id)->gpu_hw_threads_per_eu;
+      dev_prop->gpu_hw_threads_per_eu;
   if (simd == SIMD32) {
     // when setting wg_size 256 can achieve high occupancy, use SIMD16
     if (wg_size * numPlane >= target_tile_size)
