@@ -45,7 +45,6 @@ skip_dict = {
     "export/test_serialize_xpu.py": None,
     "export/test_strict_export_v2_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
-    "functorch/test_control_flow_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
     "nn/test_multihead_attention_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
@@ -371,6 +370,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/functorch/test_ac.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_aot_joint_with_descriptors.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_compile_to_python.py": None,
+    f"{PYTORCH_TEST_DIR}/functorch/test_control_flow.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_eager_transforms.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_leaf_function.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_memory_efficient_fusion.py": None,
@@ -395,6 +395,44 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
     f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_backend/test_custom_backend.py": {
+        # Requires "custom_backend" target to be build
+        "test_execute",
+        "test_save_load",
+    },
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_custom_ops.py": {
+        # Required "custom_operator" target to be build
+        "test_custom_library_is_loaded",
+        "test_op_with_no_abstract_impl_pystub",
+        "test_dynamo_pystub_suggestion",
+        "test_abstract_impl_pystub_faketensor",
+        "test_abstract_impl_pystub_meta",
+        "test_calling_custom_op_string",
+        "test_calling_custom_op",
+        "test_calling_custom_op_with_autograd",
+        "test_calling_custom_op_with_autograd_in_nograd_mode",
+        "test_calling_custom_op_inside_script_module",
+        "test_saving_and_loading_script_module_with_custom_op",
+    },
+    f"{PYTORCH_TEST_DIR}/test_bundled_images.py": {
+        # This is a "Facebook" test requiring torch.ops.fb
+        # and OpenCV. When run it raises:
+        # raise RuntimeError(
+        #   "This test is not currently used and should be "
+        #   "enabled in discover_tests.py if required."
+        "test_single_tensors",
+    },
+    f"{PYTORCH_TEST_DIR}/test_ci_sanity_check_fail.py": {
+        # Comment above both cases:
+        # "This check should fail and trigger reruns.  If it passes, something is wrong"
+        "test_env_vars_exist",
+        "test_env_vars_exist_slow",
+    },
+    f"{PYTORCH_TEST_DIR}/test_kernel_launch_checks.py": {
+        # CUDA only tests
+        "test_check_code",
+        "test_check_cuda_launches",
+    },
     f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
     f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
     f"{PYTORCH_TEST_DIR}/test_callback.py": None,
