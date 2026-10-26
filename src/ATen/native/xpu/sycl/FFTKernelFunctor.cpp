@@ -13,6 +13,7 @@
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -472,9 +473,9 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
         twidl_buf = (T*)desc.twidl_table[dim][i];
       }
 
-      int64_t sg_sizes = syclMaxSubGroupSize();
-      int64_t max_work_group_size =
-          syclMaxWorkGroupSize<twiddle_table_kernel2_facts_kernel_impl<T>>();
+      int64_t sg_sizes = at::xpu::getDeviceMaxSubGroupSize();
+      int64_t max_work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+          twiddle_table_kernel2_facts_kernel_impl<T>>();
       int64_t local_x = sg_sizes;
       int64_t local_y = max_work_group_size / local_x;
       sycl::range<2> local_range(local_y, local_x);
@@ -1006,7 +1007,7 @@ void launch_fft_conjugate_copy_kernel(
     out_calc_t oc) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
 
-  int64_t max_work_group_size = syclMaxWorkGroupSize<
+  int64_t max_work_group_size = at::xpu::getKernelMaxWorkGroupSize<
       fft_conjugate_copy_kernel_impl<scalar_t, inp_calc_t, out_calc_t>>();
 
   int local_range = max_work_group_size;
