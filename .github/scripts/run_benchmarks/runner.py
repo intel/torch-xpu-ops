@@ -40,6 +40,24 @@ SUMMARY_FILES = {
 }
 
 
+def _read_csv_rows(path: Path) -> tuple[list[str], list[dict]]:
+    """Read every row and cell of *path*; cells past the header are kept as ``extra_<n>``."""
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = [r for r in csv.reader(f) if r]
+    if not rows:
+        return [], []
+    header, data = rows[0], rows[1:]
+    width = max([len(header)] + [len(r) for r in data])
+    columns: list[str] = []
+    for i in range(width):
+        name = header[i] if i < len(header) else f"extra_{i}"
+        # Repeated names would collapse onto a single key in the row dict.
+        if name in columns:
+            name = f"{name}_{i}"
+        columns.append(name)
+    return columns, [dict(zip(columns, r)) for r in data]
+
+
 def _write_scenario_summaries(base_log_dir: Path) -> None:
     """Aggregate all per-task result CSVs into one summary per scenario.
 
@@ -56,18 +74,22 @@ def _write_scenario_summaries(base_log_dir: Path) -> None:
         if csv_file.name in summary_names:
             continue
         try:
-            with open(csv_file, newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    scenario = row.get("scenario", "")
-                    if scenario not in grouped:
-                        continue
-                    for col in reader.fieldnames or []:
-                        if col not in fieldnames[scenario]:
-                            fieldnames[scenario].append(col)
-                    grouped[scenario].append(row)
+            columns, rows = _read_csv_rows(csv_file)
         except Exception as e:
             log(f"Error reading {csv_file} for summary: {e}", level="WARN")
+            continue
+        skipped = 0
+        for row in rows:
+            scenario = row.get("scenario", "")
+            if scenario not in grouped:
+                skipped += 1
+                continue
+            for col in columns:
+                if col not in fieldnames[scenario]:
+                    fieldnames[scenario].append(col)
+            grouped[scenario].append(row)
+        if skipped:
+            log(f"Summary skipped {skipped} row(s) without a known scenario in {csv_file}", level="WARN")
 
     for scenario, rows in grouped.items():
         if not rows:

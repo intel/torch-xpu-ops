@@ -23,6 +23,14 @@ from .tasks import get_torch_version
 # Common leading columns shared by every result CSV.
 CSV_PREFIX = ["dev", "backend", "suite", "dtype", "mode", "name", "scenario", "batch_size", "elapsed"]
 
+# Stats columns appended after the accuracy result; every accuracy row uses this width.
+ACCURACY_STATS = [
+    "calls_captured", "unique_graphs", "fallbacks_to_eager", "graph_breaks",
+    "unique_graph_breaks", "autograd_captures", "autograd_compiles",
+    "cudagraph_skips", "compilation_latency",
+]
+ACCURACY_HEADER = CSV_PREFIX + ["accuracy"] + ACCURACY_STATS
+
 
 def _prefix_row(device: str, task: TestTask, batch_size: str = "0", elapsed: float = 0.0) -> list[str]:
     """Build the leading CSV cells common to every suite."""
@@ -130,10 +138,7 @@ class InductorSuite(BenchmarkSuite):
         if task.scenario == "performance":
             final_header, final_row = self._performance_row(header, row, device, task, elapsed)
         elif row:
-            # Benchmark CSV row: dev, name, batch_size, <result_cols...>
-            # Reorder to the common prefix plus the result columns.
-            final_header = CSV_PREFIX + header[3:]
-            final_row = _prefix_row(device, task, row[2], elapsed) + row[3:]
+            final_header, final_row = self._accuracy_row(header, row, device, task, elapsed)
         else:
             final_header, final_row = self._fallback_row(device, task, kill_reason, elapsed)
         _append_row(log_csv, final_header, final_row)
@@ -179,12 +184,24 @@ class InductorSuite(BenchmarkSuite):
             return [], []
 
     @staticmethod
+    def _accuracy_row(header, row, device, task, elapsed):
+        """Map a benchmark row onto ACCURACY_HEADER, zero-filling missing stats."""
+        # Values past the header are assigned to stats not already named in it, so real columns are never overwritten.
+        names = header + [c for c in ACCURACY_STATS if c not in header]
+        if len(row) > len(names):
+            log(f"Dropping {len(row) - len(names)} unnamed column(s) from {task.suite}/{task.model} accuracy row",
+                level="WARN")
+        values = dict(zip(names, row))
+        cells = [values.get(c, "0") for c in ["accuracy"] + ACCURACY_STATS]
+        return ACCURACY_HEADER, _prefix_row(device, task, values.get("batch_size", "0"), elapsed) + cells
+
+    @staticmethod
     def _fallback_row(device, task, kill_reason, elapsed=0.0):
         """Build a placeholder accuracy row when the benchmark produced no CSV output."""
         fail_status = kill_reason or "core_dump"
         return (
-            CSV_PREFIX + ["accuracy"],
-            _prefix_row(device, task, elapsed=elapsed) + [fail_status],
+            ACCURACY_HEADER,
+            _prefix_row(device, task, elapsed=elapsed) + [fail_status] + ["0"] * len(ACCURACY_STATS),
         )
 
 
