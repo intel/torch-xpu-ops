@@ -11,6 +11,8 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/LaunchUtils.h>
+#include <ATen/native/xpu/sycl/UpSampleNearest2dBackwardBmg.h>
+#include <ATen/native/xpu/sycl/UpSampleNearest2dBmg.h>
 #include <ATen/native/xpu/sycl/UpSampleNearest2dKernels.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
@@ -249,6 +251,12 @@ void upsample_nearest2d_backward_kernel(
   if (grad_input.numel() == 0) {
     return;
   }
+
+  if (bmg_nearest::try_backward(
+          grad_output_, grad_input, scales_h, scales_w, is_exact)) {
+    return;
+  }
+  grad_input.zero_();
 
   int output_height = output_size[0];
   int output_width = output_size[1];
@@ -600,6 +608,10 @@ void upsample_nearest2d_kernel(
   TensorArg output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
   if (input_.numel() == 0) {
+    return;
+  }
+
+  if (bmg_nearest::try_forward(input_, output, scales_h, scales_w, is_exact)) {
     return;
   }
 
