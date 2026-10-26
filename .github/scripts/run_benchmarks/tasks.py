@@ -79,10 +79,8 @@ def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str 
             df = pd.read_csv(model_only)
             if suite == "pt2e":
                 col_header = f"pt2e {scenario}" if scenario else "pt2e accuracy"
-            elif suite == "torchbench":
-                col_header = f"{suite} {mode}"
             else:
-                col_header = suite
+                col_header = f"{suite} {mode}"
             if col_header not in df.columns:
                 available = ", ".join(df.columns)
                 raise ValueError(f"Column '{col_header}' not found in {model_only}. Available: {available}")
