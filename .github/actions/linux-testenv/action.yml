@@ -161,7 +161,7 @@ runs:
           if [ "${{ github.event_name }}" == "pull_request" ];then
             while read line; do
               python install.py $(echo $line |awk -F, '{printf $1}')
-            done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
+            done < ${{ github.workspace }}/torch-xpu-ops/.ci/benchmarks/p0/torchbench_models_list.txt
           else
             python install.py --continue_on_fail $(echo "${MODEL_ONLY_NAME}" |sed 's/,/ /g')
           fi
