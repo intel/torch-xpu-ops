@@ -222,14 +222,10 @@ class Case:
 
     ``case_code_hash`` hashes the source of the case module: a change to
     ``setup``/``reset``/``run`` keeps the ``case_id`` but invalidates its
-    reference records. ``screen_mode`` comes from
-    ``config/gating.yaml``: ``always_ab`` cases are never screened against
-    reference data.
+    reference records.
     """
 
-    def __init__(
-        self, bench, params, pass_, module=None, code_hash="", screen_mode="reference"
-    ):
+    def __init__(self, bench, params, pass_, module=None, code_hash=""):
         self.bench = bench
         self.op = bench.op
         self.family = bench.family or bench.op
@@ -237,7 +233,6 @@ class Case:
         self.pass_ = pass_
         self.module = module
         self.case_code_hash = code_hash
-        self.screen_mode = screen_mode
         self.case_id = make_case_id(self.op, pass_, params)
         key = canonical_params(params)
         is_pr = bench.gating and any(canonical_params(q) == key for q in bench.pr)
@@ -268,7 +263,6 @@ class Case:
             "gating": b.gating,
             "module": self.module,
             "case_code_hash": self.case_code_hash,
-            "screen_mode": self.screen_mode,
             "repro": self.repro(),
         }
 
@@ -585,7 +579,6 @@ def always_ab_cases(path=None):
 def load_cases(strict=True):
     """``{case_id: Case}`` for every registered case."""
     cases, ops, errors, hashes = {}, {}, [], {}
-    always_ab = always_ab_cases()
     for mod_name, bench in iter_benches():
         if ops.setdefault(bench.op, mod_name) != mod_name:
             errors.append(f"op {bench.op!r} defined in {ops[bench.op]} and {mod_name}")
@@ -597,8 +590,6 @@ def load_cases(strict=True):
                 case = Case(
                     bench, dict(p), pass_, module=mod_name, code_hash=hashes[mod_name]
                 )
-                if case.case_id in always_ab:
-                    case.screen_mode = "always_ab"
                 if case.case_id in cases:
                     errors.append(f"case_id collision: {case} vs {cases[case.case_id]}")
                 cases[case.case_id] = case
@@ -608,5 +599,15 @@ def load_cases(strict=True):
 
 
 def manifest(cases=None):
+    """Case manifests for selection, with ``screen_mode`` from
+    ``config/gating.yaml`` (``always_ab`` cases are never screened against
+    reference data). Needs pyyaml, unlike ``load_cases`` (worker venvs)."""
     cases = load_cases() if cases is None else cases
-    return [c.manifest() for c in cases.values()]
+    always_ab = always_ab_cases()
+    return [
+        dict(
+            c.manifest(),
+            screen_mode="always_ab" if c.case_id in always_ab else "reference",
+        )
+        for c in cases.values()
+    ]

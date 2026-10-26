@@ -46,8 +46,12 @@ def test_registry_loads_without_torch_import(cases):
     import sys
 
     assert len(cases) > 2000
-    # enumerating and selecting cases must not import torch (ubuntu jobs)
-    code = "import sys; from microbench.case import load_cases; load_cases(); assert 'torch' not in sys.modules"
+    # listing cases must not import torch (ubuntu jobs) nor yaml (workers and
+    # the validator run in the wheel's venv, which has no pyyaml)
+    code = (
+        "import sys; from microbench.case import load_cases; load_cases(); "
+        "assert 'torch' not in sys.modules and 'yaml' not in sys.modules"
+    )
     subprocess.run(
         [sys.executable, "-c", code], check=True, cwd=os.path.join(REPO_ROOT, "test")
     )
