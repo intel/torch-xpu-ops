@@ -1294,8 +1294,7 @@ void index_reduce_add_xpu_template(
   }
 
   const bool indContig = index.is_contiguous();
-  int ssc = at::xpu::getCurrentDeviceProperties()->max_compute_units /
-      at::xpu::getDeviceEUCountPerXeCore();
+  int ssc = at::xpu::getDeviceXeCoreCount();
 
 #define SMALL_INDEX(                                                        \
     TENSOR_TYPE, INDICES_TYPE, TYPE, SELF_DIM, SOURCE_DIM, IDX_DIM, FUNC_T) \
@@ -1635,8 +1634,7 @@ void index_reduce_func_xpu_template(
       reduce_func,                           \
       alpha_value);
 
-  int ssc = at::xpu::getCurrentDeviceProperties()->max_compute_units /
-      at::xpu::getDeviceEUCountPerXeCore();
+  int ssc = at::xpu::getDeviceXeCoreCount();
 
   if (canUse32BitIndexMath(result) && canUse32BitIndexMath(source) &&
       canUse32BitIndexMath(index)) {
@@ -2173,8 +2171,7 @@ void index_select_out_impl(
   uint64_t selfSelectDimSize = self.dim() == 0 ? 1 : self.size(dim);
   uint64_t sliceSize = outTotalSize / numIndices;
 
-  int ssc = at::xpu::getCurrentDeviceProperties()->max_compute_units /
-      at::xpu::getDeviceEUCountPerXeCore();
+  int ssc = at::xpu::getDeviceXeCoreCount();
 
 #define SMALL_INDEX(                                            \
     TENSOR_TYPE, INDICES_TYPE, TYPE, DST_DIM, SRC_DIM, IDX_DIM) \
