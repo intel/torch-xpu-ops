@@ -465,4 +465,20 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
+    f"{PYTORCH_TEST_DIR}/test_determination.py": (
+        # this is not a test, but it is imported as one
+        "test_impact_of_file",
+        "test_non_code_change",
+        "test_new_folder",
+        "test_test_internal_file",
+        "test_target_det_list_is_sorted",
+        "test_should_run_test_handles_git_style_paths",
+        "test_config_change_only",
+        "test_run_test",
+        "test_torch_file",
+        "test_test_file",
+        "test_new_test_script",
+        "test_should_run_test_handles_windows_style_paths",
+        "test_cpp_file",
+    ),
 }
