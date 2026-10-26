@@ -21,7 +21,7 @@ inputs:
   model_list:
     required: false
     default: 'full'
-    description: "Model list scope: 'p0' (CI / acceptance) or 'full' (nightly / weekly / ondemand)"
+    description: "Model list scope: 'p0', 'p1', 'p2' (tier CSVs) or 'full' (nightly / weekly / ondemand)"
 
 runs:
   using: composite
@@ -44,8 +44,8 @@ runs:
 
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
           model_list_args=(--model-only "${MODEL_ONLY_NAME}")
-        elif [ "${{ inputs.model_list }}" = "p0" ]; then
-          model_list_args=(--model-only ./benchmarks/dynamo/p0/p0_model_list.csv)
+        elif [[ "${{ inputs.model_list }}" =~ ^p[012]$ ]]; then
+          model_list_args=(--model-only ./benchmarks/dynamo/${{ inputs.model_list }}/${{ inputs.model_list }}_model_list.csv)
         else
           model_list_args=(--model-only ./benchmarks/dynamo/full_model_list.csv)
         fi
