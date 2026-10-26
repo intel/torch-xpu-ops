@@ -81,6 +81,11 @@ runs:
         apt install -fy
         dpkg -i *.deb
 
+        wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/aef232d2-aac5-4cd6-bceb-911019bbb6a8/intel-deep-learning-essentials-2026.2.0.640_offline.sh
+        bash intel-deep-learning-essentials-2026.2.0.640_offline.sh -a -s --eula accept || true
+        bash intel-deep-learning-essentials-2026.2.0.640_offline.sh -a -s --eula accept --action repair
+
+
     - name: Setup python
       uses: ./.github/actions/setup-python
       with:
@@ -135,7 +140,7 @@ runs:
         uv pip list |grep -E 'intel|torch|triton'
 
         echo "XPU_ONEAPI_PATH=/opt/intel/oneapi" >> "${GITHUB_ENV}"
-        printf '%s\n' "source /opt/intel/oneapi/setvars.sh || true" > "${RUNNER_TEMP}/oneapi_env.sh"
+        printf '%s\n' "source /opt/intel/oneapi/setvars.sh --force || true" > "${RUNNER_TEMP}/oneapi_env.sh"
         echo "BASH_ENV=${RUNNER_TEMP}/oneapi_env.sh" >> "${GITHUB_ENV}"
 
     - name: Prepare Stock Pytorch
