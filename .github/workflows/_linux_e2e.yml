@@ -65,7 +65,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: intel/omix:0.4.1-devel-ubuntu26.04-20261021
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
