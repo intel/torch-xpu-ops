@@ -31,6 +31,8 @@ from .case import (
     alternatives,
     base_name,
     Case,
+    case_log_dir,
+    case_log_name,
     dtype_name,
     expected_names,
     functional_name,
@@ -503,9 +505,13 @@ def env_info(device):
     return info
 
 
-def process_log_name(side, stage, rnd, kind):
-    """``logs/<case_id>/`` file of one worker process."""
-    return f"{side}_{stage}_proc{rnd}_{kind}.log"
+def process_log_name(case, side, stage, rnd, kind, ext="log"):
+    """``<op>_<pass>_<stage>[_<side>]_proc<k>_<kind>.log`` of one worker process."""
+    parts = [stage] if side == stage else [stage, side]
+    name = "_".join([*parts, f"proc{rnd}_{kind}"])
+    if case.case_id != CANARY_ID:
+        name = case_log_name(case.op, case.pass_, name)
+    return f"{name}.{ext}"
 
 
 def write_process_logs(log_dir, case, tag, rec, env):
@@ -529,7 +535,7 @@ def write_process_logs(log_dir, case, tag, rec, env):
     lines += [f"{i} {i % n_sets} {v}" for i, v in enumerate(rec.get("e2e_us") or [])]
     side, stage, rnd = tag["side"], tag["stage"], tag["round"]
     with open(
-        os.path.join(log_dir, process_log_name(side, stage, rnd, "e2e")), "w"
+        os.path.join(log_dir, process_log_name(case, side, stage, rnd, "e2e")), "w"
     ) as f:
         f.write("\n".join(lines) + "\n")
     det = rec.get("_device_detail")
@@ -560,7 +566,7 @@ def write_process_logs(log_dir, case, tag, rec, env):
                 f"  flush-excluded {cat} {name} {dur}" for name, cat, dur in flush
             ]
     with open(
-        os.path.join(log_dir, process_log_name(side, stage, rnd, "device")), "w"
+        os.path.join(log_dir, process_log_name(case, side, stage, rnd, "device")), "w"
     ) as f:
         f.write("\n".join(lines) + "\n")
 
@@ -593,15 +599,19 @@ def run_worker(args):
                 continue
             _emit(fh, dict(base, type="start", time=time.time()))
             t0 = time.time()
-            case_logs = os.path.join(args.log_dir, cid) if args.log_dir else None
+            case_logs = (
+                os.path.join(args.log_dir, case_log_dir(case.op, case.pass_, cid))
+                if args.log_dir
+                else None
+            )
             trace = None
             if case_logs and args.keep_traces:
                 os.makedirs(case_logs, exist_ok=True)
                 trace = os.path.join(
                     case_logs,
                     process_log_name(
-                        args.side, args.stage, args.round, "trace"
-                    ).replace(".log", ".json"),
+                        case, args.side, args.stage, args.round, "trace", "json"
+                    ),
                 )
             try:
                 rec, status = (

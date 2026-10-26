@@ -144,13 +144,20 @@ Per iteration: `reset()` (in-place only), sync, `torch.sum(flush_buffer)`
   Changing `measure.py` or `case.py` without a bump gives a
   report-only warning.
 
-Every run writes, per case, `logs/<case_id>/summary.log` (configuration,
-commits and card of each side, per-process device/E2E statistics, errors with
-the worker's stderr, A/B ratio and CI, screening/detection result),
-`samples.jsonl` (every iteration) and `<side>_<stage>_proc<k>_e2e.log` /
-`_device.log` (warmup, every timed iteration with its input set, every device
-event counted or dropped as flush, why a sample is invalid). `--keep-traces`
-also keeps the chrome traces (large).
+Every run writes the logs of each case to `logs/<op>/<pass>_<case_id>/`
+(`case_id` is a hash of the op, pass and parameters; `logs/index.csv` lists
+the parameters of every case and its directory). Every file starts with
+`<op>_<pass>_`:
+
+* `<op>_<pass>_summary.log`: configuration, commits and card of each side,
+  per-process device/E2E statistics, errors with the worker's stderr, A/B
+  ratio and CI, screening/detection result;
+* `<op>_<pass>_samples.jsonl`: every iteration;
+* `<op>_<pass>_<stage>[_<side>]_proc<k>_e2e.log` / `_device.log`: warmup,
+  every timed iteration with its input set, every device event counted or
+  dropped as flush, why a sample is invalid.
+
+`--keep-traces` also keeps the chrome traces (large).
 
 ## Validator
 
@@ -251,9 +258,8 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    `perf_regression_accepted` records the approved head SHA and reruns only
    the check job; new pushes remove the label.
 
-Run jobs upload `microbench-data-<id>-<scope>-<attempt>` (results, raw
-samples, `records.jsonl`) and `microbench-logs-<id>-<scope>-<attempt>`
-(per-case logs).
+Run jobs upload one artifact, `microbench-data-<id>-<scope>-<attempt>`
+(results, raw samples, `records.jsonl` and the per-case logs).
 
 Required checks: `linux-build`, `microbench-select`,
 `microbench / microbench-run (pr-vs-reference)`,

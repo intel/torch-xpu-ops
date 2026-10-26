@@ -41,7 +41,8 @@ ISSUE_LABELS = ("microbench-regression", "microbench-regression-upstream")
 OVERRIDE_LABEL = "perf_regression_accepted"
 OVERRIDE_RE = re.compile(r"<!-- microbench-override sha=(\w+) approver=(\S+) time=(\S+) -->")
 MARKER_RE = re.compile(r"<!-- microbench-regression: (\S+) -->")
-CASE_RE = re.compile(r"`logs/([0-9a-f]{12})/`")
+# per-case log directory logs/<op>/<pass>_<case_id>/, quoted in every case row
+CASE_RE = re.compile(r"`logs/[^`/]+/[a-z]+_([0-9a-f]{12})/`")
 MAX_PATCH = 6000
 MAX_BODY = 3000
 
@@ -77,7 +78,7 @@ def case_row(c: dict) -> str:
     return (
         f"| `{c.get('op')}` | {label} | {c.get('pass')} | {fmt(c.get('before_us'))} | "
         f"{fmt(c.get('after_us'))} | {fmt(c.get('ratio'))} | [{fmt(ci[0])}, {fmt(ci[1])}] | "
-        f"`logs/{c['case_id']}/` |"
+        f"`logs/{c.get('op')}/{c.get('pass')}_{c['case_id']}/` |"
     )
 
 

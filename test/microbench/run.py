@@ -14,6 +14,7 @@ the layout, locks GPU frequency and runs the pre-run checks.
 """
 
 import copy
+import csv
 import glob
 import hashlib
 import json
@@ -42,7 +43,7 @@ from . import (
     read_jsonl,
     reference,
 )
-from .case import load_cases, manifest as build_manifest
+from .case import case_log_dir, case_log_name, load_cases, manifest as build_manifest
 from .selection import candidate_commits, Config, estimate_minutes
 
 # ---------------------------------------------------------------------------
@@ -447,7 +448,7 @@ def env_key(fields):
 #
 # Around the measurement: ``validate`` (changed cases), ``canary_start``,
 # ``canary_end``. The scheduler records raw data, per-case logs
-# (``logs/<case_id>/``) and records (``records.jsonl``); verdicts are
+# (``logs/<op>/<pass>_<case_id>/``) and records (``records.jsonl``); verdicts are
 # made elsewhere.
 
 EXIT_OK, EXIT_INFRA, EXIT_VALIDATION = 0, 2, 3
@@ -1012,12 +1013,20 @@ def _fmt(x):
     return "-" if x is None else f"{x:.3f}"
 
 
+def find_case_dir(logs_dir, case_id):
+    """``logs/<op>/<pass>_<case_id>`` of a case, if it has logs."""
+    found = glob.glob(os.path.join(logs_dir, "*", f"*_{case_id}"))
+    return found[0] if found else None
+
+
 def write_case_logs(out_dir, recs, records):
-    """``logs/<case_id>/samples.jsonl`` and ``summary.log`` of every case."""
+    """``<op>_<pass>_samples.jsonl`` and ``<op>_<pass>_summary.log`` of every
+    case, and ``logs/index.csv`` (case_id -> op, pass, params, directory)."""
     try:
         cases = load_cases()
     except Exception:  # noqa: BLE001 - logs without case metadata
         cases = {}
+    index = []
     by_case = {}
     for r in recs:
         if r.get("type") == "result" and r.get("case_id") != CANARY_ID:
@@ -1026,9 +1035,13 @@ def write_case_logs(out_dir, recs, records):
     for rec in records:
         rec_by_case.setdefault(rec["case_id"], []).append(rec)
     for cid, rs in by_case.items():
-        d = os.path.join(out_dir, "logs", cid)
+        case = cases.get(cid)
+        op, pass_ = (case.op, case.pass_) if case else ("unknown", "unknown")
+        rel = case_log_dir(op, pass_, cid)
+        index.append([cid, op, pass_, case.label if case else "", rel])
+        d = os.path.join(out_dir, "logs", rel)
         os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, "samples.jsonl"), "w") as f:
+        with open(os.path.join(d, case_log_name(op, pass_, "samples.jsonl")), "w") as f:
             for r in rs:
                 dev = r.get("device_us") or []
                 for i, e2e in enumerate(r.get("e2e_us") or []):
@@ -1119,16 +1132,23 @@ def write_case_logs(out_dir, recs, records):
                             f"[{stage}] {m}: A {res['median_a']:.3f}  B {res['median_b']:.3f}  "
                             f"ratio {res['ratio']:.4f}  95% CI [{res['ci_lo']:.4f}, {res['ci_hi']:.4f}]"
                         )
-        with open(os.path.join(d, "summary.log"), "w") as f:
+        with open(os.path.join(d, case_log_name(op, pass_, "summary.log")), "w") as f:
             f.write("\n".join(lines) + "\n")
+    if index:
+        with open(os.path.join(out_dir, "logs", "index.csv"), "w", newline="") as f:
+            csv.writer(f).writerows(
+                [["case_id", "op", "pass", "params", "dir"]]
+                + sorted(index, key=lambda r: r[4])
+            )
 
 
 def append_case_summary(out_dir, case_id, lines):
-    """Add conclusion lines (screening / detection / verdict) to summary.log."""
-    d = os.path.join(out_dir, "logs", case_id)
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, "summary.log"), "a") as f:
-        f.write("\n".join(["", *lines]) + "\n")
+    """Add conclusion lines (screening / detection / verdict) to the case's summary log."""
+    d = find_case_dir(os.path.join(out_dir, "logs"), case_id)
+    summary = glob.glob(os.path.join(d, "*_summary.log")) if d else []
+    if summary:
+        with open(summary[0], "a") as f:
+            f.write("\n".join(["", *lines]) + "\n")
 
 
 def summarize_exit(meta, status):
@@ -1569,9 +1589,9 @@ def aa_rotation(ids, man, fraction, day=None):
 
 def kernel_names(log_dir, case_id, limit=12):
     """Device kernels counted for a case (from its device logs), most frequent first."""
-    d = os.path.join(log_dir, case_id)
+    d = find_case_dir(log_dir, case_id)
     counts = {}
-    if os.path.isdir(d):
+    if d:
         for name in sorted(os.listdir(d)):
             if name.endswith("_device.log"):
                 with open(os.path.join(d, name), errors="replace") as f:

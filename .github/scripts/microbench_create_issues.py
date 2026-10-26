@@ -40,7 +40,7 @@ TITLE_PREFIX = "[microbench] "
 MAX_TITLE = 160
 SAFE_BODY_LIMIT = 60000
 MAX_ISSUES_PER_RUN = 10
-ROW_RE = re.compile(r"^\|.*`logs/([0-9a-f]{12})/`.*\|$")
+ROW_RE = re.compile(r"^\|.*`logs/[^`/]+/[a-z]+_([0-9a-f]{12})/`.*\|$")
 SUGGESTION_HEAD = "**Most likely commit (LLM suggestion, not verified by A/B):**"
 
 

@@ -32,7 +32,7 @@ from . import (
     read_jsonl,
     reference,
 )
-from .case import load_cases
+from .case import case_log_dir, load_cases
 from .github import OVERRIDE_LABEL, REPORT_MARKER as COMMENT_MARKER
 
 # ---------------------------------------------------------------------------
@@ -722,15 +722,12 @@ def render(result, ctx):
         lines += ["", "### Regressions"]
         lines += _table(
             header + ["Blocking", "Log"],
-            [
-                cells(r, m) + [_blocking_cell(r, m), f"`logs/{r['case_id']}/`"]
-                for r, m in regs
-            ],
+            [cells(r, m) + [_blocking_cell(r, m), _log_cell(r)] for r, m in regs],
         )
     if imps:
         lines += ["", "### Improvements"] + _table(
             header + ["Log"],
-            [cells(r, m) + [f"`logs/{r['case_id']}/`"] for r, m in imps],
+            [cells(r, m) + [_log_cell(r)] for r, m in imps],
         )
     if unconf:
         lines += ["", "### Unconfirmed improvements (vs reference, no A/B)"]
@@ -924,12 +921,16 @@ def render(result, ctx):
         lines.append(f"**Artifacts:** {ctx['run_url']}")
     lines.append(
         f"**All {len(rows)} case(s):** `all_cases.md` / `all_cases.csv` in the `microbench-comment-*` artifact; "
-        "per-case logs (`logs/<case_id>/`) in the `microbench-logs-*` artifacts"
+        "per-case logs (`logs/<op>/<pass>_<case_id>/`, index in `logs/index.csv`) in the `microbench-data-*` artifacts"
     )
     reps = regs or imps
     if reps:
         lines.append(f"**Reproduce:** `{reps[0][0].get('repro')}`")
     return "\n".join(lines) + "\n"
+
+
+def _log_cell(r):
+    return f"`logs/{case_log_dir(r['op'], r['pass'], r['case_id'])}/`"
 
 
 def _blocking_cell(r, metric):
@@ -1159,6 +1160,7 @@ def _fmt(x, nd=3):
 
 def _case_entry(cid, case, det, rc, attr, kernels, shard_dir):
     ra, rp = (attr or {}).get("r_xpu"), (attr or {}).get("r_pt")
+    log = f"logs/{case_log_dir(case.op, case.pass_, cid) if case else cid}/"
     return {
         "case_id": cid,
         "op": case.op if case else None,
@@ -1175,7 +1177,7 @@ def _case_entry(cid, case, det, rc, attr, kernels, shard_dir):
         "r_xpu": {k: ra[k] for k in ("ratio", "ci_lo", "ci_hi")} if ra else None,
         "r_pt": {k: rp[k] for k in ("ratio", "ci_lo", "ci_hi")} if rp else None,
         "kernels": kernels or [],
-        "log": f"logs/{cid}/ and recheck/logs/{cid}/ in {os.path.basename(shard_dir)}",
+        "log": f"{log} and recheck/{log} in {os.path.basename(shard_dir)}",
         "repro": case.repro() if case else None,
     }
 
@@ -1376,7 +1378,8 @@ def run_nightly_check(args):
                 f"{_fmt(v.get('before_us'))} | {_fmt(v.get('after_us'))} | {_fmt(v.get('ratio'))} | "
                 f"[{_fmt(ci[0])}, {_fmt(ci[1])}] | {_fmt((a.get('r_xpu') or {}).get('ratio'))} | "
                 f"{_fmt((a.get('r_pt') or {}).get('ratio'))} | {cat[cid]}{' (inferred)' if cid in inferred else ''} | "
-                f"{'unavailable' if cands is None else ', '.join(c['sha'][:10] for c in cands) or '-'} | `logs/{cid}/` |"
+                f"{'unavailable' if cands is None else ', '.join(c['sha'][:10] for c in cands) or '-'} | "
+                f"`logs/{case_log_dir(case.op, case.pass_, cid) if case else cid}/` |"
             )
     if improvements:
         lines += ["", f"### Confirmed improvements ({len(improvements)})", ""]

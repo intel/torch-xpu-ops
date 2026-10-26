@@ -21,7 +21,7 @@ import pkgutil
 import sys
 from types import SimpleNamespace
 
-from . import CONFIG_DIR, load_yaml
+from . import CANARY_ID, CONFIG_DIR, load_yaml
 
 
 class LazyModule:
@@ -116,6 +116,21 @@ def _normalize(value):
 
 def canonical_params(params):
     return json.dumps(_normalize(params), sort_keys=True, separators=(",", ":"))
+
+
+# Per-case logs of a run live in ``logs/<op>/<pass>_<case_id>/`` and every
+# file starts with ``<op>_<pass>_``; ``logs/index.csv`` maps each case_id (a
+# hash of op, pass and params) to its parameters.
+
+
+def case_log_dir(op, pass_, case_id):
+    """Log directory of a case, relative to ``logs/``."""
+    return "canary" if case_id == CANARY_ID else f"{op}/{pass_}_{case_id}"
+
+
+def case_log_name(op, pass_, *parts):
+    """``<op>_<pass>_<parts...>``: the name of a file in ``case_log_dir``."""
+    return "_".join((op, pass_, *parts))
 
 
 def make_case_id(op, pass_, params):

@@ -108,7 +108,7 @@ mixed: both parts slower, listed separately>, found by nightly <run_id> (<run_ur
 python -m microbench run --op <op> --case '<json>'   (the case's `repro`)
 A/B of a candidate: nightly_ondemand.yml with ut=microbench, torch_xpu_ops=<candidate sha>, microbench_base=<parent sha>, microbench_cases=<ops>
 
-**Data:** <run_url> (per-case logs: `logs/<case_id>/` in the microbench-logs artifacts)
+**Data:** <run_url> (per-case logs: `logs/<op>/<pass>_<case_id>/` in the microbench-data artifacts)
 ```
 
 Adapt it:

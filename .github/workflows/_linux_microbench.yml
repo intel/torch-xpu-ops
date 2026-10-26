@@ -16,9 +16,9 @@ name: Linux OP Microbench (run)
 #   ondemand                    A/A of one wheel (two-stage, report only).
 #
 # Fails only on infrastructure errors or case-validation failures; the
-# verdicts are made by _linux_microbench_check.yml. Uploads
-# microbench-data-<id>-<scope>[-<shard>]-<attempt> (results, raw samples,
-# records) and microbench-logs-<id>-<scope>[-<shard>]-<attempt> (per-case logs).
+# verdicts are made by _linux_microbench_check.yml. Uploads one artifact,
+# microbench-data-<id>-<scope>[-<shard>]-<attempt>: results, raw samples,
+# records and the per-case logs (logs/<op>/<pass>_<case_id>/, logs/index.csv).
 
 on:
   workflow_call:
@@ -284,23 +284,10 @@ jobs:
         if: ${{ always() }}
         run: |
           chown 1000:1000 ${{ github.workspace }} -R || true
-      - name: Upload results and raw data
+      - name: Upload results, raw data and logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: microbench-data-${{ inputs.artifact_id }}-${{ inputs.scope }}${{ inputs.scope == 'nightly-vs-reference' && format('-{0}', inputs.shard) || '' }}-${{ github.run_attempt }}
-          path: |
-            ${{ github.workspace }}/mb_out
-            !${{ github.workspace }}/mb_out/logs
-            !${{ github.workspace }}/mb_out/*/logs
-          retention-days: ${{ startsWith(inputs.scope, 'pr-') && 30 || 90 }}
-      - name: Upload per-case logs
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: microbench-logs-${{ inputs.artifact_id }}-${{ inputs.scope }}${{ inputs.scope == 'nightly-vs-reference' && format('-{0}', inputs.shard) || '' }}-${{ github.run_attempt }}
-          path: |
-            ${{ github.workspace }}/mb_out/logs
-            ${{ github.workspace }}/mb_out/*/logs
-          if-no-files-found: ignore
+          path: ${{ github.workspace }}/mb_out
           retention-days: ${{ startsWith(inputs.scope, 'pr-') && 30 || 90 }}
