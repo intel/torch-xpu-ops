@@ -3215,9 +3215,8 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
       m_c = mean_[c];
       m_dy_c = sum_dy_[c] * norm_fct;
       factor_1_c = inv_std_c * inv_std_c * sum_dy_xmu_[c] * norm_fct;
-      factor_2_c =
-          (weight_ == nullptr ? accscalar_t(1.0)
-                              : static_cast<accscalar_t>(weight_[c])) *
+      factor_2_c = (weight_ == nullptr ? accscalar_t(1.0)
+                                       : static_cast<accscalar_t>(weight_[c])) *
           inv_std_c;
     }
     return static_cast<scalar_t>(
@@ -3332,27 +3331,27 @@ static void batch_norm_backward_elemt_channels_last_1d(
     int64_t world_size = 0) {
   constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 2 : 1;
 
-#define LAUNCH_BN_BWD_CL_1D(VEC, SLM)                                       \
-  launch_batch_norm_backward_elemt_channels_last_1d<                        \
-      scalar_t,                                                             \
-      accscalar_t,                                                          \
-      layerscalar_t,                                                        \
-      VEC,                                                                  \
-      SLM,                                                                  \
-      USE_COUNTS,                                                           \
-      index_t>(                                                             \
-      grad_output_ptr,                                                      \
-      input_ptr,                                                            \
-      mean_ptr,                                                             \
-      inv_std_ptr,                                                          \
-      weight_ptr,                                                           \
-      sum_dy_ptr,                                                           \
-      sum_dy_xmu_ptr,                                                       \
-      grad_input_ptr,                                                       \
-      norm_fct,                                                             \
-      reduction_size,                                                       \
-      stride,                                                               \
-      numel,                                                                \
+#define LAUNCH_BN_BWD_CL_1D(VEC, SLM)                \
+  launch_batch_norm_backward_elemt_channels_last_1d< \
+      scalar_t,                                      \
+      accscalar_t,                                   \
+      layerscalar_t,                                 \
+      VEC,                                           \
+      SLM,                                           \
+      USE_COUNTS,                                    \
+      index_t>(                                      \
+      grad_output_ptr,                               \
+      input_ptr,                                     \
+      mean_ptr,                                      \
+      inv_std_ptr,                                   \
+      weight_ptr,                                    \
+      sum_dy_ptr,                                    \
+      sum_dy_xmu_ptr,                                \
+      grad_input_ptr,                                \
+      norm_fct,                                      \
+      reduction_size,                                \
+      stride,                                        \
+      numel,                                         \
       world_size)
 
   if constexpr (VEC_SIZE == 2) {
