@@ -66,6 +66,7 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
         - /opt/xpu-test/_dataset:/opt/_dataset/:rw
+        - /home/jenkins/mengfeil:/home/jenkins/mengfeil
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
