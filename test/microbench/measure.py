@@ -18,7 +18,6 @@ import math
 import os
 import platform
 import socket
-import statistics
 import sys
 import tempfile
 import time
@@ -45,17 +44,16 @@ from .case import (
 # ---------------------------------------------------------------------------
 # Device time from the profiler trace (no torch needed)
 # ---------------------------------------------------------------------------
-# The profiled loop wraps every iteration in two host annotations:
-# ``__cache_flush__`` (torch.sum of the flush buffer) and ``__mb_iter__``
-# (run()). Device events (kernel, memcpy, memset) are attributed to a window
+# Every measured iteration runs inside a ``__mb_iter__`` host annotation.
+# Device events (kernel, memcpy, memset) are attributed to an iteration
 # through the ``External id`` of the host op that launched them, falling back
-# to the runtime launch event linked by ``correlation``. Flush-window kernels
-# are dropped; iteration-window kernels form that iteration's sample. An
-# iteration whose flush window has no kernel is invalid, so flush time can
-# never leak into a sample. ``key_averages().self_device_time_total`` is not
-# used: it is unreliable on XPU.
+# to the runtime launch event linked by ``correlation``; events launched
+# outside the windows (warm-up pass, input reset) are not counted. An
+# iteration is invalid when it has no device event or when a kernel launch
+# inside its window has no device event (incomplete trace).
+# ``key_averages().self_device_time_total`` is not used: it is unreliable on
+# XPU.
 
-FLUSH_TAG = "__cache_flush__"
 ITER_TAG = "__mb_iter__"
 DEVICE_CATS = {"kernel", "gpu_kernel", "xpu_kernel", "gpu_memcpy", "gpu_memset"}
 HOST_OP_CATS = {"cpu_op", "user_annotation", "python_function"}
@@ -63,6 +61,11 @@ HOST_OP_CATS = {"cpu_op", "user_annotation", "python_function"}
 
 def _is_runtime(cat):
     return "runtime" in cat or cat == "xpu_driver"
+
+
+def _is_kernel_launch(name):
+    name = (name or "").lower()
+    return "launch" in name and "kernel" in name
 
 
 def _span(e):
@@ -102,17 +105,12 @@ def _device_events(events):
 def attribute_device_time(events, detail=False):
     """Per-iteration device time (us; ``None`` = invalid) plus diagnostics.
 
-    ``detail`` adds ``iter_events`` (the device events counted per iteration)
-    and ``flush_events`` (the events dropped per flush window), as
-    ``(name, category, dur_us)`` tuples, for the per-case device log.
+    ``detail`` adds ``iter_events``: the device events counted per iteration
+    as ``(name, category, dur_us)`` tuples, for the per-case device log.
     """
-    flush_w = _annotations(events, FLUSH_TAG)
     iter_w = _annotations(events, ITER_TAG)
-    windows = _Windows(
-        [(s, t, ("flush", i)) for i, (s, t) in enumerate(flush_w)]
-        + [(s, t, ("iter", i)) for i, (s, t) in enumerate(iter_w)]
-    )
-    ext_window, corr_window = {}, {}
+    windows = _Windows([(s, t, i) for i, (s, t) in enumerate(iter_w)])
+    ext_window, corr_window, launches = {}, {}, {}
     for e in events:
         cat = e.get("cat", "")
         if e.get("ph") != "X" or not (cat in HOST_OP_CATS or _is_runtime(cat)):
@@ -125,45 +123,41 @@ def attribute_device_time(events, detail=False):
             ext_window.setdefault(args["External id"], w)
         if args.get("correlation") is not None and _is_runtime(cat):
             corr_window[args["correlation"]] = w
+            if _is_kernel_launch(e.get("name")):
+                launches[args["correlation"]] = w
 
     n = len(iter_w)
     samples, iter_kernels = [0.0] * n, [0] * n
-    flush_kernels = [0] * len(flush_w)
     iter_events = [[] for _ in range(n)]
-    flush_events = [[] for _ in flush_w]
-    unattributed = 0
+    seen, excluded = set(), 0
     for e, args in _device_events(events):
-        w = ext_window.get(args.get("External id")) or corr_window.get(
-            args.get("correlation")
-        )
+        w = ext_window.get(args.get("External id"))
         if w is None:
-            unattributed += 1
+            w = corr_window.get(args.get("correlation"))
+        if w is None:
+            excluded += 1
             continue
-        ev = (e.get("name"), e.get("cat"), round(float(e.get("dur", 0)), 3))
-        if w[0] == "flush":
-            flush_kernels[w[1]] += 1
-            flush_events[w[1]].append(ev)
-        else:
-            samples[w[1]] += float(e.get("dur", 0))
-            iter_kernels[w[1]] += 1
-            iter_events[w[1]].append(ev)
-    # flush window i precedes iteration window i
-    out = [
-        samples[i]
-        if i < len(flush_kernels) and flush_kernels[i] and iter_kernels[i]
-        else None
-        for i in range(n)
-    ]
+        seen.add(args.get("correlation"))
+        samples[w] += float(e.get("dur", 0))
+        iter_kernels[w] += 1
+        iter_events[w].append(
+            (e.get("name"), e.get("cat"), round(float(e.get("dur", 0)), 3))
+        )
+    missing = [0] * n
+    for corr, w in launches.items():
+        if corr not in seen:
+            missing[w] += 1
+    out = [samples[i] if iter_kernels[i] and not missing[i] else None for i in range(n)]
     res = {
         "samples": out,
         "iterations": n,
         "invalid": out.count(None),
-        "unattributed_device_events": unattributed,
+        "excluded_device_events": excluded,
         "iter_kernels": iter_kernels,
-        "flush_kernels": flush_kernels,
+        "missing_launches": missing,
     }
     if detail:
-        res.update(iter_events=iter_events, flush_events=flush_events)
+        res["iter_events"] = iter_events
     return res
 
 
@@ -221,36 +215,49 @@ def subtree_kernels(ops):
 
 
 # ---------------------------------------------------------------------------
-# Measurement protocol
+# Measurement protocol (continuous)
 # ---------------------------------------------------------------------------
-# Every iteration, in both passes:
+# The op runs back to back, as in a model, with no cache flush and no sync
+# between iterations, in passes of ``ring`` iterations with a sync after each
+# pass. A measured pass follows at least one warm-up pass, so it pays for
+# writing back the outputs the previous pass left dirty in L2, roughly as
+# much as it leaves dirty itself: the result is the steady-state time.
 #
-#     reset()                      # in-place cases only
-#     sync; torch.sum(flush_buffer); sync
-#     t0; run(); sync; t1          # the only timed code
+# * Inputs: ``ring`` distinct input sets, one per iteration of a pass, so
+#   that a pass touches at least twice the L2 size (``ring >= 2 * (L2 /
+#   (input + output) + 1)``, at least ``min_ring``). Inputs above
+#   ``reuse_input_bytes`` cannot stay in L2 and use one set.
+# * Outputs: up to ``keep_output_bytes`` the output of every iteration stays
+#   alive for ``ring`` iterations, so each iteration writes to a new address
+#   instead of rewriting the L2 lines of the previous output. The warm-up pass
+#   leaves the allocator with enough cached blocks that no device allocation
+#   happens while measuring.
+# * In-place cases reset all input sets between passes (outside the
+#   iteration windows).
 #
-# The E2E pass times with ``time.perf_counter`` and no profiler; the device
-# pass runs the same loop under the profiler. Input sets rotate every
-# iteration so no iteration reads data the previous one left in L2. Warmup is
-# time based (rotating inputs) until consecutive windows agree; then one
-# sample per iteration, at least ``min_iters`` and ``min_total_ms`` of op time.
+# The E2E pass times whole passes with ``time.perf_counter`` (one sample per
+# pass: pass time / ring) without the profiler; the device pass repeats the
+# warm-up and measured passes under the profiler and gives one sample per
+# iteration. Warm-up is time based until consecutive passes agree; then at
+# least ``min_iters`` iterations and ``min_total_ms`` of op time.
 
 
 @dataclass
 class ProtocolConfig:
     warmup_ms: float = 200.0
     warmup_max_ms: float = 3000.0
-    warmup_window_iters: int = 5
-    warmup_stable_windows: int = 3
+    warmup_stable_passes: int = 3
     warmup_stable_tol: float = 0.05
     min_iters: int = 50
     max_iters: int = 400
     min_total_ms: float = 40.0
-    flush_bytes: int = 512 * 1024 * 1024
+    min_passes: int = 2
     l2_bytes: int = 32 * 1024 * 1024
-    rotation_l2_factor: int = 4
-    max_input_sets: int = 20
-    max_rotation_mem_frac: float = 0.25
+    min_ring: int = 10
+    max_ring: int = 256
+    reuse_input_bytes: int = 100 * 1024 * 1024
+    keep_output_bytes: int = 100 * 1024 * 1024
+    max_mem_frac: float = 0.5
     seed: int = 1234
     device_pass: bool = True
     max_invalid_frac: float = 0.1
@@ -262,34 +269,29 @@ class ProtocolConfig:
         cfg = cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
         if quick:
             cfg.min_iters = cfg.max_iters = 3
+            cfg.min_ring = cfg.max_ring = 3
+            cfg.min_passes = 1
             cfg.warmup_ms = cfg.warmup_max_ms = 0
-            cfg.warmup_window_iters = 1
+            cfg.warmup_stable_passes = 1
         return cfg
 
 
 class Device:
-    """Sync, memory info and the flush buffer of ``xpu`` (or ``cpu`` for smoke tests)."""
+    """Sync and memory info of ``xpu`` (or ``cpu`` for smoke tests)."""
 
     def __init__(self, name, cfg):
         self.name = name
         self.cfg = cfg
-        self.flush_buf = None
 
     def sync(self):
         if self.name == "xpu":
             torch.xpu.synchronize()
 
-    def alloc_flush(self):
-        if self.flush_buf is None:
-            numel = self.cfg.flush_bytes // 4
-            self.flush_buf = torch.randn(numel, device=self.name, dtype=torch.float32)
-            self.sync()
-
-    def flush(self):
-        torch.sum(self.flush_buf)
-
     def free_bytes(self):
         return torch.xpu.mem_get_info()[0] if self.name == "xpu" else 1 << 40
+
+    def allocated(self):
+        return torch.xpu.memory_allocated() if self.name == "xpu" else 0
 
     def empty_cache(self):
         if self.name == "xpu":
@@ -303,7 +305,7 @@ class Device:
 
 
 def state_bytes(obj, seen=None):
-    """Bytes held by tensors reachable from a setup() state."""
+    """Bytes held by tensors reachable from a setup() state or an output."""
     seen = set() if seen is None else seen
     if isinstance(obj, torch.Tensor):
         storage = obj.untyped_storage()
@@ -320,81 +322,123 @@ def state_bytes(obj, seen=None):
     return 0
 
 
-def build_input_sets(case, dev):
-    """``L2 * factor / set_bytes`` input sets, capped by count and free memory."""
-    cfg = dev.cfg
-    torch.manual_seed(cfg.seed)
-    sets = [case.build(dev.name)]
-    dev.sync()
-    per_set = max(1, state_bytes(sets[0]))
-    want = math.ceil(cfg.l2_bytes * cfg.rotation_l2_factor / per_set)
-    by_mem = int(dev.free_bytes() * cfg.max_rotation_mem_frac // per_set)
-    for i in range(1, max(1, min(cfg.max_input_sets, want, by_mem + 1))):
-        torch.manual_seed(cfg.seed + i)
-        sets.append(case.build(dev.name))
-    dev.sync()
-    return sets, per_set
+class Workload:
+    """Input sets and the output ring of one case in this process."""
+
+    def __init__(self, case, dev):
+        cfg = dev.cfg
+        self.case, self.dev = case, dev
+        torch.manual_seed(cfg.seed)
+        before = dev.allocated()
+        first = case.build(dev.name)
+        dev.sync()
+        # backward graphs hold tensors the state does not reference
+        self.set_bytes = max(1, state_bytes(first), dev.allocated() - before)
+        out = case.run(first)
+        dev.sync()
+        self.out_bytes = state_bytes(out)
+        del out
+        case.reset(first)
+        self.keep_outputs = self.out_bytes <= cfg.keep_output_bytes
+        traffic = state_bytes(first) + self.out_bytes
+        ring = 2 * (cfg.l2_bytes // max(1, traffic) + 1)
+        ring = min(cfg.max_ring, max(cfg.min_ring, ring))
+        reuse = self.set_bytes > cfg.reuse_input_bytes
+        per_iter = (0 if reuse else self.set_bytes) + (
+            self.out_bytes if self.keep_outputs else 0
+        )
+        budget = int(dev.free_bytes() * cfg.max_mem_frac)
+        if per_iter and ring * per_iter > budget:
+            ring = max(2, budget // per_iter)
+        self.ring = ring
+        self.sets = [first]
+        for i in range(1, 1 if reuse else ring):
+            torch.manual_seed(cfg.seed + i)
+            self.sets.append(case.build(dev.name))
+        self.outputs = [None] * ring
+        dev.sync()
+
+    def info(self):
+        return {
+            "input_sets": len(self.sets),
+            "set_bytes": self.set_bytes,
+            "output_bytes": self.out_bytes,
+            "ring": self.ring,
+            "keep_outputs": self.keep_outputs,
+        }
+
+    def reset(self):
+        if self.case.inplace:
+            for s in self.sets:
+                self.case.reset(s)
+            self.dev.sync()
+
+    def run_pass(self, tag=None):
+        """One pass of ``ring`` iterations, back to back, then a sync."""
+        from torch.profiler import record_function
+
+        sets, outputs, case = self.sets, self.outputs, self.case
+        for i in range(self.ring):
+            s = sets[i % len(sets)]
+            if tag:
+                with record_function(tag):
+                    out = case.run(s)
+            else:
+                out = case.run(s)
+            outputs[i] = out if self.keep_outputs else None
+            del out
+        self.dev.sync()
+
+    def timed_pass(self):
+        """E2E of one pass, us per iteration."""
+        self.reset()
+        t0 = time.perf_counter()
+        self.run_pass()
+        return (time.perf_counter() - t0) * 1e6 / self.ring
+
+    def release(self):
+        self.sets, self.outputs = [], []
 
 
-def _one_iter(case, dev, s):
-    case.reset(s)
-    dev.sync()
-    dev.flush()
-    dev.sync()
-    t0 = time.perf_counter()
-    out = case.run(s)
-    dev.sync()
-    t1 = time.perf_counter()
-    del out
-    return (t1 - t0) * 1e6
-
-
-def warmup(case, dev, sets):
-    """Time-based warmup until windows agree; returns (per-iter us, info)."""
-    cfg = dev.cfg
+def warmup(w):
+    """Passes until ``warmup_ms`` and consecutive passes agree; returns
+    (us per iteration, info)."""
+    cfg = w.dev.cfg
     start = time.perf_counter()
-    medians, i, stable = [], 0, False
+    times, stable = [], False
     while True:
-        window = []
-        for _ in range(cfg.warmup_window_iters):
-            window.append(_one_iter(case, dev, sets[i % len(sets)]))
-            i += 1
-        medians.append(statistics.median(window))
+        times.append(w.timed_pass())
         elapsed_ms = (time.perf_counter() - start) * 1e3
-        last = medians[-cfg.warmup_stable_windows :]
-        if len(last) == cfg.warmup_stable_windows:
+        last = times[-cfg.warmup_stable_passes :]
+        if len(last) == cfg.warmup_stable_passes:
             lo, hi = min(last), max(last)
             stable = lo > 0 and (hi - lo) / lo <= cfg.warmup_stable_tol
         if (elapsed_ms >= cfg.warmup_ms and stable) or elapsed_ms >= cfg.warmup_max_ms:
-            return medians[-1], {
-                "iters": i,
+            return times[-1], {
+                "passes": len(times),
                 "ms": round(elapsed_ms, 1),
                 "stable": stable,
-                "window_medians_us": [round(m, 3) for m in medians],
+                "pass_medians_us": [round(t, 3) for t in times],
             }
 
 
-def decide_iters(cfg, per_iter_us):
+def decide_passes(cfg, ring, per_iter_us):
     need = math.ceil(cfg.min_total_ms * 1e3 / max(per_iter_us, 1e-3))
-    return int(min(cfg.max_iters, max(cfg.min_iters, need)))
+    iters = min(cfg.max_iters, max(cfg.min_iters, need))
+    return max(cfg.min_passes, math.ceil(iters / ring))
 
 
-def profile_iters(case, dev, sets, n, keep_trace=None):
-    """Run ``n`` tagged iterations under the profiler; return the trace events."""
-    from torch.profiler import profile, record_function
+def profile_passes(w, passes, keep_trace=None):
+    """One warm-up pass and ``passes`` tagged passes under the profiler;
+    returns the trace events."""
+    from torch.profiler import profile
 
-    with profile(activities=dev.profiler_activities()) as prof:
-        for i in range(n):
-            s = sets[i % len(sets)]
-            case.reset(s)
-            dev.sync()
-            with record_function(FLUSH_TAG):
-                dev.flush()
-            dev.sync()
-            with record_function(ITER_TAG):
-                out = case.run(s)
-                dev.sync()
-            del out
+    with profile(activities=w.dev.profiler_activities()) as prof:
+        w.reset()
+        w.run_pass()
+        for _ in range(passes):
+            w.reset()
+            w.run_pass(ITER_TAG)
     fd, path = tempfile.mkstemp(suffix=".json", prefix="mb_trace_")
     os.close(fd)
     try:
@@ -415,27 +459,26 @@ def measure(case, dev, keep_trace=None, detail=False):
     ``detail`` adds ``_device_detail`` (per-iteration device events, see
     ``attribute_device_time``) for the per-case log; the worker strips it.
     """
-    dev.alloc_flush()
-    sets, per_set = build_input_sets(case, dev)
-    est, wu = warmup(case, dev, sets)
-    n = decide_iters(dev.cfg, est)
-    rec = {"input_sets": len(sets), "set_bytes": per_set, "warmup": wu, "iters": n}
-    rec["e2e_us"] = [
-        round(_one_iter(case, dev, sets[i % len(sets)]), 3) for i in range(n)
-    ]
+    w = Workload(case, dev)
+    est, wu = warmup(w)
+    passes = decide_passes(dev.cfg, w.ring, est)
+    rec = dict(w.info(), warmup=wu, passes=passes, iters=passes * w.ring)
+    rec["e2e_us"] = [round(w.timed_pass(), 3) for _ in range(passes)]
     rec["device_us"], rec["device_status"] = None, "unavailable"
     if dev.cfg.device_pass and dev.name != "cpu":
-        att = attribute_device_time(
-            profile_iters(case, dev, sets, n, keep_trace), detail=detail
-        )
+        att = attribute_device_time(profile_passes(w, passes, keep_trace), detail)
         rec["device_us"] = [None if x is None else round(x, 3) for x in att["samples"]]
         rec["device_invalid"] = att["invalid"]
-        rec["device_unattributed"] = att["unattributed_device_events"]
-        ok = att["invalid"] <= dev.cfg.max_invalid_frac * max(1, n)
-        rec["device_status"] = "ok" if ok else "invalid_flush_separation"
+        rec["device_excluded"] = att["excluded_device_events"]
+        ok = (
+            att["iterations"]
+            and att["invalid"] <= dev.cfg.max_invalid_frac * att["iterations"]
+        )
+        rec["device_status"] = "ok" if ok else "invalid_attribution"
         if detail:
             rec["_device_detail"] = att
-    del sets
+    w.release()
+    del w
     gc.collect()
     dev.empty_cache()
     return rec
@@ -523,16 +566,17 @@ def write_process_logs(log_dir, case, tag, rec, env):
         f"pid {os.getpid()} torch {env.get('torch_git_version')}",
     ]
     wu = rec.get("warmup") or {}
-    n_sets = rec.get("input_sets") or 1
     lines = head + [
-        f"input sets: {n_sets} ({rec.get('set_bytes')} bytes each), rotated every iteration",
-        f"warmup: {wu.get('iters')} iterations in {wu.get('ms')} ms, stable={wu.get('stable')}",
-        "warmup window medians (us): "
-        + " ".join(str(m) for m in wu.get("window_medians_us") or []),
-        f"iterations: {rec.get('iters')}",
-        "iter input_set e2e_us",
+        f"continuous passes of {rec.get('ring')} iterations; input sets: {rec.get('input_sets')} "
+        f"({rec.get('set_bytes')} bytes each, set i % {rec.get('input_sets')} in iteration i); "
+        f"output {rec.get('output_bytes')} bytes, kept alive for a pass: {rec.get('keep_outputs')}",
+        f"warmup: {wu.get('passes')} passes in {wu.get('ms')} ms, stable={wu.get('stable')}",
+        "warmup pass times (us per iteration): "
+        + " ".join(str(m) for m in wu.get("pass_medians_us") or []),
+        f"measured: {rec.get('passes')} passes ({rec.get('iters')} iterations)",
+        "pass e2e_us_per_iteration",
     ]
-    lines += [f"{i} {i % n_sets} {v}" for i, v in enumerate(rec.get("e2e_us") or [])]
+    lines += [f"{i} {v}" for i, v in enumerate(rec.get("e2e_us") or [])]
     side, stage, rnd = tag["side"], tag["stage"], tag["round"]
     with open(
         os.path.join(log_dir, process_log_name(case, side, stage, rnd, "e2e")), "w"
@@ -544,15 +588,14 @@ def write_process_logs(log_dir, case, tag, rec, env):
         lines.append("no device pass (device time unavailable on this device)")
     else:
         lines.append(
-            f"iterations {det['iterations']}, invalid {det['invalid']}, "
-            f"unattributed device events {det['unattributed_device_events']}"
+            f"iterations {det['iterations']}, invalid {det['invalid']}, device events outside "
+            f"the iterations (warm-up pass, input reset) {det['excluded_device_events']}"
         )
         for i, sample in enumerate(det["samples"]):
-            flush = det["flush_events"][i] if i < len(det["flush_events"]) else []
             if sample is None:
                 why = (
-                    "no flush kernel in the preceding flush window"
-                    if not flush
+                    f"{det['missing_launches'][i]} kernel launch(es) without a device event"
+                    if det["missing_launches"][i]
                     else "no device event attributed to the iteration"
                 )
                 lines.append(f"iter {i}: INVALID ({why})")
@@ -561,9 +604,6 @@ def write_process_logs(log_dir, case, tag, rec, env):
             lines += [
                 f"  counted {cat} {name} {dur}"
                 for name, cat, dur in det["iter_events"][i]
-            ]
-            lines += [
-                f"  flush-excluded {cat} {name} {dur}" for name, cat, dur in flush
             ]
     with open(
         os.path.join(log_dir, process_log_name(case, side, stage, rnd, "device")), "w"
@@ -666,7 +706,8 @@ def add_worker_parser(sub):
 # 2. the first expected op receives the declared dtype/shape/stride;
 # 3. ``run()`` does not build inputs (random factories, host/device copies)
 #    unless the op under test is such an op;
-# 4. flush kernels separate cleanly from the trace.
+# 4. every kernel launched by ``run()`` shows up in the trace and is
+#    attributed to its iteration.
 #
 # The dispatched-op log doubles as the coverage source.
 
@@ -737,10 +778,31 @@ def _match_inputs(expected, actual):
     return errs
 
 
+def profile_runs(case, dev, s, n):
+    """``n`` tagged runs of ``s`` under the profiler; returns the trace events."""
+    from torch.profiler import profile, record_function
+
+    with profile(activities=dev.profiler_activities()) as prof:
+        for _ in range(n):
+            case.reset(s)
+            dev.sync()
+            with record_function(ITER_TAG):
+                out = case.run(s)
+            dev.sync()
+            del out
+    fd, path = tempfile.mkstemp(suffix=".json", prefix="mb_trace_")
+    os.close(fd)
+    try:
+        prof.export_chrome_trace(path)
+        with open(path) as f:
+            return json.load(f).get("traceEvents", [])
+    finally:
+        os.unlink(path)
+
+
 def validate_case(case, dev):
     """Return a result dict with ``status`` ('pass'/'fail') and ``failures``."""
     device = dev.name
-    dev.alloc_flush()
     torch.manual_seed(dev.cfg.seed)
     s = case.build(device)
     # warm run so lazy init is not attributed to the case
@@ -797,9 +859,9 @@ def validate_case(case, dev):
         ):
             failures.append(f"timed region contains a host/device copy: aten::{name}")
 
-    kernel_ops = flush = None
+    kernel_ops = attribution = None
     if device != "cpu":
-        events = profile_iters(case, dev, [s], 2)
+        events = profile_runs(case, dev, s, 2)
         ops = subtree_kernels(host_ops_in_iterations(events))
         kernel_ops = sorted({base_name(o["name"]) for o in ops if o["kernels"] > 0})
         for fname in filter(None, resolved.values()):
@@ -809,11 +871,14 @@ def validate_case(case, dev):
                     f"expected aten op '{fname}' launched no {device.upper()} kernel (CPU fallback?)"
                 )
         att = attribute_device_time(events)
-        flush = {"invalid": att["invalid"], "flush_kernels": att["flush_kernels"]}
+        attribution = {
+            k: att[k] for k in ("invalid", "iter_kernels", "missing_launches")
+        }
         if att["invalid"]:
             failures.append(
-                f"cache flush not separable from the trace in {att['invalid']}/{att['iterations']} iterations "
-                f"(flush kernels per window: {att['flush_kernels']}, op kernels: {att['iter_kernels']})"
+                f"device time not attributable in {att['invalid']}/{att['iterations']} iterations "
+                f"(op kernels: {att['iter_kernels']}, launches without a device event: "
+                f"{att['missing_launches']})"
             )
 
     return {
@@ -821,7 +886,7 @@ def validate_case(case, dev):
         "failures": failures,
         "dispatched_ops": list(dict.fromkeys(base_name(o) for o in dispatched)),
         "kernel_ops": kernel_ops,
-        "flush": flush,
+        "attribution": attribution,
     }
 
 

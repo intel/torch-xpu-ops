@@ -22,10 +22,11 @@ CONFIG_DIR = PACKAGE_DIR / "config"
 REPO_ROOT = PACKAGE_DIR.parent.parent
 CANARY_ID = "__canary__"
 
-# Bump on any framework change that changes measured values (flush, timed
-# region, warmup, iteration rule, device-time accounting, input rotation):
-# reference records of another version are never compared.
-PROTOCOL_VERSION = 1
+# Bump on any framework change that changes measured values (timed region,
+# warmup, iteration rule, device-time accounting, input sets, output
+# lifetime): reference records of another version are never compared.
+# 2: continuous measurement (no cache flush, outputs kept alive).
+PROTOCOL_VERSION = 2
 # Files whose changes may need a PROTOCOL_VERSION bump; they also count as
 # "related" for reference-data code equivalence.
 MEASUREMENT_FILES = (

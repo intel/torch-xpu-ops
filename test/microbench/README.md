@@ -17,7 +17,7 @@ python -m microbench <command> --help
 | Path | Purpose |
 |---|---|
 | `case.py` | Case model (`OpBench`, `Case`, stable `case_id`), input helpers, case discovery |
-| `measure.py` | Measurement protocol (cache flush, input rotation, E2E and device time), worker, case validator, canary |
+| `measure.py` | Measurement protocol (continuous passes, input sets, output lifetime, E2E and device time), worker, case validator, canary |
 | `run.py` | Scheduler over cards: A/B (`A B / B A` rounds), single-sided and multi-wheel rounds; records (`records.jsonl`) and per-case logs; card layout and identity, GPU frequency, pre-run checks; `ci-run`, the microbench-run CI job of each scope |
 | `judge.py` | Hierarchical bootstrap, Holm, two-stage verdicts, PR conclusion matrix, English report, check job (PR / on-demand, and the nightly check: attribution, state update, nightly report, issue evidence) |
 | `selection.py` | Case selection from a diff, new XPU op detection, reference matching (code equivalence), direct A/B decision, candidate commits |
@@ -56,15 +56,15 @@ class Softmax(OpBench):
 Rules:
 
 * `fwd()` calls the op and nothing else. No input construction, no
-  host-to-device copies, no cache flush; the validator rejects random factories
+  host-to-device copies, no syncs; the validator rejects random factories
   and host/device copies inside the timed region.
 * `bwd` cases build the graph and `grad_out` in setup; the timed region is
   `torch.autograd.grad(out, inputs, grad_out, retain_graph=True)`. Override
   `grad_inputs()` (default `[s.x]` or `s.inputs`) to differentiate several
   inputs, or override `bwd()` to call an aten `*_backward` op directly.
 * In-place ops that accumulate state set `inplace = True` and implement
-  `reset(s)`; it runs before the flush of every iteration, outside the timed
-  region.
+  `reset(s)`; it runs on every input set between passes, outside the
+  measured iterations.
 * `expected` lists the aten ops (no `aten::` prefix) the pass must execute on
   the device; `a|b` accepts either. Ops without an XPU kernel of their own set
   `composite = True` and list the XPU ops they decompose into.
@@ -75,7 +75,7 @@ Rules:
   the CPU generator (`randint`/`mask` in `case.py`), so A and B see identical
   data even if a PR changes an XPU RNG kernel.
 * Keep single tensors under ~512M elements (BMG memory with backward and
-  input rotation); scale the batch down and say so in a comment.
+  several input sets); scale the batch down and say so in a comment.
 * `case_id` is a hash of `(op, pass, params)`. Changing params creates new
   cases (new history, new calibration). `case_code_hash` hashes the case
   module: editing a module keeps the ids but its cases lose their reference
@@ -126,19 +126,31 @@ classes pass `passes=("bwd",)` and `bwd=...` calling the aten backward op
 
 ## Measurement protocol
 
-Per iteration: `reset()` (in-place only), sync, `torch.sum(flush_buffer)`
-(512 MB, allocated once per process), sync, then the timed `run()` + sync.
+The op runs continuously, as in a model: passes of `ring` iterations back to
+back, with no cache flush and no sync between iterations, and a sync after
+each pass. A measured pass follows a warm-up pass, so it pays for writing back
+the outputs the previous pass left dirty in L2, about as much as it leaves
+dirty itself; the result is the steady-state time. A cache flush before every
+iteration instead left the op's own output dirty in L2 (its write-back was
+never timed) and let the next output reuse the same cache lines, which made
+write-heavy ops that fit in L2 (fill, copy, cat, elementwise) look faster.
 
-* **E2E**: `time.perf_counter()` around `run()`; no profiler.
-* **Device time**: a second pass under the profiler with
-  `ZE_ENABLE_TRACING_LAYER=1`. Kernels launched inside the `__cache_flush__`
-  annotation are dropped; `kernel`/`gpu_memcpy`/`gpu_memset` events launched
-  inside `__mb_iter__` form the sample. An iteration whose flush kernel cannot
-  be identified is invalid; more than 10% invalid marks the case invalid.
-* **Input rotation**: `L2 * 4 / set_bytes` input sets (at most 20, at most 25%
-  of free memory), cycled every iteration.
-* **Warmup** by time (>= 200 ms) until three consecutive windows agree within
-  5%; at least 50 iterations and 40 ms of op time; one sample per iteration.
+* **Input sets**: `ring = max(10, 2 * (L2 / (input + output bytes) + 1))`
+  (at most 256, at most half of the free memory), so one pass touches more
+  than twice the L2 size; iteration `i` uses set `i % ring`. Inputs above
+  100 MB use a single set.
+* **Outputs** up to 100 MB stay alive for a pass, so every iteration writes
+  to a new address; the warm-up pass leaves the allocator with the blocks the
+  measured passes need.
+* **E2E**: `time.perf_counter()` around each measured pass, no profiler; one
+  sample per pass (pass time / ring).
+* **Device time**: the warm-up and measured passes again under the profiler
+  with `ZE_ENABLE_TRACING_LAYER=1`; `kernel`/`gpu_memcpy`/`gpu_memset` events
+  launched inside the `__mb_iter__` annotation of an iteration form its
+  sample. An iteration with a kernel launch but no device event is invalid;
+  more than 10% invalid marks the case invalid.
+* **Warmup** by passes (>= 200 ms) until three consecutive passes agree
+  within 5%; then at least 2 passes, 50 iterations and 40 ms of op time.
 * **`PROTOCOL_VERSION`** (`__init__.py`): bump it with any change that moves
   measured values; reference records of another version are never compared.
   Changing `measure.py` or `case.py` without a bump gives a
@@ -152,10 +164,11 @@ the parameters of every case and its directory). Every file starts with
 * `<op>_<pass>_summary.log`: configuration, commits and card of each side,
   per-process device/E2E statistics, errors with the worker's stderr, A/B
   ratio and CI, screening/detection result;
-* `<op>_<pass>_samples.jsonl`: every iteration;
-* `<op>_<pass>_<stage>[_<side>]_proc<k>_e2e.log` / `_device.log`: warmup,
-  every timed iteration with its input set, every device event counted or
-  dropped as flush, why a sample is invalid.
+* `<op>_<pass>_samples.jsonl`: every device-time iteration and every E2E
+  pass;
+* `<op>_<pass>_<stage>[_<side>]_proc<k>_e2e.log` / `_device.log`: input sets
+  and output lifetime, warm-up passes, every measured pass, every device event
+  counted per iteration, why a sample is invalid.
 
 `--keep-traces` also keeps the chrome traces (large).
 
@@ -168,7 +181,8 @@ python -m microbench validate --op softmax --device cpu   # dispatch-level check
 
 Checks: every expected op is dispatched and (on GPU) launches device work,
 the first expected op receives the declared shape/dtype/stride, no input
-construction in the timed region, flush kernels separate cleanly. PR CI runs
+construction in the timed region, every kernel launched by `run()` is
+attributed to its iteration in the trace. PR CI runs
 it on the cases a PR changes; a failure fails `microbench-run`.
 
 ## Running locally

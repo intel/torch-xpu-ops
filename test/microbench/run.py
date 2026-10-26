@@ -1042,25 +1042,23 @@ def write_case_logs(out_dir, recs, records):
         d = os.path.join(out_dir, "logs", rel)
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, case_log_name(op, pass_, "samples.jsonl")), "w") as f:
+            # device time: one sample per iteration; E2E: one per pass
             for r in rs:
-                dev = r.get("device_us") or []
-                for i, e2e in enumerate(r.get("e2e_us") or []):
-                    dv = dev[i] if i < len(dev) else None
+                where = {
+                    "side": r.get("side"),
+                    "stage": r.get("stage"),
+                    "process": r.get("round"),
+                    "card": r.get("card"),
+                }
+                ok = r.get("device_status") in ("ok", None)
+                for i, dv in enumerate(r.get("device_us") or []):
+                    line = dict(
+                        where, iter=i, device_us=dv, valid=dv is not None and ok
+                    )
+                    f.write(json.dumps(line) + "\n")
+                for k, e2e in enumerate(r.get("e2e_us") or []):
                     f.write(
-                        json.dumps(
-                            {
-                                "side": r.get("side"),
-                                "stage": r.get("stage"),
-                                "process": r.get("round"),
-                                "card": r.get("card"),
-                                "iter": i,
-                                "e2e_us": e2e,
-                                "device_us": dv,
-                                "valid": dv is not None
-                                and r.get("device_status") in ("ok", None),
-                            }
-                        )
-                        + "\n"
+                        json.dumps(dict(where, **{"pass": k, "e2e_us": e2e})) + "\n"
                     )
         case = cases.get(cid)
         lines = [f"case {cid}"]
