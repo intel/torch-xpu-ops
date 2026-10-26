@@ -334,7 +334,10 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_execution_trace_xpu.py": None,
-    "profiler/test_profiler_xpu.py": None,
+    "profiler/test_profiler_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/5638 (not XPU-specific, fix: pytorch/pytorch#200914)
+        "test_source_multithreaded",
+    ),
     "profiler/test_profiler_use_cases.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
     "export/test_export_opinfo_xpu.py": None,
