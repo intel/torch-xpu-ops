@@ -527,9 +527,7 @@ void small_index_kernel(
   auto indices_size = iter.tensor(2).size(-1);
   auto& queue = getCurrentSYCLQueue();
   int64_t max_group_num =
-      (at::xpu::getCurrentDeviceProperties()->max_compute_units /
-       at::xpu::getDeviceEUCountPerXeCore()) *
-      OVER_SUBSCRIBE_DSS_FACTOR;
+      at::xpu::getDeviceXeCoreCount() * OVER_SUBSCRIBE_DSS_FACTOR;
 
   auto total_index_iter = numel / indices_size;
   max_group_num = std::min(int64_t(total_index_iter / 2), max_group_num);
@@ -735,7 +733,7 @@ void _index_kernel(
   //   input[idx0,idx1,idx2], input[idx0,idx1,:], input[idx0,:,idx2],
   //   input[idx0,:,:], input[:,idx1,:]
   // 2.the common indices numel should larger than 2 times of the
-  // max_compute_units (then we can get memory access benifit) 3.the
+  // getDeviceXeCoreCount (then we can get memory access benifit) 3.the
   // workloads in each group should larger than the maximum number of
   // workitem (ensure all the workitem activate) 4.the indices_table size
   // should satisfied the SLM limit condition
@@ -757,9 +755,7 @@ void _index_kernel(
     using index_buf_type = char*;
     using KernelClass = SmallIndexKernelFunctor<func_t, index_buf_type>;
 
-    int64_t max_group_num =
-        at::xpu::getCurrentDeviceProperties()->max_compute_units /
-        at::xpu::getDeviceEUCountPerXeCore();
+    int64_t max_group_num = at::xpu::getDeviceXeCoreCount();
     int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     auto indices_size = iter.tensor(2).size(-1);
     auto total_index_iter = numel / indices_size;

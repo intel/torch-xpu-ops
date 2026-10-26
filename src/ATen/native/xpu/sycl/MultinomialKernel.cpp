@@ -80,8 +80,7 @@ inline void renormRows(Tensor& t) {
   int64_t cols = t.size(1);
   int subgroup_size = at::xpu::getDeviceMaxSubGroupSize();
   int group_size = std::min(
-      int(at::xpu::getDeviceMaxSubGroupSize() *
-          at::xpu::getDeviceEUCountPerXeCore()),
+      int(subgroup_size * at::xpu::getDeviceEUCountPerXeCore()),
       subgroup_size * subgroup_size);
   int num_groups = (rows + group_size - 1) / group_size;
   int hw_max_groups = at::xpu::getDeviceMaxWorkItems() / group_size;
