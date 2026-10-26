@@ -14,13 +14,13 @@ Using pytest -k filtering syntax
 from skip_list_common import PYTORCH_TEST_DIR
 
 skip_dict = {
-    # main-thread stack (1-2 MB) overflows at the c recursion limit this test needs (#5726)
+    # https://github.com/intel/torch-xpu-ops/issues/5726
     f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": (
-        "(test_dynamo_set_recursion_limit and not usage)",
+        "(test_dynamo_set_recursion_limit and not test_dynamo_set_recursion_limit_usage)",
     ),
-    # main-thread stack (1-2 MB) overflows at the c recursion limit this test needs (#5726)
+    # https://github.com/intel/torch-xpu-ops/issues/5726
     f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
-        "(test_dynamo_set_recursion_limit and not usage)",
+        "(test_dynamo_set_recursion_limit and not test_dynamo_set_recursion_limit_usage)",
     ),
     # Windows: Skip entire files using *.py:: pattern
     "test_decomp_xpu.py": [
