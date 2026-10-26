@@ -88,31 +88,22 @@ jobs:
           rm -rf ${{ github.workspace }}/pytorch/inductor_log
 
       # CICD launch
-      - name: CICD Huggingface BF16 & FP16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'huggingface') }}
+      - name: CICD Training Test (amp_fp16)
+        if: ${{ contains(github.event_name, 'pull_request') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: huggingface
-          dt: bfloat16,float16
+          suite: ${{ inputs.suite }}
+          dt: amp_fp16
           mode: training
           scenario: ${{ inputs.scenario }}
           model_list: p0
-      - name: CICD Timm_models BF16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
+      - name: CICD Inference Test (bfloat16)
+        if: ${{ contains(github.event_name, 'pull_request') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: timm_models
+          suite: ${{ inputs.suite }}
           dt: bfloat16
-          mode: training
-          scenario: ${{ inputs.scenario }}
-          model_list: p0
-      - name: CICD Torchbench BF16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: torchbench
-          dt: bfloat16
-          mode: training
+          mode: inference
           scenario: ${{ inputs.scenario }}
           model_list: p0
 
