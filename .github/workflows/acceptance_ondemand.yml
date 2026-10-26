@@ -19,7 +19,8 @@ on:
     inputs:
       runner:
         type: choice
-        options: [acceptance]
+        options: [acceptance, bmg-test]
+        default: acceptance
         description: 'Runner label for the test pool (UT + E2E).'
       pytorch:
         type: string
@@ -67,8 +68,16 @@ jobs:
       - name: Derive runner id
         id: runner-info
         shell: bash -xe {0}
+        env:
+          RUNNER_LABEL: ${{ inputs.runner }}
         run: |
-          runner_id="$(echo "${RUNNER_NAME}" | sed 's/-[0-9]\+$//')"
+          if [[ "${RUNNER_LABEL}" == "acceptance" ]]; then
+            runner_id="$(echo "${RUNNER_NAME}" | sed 's/-[0-9]\+$//')"
+          else
+            # Other pools (e.g. bmg-test) have no per-family label matching the
+            # stripped hostname, so run the test jobs on the selected label.
+            runner_id="${RUNNER_LABEL}"
+          fi
           echo "runner_id=${runner_id}" | tee -a "${GITHUB_OUTPUT}"
 
   Linux-Ondemand-Build:
