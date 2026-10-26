@@ -236,7 +236,7 @@ class LoopScanConfig {
     size_t wg_size = at::xpu::getDeviceMaxSubGroupSize() *
         at::xpu::getDeviceEUCountPerXeCore();
     wg_range_y_ = wg_size / wg_range_x_;
-    const auto target_global_size = syclMaxWorkItemsPerTile();
+    const size_t target_global_size = at::xpu::getDeviceMaxWorkItems();
     const size_t max_work_group_num = target_global_size / wg_size;
     const size_t wg_number =
         std::min(max_work_group_num, at::ceil_div(batch_, wg_range_y_));
