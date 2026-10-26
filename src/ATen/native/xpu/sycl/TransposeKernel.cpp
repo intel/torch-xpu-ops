@@ -346,7 +346,8 @@ static bool detect_batch_transpose(
       int64_t slm_per_wg = TILE_DIM * (TILE_DIM + slm_pad) * elem_size;
 
       int64_t eu_per_xc = at::xpu::getDeviceEUCountPerXeCore();
-      int64_t hw_thr = syclGpuHWThreadsPerEU();
+      int64_t hw_thr =
+          at::xpu::getCurrentDeviceProperties()->gpu_hw_threads_per_eu;
       int64_t slots_per_xc = eu_per_xc * hw_thr;
       int64_t concurrent_wgs = slots_per_xc / sgs_per_wg;
       int64_t slm_per_wg_upbound =

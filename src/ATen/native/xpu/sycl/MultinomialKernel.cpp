@@ -387,7 +387,7 @@ void multinomial_kernel(
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         int maxThreads = at::xpu::getKernelMaxWorkGroupSize<
             sample_multinomial_once_kernel<scalar_t, accscalar_t>>();
-        int maxShared = syclLocalMemSize();
+        int maxShared = at::xpu::getDeviceLocalMemSize();
 
         int SubGroupSize = at::xpu::getDeviceMinSubGroupSize();
         int requiredSubGroups = at::ceil_div(numCategories, SubGroupSize);
