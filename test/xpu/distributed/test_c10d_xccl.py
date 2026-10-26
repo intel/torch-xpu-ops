@@ -2106,8 +2106,7 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
             ar = [
                 e
                 for e in events
-                if e["name"] == "xccl:all_reduce"
-                and e.get("cat") == "user_annotation"
+                if e["name"] == "xccl:all_reduce" and e.get("cat") == "user_annotation"
             ]
             marker = [e for e in events if e["name"] == "after_launch"]
             self.assertEqual(len(ar), 1)
