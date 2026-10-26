@@ -121,7 +121,7 @@ runs:
       with:
         name: Torch-XPU-Wheel-8b6c42b436f39241d2b998c731455fbbe2046b80-40319855570-1
         github-token: ${{ github.token }}
-        repository: mengfei25/torch-xpu-ops
+        repository: intel/torch-xpu-ops
         run-id: 40191658876
         path: ${{ github.workspace }}/wheels-deps
     - name: Install test target
