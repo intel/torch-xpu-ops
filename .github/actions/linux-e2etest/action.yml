@@ -18,6 +18,10 @@ inputs:
     required: true
     default: 'accuracy'
     description: 'Comma-separated scenarios: accuracy,performance'
+  model_list:
+    required: false
+    default: 'full'
+    description: "Model list scope: 'p0' (CI / acceptance) or 'full' (nightly / weekly / ondemand)"
 
 runs:
   using: composite
@@ -36,14 +40,14 @@ runs:
         # Stage the merged benchmark runner inside the pytorch checkout so it
         # can see benchmarks/dynamo and run from the expected working tree.
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_e2e/
+        rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmarks/ ./benchmarks/dynamo/
 
-        model_list_args=()
-        if [ "${{ github.event_name }}" != "pull_request" ]; then
-          rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmarks/ ./benchmarks/dynamo/
-          model_list_args=(--model-only ./benchmarks/dynamo/full_model_list.csv)
-        fi
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
           model_list_args=(--model-only "${MODEL_ONLY_NAME}")
+        elif [ "${{ inputs.model_list }}" = "p0" ]; then
+          model_list_args=(--model-only ./benchmarks/dynamo/p0/p0_model_list.csv)
+        else
+          model_list_args=(--model-only ./benchmarks/dynamo/full_model_list.csv)
         fi
 
         rm -rf torch && mkdir -p inductor_log
