@@ -50,6 +50,22 @@ on:
         type: string
         default: ''
         description: Model. Will only run this one mode if set
+      build_runner:
+        type: string
+        default: ''
+        description: Linux build runner label, by default is 'build'
+      test_runner:
+        type: string
+        default: ''
+        description: Linux UT/E2E runner label, by default is 'pvc' ('pvc-1550' for E2E performance)
+      windows_build_runner:
+        type: string
+        default: ''
+        description: Windows build runner label, by default is 'windows-build'
+      windows_test_runner:
+        type: string
+        default: ''
+        description: Windows UT runner label, by default is 'windows-test'
 
 permissions: read-all
 
@@ -142,7 +158,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: build
+      runner: ${{ inputs.build_runner || 'build' }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
@@ -163,7 +179,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc
+      runner: ${{ inputs.test_runner || 'pvc' }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -181,7 +197,7 @@ jobs:
         scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
+      runner: ${{ inputs.test_runner || (matrix.scenario == 'performance' && 'pvc-1550' || 'pvc') }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -219,7 +235,7 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: pvc
+      runner: ${{ inputs.test_runner || 'pvc' }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
@@ -231,7 +247,7 @@ jobs:
     uses: ./.github/workflows/_windows_build.yml
     with:
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      runner: windows-build
+      runner: ${{ inputs.windows_build_runner || 'windows-build' }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
 
@@ -244,6 +260,6 @@ jobs:
     with:
       ut: 'op_extended,test_xpu,op_ut'
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      runner: windows-test
+      runner: ${{ inputs.windows_test_runner || 'windows-test' }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
