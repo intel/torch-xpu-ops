@@ -74,7 +74,12 @@ runs:
         rm -rf intel-omix-ubuntu-resolute-17.0.run
         cp /home/jenkins/mengfeil/intel-omix-ubuntu-resolute-17.0.run .
         chmod +x intel-omix-ubuntu-resolute-17.0.run
-        ./intel-omix-ubuntu-resolute-17.0.run
+        ./intel-omix-ubuntu-resolute-17.0.run -y
+        cd /opt/intel-gpu-drivers/intel-omix-ubuntu-resolute/packages/
+        ls |grep i386 |xargs rm -f
+        dpkg -i *.deb || true
+        apt install -fy
+        dpkg -i *.deb
 
     - name: Setup python
       uses: ./.github/actions/setup-python
@@ -104,24 +109,39 @@ runs:
         echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
-      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@v7
       with:
-        pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
+        name: Torch-XPU-Wheel-8b6c42b436f39241d2b998c731455fbbe2046b80-40319855570-1
+        github-token: ${{ github.token }}
+        repository: mengfei25/torch-xpu-ops
+        run-id: 40319855570
+        path: ${{ github.workspace }}/wheels
+    - name: Download Pytorch deps wheel
+      uses: actions/download-artifact@v7
+      with:
+        name: Torch-XPU-Wheel-8b6c42b436f39241d2b998c731455fbbe2046b80-40319855570-1
+        github-token: ${{ github.token }}
+        repository: mengfei25/torch-xpu-ops
+        run-id: 40191658876
+        path: ${{ github.workspace }}/wheels-deps
+    - name: Install test target
+      shell: bash -xe {0}
+      run: |
+        uv pip uninstall torch torchvision torchaudio triton-xpu
+        uv pip install ${{ github.workspace }}/wheels-deps/*.whl
+        uv pip uninstall torch
+        uv pip install ${{ github.workspace }}/wheels/torch-*.whl
+
+        uv pip list |grep -E 'intel|torch|triton'
+
+        echo "XPU_ONEAPI_PATH=/opt/intel/oneapi" >> "${GITHUB_ENV}"
+        printf '%s\n' "source /opt/intel/oneapi/setvars.sh || true" > "${RUNNER_TEMP}/oneapi_env.sh"
+        echo "BASH_ENV=${RUNNER_TEMP}/oneapi_env.sh" >> "${GITHUB_ENV}"
+
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
         # install pytorch
-        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
-          uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
-          uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
-          uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-        else
-          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
-          uv pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
-        fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
@@ -254,11 +274,6 @@ runs:
         else
           uv pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         fi
-        if [ "${{ inputs.suite }}" != "None" ];then
-          # To install numpy 1.x for benchmarks as CUDA
-          # yolov requires numpy>=1.23
-          uv pip install -U numpy==1.26.4 scipy==1.11.4
-        fi
     - name: Detect devices
       shell: bash -euo pipefail {0}
       run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'
@@ -288,21 +303,3 @@ runs:
           echo "Torch is re-installed when installing deps, please check"
           exit 1
         fi
-    - name: Download Pytorch wheel
-      uses: actions/download-artifact@v4
-      with:
-        name: Torch-XPU-Wheel-8b6c42b436f39241d2b998c731455fbbe2046b80-40319855570-1
-        github-token: ${{ github.token }}
-        repository: mengfei25/torch-xpu-ops
-        run-id: 40319855570
-        path: ${{ github.workspace }}/wheels
-    - name: Install test target
-      shell: bash -xe {0}
-      run: |
-        pip uninstall -y torch && pip uninstall -y torch
-        pip install ${{ github.workspace }}/wheels/torch-*.whl
-        pip list |grep -E 'intel|torch|triton'
-
-        echo "XPU_ONEAPI_PATH=/opt/intel/oneapi" >> "${GITHUB_ENV}"
-        printf '%s\n' "source /opt/intel/oneapi/setvars.sh || true" > "${RUNNER_TEMP}/oneapi_env.sh"
-        echo "BASH_ENV=${RUNNER_TEMP}/oneapi_env.sh" >> "${GITHUB_ENV}"
