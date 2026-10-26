@@ -2069,6 +2069,53 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
         finally:
             dist.destroy_process_group()
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_profiler_async_collective_annotation_ends_at_launch(self):
+        # ProcessGroupXCCL must end Work's RecordFunction when the collective is
+        # submitted, like ProcessGroupNCCL does via work->future_. Otherwise the
+        # exported xccl:* user_annotation extends past subsequent ops, producing
+        # overlapping same-tid "X" events (invalid Chrome Trace Format).
+        # Note: the stale duration only shows up in the exported trace, not in
+        # prof.events(), so this must assert on the JSON.
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        try:
+            torch.xpu.set_device(self.rank)
+            a = torch.randn(256, 256, device="xpu")
+            for _ in range(3):
+                dist.all_reduce(a)
+            torch.xpu.synchronize()
+            with profile(activities=[ProfilerActivity.CPU]) as prof:
+                w = dist.all_reduce(a, async_op=True)
+                with torch.profiler.record_function("after_launch"):
+                    pass
+                w.wait()
+            torch.xpu.synchronize()
+            with TemporaryFileName(mode="w+") as path:
+                prof.export_chrome_trace(path)
+                with open(path) as f:
+                    events = [
+                        e for e in json.load(f)["traceEvents"] if e.get("ph") == "X"
+                    ]
+            ar = [
+                e
+                for e in events
+                if e["name"] == "xccl:all_reduce"
+                and e.get("cat") == "user_annotation"
+            ]
+            marker = [e for e in events if e["name"] == "after_launch"]
+            self.assertEqual(len(ar), 1)
+            self.assertEqual(len(marker), 1)
+            self.assertLessEqual(ar[0]["ts"] + ar[0]["dur"], marker[0]["ts"])
+        finally:
+            dist.destroy_process_group()
+
 
 if __name__ == "__main__":
     run_tests()
