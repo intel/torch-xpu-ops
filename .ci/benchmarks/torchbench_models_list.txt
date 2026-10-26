@@ -82,6 +82,8 @@ shufflenet_v2_x1_0,512
 soft_actor_critic,256
 speech_transformer,1
 squeezenet1_1,512
+stable_diffusion_text_encoder,1
+stable_diffusion_unet,1
 Super_SloMo,6
 timm_efficientdet,1
 timm_efficientnet,64
