@@ -2,7 +2,10 @@
 
 #include <atomic>
 
+#include <sycl/ext/oneapi/experimental/clock.hpp>
+
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 namespace c10d::symmetric_memory {
@@ -99,21 +102,47 @@ inline uint32_t load_acquire(uint32_t* addr) {
 
 // Spin without fencing. A system-scope fence per iteration would flush caches
 // on every poll; callers pair this with the acq_rel fence in store_release.
-inline void spin_until_eq(uint32_t* addr, uint32_t val) {
+//
+// The bound is measured with the sub-group clock, the only scope of
+// sycl_ext_oneapi_clock that current Intel GPUs report. It counts EU cycles, so
+// timeout_ticks is derived from the device's maximum clock frequency (see
+// timeout_ms_to_ticks): a GPU running below that frequency times out late,
+// never early. A budget of 0 waits forever, as timeout_ms=0 does on CUDA.
+// Returns false once the budget is spent.
+inline bool spin_until_eq(uint32_t* addr, uint32_t val, uint64_t timeout_ticks) {
+#ifdef __SYCL_DEVICE_ONLY__
+  namespace syclex = sycl::ext::oneapi::experimental;
+  const uint64_t start = syclex::clock<syclex::clock_scope::sub_group>();
   while (ld_flag_sys(addr) != val) {
-    // Spin wait (no timeout check: XPU has no device-side global timer yet,
-    // an IGC request is pending)
-    continue;
+    if (timeout_ticks != 0 &&
+        syclex::clock<syclex::clock_scope::sub_group>() - start >
+            timeout_ticks) {
+      return false;
+    }
   }
+#else
+  while (ld_flag_sys(addr) != val) {
+  }
+#endif
+  return true;
+}
+
+// Converts a host-side timeout to the tick budget spin_until_eq expects.
+inline uint64_t timeout_ms_to_ticks(size_t timeout_ms, int device_index) {
+  const uint64_t mhz =
+      at::xpu::getDeviceProperties(device_index)->max_clock_frequency;
+  return static_cast<uint64_t>(timeout_ms) * mhz * 1000;
 }
 
 // =============================================================================
 // Put signal: wait until addr == 0, then set to 1 (release semantics)
 // =============================================================================
 
-inline bool try_put_signal_device(uint32_t* addr, size_t timeout_ms) {
+inline bool try_put_signal_device(uint32_t* addr, uint64_t timeout_ticks) {
   // Wait until the slot is free (value == 0)
-  spin_until_eq(addr, 0);
+  if (!spin_until_eq(addr, 0, timeout_ticks)) {
+    return false;
+  }
   // Set signal to 1 with release semantics
   store_release(addr, 1);
   return true;
@@ -122,9 +151,11 @@ inline bool try_put_signal_device(uint32_t* addr, size_t timeout_ms) {
 // =============================================================================
 // Wait signal: wait until addr == 1, then set to 0 (acquire semantics)
 // =============================================================================
-inline bool try_wait_signal_device(uint32_t* addr, size_t timeout_ms) {
+inline bool try_wait_signal_device(uint32_t* addr, uint64_t timeout_ticks) {
   // Wait until signal is set (value == 1)
-  spin_until_eq(addr, 1);
+  if (!spin_until_eq(addr, 1, timeout_ticks)) {
+    return false;
+  }
   // Clear signal to 0; the acq_rel fence inside also provides the acquire that
   // orders subsequent reads of the data the peer published.
   store_release(addr, 0);

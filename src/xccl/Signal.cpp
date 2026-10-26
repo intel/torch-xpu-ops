@@ -13,7 +13,7 @@ void barrier_kernel(
     int channel,
     int rank,
     int world_size,
-    size_t timeout_ms) {
+    uint64_t timeout_ticks) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto thread_id = item.get_local_id(0);
 
@@ -23,13 +23,13 @@ void barrier_kernel(
       return;
     }
     auto put_success = try_put_signal_device(
-        signal_pads[target_rank] + world_size * channel + rank, timeout_ms);
+        signal_pads[target_rank] + world_size * channel + rank, timeout_ticks);
     if (!put_success) {
       SYCL_KERNEL_ASSERT(false);
     }
 
     auto wait_success = try_wait_signal_device(
-        signal_pads[rank] + world_size * channel + target_rank, timeout_ms);
+        signal_pads[rank] + world_size * channel + target_rank, timeout_ticks);
     if (!wait_success) {
       SYCL_KERNEL_ASSERT(false);
     }
@@ -64,7 +64,7 @@ void barrier_impl_xpu(
       channel,
       rank,
       world_size,
-      timeout_ms);
+      timeout_ms_to_ticks(timeout_ms, stream.device_index()));
 }
 
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
@@ -76,13 +76,13 @@ void put_signal_kernel(
     int channel,
     int rank,
     int world_size,
-    size_t timeout_ms) {
+    uint64_t timeout_ticks) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto thread_id = item.get_local_id(0);
 
   if (thread_id == 0) {
     auto put_success = try_put_signal_device(
-        signal_pads[dst_rank] + world_size * channel + rank, timeout_ms);
+        signal_pads[dst_rank] + world_size * channel + rank, timeout_ticks);
     if (!put_success) {
       SYCL_KERNEL_ASSERT(false);
     }
@@ -119,7 +119,7 @@ void put_signal_impl_xpu(
       channel,
       rank,
       world_size,
-      timeout_ms);
+      timeout_ms_to_ticks(timeout_ms, stream.device_index()));
 }
 
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
@@ -131,13 +131,13 @@ void wait_signal_kernel(
     int channel,
     int rank,
     int world_size,
-    size_t timeout_ms) {
+    uint64_t timeout_ticks) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto thread_id = item.get_local_id(0);
 
   if (thread_id == 0) {
     auto wait_success = try_wait_signal_device(
-        signal_pads[rank] + world_size * channel + src_rank, timeout_ms);
+        signal_pads[rank] + world_size * channel + src_rank, timeout_ticks);
     if (!wait_success) {
       SYCL_KERNEL_ASSERT(false);
     }
@@ -174,7 +174,7 @@ void wait_signal_impl_xpu(
       channel,
       rank,
       world_size,
-      timeout_ms);
+      timeout_ms_to_ticks(timeout_ms, stream.device_index()));
 }
 
 } // namespace c10d::symmetric_memory
