@@ -3,3 +3,8 @@ hf_GPT2_large,1
 hf_T5_generate,1
 pytorch_CycleGAN_and_pix2pix,1
 timm_nfnet,128
+mobilenet_v2_quantized_qat,96
+resnet50_quantized_qat,32
+detectron2_maskrcnn_r_50_c4,1
+opacus_cifar10,64
+sam,32
