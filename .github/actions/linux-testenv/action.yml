@@ -126,22 +126,29 @@ runs:
         # common
         uv pip install pandas psutil scipy pyyaml
         cd pytorch
-        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+        # huggingface, timm_models and torchbench all run against the transformers/timm
+        # versions pinned by pytorch, so the three suites stay comparable.
+        if [[ "${{ inputs.suite }}" == *"huggingface"* || \
+              "${{ inputs.suite }}" == *"timm_models"* || \
+              "${{ inputs.suite }}" == *"torchbench"* ]];then
           # for new LLM models
           uv pip install accelerate
-          uv pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || uv pip install transformers==4.54.0 soxr==0.5.0
-          TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
-        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
-          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
+          uv pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt
+          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
           uv pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
-        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
+          # chdir avoids importing the checkout instead of the installed package
+          PINNED_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
+          echo "Pinned by pytorch: transformers/timm ${PINNED_VERSIONS}"
+        fi
+        if [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
           cd ../
           rm -rf ./benchmark
           git clone https://github.com/pytorch/benchmark benchmark
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
-          sed -i 's/^ *pynvml.*//' requirements.txt
+          # torchbench carries its own transformers/timm pins, drop them for the pytorch ones
+          sed -i -E '/^[[:space:]]*(pynvml|transformers|timm)([[:space:]]*[<>=!~;[].*)?[[:space:]]*$/d' requirements.txt
           # Work around legacy deps (e.g. visdom) that still import
           # pkg_resources during build on newer Python toolchains.
           CONSTRAINT_FILE=/tmp/pip-constraints.txt
@@ -184,11 +191,18 @@ runs:
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs uv pip install
           uv pip uninstall fbgemm_gpu_nightly-cpu
           cd ../pytorch
-        else
+        elif [[ "${{ inputs.suite }}" != *"huggingface"* && "${{ inputs.suite }}" != *"timm_models"* ]];then
           # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
           sed -i '/mkl/d' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
           uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
+        fi
+        if [ -n "${PINNED_VERSIONS:-}" ];then
+          CURRENT_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
+          if [ "${CURRENT_VERSIONS}" != "${PINNED_VERSIONS}" ];then
+            echo "::error::transformers/timm changed from '${PINNED_VERSIONS}' to '${CURRENT_VERSIONS}' while installing suite requirements"
+            exit 1
+          fi
         fi
         # install the corresponding torchao
         uv pip uninstall torchao
@@ -198,11 +212,6 @@ runs:
           uv pip install torchao --pre --index-url https://download.pytorch.org/whl/test/xpu
         else
           uv pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-        fi
-        if [ "${{ inputs.suite }}" != "None" ];then
-          # To install numpy 1.x for benchmarks as CUDA
-          # yolov requires numpy>=1.23
-          uv pip install -U numpy==1.26.4 scipy==1.11.4
         fi
     - name: Detect devices
       shell: bash -euo pipefail {0}

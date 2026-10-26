@@ -26,7 +26,9 @@ env:
   ALIGNMENT_RUN_ROOT: agent_space_xpu/runs
   ALIGNMENT_ARTIFACT: xpu-alignment-${{ github.run_id }}-${{ github.run_attempt }}
   ALIGNMENT_TRIAGE_ISSUE: '5018'
-  ALIGNMENT_COST_ISSUE: '4251'
+  # Cost rows go to a tracker outside this repo so they do not add noise here.
+  ALIGNMENT_COST_REPO: torchxpubot/ci-infra
+  ALIGNMENT_COST_ISSUE: '1'
 
 jobs:
   collect:
@@ -523,7 +525,7 @@ jobs:
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
             existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
-            If an existing intel/torch-xpu-ops tracker covers the same work,
+            If an open intel/torch-xpu-ops tracker covers the same work,
             record it as `canonical_tracker`; do not create a payload or comment
             on it.
 
@@ -723,6 +725,7 @@ jobs:
         env:
           ALIGNMENT_MODE: ${{ github.event_name == 'schedule' && 'schedule' || 'dry-run' }}
           COST_ISSUE: ${{ env.ALIGNMENT_COST_ISSUE }}
+          COST_REPO: ${{ env.ALIGNMENT_COST_REPO }}
           PREPARE_USAGE: ${{ needs.scan-prepare.outputs.usage }}
           FINALIZE_USAGE: ${{ needs.scan-finalize.outputs.usage }}
           REVIEW_USAGE: ${{ needs.independent-review.outputs.usage }}
@@ -787,9 +790,10 @@ jobs:
             }).join('\n');
             const date = new Date().toISOString().split('T')[0];
             const body = `\`${date}\` [\`xpu-alignment\`](${jobUrl}) run \`${context.runId}\`, attempt \`${process.env.RUN_ATTEMPT}\` (${process.env.ALIGNMENT_MODE}) — ${costTotal} (${tokenTotal}) [${status}]\n\n${roles}`;
+            const [costOwner, costRepo] = process.env.COST_REPO.split('/');
             await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner: costOwner,
+              repo: costRepo,
               issue_number: Number(process.env.COST_ISSUE),
               body,
             });

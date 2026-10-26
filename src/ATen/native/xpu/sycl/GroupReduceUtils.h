@@ -23,7 +23,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-inline int get_group_reduce_group_size(int simd) {
+constexpr inline int get_group_reduce_group_size(int simd) {
   // Limited by group reduce implementation. We use two sub group shuffles,
   // The second sub group shuffle only could handle simd size elements.
   return std::min(512, simd * simd);
@@ -82,6 +82,35 @@ inline T& GroupReduceSumWithoutBroadcast(
   return val;
 }
 
+template <typename T, int SIMD, int SLM_SIZE, int DIM>
+inline T& GroupReduceSumWithoutBroadcast_StaticSlm(
+    sycl::nd_item<DIM>& item,
+    T& val,
+    syclexp::work_group_static<T[SLM_SIZE]>& shared) {
+  auto sg = item.get_sub_group();
+  int sg_tid = sg.get_local_linear_id();
+  int sg_id = sg.get_group_linear_id();
+  int n_sg = get_local_linear_range<DIM>(item) / SIMD;
+  val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
+  sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum
+                                         // are called in a row.
+  if (n_sg == 1) {
+    return val;
+  }
+  if (sg_tid == 0) {
+    shared[sg_id] = val;
+  }
+  sycl::group_barrier(item.get_group());
+  val = 0;
+  if (sg_id == 0) {
+    for (int i = sg_tid; i < n_sg; i += SIMD) {
+      val += shared[i];
+    }
+    val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
+  }
+  return val;
+}
+
 // Keep max_impl below: sycl::maximum under reduce_over_group can drop a NaN,
 // which torch.max/amax must not.
 template <typename T, int SIMD, int DIM>
@@ -103,6 +132,33 @@ inline T& GroupReduceMaxWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
     shared_t shared) {
+  auto sg = item.get_sub_group();
+  int sg_tid = sg.get_local_linear_id();
+  int sg_id = sg.get_group_linear_id();
+  int n_sg = get_local_linear_range<DIM>(item) / SIMD;
+  val = SubgroupReduceMaxWithoutBroadcast<T, SIMD, DIM>(item, val);
+  sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum
+                                         // are called in a row.
+  if (n_sg == 1) {
+    return val;
+  }
+  if (sg_tid == 0) {
+    shared[sg_id] = val;
+  }
+  sycl::group_barrier(item.get_group());
+  if (sg_id == 0) {
+    for (int i = 1; i < n_sg; i++) {
+      val = max_impl(val, shared[i]);
+    }
+  }
+  return val;
+}
+
+template <typename T, int SIMD, int SLM_SIZE, int DIM>
+inline T& GroupReduceMaxWithoutBroadcast_StaticSlm(
+    sycl::nd_item<DIM>& item,
+    T& val,
+    syclexp::work_group_static<T[SLM_SIZE]>& shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();

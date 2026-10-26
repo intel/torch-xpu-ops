@@ -237,13 +237,6 @@ mha_fwd(
   v_padded = ensure_alignment_for_sdpa(v_padded);
   out_padded = ensure_alignment_for_sdpa(out_padded);
 
-  if (seqlen_qo > seqlen_kv && is_causal) {
-    // When seqlen_qo is greater than seqlen_kv and is_causal(lower_right causal
-    // mask) is true, some output positions will skip computation for better
-    // performance.
-    out_padded.zero_();
-  }
-
   at::Tensor logsumexp =
       at::empty({batch_size, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));
 
