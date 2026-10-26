@@ -119,7 +119,7 @@ runs:
     - name: Download Pytorch deps wheel
       uses: actions/download-artifact@v7
       with:
-        name: Torch-XPU-Wheel-8b6c42b436f39241d2b998c731455fbbe2046b80-40319855570-1
+        name: Torch-XPU-Wheel-73e5e7159e1641559b5efa219f47676c9ee745fb-40191658876-1
         github-token: ${{ github.token }}
         repository: intel/torch-xpu-ops
         run-id: 40191658876
