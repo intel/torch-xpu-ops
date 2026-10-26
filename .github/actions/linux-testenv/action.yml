@@ -32,7 +32,7 @@ runs:
         cat /etc/os-release
         gcc -v && g++ -v
         uname -a
-        
+        apt update
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
 
