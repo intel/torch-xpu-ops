@@ -46,7 +46,6 @@ RUN --mount=type=cache,target=/var/cache/apt \
         numactl \
         rsync \
         jq \
-        valgrind \
         # Build tools
         gcc g++ \
         gcc-${GCC_VERSION} g++-${GCC_VERSION} \
