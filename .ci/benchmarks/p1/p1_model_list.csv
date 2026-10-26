@@ -1,0 +1,16 @@
+torchbench inference,torchbench training,timm_models inference,timm_models training,huggingface inference,huggingface training
+hf_Bert_large,hf_Bert_large,botnet26t_256,botnet26t_256,BertForQuestionAnswering,BertForQuestionAnswering
+hf_GPT2_large,hf_GPT2_large,coat_lite_mini,coat_lite_mini,BlenderbotSmallForConditionalGeneration,BlenderbotSmallForConditionalGeneration
+hf_T5_generate,hf_T5_generate,crossvit_9_240,crossvit_9_240,DebertaV2ForMaskedLM,DebertaV2ForMaskedLM
+pytorch_CycleGAN_and_pix2pix,pytorch_CycleGAN_and_pix2pix,fbnetc_100,fbnetc_100,DistilBertForQuestionAnswering,DistilBertForQuestionAnswering
+timm_nfnet,timm_nfnet,gernet_l,gernet_l,ElectraForQuestionAnswering,ElectraForQuestionAnswering
+,,gmixer_24_224,gmixer_24_224,LayoutLMForSequenceClassification,LayoutLMForSequenceClassification
+,,jx_nest_base,jx_nest_base,MobileBertForQuestionAnswering,MobileBertForQuestionAnswering
+,,mixer_b16_224,mixer_b16_224,RobertaForQuestionAnswering,RobertaForQuestionAnswering
+,,mixnet_l,mixnet_l,,
+,,poolformer_m36,poolformer_m36,,
+,,regnety_002,regnety_002,,
+,,res2net101_26w_4s,res2net101_26w_4s,,
+,,rexnet_100,rexnet_100,,
+,,sebotnet33ts_256,sebotnet33ts_256,,
+,,tnt_s_patch16_224,tnt_s_patch16_224,,
