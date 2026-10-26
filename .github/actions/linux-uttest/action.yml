@@ -168,19 +168,53 @@ runs:
 
     - name: xpu_distributed
       shell: timeout 36000 bash -xeu -o pipefail {0}
-      if: ${{ inputs.ut_name == 'xpu_distributed' }}
+      if: ${{ inputs.ut_name == 'xpu_distributed' || inputs.ut_name == 'xpu_distributed_weekly' }}
       run: |
+        test_scope="${{ inputs.ut_name }}"
         xpu-smi topology -m
-        mkdir -p ut_log/xpu_distributed
-        XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+        mkdir -p "ut_log/${test_scope}"
+        if [[ "${test_scope}" == "xpu_distributed_weekly" ]]; then
+          git -C pytorch/third_party/torch-xpu-ops fetch --depth=1 \
+            https://github.com/intel/torch-xpu-ops.git daisyden/distributed_2.16
+          git -C pytorch/third_party/torch-xpu-ops checkout \
+            -B daisyden/distributed_2.16 FETCH_HEAD
+        fi
+
+        XCCL_ENABLE=$(python -c "import torch; print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
           exit 1
         fi
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_distributed.py \
-          2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
+        if [[ "${test_scope}" == "xpu_distributed_weekly" ]]; then
+          export TEMP_DIR=/tmp
+          export BACKEND=xccl
+          export WORLD_SIZE=4
+          export USE_CCL_V2=1
+          uv pip install transformers pulp
+          export TORCHINDUCTOR_CACHE_DIR="${RUNNER_TEMP}/torchinductor-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          torch_distributed_test=$(python -c "import inspect, torch.testing._internal.distributed.distributed_test as m; print(inspect.getsourcefile(m) or m.__file__)")
+          torch_distributed_test_backup="${RUNNER_TEMP}/distributed_test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.py"
+          cp "${torch_distributed_test}" "${torch_distributed_test_backup}"
+          restore_torch_distributed_test() {
+            local test_status=$?
+            trap - EXIT
+            if ! cp "${torch_distributed_test_backup}" "${torch_distributed_test}"; then
+              echo "::error::Failed to restore ${torch_distributed_test}"
+              exit 1
+            fi
+            exit "${test_status}"
+          }
+          trap restore_torch_distributed_test EXIT
+          cp distributed/distributed_test.py "${torch_distributed_test}"
+          python run_distributed_local.py \
+            2> ${{ github.workspace }}/ut_log/${test_scope}/${test_scope}_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/${test_scope}/${test_scope}_test.log
+        else
+          python run_distributed.py \
+            2> ${{ github.workspace }}/ut_log/${test_scope}/${test_scope}_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/${test_scope}/${test_scope}_test.log
+        fi
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
 
     - name: xpu_p0
