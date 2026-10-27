@@ -44,6 +44,7 @@ from torch.testing._internal.common_utils import (
     skipIfTorchDynamo,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import requires_triton
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -377,6 +378,7 @@ def _int4_mm(self, device, m, k, n, group_size):
         self.assertTrue(mean_err < 0.05)
 
 
+@requires_triton()
 @parametrize("m", [32, 64])
 @parametrize("k", [32, 64])
 @parametrize("n", [48, 64])
