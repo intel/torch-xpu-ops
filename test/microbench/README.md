@@ -20,12 +20,12 @@ python -m microbench <command> --help
 | `measure.py` | Measurement protocol (continuous passes, input sets, output lifetime, E2E and device time), worker, case validator |
 | `run.py` | Scheduler over cards: A/B (`A B / B A` rounds), single-sided and multi-wheel rounds; records (`records.jsonl`) and per-case logs; card layout and identity, GPU frequency, pre-run checks; `ci-run`, the microbench-run CI job of each scope |
 | `judge.py` | Hierarchical bootstrap, Holm, two-stage verdicts, PR conclusion matrix, English report, check job (PR / on-demand, and the nightly check: attribution, state update, nightly report, issue evidence) |
-| `selection.py` | Case selection from a diff, new XPU op detection, reference matching (code equivalence), direct A/B decision, candidate commits |
+| `selection.py` | Case selection from a diff, new XPU op detection, reference matching (code equivalence), candidate commits |
 | `reference.py` | Reference state (nightly measurements and confirmed jumps), noise statistics, screening / detection against it |
 | `github.py` | Labels, maintainers, override record, PR comment (privileged workflows) |
 | `tools/` | `maintenance.py` (coverage report, unmapped-file report for `op_source_map.yaml`, noise calibration) and the config consistency check `test_registry.py` |
 | `cases/` | One module per op family (`elementwise.py`, `pooling.py`, ...); one `OpBench` class per op and pass set |
-| `config/` | `op_source_map.yaml` (changed file -> ops, core set), `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, direct A/B switches, PR budgets, machines); optional `history.json` written by `noise calibrate` (A/A calibration, case costs) |
+| `config/` | `op_source_map.yaml` (changed file -> ops, core set), `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, PR budgets, machines); optional `history.json` written by `noise calibrate` (A/A calibration, case costs) |
 
 Listing and selecting cases never imports torch: cases reach torch through
 lazy proxies in `case.py`, so the ubuntu CI jobs only need `pyyaml` and `numpy`.
@@ -254,15 +254,14 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    resolves the PyTorch SHA once (both builds use it) and the merge-base;
    selects cases (`op_source_map.yaml`); detects new XPU
    ops; honours a maintainer-added `disable_microbench`; reads the latest
-   reference state and matches code-equivalent records; picks the path:
-   `vs-reference`, or `vs-base` (direct A/B: a case that can block has no
-   reference or is `always_ab`).
+   reference state and matches code-equivalent records.
 2. `microbench / microbench-run (pr-vs-reference)` (`bmg-test`): the PR wheel
-   only, screened against the reference data; output `suspect`.
+   only, screened against the reference data; cases that can block and are
+   suspicious, have no usable reference or are `always_ab` go to the A/B;
+   output `suspect`.
 3. `microbench-build-base`: the merge-base, torch only, same PyTorch commit;
-   after linux-build (direct A/B) or after screening found suspects.
-4. `microbench / microbench-run (pr-vs-base)`: A/B of all cases (direct A/B) or
-   the suspects.
+   only when screening found suspects.
+4. `microbench / microbench-run (pr-vs-base)`: A/B of the suspects.
 5. `microbench / microbench-check` (ubuntu): final verdict, report,
    comment payload (`microbench-comment-<pr>` with `all_cases.md/csv` and
    `verdicts.json`). Fails only for a blocking regression without a valid
@@ -326,7 +325,7 @@ driver upgrade).
 * `gating.yaml`: A/B verdict thresholds, the `quarantine` list (cases/ops
   reported but never blocking), screening / detection thresholds,
   `always_ab` cases (suggested by the nightly report, confirmed by a
-  maintainer), direct A/B switches, the improvements policy, the PR budgets,
+  maintainer), the improvements policy, the PR budgets,
   and `machines` (per-host cards, NUMA/CPU binding, protocol overrides,
   pre-run limits).
 * `history.json` (optional, written by `noise calibrate`): A/A noise

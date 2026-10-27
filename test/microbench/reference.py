@@ -68,13 +68,8 @@ DEFAULT_SCREENING = {
         "max_no_reference_recheck": 300,
     },
     "confirm_improvements": "auto",
-    "direct_ab": {
-        "no_screen_reference": True,
-        "always_ab": True,
-        "common_files": False,
-    },
     "default_noise": {"run": 0.02, "card": 0.03, "proc": 0.01, "ab": 0.01},
-    "budget": {"screen_minutes": 15, "confirm_minutes": 15, "direct_ab_minutes": 30},
+    "budget": {"screen_minutes": 15, "confirm_minutes": 15},
 }
 
 

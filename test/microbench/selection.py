@@ -7,8 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 """Case selection: changed files -> cases, new XPU op detection, reference
-matching and the direct A/B decision; candidate commits of a nightly
-regression.
+matching; candidate commits of a nightly regression.
 
 Shared by the PR ``microbench-select`` job and nightly/on-demand runs.
 """
@@ -140,7 +139,6 @@ class Config:
         self.deferred = excl.get("deferred") or {}
         hist = load_history(os.path.join(d, "history.json"))
         self.costs = hist["case_cost"]
-        self.noise_hist = hist["noise_stats"]
         self.screening = reference.load_screening(os.path.join(d, "gating.yaml"))
         self.gating = judge.load_gating(os.path.join(d, "gating.yaml"))
         self.budget = self.screening["budget"]
@@ -275,7 +273,6 @@ def empty_selection(**kw):
         "need_base": False,
         "ab_possible": False,
         "path": "vs-reference",
-        "direct_ab": [],
         "mode": "none",
         "reasons": [],
         "cases": [],
@@ -336,7 +333,6 @@ def select(
     read=None,
     cards=8,
     screen_rounds=3,
-    confirm_rounds=6,
     budget_min=None,
     references=None,
 ):
@@ -431,25 +427,12 @@ def select(
     def single_minutes(ids):
         return estimate_minutes(ids, cfg.costs, cards, screen_rounds, 0, sides=1)
 
-    def ab_minutes(ids):
-        return estimate_minutes(ids, cfg.costs, cards, screen_rounds, confirm_rounds)
-
     ordered = sorted(prio, key=lambda c: (prio[c], c))
     budget = budget_min or cfg.budget["screen_minutes"]
     kept, truncated = truncate(ordered, single_minutes, budget)
     by_id = {m["case_id"]: m for m in manifest}
     sel["ab_possible"] = sel["mode"] == "ab"
     match_references(sel, [by_id[c] for c in kept], cfg, references)
-    direct = direct_ab_reasons(sel, [by_id[c] for c in kept], cfg)
-    minutes = single_minutes
-    if direct:
-        sel["path"], sel["direct_ab"] = "vs-base", direct
-        sel["reasons"].append(
-            "Direct A/B against the merge-base, screening skipped: " + "; ".join(direct)
-        )
-        budget = budget_min or cfg.budget["direct_ab_minutes"]
-        kept, truncated = truncate(ordered, ab_minutes, budget)
-        minutes = ab_minutes
     sel["truncated"] = truncated
     if truncated:
         sel["reasons"].append(
@@ -458,10 +441,9 @@ def select(
     ops = {m["case_id"]: m["op"] for m in manifest}
     sel.update(
         cases=kept,
-        estimated_minutes=round(minutes(kept), 1),
+        estimated_minutes=round(single_minutes(kept), 1),
         ops=sorted({ops[c] for c in kept if c in ops}),
         need_run=bool(kept or sel["validate"]),
-        need_base=sel["path"] == "vs-base" and bool(kept),
     )
     return sel
 
@@ -477,7 +459,7 @@ def truncate(ordered, minutes, budget):
 
 
 # ---------------------------------------------------------------------------
-# Reference matching and the direct A/B decision
+# Reference matching
 # ---------------------------------------------------------------------------
 # A nightly record may stand in for the merge-base of a PR when, between its
 # xpu-ops commit and the merge-base, no file related to the case changed:
@@ -569,37 +551,6 @@ def match_references(sel, cases, cfg, index):
         sel["reference_status"][cid] = "ok" if ok else "no_reference"
         if cid in index.noise:
             sel["noise"][cid] = index.noise[cid]
-
-
-def direct_ab_reasons(sel, cases, cfg):
-    """Why screening would be pointless for this PR; empty = screen."""
-    if sel["mode"] != "ab":
-        return []
-    pre = cfg.screening["direct_ab"]
-    blocking = [
-        m
-        for m in cases
-        if not judge.not_blocking_reasons(m, cfg.gating, cfg.noise_hist)
-    ]
-    reasons = []
-    missing = [
-        m["case_id"]
-        for m in blocking
-        if sel["reference_status"].get(m["case_id"]) != "ok"
-    ]
-    if pre["no_screen_reference"] and missing:
-        reasons.append(f"{len(missing)} blocking case(s) without reference data")
-    always = [m["case_id"] for m in blocking if m.get("screen_mode") == "always_ab"]
-    if pre["always_ab"] and always:
-        reasons.append(f"{len(always)} blocking case(s) with screen_mode always_ab")
-    common = [
-        f
-        for f, ops in sel["file_map"].items()
-        if any(o.startswith(("common:", "global")) for o in ops)
-    ]
-    if pre["common_files"] and common:
-        reasons.append(f"common/global files changed ({len(common)})")
-    return reasons
 
 
 def candidate_commits(repo, prev_sha, cur_sha, op, srcmap):
@@ -764,13 +715,6 @@ def run_select(args):
         )
         if flow == "pr":
             match_references(sel, [by_id[c] for c in ids], cfg, index)
-            sel["direct_ab"] = direct_ab_reasons(sel, [by_id[c] for c in ids], cfg)
-            if sel["direct_ab"]:
-                sel["path"] = "vs-base"
-                sel["reasons"].append(
-                    "Direct A/B against the merge-base, screening skipped: "
-                    + "; ".join(sel["direct_ab"])
-                )
     else:
         if args.changed_files:
             changed = [
@@ -844,7 +788,7 @@ def add_select_parser(sub):
         "--flow",
         choices=FLOWS,
         default=None,
-        help="pr: screen against reference data, A/B directly when screening cannot work (default); ab: direct A/B; "
+        help="pr: screen against reference data, A/B of the suspects (default); ab: direct A/B; "
         "aa: A/A with the B wheel; nightly: single-sided nightly measurement",
     )
     p.add_argument("--reference-state", default=None, help="reference.jsonl")

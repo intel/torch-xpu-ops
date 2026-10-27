@@ -1396,8 +1396,7 @@ def flow_text(selection, screen_doc, ab_doc):
     if path == "aa":
         return "Flow: A/A, the same wheel on both sides (report only)."
     if path == "vs-base":
-        why = "; ".join(selection.get("direct_ab") or []) or "requested"
-        return f"Flow: direct A/B ({why}), screening skipped: {n_ab} case(s) A/B-tested against the merge-base build."
+        return f"Flow: direct A/B (requested on demand): {n_ab} case(s) A/B-tested against the base build."
     if not screen_doc:
         return ""
     n = len(screen_doc.get("cases") or {})

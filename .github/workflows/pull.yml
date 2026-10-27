@@ -228,9 +228,9 @@ jobs:
 
   # Microbench. microbench-select runs in
   # parallel with lint: it pins the PyTorch commit of both builds, computes
-  # the merge-base, selects cases, matches nightly reference data and decides
-  # the path: vs-reference (screen the PR wheel, A/B only the suspects) or
-  # vs-base (A/B directly, screening skipped).
+  # the merge-base, selects cases and matches nightly reference data. The PR
+  # wheel is screened against that data; only the suspects are A/B-tested
+  # against the merge-base.
   microbench-select:
     name: microbench-select
     if: ${{ github.repository_owner == 'intel' && github.event_name == 'pull_request' && github.event.pull_request.draft == false }}
@@ -246,7 +246,6 @@ jobs:
       merge_base: ${{ steps.commits.outputs.merge_base }}
       need_run: ${{ steps.select.outputs.need_run }}
       ab_possible: ${{ steps.select.outputs.ab_possible }}
-      path: ${{ steps.select.outputs.path }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -291,8 +290,8 @@ jobs:
           python -m pytest microbench/tools/test_registry.py -q -rw
       - name: Fetch the nightly reference state
         id: state
-        # unavailable state: every case counts as no_reference (direct A/B), so a
-        # failure here only costs a base build
+        # unavailable state: every case counts as no_reference and goes to the
+        # A/B, so a failure here only costs a base build
         continue-on-error: true
         run: |
           cd test
@@ -355,7 +354,6 @@ jobs:
     if: >-
       ${{ !cancelled() &&
       needs.microbench-select.outputs.need_run == 'true' &&
-      needs.microbench-select.outputs.path == 'vs-reference' &&
       needs.linux-build.result == 'success' }}
     secrets: inherit
     permissions:
@@ -372,17 +370,12 @@ jobs:
       budget_min: '20'
 
   # Base wheel: the merge-base built against the same PyTorch
-  # commit, torch only. After linux-build for a direct A/B, after screening when it
-  # found suspects. When it fails, the A/B is skipped.
+  # commit, torch only, when screening found suspects. When it fails, the A/B
+  # is skipped.
   microbench-build-base:
     name: microbench-build-base
-    needs: [microbench-select, linux-build, microbench-run-pr-vs-reference]
-    if: >-
-      ${{ !cancelled() && needs.linux-build.result == 'success' &&
-      needs.microbench-select.outputs.need_run == 'true' &&
-      (needs.microbench-select.outputs.path == 'vs-base' ||
-       (needs.microbench-run-pr-vs-reference.result == 'success' &&
-        needs.microbench-run-pr-vs-reference.outputs.suspect == 'true')) }}
+    needs: [microbench-select, microbench-run-pr-vs-reference]
+    if: ${{ needs.microbench-run-pr-vs-reference.outputs.suspect == 'true' }}
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
@@ -398,8 +391,7 @@ jobs:
   # A/B: microbench / microbench-run (pr-vs-base).
   microbench-run-pr-vs-base:
     name: microbench
-    needs: [microbench-select, linux-build, microbench-run-pr-vs-reference, microbench-build-base]
-    if: ${{ !cancelled() && needs.microbench-build-base.result == 'success' }}
+    needs: [microbench-select, microbench-build-base]
     secrets: inherit
     permissions:
       actions: read
@@ -413,7 +405,7 @@ jobs:
       pytorch_sha: ${{ needs.microbench-select.outputs.pytorch_sha }}
       head_sha: ${{ github.event.pull_request.head.sha }}
       base_sha: ${{ needs.microbench-select.outputs.merge_base }}
-      budget_min: ${{ needs.microbench-select.outputs.path == 'vs-base' && '35' || '20' }}
+      budget_min: '20'
 
   # Final verdict: microbench / microbench-check;
   # microbench_override.yml reruns only this job.

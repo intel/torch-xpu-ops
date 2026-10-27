@@ -5,8 +5,8 @@ name: Linux OP Microbench (run)
 #   pr-vs-reference             PR wheel only; screening against the nightly
 #                               reference data. Output `suspect`.
 #   pr-vs-base                  merge-base (torch-only build + the PR's other
-#                               wheels) vs PR wheel A/B: all cases (direct A/B) or
-#                               the screening suspects.
+#                               wheels) vs PR wheel A/B: the screening suspects
+#                               (all cases for an on-demand direct A/B).
 #   nightly-vs-reference        one shard of the nightly: measurement, A/A
 #                               rotation, detection, recheck against the
 #                               previous nightly wheel P, candidate commits.

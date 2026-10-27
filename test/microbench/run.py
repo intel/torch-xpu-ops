@@ -1325,7 +1325,7 @@ def add_schedule_parser(sub):
 # | scope                        | wheels           | what                                              |
 # |------------------------------|------------------|---------------------------------------------------|
 # | pr-vs-reference              | PR               | single-sided measurement, screening    |
-# | pr-vs-base                   | merge-base, PR   | A/B: all cases (direct A/B) or the screen suspects |
+# | pr-vs-base                   | merge-base, PR   | A/B: the screen suspects (all cases on demand)    |
 # | nightly-vs-reference         | N (+ P)          | one shard: measurement, A/A rotation, detection   |
 # |                              |                  | recheck vs P, candidate commits                   |
 # | nightly-xpu-ops-vs-pytorch   | P, P', N         | three-wheel alternation for attribution           |
@@ -1344,7 +1344,7 @@ SCOPES = (
     "nightly-xpu-ops-vs-pytorch",
     "ondemand",
 )
-AB_STATUSES = ("suspect_regression", "no_reference", "screen_invalid")
+AB_STATUSES = ("suspect_regression", "no_reference", "screen_invalid", "always_ab")
 DIRECTIONAL = ("suspect_regression", "suspect_improvement")
 
 
@@ -1448,6 +1448,13 @@ def run_pr_vs_reference(args, sel, cfg):
     if status == EXIT_OK:
         screen = _screen(sched, sel, screening, side_info, metric)
         man = {m["case_id"]: m for m in build_manifest()}
+        # too noisy across days and cards for the reference data: A/B
+        for cid, r in screen.items():
+            if (
+                man.get(cid, {}).get("screen_mode") == "always_ab"
+                and r["status"] != "error"
+            ):
+                r.update(status="always_ab", reason="screen_mode always_ab")
 
         def eligible(cid):
             return cid in man and not judge.not_blocking_reasons(

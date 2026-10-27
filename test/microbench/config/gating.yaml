@@ -62,7 +62,7 @@ pr_vs_reference:
   # case is screen_invalid
   max_process_spread: 0.05
   # always_ab: cases whose cross-day / cross-card noise is too high for
-  # screening; selecting one that can block makes the PR A/B directly.
+  # screening; screening sends them to the A/B regardless of the reference.
   # Suggested by the nightly report, confirmed by a maintainer.
   #   - {case_id: 0123456789ab, reason: "sigma_run 4.1% (14 nightlies)"}
   always_ab: []
@@ -83,15 +83,6 @@ nightly_detect:
 # always: build the base for improvements too; never: report them unconfirmed
 confirm_improvements: auto
 
-# Skip screening and A/B against the merge-base directly when
-direct_ab:
-  # a case that can block has no reference record at select time
-  no_screen_reference: true
-  # a case that can block is listed in always_ab
-  always_ab: true
-  # a common or global file changed
-  common_files: false
-
 # relative noise used when the reference state has too few records
 default_noise:
   run: 0.02
@@ -99,12 +90,11 @@ default_noise:
   proc: 0.01
   ab: 0.01
 
-# PR test budget in minutes: single-sided screening, A/B of the
-# suspicious cases, and the two-stage direct A/B
+# PR test budget in minutes: single-sided screening and the A/B of the
+# suspicious cases
 budget:
   screen_minutes: 15
   confirm_minutes: 15
-  direct_ab_minutes: 30
 
 # ---------------------------------------------------------------------------
 # Benchmark hosts. `default` applies to every host; a `hosts` entry whose key
