@@ -18,9 +18,9 @@ on:
     inputs:
       python:
         type: string
-        required: true
-        default: '3.10'
-        description: Python version (e.g. 3.10, 3.11, 3.12)
+        required: false
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
 
       # ----- Test scope (command pattern) -----
       test_pattern:
@@ -75,7 +75,7 @@ on:
 permissions: read-all
 
 concurrency:
-  group: acceptance-${{ github.event.inputs.caller || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
+  group: acceptance-${{ github.event.inputs.callback_sha || format('{0}-{1}-{2}-{3}-{4}', github.event.inputs.test_component, github.event.inputs.test_pattern, github.event.inputs.python, github.event.inputs.target_version, github.event.inputs.baseline_version) }}
   cancel-in-progress: true
 
 run-name: >-
@@ -83,10 +83,42 @@ run-name: >-
 
 jobs:
   # ==================================================================
+  # Resolve python: requires '!=3.14.1,>=3.11', else use ci-config default
+  # ==================================================================
+  resolve-python:
+    name: resolve python
+    runs-on: ubuntu-24.04
+    outputs:
+      python: ${{ steps.pick.outputs.python }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Pick python version
+        id: pick
+        env:
+          REQUESTED: ${{ inputs.python }}
+        run: |
+          default=$(jq -r .python .github/ci-config/defaults.json)
+          python="${REQUESTED:-$default}"
+          valid=true
+          [[ "$python" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || valid=false
+          [ "$python" != "3.14.1" ] || valid=false
+          # sort -V puts 3.11 first only when python >= 3.11
+          [ "$(printf '%s\n' 3.11 "$python" | sort -V | head -n1)" = "3.11" ] || valid=false
+          if [ "$valid" = true ]; then
+            echo "python=${python}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::python '${python}' does not satisfy !=3.14.1,>=3.11; using default ${default}"
+            echo "python=${default}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ==================================================================
   # TARGET pipeline
   # ==================================================================
   target-build:
     name: target / build
+    needs: resolve-python
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
@@ -95,13 +127,13 @@ jobs:
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.target_version || '' }}
       onednn: ${{ inputs.test_component == 'onednn' && inputs.target_version || '' }}
-      python: ${{ inputs.python }}
+      python: ${{ needs.resolve-python.outputs.python }}
       category: target
 
   target-ut:
     name: target / ut
     if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_ut' || inputs.test_pattern == 'test_pt_smoke' }}
-    needs: target-build
+    needs: [resolve-python, target-build]
     secrets: inherit
     permissions:
       contents: read
@@ -112,7 +144,7 @@ jobs:
       runner: acceptance
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-      python: ${{ inputs.python }}
+      python: ${{ needs.resolve-python.outputs.python }}
       ut: ${{ inputs.test_pattern == 'test_pt_smoke' && 'op_regression' || 'xpu_p0'}}
       category: target
       skip_summary: true
@@ -120,14 +152,14 @@ jobs:
   target-e2e:
     name: target / e2e
     if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_e2e' || inputs.test_pattern == 'test_pt_smoke' }}
-    needs: target-build
+    needs: [resolve-python, target-build]
     secrets: inherit
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
-      python: ${{ inputs.python }}
+      python: ${{ needs.resolve-python.outputs.python }}
       suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
       category: target
@@ -138,6 +170,7 @@ jobs:
   # ==================================================================
   baseline-build:
     name: baseline / build
+    needs: resolve-python
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
@@ -146,13 +179,13 @@ jobs:
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.baseline_version || '' }}
       onednn: ${{ inputs.test_component == 'onednn' && inputs.baseline_version || '' }}
-      python: ${{ inputs.python }}
+      python: ${{ needs.resolve-python.outputs.python }}
       category: baseline
 
   baseline-ut:
     name: baseline / ut
     if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_ut' || inputs.test_pattern == 'test_pt_smoke' }}
-    needs: baseline-build
+    needs: [resolve-python, baseline-build]
     secrets: inherit
     permissions:
       contents: read
@@ -163,7 +196,7 @@ jobs:
       runner: acceptance
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-      python: ${{ inputs.python }}
+      python: ${{ needs.resolve-python.outputs.python }}
       ut: ${{ inputs.test_pattern == 'test_pt_smoke' && 'op_regression' || 'xpu_p0'}}
       category: baseline
       skip_summary: true
@@ -171,14 +204,14 @@ jobs:
   baseline-e2e:
     name: baseline / e2e
     if: ${{ inputs.test_pattern == 'test_pt' || inputs.test_pattern == 'test_pt_e2e' || inputs.test_pattern == 'test_pt_smoke' }}
-    needs: baseline-build
+    needs: [resolve-python, baseline-build]
     secrets: inherit
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
-      python: ${{ inputs.python }}
+      python: ${{ needs.resolve-python.outputs.python }}
       suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
       category: baseline
@@ -189,7 +222,7 @@ jobs:
   # ==================================================================
   compare-results:
     name: Compare results
-    needs: [target-ut, target-e2e, baseline-ut, baseline-e2e]
+    needs: [resolve-python, target-ut, target-e2e, baseline-ut, baseline-e2e]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-24.04
     env:
@@ -201,7 +234,7 @@ jobs:
       - name: Setup python
         uses: ./.github/actions/setup-python
         with:
-          python: ${{ inputs.python }}
+          python: ${{ needs.resolve-python.outputs.python }}
 
       - name: Print configuration
         run: |
@@ -300,7 +333,8 @@ jobs:
     steps:
       - name: Post result commit status to caller
         env:
-          GH_TOKEN: ${{ secrets.ONEDNN_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          CB_TOKEN: ${{ secrets.ONEDNN_DISPATCH_TOKEN }}
           CB_REPO: ${{ inputs.callback_repo }}
           CB_SHA: ${{ inputs.callback_sha }}
           CB_CONTEXT: ${{ inputs.callback_context }}
@@ -315,6 +349,9 @@ jobs:
           R_CMP: ${{ needs.compare-results.result }}
         run: |
           [ -n "$CB_SHA" ] && [ -n "$CB_CONTEXT" ] || { echo "No callback sha/context; skipping."; exit 0; }
+          # Surface an expired/revoked token as such instead of a bare 401 on
+          # the status POST below.
+          echo "Callback token identity: $(GH_TOKEN="$CB_TOKEN" gh api user --jq .login 2>&1)"
           # The concurrency group (caller) is the unique key: only the newest run
           # for this caller owns the status, so an older/superseded run never
           # clobbers the single active run per PR.
@@ -330,7 +367,7 @@ jobs:
           for r in "$R_TUT" "$R_TE2E" "$R_BUT" "$R_BE2E" "$R_CMP"; do
             case "$r" in success|skipped) ;; *) state=failure ;; esac
           done
-          gh api -X POST "repos/${CB_REPO}/statuses/${CB_SHA}" \
+          GH_TOKEN="$CB_TOKEN" gh api -X POST "repos/${CB_REPO}/statuses/${CB_SHA}" \
             -f state="$state" \
             -f context="$CB_CONTEXT" \
             -f target_url="$RUN_URL" \

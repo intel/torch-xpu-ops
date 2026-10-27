@@ -17,8 +17,8 @@ on:
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
-        default: '3.10'
-        description: Python version
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
       ut:
         required: true
         type: string
@@ -46,13 +46,16 @@ env:
 
 jobs:
   test-in-container:
-    timeout-minutes: 1440
+    timeout-minutes: 2880
+    env:
+      TORCH_SERIALIZATION_DEBUG: '1'
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
       image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
+        - /opt/xpu-test/_cache:/github/home/.cache/:rw
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK

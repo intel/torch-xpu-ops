@@ -17,8 +17,8 @@ on:
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
-        default: '3.10'
-        description: Python version
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
       pr_body_cmd:
         type: string
         default: ''
