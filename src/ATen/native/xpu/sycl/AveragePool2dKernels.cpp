@@ -39,7 +39,7 @@ namespace xpu {
 // tested) while still bounding the launch instead of scaling unbounded with
 // input size.
 static int64_t vectorized_grid_stride_cap() {
-  return syclMaxWorkItemsPerTile() * 32;
+  return static_cast<int64_t>(at::xpu::getDeviceMaxWorkItems()) * 32;
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
@@ -814,8 +814,9 @@ void launch_avg_pool2d_channels_last_kernel(
   // Device-derived occupancy floor instead of a fixed constant, so the
   // threshold scales with the actual GPU's EU/thread capacity. The divisor
   // is chosen to reproduce the empirically-tuned value on BMG exactly
-  // (syclMaxWorkItemsPerTile() == 40960 on BMG, 40960 / 5 == 8192).
-  const int64_t min_work_items = syclMaxWorkItemsPerTile() / 5;
+  // (at::xpu::getDeviceMaxWorkItems() == 40960 on BMG, 40960 / 5 == 8192).
+  const int64_t min_work_items =
+      static_cast<int64_t>(at::xpu::getDeviceMaxWorkItems()) / 5;
 
   // Determine max vec_size from pointer alignment alone (bypass conservative
   // preferred_vector_width which caps at 4 on BMG). The hardware supports
