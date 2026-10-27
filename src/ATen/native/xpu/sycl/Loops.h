@@ -529,10 +529,10 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
   bool contiguous = iter.is_contiguous();
-  int64_t max_work_items_per_sub_slice = at::xpu::getDeviceMaxSubGroupSize() *
-      at::xpu::getDeviceEUCountPerXeCore();
-  bool latency_case = numel <=
-      max_work_items_per_sub_slice * 4; /* on tuning for different data types */
+  bool latency_case = numel <= static_cast<int64_t>(
+                                   at::xpu::getDeviceMaxSubGroupSize() *
+                                   at::xpu::getDeviceEUCountPerXeCore()) *
+          4; /* on tuning for different data types */
 
   int vec_size;
   if (contiguous) {
