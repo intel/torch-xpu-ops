@@ -704,48 +704,90 @@ class Scheduler:
 
     def validate(self, ids):
         """Validate ``ids`` with one validator per card, card ``k`` taking every
-        n-th case (``ids`` is in priority order)."""
+        n-th case (``ids`` is in priority order). A validator that crashes
+        (e.g. the device is lost) fails the case it was on and restarts on the
+        cases after it."""
         side = list(self.python)[-1]
         budget = self.args.validate_budget_min
-        # the budget is checked between cases; allow one slow case on top
-        timeout = budget * 60 + 600 if budget else None
+        deadline = time.time() + budget * 60 if budget else None
         n = min(len(self.cards), len(ids))
-        parts = [os.path.join(self.out, f"validation.c{k}.jsonl") for k in range(n)]
-        procs, errors = [None] * n, []
+        cases = load_cases()
+        results, errors = [[] for _ in range(n)], []
 
         def one(k):
-            case_file = os.path.join(self.raw, f"validate_c{k}.cases.json")
-            with open(case_file, "w") as f:
-                json.dump(ids[k::n], f)
-            cmd = ["validate", "--cases", case_file, "--out", parts[k]]
-            cmd += ["--budget-min", str(budget)]
-            try:
-                procs[k] = self._spawn(
-                    side,
-                    self.cards[k],
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
+            card = self.cards[k]
+            tag = f"validate_c{card['index']}"
+            log = os.path.join(self.raw, f"{tag}.log")
+            remaining, crashes = ids[k::n], 0
+            while remaining:
+                case_file = os.path.join(self.raw, f"{tag}.cases.{crashes}.json")
+                with open(case_file, "w") as f:
+                    json.dump(remaining, f)
+                out = os.path.join(self.out, f"validation.{tag}.jsonl")
+                left = max(0.01, (deadline - time.time()) / 60) if deadline else 0
+                cmd = ["validate", "--cases", case_file, "--out", out]
+                cmd += ["--budget-min", str(left)]
+                start = os.path.getsize(log) if os.path.exists(log) else 0
+                try:
+                    with open(log, "a") as fh:
+                        rc = self._spawn(
+                            side,
+                            card,
+                            cmd,
+                            stdout=fh,
+                            stderr=fh,
+                            # the budget is checked between cases; allow one
+                            # slow case on top
+                            timeout=left * 60 + 600 if deadline else None,
+                        ).returncode
+                except subprocess.TimeoutExpired:
+                    rc = "timeout"
+                got = read_jsonl(out)
+                if os.path.exists(out):
+                    os.remove(out)
+                results[k] += got
+                done = {r["case_id"] for r in got}
+                remaining = [c for c in remaining if c not in done]
+                if not remaining:
+                    return
+                if rc == 0 or crashes >= self.args.max_restarts:
+                    with self.lock:
+                        errors.append(
+                            f"validator on card {card['index']} exited with {rc}; "
+                            f"{len(remaining)} case(s) not validated"
+                        )
+                    return
+                crashes += 1
+                # results are written in order: the first missing case crashed
+                cid = remaining.pop(0)
+                with open(log, errors="replace") as fh:
+                    fh.seek(start)
+                    lines = [ln.strip() for ln in fh if "Error" in ln]
+                why = lines[-1] if lines else f"exit {rc}"
+                case = cases.get(cid)
+                results[k].append(
+                    {
+                        "status": "fail",
+                        "failures": [
+                            f"validator crashed on this case: {why} (raw/{tag}.log)"
+                        ],
+                        "case_id": cid,
+                        "op": case.op if case else None,
+                        "pass_": case.pass_ if case else None,
+                        "label": case.label if case else None,
+                    }
                 )
-            except subprocess.TimeoutExpired:
-                errors.append(
-                    f"validator on card {self.cards[k]['index']} did not finish within {timeout}s"
-                )
+                with self.lock:
+                    self.meta["crashed_cases"].append(
+                        {"case_id": cid, "worker": tag, "rc": rc}
+                    )
 
         threads = [threading.Thread(target=one, args=(k,)) for k in range(n)]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
-        if errors:
-            raise InfraError("; ".join(errors))
-        results = []
-        for k in range(n):
-            sys.stderr.write(procs[k].stderr)
-            results += read_jsonl(parts[k])
-            if os.path.exists(parts[k]):
-                os.remove(parts[k])
+        results = [r for part in results for r in part]
         with open(os.path.join(self.out, "validation.jsonl"), "w") as f:
             for r in results:
                 f.write(json.dumps(r) + "\n")
@@ -759,11 +801,8 @@ class Scheduler:
                 r["case_id"] for r in results if r.get("status") == "not_validated"
             ],
         }
-        if len(results) < len(ids):
-            rcs = [p.returncode for p in procs]
-            raise InfraError(
-                f"validators produced {len(results)}/{len(ids)} results (rc={rcs})"
-            )
+        if errors:
+            raise InfraError("; ".join(errors))
         return failed
 
     def suspicious(self, ids, stage="screen"):
