@@ -291,9 +291,6 @@ skip_dict = {
         "test_grad_scaling_state_dict_xpu",
         "test_typed_storage_deprecation_warning",
         "test_typed_storage_internal_no_warning",
-        # TypeError: map2_ is only implemented on CPU tensors
-        "test_broadcast_fn_map2_xpu",
-        "test_broadcast_fn_map_xpu",
         # RuntimeError: _share_fd_: only available on CPU
         "test_module_share_memory_xpu",
         # TypedStorage tests are not applicable to XPU. TypedStorage is deprecated in favor of
