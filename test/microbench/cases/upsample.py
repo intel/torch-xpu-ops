@@ -15,6 +15,13 @@ class Upsample(OpBench):
     family = "upsample"
     passes = ("fwd", "bwd")
     mode = None
+    # (shape, scale_factor) measured forward only
+    fwd_only = ()
+
+    def passes_for(self, p):
+        if (p["shape"], p["scale_factor"]) in self.fwd_only:
+            return ("fwd",)
+        return self.passes
 
     def expected_ops(self, p, pass_):
         name = f"_{self.op}" if self.mode == "nearest-exact" else self.op
@@ -48,7 +55,9 @@ def nearest_cases(cases):
 
 
 class UpsampleBicubic2d(Upsample):
-    """(1, 128, 1200, 1200) x3 is reduced to 32 channels (memory)."""
+    """(1, 128, 1200, 1200) x3 is reduced to 32 channels (memory). The backward
+    adds 16 values per output pixel and channel atomically into the input
+    gradient; the shapes in ``fwd_only`` take seconds per call on BMG."""
 
     op = "upsample_bicubic2d"
     mode = "bicubic"
@@ -61,6 +70,11 @@ class UpsampleBicubic2d(Upsample):
         ],
         align_corners=True,
     )
+    fwd_only = (
+        ((1, 32, 1200, 1200), (3, 3)),
+        ((1, 3, 1200, 1200), (7, 7)),
+        ((128, 128, 5, 5), (7, 7)),
+    )
     pr = [
         dict(
             shape=(1, 3, 1200, 1200),
@@ -72,7 +86,10 @@ class UpsampleBicubic2d(Upsample):
 
 
 class UpsampleBilinear2d(Upsample):
-    """(1, 128, 1200, 1200) x3 is reduced to 32 channels (memory)."""
+    """(1, 128, 1200, 1200) x3 is reduced to 32 channels (memory). The backward
+    adds 4 values per output element atomically into the input gradient; the
+    shapes in ``fwd_only`` take seconds per call on BMG, and the backward of
+    (8, 32, 256, 256) x3 in bf16 loses the device (UR_RESULT_ERROR_DEVICE_LOST)."""
 
     op = "upsample_bilinear2d"
     mode = "bilinear"
@@ -86,8 +103,19 @@ class UpsampleBilinear2d(Upsample):
         ],
         align_corners=False,
     )
+    fwd_only = (
+        ((1, 32, 1200, 1200), (3, 3)),
+        ((1, 3, 1200, 1200), (7, 7)),
+        ((128, 128, 5, 5), (7, 7)),
+        ((8, 32, 256, 256), 3),
+    )
     pr = [
-        dict(shape=(8, 32, 256, 256), scale_factor=3, align_corners=False, dtype="bf16")
+        dict(
+            shape=(1, 3, 1200, 1200),
+            scale_factor=(3, 3),
+            align_corners=False,
+            dtype="bf16",
+        )
     ]
 
 

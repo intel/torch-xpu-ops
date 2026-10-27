@@ -41,6 +41,13 @@ class GridSampler2d(OpBench):
         )
     ]
 
+    def passes_for(self, p):
+        # the backward adds into the input gradient atomically: bilinear and
+        # bicubic on (16, 128, 512, 512) take 1-10 s per call on BMG
+        if p["shape"] == (16, 128, 512, 512) and p["mode"] != "nearest":
+            return ("fwd",)
+        return self.passes
+
     def setup(self, p, device):
         n, _, *spatial = p["shape"]
         x = randn(p["shape"], p["dtype"], device)

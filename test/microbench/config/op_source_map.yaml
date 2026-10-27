@@ -318,8 +318,8 @@ core_set:
     cases:
     - op: upsample_bilinear2d
       pass: fwd
-      case_id: 03fd566c89da
-      label: shape=(8, 32, 256, 256), scale_factor=3, align_corners=False, dtype=bf16
+      case_id: d5dba8b7351c
+      label: shape=(1, 3, 1200, 1200), scale_factor=(3, 3), align_corners=False, dtype=bf16
       reason: interpolating upsample
     - op: upsample_nearest2d
       pass: fwd
