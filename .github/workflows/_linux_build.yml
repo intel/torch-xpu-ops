@@ -147,6 +147,8 @@ jobs:
             --torch-xpu-ops-commit="${TORCH_XPU_OPS_COMMIT}" \
             --onednn-commit='${{ inputs.onednn }}'
       - name: Build Pytorch
+        env:
+          INSTALL_TEST: '1'
         run: |
           export USE_XCCL=1
           export IS_XPU_CI=1
