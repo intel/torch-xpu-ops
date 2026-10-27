@@ -723,6 +723,7 @@ jobs:
         if: always()
         uses: actions/github-script@v9
         env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
           ALIGNMENT_MODE: ${{ github.event_name == 'schedule' && 'schedule' || 'dry-run' }}
           COST_ISSUE: ${{ env.ALIGNMENT_COST_ISSUE }}
           COST_REPO: ${{ env.ALIGNMENT_COST_REPO }}
@@ -791,7 +792,14 @@ jobs:
             const date = new Date().toISOString().split('T')[0];
             const body = `\`${date}\` [\`xpu-alignment\`](${jobUrl}) run \`${context.runId}\`, attempt \`${process.env.RUN_ATTEMPT}\` (${process.env.ALIGNMENT_MODE}) — ${costTotal} (${tokenTotal}) [${status}]\n\n${roles}`;
             const [costOwner, costRepo] = process.env.COST_REPO.split('/');
-            await github.rest.issues.createComment({
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
               owner: costOwner,
               repo: costRepo,
               issue_number: Number(process.env.COST_ISSUE),
