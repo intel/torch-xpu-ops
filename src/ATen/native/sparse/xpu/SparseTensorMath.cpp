@@ -480,8 +480,6 @@ Tensor& _sspaddmm_out_xpu(
   if (!mat1_is_coalesced && !mat1_is_double && sparse_threshold_divisor < 128) {
     sparse_threshold_divisor = 128;
   }
-  bool use_sparse_path =
-      mat1_numel >= 4096 && nnz1 * sparse_threshold_divisor < mat1_numel;
 
   Tensor dense_result;
   if (nnz1 == 0) {
@@ -492,6 +490,8 @@ Tensor& _sspaddmm_out_xpu(
     }
   } else {
 #if defined(USE_ONEMKL_XPU)
+    bool use_sparse_path =
+        mat1_numel >= 4096 && nnz1 * sparse_threshold_divisor < mat1_numel;
     if (use_sparse_path) {
       SparseTensor mat1_coalesced = mat1_is_coalesced ? mat1 : mat1.coalesce();
       Tensor row_indices = mat1_coalesced._indices()[0];
