@@ -55,5 +55,5 @@ GPTJForQuestionAnswering,pass,pass,pass,pass,pass
 GPTNeoForCausalLM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
 GPTNeoForSequenceClassification,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
 google/gemma-3-4b-it,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
-Qwen/Qwen3.5-0.8B,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+Qwen/Qwen3.5-0.8B,eager_fail_to_run,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 mistralai/Mistral-7B-Instruct-v0.3,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
