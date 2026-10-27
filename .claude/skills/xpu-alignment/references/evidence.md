@@ -1,0 +1,160 @@
+# Evidence and Review
+
+Use this reference only for decisions that depend on evidence quality: semantic
+candidate eligibility, faithful XPU reproducer construction or result
+classification, and independent review. It prevents weak source signals, setup
+failures, and provisional scan results from being promoted into unsupported XPU
+trackers.
+
+Do not use it for deterministic enumeration or pagination, artifact schemas,
+stage ownership and digests, workflow gating or publishing, or implementation of
+the resulting fix. Use the
+[automation contract](automation-contract.md) for automation mechanics.
+
+## Candidate set
+
+For `[start, end)` in UTC, cover issues created, PRs created or merged, and commits
+reachable from the `pytorch/pytorch` default branch whose committer timestamp is
+in the interval. Ordinary comments, labels, and other updates to older objects do
+not create candidates. Fetch linked older objects when they provide context.
+
+An observed inventory object is not yet an alignment validation candidate. If
+the upstream issue body or reproducer, PR tests or diff, or commit diff shows
+that its primary scope is independent XPU work already tracked or implemented
+upstream, reject it with `already-xpu-scoped` in the reason. Do not create a
+reproducer, review it, or open a parallel `torch-xpu-ops` issue. A title, label,
+or XPU mention by itself is only a prioritization signal and is not sufficient
+evidence for this rejection.
+
+Alignment validation instead targets generic behavior and work originating in
+CPU, CUDA, ROCm, MPS, or any other backend when XPU parity is not already
+addressed. Shared or multi-backend work remains eligible even when XPU is named
+as one affected backend. For an explicitly linked issue/PR/commit chain, validate
+one canonical object at most. Reject the other objects with `duplicate-chain` in
+the free-text reason and name the canonical inventory id.
+
+In automation, the deterministic collector owns pagination and the raw inventory.
+Treat every observed inventory object as in scope. Its collection is partial when
+an API quota, authentication error, timeout, or endpoint failure prevents a source
+from reaching the window boundary. Preserve its per-source page count, fetched
+count, last cursor, rate-limit state, and error instead of silently narrowing the
+set. Partial inventory may be analyzed, and fully covered units may be published
+after independent review; the incomplete scope must still be reported and must
+not be mistaken for a complete scan.
+
+Titles and labels help prioritize reading but do not decide relevance. Inspect
+the body, changed code, tests, linked work, or diff whenever it could change the
+decision. Clear documentation/infrastructure-only changes, platform-exclusive
+behavior, nonfunctional refactors, and duplicate issue/PR/commit chains can be
+rejected with a concrete explanation.
+
+## Faithful XPU evidence
+
+Prefer the upstream reproducer or regression test. When adapting another backend,
+change only device mechanics unless evidence requires more. Preserve supported
+inputs, shapes, strides, dtype, mode, seed, and oracle. Reuse identical initialized
+inputs for comparisons and use upstream/dtype-appropriate tolerances.
+
+Before execution, identify:
+
+- the upstream oracle and observation stage;
+- the XPU operation or compiler path being exercised;
+- evidence that the target path, rather than setup data, ran on XPU;
+- how the script distinguishes the same failure, a related failure, and success;
+- a bounded timeout and a credential-scrubbed execution command.
+
+Retain the exact script and raw stdout/stderr. A broad exception or substring
+match does not establish a result by itself. Treat timeout, crash, or setup
+failure as actionable only when target-stage evidence makes the signature
+defensible. Automation runs Python unbuffered, so keep diagnostic output bounded
+and do not print from hot loops.
+
+Use these local results:
+
+| Result | Meaning |
+|---|---|
+| `confirmed` | The target XPU path exhibited the upstream oracle/signature. |
+| `related-failure` | The target ran and exposed a different actionable defect. |
+| `not-reproduced` | The faithful target ran and the upstream oracle passed. |
+| `blocked-env` | Runtime, dependency, device, or topology prevented validation. |
+| `blocked-platform` | XPU has no corresponding target path. |
+| `blocked-fetch` | Required public source material could not be retrieved. |
+| `blocked-script-error` | Setup/script failure prevented a defensible result. |
+| `needs-performance-harness` | A performance claim lacks a valid comparison. |
+
+## Independent review
+
+The reviewer did not produce the scan. For every `confirmed` or
+`related-failure` candidate, independently check:
+
+1. reproducer fidelity and oracle;
+2. target-path XPU execution and observed signature;
+3. whether the behavior is a defect rather than unsupported or expected behavior;
+4. whether an independent XPU change is required;
+5. current source, fix PR merge state, and canonical tracker state;
+6. whether a claimed fix is present in the tested build and passes the same check.
+
+A non-null merge timestamp (`mergedAt` in GraphQL and `gh pr view`, or
+`merged_at` in the REST API) establishes only that a PR entered its recorded
+base branch. To determine whether the relevant change exists in the default
+branch snapshot, inspect a linked commit or the equivalent source at the exact
+`collection.json.snapshot.default_branch_head`; do not substitute the live
+default branch. Treat the behavior as landed for this scan only when that
+evidence is reachable from or present at the frozen head. A missing merge
+timestamp or a closed state alone establishes neither outcome.
+
+An open or genuinely unlanded PR may justify `needs-xpu-fix` only when evidence
+independently establishes a defect in the current XPU implementation whose fix
+does not depend on that PR landing. If independent XPU parity work would be
+required only after the proposed upstream behavior lands, use `track-upstream`;
+a later default-branch commit scan re-evaluates the change after it lands.
+`non-issue` only when runner and source evidence establish that the observed
+behavior is not a current XPU defect. Otherwise use `verification-gap`.
+
+Before allowing a new issue, search both `pytorch/pytorch` and
+`intel/torch-xpu-ops` for issues and fix PRs covering the reported XPU work.
+The current source, a generic related issue, or an XPU mention alone does not
+establish upstream ownership. When upstream explicitly owns the XPU work, use
+`track-upstream` and emit no payload.
+
+Compare related fix PR diffs and tests with the reported XPU path and failure
+conditions to determine whether they cover all, part, or none of the finding;
+leave uncertain coverage explicit. A fix's repository alone does not establish
+XPU coverage. In any new payload, explain each related fix PR's coverage,
+remaining XPU work, and current stage: proposed, landed, or verified in the tested
+build. For example, a forward-only fix does not cover a backward failure. If a
+new tracker is otherwise justified and a PR already implements the full fix but
+has not landed, describe the issue as tracking that PR through merge and
+verification rather than as an unimplemented fix.
+
+For current, confirmed independent XPU work, record an open
+`intel/torch-xpu-ops` issue covering the same work as `canonical_tracker`: use
+`duplicate`, emit no payload, and do not automatically comment on that issue.
+Otherwise leave `canonical_tracker` null, use `needs-xpu-fix`, and emit a new
+payload. Cite any closed predecessor and related issue, PR, or commit URLs in
+the payload body; these links alone do not suppress a payload. Closing an issue
+does not establish whether the current XPU behavior is fixed: re-check the
+source and verification evidence before proposing a new issue.
+
+Use exactly one verdict:
+
+- `needs-xpu-fix`: current XPU work that needs a new ops tracker; set
+  `implementation_repository` to the GitHub `owner/repo` where the code change
+  belongs;
+- `track-upstream`: an observation-only verdict, not a durable tracker; emit no
+  payload and set `implementation_repository` to the GitHub `owner/repo` that
+  owns the implementation, or to `intel/torch-xpu-ops` for parity work that
+  depends on an upstream change landing;
+- `fixed`: the relevant change is already present and verified;
+- `non-issue`: evidence establishes that the observed behavior is not a current
+  XPU defect;
+- `duplicate`: an open canonical tracker already covers the same work;
+- `verification-gap`: available evidence cannot support another verdict.
+
+Only `needs-xpu-fix` without a canonical tracker carries a payload; all other
+verdicts have no payload. Prefer `verification-gap` over a forced conclusion.
+A `needs-xpu-fix` payload has
+a `[xpu-alignment]` title, exactly the `ai_generated` label, upstream source and
+scan window, observed XPU behavior, target-path evidence, a copy-pasteable
+reproducer, relevant output, environment identity, ownership rationale, and
+links to any closed predecessor or related trackers.

@@ -130,13 +130,35 @@ def main():
         content = find_mkldnn.read_text()
         if "@" in onednn:
             repo_url, ref = onednn.rsplit("@", 1)
-            content = re.sub(
-                r"GIT_REPOSITORY\s+\S+",
-                f"GIT_REPOSITORY {repo_url}",
-                content,
-            )
         else:
+            repo_url = re.search(r"GIT_REPOSITORY\s+(\S+)", content).group(1)
             ref = onednn
+
+        # A PR merge/head commit only lives under refs/pull/*, which the plain
+        # clone done by ExternalProject never fetches; mirror it onto a local
+        # branch and build from that clone instead.
+        onednn_dir = workspace / "onednn"
+        if onednn_dir.exists():
+            shutil.rmtree(onednn_dir, onerror=_force_remove_readonly)
+        git("clone", repo_url, str(onednn_dir))
+        fetched = subprocess.run(
+            ["git", "-C", str(onednn_dir), "fetch", "--no-tags", "origin", ref],
+            check=False,
+        )
+        if fetched.returncode != 0:
+            git(
+                "-C", str(onednn_dir), "fetch", "--no-tags", "origin",
+                "+refs/pull/*/head:refs/pull/*/head",
+                "+refs/pull/*/merge:refs/pull/*/merge",
+            )
+        git("-C", str(onednn_dir), "checkout", "-B", "acceptance", ref)
+        git("-C", str(onednn_dir), "show", "-s")
+
+        content = re.sub(
+            r"GIT_REPOSITORY\s+\S+",
+            f"GIT_REPOSITORY {onednn_dir.as_posix()}",
+            content,
+        )
         content = re.sub(r"GIT_TAG\s+\S+", f"GIT_TAG {ref}", content)
         find_mkldnn.write_text(content)
         print(f"oneDNN override: {onednn}")

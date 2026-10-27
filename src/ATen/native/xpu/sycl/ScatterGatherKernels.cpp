@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -21,9 +22,9 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/ScatterGatherChecks.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
-#include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <comm/SYCLContext.h>
 #include <bit>
 
@@ -60,13 +61,15 @@ class ReduceAdd {
       int64_t index,
       int64_t numel,
       const scalar_t* src_data) const {
-    atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)(self_data_start + index),
+        c10::load(src_data));
   }
 
   template <typename scalar_t>
   constexpr void operator()(scalar_t* self_data, const scalar_t* src_data)
       const {
-    atomicAdd((sycl_global_ptr<scalar_t>)self_data, *src_data);
+    atomicAdd((sycl_global_ptr<scalar_t>)self_data, c10::load(src_data));
   }
 };
 static ReduceAdd reduce_add;
@@ -195,10 +198,10 @@ static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
   }
 
   using KernelFn = ScatterGatherElementwiseKernelFunctor<func_t>;
-  int64_t max_wg_size = syclMaxWorkGroupSize<KernelFn>();
+  int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelFn>();
   int outputSize = N;
   int work_group_size = outputSize > max_wg_size ? max_wg_size : outputSize;
-  const auto target_global_size = syclMaxWorkItemsPerTile();
+  const int64_t target_global_size = at::xpu::getDeviceMaxWorkItems();
   // Each work group size is work_group_size, one full device launch is
   // target_global_size, so we can calculate max work group num as below
   const int max_work_group_num = target_global_size / work_group_size;
@@ -635,7 +638,7 @@ struct ScatterFillBaseKernel {
       const Tensor& self,
       int64_t dim,
       const Tensor& index,
-      Scalar src,
+      const Scalar& src,
       const std::string& method_name,
       const func_t& f) {
     at::assert_no_internal_overlap(self);
@@ -684,7 +687,58 @@ struct ScatterFillBaseKernel {
       const Tensor& self,
       int64_t dim,
       const Tensor& index,
-      Scalar src,
+      const Scalar& src,
+      const std::string& method_name,
+      const TensorAssign& f) {
+    at::assert_no_internal_overlap(self);
+
+    auto index_sizes = ensure_nonempty_vec(index.sizes().vec());
+
+    // restride self such that
+    // self.shape = index.shape and
+    // self.stride[dim] = 0
+    auto self_restrided = restride_dim(self, dim, index_sizes);
+
+    auto iter = TensorIteratorConfig()
+                    .set_check_mem_overlap(false)
+                    .check_all_same_dtype(false)
+                    .resize_outputs(false)
+                    .add_output(self_restrided)
+                    .add_const_input(index)
+                    .build();
+
+    auto index_size = ensure_nonempty_size(self, dim);
+    auto index_stride = ensure_nonempty_stride(self, dim);
+
+    AT_DISPATCH_V2(
+        iter.dtype(),
+        "scatter_fill_base_kernel_func",
+        AT_WRAP([&] {
+          using dtype = std::conditional_t<
+              cast_to_opaque,
+              OpaqueType<sizeof(scalar_t)>,
+              scalar_t>;
+
+          auto src_scalar_val = src.to<scalar_t>();
+          auto src_val = std::bit_cast<dtype>(src_scalar_val);
+          AT_DISPATCH_INDEX_TYPES(
+              index.scalar_type(), "scatter_fill_base_kernel_func", [&]() {
+                ScatterFillInternalKernel<dtype, index_t>()(
+                    iter, src_val, index_size, index_stride, self.numel(), f);
+              });
+        }),
+        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+        AT_EXPAND(AT_FLOAT8_TYPES),
+        kHalf,
+        kBool,
+        kBFloat16);
+  }
+
+  void operator()(
+      const Tensor& self,
+      int64_t dim,
+      const Tensor& index,
+      const Scalar& src,
       const std::string& method_name,
       const ReduceMultiply& f) {
     at::assert_no_internal_overlap(self);

@@ -34,6 +34,8 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as _functional_collectives
 import torch.distributed._symmetric_memory as symm_mem
 import torch.testing._internal.common_utils as common
+from torch.profiler import profile, ProfilerActivity
+from torch.profiler._trace_validator import validate_trace
 from torch.testing._internal.common_distributed import (
     MultiProcContinuousTest,
     MultiProcessTestCase,
@@ -45,6 +47,7 @@ from torch.testing._internal.common_utils import (
     retry_on_connect_failures,
     run_tests,
     skip_but_pass_in_sandcastle_if,
+    TemporaryFileName,
     TEST_XPU,
     TestCase,
 )
@@ -479,6 +482,74 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
             torch.xpu.max_memory_reserved() * 2,
         )
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_record_param_comms_scope_covers_launch(self):
+        # `record_param_comms` carries a collective's metadata, and a profiler
+        # attributes the communication kernel to whichever CPU op is open when
+        # the kernel is launched. So the event has to still be open at launch
+        # time; if its scope closes first the kernel is attributed to the
+        # generic `c10d::<op>_` instead and the metadata never reaches it.
+        # Checked on the CPU side only, so the test does not depend on device
+        # activity records being available.
+        self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        tensor = torch.ones(8, 16, device=device)
+        chunked = torch.ones(8 * self.world_size, device=device)
+        splits = [8] * self.world_size
+
+        # Warm up, so lazy communicator setup stays out of the captured region.
+        dist.all_reduce(tensor)
+        torch.xpu.synchronize()
+
+        with torch.profiler.profile(
+            activities=[torch.profiler.ProfilerActivity.CPU]
+        ) as prof:
+            dist.all_reduce(tensor)
+            # Both branches of all_to_all_single: equal split and explicit sizes.
+            dist.all_to_all_single(torch.empty_like(chunked), chunked)
+            dist.all_to_all_single(
+                torch.empty_like(chunked),
+                chunked,
+                output_split_sizes=splits,
+                input_split_sizes=splits,
+            )
+            torch.xpu.synchronize()
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as trace_file:
+            trace_path = trace_file.name
+        try:
+            prof.export_chrome_trace(trace_path)
+            with open(trace_path) as trace:
+                events = json.load(trace)["traceEvents"]
+        finally:
+            os.remove(trace_path)
+
+        slices = [e for e in events if e.get("ph") == "X" and "dur" in e]
+        scopes = [e for e in slices if e["name"] == "record_param_comms"]
+        launches = [e for e in slices if e["name"].startswith("xccl:")]
+        self.assertEqual(len(launches), 3, f"expected 3 launches, got {launches}")
+
+        for launch in launches:
+            covering = [
+                s
+                for s in scopes
+                if s["tid"] == launch["tid"]
+                and s["ts"] <= launch["ts"] <= s["ts"] + s["dur"]
+            ]
+            self.assertTrue(
+                covering,
+                f"no record_param_comms scope was open when {launch['name']} was "
+                f"launched; scopes were "
+                f"{[(s['args'].get('Collective name'), s['dur']) for s in scopes]}",
+            )
+            # Sequence identity only reaches the trace when seq is recorded as a
+            # (number, isP2P) tuple; a bare int leaves sequenceNumber_ at -1 and
+            # the profiler drops both keys.
+            for key in ("Seq", "Comms Id"):
+                self.assertIn(key, covering[0]["args"], f"{launch['name']}: {key}")
+
 
 class CommTest(MultiProcessTestCase):
     @property
@@ -766,6 +837,51 @@ class CommTest(MultiProcessTestCase):
                     output_tensor[start:end].view(torch.float32),
                     tensor.view(torch.float32),
                 )
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_all_gather_into_tensor_mx_dtypes(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        device = "xpu"
+        # The two halves of an MX tensor: packed fp4 payload and its e8m0 scale.
+        for dtype in [torch.float4_e2m1fn_x2, torch.float8_e8m0fnu]:
+            # Neither dtype supports arithmetic or casting, so build the byte
+            # pattern as uint8 and reinterpret. Keeping the payload
+            # rank-dependent means an implementation that skips the transfer
+            # cannot pass.
+            tensor = torch.full(
+                (12, 12), self.rank + 1, dtype=torch.uint8, device=device
+            ).view(dtype)
+            output_tensor = torch.zeros(
+                self.world_size * 12, 12, dtype=torch.uint8, device=device
+            ).view(dtype)
+            dist.all_gather_into_tensor(output_tensor, tensor)
+            gathered = output_tensor.view(torch.uint8)
+            for i in range(self.world_size):
+                expected = torch.full((12, 12), i + 1, dtype=torch.uint8, device=device)
+                self.assertEqual(gathered[i * 12 : (i + 1) * 12], expected)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_reduction_rejects_float4(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        tensor = torch.zeros(12, 12, dtype=torch.uint8, device="xpu").view(
+            torch.float4_e2m1fn_x2
+        )
+        with self.assertRaisesRegex(RuntimeError, "Float4"):
+            dist.all_reduce(tensor)
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
@@ -1576,18 +1692,39 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_put_wait_signal(self) -> None:
-        """Verify put_signal / wait_signal over the SYCL IPC peer mapping."""
+        """Verify put_signal / wait_signal over the SYCL IPC peer mapping.
+
+        The handshake is repeated so that a signal flag which is not visible
+        across ranks (e.g. one left behind in L1) surfaces as a hang, and each
+        round asserts that data written before put_signal is readable by the
+        peer once wait_signal returns.
+        """
         self._init_process()
 
-        t = symm_mem.empty(1, device="xpu")
+        numel = 1024
+        iters = 50
+        t = symm_mem.empty(numel, dtype=torch.int32, device=self.device)
+        t.fill_(-1)
         hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
+        # Signalling uses channel 0, so keep the barrier on a separate channel.
+        hdl.barrier(channel=1)
 
-        # Ring: each rank sends a signal to its right neighbor and waits for
-        # a signal from its left neighbor.
+        # Ring: each rank pushes into its right neighbor's buffer and signals
+        # it, then waits for the signal from its left neighbor.
         dst = (self.rank + 1) % self.world_size
         src = (self.rank - 1) % self.world_size
-        hdl.put_signal(dst_rank=dst, channel=0, timeout_ms=10_000)
-        hdl.wait_signal(src_rank=src, channel=0, timeout_ms=10_000)
+        for i in range(1, iters + 1):
+            hdl.get_buffer(dst, (numel,), torch.int32).fill_(self.rank * iters + i)
+            hdl.put_signal(dst_rank=dst, channel=0, timeout_ms=10_000)
+            hdl.wait_signal(src_rank=src, channel=0, timeout_ms=10_000)
+            expected = src * iters + i
+            self.assertTrue(
+                t.eq(expected).all().item(),
+                f"iteration {i}: expected all {expected}, got {t.unique().tolist()}",
+            )
+            # The ring handshake is one-way, so without this the left peer can
+            # start writing iteration i + 1 while we are still reading i.
+            hdl.barrier(channel=1)
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
@@ -1657,6 +1794,64 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
 
         torch.testing.assert_close(output_0, output_1)
         self.assertEqual(output_0.stride(), output_1.stride())
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_mempool_alloc_and_rendezvous(self) -> None:
+        """A tensor allocated inside the symmetric MemPool must be usable as
+        symmetric memory: rendezvous → write → barrier → read peer buffer."""
+        self._init_process()
+
+        numel = 1024
+        dtype = torch.float32
+        group_name = dist.group.WORLD.group_name
+
+        # Registered by src/xccl/XPUMemPool.cpp.
+        self.assertIsNotNone(symm_mem.get_mempool_allocator(self.device))
+
+        pool = symm_mem.get_mem_pool(self.device)
+        self.assertIsInstance(pool, torch.xpu.MemPool)
+        # The pool is cached per device.
+        self.assertIs(pool, symm_mem.get_mem_pool(self.device))
+
+        with torch.xpu.use_mem_pool(pool):
+            t = torch.empty(numel, dtype=dtype, device=self.device)
+
+        hdl = symm_mem.rendezvous(t, group=group_name)
+        t.fill_(float(self.rank))
+        hdl.barrier()
+
+        for peer in range(self.world_size):
+            buf = hdl.get_buffer(peer, (numel,), dtype)
+            self.assertTrue(
+                buf.eq(float(peer)).all().item(),
+                f"peer {peer} buffer != {peer} (seen from rank {self.rank})",
+            )
+        hdl.barrier()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_mempool_no_split_and_implicit_pool(self) -> None:
+        """The symmetric pool is created with no_split=True, so a same-sized
+        re-allocation must land on the exact same address. symm_mem.empty()
+        routes through that same pool implicitly."""
+        self._init_process()
+
+        numel = 1024
+        dtype = torch.float32
+        pool = symm_mem.get_mem_pool(self.device)
+
+        with torch.xpu.use_mem_pool(pool):
+            t1 = torch.empty(numel, dtype=dtype, device=self.device)
+        ptr1 = t1.data_ptr()
+        del t1
+
+        with torch.xpu.use_mem_pool(pool):
+            t2 = torch.empty(numel, dtype=dtype, device=self.device)
+        self.assertEqual(ptr1, t2.data_ptr())
+
+        t = symm_mem.empty(numel, dtype=dtype, device=self.device)
+        symm_mem.rendezvous(t, group=dist.group.WORLD.group_name)
 
 
 # ------------------------------------------------------------------
@@ -1779,6 +1974,100 @@ instantiate_parametrized_tests(ProcessGroupXCCLTest)
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
     COLLECTIVE_ARGUMENT = auto()  # broadcast_object_list(device=)
+
+
+class XpuProfilerDistributedTest(MultiProcessTestCase):
+    @property
+    def world_size(self):
+        return 2
+
+    def setUp(self):
+        super().setUp()
+        env = {"TORCH_PROFILER_ENABLE_COLLECTIVE_PROFILING": "1"}
+        pti_library = self._loaded_pti_library()
+        if pti_library is not None:
+            env["INTEL_LIBITTNOTIFY64"] = pti_library
+        with mock.patch.dict(os.environ, env):
+            self._spawn_processes()
+
+    def _loaded_pti_library(self):
+        with open("/proc/self/maps") as maps:
+            for line in maps:
+                path = line.split()[-1]
+                if "libpti_view.so" in path:
+                    return path
+        return None
+
+    def tearDown(self):
+        super().tearDown()
+        try:
+            os.remove(self.file_name)
+        except OSError:
+            pass
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_profiler_xpu_distributed(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        try:
+            torch.xpu.set_device(self.rank)
+
+            M = N = K = 4
+            x = torch.randn(M, K, device="xpu")
+            weight = torch.randn(K, N, device="xpu")
+
+            # Warm up so first-iteration setup costs stay out of the profiled region.
+            for _ in range(2):
+                output = x @ weight
+                dist.all_reduce(output)
+            torch.xpu.synchronize()
+
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+            ) as prof:
+                output = x @ weight
+                dist.all_reduce(output)
+                # Sync before export so async XPU kernels are recorded.
+                torch.xpu.synchronize()
+
+            with TemporaryFileName(mode="w+") as fname:
+                prof.export_chrome_trace(fname)
+                passed, violations = validate_trace(fname)
+                with open(fname) as f:
+                    events = json.load(f).get("traceEvents", [])
+
+            self.assertTrue(
+                passed,
+                f"[Rank {self.rank}] Invalid trace: {[str(v) for v in violations]}",
+            )
+            kernels = [e for e in events if e.get("cat") == "kernel"]
+            gemm_kernels = [k for k in kernels if "gemm" in k.get("name", "").lower()]
+            self.assertGreater(
+                len(gemm_kernels),
+                0,
+                f"[Rank {self.rank}] No GEMM kernel in trace; saw kernels: "
+                f"{[k.get('name') for k in kernels]}",
+            )
+            self.assertTrue(
+                any(e.get("name") == "xccl:all_reduce" for e in events),
+                f"[Rank {self.rank}] No xccl:all_reduce event in trace",
+            )
+            self.assertTrue(
+                any(
+                    e.get("cat") == "collective_comm"
+                    and e.get("name", "").startswith("xccl::allreduce")
+                    for e in events
+                ),
+                f"[Rank {self.rank}] No collective_comm xccl::allreduce event in trace",
+            )
+        finally:
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":

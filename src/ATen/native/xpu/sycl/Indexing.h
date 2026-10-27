@@ -11,9 +11,10 @@
 #pragma once
 
 #include <ATen/native/xpu/sycl/BatchKernel.h>
-#include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/TensorInfo.h>
 
 using namespace at::xpu::detail;
@@ -537,7 +538,7 @@ void small_index_kernel(
   auto group_numel = group_index_iter * indices_size;
   auto group_numel_tail = (group_index_iter - 1) * indices_size;
 
-  auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+  int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   wgroup_size = std::min(decltype(wgroup_size)(group_numel), wgroup_size);
   auto global_size = max_group_num * wgroup_size;
 
@@ -739,7 +740,7 @@ void _index_kernel(
   // for 3-dims input:
   // Taking input[idx0,:,idx2] for example, the indices_sizes=[sz,1,sz]
   // While the satified case is input[:,idx1,idx2], indices_sizes=[1,sz,sz]
-  bool small_index = non_index_size.size() != 0 && iter.tensor(1).dim() == 3 &&
+  bool small_index = !non_index_size.empty() && iter.tensor(1).dim() == 3 &&
       non_index_size.size() + index_size.size() == 3;
   auto indices_sizes = iter.tensor(2).sizes();
   for (size_t i = 1; i < iter.tensor(2).dim(); ++i) {
@@ -753,14 +754,14 @@ void _index_kernel(
     using KernelClass = SmallIndexKernelFunctor<func_t, index_buf_type>;
 
     int64_t max_group_num = syclMaxDSSNum();
-    auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+    int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     auto indices_size = iter.tensor(2).size(-1);
     auto total_index_iter = numel / indices_size;
     auto local_index = numel / max_group_num;
 
     // the max_local_mem_size = 65536B (64KB)
     // TODO: Is this right?
-    auto max_local_mem_size = syclLocalMemSize();
+    int64_t max_local_mem_size = at::xpu::getDeviceLocalMemSize();
     auto indice_table_size = indices_size * sizeof(int64_t);
 
     // check whether the current case satisfying conditions 2,3,4

@@ -41,111 +41,80 @@ template <
     int kKnownDilationT,
     int kKnownDilationH,
     int kKnownDilationW>
-struct ConvDepthwise3dXpuFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    const int kT = kKnownKernelT > 0 ? kKnownKernelT : kernel.size(2);
-    const int kH = kKnownKernelH > 0 ? kKnownKernelH : kernel.size(3);
-    const int kW = kKnownKernelW > 0 ? kKnownKernelW : kernel.size(4);
-    const int oC = output.size(1);
-    const int oT = output.size(2);
-    const int oH = output.size(3);
-    const int oW = output.size(4);
-    const int iC = input.size(1);
-    const int iT = input.size(2);
-    const int iH = input.size(3);
-    const int iW = input.size(4);
-    const int channel_multiplier = oC / iC;
-    const int dilationT = kKnownDilationT > 0 ? kKnownDilationT : dilationT_;
-    const int dilationH = kKnownDilationH > 0 ? kKnownDilationH : dilationH_;
-    const int dilationW = kKnownDilationW > 0 ? kKnownDilationW : dilationW_;
-    const int num_output = output.size(0) * output.stride(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void conv_depthwise3d_xpu_kernel(
+    const PackedTensorAccessor32<const scalar_t, 5> input,
+    PackedTensorAccessor32<scalar_t, 5> output,
+    const PackedTensorAccessor32<const scalar_t, 5> kernel,
+    const scalar_t* bias,
+    int strideT,
+    int strideH,
+    int strideW,
+    int paddingT,
+    int paddingH,
+    int paddingW,
+    int dilationT,
+    int dilationH,
+    int dilationW) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const int kT = kKnownKernelT > 0 ? kKnownKernelT : kernel.size(2);
+  const int kH = kKnownKernelH > 0 ? kKnownKernelH : kernel.size(3);
+  const int kW = kKnownKernelW > 0 ? kKnownKernelW : kernel.size(4);
+  const int oC = output.size(1);
+  const int oT = output.size(2);
+  const int oH = output.size(3);
+  const int oW = output.size(4);
+  const int iC = input.size(1);
+  const int iT = input.size(2);
+  const int iH = input.size(3);
+  const int iW = input.size(4);
+  const int channel_multiplier = oC / iC;
+  dilationT = kKnownDilationT > 0 ? kKnownDilationT : dilationT;
+  dilationH = kKnownDilationH > 0 ? kKnownDilationH : dilationH;
+  dilationW = kKnownDilationW > 0 ? kKnownDilationW : dilationW;
+  const int num_output = output.size(0) * output.stride(0);
 
-    XPU_KERNEL_LOOP(item, index, num_output) {
-      const int out_col = index % oW;
-      const int out_row = (index / oW) % oH;
-      const int out_frame = (index / oW / oH) % oT;
-      const int out_channel = (index / oW / oH / oT) % oC;
-      const int batch = index / oW / oH / oT / oC;
+  XPU_KERNEL_LOOP(item, index, num_output) {
+    const int out_col = index % oW;
+    const int out_row = (index / oW) % oH;
+    const int out_frame = (index / oW / oH) % oT;
+    const int out_channel = (index / oW / oH / oT) % oC;
+    const int batch = index / oW / oH / oT / oC;
 
-      const int in_channel = out_channel / channel_multiplier;
+    const int in_channel = out_channel / channel_multiplier;
 
-      const int in_col_start = out_col * strideW - paddingW;
-      const int in_row_start = out_row * strideH - paddingH;
-      const int in_frame_start = out_frame * strideT - paddingT;
+    const int in_col_start = out_col * strideW - paddingW;
+    const int in_row_start = out_row * strideH - paddingH;
+    const int in_frame_start = out_frame * strideT - paddingT;
 
-      accscalar_t sum = 0;
-      const scalar_t* kernel_ptr = kernel[out_channel].data();
-      const scalar_t* input_ptr =
-          &input[batch][in_channel][in_frame_start][in_row_start][in_col_start];
-      for (int k_frame = 0; k_frame < kT; ++k_frame) {
-        const int in_frame = in_frame_start + k_frame * dilationT;
-        for (int k_row = 0; k_row < kH; ++k_row) {
-          const int in_row = in_row_start + k_row * dilationH;
-          for (int k_col = 0; k_col < kW; ++k_col) {
-            const accscalar_t op1 = *(kernel_ptr++);
-            const int in_col = in_col_start + k_col * dilationW;
-            if (in_frame >= 0 && in_row >= 0 && in_col >= 0 && in_frame < iT &&
-                in_row < iH && in_col < iW) {
-              sum += op1 * *(input_ptr);
-            }
-            input_ptr += dilationW;
+    accscalar_t sum = 0;
+    const scalar_t* kernel_ptr = kernel[out_channel].data();
+    const scalar_t* input_ptr =
+        &input[batch][in_channel][in_frame_start][in_row_start][in_col_start];
+    for (int k_frame = 0; k_frame < kT; ++k_frame) {
+      const int in_frame = in_frame_start + k_frame * dilationT;
+      for (int k_row = 0; k_row < kH; ++k_row) {
+        const int in_row = in_row_start + k_row * dilationH;
+        for (int k_col = 0; k_col < kW; ++k_col) {
+          const accscalar_t op1 = *(kernel_ptr++);
+          const int in_col = in_col_start + k_col * dilationW;
+          if (in_frame >= 0 && in_row >= 0 && in_col >= 0 && in_frame < iT &&
+              in_row < iH && in_col < iW) {
+            sum += op1 * *(input_ptr);
           }
-          input_ptr += iW * dilationH - kW * dilationW;
+          input_ptr += dilationW;
         }
-        input_ptr += iW * (iH * dilationT - kH * dilationH);
+        input_ptr += iW * dilationH - kW * dilationW;
       }
-      if (bias != NULL) {
-        sum += bias[out_channel];
-      }
-
-      PackedTensorAccessor32<scalar_t, 5> output_ = output;
-      output_[batch][out_channel][out_frame][out_row][out_col] = sum;
+      input_ptr += iW * (iH * dilationT - kH * dilationH);
     }
+    if (bias != NULL) {
+      sum += bias[out_channel];
+    }
+
+    output[batch][out_channel][out_frame][out_row][out_col] = sum;
   }
-
-  ConvDepthwise3dXpuFunctor(
-      const PackedTensorAccessor32<const scalar_t, 5> input,
-      PackedTensorAccessor32<scalar_t, 5> output,
-      const PackedTensorAccessor32<const scalar_t, 5> kernel,
-      const scalar_t* bias,
-      int strideT,
-      int strideH,
-      int strideW,
-      int paddingT,
-      int paddingH,
-      int paddingW,
-      int dilationT_,
-      int dilationH_,
-      int dilationW_)
-      : input(input),
-        output(output),
-        kernel(kernel),
-        bias(bias),
-        strideT(strideT),
-        strideH(strideH),
-        strideW(strideW),
-        paddingT(paddingT),
-        paddingH(paddingH),
-        paddingW(paddingW),
-        dilationT_(dilationT_),
-        dilationH_(dilationH_),
-        dilationW_(dilationW_) {}
-
- private:
-  const PackedTensorAccessor32<const scalar_t, 5> input;
-  PackedTensorAccessor32<scalar_t, 5> output;
-  const PackedTensorAccessor32<const scalar_t, 5> kernel;
-  const scalar_t* bias;
-  int strideT;
-  int strideH;
-  int strideW;
-  int paddingT;
-  int paddingH;
-  int paddingW;
-  int dilationT_;
-  int dilationH_;
-  int dilationW_;
-};
+}
 
 template <
     typename scalar_t,
@@ -159,280 +128,209 @@ template <
     int kKnownStrideT,
     int kKnownStrideH,
     int kKnownStrideW>
-struct ConvDepthwise3dXpuBackwardInputFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    const int kT = kKnownKernelT > 0 ? kKnownKernelT : kernel.size(2);
-    const int kH = kKnownKernelH > 0 ? kKnownKernelH : kernel.size(3);
-    const int kW = kKnownKernelW > 0 ? kKnownKernelW : kernel.size(4);
-    const int oC = grad_output.size(1);
-    const int oT = grad_output.size(2);
-    const int oH = grad_output.size(3);
-    const int oW = grad_output.size(4);
-    const int iC = grad_input.size(1);
-    const int iT = grad_input.size(2);
-    const int iH = grad_input.size(3);
-    const int iW = grad_input.size(4);
-    const int channel_multiplier = oC / iC;
-    const int dilationT = kKnownDilationT > 0 ? kKnownDilationT : dilationT_;
-    const int dilationH = kKnownDilationH > 0 ? kKnownDilationH : dilationH_;
-    const int dilationW = kKnownDilationW > 0 ? kKnownDilationW : dilationW_;
-    const int strideT = kKnownStrideT > 0 ? kKnownStrideT : strideT_;
-    const int strideH = kKnownStrideH > 0 ? kKnownStrideH : strideH_;
-    const int strideW = kKnownStrideW > 0 ? kKnownStrideW : strideW_;
-    const int num_input = grad_input.size(0) * grad_input.stride(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void conv_depthwise3d_xpu_backward_input_kernel(
+    const PackedTensorAccessor32<const scalar_t, 5> grad_output,
+    PackedTensorAccessor32<scalar_t, 5> grad_input,
+    const PackedTensorAccessor32<const scalar_t, 5> kernel,
+    int strideT,
+    int strideH,
+    int strideW,
+    int paddingT,
+    int paddingH,
+    int paddingW,
+    int dilationT,
+    int dilationH,
+    int dilationW) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const int kT = kKnownKernelT > 0 ? kKnownKernelT : kernel.size(2);
+  const int kH = kKnownKernelH > 0 ? kKnownKernelH : kernel.size(3);
+  const int kW = kKnownKernelW > 0 ? kKnownKernelW : kernel.size(4);
+  const int oC = grad_output.size(1);
+  const int oT = grad_output.size(2);
+  const int oH = grad_output.size(3);
+  const int oW = grad_output.size(4);
+  const int iC = grad_input.size(1);
+  const int iT = grad_input.size(2);
+  const int iH = grad_input.size(3);
+  const int iW = grad_input.size(4);
+  const int channel_multiplier = oC / iC;
+  dilationT = kKnownDilationT > 0 ? kKnownDilationT : dilationT;
+  dilationH = kKnownDilationH > 0 ? kKnownDilationH : dilationH;
+  dilationW = kKnownDilationW > 0 ? kKnownDilationW : dilationW;
+  strideT = kKnownStrideT > 0 ? kKnownStrideT : strideT;
+  strideH = kKnownStrideH > 0 ? kKnownStrideH : strideH;
+  strideW = kKnownStrideW > 0 ? kKnownStrideW : strideW;
+  const int num_input = grad_input.size(0) * grad_input.stride(0);
 
-    XPU_KERNEL_LOOP(item, index, num_input) {
-      const int in_col = index % iW;
-      const int in_row = (index / iW) % iH;
-      const int in_frame = (index / iW / iH) % iT;
-      const int in_channel = (index / iW / iH / iT) % iC;
-      const int batch = index / iW / iH / iT / iC;
+  XPU_KERNEL_LOOP(item, index, num_input) {
+    const int in_col = index % iW;
+    const int in_row = (index / iW) % iH;
+    const int in_frame = (index / iW / iH) % iT;
+    const int in_channel = (index / iW / iH / iT) % iC;
+    const int batch = index / iW / iH / iT / iC;
 
-      const int out_col_end = in_col + paddingW;
-      const int out_row_end = in_row + paddingH;
-      const int out_frame_end = in_frame + paddingT;
+    const int out_col_end = in_col + paddingW;
+    const int out_row_end = in_row + paddingH;
+    const int out_frame_end = in_frame + paddingT;
 
-      const scalar_t* kernel_ptr =
-          kernel[in_channel * channel_multiplier].data();
-      accscalar_t sum = 0;
+    const scalar_t* kernel_ptr = kernel[in_channel * channel_multiplier].data();
+    accscalar_t sum = 0;
 
-      for (int k_chn = in_channel * channel_multiplier;
-           k_chn < (in_channel + 1) * channel_multiplier;
-           ++k_chn) {
-        const scalar_t* gout_ptr = grad_output[batch][k_chn].data();
+    for (int k_chn = in_channel * channel_multiplier;
+         k_chn < (in_channel + 1) * channel_multiplier;
+         ++k_chn) {
+      const scalar_t* gout_ptr = grad_output[batch][k_chn].data();
 
-        for (int k_frame = 0; k_frame < kT; ++k_frame) {
-          const int out_frame_raw = out_frame_end - k_frame * dilationT;
-          const int out_frame = out_frame_raw / strideT;
-          for (int k_row = 0; k_row < kH; ++k_row) {
-            const int out_row_raw = out_row_end - k_row * dilationH;
-            const int out_row = out_row_raw / strideH;
-            for (int k_col = 0; k_col < kW; ++k_col) {
-              const accscalar_t op1 = *(kernel_ptr++);
-              const int out_col_raw = out_col_end - k_col * dilationW;
-              const int out_col = out_col_raw / strideW;
+      for (int k_frame = 0; k_frame < kT; ++k_frame) {
+        const int out_frame_raw = out_frame_end - k_frame * dilationT;
+        const int out_frame = out_frame_raw / strideT;
+        for (int k_row = 0; k_row < kH; ++k_row) {
+          const int out_row_raw = out_row_end - k_row * dilationH;
+          const int out_row = out_row_raw / strideH;
+          for (int k_col = 0; k_col < kW; ++k_col) {
+            const accscalar_t op1 = *(kernel_ptr++);
+            const int out_col_raw = out_col_end - k_col * dilationW;
+            const int out_col = out_col_raw / strideW;
 
-              const int out_offs = (out_frame * oH + out_row) * oW + out_col;
+            const int out_offs = (out_frame * oH + out_row) * oW + out_col;
 
-              accscalar_t op2 = (accscalar_t)0;
-              if (out_col >= 0 && out_row >= 0 && out_frame >= 0 &&
-                  out_col < oW && out_row < oH && out_frame < oT) {
-                op2 = *(gout_ptr + out_offs);
-              }
-              if (out_frame * strideT == out_frame_raw &&
-                  out_row * strideH == out_row_raw &&
-                  out_col * strideW == out_col_raw) {
-                sum += op1 * op2;
-              }
+            accscalar_t op2 = (accscalar_t)0;
+            if (out_col >= 0 && out_row >= 0 && out_frame >= 0 &&
+                out_col < oW && out_row < oH && out_frame < oT) {
+              op2 = *(gout_ptr + out_offs);
+            }
+            if (out_frame * strideT == out_frame_raw &&
+                out_row * strideH == out_row_raw &&
+                out_col * strideW == out_col_raw) {
+              sum += op1 * op2;
             }
           }
         }
       }
-
-      PackedTensorAccessor32<scalar_t, 5> grad_input_ = grad_input;
-      grad_input_[batch][in_channel][in_frame][in_row][in_col] = sum;
     }
+
+    grad_input[batch][in_channel][in_frame][in_row][in_col] = sum;
   }
-
-  ConvDepthwise3dXpuBackwardInputFunctor(
-      const PackedTensorAccessor32<const scalar_t, 5> grad_output,
-      PackedTensorAccessor32<scalar_t, 5> grad_input,
-      const PackedTensorAccessor32<const scalar_t, 5> kernel,
-      int strideT_,
-      int strideH_,
-      int strideW_,
-      int paddingT,
-      int paddingH,
-      int paddingW,
-      int dilationT_,
-      int dilationH_,
-      int dilationW_)
-      : grad_output(grad_output),
-        grad_input(grad_input),
-        kernel(kernel),
-        strideT_(strideT_),
-        strideH_(strideH_),
-        strideW_(strideW_),
-        paddingT(paddingT),
-        paddingH(paddingH),
-        paddingW(paddingW),
-        dilationT_(dilationT_),
-        dilationH_(dilationH_),
-        dilationW_(dilationW_) {}
-
- private:
-  const PackedTensorAccessor32<const scalar_t, 5> grad_output;
-  PackedTensorAccessor32<scalar_t, 5> grad_input;
-  const PackedTensorAccessor32<const scalar_t, 5> kernel;
-  int strideT_;
-  int strideH_;
-  int strideW_;
-  int paddingT;
-  int paddingH;
-  int paddingW;
-  int dilationT_;
-  int dilationH_;
-  int dilationW_;
-};
+}
 
 template <
     typename scalar_t,
     typename accscalar_t,
     int kKnownStrideH,
     int kKnownStrideW>
-struct ConvDepthwise3dXpuBackwardWeightFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item) const {
-    const int kC = grad_kernel.size(0);
-    const int kT = grad_kernel.size(2);
-    const int kH = grad_kernel.size(3);
-    const int kW = grad_kernel.size(4);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void conv_depthwise3d_xpu_backward_weight_kernel(
+    const PackedTensorAccessor32<const scalar_t, 5> grad_output,
+    const PackedTensorAccessor32<const scalar_t, 5> input,
+    PackedTensorAccessor32<scalar_t, 5> grad_kernel,
+    int strideT,
+    int strideH,
+    int strideW,
+    int paddingT,
+    int paddingH,
+    int paddingW,
+    int dilationT,
+    int dilationH,
+    int dilationW) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  accscalar_t* sdata = (accscalar_t*)syclexp::get_work_group_scratch_memory();
 
-    const int strideH = kKnownStrideH > 0 ? kKnownStrideH : strideH_;
-    const int strideW = kKnownStrideW > 0 ? kKnownStrideW : strideW_;
+  const int kC = grad_kernel.size(0);
+  const int kT = grad_kernel.size(2);
+  const int kH = grad_kernel.size(3);
+  const int kW = grad_kernel.size(4);
 
-    const int k_col = item.get_group(0) % kW;
-    const int k_row = (item.get_group(0) / kW) % kH;
-    const int k_frame = (item.get_group(0) / kW / kH) % kT;
-    const int k_channel = item.get_group(0) / kW / kH / kT;
-    PackedTensorAccessor32<scalar_t, 5> grad_kernel_ = grad_kernel;
-    scalar_t* result = &grad_kernel_[k_channel][0][k_frame][k_row][k_col];
+  strideH = kKnownStrideH > 0 ? kKnownStrideH : strideH;
+  strideW = kKnownStrideW > 0 ? kKnownStrideW : strideW;
 
-    const int oT = grad_output.size(2);
-    const int oH = grad_output.size(3);
-    const int oW = grad_output.size(4);
-    const int iT = input.size(2);
-    const int iH = input.size(3);
-    const int iW = input.size(4);
-    const int channel_multiplier = grad_output.size(1) / input.size(1);
-    const int in_channel = k_channel / channel_multiplier;
+  const int k_col = item.get_group(0) % kW;
+  const int k_row = (item.get_group(0) / kW) % kH;
+  const int k_frame = (item.get_group(0) / kW / kH) % kT;
+  const int k_channel = item.get_group(0) / kW / kH / kT;
+  scalar_t* result = &grad_kernel[k_channel][0][k_frame][k_row][k_col];
 
-    // extern int sdata_raw[];
-    // scalar_t* sdata = reinterpret_cast<scalar_t*>(sdata_raw);
+  const int oT = grad_output.size(2);
+  const int oH = grad_output.size(3);
+  const int oW = grad_output.size(4);
+  const int iT = input.size(2);
+  const int iH = input.size(3);
+  const int iW = input.size(4);
+  const int channel_multiplier = grad_output.size(1) / input.size(1);
+  const int in_channel = k_channel / channel_multiplier;
 
-    if (k_channel >= kC) {
-      return;
+  if (k_channel >= kC) {
+    return;
+  }
+
+  const int laneid = item.get_local_id(0) % C10_WARP_SIZE;
+  const int warpid = item.get_local_id(0) / C10_WARP_SIZE;
+  const int nwarps = item.get_local_range(0) / C10_WARP_SIZE;
+
+  accscalar_t grad = 0;
+  int batch = warpid / oT;
+  int gout_frame = warpid - batch * oT;
+  for (int outer_pos = warpid; outer_pos < input.size(0) * oT;
+       outer_pos += nwarps, gout_frame += nwarps) {
+    while (gout_frame >= oT) {
+      gout_frame -= oT;
+      batch++;
     }
 
-    const int laneid = item.get_local_id(0) % C10_WARP_SIZE;
-    const int warpid = item.get_local_id(0) / C10_WARP_SIZE;
-    const int nwarps = item.get_local_range(0) / C10_WARP_SIZE;
+    const int in_frame =
+        (gout_frame * strideT) + (k_frame * dilationT) - paddingT;
 
-    accscalar_t grad = 0;
-    int batch = warpid / oT;
-    int gout_frame = warpid - batch * oT;
-    for (int outer_pos = warpid; outer_pos < input.size(0) * oT;
-         outer_pos += nwarps, gout_frame += nwarps) {
-      while (gout_frame >= oT) {
-        gout_frame -= oT;
-        batch++;
-      }
-
-      const int in_frame =
-          (gout_frame * strideT) + (k_frame * dilationT) - paddingT;
-
-      if (in_frame < 0 || in_frame >= iT) {
-        continue;
-      }
-
-      const scalar_t* gout_ptr =
-          grad_output[batch][k_channel][gout_frame].data() + laneid;
-      const scalar_t* input_ptr = input[batch][in_channel][in_frame].data();
-
-      int gout_row = laneid / oW;
-      int gout_col = laneid - gout_row * oW;
-
-      for (; gout_row < oH;) {
-        const accscalar_t op1 = *(gout_ptr);
-        gout_ptr += C10_WARP_SIZE;
-
-        const int in_col =
-            (gout_col * strideW) + (k_col * dilationW) - paddingW;
-        const int in_row =
-            (gout_row * strideH) + (k_row * dilationH) - paddingH;
-        const int in_pos = in_row * iW + in_col;
-
-        accscalar_t op2 = (accscalar_t)0;
-        if (in_col >= 0 && in_col < iW && in_row >= 0 && in_row < iH) {
-          op2 = *(input_ptr + in_pos);
-        }
-
-        gout_col += C10_WARP_SIZE;
-        while (gout_col >= oW) {
-          gout_col -= oW;
-          gout_row++;
-        }
-
-        grad += op1 * op2;
-      }
+    if (in_frame < 0 || in_frame >= iT) {
+      continue;
     }
 
-    sdata[item.get_local_id(0)] = grad;
+    const scalar_t* gout_ptr =
+        grad_output[batch][k_channel][gout_frame].data() + laneid;
+    const scalar_t* input_ptr = input[batch][in_channel][in_frame].data();
 
-    sycl::group_barrier(item.get_group());
+    int gout_row = laneid / oW;
+    int gout_col = laneid - gout_row * oW;
+
+    for (; gout_row < oH;) {
+      const accscalar_t op1 = *(gout_ptr);
+      gout_ptr += C10_WARP_SIZE;
+
+      const int in_col = (gout_col * strideW) + (k_col * dilationW) - paddingW;
+      const int in_row = (gout_row * strideH) + (k_row * dilationH) - paddingH;
+      const int in_pos = in_row * iW + in_col;
+
+      accscalar_t op2 = (accscalar_t)0;
+      if (in_col >= 0 && in_col < iW && in_row >= 0 && in_row < iH) {
+        op2 = *(input_ptr + in_pos);
+      }
+
+      gout_col += C10_WARP_SIZE;
+      while (gout_col >= oW) {
+        gout_col -= oW;
+        gout_row++;
+      }
+
+      grad += op1 * op2;
+    }
+  }
+
+  sdata[item.get_local_id(0)] = grad;
+
+  sycl::group_barrier(item.get_group());
 
 #pragma unroll
-    for (int i = item.get_local_range(0) / 2; i >= 1; i >>= 1) {
-      if (item.get_local_id(0) < i) {
-        sdata[item.get_local_id(0)] += sdata[item.get_local_id(0) + i];
-      }
-
-      sycl::group_barrier(item.get_group());
+  for (int i = item.get_local_range(0) / 2; i >= 1; i >>= 1) {
+    if (item.get_local_id(0) < i) {
+      sdata[item.get_local_id(0)] += sdata[item.get_local_id(0) + i];
     }
 
-    if (item.get_local_id(0) == 0) {
-      *result = sdata[0];
-    }
+    sycl::group_barrier(item.get_group());
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    sdata = sycl_local_acc_t<accscalar_t>(smem, cgh);
+  if (item.get_local_id(0) == 0) {
+    *result = sdata[0];
   }
-
-  ConvDepthwise3dXpuBackwardWeightFunctor(
-      const PackedTensorAccessor32<const scalar_t, 5> grad_output,
-      const PackedTensorAccessor32<const scalar_t, 5> input,
-      PackedTensorAccessor32<scalar_t, 5> grad_kernel,
-      int strideT,
-      int strideH_,
-      int strideW_,
-      int paddingT,
-      int paddingH,
-      int paddingW,
-      int dilationT,
-      int dilationH,
-      int dilationW,
-      int smem)
-      : grad_output(grad_output),
-        input(input),
-        grad_kernel(grad_kernel),
-        strideT(strideT),
-        strideH_(strideH_),
-        strideW_(strideW_),
-        paddingT(paddingT),
-        paddingH(paddingH),
-        paddingW(paddingW),
-        dilationT(dilationT),
-        dilationH(dilationH),
-        dilationW(dilationW),
-        smem(smem) {}
-
- private:
-  const PackedTensorAccessor32<const scalar_t, 5> grad_output;
-  const PackedTensorAccessor32<const scalar_t, 5> input;
-  PackedTensorAccessor32<scalar_t, 5> grad_kernel;
-  int strideT;
-  int strideH_;
-  int strideW_;
-  int paddingT;
-  int paddingH;
-  int paddingW;
-  int dilationT;
-  int dilationH;
-  int dilationW;
-  int smem;
-  sycl_local_acc_t<accscalar_t> sdata;
-};
+}
 
 template <int dim>
 void conv_depthwise_shape_check(
@@ -553,7 +451,7 @@ void conv_depthwise_shape_check(
   if (NODEF_OR_EQUAL_3(kernel_size, (kt), (kh), (kw)) &&                       \
       NODEF_OR_EQUAL_3(dilation, (dilt), (dilh), (dilw))) {                    \
     using accscalar_t = acc_type<scalar_t, true>;                              \
-    using KernelClass = ConvDepthwise3dXpuFunctor<                             \
+    constexpr auto kptr = conv_depthwise3d_xpu_kernel<                         \
         scalar_t,                                                              \
         accscalar_t,                                                           \
         (kt),                                                                  \
@@ -563,8 +461,13 @@ void conv_depthwise_shape_check(
         (dilh),                                                                \
         (dilw)>;                                                               \
     int64_t local_range = 256;                                                 \
-    int64_t global_range = xpuKernelLoopGroupRange(num_outputs, local_range);  \
-    auto kfn = KernelClass(                                                    \
+    int64_t global_range =                                                     \
+        std::min((num_outputs - 1) / local_range + 1, (int64_t)65536);         \
+    sycl_kernel_submit<kptr>(                                                  \
+        global_range * local_range,                                            \
+        local_range,                                                           \
+        getCurrentSYCLQueue(),                                                 \
+        0,                                                                     \
         input_.packed_accessor32<const scalar_t, 5>(),                         \
         output_.packed_accessor32<scalar_t, 5>(),                              \
         weight_.packed_accessor32<const scalar_t, 5>(),                        \
@@ -578,39 +481,40 @@ void conv_depthwise_shape_check(
         dilation[0],                                                           \
         dilation[1],                                                           \
         dilation[2]);                                                          \
-    sycl_kernel_submit(                                                        \
-        global_range* local_range, local_range, getCurrentSYCLQueue(), kfn);   \
   } else
-#define DWCONV3D_FORWARD_DISPATCH_OTHERS                                      \
-  {                                                                           \
-    using accscalar_t = acc_type<scalar_t, true>;                             \
-    using KernelClass = ConvDepthwise3dXpuFunctor<                            \
-        scalar_t,                                                             \
-        accscalar_t,                                                          \
-        -1,                                                                   \
-        -1,                                                                   \
-        -1,                                                                   \
-        -1,                                                                   \
-        -1,                                                                   \
-        -1>;                                                                  \
-    int64_t local_range = 256;                                                \
-    int64_t global_range = xpuKernelLoopGroupRange(num_outputs, local_range); \
-    auto kfn = KernelClass(                                                   \
-        input_.packed_accessor32<const scalar_t, 5>(),                        \
-        output_.packed_accessor32<scalar_t, 5>(),                             \
-        weight_.packed_accessor32<const scalar_t, 5>(),                       \
-        bias_ptr,                                                             \
-        stride[0],                                                            \
-        stride[1],                                                            \
-        stride[2],                                                            \
-        padding[0],                                                           \
-        padding[1],                                                           \
-        padding[2],                                                           \
-        dilation[0],                                                          \
-        dilation[1],                                                          \
-        dilation[2]);                                                         \
-    sycl_kernel_submit(                                                       \
-        global_range* local_range, local_range, getCurrentSYCLQueue(), kfn);  \
+#define DWCONV3D_FORWARD_DISPATCH_OTHERS                               \
+  {                                                                    \
+    using accscalar_t = acc_type<scalar_t, true>;                      \
+    constexpr auto kptr = conv_depthwise3d_xpu_kernel<                 \
+        scalar_t,                                                      \
+        accscalar_t,                                                   \
+        -1,                                                            \
+        -1,                                                            \
+        -1,                                                            \
+        -1,                                                            \
+        -1,                                                            \
+        -1>;                                                           \
+    int64_t local_range = 256;                                         \
+    int64_t global_range =                                             \
+        std::min((num_outputs - 1) / local_range + 1, (int64_t)65536); \
+    sycl_kernel_submit<kptr>(                                          \
+        global_range * local_range,                                    \
+        local_range,                                                   \
+        getCurrentSYCLQueue(),                                         \
+        0,                                                             \
+        input_.packed_accessor32<const scalar_t, 5>(),                 \
+        output_.packed_accessor32<scalar_t, 5>(),                      \
+        weight_.packed_accessor32<const scalar_t, 5>(),                \
+        bias_ptr,                                                      \
+        stride[0],                                                     \
+        stride[1],                                                     \
+        stride[2],                                                     \
+        padding[0],                                                    \
+        padding[1],                                                    \
+        padding[2],                                                    \
+        dilation[0],                                                   \
+        dilation[1],                                                   \
+        dilation[2]);                                                  \
   }
 
 Tensor conv_depthwise3d_kernel(
@@ -701,125 +605,133 @@ Tensor conv_depthwise3d_kernel(
 #undef DWCONV3D_FORWARD_DISPATCH_SPECIALIZATION
 #undef DWCONV3D_FORWARD_DISPATCH_OTHERS
 
-#define DWCONV3D_BACKWARD_INPUT_DISPATCH_SPECIALIZATION(                     \
-    kt, kh, kw, dilt, dilh, dilw, dt, dh, dw)                                \
-  if (NODEF_OR_EQUAL_3(kernel_size, (kt), (kh), (kw)) &&                     \
-      NODEF_OR_EQUAL_3(dilation, (dilt), (dilh), (dilw)) &&                  \
-      NODEF_OR_EQUAL_3(stride, (dt), (dh), (dw))) {                          \
-    using accscalar_t = acc_type<scalar_t, true>;                            \
-    ConvDepthwise3dXpuBackwardInputFunctor<                                  \
-        scalar_t,                                                            \
-        accscalar_t,                                                         \
-        (kt),                                                                \
-        (kh),                                                                \
-        (kw),                                                                \
-        (dilt),                                                              \
-        (dilh),                                                              \
-        (dilw),                                                              \
-        (dt),                                                                \
-        (dh),                                                                \
-        (dw)>                                                                \
-        kfn(grad_output_.packed_accessor32<const scalar_t, 5>(),             \
-            grad_input_.packed_accessor32<scalar_t, 5>(),                    \
-            weight_.packed_accessor32<const scalar_t, 5>(),                  \
-            stride[0],                                                       \
-            stride[1],                                                       \
-            stride[2],                                                       \
-            padding[0],                                                      \
-            padding[1],                                                      \
-            padding[2],                                                      \
-            dilation[0],                                                     \
-            dilation[1],                                                     \
-            dilation[2]);                                                    \
-    sycl_kernel_submit(                                                      \
-        global_range* local_range, local_range, getCurrentSYCLQueue(), kfn); \
+#define DWCONV3D_BACKWARD_INPUT_DISPATCH_SPECIALIZATION(              \
+    kt, kh, kw, dilt, dilh, dilw, dt, dh, dw)                         \
+  if (NODEF_OR_EQUAL_3(kernel_size, (kt), (kh), (kw)) &&              \
+      NODEF_OR_EQUAL_3(dilation, (dilt), (dilh), (dilw)) &&           \
+      NODEF_OR_EQUAL_3(stride, (dt), (dh), (dw))) {                   \
+    using accscalar_t = acc_type<scalar_t, true>;                     \
+    constexpr auto kptr = conv_depthwise3d_xpu_backward_input_kernel< \
+        scalar_t,                                                     \
+        accscalar_t,                                                  \
+        (kt),                                                         \
+        (kh),                                                         \
+        (kw),                                                         \
+        (dilt),                                                       \
+        (dilh),                                                       \
+        (dilw),                                                       \
+        (dt),                                                         \
+        (dh),                                                         \
+        (dw)>;                                                        \
+    sycl_kernel_submit<kptr>(                                         \
+        global_range * local_range,                                   \
+        local_range,                                                  \
+        getCurrentSYCLQueue(),                                        \
+        0,                                                            \
+        grad_output_.packed_accessor32<const scalar_t, 5>(),          \
+        grad_input_.packed_accessor32<scalar_t, 5>(),                 \
+        weight_.packed_accessor32<const scalar_t, 5>(),               \
+        stride[0],                                                    \
+        stride[1],                                                    \
+        stride[2],                                                    \
+        padding[0],                                                   \
+        padding[1],                                                   \
+        padding[2],                                                   \
+        dilation[0],                                                  \
+        dilation[1],                                                  \
+        dilation[2]);                                                 \
   } else
-#define DWCONV3D_BACKWARD_INPUT_DISPATCH_OTHERS                              \
-  {                                                                          \
-    using accscalar_t = acc_type<scalar_t, true>;                            \
-    ConvDepthwise3dXpuBackwardInputFunctor<                                  \
-        scalar_t,                                                            \
-        accscalar_t,                                                         \
-        -1,                                                                  \
-        -1,                                                                  \
-        -1,                                                                  \
-        -1,                                                                  \
-        -1,                                                                  \
-        -1,                                                                  \
-        -1,                                                                  \
-        -1,                                                                  \
-        -1>                                                                  \
-        kfn(grad_output_.packed_accessor32<const scalar_t, 5>(),             \
-            grad_input_.packed_accessor32<scalar_t, 5>(),                    \
-            weight_.packed_accessor32<const scalar_t, 5>(),                  \
-            stride[0],                                                       \
-            stride[1],                                                       \
-            stride[2],                                                       \
-            padding[0],                                                      \
-            padding[1],                                                      \
-            padding[2],                                                      \
-            dilation[0],                                                     \
-            dilation[1],                                                     \
-            dilation[2]);                                                    \
-    sycl_kernel_submit(                                                      \
-        global_range* local_range, local_range, getCurrentSYCLQueue(), kfn); \
+#define DWCONV3D_BACKWARD_INPUT_DISPATCH_OTHERS                       \
+  {                                                                   \
+    using accscalar_t = acc_type<scalar_t, true>;                     \
+    constexpr auto kptr = conv_depthwise3d_xpu_backward_input_kernel< \
+        scalar_t,                                                     \
+        accscalar_t,                                                  \
+        -1,                                                           \
+        -1,                                                           \
+        -1,                                                           \
+        -1,                                                           \
+        -1,                                                           \
+        -1,                                                           \
+        -1,                                                           \
+        -1,                                                           \
+        -1>;                                                          \
+    sycl_kernel_submit<kptr>(                                         \
+        global_range * local_range,                                   \
+        local_range,                                                  \
+        getCurrentSYCLQueue(),                                        \
+        0,                                                            \
+        grad_output_.packed_accessor32<const scalar_t, 5>(),          \
+        grad_input_.packed_accessor32<scalar_t, 5>(),                 \
+        weight_.packed_accessor32<const scalar_t, 5>(),               \
+        stride[0],                                                    \
+        stride[1],                                                    \
+        stride[2],                                                    \
+        padding[0],                                                   \
+        padding[1],                                                   \
+        padding[2],                                                   \
+        dilation[0],                                                  \
+        dilation[1],                                                  \
+        dilation[2]);                                                 \
   }
 
-#define DWCONV3D_BACKWARD_WEIGHT_DISPATCH_SPECIALIZATION(dh, dw)             \
-  if (NODEF_OR_EQUAL_3(stride, -1, (dh), (dw))) {                            \
-    using accscalar_t = acc_type<scalar_t, true>;                            \
-    using KernelClass = ConvDepthwise3dXpuBackwardWeightFunctor<             \
-        scalar_t,                                                            \
-        accscalar_t,                                                         \
-        (dh),                                                                \
-        (dw)>;                                                               \
-    int64_t local_range = 256;                                               \
-    int64_t global_range = grad_weight.numel();                              \
-    int64_t smem = sizeof(scalar_t) * local_range;                           \
-    auto kfn = KernelClass(                                                  \
-        grad_output_.packed_accessor32<const scalar_t, 5>(),                 \
-        input_.packed_accessor32<const scalar_t, 5>(),                       \
-        grad_weight.packed_accessor32<scalar_t, 5>(),                        \
-        stride[0],                                                           \
-        stride[1],                                                           \
-        stride[2],                                                           \
-        padding[0],                                                          \
-        padding[1],                                                          \
-        padding[2],                                                          \
-        dilation[0],                                                         \
-        dilation[1],                                                         \
-        dilation[2],                                                         \
-        smem);                                                               \
-    sycl_kernel_submit(                                                      \
-        global_range* local_range, local_range, getCurrentSYCLQueue(), kfn); \
+#define DWCONV3D_BACKWARD_WEIGHT_DISPATCH_SPECIALIZATION(dh, dw)       \
+  if (NODEF_OR_EQUAL_3(stride, -1, (dh), (dw))) {                      \
+    using accscalar_t = acc_type<scalar_t, true>;                      \
+    constexpr auto kptr = conv_depthwise3d_xpu_backward_weight_kernel< \
+        scalar_t,                                                      \
+        accscalar_t,                                                   \
+        (dh),                                                          \
+        (dw)>;                                                         \
+    int64_t local_range = 256;                                         \
+    int64_t global_range = grad_weight.numel();                        \
+    int64_t slm_sz = sizeof(accscalar_t) * local_range;                \
+    sycl_kernel_submit<kptr>(                                          \
+        global_range * local_range,                                    \
+        local_range,                                                   \
+        getCurrentSYCLQueue(),                                         \
+        slm_sz,                                                        \
+        grad_output_.packed_accessor32<const scalar_t, 5>(),           \
+        input_.packed_accessor32<const scalar_t, 5>(),                 \
+        grad_weight.packed_accessor32<scalar_t, 5>(),                  \
+        stride[0],                                                     \
+        stride[1],                                                     \
+        stride[2],                                                     \
+        padding[0],                                                    \
+        padding[1],                                                    \
+        padding[2],                                                    \
+        dilation[0],                                                   \
+        dilation[1],                                                   \
+        dilation[2]);                                                  \
   } else
-#define DWCONV3D_BACKWARD_WEIGHT_DISPATCH_OTHERS                             \
-  {                                                                          \
-    using accscalar_t = acc_type<scalar_t, true>;                            \
-    using KernelClass = ConvDepthwise3dXpuBackwardWeightFunctor<             \
-        scalar_t,                                                            \
-        accscalar_t,                                                         \
-        -1,                                                                  \
-        -1>;                                                                 \
-    int64_t local_range = 256;                                               \
-    int64_t global_range = grad_weight.numel();                              \
-    int64_t smem = sizeof(scalar_t) * local_range;                           \
-    auto kfn = KernelClass(                                                  \
-        grad_output_.packed_accessor32<const scalar_t, 5>(),                 \
-        input_.packed_accessor32<const scalar_t, 5>(),                       \
-        grad_weight.packed_accessor32<scalar_t, 5>(),                        \
-        stride[0],                                                           \
-        stride[1],                                                           \
-        stride[2],                                                           \
-        padding[0],                                                          \
-        padding[1],                                                          \
-        padding[2],                                                          \
-        dilation[0],                                                         \
-        dilation[1],                                                         \
-        dilation[2],                                                         \
-        smem);                                                               \
-    sycl_kernel_submit(                                                      \
-        global_range* local_range, local_range, getCurrentSYCLQueue(), kfn); \
+#define DWCONV3D_BACKWARD_WEIGHT_DISPATCH_OTHERS                       \
+  {                                                                    \
+    using accscalar_t = acc_type<scalar_t, true>;                      \
+    constexpr auto kptr = conv_depthwise3d_xpu_backward_weight_kernel< \
+        scalar_t,                                                      \
+        accscalar_t,                                                   \
+        -1,                                                            \
+        -1>;                                                           \
+    int64_t local_range = 256;                                         \
+    int64_t global_range = grad_weight.numel();                        \
+    int64_t slm_sz = sizeof(accscalar_t) * local_range;                \
+    sycl_kernel_submit<kptr>(                                          \
+        global_range * local_range,                                    \
+        local_range,                                                   \
+        getCurrentSYCLQueue(),                                         \
+        slm_sz,                                                        \
+        grad_output_.packed_accessor32<const scalar_t, 5>(),           \
+        input_.packed_accessor32<const scalar_t, 5>(),                 \
+        grad_weight.packed_accessor32<scalar_t, 5>(),                  \
+        stride[0],                                                     \
+        stride[1],                                                     \
+        stride[2],                                                     \
+        padding[0],                                                    \
+        padding[1],                                                    \
+        padding[2],                                                    \
+        dilation[0],                                                   \
+        dilation[1],                                                   \
+        dilation[2]);                                                  \
   }
 
 std::tuple<Tensor&, Tensor&, Tensor&> _depthwise_3d_backward_kernel(
@@ -859,7 +771,7 @@ std::tuple<Tensor&, Tensor&, Tensor&> _depthwise_3d_backward_kernel(
           int64_t num_inputs = grad_input_.numel();
           int64_t local_range = 256;
           int64_t global_range =
-              xpuKernelLoopGroupRange(num_inputs, local_range);
+              std::min((num_inputs - 1) / local_range + 1, (int64_t)65536);
 
           // Range check to avoid overflow in XPU kernels.
           TORCH_CHECK(

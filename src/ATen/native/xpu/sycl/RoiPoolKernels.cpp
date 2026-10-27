@@ -157,14 +157,14 @@ std::tuple<Tensor, Tensor> roi_pool_kernel(
       input.scalar_type(), "roi_pool_forward_kernel_xpu", [&] {
         auto kfn = RoiPoolForwardKernel<scalar_t>(
             output_size,
-            input_.data_ptr<scalar_t>(),
+            input_.const_data_ptr<scalar_t>(),
             spatial_scale,
             channels,
             height,
             width,
             pooled_height,
             pooled_width,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
             argmax.data_ptr<int>());
         sycl_kernel_submit(
@@ -290,8 +290,8 @@ Tensor roi_pool_backward_kernel(
       grad.scalar_type(), "roi_pool_backward_kernel_xpu", [&] {
         auto kfn = RoiPoolBackwardKernel<scalar_t>(
             grad.numel(),
-            grad.data_ptr<scalar_t>(),
-            argmax_.data_ptr<int>(),
+            grad.const_data_ptr<scalar_t>(),
+            argmax_.const_data_ptr<int>(),
             num_rois,
             spatial_scale,
             channels,
@@ -300,7 +300,7 @@ Tensor roi_pool_backward_kernel(
             pooled_height,
             pooled_width,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             n_stride,
             c_stride,
             h_stride,
