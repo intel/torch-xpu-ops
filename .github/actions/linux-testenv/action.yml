@@ -81,10 +81,9 @@ runs:
         apt install -fy
         dpkg -i *.deb
 
-        wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/aef232d2-aac5-4cd6-bceb-911019bbb6a8/intel-deep-learning-essentials-2026.2.0.640_offline.sh
-        bash intel-deep-learning-essentials-2026.2.0.640_offline.sh -a -s --eula accept || true
-        bash intel-deep-learning-essentials-2026.2.0.640_offline.sh -a -s --eula accept --action repair
-
+        # wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/aef232d2-aac5-4cd6-bceb-911019bbb6a8/intel-deep-learning-essentials-2026.2.0.640_offline.sh
+        # bash intel-deep-learning-essentials-2026.2.0.640_offline.sh -a -s --eula accept || true
+        # bash intel-deep-learning-essentials-2026.2.0.640_offline.sh -a -s --eula accept --action repair
 
     - name: Setup python
       uses: ./.github/actions/setup-python
@@ -133,9 +132,8 @@ runs:
       shell: bash -xe {0}
       run: |
         uv pip uninstall torch torchvision torchaudio triton-xpu
-        uv pip install ${{ github.workspace }}/wheels-deps/*.whl
-        uv pip uninstall torch
-        uv pip install ${{ github.workspace }}/wheels/torch-*.whl
+        rm -rf ${{ github.workspace }}/wheels-deps/torch-*.whl
+        uv pip install ${{ github.workspace }}/wheels-deps/*.whl ${{ github.workspace }}/wheels/torch-*.whl
 
         uv pip list |grep -E 'intel|torch|triton'
 
