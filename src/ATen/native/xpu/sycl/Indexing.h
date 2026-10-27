@@ -510,7 +510,7 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 // SYCL suggests: it’s possible (and even desirable) to oversubscribe tasks to
 // device;
-constexpr int OVER_SUBSCRIBE_DSS_FACTOR = 16;
+constexpr int OVER_SUBSCRIBE_XECORE_FACTOR = 16;
 
 template <typename func_t>
 void small_index_kernel(
@@ -527,7 +527,7 @@ void small_index_kernel(
   auto indices_size = iter.tensor(2).size(-1);
   auto& queue = getCurrentSYCLQueue();
   int64_t max_group_num =
-      at::xpu::getDeviceXeCoreCount() * OVER_SUBSCRIBE_DSS_FACTOR;
+      at::xpu::getDeviceXeCoreCount() * OVER_SUBSCRIBE_XECORE_FACTOR;
 
   auto total_index_iter = numel / indices_size;
   max_group_num = std::min(int64_t(total_index_iter / 2), max_group_num);
