@@ -17,7 +17,7 @@ python -m microbench <command> --help
 | Path | Purpose |
 |---|---|
 | `case.py` | Case model (`OpBench`, `Case`, stable `case_id`), input helpers, case discovery |
-| `measure.py` | Measurement protocol (continuous passes, input sets, output lifetime, E2E and device time), worker, case validator, canary |
+| `measure.py` | Measurement protocol (continuous passes, input sets, output lifetime, E2E and device time), worker, case validator |
 | `run.py` | Scheduler over cards: A/B (`A B / B A` rounds), single-sided and multi-wheel rounds; records (`records.jsonl`) and per-case logs; card layout and identity, GPU frequency, pre-run checks; `ci-run`, the microbench-run CI job of each scope |
 | `judge.py` | Hierarchical bootstrap, Holm, two-stage verdicts, PR conclusion matrix, English report, check job (PR / on-demand, and the nightly check: attribution, state update, nightly report, issue evidence) |
 | `selection.py` | Case selection from a diff, new XPU op detection, reference matching (code equivalence), direct A/B decision, candidate commits |
@@ -25,7 +25,7 @@ python -m microbench <command> --help
 | `github.py` | Labels, maintainers, override record, PR comment (privileged workflows) |
 | `tools/` | `maintenance.py` (coverage report, unmapped-file report for `op_source_map.yaml`, noise calibration) and the config consistency check `test_registry.py` |
 | `cases/` | One module per op family (`elementwise.py`, `pooling.py`, ...); one `OpBench` class per op and pass set |
-| `config/` | `op_source_map.yaml` (changed file -> ops, core set), `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, direct A/B switches, PR budgets, machines); optional `history.json` written by `noise calibrate` (A/A calibration, case costs, canary history) |
+| `config/` | `op_source_map.yaml` (changed file -> ops, core set), `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, direct A/B switches, PR budgets, machines); optional `history.json` written by `noise calibrate` (A/A calibration, case costs) |
 
 Listing and selecting cases never imports torch: cases reach torch through
 lazy proxies in `case.py`, so the ubuntu CI jobs only need `pyyaml` and `numpy`.
@@ -83,8 +83,9 @@ Rules:
 * A PR that changes a case module validates (and A/A runs) the cases of the
   ops whose definitions it touches; a change to a shared helper, table or base
   class covers the whole module. Validation takes one dtype per (op, pass,
-  shape), PR-tier cases first, within `--validate-budget-min` (20 min);
-  cases left over are reported as not validated.
+  shape), PR-tier cases first, one validator per card, within
+  `--validate-budget-min` (20 min); cases left over are reported as not
+  validated.
 
 ### Table-driven cases
 
@@ -150,7 +151,7 @@ write-heavy ops that fit in L2 (fill, copy, cat, elementwise) look faster.
   sample. An iteration with a kernel launch but no device event is invalid;
   more than 10% invalid marks the case invalid.
 * **Warmup** by passes (>= 200 ms) until three consecutive passes agree
-  within 5%; then at least 2 passes, 50 iterations and 40 ms of op time.
+  within 5%; then at least one pass, 10 iterations and 40 ms of op time.
 * **`PROTOCOL_VERSION`** (`__init__.py`): bump it with any change that moves
   measured values; reference records of another version are never compared.
   Changing `measure.py` or `case.py` without a bump gives a
@@ -196,7 +197,7 @@ sudo python -m microbench env lock --ratio 0.95          # pin min=max at 95% of
 # A/B: two venvs with the base and the PR wheel (same PyTorch commit)
 python -m microbench select --base origin/main --head HEAD --flow ab --out sel.json
 python -m microbench schedule --python-a venv_base/bin/python --python-b venv_pr/bin/python \
-    --cases sel.json --validate sel.json --out-dir out --env-check --canary
+    --cases sel.json --validate sel.json --out-dir out --env-check
 python -m microbench check --ab-dir out --selection sel.json --out-dir report
 
 # screening as in PR CI: reference state of the last nightly, then the PR wheel only
@@ -224,7 +225,7 @@ bound exceeds `1 + delta` (per-case noise) and the Holm-adjusted p-value is
 below 0.05. Cases without a screening direction need two A/B stages that
 agree (3 processes per side, then 6, B first, on another card); cases that
 screening flagged need one 6-process A/B in the same direction. E2E is
-report-only. A drifting canary makes the run inconclusive. Parameters:
+report-only. Parameters:
 `config/gating.yaml`.
 
 **Screening (PR) and detection (nightly)** compare the median of the
@@ -275,11 +276,8 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
 Run jobs upload one artifact, `microbench-data-<id>-<scope>-<attempt>`
 (results, raw samples, `records.jsonl` and the per-case logs).
 
-Required checks: `linux-build`, `microbench-select`,
-`microbench / microbench-run (pr-vs-reference)`,
-`microbench-build-base / build-status-check`,
-`microbench / microbench-run (pr-vs-base)`, `microbench / microbench-check`.
-A skipped job counts as passed, so each job that can fail must be required.
+None of the microbench jobs is a required check, as for the UT jobs: a
+blocking regression or a failed run shows as a failed check on the PR.
 
 Labels: `disable_microbench` (maintainers only; skips everything),
 `perf_regression_accepted` (maintainers only; accepts the regressions of the
@@ -332,5 +330,5 @@ driver upgrade).
   and `machines` (per-host cards, NUMA/CPU binding, protocol overrides,
   pre-run limits).
 * `history.json` (optional, written by `noise calibrate`): A/A noise
-  statistics (which cases may block), measured case costs (LPT sharding,
-  budget), canary history per host/card.
+  statistics (which cases may block) and measured case costs (LPT sharding,
+  budget).

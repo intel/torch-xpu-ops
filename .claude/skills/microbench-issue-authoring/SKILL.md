@@ -33,10 +33,11 @@ next to it). Per group:
   `pytorch_range`, `compare_url`;
 - `candidates`: commits between the previous and this nightly that touched
   files related to the cases, oldest first, each with `sha`, `subject`,
-  `files`, `pr` (number, title, description, url), `patch` (diff of the
-  related files, possibly truncated), `override` (an accepted regression
+  `files`, `pr` (number, title, description, url, labels), `patch` (diff of
+  the related files, possibly truncated), `override` (an accepted regression
   record, if any) and `pr_microbench` (that PR's own microbench verdicts for
-  these cases: selected or not, screening status and ratio, A/B ratio);
+  these cases: selected or not, screening status and ratio, A/B ratio and
+  verdict; empty when no microbench data of the PR was found);
 - `cases`: `case_id`, `op`, `pass`, `label`, `before_us`, `after_us`, `ratio`,
   `ci`, `detect_ratio`, `r_xpu` / `r_pt` (the attribution ratios), `kernels`
   (device kernels the case runs), `log`, `repro`, `already_reported_in`, and
@@ -92,6 +93,7 @@ mixed: both parts slower, listed separately>, found by nightly <run_id> (<run_ur
 | <sha10> | #<PR> | `<file>` | <selected / not selected; screened <ratio>; A/B <ratio>> |
 
 **Most likely commit (LLM suggestion, not verified by A/B):** <sha10> (#<PR>). <one paragraph of reasoning>
+**Why its PR check did not catch it (LLM analysis):** <category>. <the evidence for it>. <follow-up>
 
 ### Regressed cases
 | Op | Case | Pass | Before (us) | After (us) | Ratio | 95% CI | Log |
@@ -118,15 +120,38 @@ Adapt it:
 - **mixed**: both parts, the candidate table and the PyTorch range.
 - **one candidate**: say it is the responsible commit (it is the only commit
   that touched related files), title `... after <sha10> (<PR title> #<PR>)`,
-  no suggestion paragraph.
+  no suggestion line; the "Why its PR check did not catch it" line follows
+  the candidate table on its own.
 - **several candidates**: keep the suggestion paragraph only when you can
   justify it: which candidate changes code the regressed cases actually run
   (`kernels`, the op's kernel files), what kind of change (loop structure,
   vectorization width, work-group size, launch parameters, dtype dispatch,
   memory access pattern), and what its PR's own microbench showed. If no
-  candidate stands out, leave `suggested_commit` empty and omit the paragraph.
+  candidate stands out, leave `suggested_commit` empty and omit the paragraph
+  together with the "Why its PR check did not catch it" line.
 - A candidate with an `override` record accepted a regression in its PR: say
   so in its table row.
+
+## Why the PR check did not catch it
+
+For the responsible commit (one candidate) or the suggested commit, classify
+from its `pr.labels` and `pr_microbench` why its own PR CI let the regression
+through, and write one line, directly under the suggestion line without a
+blank line (the filing step removes the paragraph when the suggestion is
+invalid):
+
+| Category | Evidence | Follow-up to propose |
+|---|---|---|
+| `skipped by label` | `disable_microbench` in `pr.labels` | none; the label is a maintainer decision |
+| `accepted` | an `override` record | none; the regression was accepted in the PR |
+| `not selected` | `pr_microbench` has data, the cases have `selected: false` | map the candidate's changed files to the op in `op_source_map.yaml` (name the files and the op) |
+| `screened, not suspicious` | `screen_status` is `no_change` (with `screen_ratio`) | screening threshold too loose for these cases; consider `always_ab` for them |
+| `A/B did not confirm` | an `ab_ratio` without a `regression` verdict | A/B noise or statistical power for these cases; or the PR was not the cause |
+| `no data` | `pr_microbench` empty | the PR's microbench artifacts are missing or expired, or it merged before the gate existed |
+
+Base the category on these fields only; when the cases of the group fall in
+different categories, give each with its cases' ops. Do not copy case rows or
+log paths into this line.
 
 ## Rules
 

@@ -31,7 +31,6 @@ import threading
 import time
 
 from . import (
-    CANARY_ID,
     CONFIG_DIR,
     DEFAULT_CASE_SECONDS,
     judge,
@@ -446,10 +445,9 @@ def env_key(fields):
 # * multi-wheel (``multi``): any number of sides alternated per round
 #   (``P P' N | N P' P``), used by the nightly attribution.
 #
-# Around the measurement: ``validate`` (changed cases), ``canary_start``,
-# ``canary_end``. The scheduler records raw data, per-case logs
-# (``logs/<op>/<pass>_<case_id>/``) and records (``records.jsonl``); verdicts are
-# made elsewhere.
+# Before the measurement: ``validate`` (changed cases). The scheduler records
+# raw data, per-case logs (``logs/<op>/<pass>_<case_id>/``) and records
+# (``records.jsonl``); verdicts are made elsewhere.
 
 EXIT_OK, EXIT_INFRA, EXIT_VALIDATION = 0, 2, 3
 
@@ -631,11 +629,10 @@ class Scheduler:
         shards,
         rounds,
         first=None,
-        sides=None,
         shuffle=False,
         start_round=0,
     ):
-        sides = list(sides or self.python)
+        sides = list(self.python)
         first = first or sides[0]
         t0 = time.time()
         info = self.meta["stages"].setdefault(stage, {})
@@ -706,48 +703,66 @@ class Scheduler:
         }
 
     def validate(self, ids):
-        out = os.path.join(self.out, "validation.jsonl")
-        case_file = os.path.join(self.raw, "validate.cases.json")
-        with open(case_file, "w") as f:
-            json.dump(ids, f)
-        budget = self.args.validate_budget_min
-        cmd = [
-            "validate",
-            "--cases",
-            case_file,
-            "--out",
-            out,
-            "--budget-min",
-            str(budget),
-        ]
+        """Validate ``ids`` with one validator per card, card ``k`` taking every
+        n-th case (``ids`` is in priority order)."""
         side = list(self.python)[-1]
-        try:
-            # the budget is checked between cases; allow one slow case on top
-            timeout = budget * 60 + 600 if budget else None
-            proc = self._spawn(
-                side,
-                self.cards[0],
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired as e:
-            raise InfraError(f"validator did not finish within {timeout}s") from e
-        sys.stderr.write(proc.stderr)
-        results = read_jsonl(out)
+        budget = self.args.validate_budget_min
+        # the budget is checked between cases; allow one slow case on top
+        timeout = budget * 60 + 600 if budget else None
+        n = min(len(self.cards), len(ids))
+        parts = [os.path.join(self.out, f"validation.c{k}.jsonl") for k in range(n)]
+        procs, errors = [None] * n, []
+
+        def one(k):
+            case_file = os.path.join(self.raw, f"validate_c{k}.cases.json")
+            with open(case_file, "w") as f:
+                json.dump(ids[k::n], f)
+            cmd = ["validate", "--cases", case_file, "--out", parts[k]]
+            cmd += ["--budget-min", str(budget)]
+            try:
+                procs[k] = self._spawn(
+                    side,
+                    self.cards[k],
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                errors.append(
+                    f"validator on card {self.cards[k]['index']} did not finish within {timeout}s"
+                )
+
+        threads = [threading.Thread(target=one, args=(k,)) for k in range(n)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if errors:
+            raise InfraError("; ".join(errors))
+        results = []
+        for k in range(n):
+            sys.stderr.write(procs[k].stderr)
+            results += read_jsonl(parts[k])
+            if os.path.exists(parts[k]):
+                os.remove(parts[k])
+        with open(os.path.join(self.out, "validation.jsonl"), "w") as f:
+            for r in results:
+                f.write(json.dumps(r) + "\n")
         failed = [r for r in results if r.get("status") == "fail"]
         keys = ("case_id", "op", "pass_", "label", "failures")
         self.meta["validation"] = {
             "cases": len(ids),
+            "cards": n,
             "failed": [{k: r.get(k) for k in keys} for r in failed],
             "not_validated": [
                 r["case_id"] for r in results if r.get("status") == "not_validated"
             ],
         }
         if len(results) < len(ids):
+            rcs = [p.returncode for p in procs]
             raise InfraError(
-                f"validator produced {len(results)}/{len(ids)} results (rc={proc.returncode})"
+                f"validators produced {len(results)}/{len(ids)} results (rc={rcs})"
             )
         return failed
 
@@ -786,11 +801,6 @@ class Scheduler:
         if validate_ids and self.validate(list(validate_ids)):
             return EXIT_VALIDATION
         return EXIT_OK
-
-    def canary(self, stage):
-        if self.args.canary:
-            side = list(self.python)[-1]
-            self.run_stage(stage, [[CANARY_ID] for _ in self.cards], 1, sides=(side,))
 
     def measure_single(self, ids, rounds, stage="single", start_round=0):
         shards, load = lpt_shards(ids, self.costs, len(self.cards))
@@ -855,14 +865,12 @@ class Scheduler:
             same = [] if self.mode == "multi" else None
             status = self.prepare(_selection_list(a.validate, "validate"), same)
             if status == EXIT_OK and ids:
-                self.canary("canary_start")
                 if self.mode == "single":
                     self.measure_single(ids, a.screen_rounds)
                 elif self.mode == "multi":
                     self.measure_multi(ids, a.confirm_rounds)
                 else:
                     self.measure_ab(ids, a.screen_rounds, a.confirm_rounds)
-                self.canary("canary_end")
         except InfraError as e:
             self.meta["infra_errors"].append(str(e))
             status = EXIT_INFRA
@@ -884,27 +892,6 @@ def _stats(vals):
         round(max(vals), 3),
         len(vals),
     )
-
-
-def canary_medians(recs):
-    """{card: {"canary_start": us, "canary_end": us}} (device time, else E2E)."""
-    out = {}
-    for r in recs:
-        if (
-            r.get("type") == "result"
-            and r.get("case_id") == CANARY_ID
-            and r.get("status") == "ok"
-        ):
-            vals = [
-                v
-                for v in (r.get("device_us") or r.get("e2e_us") or [])
-                if v is not None
-            ]
-            if vals:
-                out.setdefault(str(r.get("card")), {})[r.get("stage")] = (
-                    statistics.median(vals)
-                )
-    return out
 
 
 def card_env(meta, recs):
@@ -933,10 +920,9 @@ def case_records(recs, meta, side_info, run_url=None):
     """One record per (case, side, stage): case, commits, card, environment
     and per-process statistics."""
     envs = card_env(meta, recs)
-    canary = canary_medians(recs)
     groups = {}
     for r in recs:
-        if r.get("type") == "result" and r.get("case_id") != CANARY_ID:
+        if r.get("type") == "result":
             groups.setdefault((r["case_id"], r.get("side"), r.get("stage")), []).append(
                 r
             )
@@ -994,8 +980,6 @@ def case_records(recs, meta, side_info, run_url=None):
                 "card": card,
                 **env,
                 "per_process": procs,
-                "canary_start": (canary.get(card) or {}).get("canary_start"),
-                "canary_end": (canary.get(card) or {}).get("canary_end"),
                 "timestamp": time.time(),
                 "run_url": run_url,
             }
@@ -1029,7 +1013,7 @@ def write_case_logs(out_dir, recs, records):
     index = []
     by_case = {}
     for r in recs:
-        if r.get("type") == "result" and r.get("case_id") != CANARY_ID:
+        if r.get("type") == "result":
             by_case.setdefault(r["case_id"], []).append(r)
     rec_by_case = {}
     for rec in records:
@@ -1244,7 +1228,6 @@ def add_scheduler_args(p):
         action="store_true",
         help="fail on busy card / unlocked freq / hot GPU",
     )
-    p.add_argument("--canary", action="store_true")
     p.add_argument(
         "--quick", action="store_true", help="smoke mode: 3 iterations, no warmup"
     )
@@ -1322,7 +1305,7 @@ SCOPES = (
     "nightly-xpu-ops-vs-pytorch",
     "ondemand",
 )
-AB_STATUSES = ("suspect_regression", "no_reference", "screen_invalid", "env_anomaly")
+AB_STATUSES = ("suspect_regression", "no_reference", "screen_invalid")
 DIRECTIONAL = ("suspect_regression", "suspect_improvement")
 
 
@@ -1336,33 +1319,25 @@ def _metric(args):
     return "e2e_us" if args.device == "cpu" else "device_us"
 
 
-def _bad_cards(sched, gating, history):
-    recs = judge.load_records(sched.raw)
-    ok, details = judge.evaluate_canary(recs, sched.meta, gating, history)
-    return ok, details, {d["card"] for d in details if d.get("problem")}
-
-
 def _write_json(path, obj):
     with open(path, "w") as f:
         json.dump(obj, f, indent=1, default=str)
 
 
 def _measure(sched, ids, validate=(), same_sha=None, body=None):
-    """prepare, canaries around ``body(sched)``; returns the exit status."""
+    """prepare, then ``body(sched)``; returns the exit status."""
     status = EXIT_OK
     try:
         status = sched.prepare(validate, same_sha)
         if status == EXIT_OK and ids:
-            sched.canary("canary_start")
             body(sched)
-            sched.canary("canary_end")
     except InfraError as e:
         sched.meta["infra_errors"].append(str(e))
         status = EXIT_INFRA
     return status
 
 
-def _screen(sched, sel, screening, side_info, metric, bad_cards=()):
+def _screen(sched, sel, screening, side_info, metric):
     recs = judge.load_records(sched.raw)
     out = {}
     for rec in case_records(recs, sched.meta, side_info):
@@ -1379,7 +1354,6 @@ def _screen(sched, sel, screening, side_info, metric, bad_cards=()):
             (sel.get("noise") or {}).get(cid),
             screening,
             "pr_vs_reference",
-            canary_ok=rec["card"] not in bad_cards,
             metric=metric,
         )
     return out
@@ -1433,8 +1407,7 @@ def run_pr_vs_reference(args, sel, cfg):
         "suspect": False,
     }
     if status == EXIT_OK:
-        canary_ok, canary, bad = _bad_cards(sched, gating, hist["canary"])
-        screen = _screen(sched, sel, screening, side_info, metric, bad)
+        screen = _screen(sched, sel, screening, side_info, metric)
         man = {m["case_id"]: m for m in build_manifest()}
 
         def eligible(cid):
@@ -1455,14 +1428,7 @@ def run_pr_vs_reference(args, sel, cfg):
             need += imps
         if not sel.get("ab_possible"):
             need = []
-        doc.update(
-            cases=screen,
-            ab_cases=need,
-            suspect=bool(need),
-            canary_ok=canary_ok,
-            canary=canary,
-            metric=metric,
-        )
+        doc.update(cases=screen, ab_cases=need, suspect=bool(need), metric=metric)
         for cid, res in screen.items():
             append_case_summary(args.out_dir, cid, _screen_lines(res))
     _write_json(os.path.join(args.out_dir, "screen.json"), doc)
@@ -1642,8 +1608,6 @@ def run_nightly_vs_reference(args, sel, cfg):
     doc["cur"]["pytorch_sha"] = (sched.meta.get("torch_git_version") or {}).get(
         "single"
     )
-    canary_ok, canary, bad = _bad_cards(sched, gating, hist["canary"])
-    doc.update(canary=canary, invalid_cards=sorted(bad))
 
     # A/A rotation (sigma_ab, delta), reference data only
     aa_ids = aa_rotation(ids, man, det["aa_fraction"])
@@ -1668,13 +1632,6 @@ def run_nightly_vs_reference(args, sel, cfg):
     detect = {}
     for rec in case_records(judge.load_records(sched.raw), sched.meta, side_info):
         cid = rec["case_id"]
-        if rec["card"] in bad:
-            detect[cid] = {
-                "case_id": cid,
-                "status": "env_anomaly",
-                "reason": "canary deviated; not detected",
-            }
-            continue
         if all(p["status"] != "ok" for p in rec["per_process"]):
             detect[cid] = {"case_id": cid, "status": "error", "reason": "no result"}
             continue

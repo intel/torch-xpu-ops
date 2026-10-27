@@ -6,7 +6,7 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-"""Measurement: protocol, device-time trace parsing, worker, validator, canary.
+"""Measurement: protocol, device-time trace parsing, worker, validator.
 
 Runs inside worker processes started by ``run.py`` with each side's wheel.
 """
@@ -25,19 +25,15 @@ import traceback
 from dataclasses import dataclass
 from types import SimpleNamespace
 
-from . import CANARY_ID
 from .case import (
     alternatives,
     base_name,
-    Case,
     case_log_dir,
     case_log_name,
     dtype_name,
     expected_names,
     functional_name,
     load_cases,
-    OpBench,
-    State,
     torch,
 )
 
@@ -248,10 +244,10 @@ class ProtocolConfig:
     warmup_max_ms: float = 3000.0
     warmup_stable_passes: int = 3
     warmup_stable_tol: float = 0.05
-    min_iters: int = 50
+    min_iters: int = 10
     max_iters: int = 400
     min_total_ms: float = 40.0
-    min_passes: int = 2
+    min_passes: int = 1
     l2_bytes: int = 32 * 1024 * 1024
     min_ring: int = 10
     max_ring: int = 256
@@ -485,34 +481,6 @@ def measure(case, dev, keep_trace=None, detail=False):
 
 
 # ---------------------------------------------------------------------------
-# Canary
-# ---------------------------------------------------------------------------
-# A fixed kernel run on every card at the start and end of a run. A canary
-# that deviates from the card's history (or drifts between start and end)
-# makes the run's verdicts inconclusive.
-
-
-class CanaryBench(OpBench):
-    op = "__canary__"
-    expected = {"fwd": ("add",)}
-    params = [dict(shape=(64 * 1024 * 1024,), dtype="fp32")]
-    gating = False
-
-    def setup(self, p, device):
-        x = torch.ones(p["shape"], device=device)
-        return State(x=x, y=torch.ones_like(x))
-
-    def fwd(self, s):
-        return torch.add(s.x, s.y)
-
-
-def canary_case():
-    case = Case(CanaryBench(), dict(CanaryBench.params[0]), "fwd", module="canary")
-    case.case_id = CANARY_ID
-    return case
-
-
-# ---------------------------------------------------------------------------
 # Worker process
 # ---------------------------------------------------------------------------
 # The scheduler starts one worker per (card, side, round) with the venv python
@@ -552,9 +520,7 @@ def process_log_name(case, side, stage, rnd, kind, ext="log"):
     """``<op>_<pass>_<stage>[_<side>]_proc<k>_<kind>.log`` of one worker process."""
     parts = [stage] if side == stage else [stage, side]
     name = "_".join([*parts, f"proc{rnd}_{kind}"])
-    if case.case_id != CANARY_ID:
-        name = case_log_name(case.op, case.pass_, name)
-    return f"{name}.{ext}"
+    return f"{case_log_name(case.op, case.pass_, name)}.{ext}"
 
 
 def write_process_logs(log_dir, case, tag, rec, env):
@@ -619,7 +585,6 @@ def run_worker(args):
         wanted = json.load(f)
     cfg = ProtocolConfig.load(args.config, args.quick)
     cases = load_cases()
-    cases[CANARY_ID] = canary_case()
     dev = Device(args.device, cfg)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     tag = {

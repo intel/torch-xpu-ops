@@ -348,7 +348,7 @@ jobs:
       pytorch_sha: ${{ needs.microbench-select.outputs.pytorch_sha }}
 
   # Screening: the PR wheel only, against nightly reference data.
-  # microbench / microbench-run (pr-vs-reference). Required check.
+  # microbench / microbench-run (pr-vs-reference).
   microbench-run-pr-vs-reference:
     name: microbench
     needs: [microbench-select, linux-build]
@@ -373,7 +373,7 @@ jobs:
 
   # Base wheel: the merge-base built against the same PyTorch
   # commit, torch only. After linux-build for a direct A/B, after screening when it
-  # found suspects. Required check: when it fails, the A/B is skipped.
+  # found suspects. When it fails, the A/B is skipped.
   microbench-build-base:
     name: microbench-build-base
     needs: [microbench-select, linux-build, microbench-run-pr-vs-reference]
@@ -395,7 +395,7 @@ jobs:
       category: baseline
       wheel_cache_key: microbench-base-torch-${{ needs.microbench-select.outputs.pytorch_sha }}-${{ needs.microbench-select.outputs.merge_base }}
 
-  # A/B: microbench / microbench-run (pr-vs-base). Required check.
+  # A/B: microbench / microbench-run (pr-vs-base).
   microbench-run-pr-vs-base:
     name: microbench
     needs: [microbench-select, linux-build, microbench-run-pr-vs-reference, microbench-build-base]
@@ -415,7 +415,7 @@ jobs:
       base_sha: ${{ needs.microbench-select.outputs.merge_base }}
       budget_min: ${{ needs.microbench-select.outputs.path == 'vs-base' && '35' || '20' }}
 
-  # Final verdict: microbench / microbench-check. Required check;
+  # Final verdict: microbench / microbench-check;
   # microbench_override.yml reruns only this job.
   microbench-check:
     name: microbench

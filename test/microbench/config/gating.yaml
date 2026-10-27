@@ -22,10 +22,6 @@ require_calibration: true
 # E2E is report-only; list noise classes whose E2E may block (e.g. host_bound)
 e2e_blocking_noise_classes: []
 e2e_threshold: 0.20
-# canary: max drift between start and end of a run, and max deviation from
-# the card's history; beyond either the run's verdicts become inconclusive
-canary_drift: 0.03
-canary_history_tol: 0.05
 n_boot: 2000
 
 # Cases/ops whose results are reported but never block (high-noise

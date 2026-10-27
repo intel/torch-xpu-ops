@@ -25,7 +25,7 @@ These labels control which CI jobs run, reducing unnecessary CI load.
 
 Note: Only labels consumed by `pull.yml` are in scope. Other labels (`disable_accelerate`, `disable_transformers`) are used by separate workflows and not managed here.
 
-**Never apply `disable_microbench`** (and never `perf_regression_accepted`). Microbench is a required performance gate; skipping it is a maintainer decision. The microbench jobs only honor these labels when a maintainer added them and report bot-added ones as ignored.
+**Never apply `disable_microbench`** (and never `perf_regression_accepted`). Microbench is the performance gate; skipping it is a maintainer decision. The microbench jobs only honor these labels when a maintainer added them and report bot-added ones as ignored.
 
 ## Decision Rules
 

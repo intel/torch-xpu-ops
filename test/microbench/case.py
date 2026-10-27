@@ -21,7 +21,7 @@ import pkgutil
 import sys
 from types import SimpleNamespace
 
-from . import CANARY_ID, CONFIG_DIR, load_yaml
+from . import CONFIG_DIR, load_yaml
 
 
 class LazyModule:
@@ -125,7 +125,7 @@ def canonical_params(params):
 
 def case_log_dir(op, pass_, case_id):
     """Log directory of a case, relative to ``logs/``."""
-    return "canary" if case_id == CANARY_ID else f"{op}/{pass_}_{case_id}"
+    return f"{op}/{pass_}_{case_id}"
 
 
 def case_log_name(op, pass_, *parts):

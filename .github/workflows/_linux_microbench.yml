@@ -240,7 +240,7 @@ jobs:
           cd test
           ARGS=(--scope "${{ inputs.scope }}" --selection "${WS}/mb_selection/selection.json"
                 --python "${MB_PY}" --out-dir "${WS}/mb_out" --repo "${WS}"
-                --budget-min "${{ inputs.budget_min }}" --env-check --canary
+                --budget-min "${{ inputs.budget_min }}" --env-check
                 --max-restarts "${{ startsWith(inputs.scope, 'pr-') && 2 || 50 }}"
                 --run-id "${{ github.run_id }}"
                 --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

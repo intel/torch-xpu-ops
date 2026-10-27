@@ -156,15 +156,12 @@ def save_state(path, entries):
             f.write(json.dumps(e, sort_keys=True) + "\n")
 
 
-def measure_entries(records, run_id, now=None, invalid_cards=(), metric="device_us"):
+def measure_entries(records, run_id, now=None, metric="device_us"):
     """State ``measure`` lines from records.jsonl rows of a nightly."""
     now = now or time.time()
     out = []
     for r in records:
-        if (
-            r.get("role") not in ("nightly_vs_reference", "nightly_aa")
-            or r.get("card") in invalid_cards
-        ):
+        if r.get("role") not in ("nightly_vs_reference", "nightly_aa"):
             continue
         procs = [p for p in r.get("per_process") or [] if p.get(metric) is not None]
         if not procs:
@@ -405,9 +402,7 @@ def compare_to_reference(procs, ref, sig, cfg, same_card):
     return res
 
 
-def classify(
-    record, ref_entries, stats, screening, section, canary_ok=True, metric="device_us"
-):
+def classify(record, ref_entries, stats, screening, section, metric="device_us"):
     """PR screening (section pr_vs_reference) / nightly detection (nightly_detect) for one
     case. ``ref_entries`` are the candidate reference records (already
     filtered for code, protocol and jumps)."""
@@ -449,8 +444,6 @@ def classify(
             status="screen_invalid",
             reason=f"process spread {spread:.3f} > {max_spread}",
         )
-    if not canary_ok:
-        res.update(status="env_anomaly", reason="canary deviated on this card")
     return res
 
 

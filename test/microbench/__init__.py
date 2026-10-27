@@ -20,13 +20,13 @@ from pathlib import Path
 PACKAGE_DIR = Path(__file__).resolve().parent
 CONFIG_DIR = PACKAGE_DIR / "config"
 REPO_ROOT = PACKAGE_DIR.parent.parent
-CANARY_ID = "__canary__"
 
 # Bump on any framework change that changes measured values (timed region,
 # warmup, iteration rule, device-time accounting, input sets, output
 # lifetime): reference records of another version are never compared.
 # 2: continuous measurement (no cache flush, outputs kept alive).
-PROTOCOL_VERSION = 2
+# 3: at least one measured pass and 10 iterations (was 2 passes and 50).
+PROTOCOL_VERSION = 3
 # Files whose changes may need a PROTOCOL_VERSION bump; they also count as
 # "related" for reference-data code equivalence.
 MEASUREMENT_FILES = (
@@ -69,6 +69,6 @@ def read_jsonl(path):
 
 
 def load_history(path=None):
-    """config/history.json: noise_stats (A/A calibration), case_cost, canary."""
+    """config/history.json: noise_stats (A/A calibration), case_cost."""
     data = load_json(path or CONFIG_DIR / "history.json", {}) or {}
-    return {k: data.get(k) or {} for k in ("noise_stats", "case_cost", "canary")}
+    return {k: data.get(k) or {} for k in ("noise_stats", "case_cost")}

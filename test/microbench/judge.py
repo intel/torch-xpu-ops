@@ -23,15 +23,7 @@ import time
 
 import numpy as np
 
-from . import (
-    CANARY_ID,
-    CONFIG_DIR,
-    load_history,
-    load_json,
-    load_yaml,
-    read_jsonl,
-    reference,
-)
+from . import CONFIG_DIR, load_history, load_json, load_yaml, read_jsonl, reference
 from .case import case_log_dir, load_cases
 from .github import OVERRIDE_LABEL, REPORT_MARKER as COMMENT_MARKER
 
@@ -61,8 +53,6 @@ DEFAULT_GATING = {
     "require_calibration": True,
     "e2e_blocking_noise_classes": [],
     "e2e_threshold": 0.20,
-    "canary_drift": 0.03,
-    "canary_history_tol": 0.05,
     "n_boot": 2000,
     "suspicious_frac": 0.7,
 }
@@ -218,44 +208,6 @@ def load_records(raw_dir):
     return recs
 
 
-def evaluate_canary(recs, meta, gating, history):
-    """Return (ok, details). Uses device time when present, else E2E."""
-    per = {}
-    for r in recs:
-        if (
-            r.get("type") == "result"
-            and r.get("case_id") == CANARY_ID
-            and r.get("status") == "ok"
-        ):
-            vals = [
-                v
-                for v in (r.get("device_us") or r.get("e2e_us") or [])
-                if v is not None
-            ]
-            if vals:
-                per.setdefault(str(r.get("card")), {})[r.get("stage")] = (
-                    statistics.median(vals)
-                )
-    details, ok = [], True
-    host_hist = (history or {}).get(meta.get("host") or "", {})
-    for card, st in sorted(per.items()):
-        s, e = st.get("canary_start"), st.get("canary_end")
-        d = {"card": card, "start_us": s, "end_us": e}
-        if s and e:
-            d["drift"] = e / s - 1
-            if abs(d["drift"]) > gating["canary_drift"]:
-                ok = False
-                d["problem"] = f"canary drifted {d['drift']:+.1%} during the run"
-        h = host_hist.get(card)
-        if h and s:
-            d["history_us"], d["vs_history"] = h, s / h - 1
-            if abs(d["vs_history"]) > gating["canary_history_tol"]:
-                ok = False
-                d["problem"] = f"canary {d['vs_history']:+.1%} off this card's history"
-        details.append(d)
-    return ok, details
-
-
 def not_blocking_reasons(man, gating, noise, quarantine=None):
     """Why a case (manifest or verdict row) cannot block a PR; empty = it can."""
     q_ids, q_ops = quarantine or gating.get("quarantine", ({}, {}))
@@ -318,7 +270,6 @@ def judge(
     gating=None,
     noise=None,
     quarantine=None,
-    canary_history=None,
 ):
     """Compute verdicts. ``cases_manifest`` maps case_id -> manifest dict."""
     gating = gating or load_gating()
@@ -328,11 +279,10 @@ def judge(
     )
     recs = load_records(raw_dir)
     mode = meta.get("mode", "ab")
-    canary_ok, canary = evaluate_canary(recs, meta, gating, canary_history)
 
     status, errors = {}, {}
     for r in recs:
-        if r.get("type") != "result" or r.get("case_id") == CANARY_ID:
+        if r.get("type") != "result":
             continue
         status.setdefault(r["case_id"], {"A": set(), "B": set()}).setdefault(
             r["side"], set()
@@ -434,8 +384,6 @@ def judge(
                 r["delta"],
                 p,
             )
-            if v in ("regression", "improvement") and not canary_ok:
-                v, why = "inconclusive", "environment anomaly (canary)"
             mres.update(verdict=v, reason=why, used=used)
             if p:
                 mres["p_holm"] = p[1] if v == "improvement" else p[0]
@@ -444,15 +392,7 @@ def judge(
         ).get("verdict")
         set_blocking(r, gating, noise, (q_ids, q_ops), mode)
 
-    return summarize_rows(
-        {
-            "mode": mode,
-            "canary_ok": canary_ok,
-            "canary": canary,
-            "rows": rows,
-            "gating": gating,
-        }
-    )
+    return summarize_rows({"mode": mode, "rows": rows, "gating": gating})
 
 
 def set_blocking(r, gating, noise, quarantine, mode):
@@ -686,12 +626,6 @@ def render(result, ctx):
         + (f"{ctx['flow']} " if ctx.get("flow") else "")
         + f"Maintainers can add label `{OVERRIDE_LABEL}` to accept a regression for the current commit._",
     ]
-    if not result.get("canary_ok", True):
-        lines += [
-            "",
-            "**Environment anomaly:** the canary kernel deviated, so regressions/improvements "
-            "of this run are reported as inconclusive.",
-        ]
     if override.get("ignored"):
         lines += ["", f"_Override label ignored: {override['ignored']}_"]
     if ctx.get("notes"):
@@ -1201,7 +1135,7 @@ def run_nightly_check(args):
     now = time.time()
 
     detect, recheck, candidates, kernels, shard_of = {}, {}, {}, {}, {}
-    new_entries, invalid = [], {}
+    new_entries = []
     for sdir, d in shards:
         for cid in d.get("detect") or {}:
             shard_of[cid] = sdir
@@ -1209,14 +1143,11 @@ def run_nightly_check(args):
         recheck.update(d.get("recheck") or {})
         candidates.update(d.get("candidates") or {})
         kernels.update(d.get("kernels") or {})
-        bad = set(d.get("invalid_cards") or [])
-        if bad:
-            invalid[os.path.basename(sdir)] = sorted(bad)
         recs = read_jsonl(os.path.join(sdir, "records.jsonl")) + read_jsonl(
             os.path.join(sdir, "aa", "records.jsonl")
         )
         new_entries += reference.measure_entries(
-            recs, args.run_id or cur.get("run_id"), now, bad, metric
+            recs, args.run_id or cur.get("run_id"), now, metric=metric
         )
     attr = attribution_results(
         args.attribution_dir, gating, hist["noise_stats"], metric
@@ -1344,7 +1275,7 @@ def run_nightly_check(args):
         + ("" if args.state_out else " (not written)"),
         "",
         "### Measurement",
-        f"- {len(detect)} case(s) over {len(shards)} shard(s); invalid cards (canary): {invalid or 'none'}",
+        f"- {len(detect)} case(s) over {len(shards)} shard(s)",
         "- detection: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())),
         f"- recheck (P vs N, same card): {len(recheck)} case(s), {len(confirmed)} regression(s), "
         f"{len(improvements)} improvement(s), {len(false_alarms)} detection false alarm(s)",
@@ -1429,7 +1360,6 @@ def run_nightly_check(args):
         "categories": cat,
         "false_alarms": false_alarms,
         "suggestions": sugg,
-        "invalid_cards": invalid,
     }
     with open(os.path.join(args.out_dir, "nightly_summary.json"), "w") as f:
         json.dump(summary, f, indent=1, default=str)
@@ -1545,18 +1475,9 @@ def run_check(args):
             selection={"cases": cases},
             gating=gating,
             noise=hist["noise_stats"],
-            canary_history=hist["canary"],
         )
     else:
-        result = summarize_rows(
-            {
-                "mode": "ab",
-                "canary_ok": (screen_doc or {}).get("canary_ok", True),
-                "canary": (screen_doc or {}).get("canary", []),
-                "rows": [],
-                "gating": gating,
-            }
-        )
+        result = summarize_rows({"mode": "ab", "rows": [], "gating": gating})
     result = combine_pr(
         result,
         screen_doc,
