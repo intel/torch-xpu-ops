@@ -26,8 +26,8 @@
 #include <ATen/ops/empty.h>
 #include <ATen/xpu/PhiloxXpuState.h>
 #include <ATen/xpu/XPUContext.h>
-#include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
+#include <comm/SYCLHelpers.h>
 
 #include <concepts>
 

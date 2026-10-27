@@ -14,7 +14,7 @@
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <ATen/xpu/XPUContext.h>
-#include <comm/DeviceProperties.h>
+#include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingKernels.h>
 namespace at ::native::xpu {
