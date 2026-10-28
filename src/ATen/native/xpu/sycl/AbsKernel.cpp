@@ -41,10 +41,14 @@ void abs_kernel(TensorIteratorBase& iter) {
         kComplexHalf,
         kBComplex32);
   } else {
+    // mbtest only: a second launch doubles the time of abs (same result)
     AT_DISPATCH_V2(
         iter.dtype(),
         "abs_xpu",
-        AT_WRAP([&]() { gpu_kernel(iter, AbsFunctor<scalar_t>()); }),
+        AT_WRAP([&]() {
+          gpu_kernel(iter, AbsFunctor<scalar_t>());
+          gpu_kernel(iter, AbsFunctor<scalar_t>());
+        }),
         AT_EXPAND(AT_ALL_TYPES),
         ScalarType::Half,
         ScalarType::BFloat16,
