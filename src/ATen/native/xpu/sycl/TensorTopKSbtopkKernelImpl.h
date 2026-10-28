@@ -41,17 +41,6 @@ static_assert(
     (1 << SG_MERGE_LEVELS) == SG_SIZE,
     "SG_MERGE_LEVELS must equal log2(SG_SIZE)");
 
-// ================================================================
-// subgroup_topk_kernel
-//
-// K: compile-time max top-k (must be >= runtime k)
-// VEC_SIZE: vectorized load width
-// Largest: compile-time direction flag. Eliminates per-element branches
-//          on largest_ that otherwise pessimize the tight insert/merge loops.
-// IndexT: int32 when numSlices <= INT_MAX (common case), int64_t
-//         otherwise.  int32 avoids 64-bit arithmetic on slice indices,
-//         reducing register pressure.
-// ================================================================
 // Returns true if a is "better" than b — i.e. a should rank higher.
 // NaN is treated as better than any non-NaN (matching CPU/CUDA behavior).
 // A sentinel (idx == -1) is always worse than a real entry.
@@ -168,12 +157,19 @@ inline void subgroup_topk_bitonic_merge(
   }
 }
 
-template <
-    typename scalar_t,
-    int K,
-    int VEC_SIZE,
-    bool Largest,
-    typename IndexT = int>
+// ================================================================
+// subgroup_topk_kernel
+//
+// K: compile-time max top-k (must be >= runtime k)
+// VEC_SIZE: vectorized load width
+// Largest: compile-time direction flag. Eliminates per-element branches
+//          on the runtime `largest` argument that otherwise pessimize
+//          the tight insert/merge loops.
+// IndexT: int32 when numSlices <= INT_MAX (common case), int64_t
+//         otherwise.  int32 avoids 64-bit arithmetic on slice indices,
+//         reducing register pressure.
+// ================================================================
+template <typename scalar_t, int K, int VEC_SIZE, bool Largest, typename IndexT>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SG_SIZE>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((intelex::grf_size<128>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
