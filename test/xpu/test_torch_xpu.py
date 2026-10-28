@@ -1133,8 +1133,6 @@ class TestTorchDeviceType(TestCase):
     def test_cpp_warnings_have_python_context(self, device):
         # Creates long string in advance to avoid a too-long Python line
         s = ".+Triggered internally at.+RangeFactories.+"
-        # nvfuser deprecation warning filter
-        warnings.filterwarnings("ignore", "torch::jit::fuser::cuda", UserWarning)
 
         def cpp_warn_fn():
             out = torch.empty((5,))
@@ -1143,6 +1141,7 @@ class TestTorchDeviceType(TestCase):
 
         # Checks eager-mode cpp warning
         with warnings.catch_warnings(record=True) as w:
+            warnings.filterwarnings("ignore", "torch::jit::fuser::cuda", UserWarning)
             cpp_warn_fn()
             frameinfo = inspect.getframeinfo(inspect.currentframe())
             warning = w[0]
@@ -1156,11 +1155,14 @@ class TestTorchDeviceType(TestCase):
             # Checks the Python features of the warning
             # Note: the eager mode warning refers to the line in the function
             # that throws the warning.
-            self.assertEqual(frameinfo.lineno - 6, warning.lineno)
+            self.assertEqual(frameinfo.lineno - 8, warning.lineno)
             self.assertEqual(len(w), 1)
 
         # Checks jitted cpp warning
         with warnings.catch_warnings(record=True) as w:
+            warnings.filterwarnings("ignore", "torch::jit::fuser::cuda", UserWarning)
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            warnings.filterwarnings("ignore", category=FutureWarning)
             scripted_cpp_warn_fn = torch.jit.script(cpp_warn_fn)
             scripted_cpp_warn_fn()
             warning = w[0]
@@ -1183,6 +1185,9 @@ class TestTorchDeviceType(TestCase):
 
         # The jit mimics an eager-mode Python warning in this case
         with warnings.catch_warnings(record=True) as w:
+            warnings.filterwarnings("ignore", "torch::jit::fuser::cuda", UserWarning)
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            warnings.filterwarnings("ignore", category=FutureWarning)
             scripted_warn_fn = torch.jit.script(warn_fn)
             scripted_warn_fn()
             frameinfo = inspect.getframeinfo(inspect.currentframe())
@@ -1191,7 +1196,7 @@ class TestTorchDeviceType(TestCase):
             self.assertTrue(re.search("Warning!", str(warning.message)) is not None)
 
             # Checks the Python features of the warning
-            self.assertEqual(frameinfo.lineno - 6, warning.lineno)
+            self.assertEqual(frameinfo.lineno - 12, warning.lineno)
             self.assertEqual(len(w), 1)
 
     # FIXME: move to test_testing
