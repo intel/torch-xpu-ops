@@ -113,7 +113,7 @@ python -m run_e2e --device cpu --cores-per-instance 8 --task-file ./benchmarks/d
 | Option | Meaning |
 | --- | --- |
 | `--suite`, `--dt`/`--dtype`, `--mode`, `--scenario` | Comma/space-separated filters. Empty means all. With `--task-file` they filter the file. |
-| `--task-file` | Comma-separated tier YAML or CSV/TXT sources, run one after another. Cannot be combined with `--model-only`. |
+| `--task-file` | Comma-separated tier YAML or CSV/TXT sources, run one after another. |
 | `--model-only` | Model names, a CSV with a `<suite> <mode>` column, or tier YAML files. |
 | `--backend` | Inductor backend for CSV/TXT sources and filter runs. |
 | `--device` | `xpu` (default), `cuda`, or `cpu`. |
@@ -132,12 +132,12 @@ python -m run_e2e --device cpu --cores-per-instance 8 --task-file ./benchmarks/d
 
 ## CI integration
 
-[linux-e2etest/action.yml](../../actions/linux-e2etest/action.yml) maps the `model_list` input to task files:
+[linux-e2etest/action.yml](../../actions/linux-e2etest/action.yml) maps the `test_scope` input to task files:
 
 - `p0`, `p1`, `p2` map to `./benchmarks/dynamo/<tier>/config.yaml`.
 - `full` maps to p0, p1, and p2 in that order.
 - Its `suite`, `dt`, `mode`, and `scenario` inputs are passed as filters.
-- `MODEL_ONLY_NAME`, when set, overrides the task file with `--model-only`.
+- `MODEL_ONLY_NAME`, when set, is passed as `--model-only` and filters the test scope to those models.
 
 The step pipes output through `tee` with `|| true`, so the job does not fail on benchmark failures. Consumers should check the summary CSVs and the log instead.
 
