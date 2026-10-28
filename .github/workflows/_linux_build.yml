@@ -33,6 +33,14 @@ on:
         type: string
         default: ''
         description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
+      pytorch_sha:
+        type: string
+        default: ''
+        description: 'Exact PyTorch commit to build (overrides the ref in `pytorch`). Empty keeps the current behavior (HEAD of `pytorch`).'
+      torch_only:
+        type: boolean
+        default: false
+        description: 'Build only the torch wheel (microbench base / P'' wheels): torchvision, torchaudio and Triton come from the wheel set it is compared with, whose PyTorch commit (and so pins) is the same.'
 
 permissions: read-all
 
@@ -132,6 +140,10 @@ jobs:
             PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
             PYTORCH_COMMIT="${{ inputs.pytorch }}"
           fi
+          if [ -n "${{ inputs.pytorch_sha }}" ];then
+            # Pinned by the caller so that several builds of one run use the same commit
+            PYTORCH_COMMIT="${{ inputs.pytorch_sha }}"
+          fi
           if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
             TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
             TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
@@ -166,6 +178,7 @@ jobs:
             exit 1
           fi
       - name: Build Torchvision and Torchaudio
+        if: ${{ !inputs.torch_only }}
         run: |
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
@@ -191,6 +204,7 @@ jobs:
           pip install dist/*.whl
           cp dist/*.whl ${{ github.workspace }}
       - name: Build Triton
+        if: ${{ !inputs.torch_only }}
         run: |
           cd ./pytorch
           rm -rf triton_xpu-*.whl
@@ -229,6 +243,7 @@ jobs:
             cp triton_xpu-*.whl ${{ github.workspace }}
           fi
       - name: Torch Config
+        if: ${{ !inputs.torch_only }}
         run: |
           printenv
           python -c "import torch; print(torch.__config__.show())"
