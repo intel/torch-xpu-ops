@@ -14,7 +14,9 @@ on:
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
-  COST_TRACKING_ISSUE: 4251
+  # Cost rows go to a tracker outside this repo so they do not add noise here.
+  COST_TRACKING_REPO: torchxpubot/ci-infra
+  COST_TRACKING_ISSUE: 1
 
 permissions:
   contents: read
@@ -991,6 +993,8 @@ jobs:
       - name: Report usage cost
         if: always()
         uses: actions/github-script@v9
+        env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1015,10 +1019,18 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`review\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`review\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   ut-check:
@@ -1130,6 +1142,8 @@ jobs:
       - name: Report usage cost
         if: always() && steps.collect.outputs.has_data == 'true'
         uses: actions/github-script@v9
+        env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1154,10 +1168,18 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`ut-check\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`ut-check\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
       - name: Deterministic fallback
@@ -1660,6 +1682,8 @@ jobs:
       - name: Report usage cost
         if: always()
         uses: actions/github-script@v9
+        env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1683,10 +1707,18 @@ jobs:
             const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`fix\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
       # Keep the agent transcript (thinking + every tool call/result) for
@@ -1935,6 +1967,8 @@ jobs:
       - name: Report usage cost
         if: always()
         uses: actions/github-script@v9
+        env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1959,10 +1993,18 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`label\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`label\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   triage:
@@ -2146,6 +2188,8 @@ jobs:
       - name: Report usage cost
         if: always()
         uses: actions/github-script@v9
+        env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -2170,10 +2214,18 @@ jobs:
             const outTok = (usage.outputTokens || 0).toLocaleString();
             const status = result.is_error ? 'error' : 'ok';
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`triage\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              body: `\`${date}\` [\`triage\`](${jobUrl}) on ${context.repo.owner}/${context.repo.repo}#${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
   # Unit-test the bot scripts that carry non-trivial logic. The fix pipeline's
