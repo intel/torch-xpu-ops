@@ -111,7 +111,7 @@ def summary_md(sel):
     lines = [
         "## Microbench case selection",
         "",
-        f"- path: `{sel['path']}`, need_run: `{sel['need_run']}`, cases: {len(sel['cases'])}",
+        f"- path: `{sel['path']}`, cases: {len(sel['cases'])}",
     ]
     lines += [f"- {r}" for r in sel["reasons"]]
     return "\n".join(lines) + "\n"
@@ -123,12 +123,13 @@ def run_select(args):
     cfg = Config(args.config_dir)
     man = build_manifest()
     ids = select_by_spec(args.spec, man, cfg)
+    if not ids:
+        print(f"no case matches spec '{args.spec}'", file=sys.stderr)
+        return 1
     by_id = {m["case_id"]: m for m in man}
     path = FLOWS[args.flow]
     sel = {
         "path": path,
-        "need_run": bool(ids),
-        "need_base": path == "vs-base" and bool(ids),
         "reasons": [f"Cases selected by spec '{args.spec}'."]
         + ([REASONS[args.flow]] if args.flow in REASONS else []),
         "cases": ids,
@@ -146,9 +147,7 @@ def run_select(args):
             f.write(md)
     if args.github_output:
         with open(args.github_output, "a") as f:
-            for key in ("need_run", "need_base"):
-                f.write(f"{key}={str(sel[key]).lower()}\n")
-            f.write(f"path={sel['path']}\nn_cases={len(sel['cases'])}\n")
+            f.write(f"shards={json.dumps(list(range(args.shards)))}\n")
     return 0
 
 
@@ -165,6 +164,9 @@ def add_select_parser(sub):
     p.add_argument("--base", default=None, help="xpu-ops commit of the base wheel (ab)")
     p.add_argument("--head", default="HEAD", help="xpu-ops commit of the B / N wheel")
     p.add_argument("--pytorch-sha", default=None, help="recorded in selection.json")
+    p.add_argument(
+        "--shards", type=int, default=1, help="number of nightly-vs-reference jobs"
+    )
     p.add_argument("--config-dir", default=None)
     p.add_argument("--out", default="selection.json")
     p.add_argument("--summary", default=None)
