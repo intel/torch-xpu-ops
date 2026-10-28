@@ -52,7 +52,10 @@ skip_dict = {
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_execution_trace_xpu.py": None,
     "profiler/test_profiler_use_cases.py": None,
-    "profiler/test_profiler_xpu.py": None,
+    "profiler/test_profiler_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/5638 (not XPU-specific, fix: pytorch/pytorch#200914)
+        "test_source_multithreaded",
+    ),
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Tensor-likes are not close!
         # RuntimeError: value cannot be converted to type int without overflow
