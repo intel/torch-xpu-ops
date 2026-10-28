@@ -1143,7 +1143,7 @@ class TestCudaMultiGPU(TestCase):
             l.append(torch.randn(1024 * 1024 * 8, device=torch.device(f"{GPU_TYPE}:0")))
 
         no_leak()
-        regex = r"CUDA driver API confirmed .+ on device 0.+"
+        regex = rf"{GPU_TYPE.upper()} driver API confirmed .+ on device 0.+"
         if IS_JETSON:
             try:
                 leak_gpu0()
@@ -1170,7 +1170,8 @@ class TestCudaMultiGPU(TestCase):
                 )
 
             with self.assertRaisesRegex(
-                RuntimeError, r"CUDA driver API confirmed .+ on device 1.+"
+                RuntimeError,
+                rf"{GPU_TYPE.upper()} driver API confirmed .+ on device 1.+",
             ):
                 leak_gpu1()
 
