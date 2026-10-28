@@ -12,6 +12,7 @@ Nothing here imports torch at module load, so listing and selecting cases
 works without a wheel: case modules reach torch through lazy proxies.
 """
 
+import ast
 import hashlib
 import importlib
 import itertools
@@ -234,7 +235,8 @@ class OpBench:
 class Case:
     """One (op, params, pass) benchmark unit.
 
-    ``case_code_hash`` hashes the source of the case module: a change to
+    ``case_code_hash`` hashes the source of the op's bench and the shared code
+    of its case module (``bench_code_hashes``): a change to
     ``setup``/``reset``/``run`` keeps the ``case_id`` but invalidates its
     reference records.
     """
@@ -577,11 +579,58 @@ def _check_bench(where, bench):
     return errors
 
 
-def module_code_hash(mod_name):
-    """sha1 (12 hex) of the source of ``cases/<mod_name>.py``."""
-    path = sys.modules[f"{__package__}.cases.{mod_name}"].__file__
-    with open(path, "rb") as f:
-        return hashlib.sha1(f.read()).hexdigest()[:12]
+def _bound_names(node):
+    """Names a top-level statement binds."""
+    if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+        return {node.name}
+    targets = (
+        node.targets
+        if isinstance(node, ast.Assign)
+        else [getattr(node, "target", None)]
+    )
+    return {t.id for t in targets if isinstance(t, ast.Name)}
+
+
+def bench_code_hashes(mod_name):
+    """{bench class: sha1 (12 hex)} of ``cases/<mod_name>.py``. A bench hashes
+    the statements that bind it (and the benches they reference) plus every
+    statement that binds no bench (imports, helpers, constants), so editing one
+    op does not change the hash of the other ops of the module."""
+    mod = sys.modules[f"{__package__}.cases.{mod_name}"]
+    with open(mod.__file__, encoding="utf-8") as f:
+        src = f.read()
+    benches = {
+        name: obj
+        for name, obj in vars(mod).items()
+        if isinstance(obj, type) and issubclass(obj, OpBench) and obj.op
+    }
+    own, shared = {}, []
+    for node in ast.parse(src).body:
+        bound = _bound_names(node) & benches.keys()
+        for name in bound:
+            own.setdefault(name, []).append(node)
+        if not bound:
+            shared.append(node)
+    out = {}
+    for name, cls in benches.items():
+        if name not in own:
+            # not bound by a top-level statement: the whole module
+            out[cls] = hashlib.sha1(src.encode()).hexdigest()[:12]
+            continue
+        deps, todo = {name}, [name]
+        while todo:
+            for node in own.get(todo.pop(), ()):
+                for n in ast.walk(node):
+                    if isinstance(n, ast.Name) and n.id in benches and n.id not in deps:
+                        deps.add(n.id)
+                        todo.append(n.id)
+        nodes = shared + [n for d in deps for n in own.get(d, ())]
+        text = "\n".join(
+            ast.get_source_segment(src, n)
+            for n in sorted(nodes, key=lambda n: n.lineno)
+        )
+        out[cls] = hashlib.sha1(text.encode()).hexdigest()[:12]
+    return out
 
 
 def load_cases(strict=True):
@@ -592,12 +641,11 @@ def load_cases(strict=True):
             errors.append(f"op {bench.op!r} defined in {ops[bench.op]} and {mod_name}")
         errors += _check_bench(f"{mod_name}:{bench.op}", bench)
         if mod_name not in hashes:
-            hashes[mod_name] = module_code_hash(mod_name)
+            hashes[mod_name] = bench_code_hashes(mod_name)
+        code_hash = hashes[mod_name][type(bench)]
         for p in bench.params:
             for pass_ in bench.passes_for(p):
-                case = Case(
-                    bench, dict(p), pass_, module=mod_name, code_hash=hashes[mod_name]
-                )
+                case = Case(bench, dict(p), pass_, module=mod_name, code_hash=code_hash)
                 if case.case_id in cases:
                     errors.append(f"case_id collision: {case} vs {cases[case.case_id]}")
                 cases[case.case_id] = case
