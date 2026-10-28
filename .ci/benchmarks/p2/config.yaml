@@ -14,10 +14,10 @@ suite:
 scenario:
   - accuracy
   - performance
-# Model lists per suite and mode.
+# Model lists per suite and mode. Total cases: 223.
 models:
   torchbench:
-    inference:
+    inference:  # 44 models
     - detectron2_fasterrcnn_r_101_c4
     - detectron2_fasterrcnn_r_101_dc5
     - detectron2_fasterrcnn_r_101_fpn
@@ -62,7 +62,7 @@ models:
     - timm_vision_transformer_large
     - timm_vovnet
     - torchrec_dlrm
-    training:
+    training:  # 34 models
     - detectron2_maskrcnn
     - detectron2_maskrcnn_r_50_c4
     - hf_Albert
@@ -98,7 +98,7 @@ models:
     - timm_vovnet
     - torchrec_dlrm
   timm_models:
-    inference:
+    inference:  # 47 models
     - botnet26t_256
     - cait_m36_384
     - coat_lite_mini
@@ -146,7 +146,7 @@ models:
     - vit_base_patch16_224
     - volo_d1_224
     - xcit_large_24_p8_224
-    training:
+    training:  # 47 models
     - botnet26t_256
     - cait_m36_384
     - coat_lite_mini
@@ -195,7 +195,7 @@ models:
     - volo_d1_224
     - xcit_large_24_p8_224
   huggingface:
-    inference:
+    inference:  # 23 models
     - AlbertForQuestionAnswering
     - BartForConditionalGeneration
     - BertForQuestionAnswering
@@ -219,7 +219,7 @@ models:
     - PegasusForConditionalGeneration
     - PLBartForConditionalGeneration
     - RobertaForQuestionAnswering
-    training:
+    training:  # 28 models
     - AlbertForQuestionAnswering
     - BartForConditionalGeneration
     - BertForQuestionAnswering

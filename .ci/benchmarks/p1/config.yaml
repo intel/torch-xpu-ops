@@ -18,7 +18,7 @@ suite:
 scenario:
   - accuracy
   - performance
-# Model lists per suite and mode, mirroring the CSV columns.
+# Model lists per suite and mode. Total cases: 194.
 models:
   torchbench:
     inference:
