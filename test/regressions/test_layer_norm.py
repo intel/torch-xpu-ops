@@ -85,6 +85,29 @@ class TestLayerNorm(TestCase):
         tol = 1e-5 if dtype == torch.float32 else 1e-2
         self.assertEqual(y_xpu.float().cpu(), y_cpu, atol=tol, rtol=tol)
 
+    @parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_layer_norm_low_precision_accuracy(self, dtype):
+        shape = (1024, 32768)
+        generator = torch.Generator().manual_seed(0)
+        x = torch.randn(shape, generator=generator).to(device=xpu_device, dtype=dtype)
+        weight = torch.randn(shape[-1], generator=generator).to(
+            device=xpu_device, dtype=dtype
+        )
+        bias = torch.randn(shape[-1], generator=generator).to(
+            device=xpu_device, dtype=dtype
+        )
+        normalized_shape = (shape[-1],)
+
+        # Promote quantized inputs so the baseline excludes input quantization error.
+        baseline = nn.functional.layer_norm(
+            x.float(), normalized_shape, weight.float(), bias.float(), eps=1e-5
+        ).to(dtype)
+        actual = nn.functional.layer_norm(x, normalized_shape, weight, bias, eps=1e-5)
+
+        atol = 1e-5
+        rtol = 1e-3 if dtype == torch.float16 else 1e-2
+        self.assertEqual(actual, baseline, atol=atol, rtol=rtol)
+
 
 class TestLayerNormMultidimBackward(TestCase):
     @parametrize("has_weight,has_bias", [(True, True), (True, False), (False, True)])

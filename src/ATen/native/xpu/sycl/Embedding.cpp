@@ -40,6 +40,9 @@ Tensor embedding_dense_backward_kernel(
 
   auto num_indices = indices.numel();
   auto grad = grad_.contiguous().view({num_indices, grad_.size(-1)});
+  if (num_indices == 0 || grad_.size(-1) == 0) {
+    return at::zeros({num_weights, grad_.size(-1)}, grad_.options());
+  }
 
   auto sorted_indices =
       at::empty_like(indices, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
@@ -208,7 +211,9 @@ Tensor& embedding_renorm_kernel(
                 f) -
             unique_indices.data_ptr<index_t>();
 
-        int dim = self.stride(0);
+        // Row width must come from size(1); stride(0) differs from it for a
+        // zero-width or otherwise non-contiguous weight.
+        int dim = self.size(1);
 
         AT_DISPATCH_V2(
             self.scalar_type(),
