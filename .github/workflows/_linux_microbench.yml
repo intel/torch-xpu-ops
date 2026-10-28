@@ -48,6 +48,10 @@ on:
         type: string
         default: ''
         description: xpu-ops commit of the B wheel / this nightly; its benchmark code runs on every side
+      head_repo:
+        type: string
+        default: ''
+        description: owner/name of the repository of head_sha (a fork); empty is this repository
       base_sha:
         type: string
         default: ''
@@ -116,6 +120,7 @@ jobs:
       - name: Checkout torch-xpu-ops (benchmark code of the B wheel / this nightly)
         uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.head_repo || github.repository }}
           ref: ${{ inputs.head_sha || github.sha }}
           # candidate commits of a nightly regression need the history
           fetch-depth: ${{ inputs.scope == 'nightly-vs-reference' && 0 || 1 }}
@@ -139,6 +144,12 @@ jobs:
         with:
           pattern: Torch-XPU-Wheel-*
           path: ${{ github.workspace }}/mb_wheels
+      - name: Download the base wheel of this run (on-demand base, or P')
+        if: ${{ inputs.scope == 'pr-vs-base' || inputs.scope == 'nightly-xpu-ops-vs-pytorch' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: Microbench-Base-Wheel-*
+          path: ${{ github.workspace }}/mb_base_wheels
       - name: Download nightly shard results
         if: ${{ inputs.scope == 'nightly-xpu-ops-vs-pytorch' }}
         uses: actions/download-artifact@v8
@@ -201,7 +212,7 @@ jobs:
           if [ "${{ inputs.scope }}" == "pr-vs-base" ] || [ "${{ inputs.scope }}" == "nightly-xpu-ops-vs-pytorch" ]; then
             # torch-only base build (on-demand base, or P'): torchvision, torchaudio
             # and Triton of this run share its PyTorch commit and pins
-            A_DIR=$(pick "${WS}/mb_wheels" 'Torch-XPU-Wheel-.*-baseline$')
+            A_DIR=$(pick "${WS}/mb_base_wheels" 'Microbench-Base-Wheel-')
             [ -n "$A_DIR" ] && [ -n "$(find "$A_DIR" -maxdepth 1 -name 'torch-*.whl')" ] || infra "base wheel artifact not found"
             venv venv_a $(find "$A_DIR" -maxdepth 1 -name 'torch-*.whl') $(find "$B_DIR" -maxdepth 1 -name '*.whl' ! -name 'torch-*')
             echo "MB_PY_BASE=${WS}/venv_a/bin/python" >> "${GITHUB_ENV}"

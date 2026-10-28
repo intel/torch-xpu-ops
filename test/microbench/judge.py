@@ -770,11 +770,11 @@ def run_nightly_check(args):
     if not shards:
         print("no nightly-vs-reference results")
         return 1
-    first = shards[0][1]
-    metric = first.get("metric", "device_us")
-    cur = dict(first.get("cur") or {})
-    prev = {}
+    metric = shards[0][1].get("metric", "device_us")
+    cur, prev = {}, {}
     for _, d in shards:
+        # a failed shard has no PyTorch SHA; take every value any shard has
+        cur.update({k: v for k, v in (d.get("cur") or {}).items() if v})
         prev.update({k: v for k, v in (d.get("prev") or {}).items() if v})
     now = time.time()
     state = reference.load_state(args.state)

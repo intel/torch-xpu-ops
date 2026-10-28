@@ -41,6 +41,10 @@ on:
         type: boolean
         default: false
         description: 'Build only the torch wheel (microbench base / P'' wheels): torchvision, torchaudio and Triton come from the wheel set it is compared with, whose PyTorch commit (and so pins) is the same.'
+      wheel_artifact:
+        type: string
+        default: 'Torch-XPU-Wheel'
+        description: 'Name prefix of the wheel artifact. Wheels that the test jobs of the same run must not install (microbench base / P'') use another prefix, as those jobs download `Torch-XPU-Wheel-*`.'
 
 permissions: read-all
 
@@ -258,7 +262,7 @@ jobs:
         if: ${{ success() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: ${{ inputs.wheel_artifact }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
