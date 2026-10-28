@@ -1415,7 +1415,7 @@ def _screen_lines(res, label="screening"):
 def run_pr_vs_reference(args, sel, cfg):
     screening = cfg.screening
     scr = screening["pr_vs_reference"]
-    gating, hist = cfg.gating, load_history(args.history)
+    gating = cfg.gating
     metric = _metric(args)
     side_info = {"single": {"xpu_ops_sha": args.head_sha, "role": "pr_vs_reference"}}
     sched = Scheduler(args, {"single": args.python}, "single")
@@ -1457,9 +1457,7 @@ def run_pr_vs_reference(args, sel, cfg):
                 r.update(status="always_ab", reason="screen_mode always_ab")
 
         def eligible(cid):
-            return cid in man and not judge.not_blocking_reasons(
-                man[cid], gating, hist["noise_stats"]
-            )
+            return cid in man and not judge.not_blocking_reasons(man[cid], gating)
 
         need = [
             c for c, r in screen.items() if r["status"] in AB_STATUSES and eligible(c)
@@ -1739,7 +1737,7 @@ def run_nightly_vs_reference(args, sel, cfg):
                 rc.meta,
                 selection={"cases": recheck},
                 gating=gating,
-                noise=hist["noise_stats"],
+                noise=judge.merge_noise(hist["noise_stats"], noise),
             )
             for row in res["rows"]:
                 m = row["metrics"].get("device") or row["metrics"].get("e2e") or {}

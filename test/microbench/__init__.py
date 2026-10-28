@@ -69,6 +69,6 @@ def read_jsonl(path):
 
 
 def load_history(path=None):
-    """config/history.json: noise_stats (A/A calibration), case_cost."""
+    """config/history.json: noise_stats (A/A deltas), case_cost."""
     data = load_json(path or CONFIG_DIR / "history.json", {}) or {}
     return {k: data.get(k) or {} for k in ("noise_stats", "case_cost")}

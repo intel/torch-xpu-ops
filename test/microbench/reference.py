@@ -43,6 +43,9 @@ STATE_FILE = "reference.jsonl"
 KEEP_DAYS = 30
 DAY = 86400.0
 NIGHTLY_ROLES = ("nightly_vs_reference",)
+# A/A runs a case needs for its delta: the nightly A/A takes a seventh of the
+# PR-tier cases, so 30 days of state hold 3-4 A/A runs per case
+MIN_AA_RUNS = 3
 
 DEFAULT_SCREENING = {
     "pr_vs_reference": {
@@ -308,8 +311,9 @@ def noise_stats(state, defaults, jumps=None):
             ),
             "proc": _median([s for s in procs if s is not None]),
             "ab": _spread(logr),
-            "delta": math.expm1(sorted(map(abs, logr))[int(0.95 * (len(logr) - 1))])
-            if len(logr) >= 5
+            # the largest A/A deviation (a few runs per case)
+            "delta": math.expm1(max(map(abs, logr)))
+            if len(logr) >= MIN_AA_RUNS
             else None,
             "runs": len({e.get("run_id") for e in nightly}),
             "aa_runs": len(logr),

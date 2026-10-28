@@ -301,10 +301,11 @@ def run_srcmap(args):
 # Noise calibration and case costs
 # ---------------------------------------------------------------------------
 # ``calibrate``  A/A runs (same wheel on both sides, e.g. 50+ on-demand A/A
-#                runs) -> per-case delta, CI width and false-positive count.
-#                A case is ``calibrated`` (allowed to block PRs) when it has at
-#                least ``--min-runs`` runs, no false positive, and a p95 CI
-#                width within ``max_ci_width``. Written into history.json.
+#                runs) -> per-case delta, CI width and false-positive count,
+#                written into history.json; the verdicts use the delta when
+#                the nightly A/A has none. ``calibrated`` (at least
+#                ``--min-runs`` runs, no false positive, p95 CI width within
+#                ``max_ci_width``) is informational.
 # ``summarize``  any runs -> per-case between-process CV and CI width, plus
 #                measured seconds per worker process (history.json case_cost).
 

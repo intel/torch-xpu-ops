@@ -50,7 +50,6 @@ DEFAULT_GATING = {
         "random": 0.08,
         "host_bound": 0.05,
     },
-    "require_calibration": True,
     "e2e_blocking_noise_classes": [],
     "e2e_threshold": 0.20,
     "n_boot": 2000,
@@ -208,7 +207,7 @@ def load_records(raw_dir):
     return recs
 
 
-def not_blocking_reasons(man, gating, noise, quarantine=None):
+def not_blocking_reasons(man, gating, quarantine=None):
     """Why a case (manifest or verdict row) cannot block a PR; empty = it can."""
     q_ids, q_ops = quarantine or gating.get("quarantine", ({}, {}))
     return [
@@ -217,14 +216,29 @@ def not_blocking_reasons(man, gating, noise, quarantine=None):
             ("nightly tier", man.get("tier") != "pr"),
             ("op excluded from gating", not man.get("gating", True)),
             ("quarantined", man.get("case_id") in q_ids or man.get("op") in q_ops),
-            (
-                "not A/A calibrated yet",
-                gating["require_calibration"]
-                and not (noise.get(man.get("case_id")) or {}).get("calibrated"),
-            ),
         )
         if cond
     ]
+
+
+def case_delta(cid, noise_class, gating, noise):
+    """Noise margin of a case: the default of its noise class, raised to the
+    case's measured A/A delta when that is larger (never lowered: the nightly
+    A/A gives a handful of runs per case)."""
+    default = gating["default_delta"].get(
+        noise_class, gating["default_delta"]["normal"]
+    )
+    return max(default, (noise.get(cid) or {}).get("delta") or 0.0)
+
+
+def merge_noise(history_noise, state_noise):
+    """Per-case noise: history.json, with the delta of the nightly A/A in the
+    reference state taking over where it has one."""
+    out = {cid: dict(v) for cid, v in (history_noise or {}).items()}
+    for cid, st in (state_noise or {}).items():
+        if (st or {}).get("delta") is not None:
+            out.setdefault(cid, {})["delta"] = st["delta"]
+    return out
 
 
 def _final(screen, confirm, gating, delta, p_adj=None):
@@ -306,12 +320,7 @@ def judge(
     for cid in (selection or {}).get("cases") or sorted(status):
         man = cases_manifest.get(cid) or dict(unknown, label=cid)
         nc = man.get("noise_class", "normal")
-        row = _row(
-            cid,
-            man,
-            (noise.get(cid) or {}).get("delta")
-            or gating["default_delta"].get(nc, 0.03),
-        )
+        row = _row(cid, man, case_delta(cid, nc, gating, noise))
         rows.append(row)
         st = status.get(cid, {"A": set(), "B": set()})
         if "ok" not in st["B"]:
@@ -390,17 +399,17 @@ def judge(
         r["verdict"] = (
             r["metrics"].get("device") or r["metrics"].get("e2e") or {}
         ).get("verdict")
-        set_blocking(r, gating, noise, (q_ids, q_ops), mode)
+        set_blocking(r, gating, (q_ids, q_ops), mode)
 
     return summarize_rows({"mode": mode, "rows": rows, "gating": gating})
 
 
-def set_blocking(r, gating, noise, quarantine, mode):
+def set_blocking(r, gating, quarantine, mode):
     """Blocking flags of one verdict row: only device-time regressions (E2E
     for noise classes listed in gating.yaml) of cases that can block."""
     e2e_gates = r.get("noise_class") in gating["e2e_blocking_noise_classes"]
     reasons = (["A/A run"] if mode != "ab" else []) + not_blocking_reasons(
-        r, gating, noise, quarantine
+        r, gating, quarantine
     )
     r["blocking_eligible"] = not reasons
     r["not_blocking_reasons"] = reasons
@@ -453,11 +462,7 @@ def summarize_rows(result):
 
 def _screened_row(cid, man, gating, noise, s, truncated):
     nc = man.get("noise_class", "normal")
-    row = _row(
-        cid,
-        man,
-        (noise.get(cid) or {}).get("delta") or gating["default_delta"].get(nc, 0.03),
-    )
+    row = _row(cid, man, case_delta(cid, nc, gating, noise))
     row.update(status="screened", screen=s)
     st = s.get("status")
     if st == "error":
@@ -515,7 +520,7 @@ def combine_pr(result, screen_doc, ab_doc, manifest, gating, noise, ab_possible=
             )
             result["rows"].append(r)
             rows[cid] = r
-            set_blocking(r, gating, noise, q, "ab" if ab_possible else "aa")
+            set_blocking(r, gating, q, "ab" if ab_possible else "aa")
             continue
         r["screen"] = s
         st, dev = s.get("status"), r["metrics"].get("device") or r["metrics"].get("e2e")
@@ -535,7 +540,7 @@ def combine_pr(result, screen_doc, ab_doc, manifest, gating, noise, ab_possible=
                 reason=f"screening said improvement, A/B said {v}",
             )
         r["verdict"] = dev.get("verdict")
-        set_blocking(r, gating, noise, q, result["mode"])
+        set_blocking(r, gating, q, result["mode"])
     if screen and not ab_possible:
         result["mode"] = "aa"
     return summarize_rows(result)
@@ -1030,7 +1035,7 @@ def attribution_results(attr_dir, gating, noise, metric):
     for (cid, stage), g in groups.items():
         if stage != "attribution" or not all(g.get(s) for s in ("P", "Pp", "N")):
             continue
-        delta = (noise.get(cid) or {}).get("delta") or gating["default_delta"]["normal"]
+        delta = case_delta(cid, "normal", gating, noise)
         r_xpu = compare(g["Pp"], g["N"], delta, gating["n_boot"])
         r_pt = compare(g["P"], g["Pp"], delta, gating["n_boot"], seed=1)
         out[cid] = {
@@ -1133,6 +1138,10 @@ def run_nightly_check(args):
     for _, d in shards:
         prev.update({k: v for k, v in (d.get("prev") or {}).items() if v})
     now = time.time()
+    state = reference.load_state(args.state)
+    noise = merge_noise(
+        hist["noise_stats"], reference.noise_stats(state, screening["default_noise"])
+    )
 
     detect, recheck, candidates, kernels, shard_of = {}, {}, {}, {}, {}
     new_entries = []
@@ -1149,9 +1158,7 @@ def run_nightly_check(args):
         new_entries += reference.measure_entries(
             recs, args.run_id or cur.get("run_id"), now, metric=metric
         )
-    attr = attribution_results(
-        args.attribution_dir, gating, hist["noise_stats"], metric
-    )
+    attr = attribution_results(args.attribution_dir, gating, noise, metric)
 
     # classify confirmed regressions
     confirmed = {c: v for c, v in recheck.items() if v.get("verdict") == "regression"}
@@ -1193,13 +1200,12 @@ def run_nightly_check(args):
             )
     for cid in improvements:
         jumps.append(reference.jump_entry(cid, prev, cur, "improvement", (), now))
-    state = reference.load_state(args.state)
     new_state = reference.roll(state, new_entries + jumps, now)
     if args.state_out:
         reference.save_state(args.state_out, new_state)
 
     # issue groups: every regression the recheck A/B confirmed, except
-    # quarantined cases and ops kept out of gating; no A/A calibration needed
+    # quarantined cases and ops kept out of gating
     groups = {}
     report_only = []
     for cid, c in sorted(cat.items()):
@@ -1207,9 +1213,7 @@ def run_nightly_check(args):
         why = [
             r
             for r in not_blocking_reasons(
-                case.manifest() if case else {"case_id": cid},
-                dict(gating, require_calibration=False),
-                hist["noise_stats"],
+                case.manifest() if case else {"case_id": cid}, gating
             )
             if r != "nightly tier"
         ]
@@ -1462,9 +1466,10 @@ def run_check(args):
         {},
     )
     gating = load_gating(args.gating)
-    if args.require_calibration is not None:
-        gating["require_calibration"] = args.require_calibration == "true"
-    hist = load_history(args.history)
+    # the select job matched the nightly reference state: its A/A deltas
+    noise = merge_noise(
+        load_history(args.history)["noise_stats"], selection.get("noise")
+    )
     manifest = {cid: c.manifest() for cid, c in load_cases().items()}
     if ab_dir:
         cases = (ab_doc or {}).get("cases") or selection.get("cases")
@@ -1474,7 +1479,7 @@ def run_check(args):
             meta,
             selection={"cases": cases},
             gating=gating,
-            noise=hist["noise_stats"],
+            noise=noise,
         )
     else:
         result = summarize_rows({"mode": "ab", "rows": [], "gating": gating})
@@ -1484,7 +1489,7 @@ def run_check(args):
         ab_doc,
         manifest,
         gating,
-        hist["noise_stats"],
+        noise,
         selection.get("ab_possible", True),
     )
 
@@ -1568,7 +1573,6 @@ def add_check_parser(sub):
     p.add_argument("--out-dir", required=True)
     p.add_argument("--gating", default=None)
     p.add_argument("--history", default=None, help="default: config/history.json")
-    p.add_argument("--require-calibration", choices=["true", "false"], default=None)
     p.add_argument("--pr", default=None)
     p.add_argument("--gh-repo", default=None)
     p.add_argument("--head-sha", default=None)

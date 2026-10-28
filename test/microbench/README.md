@@ -25,7 +25,7 @@ python -m microbench <command> --help
 | `github.py` | Labels, maintainers, override record, PR comment (privileged workflows) |
 | `tools/` | `maintenance.py` (coverage report, unmapped-file report for `op_source_map.yaml`, noise calibration) and the config consistency check `test_registry.py` |
 | `cases/` | One module per op family (`elementwise.py`, `pooling.py`, ...); one `OpBench` class per op and pass set |
-| `config/` | `op_source_map.yaml` (changed file -> ops, core set), `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, PR budgets, machines); optional `history.json` written by `noise calibrate` (A/A calibration, case costs) |
+| `config/` | `op_source_map.yaml` (changed file -> ops, core set), `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, screening / detection thresholds, `always_ab`, PR budgets, machines); optional `history.json` written by `noise calibrate` (A/A deltas, case costs) |
 
 Listing and selecting cases never imports torch: cases reach torch through
 lazy proxies in `case.py`, so the ubuntu CI jobs only need `pyyaml` and `numpy`.
@@ -239,8 +239,14 @@ process noise of the case, computed from the reference state. Screening only
 decides whether to build the base and A/B; only A/B results block a PR or
 file an issue. Parameters: the screening sections of `config/gating.yaml`.
 
-Only cases with A/A calibration data (`noise_stats` in `config/history.json`,
-`calibrated: true`) can block a PR:
+**Noise margin `delta`.** The default of the case's noise class
+(`default_delta` in `config/gating.yaml`), raised to the case's own A/A
+delta when that is larger: the largest A/A deviation over at least 3 nightly
+A/A runs in the reference state (each nightly A/A-tests a seventh of the
+PR-tier cases), else the delta in `config/history.json`. Every PR-tier case
+can block a PR, with no calibration step; noisy cases are taken out of
+gating with the `quarantine` list, which the nightly report suggests.
+`history.json` can still carry deltas from dedicated A/A runs:
 
 ```bash
 python -m microbench noise calibrate out_aa_* --out microbench/config/history.json --min-runs 20
@@ -331,6 +337,6 @@ driver upgrade).
   maintainer), the improvements policy, the PR budgets,
   and `machines` (per-host cards, NUMA/CPU binding, protocol overrides,
   pre-run limits).
-* `history.json` (optional, written by `noise calibrate`): A/A noise
-  statistics (which cases may block) and measured case costs (LPT sharding,
+* `history.json` (optional, written by `noise calibrate`): A/A deltas (used
+  where the nightly A/A has none) and measured case costs (LPT sharding,
   budget).

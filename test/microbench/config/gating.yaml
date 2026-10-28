@@ -1,13 +1,14 @@
 # gating.yaml - statistical decision parameters.
 #
 # A case blocks a PR only if all hold: A/B run, PR tier, op not excluded from
-# gating, not quarantined, A/A calibrated (history.json noise_stats "calibrated"),
-# device-time verdict "regression" in both screening and confirmation.
+# gating, not quarantined, device-time verdict "regression" in both screening
+# and confirmation.
 
 # regression / improvement threshold on median(B) / median(A)
 threshold: 0.10
-# per-case noise margin delta when history.json noise_stats has none, by noise_class;
-# regression also needs CI lower bound > 1 + delta
+# per-case noise margin delta by noise_class; a case whose A/A (nightly A/A in
+# the reference state, else history.json) shows a larger delta uses that one.
+# Regression also needs CI lower bound > 1 + delta
 default_delta:
   normal: 0.03
   atomic: 0.08
@@ -17,8 +18,6 @@ default_delta:
 alpha: 0.05
 # CI wider than this (hi/lo - 1) is inconclusive
 max_ci_width: 0.10
-# only cases with A/A calibration data may block
-require_calibration: true
 # E2E is report-only; list noise classes whose E2E may block (e.g. host_bound)
 e2e_blocking_noise_classes: []
 e2e_threshold: 0.20
