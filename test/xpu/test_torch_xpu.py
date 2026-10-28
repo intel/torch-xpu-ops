@@ -7502,7 +7502,10 @@ class TestTorchDeviceType(TestCase):
                 self.assertTrue(expect.eq(t).all().item())
 
         # Empty inputs, including all-empty splits, copy nothing
-        for shape, dim, split_sizes in (((30, 0, 50), 1, [0, 0]), ((0, 40), 1, [10, 30])):
+        for shape, dim, split_sizes in (
+            ((30, 0, 50), 1, [0, 0]),
+            ((0, 40), 1, [10, 30]),
+        ):
             x = torch.rand(*shape, device=device)
             views = x.split_with_sizes(split_sizes, dim=dim)
             out = [torch.empty_like(v) for v in views]
