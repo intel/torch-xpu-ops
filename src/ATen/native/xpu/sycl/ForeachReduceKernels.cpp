@@ -35,7 +35,7 @@ template <
     int depth = 1,
     int r_args_depth = 1,
     int res_arg_index = 0>
-struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+struct LpNormFunctor {
   template <typename TLA, typename TLW>
   void operator()(
       const int64_t chunk_size,
@@ -109,30 +109,28 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
-    opmath_t sum_val;
-    if constexpr (norm_type == NormType::L1 || norm_type == NormType::L2) {
-      sum_val =
-          GroupReduceSumWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
-    } else {
-      sum_val =
-          GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
-    }
+    constexpr int slm_size = get_group_reduce_group_size(SIMD);
+    syclexp::work_group_static<opmath_t[slm_size]> shared_;
+
+    auto sum_val = norm_type == NormType::L1 || norm_type == NormType::L2
+        ? GroupReduceSumWithoutBroadcast_StaticSlm<opmath_t, SIMD, slm_size>(
+              item_id, val, shared_)
+        : GroupReduceMaxWithoutBroadcast_StaticSlm<opmath_t, SIMD, slm_size>(
+              item_id, val, shared_);
 
     if (item_idx == 0) {
       output_per_tensor[tensor_loc * max_chunks_per_tensor + chunk_idx] =
           sum_val;
     }
   }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ =
-        sycl_local_acc_t<opmath_t>(get_group_reduce_group_size(SIMD), cgh);
-  }
-
- private:
-  sycl_local_acc_t<opmath_t> shared_;
 };
 
-template <typename out_t, NormType norm_type, typename opmath_t, int SIMD>
+template <
+    typename out_t,
+    NormType norm_type,
+    typename opmath_t,
+    int SIMD,
+    bool apply_root = true>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 void lpnorm_chunk_reduce_kernel(
@@ -167,10 +165,12 @@ void lpnorm_chunk_reduce_kernel(
         GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
   }
   if (lid == 0) {
-    if constexpr (norm_type == NormType::L1 || norm_type == NormType::LInf) {
-      *(ret_per_tensor[group_id]) = sum_val;
-    } else {
+    // L2 norm applies the final sqrt; powsum (apply_root == false) keeps the
+    // raw sum of squares. L1 and LInf never apply a root.
+    if constexpr (norm_type == NormType::L2 && apply_root) {
       *(ret_per_tensor[group_id]) = sycl::sqrt((opmath_t)sum_val);
+    } else {
+      *(ret_per_tensor[group_id]) = sum_val;
     }
   }
 }
@@ -187,8 +187,12 @@ void launch_lpnorm_chunk_reduce_kernel(
     int wg_size,
     int max_chunks_per_tensor,
     int n_tensor) {
-  sycl_kernel_submit<
-      lpnorm_chunk_reduce_kernel<out_t, norm_type, out_opmath_t, SIMD>>(
+  sycl_kernel_submit<lpnorm_chunk_reduce_kernel<
+      out_t,
+      norm_type,
+      out_opmath_t,
+      SIMD,
+      apply_root>>(
       sycl::range<1>(n_tensor * wg_size),
       sycl::range<1>(wg_size),
       getCurrentSYCLQueue(),
@@ -526,7 +530,7 @@ std::vector<Tensor> foreach_powsum_kernel(
 }
 
 template <typename T, int SIMD>
-struct LpMaxFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+struct LpMaxFunctor {
   template <typename TLA, typename TLW>
   void operator()(
       int64_t chunk_size,
@@ -578,25 +582,20 @@ struct LpMaxFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
+    syclexp::work_group_static<T[SIMD]> shared_;
+
     auto val = T(std::numeric_limits<T>::lowest());
     for (int i = 0; i < kILP; i++) {
       val = max_impl(val, vals[i]);
     }
-    auto final_val =
-        GroupReduceMaxWithoutBroadcast<T, SIMD>(item, val, shared_);
+    auto final_val = GroupReduceMaxWithoutBroadcast_StaticSlm<T, SIMD, SIMD>(
+        item, val, shared_);
 
     if (item_id == 0) {
       output_per_tensor_ptr[tensor_loc * max_chunks_per_tensor + chunk_idx] =
           final_val;
     }
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<T>(SIMD, cgh);
-  }
-
- private:
-  sycl_local_acc_t<T> shared_;
 };
 
 template <typename T, int SIMD>

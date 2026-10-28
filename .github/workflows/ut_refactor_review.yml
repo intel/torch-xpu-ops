@@ -10,7 +10,9 @@ on:
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
-  COST_TRACKING_ISSUE: 4251
+  # Cost rows go to a tracker outside this repo so they do not add noise here.
+  COST_TRACKING_REPO: torchxpubot/ci-infra
+  COST_TRACKING_ISSUE: 1
 
 permissions:
   contents: read
@@ -108,6 +110,8 @@ jobs:
       - name: Report usage cost
         if: always()
         uses: actions/github-script@v9
+        env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -133,8 +137,16 @@ jobs:
             const status = result.is_error ? 'error' : 'ok';
             const pr = '${{ github.event.inputs.pytorch_pr }}';
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
+            const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
+              owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
               body: `\`${date}\` [\`ut-review\`](${jobUrl}) on **pytorch/pytorch[#${pr}]** — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });

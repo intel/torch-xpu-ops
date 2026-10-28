@@ -24,8 +24,8 @@ on:
         description: Triton by default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch'
       python:
         type: string
-        default: '3.10'
-        description: Python version by default is '3.10'
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
       ut:
         type: string
         default: ''
@@ -33,7 +33,7 @@ on:
       suite:
         type: string
         default: ''
-        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench,pt2e'. Delimiter is comma
+        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench'. Delimiter is comma
       dt:
         type: string
         default: ''
@@ -101,14 +101,14 @@ jobs:
               exit 1
             fi
             ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
+            suite='["huggingface","timm_models","torchbench"]'
             # Weekly also runs the upstream UT scopes
             if [[ "${test_type}" == *"-weekly" ]];then
               ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed","upstream_distributed","upstream_inductor","upstream_default"]'
             fi
-            suite='["huggingface","timm_models","torchbench","pt2e"]'
             scenario='["accuracy","performance"]'
             triton=''
-            python='3.10'
+            python=''
           else
             pytorch="${{ inputs.pytorch }}"
             if [ -z ${{ inputs.torch_xpu_ops }} ];then
@@ -269,6 +269,7 @@ jobs:
       runner: windows-build
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      triton: ${{ needs.Conditions-Filter.outputs.triton }}
 
   Windows-Nightly-Ondemand-UT-Tests:
     name: windows-ut

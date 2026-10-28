@@ -55,7 +55,9 @@ macro(set_build_flags)
       "Ensure SYCLToolkit is found before building torch-xpu-ops.")
   endif()
   list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS SYCL_COMPILER_VERSION=${SYCL_COMPILER_VERSION})
-  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU=${USE_XPU})
+  # Keep the bare spelling: it must match PyTorch's add_compile_definitions(USE_XPU)
+  # so FindSYCL's exact-string dedup drops it instead of redefining the macro.
+  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU)
 
   set(CPP_STD c++20)
   # -- Host flags (SYCL_CXX_FLAGS)
@@ -84,7 +86,8 @@ macro(set_build_flags)
     list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
       -Wno-stringop-overflow
       -Wno-dangling-reference
-      -Wno-error=dangling-reference)
+      -Wno-error=dangling-reference
+      -Wno-interference-size)
     CHECK_SYCL_FLAG("-Wno-maybe-uninitialized;-Werror=unknown-warning-option" SUPPORTS_NO_MAYBE_UNINITIALIZED)
     if(NOT SUPPORTS_NO_MAYBE_UNINITIALIZED)
       list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL -Wno-maybe-uninitialized)
@@ -223,6 +226,7 @@ macro(set_build_flags)
   list(APPEND SYCL_DEVICE_LINK_FLAGS --offload-compress)
   list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-sqrt)
   list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-div)
+  list(APPEND SYCL_DEVICE_LINK_FLAGS -fno-sycl-id-queries-fit-in-int)
 
   string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-poison-unsupported-fp64-kernels")
   string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-intel-enable-auto-large-GRF-mode")
@@ -230,6 +234,25 @@ macro(set_build_flags)
 
   if(REPLACE_FLAGS_FOR_SYCLTLA)
     set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen)
+    # FlashAttention's softmax subtracts a rounded row maximum from s * scale.
+    # Contracting those into an FMA leaves the product unrounded, so the
+    # largest element no longer cancels to zero; the residual is ~ulp(s*scale)
+    # and exp2 turns it into inf for large inputs, which poisons the output
+    # with NaN. See pytorch/pytorch#121558, which CUDA addresses via its
+    # UNFUSE_FMA macro. This must stay after the -ffp-contract=fast set above;
+    # the last setting wins.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      set(_sycltla_no_fma_flag /Qfma-)
+    else()
+      set(_sycltla_no_fma_flag -ffp-contract=off)
+    endif()
+    CHECK_SYCL_FLAG("${_sycltla_no_fma_flag}" _supports_no_fma)
+    if(NOT _supports_no_fma)
+      message(FATAL_ERROR
+        "SYCL compiler ${SYCL_COMPILER} rejects ${_sycltla_no_fma_flag}; FMA "
+        "contraction would make FlashAttention return NaN for large inputs.")
+    endif()
+    list(APPEND SYCL_COMPILE_FLAGS ${_sycltla_no_fma_flag})
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       # Keep third-party SYCL-TLA diagnostics visible without making them
       # errors in WERROR builds. This flag set is captured only by the

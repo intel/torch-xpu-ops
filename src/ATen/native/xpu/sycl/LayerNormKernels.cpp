@@ -190,9 +190,8 @@ class LayerNormBackward
   int64_t N;
 };
 
-// we could make it dependent on dtype, but that would lead to different results
-// between float and low-p types
-constexpr int vec_size = 4;
+template <typename T>
+static constexpr int vec_size = sizeof(T) <= 2 ? 8 : 4;
 
 // Checks alignment of buffers for using vectorized loads / stores
 template <typename T>
@@ -399,23 +398,23 @@ WelfordDataLN compute_stats(
     sycl_local_acc_t<T_ACC> buf,
     sycl::nd_item<2>& item_id) {
   // X points to the row to read
-  using vec_t = aligned_vector<T, vec_size>;
+  using vec_t = aligned_vector<T, vec_size<T>>;
   using acc_t = acc_type_device<T, kXPU>;
   const vec_t* X_vec = reinterpret_cast<const vec_t*>(X);
   const int numx = item_id.get_local_range(1) * item_id.get_local_range(0);
   const int thrx = item_id.get_local_linear_id();
-  const int n_vec_to_read = N / vec_size;
+  const int n_vec_to_read = N / vec_size<T>;
   WelfordDataLN wd(0.f, 0.f, 0.f);
   // no tail, we check that N is multiple of vec_size
   for (int i = thrx; i < n_vec_to_read; i += numx) {
     vec_t data = X_vec[i];
 #pragma unroll
-    for (int ii = 0; ii < vec_size; ii++) {
+    for (int ii = 0; ii < vec_size<T>; ii++) {
       wd = WelfordOnlineSum<acc_t, rms_norm>(
           static_cast<acc_t>(data.val[ii]), wd);
     }
   }
-  // intra-warp reduction
+  // intra-subgroup reduction
   auto sg = item_id.get_sub_group();
   for (int offset = (SIMD >> 1); offset > 0; offset >>= 1) {
     WelfordDataLN wdB{
@@ -425,15 +424,50 @@ WelfordDataLN compute_stats(
     wd = WelfordCombine<rms_norm>(wd, wdB);
   }
 
-  // threadIdx.x == 0 has correct values for each warp
-  // inter-warp reductions
-  if (item_id.get_local_range(0) > 1) {
-    auto addr_offset = item_id.get_local_range(0);
-    for (int offset = item_id.get_local_range(0) / 2; offset > 0; offset /= 2) {
-      // upper half of warps write to shared
-      if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) >= offset &&
-          item_id.get_local_id(0) < 2 * offset) {
-        const int wrt_y = item_id.get_local_id(0) - offset;
+  const int num_sg = item_id.get_local_range(0);
+  const int sg_id = item_id.get_local_id(0);
+  const int lane_id = item_id.get_local_id(1);
+  // lane 0 of each subgroup holds that subgroup's reduced value
+  // inter-subgroup reductions
+  if (num_sg == SIMD) {
+    // fast path: subgroup 0 reduces all subgroup partials via shuffles
+
+    if (lane_id == 0) {
+      buf[sg_id] = wd.mean;
+      buf[sg_id + num_sg] = wd.sigma2;
+      buf[sg_id + 2 * num_sg] = wd.count;
+    }
+    sycl::group_barrier(item_id.get_group());
+
+    if (sg_id == 0) {
+      WelfordDataLN w{
+          static_cast<float>(buf[lane_id]),
+          static_cast<float>(buf[lane_id + num_sg]),
+          static_cast<float>(buf[lane_id + 2 * num_sg])};
+      for (int offset = (SIMD >> 1); offset > 0; offset >>= 1) {
+        WelfordDataLN other{
+            sycl::shift_group_left(sg, w.mean, offset),
+            sycl::shift_group_left(sg, w.sigma2, offset),
+            sycl::shift_group_left(sg, w.count, offset)};
+        w = WelfordCombine<rms_norm>(w, other);
+      }
+      wd = w;
+    }
+
+    if (sg_id == 0 && lane_id == 0) {
+      buf[0] = wd.mean;
+      buf[1] = wd.sigma2 / float(N);
+    }
+    sycl::group_barrier(item_id.get_group());
+    return WelfordDataLN{
+        static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
+  } else if (num_sg > 1) {
+    // Tree reduce via SLM
+    auto addr_offset = num_sg;
+    for (int offset = addr_offset / 2; offset > 0; offset /= 2) {
+      // upper half of subgroups write to shared
+      if (lane_id == 0 && sg_id >= offset && sg_id < 2 * offset) {
+        const int wrt_y = sg_id - offset;
         buf[2 * wrt_y] = wd.mean;
         buf[2 * wrt_y + 1] = wd.sigma2;
         buf[wrt_y + addr_offset] = wd.count;
@@ -441,8 +475,8 @@ WelfordDataLN compute_stats(
       sycl::group_barrier(item_id.get_group());
 
       // lower half merges
-      if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) < offset) {
-        const int rd_y = item_id.get_local_id(0);
+      if (lane_id == 0 && sg_id < offset) {
+        const int rd_y = sg_id;
         WelfordDataLN wdB{
             static_cast<float>(buf[2 * rd_y]),
             static_cast<float>(buf[2 * rd_y + 1]),
@@ -452,7 +486,7 @@ WelfordDataLN compute_stats(
       sycl::group_barrier(item_id.get_group());
     }
 
-    if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) == 0) {
+    if (lane_id == 0 && sg_id == 0) {
       buf[0] = wd.mean;
       buf[1] = wd.sigma2 / float(N);
     }
@@ -477,7 +511,7 @@ struct VectorizedLayerNormKernelFunctor
     WelfordDataLN wd =
         compute_stats<T, T_ACC, rms_norm>(block_row, N_, buf_, item_id);
 
-    using vec_t = aligned_vector<T, vec_size>;
+    using vec_t = aligned_vector<T, vec_size<T>>;
     const vec_t* X_vec = reinterpret_cast<const vec_t*>(block_row);
     const vec_t* gamma_vec =
         (gamma_ != nullptr) ? reinterpret_cast<const vec_t*>(gamma_) : nullptr;
@@ -487,7 +521,7 @@ struct VectorizedLayerNormKernelFunctor
 
     const int numx = item_id.get_local_range(1) * item_id.get_local_range(0);
     const int thrx = item_id.get_local_linear_id();
-    const int n_vec_to_read = N_ / vec_size;
+    const int n_vec_to_read = N_ / vec_size<T>;
 
     T_ACC rstd_val = c10::xpu::compat::rsqrt(wd.sigma2 + eps_);
 
@@ -503,14 +537,14 @@ struct VectorizedLayerNormKernelFunctor
         if constexpr (!rms_norm) {
           vec_t beta_data = beta_vec[i];
 #pragma unroll
-          for (int ii = 0; ii < vec_size; ii++) {
+          for (int ii = 0; ii < vec_size<T>; ii++) {
             out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                     (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
                 static_cast<T_ACC>(beta_data.val[ii]);
           }
         } else {
 #pragma unroll
-          for (int ii = 0; ii < vec_size; ii++) {
+          for (int ii = 0; ii < vec_size<T>; ii++) {
             out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * static_cast<T_ACC>(data.val[ii]));
           }
@@ -518,7 +552,7 @@ struct VectorizedLayerNormKernelFunctor
       } else if (gamma_vec != nullptr) {
         vec_t gamma_data = gamma_vec[i];
 #pragma unroll
-        for (int ii = 0; ii < vec_size; ii++) {
+        for (int ii = 0; ii < vec_size<T>; ii++) {
           if constexpr (!rms_norm) {
             out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean));
@@ -530,14 +564,14 @@ struct VectorizedLayerNormKernelFunctor
       } else if (beta_vec != nullptr) {
         vec_t beta_data = beta_vec[i];
 #pragma unroll
-        for (int ii = 0; ii < vec_size; ii++) {
+        for (int ii = 0; ii < vec_size<T>; ii++) {
           out.val[ii] =
               (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
               static_cast<T_ACC>(beta_data.val[ii]);
         }
       } else {
 #pragma unroll
-        for (int ii = 0; ii < vec_size; ii++) {
+        for (int ii = 0; ii < vec_size<T>; ii++) {
           if constexpr (!rms_norm) {
             out.val[ii] =
                 rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean);
@@ -557,7 +591,10 @@ struct VectorizedLayerNormKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 2, cgh);
+    const int64_t num_sg = wg_size_ / SIMD;
+    const size_t buf_size = (num_sg == SIMD) ? num_sg * 3 : num_sg * 2;
+    // Only the fast path of tree-reduce fills three num_sg wide SLM
+    buf_ = sycl_local_acc_t<T_ACC>(buf_size, cgh);
   }
 
   VectorizedLayerNormKernelFunctor(
@@ -597,7 +634,7 @@ int64_t layer_norm_wg_size_select(
     const int64_t max_wg_size,
     const int64_t M,
     const int n) {
-  if (n > max_wg_size)
+  if (n >= max_wg_size)
     return max_wg_size;
 
   int64_t wg_size = max_wg_size;
@@ -636,7 +673,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
   auto wg_size = layer_norm_wg_size_select(
-      at::xpu::getKernelMaxWorkGroupSize<KernelClass>(), M, N / vec_size);
+      at::xpu::getKernelMaxWorkGroupSize<KernelClass>(), M, N / vec_size<T>);
   KernelClass kfn(
       N,
       eps,
@@ -674,7 +711,7 @@ void layer_norm_kernel_impl(
   }
   T_ACC* rstd_data = rstd->data_ptr<T_ACC>();
 
-  constexpr int num_vec_elems = vec_size;
+  constexpr int num_vec_elems = vec_size<T>;
   constexpr int alignment = num_vec_elems * sizeof(T);
   bool can_vec_X = can_vectorize(X_data, alignment);
   bool can_vec_Y = can_vectorize(Y_data, alignment);
