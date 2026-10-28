@@ -95,6 +95,10 @@ jobs:
       microbench_flow: ${{ steps.inputs-check.outputs.microbench_flow }}
       microbench_pytorch_sha: ${{ steps.microbench-sha.outputs.pytorch_sha }}
       microbench_xpu_ops_sha: ${{ steps.microbench-sha.outputs.xpu_ops_sha }}
+      microbench_xpu_ops_ref: ${{ steps.microbench-sha.outputs.xpu_ops_ref }}
+      microbench_xpu_ops_repo: ${{ steps.microbench-sha.outputs.xpu_ops_repo }}
+      microbench_base_sha: ${{ steps.microbench-sha.outputs.base_sha }}
+      microbench_base_ref: ${{ steps.microbench-sha.outputs.base_ref }}
     steps:
       - name: Inputs check
         id: inputs-check
@@ -173,22 +177,53 @@ jobs:
       - name: Resolve PyTorch and xpu-ops commits for microbench
         id: microbench-sha
         if: ${{ steps.inputs-check.outputs.microbench == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Resolved once: linux-build and microbench-build-base (the
-          # on-demand base, or P') build the same PyTorch commit, and the
-          # nightly records the exact xpu-ops commit it measured.
-          resolve() {  # ref, default repo
-            local REF="$1" REPO="$2"
+          # Resolved once to full SHAs: linux-build and microbench-build-base
+          # (the on-demand base, or P') build the same PyTorch commit, the
+          # benchmark code is checked out at the B commit, and the records
+          # hold the exact xpu-ops commits. A ref is a branch, a tag, a full
+          # or short SHA, or repo@ref (a fork); the repository is kept.
+          resolve() {  # ref, default repo URL -> "<repo URL> <sha>"
+            local REF="$1" REPO="$2" SHA=""
             if [[ "$REF" == *"https://"* ]]; then REPO="${REF%@*}"; REF="${REF##*@}"; fi
-            if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then echo "$REF"; return; fi
-            git ls-remote "$REPO" "refs/heads/$REF" "refs/tags/$REF" | head -n 1 | cut -f1
+            REPO="${REPO%.git}"
+            if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+              SHA="$REF"
+            elif [[ "$REPO" == https://github.com/* ]]; then
+              SHA=$(gh api -H "Accept: application/vnd.github.sha" "repos/${REPO#https://github.com/}/commits/${REF}" 2>/dev/null || true)
+            fi
+            if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              SHA=$(git ls-remote "$REPO" "refs/heads/$REF" "refs/tags/$REF" | head -n 1 | cut -f1)
+            fi
+            if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::cannot resolve '$1' to a commit of ${REPO}" >&2
+              return 1
+            fi
+            echo "$REPO $SHA"
           }
-          SHA=$(resolve "${{ steps.inputs-check.outputs.pytorch }}" https://github.com/pytorch/pytorch.git)
-          if [ -z "$SHA" ]; then echo "::error::cannot resolve pytorch ${{ steps.inputs-check.outputs.pytorch }}"; exit 1; fi
-          echo "pytorch_sha=$SHA" >> "${GITHUB_OUTPUT}"
+          OUT=$(resolve "${{ steps.inputs-check.outputs.pytorch }}" https://github.com/pytorch/pytorch)
+          echo "pytorch_sha=${OUT#* }" >> "${GITHUB_OUTPUT}"
+          XPU_REPO="https://github.com/${{ github.repository }}"
           XPU="${{ steps.inputs-check.outputs.torch_xpu_ops }}"
           if [ "$XPU" != "pinned" ]; then
-            echo "xpu_ops_sha=$(resolve "$XPU" https://github.com/${{ github.repository }}.git)" >> "${GITHUB_OUTPUT}"
+            OUT=$(resolve "$XPU" "$XPU_REPO")
+            XPU_REPO="${OUT% *}"
+            XPU_SHA="${OUT#* }"
+            echo "xpu_ops_sha=${XPU_SHA}" >> "${GITHUB_OUTPUT}"
+            # repo@sha: linux-build clones the repository of the ref (a fork too)
+            echo "xpu_ops_ref=${XPU_REPO}@${XPU_SHA}" >> "${GITHUB_OUTPUT}"
+            # owner/name: repository of the benchmark code checkout
+            if [[ "$XPU_REPO" == https://github.com/* ]]; then
+              echo "xpu_ops_repo=${XPU_REPO#https://github.com/}" >> "${GITHUB_OUTPUT}"
+            fi
+          fi
+          if [ "${{ steps.inputs-check.outputs.microbench_flow }}" == "ab" ]; then
+            # the base defaults to the repository of the B commit
+            OUT=$(resolve "${{ inputs.microbench_base }}" "$XPU_REPO")
+            echo "base_sha=${OUT#* }" >> "${GITHUB_OUTPUT}"
+            echo "base_ref=${OUT% *}@${OUT#* }" >> "${GITHUB_OUTPUT}"
           fi
 
   Linux-Nightly-Ondemand-Build:
@@ -204,7 +239,7 @@ jobs:
       runner: build
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       pytorch_sha: ${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}
-      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_sha || needs.Conditions-Filter.outputs.torch_xpu_ops }}
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_ref || needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
@@ -329,13 +364,8 @@ jobs:
       - name: Resolve A and B commits
         id: refs
         run: |
-          B_SHA="${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_sha }}"
-          BASE_SHA=""
-          if [ "$FLOW" == "ab" ]; then
-            git fetch --no-tags origin "${{ inputs.microbench_base }}" && BASE_SHA=$(git rev-parse FETCH_HEAD)
-          fi
-          echo "b_sha=${B_SHA}" >> "${GITHUB_OUTPUT}"
-          echo "base_sha=${BASE_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "b_sha=${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_sha }}" >> "${GITHUB_OUTPUT}"
+          echo "base_sha=${{ needs.Conditions-Filter.outputs.microbench_base_sha }}" >> "${GITHUB_OUTPUT}"
       - name: Select cases
         id: select
         run: |
@@ -398,12 +428,14 @@ jobs:
       artifact_id: ${{ github.run_id }}
       pytorch_sha: ${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}
       head_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.b_sha }}
+      head_repo: ${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_repo }}
       shard: ${{ matrix.shard }}
       shards: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.n_shards }}
       reference_run: ${{ github.event_name == 'schedule' && '' || inputs.microbench_reference_run }}
       prev_run_id: ${{ github.event_name == 'schedule' && '' || inputs.microbench_prev_run }}
       coverage: true
-      # measurement must end by ~07:00 Beijing time
+      # measurement and A/A stop after 9 h; the recheck has its own 2 h
+      # (ci-run --recheck-budget-min)
       budget_min: '540'
 
   # Base wheel, torch only: the on-demand base or P' (the previous nightly's
@@ -424,11 +456,13 @@ jobs:
       runner: build
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       pytorch_sha: ${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}
-      torch_xpu_ops: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' && needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.outputs.prev_xpu_ops_sha || needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.base_sha }}
+      torch_xpu_ops: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' && needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.outputs.prev_xpu_ops_sha || needs.Conditions-Filter.outputs.microbench_base_ref }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       torch_only: true
       category: baseline
+      # not Torch-XPU-Wheel-*: the test jobs of this run must not install it
+      wheel_artifact: Microbench-Base-Wheel
 
   # microbench / microbench-run (pr-vs-base | ondemand | nightly-xpu-ops-vs-pytorch)
   Linux-Nightly-Ondemand-Microbench-Run-AB:
@@ -453,6 +487,7 @@ jobs:
       artifact_id: ${{ github.run_id }}
       pytorch_sha: ${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}
       head_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.b_sha }}
+      head_repo: ${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_repo }}
       base_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.base_sha }}
       prev_run_id: ${{ needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.outputs.prev_run_id }}
       budget_min: '120'
@@ -480,6 +515,7 @@ jobs:
       artifact_id: ${{ github.run_id }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       head_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.b_sha }}
+      head_repo: ${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_repo }}
       base_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.base_sha }}
       mode_label: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.mode_label }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
