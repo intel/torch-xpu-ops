@@ -100,7 +100,8 @@ for key in args.tests or merged_skip_dict:
     skip_list = merged_skip_dict.get(key) or merged_skip_dict.get(
         key.replace("\\", "/")
     )
-    if should_skip_entire_file(skip_list):
+    if args.test_cases == "selected" and should_skip_entire_file(skip_list):
+        print(f"Skipping {key}: entire file is skipped")
         continue
     exe_list = None
 
