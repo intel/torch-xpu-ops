@@ -17,6 +17,7 @@ the source tree. Run: ``cd test && python -m pytest microbench/tools/test_regist
 import fnmatch
 import os
 import sys
+import types
 
 import pytest
 import yaml
@@ -25,7 +26,13 @@ import yaml
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from microbench import CONFIG_DIR, REPO_ROOT
-from microbench.case import canonical_params, expected_names, load_cases, make_case_id
+from microbench.case import (
+    bench_code_hashes,
+    canonical_params,
+    expected_names,
+    load_cases,
+    make_case_id,
+)
 from microbench.run import lpt_shards, round_order
 
 
@@ -139,6 +146,25 @@ def test_coverage_exclude_has_reasons():
 
 def test_case_code_hash(cases):
     assert all(len(c.case_code_hash) == 12 for c in cases.values())
+
+
+def test_case_code_hash_per_op(cases, tmp_path, monkeypatch):
+    from microbench.cases import elementwise
+
+    before = bench_code_hashes("elementwise")
+    with open(elementwise.__file__) as f:
+        src = f.read()
+    old = 'Cos = unary("cos", [dict(shape=(1024, 512))'
+    assert old in src
+    path = tmp_path / "elementwise.py"
+    path.write_text(src.replace(old, 'Cos = unary("cos", [dict(shape=(1024, 256))'))
+    edited = types.ModuleType(elementwise.__name__)
+    edited.__dict__.update(vars(elementwise))
+    edited.__file__ = str(path)
+    monkeypatch.setitem(sys.modules, elementwise.__name__, edited)
+    after = bench_code_hashes("elementwise")
+    assert after[elementwise.Cos] != before[elementwise.Cos]
+    assert all(after[b] == h for b, h in before.items() if b is not elementwise.Cos)
 
 
 def test_lpt_and_round_order():
