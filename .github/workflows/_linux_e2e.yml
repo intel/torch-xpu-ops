@@ -77,6 +77,10 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Install rsync
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends rsync
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:

@@ -144,6 +144,8 @@ jobs:
     if: ${{ ! cancelled() }}
     runs-on: ubuntu-24.04
     steps:
+      - name: Install rsync
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rsync
       - name: Download UT logs
         uses: actions/download-artifact@v4
         with:
