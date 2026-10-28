@@ -32,6 +32,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/DilatedMaxPool2d.h>
+#include <ATen/native/xpu/sycl/MaxPool2dBmg.h>
 
 namespace at::native::xpu {
 
@@ -1160,6 +1161,11 @@ void max_pool2d_with_indices_kernel(
     return;
   }
 
+  if (bmg_maxpool::forward(
+          input_, output, indices, kernel_size, stride, padding, dilation)) {
+    return;
+  }
+
   auto memory_format = input_.suggest_memory_format();
   Tensor input = input_.contiguous(memory_format);
 
@@ -1324,6 +1330,18 @@ void max_pool2d_with_indices_backward_kernel(
   TensorArg indices_arg{indices_, "indices", 4};
   checkAllSameGPU(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
+
+  if (bmg_maxpool::backward(
+          input_,
+          gradOutput_,
+          indices_,
+          gradInput,
+          kernel_size,
+          stride,
+          padding,
+          dilation)) {
+    return;
+  }
 
   auto memory_format = input_.suggest_memory_format();
   Tensor input = input_.contiguous(memory_format);
