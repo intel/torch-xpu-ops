@@ -402,10 +402,6 @@ class TestProfiler(TestCase):
     @serialTest()
     @parametrize("work_in_main_thread", [True, False])
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
-    @unittest.skipIf(
-        torch.xpu.is_available(),
-        "XPU multithreaded Python source attribution is incorrect",
-    )
     def test_source_multithreaded(self, name, thread_spec, work_in_main_thread):
         """Test various threading configurations.
 
