@@ -2339,7 +2339,8 @@ batch_norm_backward_reduce_channels_last_template(
   at::Tensor grad_bias = at::empty({grad_size}, grad_opts);
 
   auto config = get_adaptive_launch_config(
-      syclMaxWorkItemsPerSubSlice() * 2,
+      at::xpu::getDeviceMaxSubGroupSize() *
+          at::xpu::getDeviceEUCountPerXeCore() * 2,
       reduction_size,
       stride,
       false,
