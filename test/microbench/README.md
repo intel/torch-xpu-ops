@@ -288,7 +288,8 @@ ignored there and the benchmark runs.
 
 1. `microbench / microbench-run (nightly-vs-reference)`, one job per shard
    (`MICROBENCH_NIGHTLY_SHARDS`, default 4): every case of this nightly wheel
-   N (3 processes), A/A of a rotating seventh of the PR-tier cases, the
+   N (3 processes), A/A of a seventh of the PR-tier cases (the slice after
+   the previous nightly's, so seven nightlies cover them all), the
    case validator (coverage), detection against the reference state, recheck
    1 of the suspects against the previous nightly wheel P on the same card,
    candidate commits (P..N commits touching files related to the case).
@@ -300,7 +301,9 @@ ignored there and the benchmark runs.
    new reference state (`microbench-reference-state`: this night's
    measurements and confirmed jumps, 30 days), nightly report, coverage
    report, `always_ab` / quarantine suggestions, issue evidence
-   (`microbench-nightly-<run>`).
+   (`microbench-nightly-<run>`): every regression the recheck A/B confirmed,
+   except quarantined cases and ops kept out of gating (no A/A calibration
+   needed).
 4. `microbench-auto-issue` (`_microbench_auto_issue.yml`): evidence, LLM
    drafts (`microbench-issue-authoring` skill), checked filing. Issues are
    filed only when `MICROBENCH_AUTO_ISSUE_ENABLED` is `true`; otherwise the

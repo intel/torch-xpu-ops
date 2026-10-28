@@ -1198,7 +1198,8 @@ def run_nightly_check(args):
     if args.state_out:
         reference.save_state(args.state_out, new_state)
 
-    # issue groups
+    # issue groups: every regression the recheck A/B confirmed, except
+    # quarantined cases and ops kept out of gating; no A/A calibration needed
     groups = {}
     report_only = []
     for cid, c in sorted(cat.items()):
@@ -1207,7 +1208,7 @@ def run_nightly_check(args):
             r
             for r in not_blocking_reasons(
                 case.manifest() if case else {"case_id": cid},
-                gating,
+                dict(gating, require_calibration=False),
                 hist["noise_stats"],
             )
             if r != "nightly tier"

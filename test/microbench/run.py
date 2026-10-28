@@ -1586,14 +1586,16 @@ def run_ondemand(args, sel, cfg):
 # ---------------------------------------------------------------------------
 
 
-def aa_rotation(ids, man, fraction, day=None):
-    """PR-tier cases measured as A/A tonight: one slice of 1/fraction per day."""
+def aa_rotation(ids, man, fraction, last_aa=None):
+    """PR-tier cases measured as A/A tonight: the slice after the one of the
+    previous nightly A/A (``last_aa``, one of its case_ids), so 1/fraction
+    nightlies cover every PR-tier case whatever days the nightlies run."""
     period = max(1, round(1 / fraction))
-    day = int(time.time() // 86400) if day is None else day
+    k = 0 if last_aa is None else (int(last_aa, 16) + 1) % period
     return [
         c
         for c in ids
-        if man.get(c, {}).get("tier") == "pr" and int(c, 16) % period == day % period
+        if man.get(c, {}).get("tier") == "pr" and int(c, 16) % period == k
     ]
 
 
@@ -1656,7 +1658,7 @@ def run_nightly_vs_reference(args, sel, cfg):
     )
 
     # A/A rotation (sigma_ab, delta), reference data only
-    aa_ids = aa_rotation(ids, man, det["aa_fraction"])
+    aa_ids = aa_rotation(ids, man, det["aa_fraction"], reference.last_aa_case(state))
     if aa_ids and not (sched.deadline and time.time() > sched.deadline):
         aa = Scheduler(
             _sub_args(args, os.path.join(args.out_dir, "aa")),

@@ -219,6 +219,14 @@ def last_jumps(state):
     return out
 
 
+def last_aa_case(state):
+    """A case_id of the latest nightly A/A in the state (None: no A/A yet)."""
+    aa = [
+        e for e in state if e.get("kind") == "measure" and e.get("role") == "nightly_aa"
+    ]
+    return max(aa, key=lambda e: e.get("time", 0))["case_id"] if aa else None
+
+
 def nightly_entries(state, case_id=None):
     return [
         e
