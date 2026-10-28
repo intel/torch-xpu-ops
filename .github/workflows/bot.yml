@@ -1898,6 +1898,21 @@ jobs:
               : outcome === 'success'
                 ? 'Applied to this issue.'
                 : `Nothing was written -- the apply step ${outcome}.`;
+            // apply_labels.py routes its human-actionable diagnostics (native
+            // Type/Priority mismatches it refused to overwrite, dropped
+            // allowlist labels, the label cap, a destructive-replace ERROR) to
+            // stderr, and --no-comment means it posts none of them itself. Lift
+            // those lines out of the folded log into a visible block so a reader
+            // does not have to expand the <details> to see a warning that asks
+            // them to reconcile a field by hand. Mismatch notes continue onto
+            // `- **Field**: ...` lines, so carry those too.
+            const alertLines = applied
+              ? applied.split('\n').filter(l => /^(warning:|ERROR:|- \*\*)/.test(l.trim()))
+              : [];
+            const alertBlock = alertLines.length
+              ? `\n\n> [!WARNING]\n> apply_labels.py flagged issues that need a human -- see the full log below.\n`
+                + alertLines.map(l => `> - ${l.trim().replace(/^- /, '')}`).join('\n')
+              : '';
             const applyBlock = applied
               ? `\n\n<details><summary>apply_labels.py output</summary>\n\n\`\`\`\n${applied}\n\`\`\`\n\n</details>`
               : '';
@@ -1909,7 +1924,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: header + result.result + applyBlock + footer
+              body: header + result.result + alertBlock + applyBlock + footer
             });
 
       - name: "Verify: AI labeling succeeded"
