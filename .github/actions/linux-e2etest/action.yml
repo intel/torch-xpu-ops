@@ -18,7 +18,7 @@ inputs:
     required: true
     default: 'accuracy'
     description: 'Comma-separated scenarios: accuracy,performance'
-  model_list:
+  test_scope:
     required: false
     default: 'full'
     description: "Test scope: 'p0', 'p1', 'p2', or 'full' (runs p0, p1, p2 one by one). Comma-separated values allowed."
@@ -42,18 +42,17 @@ runs:
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_e2e/
         rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmarks/ ./benchmarks/dynamo/
 
+        task_files=""
+        for tier in $(echo "${{ inputs.test_scope }}" | tr ',' ' '); do
+          case "${tier}" in
+            p0|p1|p2) task_files="${task_files:+$task_files,}./benchmarks/dynamo/${tier}/config.yaml" ;;
+            full) task_files="${task_files:+$task_files,}./benchmarks/dynamo/p0/config.yaml,./benchmarks/dynamo/p1/config.yaml,./benchmarks/dynamo/p2/config.yaml" ;;
+            *) echo "ERROR: unknown test_scope '${tier}'" >&2; exit 1 ;;
+          esac
+        done
+        model_list_args=(--task-file "${task_files}")
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
-          model_list_args=(--model-only "${MODEL_ONLY_NAME}")
-        else
-          task_files=""
-          for tier in $(echo "${{ inputs.model_list }}" | tr ',' ' '); do
-            case "${tier}" in
-              p0|p1|p2) task_files="${task_files:+$task_files,}./benchmarks/dynamo/${tier}/config.yaml" ;;
-              full) task_files="${task_files:+$task_files,}./benchmarks/dynamo/p0/config.yaml,./benchmarks/dynamo/p1/config.yaml,./benchmarks/dynamo/p2/config.yaml" ;;
-              *) echo "ERROR: unknown model_list '${tier}'" >&2; exit 1 ;;
-            esac
-          done
-          model_list_args=(--task-file "${task_files}")
+          model_list_args+=(--model-only "${MODEL_ONLY_NAME}")
         fi
 
         rm -rf torch && mkdir -p inductor_log

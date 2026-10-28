@@ -96,7 +96,7 @@ jobs:
           dt: amp_fp16
           mode: training
           scenario: ${{ inputs.scenario }}
-          model_list: p0
+          test_scope: p0
       - name: CICD Inference Test (bfloat16)
         if: ${{ contains(github.event_name, 'pull_request') }}
         uses: ./.github/actions/linux-e2etest
@@ -105,7 +105,7 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: ${{ inputs.scenario }}
-          model_list: p0
+          test_scope: p0
 
       # Nihglty launch
       - name: Nightly Huggingface Full Test
@@ -221,7 +221,7 @@ jobs:
           dt: amp_fp16
           mode: training
           scenario: ${{ inputs.scenario }}
-          model_list: p0
+          test_scope: p0
       - name: Acceptance Test - inference (${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
@@ -230,7 +230,7 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: ${{ inputs.scenario }}
-          model_list: p0
+          test_scope: p0
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}

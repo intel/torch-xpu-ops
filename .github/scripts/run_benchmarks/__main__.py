@@ -54,7 +54,7 @@ def main() -> None:
     parser.add_argument("--scenario", default="",
                         help="Comma- or space-separated scenarios (accuracy, performance). Empty = all.")
     parser.add_argument("--model-only", default=None,
-                        help="Run only specific model(s) (overrides list file).")
+                        help="Run only specific model(s). Filters --task-file tasks when given.")
     parser.add_argument("--device", default="xpu", help="Device type (xpu, cuda, or cpu)")
     parser.add_argument("--backend", default="default", choices=sorted(config.VALID_BACKENDS),
                         help="Inductor backend variant (default, dynamic, cpp_wrapper, freezing, "
@@ -62,7 +62,7 @@ def main() -> None:
     parser.add_argument("--task-file", default=None,
                         help="Comma-separated task sources, run one by one. A tier config .yaml uses its own "
                              "backends/precisions/scenarios/models (CLI --suite/--dt/--mode/--scenario filter it); "
-                             ".csv/.txt holds task rows and uses --backend. Overrides --model-only.")
+                             ".csv/.txt holds task rows and uses --backend. --model-only filters the result.")
     parser.add_argument("--cores-per-instance", type=int, default=None,
                         help="CPU-only: cores per worker instance. Default = all cores per NUMA node.")
     parser.add_argument("--numactl-args", default="",
@@ -99,8 +99,6 @@ def main() -> None:
             sys.exit("ERROR: benchmarks/dynamo directory not found. Are you in the pytorch directory?")
 
     task_files = [p.strip() for p in args.task_file.split(",") if p.strip()] if args.task_file else []
-    if task_files and args.model_only:
-        sys.exit("ERROR: --task-file cannot be combined with --model-only.")
 
     if task_files:
         runs = []
@@ -112,6 +110,9 @@ def main() -> None:
                 tasks = load_tasks_from_file(path)
                 for t in tasks:
                     t.backend = args.backend
+            if args.model_only:
+                names = set(parse_string_list(args.model_only))
+                tasks = [t for t in tasks if t.model in names]
             if not tasks:
                 sys.exit(f"No valid tasks found in {path}.")
             label = None
