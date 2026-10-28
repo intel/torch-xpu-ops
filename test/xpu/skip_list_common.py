@@ -235,7 +235,7 @@ skip_dict = {
     "test_optim_xpu.py": None,
     "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
-    "test_reductions_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_reductions_xpu.py": None,
     "test_scaled_matmul_cuda_xpu.py": {
         # https://github.com/intel/torch-xpu-ops/issues/5339
         # The operator 'aten::_scaled_addmm.out' is not currently implemented for the XPU device
