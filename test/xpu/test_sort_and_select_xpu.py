@@ -27,7 +27,7 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_sort_and_select import TestSortAndSelect
+    from test_sort_and_select import TestSortAndSelectDevice
 
     @dtypes(*all_types_and(torch.half, torch.bfloat16, torch.bool))
     def stable_sort_against_numpy(self, device, dtype):
@@ -100,7 +100,7 @@ with XPUPatchForImport(False):
             idx_numpy = np.argsort(sample_numpy, axis=dim, kind="stable")
             self.assertEqual(idx_torch, idx_numpy)
 
-    TestSortAndSelect.test_stable_sort_against_numpy = stable_sort_against_numpy
+    TestSortAndSelectDevice.test_stable_sort_against_numpy = stable_sort_against_numpy
 
     # Upstream test_sort_and_select.py:test_sort_large_slice carries
     # @onlyCUDA and uses torch.cuda.synchronize() / .cuda(); resolve sync
@@ -124,10 +124,10 @@ with XPUPatchForImport(False):
         self.assertEqual(res1val, res1val_cpu.to(device))
         self.assertEqual(res1ind, res1ind_cpu.to(device))
 
-    TestSortAndSelect.test_sort_large_slice = _test_sort_large_slice
+    TestSortAndSelectDevice.test_sort_large_slice = _test_sort_large_slice
 
 instantiate_device_type_tests(
-    TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True
+    TestSortAndSelectDevice, globals(), only_for="xpu", allow_xpu=True
 )
 
 
