@@ -41,6 +41,6 @@ where $|\text{models}_{\text{mode}}|$ is the sum of model-list lengths across su
 The E2E workflow selects scope with the `model_list` input:
 
 - `p0`, `p1`, `p2`: reads `./benchmarks/dynamo/<tier>/config.yaml`.
-- `full`: reads `./benchmarks/dynamo/config.yaml`.
+- `full`: reads the union of the p0, p1 and p2 config files. The root `config.yaml` is not used by the runner.
 
 The `.ci/benchmarks/` tree is copied to `./benchmarks/dynamo/` before the run.

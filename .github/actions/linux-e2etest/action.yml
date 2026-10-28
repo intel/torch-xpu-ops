@@ -21,7 +21,7 @@ inputs:
   model_list:
     required: false
     default: 'full'
-    description: "Model list scope: 'p0', 'p1', 'p2' (tier CSVs) or 'full' (nightly / weekly / ondemand)"
+    description: "Test scope: 'p0', 'p1', 'p2', or 'full' (runs p0, p1, p2 one by one). Comma-separated values allowed."
 
 runs:
   using: composite
@@ -44,10 +44,16 @@ runs:
 
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
           model_list_args=(--model-only "${MODEL_ONLY_NAME}")
-        elif [[ "${{ inputs.model_list }}" =~ ^p[012]$ ]]; then
-          model_list_args=(--model-only ./benchmarks/dynamo/${{ inputs.model_list }}/${{ inputs.model_list }}_model_list.csv)
         else
-          model_list_args=(--model-only ./benchmarks/dynamo/full_model_list.csv)
+          task_files=""
+          for tier in $(echo "${{ inputs.model_list }}" | tr ',' ' '); do
+            case "${tier}" in
+              p0|p1|p2) task_files="${task_files:+$task_files,}./benchmarks/dynamo/${tier}/config.yaml" ;;
+              full) task_files="${task_files:+$task_files,}./benchmarks/dynamo/p0/config.yaml,./benchmarks/dynamo/p1/config.yaml,./benchmarks/dynamo/p2/config.yaml" ;;
+              *) echo "ERROR: unknown model_list '${tier}'" >&2; exit 1 ;;
+            esac
+          done
+          model_list_args=(--task-file "${task_files}")
         fi
 
         rm -rf torch && mkdir -p inductor_log
