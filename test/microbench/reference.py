@@ -241,7 +241,8 @@ def by_case(entries):
 # sigma_card  same nightly, different cards: spread of the log run medians;
 # sigma_proc  same run: spread of the log process medians;
 # sigma_ab    A/A rotation: spread of log(median B / median A); delta is the
-#             95th percentile of |log r| (the confirmation margin).
+#             largest max(r, 1/r) - 1 over the A/A runs (the confirmation
+#             margin).
 # Missing statistics fall back to gating.yaml default_noise.
 
 

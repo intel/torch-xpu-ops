@@ -80,9 +80,11 @@ Rules:
 * Keep single tensors under ~512M elements (BMG memory with backward and
   several input sets); scale the batch down and say so in a comment.
 * `case_id` is a hash of `(op, pass, params)`. Changing params creates new
-  cases (new history, new calibration). `case_code_hash` hashes the case
-  module: editing a module keeps the ids but its cases lose their reference
-  records until the next nightlies measure them again.
+  cases (new history, new calibration). `case_code_hash` hashes the op's
+  bench and the code it shares with the other ops of its module (imports,
+  helpers, constants): editing an op keeps the ids but its cases lose their
+  reference records until the next nightlies measure them again; editing a
+  shared helper does so for every op of the module.
 
 ### Table-driven cases
 
@@ -252,7 +254,7 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    N (3 processes), A/A of a seventh of the PR-tier cases (the slice after
    the previous nightly's, so seven nightlies cover them all), the
    case validator (coverage), detection against the reference state, recheck
-   1 of the suspects against the previous nightly wheel P on the same card,
+   of the suspects against the previous nightly wheel P on the same card,
    candidate commits (P..N commits touching files related to the case).
 2. `microbench-build-base` builds P' (P's xpu-ops, N's PyTorch, torch only)
    when a confirmed regression has candidates, and
