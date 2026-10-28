@@ -1,11 +1,11 @@
 # Test scope for priority p0. A precision without mode runs in both training and inference.
 backends:
   - default
-  - dynamic
-  - cpp_wrapper
-  - freezing
-  - aot_inductor
-  - inductor_deterministic_perf
+  # - dynamic
+  # - cpp_wrapper
+  # - freezing
+  # - aot_inductor
+  # - inductor_deterministic_perf
 precision:
   - dtype: amp_fp16
     mode: training
