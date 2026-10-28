@@ -173,6 +173,7 @@ const Tensor& _fft_apply_normalization(
   return (scale == 1.0) ? self : self.mul_(scale);
 }
 
+// TODO: Remove this work-around in future.
 ScalarType promote_fft_dtype(ScalarType dtype) {
   if (dtype == ScalarType::Half || dtype == ScalarType::BFloat16)
     return ScalarType::Float;
