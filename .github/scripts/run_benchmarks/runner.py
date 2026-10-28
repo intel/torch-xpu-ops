@@ -59,6 +59,7 @@ def _write_scenario_summaries(base_log_dir: Path) -> None:
             with open(csv_file, newline="", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
+                    row.pop(None, None)  # cells beyond the header from malformed lines
                     scenario = row.get("scenario", "")
                     if scenario not in grouped:
                         continue
@@ -74,7 +75,7 @@ def _write_scenario_summaries(base_log_dir: Path) -> None:
             continue
         out_path = summary_paths[scenario]
         with open(out_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames[scenario], restval="")
+            writer = csv.DictWriter(f, fieldnames=fieldnames[scenario], restval="", extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)
         log(f"Wrote {scenario} summary: {out_path} ({len(rows)} rows)")
