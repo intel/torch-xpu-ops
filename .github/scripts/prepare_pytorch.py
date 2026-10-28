@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from checkout_torch_xpu_ops import force_remove_readonly, prepare_checkout
@@ -79,6 +80,8 @@ def main():
     git("branch")
     git("show", "-s")
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    if re.fullmatch(r"[0-9a-f]{40}", args.pytorch_commit) and commit != args.pytorch_commit:
+        sys.exit(f"PyTorch checkout {commit} != requested {args.pytorch_commit}")
     (workspace / "pytorch.commit").write_text(commit + "\n")
 
     # Place torch-xpu-ops into third_party/: the PR merge checkout as-is,
