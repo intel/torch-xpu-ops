@@ -85,6 +85,8 @@ def main():
     git("branch")
     git("show", "-s")
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    if re.fullmatch(r"[0-9a-f]{40}", args.pytorch_commit) and commit != args.pytorch_commit:
+        sys.exit(f"PyTorch checkout {commit} != requested {args.pytorch_commit}")
     (workspace / "pytorch.commit").write_text(commit + "\n")
 
     # Resolve pinned torch-xpu-ops
