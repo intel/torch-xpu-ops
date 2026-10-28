@@ -239,8 +239,13 @@ void foreach_norn_kernel_config(
   const int ntensors = tensors.size();
 
   max_chunks_per_tensor = -1;
-  wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
+  // wg_size is for the chunk-reduce (second) kernel, not multi_tensor_apply.
+  wg_size = get_group_reduce_group_size(simd);
+  size_t total_elements = 0;
+  for (const auto& tensor : tensors) {
+    total_elements += tensor.numel();
+  }
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(total_elements);
 
   for (int t = 0; t < ntensors; t++) {
     int max_chunks_this_tensor =
@@ -595,14 +600,18 @@ struct LpMaxFunctor {
       }
     }
 
-    syclexp::work_group_static<T[SIMD]> shared_;
+    // One slot per subgroup; this kernel runs with the multi_tensor_apply
+    // work-group size, which can exceed SIMD * SIMD.
+    constexpr int slm_size = get_group_reduce_group_size(SIMD);
+    syclexp::work_group_static<T[slm_size]> shared_;
 
     auto val = T(std::numeric_limits<T>::lowest());
     for (int i = 0; i < kILP; i++) {
       val = max_impl(val, vals[i]);
     }
-    auto final_val = GroupReduceMaxWithoutBroadcast_StaticSlm<T, SIMD, SIMD>(
-        item, val, shared_);
+    auto final_val =
+        GroupReduceMaxWithoutBroadcast_StaticSlm<T, SIMD, slm_size>(
+            item, val, shared_);
 
     if (item_id == 0) {
       output_per_tensor_ptr[tensor_loc * max_chunks_per_tensor + chunk_idx] =
@@ -658,7 +667,7 @@ void launch_lpmax_chunk_reduce_kernel(
     int* chunks_per_tensor,
     int max_chunks_per_tensor,
     int n_tensor) {
-  int wg_size = multi_tensor_apply_kernel_get_wg_size(SIMD);
+  int wg_size = get_group_reduce_group_size(SIMD);
   LpmaxChunkReduceKernelFunctor<T, SIMD> kfn(
       output_per_tensor,
       ret_per_tensor,
@@ -697,7 +706,11 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
 
   int max_chunks_per_tensor = -1;
   int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
+  size_t total_elements = 0;
+  for (const auto& tensor : tensors) {
+    total_elements += tensor.numel();
+  }
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(total_elements);
   for (const auto t : c10::irange(ntensors)) {
     int max_chunks_this_tensor =
         (tensors[t].numel() + kChunkSize - 1) / kChunkSize;
