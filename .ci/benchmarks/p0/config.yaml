@@ -18,10 +18,10 @@ suite:
 scenario:
   - accuracy
   - performance
-# Model lists per suite and mode.
+# Model lists per suite and mode. Total cases: 194.
 models:
   torchbench:
-    inference:
+    inference:  # 57 models
     - alexnet
     - Background_Matting
     - basic_gnn_edgecnn
@@ -79,7 +79,7 @@ models:
     - vgg16
     - vision_maskrcnn
     - yolov3
-    training:
+    training:  # 44 models
     - alexnet
     - Background_Matting
     - basic_gnn_edgecnn
@@ -125,7 +125,7 @@ models:
     - vision_maskrcnn
     - yolov3
   timm_models:
-    inference:
+    inference:  # 18 models
     - adv_inception_v3
     - beit_base_patch16_224
     - convnextv2_nano.fcmae_ft_in22k_in1k
@@ -144,7 +144,7 @@ models:
     - visformer_small
     - vit_base_patch14_dinov2.lvd142m
     - vit_base_patch16_siglip_256
-    training:
+    training:  # 18 models
     - adv_inception_v3
     - beit_base_patch16_224
     - convnextv2_nano.fcmae_ft_in22k_in1k
@@ -164,7 +164,7 @@ models:
     - vit_base_patch14_dinov2.lvd142m
     - vit_base_patch16_siglip_256
   huggingface:
-    inference:
+    inference:  # 31 models
     - AlbertForMaskedLM
     - AllenaiLongformerBase
     - BartForCausalLM
@@ -196,7 +196,7 @@ models:
     - XGLMForCausalLM
     - XLNetLMHeadModel
     - YituTechConvBert
-    training:
+    training:  # 26 models
     - AlbertForMaskedLM
     - AllenaiLongformerBase
     - BartForCausalLM
