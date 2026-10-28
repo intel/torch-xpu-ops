@@ -13,6 +13,11 @@ on:
         type: string
         default: 'main'
         description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+      triton:
+        required: false
+        type: string
+        default: ''
+        description: Triton pinned by pytorch by default, or a triton-xpu commit with a prebuilt wheel on the PyTorch nightly XPU index
       python:
         required: false
         type: string
@@ -124,6 +129,23 @@ jobs:
           python -c "import torch; assert torch.xpu._is_compiled(), 'XPU not compiled!'"
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
+      - name: Download Triton
+        shell: cmd
+        run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call conda activate windows_ci
+          cd ..\pytorch
+          set TRITON_COMMIT_ID=${{ inputs.triton }}
+          if "%TRITON_COMMIT_ID%" == "" set TRITON_COMMIT_ID=pinned
+          if "%TRITON_COMMIT_ID%" == "pinned" for /f "delims=" %%c in ('type .ci\docker\ci_commit_pins\triton-xpu.txt') do set TRITON_COMMIT_ID=%%c
+          set TRITON_VERSION=None
+          for /f "tokens=1,* delims=:" %%a in ('pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre triton-xpu 2^>nul ^| findstr /b /c:"Available versions"') do set TRITON_VERSIONS=%%b
+          for %%v in (%TRITON_VERSIONS%) do echo %%v| findstr /c:"git%TRITON_COMMIT_ID:~0,8%" >nul && set TRITON_VERSION=%%v
+          if "%TRITON_VERSION%" == "None" (
+            echo No prebuilt triton-xpu wheel for %TRITON_COMMIT_ID%, Windows UT runs without Triton
+          ) else (
+            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre triton-xpu==%TRITON_VERSION% --dest dist
+          )
       - name: Upload Windows build log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
