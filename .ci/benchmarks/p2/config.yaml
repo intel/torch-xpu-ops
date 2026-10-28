@@ -14,7 +14,7 @@ suite:
 scenario:
   - accuracy
   - performance
-# Model lists per suite and mode, mirroring the CSV columns.
+# Model lists per suite and mode.
 models:
   torchbench:
     inference:
