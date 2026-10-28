@@ -36,6 +36,8 @@ def _is_xpu_smi_available() -> bool:
     with _xpu_smi_lock:
         if _xpu_smi_available is None:
             _xpu_smi_available = shutil.which("xpu-smi") is not None
+            if not _xpu_smi_available:
+                log("xpu-smi not found in PATH; GPU memory monitoring and GPU info are disabled", level="WARN")
         return _xpu_smi_available
 
 
@@ -126,9 +128,12 @@ def get_gpu_memory_utilization(
         for l in lines:
             if l.startswith("Timestamp"):
                 header_line = l
-            elif header_line is not None and re.match(r'\d{2}:\d{2}:\d{2}', l):
+            elif header_line is not None and data_line is None and re.match(r'\d{2}:\d{2}:\d{2}', l):
                 data_line = l
+            elif header_line is not None and data_line is None:
+                header_line += l  # xpu-smi 2.x wraps long headers mid-name
         if header_line is None or data_line is None:
+            log(f"Unparsed xpu-smi dump output for GPU {card}: {result.stdout!r}", level="WARN")
             return None
 
         headers = [h.strip() for h in header_line.split(',')]
