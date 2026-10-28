@@ -16,6 +16,7 @@ from pathlib import Path
 
 from packaging import version
 
+from . import config
 from .config import BACKEND_FLAGS, TestTask, csv_lock
 from .log import log
 from .tasks import get_torch_version
@@ -111,7 +112,7 @@ class InductorSuite(BenchmarkSuite):
             " ".join(backend_flags),
             "--cold-start-latency",
             "-n10",
-            "--timeout=10800",
+            f"--timeout={config.task_timeout_seconds}",
             "--disable-cudagraphs",
             f"--output={output_csv}",
         ]
