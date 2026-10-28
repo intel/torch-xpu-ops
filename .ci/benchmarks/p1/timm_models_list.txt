@@ -1,1 +1,0 @@
-../p0/timm_models_list.txt
