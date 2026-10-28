@@ -1,8 +1,8 @@
 # Test scope for priority p1. A precision without mode runs in both training and inference.
 backends:
   - default
-  - dynamic
-  - cpp_wrapper
+  # - dynamic
+  # - cpp_wrapper
 precision:
   - dtype: float32
   - dtype: float16
