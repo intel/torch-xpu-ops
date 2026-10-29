@@ -17,6 +17,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Pool.h>
 
+#include <ATen/native/xpu/sycl/AveragePool2dBmg.h>
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -1543,6 +1544,22 @@ void avg_pool2d_backward_kernel(
   const int padH = safe_downcast<int, int64_t>(padding[0]);
   const int padW =
       padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
+
+  if (bmg_avg_pool::try_backward(
+          gradOutput_,
+          input_,
+          gradInput,
+          kH,
+          kW,
+          dH,
+          dW,
+          padH,
+          padW,
+          ceil_mode,
+          count_include_pad,
+          divisor_override)) {
+    return;
+  }
 
   const auto memory_format = input_.suggest_memory_format();
   const Tensor input = input_.contiguous(memory_format);
