@@ -224,13 +224,14 @@ first, on another card). E2E is report-only. Parameters:
 `config/gating.yaml`.
 
 **Detection (nightly)** compares the median of the process medians with the
-reference value: the median over the most recent (2-5) nightly records of the
-same environment key, preferably the same card, after the case's last
-confirmed jump. Threshold `t = min(0.05, 0.10 - 2.33 * sigma_tot)` (a real
-10% step is caught with 99% probability); `sigma_tot` combines the
-cross-run, cross-card and process noise of the case, computed from the
-reference state. Detection only decides what to recheck; only A/B results
-file an issue. Parameters: `nightly_detect` in `config/gating.yaml`.
+case's most recent nightly record (normally last night's, on whatever machine
+it ran; at most 7 days old, from the case's last confirmed jump on). Threshold
+`t = min(0.05, 0.10 - 2.33 * sigma_night)` (a real 10% step is caught with 99%
+probability); `sigma_night` is the spread of the case's night-to-night ratios
+in the reference state (1% until it has three). Cases without a reference or
+too noisy to detect (`t < 0.02`) go to the recheck A/B directly. Detection only
+decides what to recheck; only A/B results file an issue. Parameters:
+`nightly_detect` in `config/gating.yaml`.
 
 **Noise margin `delta`.** The default of the case's noise class
 (`default_delta` in `config/gating.yaml`), raised to the case's own A/A
