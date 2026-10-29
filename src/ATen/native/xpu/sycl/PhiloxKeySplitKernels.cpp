@@ -111,7 +111,7 @@ void philox_key_fold_in_kernel(
 }
 
 // data read from device memory at kernel execution time, so the value is not
-// baked into the launch (CUDA graph-safe variant).
+// baked into the launch (XPU graph-safe variant).
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void philox_key_fold_in_tensor_kernel(
     const uint64_t* input,
