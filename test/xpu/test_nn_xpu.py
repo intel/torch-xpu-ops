@@ -10530,8 +10530,11 @@ def _buildEquivalentAffineTransforms3d(
 
     return transform_tensor, transform_ary, grid_ary
 
-    # end TestNN.test_affine_* helpers
 
+# end TestNN.test_affine_* helpers
+
+
+class TestNNDeviceType(NNTestCase):
     def _get_mixed_dtypes(self, device):
         """Get appropriate mixed dtype pair (param_dtype, input_dtype) for the device.
         Returns lower precision for params and higher precision for input to test
