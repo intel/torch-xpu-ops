@@ -122,8 +122,9 @@ jobs:
         with:
           repository: ${{ inputs.head_repo || github.repository }}
           ref: ${{ inputs.head_sha || github.sha }}
-          # candidate commits of a nightly regression need the history
-          fetch-depth: ${{ inputs.scope == 'nightly-vs-reference' && 0 || 1 }}
+          # candidate commits of a nightly regression need the history ('0',
+          # not 0: a falsy 0 would make the expression fall through to 1)
+          fetch-depth: ${{ inputs.scope == 'nightly-vs-reference' && '0' || '1' }}
       - name: Setup python
         uses: ./.github/actions/setup-python
         with:
