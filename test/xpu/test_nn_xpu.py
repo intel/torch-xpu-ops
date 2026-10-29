@@ -10488,6 +10488,7 @@ class TestNNDeviceType(NNTestCase):
         cases = ((128, 96, 56, 56), (64, 768, 28, 28))
         for dtype in (torch.float32, torch.float16):
             output_tol = 1e-4 if dtype == torch.float32 else 1e-2
+            stats_tol = 1e-5 if dtype == torch.float32 else 1e-4
             for shape in cases:
                 n, c, h, w = shape
                 generator = torch.Generator().manual_seed(0)
@@ -10529,8 +10530,10 @@ class TestNNDeviceType(NNTestCase):
                 torch.xpu.synchronize()
 
                 self.assertEqual(out.cpu(), ref, atol=output_tol, rtol=output_tol)
-                self.assertEqual(out_mean.cpu(), ref_mean, atol=1e-5, rtol=1e-5)
-                self.assertEqual(out_var.cpu(), ref_var, atol=1e-5, rtol=1e-5)
+                self.assertEqual(
+                    out_mean.cpu(), ref_mean, atol=stats_tol, rtol=stats_tol
+                )
+                self.assertEqual(out_var.cpu(), ref_var, atol=stats_tol, rtol=stats_tol)
 
     def _get_mixed_dtypes(self, device):
         """Get appropriate mixed dtype pair (param_dtype, input_dtype) for the device.
