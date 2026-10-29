@@ -1,20 +1,60 @@
 # Benchmark Test Scope
 
-This directory defines the models, backends and precisions that the E2E benchmark runs. Scope lives in YAML so that the tiers and the full run are defined in one place.
+This directory defines the models, backends, and precisions executed by the E2E benchmark on XPU. Scope is specified in YAML, with one file per priority tier (p0, p1, p2).
+
+## Purpose
+
+The full PyTorch benchmark matrix exceeds the XPU capacity available for every change. The tiers partition the matrix by priority: p0 provides a fast signal on every change, while p1 and p2 extend coverage as capacity allows, surfacing failures that p0 does not exercise.
+
+## Basis of each tier
+
+- **p0 (CUDA parity)**: the models and modes tracked for CUDA by the stock PyTorch performance dashboard (HUD), using the suite lists in `pytorch/benchmarks/dynamo/`. XPU results can be compared directly with the corresponding CUDA results.
+- **p1 (current PyTorch coverage)**: the same models as p0, evaluated across the precisions exercised by current PyTorch benchmarking (float32, float16, bfloat16, amp_fp16, amp_bf16). Coverage is extended along the dtype axis without increasing the model set.
+- **p2 (legacy PyTorch coverage)**: the models from the legacy PyTorch lists that p0 and p1 do not include (for example `detectron2_*`, `hf_*`, `timm_*`, and quantized QAT models), evaluated with all five precisions per mode.
+
+The tiers are ordered by cost and diagnostic yield. p0 is the lowest-cost parity check. p1 isolates precision-specific failures on the p0 models. p2 isolates model-specific failures that are unlikely to surface within p0 or p1.
+
+## Purpose of each tier
+
+PyTorch component acceptance tests run the full scope (the union of p0, p1, and p2)
+
+| Tier | Purpose | Schedule |
+|---|---|---|
+| p0 | Regression gate with CUDA parity | CI (every change) |
+| p1 | Precision coverage on the p0 models | Nightly |
+| p2 | Broad coverage of additional models and dtypes | Weekly |
+
 
 ## Tiers
 
-- `p0`, `p1`, `p2`: priority tiers. Each is a separate selection, not a subset of another. Each file defines backends, precision, suite, scenario and model lists.
-- `config.yaml`: the full scope. Its model lists must equal the union of p0, p1 and p2.
+- `p0`, `p1`, `p2` are independent selections. They differ in backend and precision; p0 and p1 share the same model lists. Each file defines the backends, precisions, suites, scenarios, and models.
+- Commented backends (`dynamic`, `cpp_wrapper`, `freezing`, `aot_inductor`, `inductor_deterministic_perf`) are not executed unless uncommented.
 
-| Tier | Backends | Precisions per mode | Models (inference / training) | Cases |
+| Tier | Backends (active) | Precisions per mode | Models (inference / training) | Cases |
 |---|---|---|---|---|
-| p0 | 6 | 1 (inference: bfloat16, training: amp_fp16) | 106 / 88 | 2328 |
-| p1 | 3 | 4 per mode | 106 / 88 | 4656 |
-| p2 | 1 | 5 per mode (all dtypes) | 114 / 109 | 2230 |
-| full | per tier | per tier | 220 / 197 | 9214 |
+| p0 | 1 (default) | 1 (inference: bfloat16, training: amp_fp16) | 106 / 88 | 388 |
+| p1 | 1 (default) | 4 per mode | 106 / 88 | 1552 |
+| p2 | 1 (default) | 5 per mode (all dtypes) | 114 / 109 | 2230 |
 
-The full case count is the sum of the p0, p1 and p2 case counts (2328 + 4656 + 2230 = 9214), not a product over the full config.
+A case is one (backend, scenario, precision, model) combination per mode. Scenarios are `accuracy` and `performance`; for example, p0 comprises $1 \times 2 \times 1 \times 106 + 1 \times 2 \times 1 \times 88 = 388$ cases.
+
+## Time cost
+
+Wall time scales with the number of cases:
+
+$$
+T_{\text{tier}} \approx N_{\text{cases}} \times \bar{t}_{\text{case}}
+$$
+
+where $\bar{t}_{\text{case}}$ is the mean time per case, including model load and compilation, and varies by suite and dtype.
+
+| Tier | Cases | Relative cost | Measured wall time |
+|---|---|---|---|
+| p0 | 388 | 1× (baseline) | to measure |
+| p1 | 1552 | 4× p0 | to measure |
+| p2 | 2230 | about 5.7× p0 | to measure |
+
+The E2E job is capped at 3600 minutes (`timeout-minutes` in `_linux_e2e.yml`). The cap applies to the whole job, so a tier must finish well within it. Fill the measured column from a p0 run first, then derive p1 and p2 from it.
 
 ## Config structure
 
@@ -31,16 +71,16 @@ where $|\text{models}_{\text{mode}}|$ is the sum of model-list lengths across su
 
 ## Editing and verification
 
-1. Edit the tier file, then update `config.yaml` so it still equals p0 + p1 + p2.
-2. Use model names exactly as the suite expects them (for example `hf_Bert`, `timm_vision_transformer`).
-3. Keep the `# N models` comment on each mode line and the total case comment in sync with the lists.
-4. Verify the union: each tier model must appear in `config.yaml` for the same suite and mode, and nothing extra may appear there.
+1. Edit the tier file and keep the `# N models` comment on each mode line consistent with the list length.
+2. Use model names exactly as the suite defines them (for example, `hf_Bert` or `timm_vision_transformer`).
+3. Update the case table whenever backends, precisions, or model counts change.
+4. Before adding a model to a tier, confirm that the same suite and mode is not already listed in another tier, so that each tier remains distinct.
 
 ## Runner selection
 
-The E2E workflow selects scope with the `model_list` input:
+The E2E workflow selects scope through the `test_scope` input:
 
-- `p0`, `p1`, `p2`: reads `./benchmarks/dynamo/<tier>/config.yaml`.
-- `full`: reads the union of the p0, p1 and p2 config files. The root `config.yaml` is not used by the runner.
+- `p0`, `p1`, `p2`: read `./benchmarks/dynamo/<tier>/config.yaml`.
+- `full`: the union of the p0, p1, and p2 selections. This directory has no root `config.yaml`.
 
 The `.ci/benchmarks/` tree is copied to `./benchmarks/dynamo/` before the run.
