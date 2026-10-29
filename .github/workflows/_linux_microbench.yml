@@ -213,6 +213,8 @@ jobs:
             # torch-only base build (on-demand base, or P'): torchvision, torchaudio
             # and Triton of this run share its PyTorch commit and pins
             A_DIR=$(pick "${WS}/mb_base_wheels" 'Microbench-Base-Wheel-')
+            # a single matching artifact is extracted without a subdirectory
+            A_DIR=${A_DIR:-${WS}/mb_base_wheels}
             [ -n "$A_DIR" ] && [ -n "$(find "$A_DIR" -maxdepth 1 -name 'torch-*.whl')" ] || infra "base wheel artifact not found"
             venv venv_a $(find "$A_DIR" -maxdepth 1 -name 'torch-*.whl') $(find "$B_DIR" -maxdepth 1 -name '*.whl' ! -name 'torch-*')
             echo "MB_PY_BASE=${WS}/venv_a/bin/python" >> "${GITHUB_ENV}"
