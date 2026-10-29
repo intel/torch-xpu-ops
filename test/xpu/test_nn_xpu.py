@@ -6586,6 +6586,58 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 running_var=running_var,
             )
 
+    @onlyOn(["xpu"])
+    def test_batch_norm_channels_last_stats_accuracy(self):
+        cases = ((128, 96, 56, 56), (64, 768, 28, 28))
+        for dtype in (torch.float32, torch.float16):
+            output_tol = 1e-4 if dtype == torch.float32 else 1e-2
+            stats_tol = 1e-5 if dtype == torch.float32 else 1e-4
+            for shape in cases:
+                n, c, h, w = shape
+                generator = torch.Generator().manual_seed(0)
+                x = torch.randn(shape, dtype=dtype, generator=generator).contiguous(
+                    memory_format=torch.channels_last
+                )
+                weight = torch.randn(c, dtype=torch.float32, generator=generator)
+                bias = torch.randn(c, dtype=torch.float32, generator=generator)
+                running_mean = torch.randn(c, dtype=torch.float32, generator=generator)
+                running_var = (
+                    torch.rand(c, dtype=torch.float32, generator=generator) + 1
+                )
+
+                ref_mean = running_mean.double()
+                ref_var = running_var.double()
+                ref = F.batch_norm(
+                    x.double(),
+                    ref_mean,
+                    ref_var,
+                    weight.double(),
+                    bias.double(),
+                    training=True,
+                    momentum=0.1,
+                    eps=1e-5,
+                )
+
+                out_mean = running_mean.to(device_type)
+                out_var = running_var.to(device_type)
+                out = F.batch_norm(
+                    x.to(device_type),
+                    out_mean,
+                    out_var,
+                    weight.to(device_type),
+                    bias.to(device_type),
+                    training=True,
+                    momentum=0.1,
+                    eps=1e-5,
+                )
+                torch.xpu.synchronize()
+
+                self.assertEqual(out.cpu(), ref, atol=output_tol, rtol=output_tol)
+                self.assertEqual(
+                    out_mean.cpu(), ref_mean, atol=stats_tol, rtol=stats_tol
+                )
+                self.assertEqual(out_var.cpu(), ref_var, atol=stats_tol, rtol=stats_tol)
+
     def test_pairwise_distance(self):
         input1 = torch.randn(4, 4, requires_grad=True, dtype=torch.double)
         input2 = torch.randn(4, 4, requires_grad=True, dtype=torch.double)
@@ -10478,62 +10530,7 @@ def _buildEquivalentAffineTransforms3d(
 
     return transform_tensor, transform_ary, grid_ary
 
-
-# end TestNN.test_affine_* helpers
-
-
-class TestNNDeviceType(NNTestCase):
-    @onlyOn(["xpu"])
-    def test_batch_norm_channels_last_stats_accuracy(self, device):
-        cases = ((128, 96, 56, 56), (64, 768, 28, 28))
-        for dtype in (torch.float32, torch.float16):
-            output_tol = 1e-4 if dtype == torch.float32 else 1e-2
-            stats_tol = 1e-5 if dtype == torch.float32 else 1e-4
-            for shape in cases:
-                n, c, h, w = shape
-                generator = torch.Generator().manual_seed(0)
-                x = torch.randn(shape, dtype=dtype, generator=generator).contiguous(
-                    memory_format=torch.channels_last
-                )
-                weight = torch.randn(c, dtype=torch.float32, generator=generator)
-                bias = torch.randn(c, dtype=torch.float32, generator=generator)
-                running_mean = torch.randn(c, dtype=torch.float32, generator=generator)
-                running_var = (
-                    torch.rand(c, dtype=torch.float32, generator=generator) + 1
-                )
-
-                ref_mean = running_mean.double()
-                ref_var = running_var.double()
-                ref = F.batch_norm(
-                    x.double(),
-                    ref_mean,
-                    ref_var,
-                    weight.double(),
-                    bias.double(),
-                    training=True,
-                    momentum=0.1,
-                    eps=1e-5,
-                )
-
-                out_mean = running_mean.to(device)
-                out_var = running_var.to(device)
-                out = F.batch_norm(
-                    x.to(device),
-                    out_mean,
-                    out_var,
-                    weight.to(device),
-                    bias.to(device),
-                    training=True,
-                    momentum=0.1,
-                    eps=1e-5,
-                )
-                torch.xpu.synchronize()
-
-                self.assertEqual(out.cpu(), ref, atol=output_tol, rtol=output_tol)
-                self.assertEqual(
-                    out_mean.cpu(), ref_mean, atol=stats_tol, rtol=stats_tol
-                )
-                self.assertEqual(out_var.cpu(), ref_var, atol=stats_tol, rtol=stats_tol)
+    # end TestNN.test_affine_* helpers
 
     def _get_mixed_dtypes(self, device):
         """Get appropriate mixed dtype pair (param_dtype, input_dtype) for the device.
