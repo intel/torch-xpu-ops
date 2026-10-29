@@ -336,16 +336,19 @@ def read_lines(path: Path | None) -> list[str]:
 
 
 def read_run_health(root: Path) -> dict[str, dict]:
-    """Per category; the last record of a category wins."""
-    path = find_file(root, "run_health.jsonl")
+    """Per category over every UT job; an unhealthy record outranks a healthy one."""
     records: dict[str, dict] = {}
-    for line in read_lines(path):
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if "category" in rec:
-            records[rec["category"]] = rec
+    for path in sorted(root.rglob("run_health.jsonl")):
+        for line in read_lines(path):
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "category" not in rec:
+                continue
+            kept = records.get(rec["category"])
+            if kept is None or (kept.get("healthy") and not rec.get("healthy")):
+                records[rec["category"]] = rec
     return records
 
 

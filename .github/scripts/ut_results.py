@@ -382,7 +382,7 @@ class Report:
         seen: set[str] = set()
         error_pattern = r"(" + "|".join(ERROR_TYPES) + r"):.*?(?=\n\S|\n\n|\n=+\n|\Z)"
         for block in re.findall(r"(FAIL:.*?)(?:\n\n|\n=+\n|\Z)", content, re.DOTALL):
-            m = re.match(r"FAIL: (\w+) \(__mp_main__\.(\w+)\)", block)
+            m = re.match(r"FAIL: (\w+) \((?:\w+\.)*(\w+)\)", block)
             if not m or m.group(1) in seen:
                 continue
             seen.add(m.group(1))
@@ -827,9 +827,10 @@ class Checker:
 
         body = gh("--repo", REPO, "issue", "view", str(NEW_PASSED_ISSUE),
                   "--json", "body", "-q", ".body")
+        fetched = body.returncode == 0
         known = sorted({word for line in body.stdout.splitlines()
                         for word in line.split() if re.search(r"::.*::", word)}) \
-            if body.returncode == 0 else []
+            if fetched else []
         print("✅ Fetched known tests from GitHub" if known
               else "⚠️  Using empty known tests file")
 
@@ -840,7 +841,7 @@ class Checker:
             for word in line.split() if re.search(r"::.*::", word)
         })
         write_lines(self.path("known-passed-issue.cases"), known)
-        write_lines(self.path("new-passed-issue.cases"), now_passing)
+        write_lines(self.path("new-passed-issue.cases"), sorted(set(known) | set(now_passing)))
 
         new = [case for case in now_passing
                if case not in set(known)
@@ -853,7 +854,7 @@ class Checker:
         else:
             print("✅ No new passing tests found")
 
-        if self.may_write_issues() and (known or now_passing):
+        if self.may_write_issues() and fetched and now_passing:
             gh("--repo", REPO, "issue", "edit", str(NEW_PASSED_ISSUE), "--body-file",
                str(self.path("new-passed-issue.cases")))
             print(f"✅ Successfully updated issue #{NEW_PASSED_ISSUE}")
@@ -1191,7 +1192,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
             pass_lines += [(category, line) for line in result.new_passes]
             ids = checker.issue_ids
             for line in [*was_known, *result.new_passes]:
-                links[category, line] = issue_links(ids.get(line.strip(), []))
+                links[category, line] = issue_links(ids.get(line.strip(), [])) or "-"
             verdict["categories"].append({
                 "category": category,
                 "total": result.total,
