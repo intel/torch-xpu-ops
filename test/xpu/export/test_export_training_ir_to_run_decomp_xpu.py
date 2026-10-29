@@ -12,6 +12,7 @@
 
 # Owner(s): ["module: intel"]
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -174,6 +175,38 @@ def _test_exception(self):
             ).module()
 
 
+# XPUPatchForImport forces common_cuda.TEST_CUDA=True, so upstream's
+# `skipIf(not TEST_CUDA)` guard on this test does not fire here. The override
+# keeps the _cuda method name so the generated test ids stay stable.
+@unittest.skipIf(not torch.xpu.is_available(), "Test requires XPU.")
+def _test_non_strict_export_distribution_validation_cuda(self):
+    script = """\
+import torch
+
+
+class NormalMean(torch.nn.Module):
+    def forward(self, scale):
+        return torch.distributions.Normal(torch.zeros_like(scale), scale).mean
+
+
+scale = torch.ones(2, 3, device="xpu")
+ep = torch.export.export(NormalMean(), (scale,), strict=False)
+try:
+    ep.module()(-scale)
+except RuntimeError as exc:
+    if "Expected parameter to satisfy its distribution constraint" not in str(exc):
+        raise
+else:
+    raise AssertionError("invalid scale did not raise")
+torch.ones(1, device="xpu")
+torch.xpu.synchronize()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+
+
 test_export.TestExport.test_export_associative_scan_symbol_dim = (
     _test_export_associative_scan_symbol_dim
 )
@@ -184,6 +217,9 @@ test_export.TestExport.test_export_associative_scan_lifted_buffers = (
     _test_export_associative_scan_lifted_buffers
 )
 test_export.TestExport.test_exception = _test_exception
+test_export.TestExport.test_non_strict_export_distribution_validation_cuda = (
+    _test_non_strict_export_distribution_validation_cuda
+)
 
 test_classes = {}
 
