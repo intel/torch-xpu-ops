@@ -6586,7 +6586,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 running_var=running_var,
             )
 
-    @onlyOn(["xpu"])
+    @unittest.skipIf(not TEST_XPU or device_type != "xpu", "XPU not available")
     def test_batch_norm_channels_last_stats_accuracy(self):
         cases = ((128, 96, 56, 56), (64, 768, 28, 28))
         for dtype in (torch.float32, torch.float16):
