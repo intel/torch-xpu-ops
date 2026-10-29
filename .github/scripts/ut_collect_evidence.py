@@ -32,6 +32,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ut_results import EXPECTED_CASES as CHECK_EXPECTED_CASES, OP_UT_EXPECTED
+
 REPO = os.environ.get("GITHUB_REPOSITORY") or "intel/torch-xpu-ops"
 SERVER = os.environ.get("GITHUB_SERVER_URL") or "https://github.com"
 PYTORCH_REPO = "pytorch/pytorch"
@@ -80,32 +82,20 @@ MAX_TRACEBACK_CHARS = 300_000
 NAME_SAMPLE = 20
 HEALTH_RATIO = 0.95
 
-# Covered UT jobs. xpu_distributed is deliberately excluded: it reports through
-# Checker.run_distributed in ut_results.py, which produces neither the
-# per-category passed/failed logs nor a case count, so neither the health
-# gate nor the baseline comparison has anything to read. The upstream_* jobs
-# run weekly only; upstream_distributed goes through run_main_tests like the rest.
+# Covered UT jobs. The upstream_* jobs run weekly only.
 UT_JOB_CATEGORIES = {
     "basic": ["op_regression", "op_regression_dev1", "op_extended"],
     "op_ut": ["op_ut"],
     "xpu_profiling": ["xpu_profiling"],
+    "xpu_distributed": ["xpu_distributed"],
     "upstream_default": ["upstream_default"],
     "upstream_inductor": ["upstream_inductor"],
     "upstream_distributed": ["upstream_distributed"],
 }
 CATEGORY_UT_JOB = {c: job for job, cats in UT_JOB_CATEGORIES.items() for c in cats}
 
-# Mirrors EXPECTED_CASES in ut_results.py (linux column). Only a fallback for a
-# category the check recorded no run_health.jsonl entry for.
-EXPECTED_CASES = {
-    "op_extended": 5349,
-    "op_regression": 268,
-    "op_regression_dev1": 1,
-    "op_ut": 178548,
-    "upstream_default": 83126,
-    "upstream_inductor": 33999,
-    "upstream_distributed": 3323,
-}
+# Fallback for a category with no run_health.jsonl entry; op_ut uses its linux column.
+EXPECTED_CASES = {**CHECK_EXPECTED_CASES, "op_ut": OP_UT_EXPECTED["linux"]}
 
 
 # --------------------------------------------------------------------------- #

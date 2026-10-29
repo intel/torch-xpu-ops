@@ -7,7 +7,6 @@ on:
     paths:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
-      - '.github/scripts/ut_results.py'
       - '.github/scripts/test_*.py'
       - '.github/scripts/fold_details.js'
       - '.github/scripts/test_fold_details.js'
@@ -2253,7 +2252,6 @@ jobs:
   # patch export is a schema gate, a lost-fix cross-check and a salvage path
   # rolled into one; it used to be an inline heredoc in the fix job, where the
   # only way to exercise it was to run the whole ~5h job on an XPU runner.
-  # The UT check decides whether a nightly is green, from logs no PR produces.
   # Pure python, no GPU, seconds -- so a regression in them is caught on the PR
   # that introduces it instead of by losing a fix, or a failure, in production.
   script-tests:
