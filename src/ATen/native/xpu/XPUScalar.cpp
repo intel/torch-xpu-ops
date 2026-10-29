@@ -13,6 +13,7 @@
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/ops/_local_scalar_dense_native.h>
+#include <comm/GPUTrace.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native {
@@ -40,6 +41,7 @@ Scalar _local_scalar_dense_xpu(const Tensor& self) {
             self.const_data_ptr<scalar_t>(),
             sizeof(scalar_t));
         e.wait();
+        traceStreamSynchronization();
 
         r = Scalar(*value.const_data_ptr<scalar_t>());
       }),
