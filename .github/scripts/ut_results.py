@@ -31,18 +31,38 @@ STATIC_ISSUE = 1624
 KNOWN_ISSUE_IDS = "known_issue_ids.json"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-OP_UT_EXPECTED = {"linux": 287444, "windows": 105263}
+DEFAULTS_FILE = SCRIPT_DIR.parent / "ci-config" / "defaults.yaml"
+
+
+def load_defaults(path: Path) -> dict:
+    """Reads the two-level `key: value` subset of defaults.yaml without PyYAML."""
+    data: dict = {}
+    section: dict | None = None
+    for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = re.sub(r"(^|\s+)#.*$", "", raw).rstrip()
+        if not line.strip():
+            continue
+        match = re.match(r"^(\s*)([A-Za-z_][\w-]*):\s*(.*)$", line)
+        if not match:
+            raise ValueError(f"{path}:{number}: expected 'key: value'")
+        indent, key, value = match.group(1), match.group(2), match.group(3).strip("'\"")
+        if indent:
+            if section is None:
+                raise ValueError(f"{path}:{number}: nested key outside a section")
+            section[key] = value
+        elif value:
+            data[key] = value
+            section = None
+        else:
+            section = data[key] = {}
+    return data
+
+
+_UT = load_defaults(DEFAULTS_FILE)["ut"]
+OP_UT_EXPECTED = {"linux": int(_UT["op_ut_linux"]), "windows": int(_UT["op_ut_windows"])}
 
 # A category losing more than 5% of its cases is a broken run, not a fixed one.
-EXPECTED_CASES = {
-    "op_extended": 5352,
-    "op_regression": 353,
-    "op_regression_dev1": 1,
-    "test_xpu": 69,
-    "upstream_default": 83126,
-    "upstream_inductor": 33999,
-    "upstream_distributed": 3323,
-}
+EXPECTED_CASES = {k.removeprefix("case_"): int(v) for k, v in _UT.items() if k.startswith("case_")}
 
 # Cases that pass at random; a pass of one says nothing about a fix.
 IGNORE_TESTS = (

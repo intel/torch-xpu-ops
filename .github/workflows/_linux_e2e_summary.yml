@@ -10,7 +10,7 @@ on:
       python:
         type: string
         default: ''
-        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
 
 permissions:
   contents: read
