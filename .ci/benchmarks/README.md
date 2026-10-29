@@ -56,6 +56,11 @@ where $\bar{t}_{\text{case}}$ is the mean time per case, including model load an
 
 The E2E job is capped at 3600 minutes (`timeout-minutes` in `_linux_e2e.yml`). The cap applies to the whole job, so a tier must finish well within it. Fill the measured column from a p0 run first, then derive p1 and p2 from it.
 
+## Batch size
+
+- Batch sizes are not set in the tier files. They come from the root suite files (`huggingface.yaml`, `timm_models.yaml`, `torchbench.yaml`), which are kept aligned with PyTorch `benchmarks/dynamo/`.
+- Legacy models (p2 and any model without a PyTorch entry) use the batch sizes stored in the root suite files.
+
 ## Config structure
 
 - `models`: nested as `suite -> mode -> [model names]`. Modes are `inference` and `training`.
