@@ -18,7 +18,8 @@ its own measurements appended (30 days kept). Two kinds of lines:
   ``role`` is ``nightly_vs_reference`` (the nightly measurement) or
   ``nightly_aa`` (A/A rotation, sides A and B).
 * ``jump``: a confirmed step of a case (recheck of a nightly). Reference
-  values only use measurements after the last jump of a case.
+  values and noise statistics only use measurements from the night of the
+  last jump of a case on.
 
 Everything else (reference values, noise statistics) is computed on read.
 Only runs of nightly_ondemand.yml on main that were scheduled (or a
@@ -46,19 +47,20 @@ NIGHTLY_ROLES = ("nightly_vs_reference",)
 # A/A runs a case needs for its delta: the nightly A/A takes a seventh of the
 # PR-tier cases, so 30 days of state hold 3-4 A/A runs per case
 MIN_AA_RUNS = 3
+# night-to-night ratios a case needs for its own sigma_night
+MIN_NIGHT_RATIOS = 3
 
 DEFAULT_SCREENING = {
     "nightly_detect": {
         "z": 2.33,
         "t_max": 0.05,
         "t_min": 0.02,
-        "reference_runs": 5,
-        "min_records": 2,
+        "max_age_days": 7,
         "processes": 3,
         "aa_fraction": 0.14,
         "max_no_reference_recheck": 300,
     },
-    "default_noise": {"run": 0.02, "card": 0.03, "proc": 0.01, "ab": 0.01},
+    "default_noise": {"night": 0.01},
 }
 
 
@@ -236,18 +238,12 @@ def by_case(entries):
 # ---------------------------------------------------------------------------
 # Noise statistics, computed on read
 # ---------------------------------------------------------------------------
-# sigma_run   same card, different nightlies (after the last jump): robust
-#             spread of the log run medians, median over cards;
-# sigma_card  same nightly, different cards: spread of the log run medians;
-# sigma_proc  same run: spread of the log process medians;
-# sigma_ab    A/A rotation: spread of log(median B / median A); delta is the
-#             largest max(r, 1/r) - 1 over the A/A runs (the confirmation
-#             margin).
-# Missing statistics fall back to gating.yaml default_noise.
-
-
-def _median(xs):
-    return statistics.median(xs) if xs else None
+# sigma_night  robust spread of log(median / previous median) over the
+#              consecutive nightly records of a case (since its last jump),
+#              whatever machine each night ran on; with fewer than
+#              MIN_NIGHT_RATIOS ratios, gating.yaml default_noise.night;
+# delta        A/A rotation: the largest max(r, 1/r) - 1 over the A/A runs
+#              (the confirmation margin).
 
 
 def _spread(xs):
@@ -265,21 +261,21 @@ def entry_median(e):
 
 
 def noise_stats(state, defaults, jumps=None):
-    """{case_id: {"run", "card", "proc", "ab", "delta", "runs", "aa_runs"}}."""
+    """{case_id: {"night", "nights", "delta", "runs", "aa_runs"}}."""
     jumps = last_jumps(state) if jumps is None else jumps
     out = {}
     measures = [e for e in state if e.get("kind") == "measure"]
     for cid, es in by_case(measures).items():
         after = jumps.get(cid, 0)
-        es = [e for e in es if e.get("time", 0) > after]
-        nightly = [e for e in es if e.get("role") in NIGHTLY_ROLES]
-        procs = [_spread([math.log(v) for v in e["procs"] if v > 0]) for e in nightly]
-        per_card, per_run = {}, {}
-        for e in nightly:
-            m = entry_median(e)
-            if m > 0:
-                per_card.setdefault(e.get("card_id"), []).append(math.log(m))
-                per_run.setdefault(e.get("run_id"), []).append(math.log(m))
+        es = [e for e in es if e.get("time", 0) >= after]
+        nightly = sorted(
+            (e for e in es if e.get("role") in NIGHTLY_ROLES and entry_median(e) > 0),
+            key=lambda e: e.get("time", 0),
+        )
+        night = [
+            math.log(entry_median(b) / entry_median(a))
+            for a, b in zip(nightly, nightly[1:])
+        ]
         aa = {}
         for e in es:
             if e.get("role") == "nightly_aa":
@@ -289,15 +285,9 @@ def noise_stats(state, defaults, jumps=None):
             for s in aa.values()
             if s.get("A", 0) > 0 and s.get("B", 0) > 0
         ]
-        st = {
-            "run": _median(
-                [s for s in map(_spread, per_card.values()) if s is not None]
-            ),
-            "card": _median(
-                [s for s in map(_spread, per_run.values()) if s is not None]
-            ),
-            "proc": _median([s for s in procs if s is not None]),
-            "ab": _spread(logr),
+        out[cid] = {
+            "night": _spread(night) if len(night) >= MIN_NIGHT_RATIOS else None,
+            "nights": len(night),
             # the largest A/A deviation (a few runs per case)
             "delta": math.expm1(max(map(abs, logr)))
             if len(logr) >= MIN_AA_RUNS
@@ -305,79 +295,53 @@ def noise_stats(state, defaults, jumps=None):
             "runs": len({e.get("run_id") for e in nightly}),
             "aa_runs": len(logr),
         }
-        out[cid] = st
     return out
 
 
-def sigmas(stats, defaults):
-    """Noise of one case with defaults filled in."""
-    stats = stats or {}
-    return {
-        k: stats.get(k) if stats.get(k) is not None else defaults[k]
-        for k in ("run", "card", "proc", "ab")
-    }
+def sigma_night(stats, defaults):
+    """sigma_night of one case, default_noise.night without enough nights."""
+    night = (stats or {}).get("night")
+    return night if night is not None else defaults["night"]
 
 
 # ---------------------------------------------------------------------------
-# Comparing one measurement with reference records
+# Comparing one measurement with the previous nightly
 # ---------------------------------------------------------------------------
-# r = median(new process medians) / median(reference process medians), in log
-# space. Threshold t = min(t_max, 0.10 - z * sigma_tot) with
-# sigma_tot^2 = sigma_run^2 + sigma_proc^2 / n + sigma_ref^2 (+ sigma_card^2
-# for a pooled reference), sigma_ref^2 = sigma_run^2 / runs + sigma_proc^2 /
-# processes. A real 10% step is then flagged with probability >= Phi(z).
+# The reference is the most recent nightly record of the case (normally last
+# night's), on whatever machine it ran, if it is at most max_age_days old.
+# r = median(new process medians) / median(reference process medians);
+# threshold t = min(t_max, 0.10 - z * sigma_night), so a real 10% step is
+# flagged with probability >= Phi(z). A case whose t falls below t_min is too
+# noisy to detect and goes to the recheck A/B directly.
 
 
-def pick_reference(entries, env_key, card_id, cfg):
-    """Most recent records of the same environment, preferably the same
-    card. Returns (entries, same_card) or (None, None)."""
-    same_env = [e for e in entries if e.get("env_key") == env_key]
-
-    def recent(es):
-        runs = {}
-        for e in sorted(es, key=lambda e: -e.get("time", 0)):
-            if len(runs) < cfg["reference_runs"] or e.get("run_id") in runs:
-                runs.setdefault(e.get("run_id"), []).append(e)
-        if len(runs) >= cfg["min_records"]:
-            return [e for v in runs.values() for e in v]
-        return None
-
-    mine = recent([e for e in same_env if e.get("card_id") == card_id])
-    if mine:
-        return mine, True
-    pooled = recent(same_env)
-    return (pooled, False) if pooled else (None, None)
+def pick_reference(entries, now, cfg):
+    """The most recent record within max_age_days, or None."""
+    recent = [e for e in entries if e.get("time", 0) >= now - cfg["max_age_days"] * DAY]
+    return max(recent, key=lambda e: e.get("time", 0)) if recent else None
 
 
-def threshold(sig, n_new, ref, same_card, cfg):
-    runs = len({e.get("run_id") for e in ref})
-    procs = sum(len(e["procs"]) for e in ref)
-    s_ref2 = sig["run"] ** 2 / max(1, runs) + sig["proc"] ** 2 / max(1, procs)
-    s_tot2 = sig["run"] ** 2 + sig["proc"] ** 2 / max(1, n_new) + s_ref2
-    if not same_card:
-        s_tot2 += sig["card"] ** 2
-    s_tot = math.sqrt(s_tot2)
-    return min(cfg["t_max"], 0.10 - cfg["z"] * s_tot), s_tot
+def threshold(sigma, cfg):
+    return min(cfg["t_max"], 0.10 - cfg["z"] * sigma)
 
 
-def compare_to_reference(procs, ref, sig, cfg, same_card):
-    """Detection verdict of one case with a usable reference."""
-    ref_us = statistics.median([v for e in ref for v in e["procs"]])
+def compare_to_reference(procs, ref, sigma, cfg, card_id):
+    """Detection verdict of one case against its reference record."""
+    ref_us = entry_median(ref)
     new_us = statistics.median(procs)
-    t, s_tot = threshold(sig, len(procs), ref, same_card, cfg)
+    t = threshold(sigma, cfg)
     logr, bound = math.log(new_us / ref_us), math.log1p(max(t, 0.0))
     res = {
         "ratio": new_us / ref_us,
         "reference_us": ref_us,
         "new_us": new_us,
         "threshold": t,
-        "sigma_tot": s_tot,
-        "same_card": same_card,
-        "reference_runs": sorted(
-            {(e.get("run_id"), e.get("date"), e.get("xpu_ops_sha")) for e in ref},
-            key=lambda x: str(x[1]),
-        ),
-        "reference_cards": sorted({str(e.get("card_id")) for e in ref}),
+        "sigma_night": sigma,
+        "same_card": ref.get("card_id") == card_id,
+        "reference_runs": [
+            (ref.get("run_id"), ref.get("date"), ref.get("xpu_ops_sha"))
+        ],
+        "reference_cards": [str(ref.get("card_id"))],
     }
     if t < cfg["t_min"]:
         res.update(
@@ -393,7 +357,7 @@ def compare_to_reference(procs, ref, sig, cfg, same_card):
     return res
 
 
-def classify(record, ref_entries, stats, screening, metric="device_us"):
+def classify(record, ref_entries, stats, screening, metric="device_us", now=None):
     """Nightly detection of one case. ``ref_entries`` are the candidate
     reference records (already filtered for code, protocol and jumps)."""
     cfg = screening["nightly_detect"]
@@ -402,7 +366,6 @@ def classify(record, ref_entries, stats, screening, metric="device_us"):
         for p in record.get("per_process") or []
         if p.get(metric) is not None and p[metric] > 0
     ]
-    sig = sigmas(stats, screening["default_noise"])
     res = {
         "case_id": record["case_id"],
         "card_id": record.get("card_id"),
@@ -412,23 +375,22 @@ def classify(record, ref_entries, stats, screening, metric="device_us"):
         return dict(
             res, status="screen_invalid", reason="no valid samples on this side"
         )
-    ref, same_card = pick_reference(
-        ref_entries or [], record.get("env_key"), record.get("card_id"), cfg
-    )
+    ref = pick_reference(ref_entries or [], now or time.time(), cfg)
     if ref:
-        res.update(compare_to_reference(procs, ref, sig, cfg, same_card))
+        sigma = sigma_night(stats, screening["default_noise"])
+        res.update(compare_to_reference(procs, ref, sigma, cfg, record.get("card_id")))
     else:
         res.update(
             status="no_reference",
-            reason="no usable reference record (environment, card or code)",
+            reason=f"no record of this case code in the last {cfg['max_age_days']} days",
             new_us=statistics.median(procs),
         )
     return res
 
 
 def eligible_entries(entries, case_id, code_hash, jumps):
-    """Reference candidates of one case: same case code and protocol, after
-    its last jump."""
+    """Reference candidates of one case: same case code and protocol, from
+    its last jump on (the night of a jump measured the new level)."""
     after = jumps.get(case_id, 0)
     return [
         e
@@ -436,7 +398,7 @@ def eligible_entries(entries, case_id, code_hash, jumps):
         if e["case_id"] == case_id
         and e.get("case_code_hash") == code_hash
         and e.get("protocol_version") == PROTOCOL_VERSION
-        and e.get("time", 0) > after
+        and e.get("time", 0) >= after
     ]
 
 

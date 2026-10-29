@@ -35,36 +35,32 @@ quarantine:
   ops: []
 
 # ---------------------------------------------------------------------------
-# Nightly detection against the reference data of earlier nightlies.
+# Nightly detection against the previous nightly.
 #
-# Thresholds per case: sigma_tot^2 = sigma_run^2 + sigma_proc^2 / n + sigma_ref^2
-# (+ sigma_card^2 when the reference is not from the same card);
-# t = min(t_max, 0.10 - z * sigma_tot). A case whose t falls below t_min is
-# too noisy to detect and is rechecked like a suspicious one. Noise statistics
-# come from the reference state (nightly measure records); default_noise
-# covers cases without enough records.
+# Every case is compared with its most recent nightly record (normally last
+# night's, on whatever machine it ran), if that is at most max_age_days old;
+# otherwise it has no reference and goes to the recheck A/B directly.
+# Threshold per case: t = min(t_max, 0.10 - z * sigma_night), sigma_night
+# being the spread of the case's night-to-night ratios in the reference
+# state (default_noise.night until it has 3 of them). A case whose t falls
+# below t_min is too noisy to detect and is rechecked like a suspicious one.
 
 nightly_detect:
   z: 2.33
   t_max: 0.05
   t_min: 0.02
-  # the most recent reference_runs nightlies, at least min_records of them
-  reference_runs: 5
-  min_records: 2
+  max_age_days: 7
   # processes per case of the nightly measurement
   processes: 3
   # fraction of PR-tier cases also measured as A/A each night (one week covers all)
   aa_fraction: 0.14
-  # when more cases than this have no reference (driver upgrade, protocol
-  # bump), recheck only PR-tier and core-set cases
+  # when more cases than this have no reference (protocol bump, first
+  # nightly), recheck only PR-tier and core-set cases
   max_no_reference_recheck: 300
 
-# relative noise used when the reference state has too few records
+# night-to-night noise used until a case has enough nightly records
 default_noise:
-  run: 0.02
-  card: 0.03
-  proc: 0.01
-  ab: 0.01
+  night: 0.01
 
 # ---------------------------------------------------------------------------
 # Benchmark hosts. `default` applies to every host; a `hosts` entry whose key
