@@ -159,9 +159,8 @@ runs:
           # Follow with standard installation path
           uv pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            while read line; do
-              python install.py $(echo $line |awk -F, '{printf $1}')
-            done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
+            models=$(python -c "import yaml; cfg=yaml.safe_load(open('${{ github.workspace }}/torch-xpu-ops/.ci/benchmarks/p0/config.yaml')); print(' '.join(dict.fromkeys(m for mode in ('inference', 'training') for m in (cfg['models']['torchbench'].get(mode) or []))))")
+            python install.py ${models}
           else
             python install.py --continue_on_fail $(echo "${MODEL_ONLY_NAME}" |sed 's/,/ /g')
           fi

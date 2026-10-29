@@ -53,7 +53,7 @@ BACKEND_ENV: dict[str, dict[str, str]] = {
 }
 
 # GPU memory monitoring settings (mutable at runtime via CLI args)
-gpu_memory_threshold: float = 0.9000 if IS_WINDOWS else 0.9999
+gpu_memory_threshold: float = 1.0
 gpu_memory_monitor_enabled: bool = True
 
 # Maximum wall-clock time (seconds) a single task's process may run before the

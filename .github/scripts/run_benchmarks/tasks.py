@@ -2,14 +2,12 @@
 
 import os
 import re
-import subprocess
 import sys
 from functools import lru_cache, cache
 from itertools import product
 from pathlib import Path
 
 from .config import (
-    IS_WINDOWS,
     INDUCTOR_DT,
     PT2E_DT,
     TestTask,
@@ -34,13 +32,11 @@ def filter_valid(items: list[str], valid_set: set[str], name: str) -> list[str]:
 
 @lru_cache(maxsize=1)
 def get_torch_version() -> str:
-    """Return the installed PyTorch version string."""
-    pip_cmd = "pip.exe" if IS_WINDOWS else "pip"
+    """Return the PyTorch version visible to the running interpreter (local suffix stripped)."""
+    from importlib.metadata import PackageNotFoundError, version
     try:
-        result = subprocess.run([pip_cmd, "list", "--format=freeze"], capture_output=True, text=True, check=True)
-        torch_line = next((l for l in result.stdout.splitlines() if l.startswith("torch==")), None)
-        return torch_line.split("==")[1].split("+")[0] if torch_line else "0.0.0"
-    except Exception:
+        return version("torch").split("+")[0]
+    except PackageNotFoundError:
         return "0.0.0"
 
 
@@ -69,20 +65,30 @@ def get_skipped_models(suite: str) -> frozenset[str]:
 
 @cache
 def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str | None = None) -> list[str]:
-    """Retrieve model names from a CSV file, string list, or default text file.
+    """Retrieve model names from a tier config.yaml, CSV file, string list, or default text file.
 
     Cached: callers must treat the returned list as read-only.
     """
     if model_only is not None:
-        if os.path.isfile(model_only):
+        yaml_files = [p.strip() for p in model_only.split(",")]
+        if all(p.endswith((".yaml", ".yml")) and os.path.isfile(p) for p in yaml_files):
+            import yaml
+
+            models = []
+            for path in yaml_files:
+                with open(path, encoding="utf-8") as f:
+                    models_by_suite = (yaml.safe_load(f) or {}).get("models") or {}
+                if mode not in models_by_suite.get(suite, {}):
+                    raise ValueError(f"No '{suite} {mode}' models in {path}")
+                models.extend(str(m).strip() for m in models_by_suite[suite][mode])
+            models = list(dict.fromkeys(models))
+        elif os.path.isfile(model_only):
             import pandas as pd
             df = pd.read_csv(model_only)
             if suite == "pt2e":
                 col_header = f"pt2e {scenario}" if scenario else "pt2e accuracy"
-            elif suite == "torchbench":
-                col_header = f"{suite} {mode}"
             else:
-                col_header = suite
+                col_header = f"{suite} {mode}"
             if col_header not in df.columns:
                 available = ", ".join(df.columns)
                 raise ValueError(f"Column '{col_header}' not found in {model_only}. Available: {available}")
@@ -178,6 +184,54 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
     return unique
 
 
+def _pt2e_tasks(dt: str, scenario: str, model: str) -> list[TestTask]:
+    """Build pt2e inference tasks; int8 performance runs both symmetric and asymmetric quantization."""
+    if dt == "int8" and scenario == "performance":
+        return [TestTask("pt2e", dt, "inference", scenario, model, quant) for quant in ("symm", "asymm")]
+    return [TestTask("pt2e", dt, "inference", scenario, model)]
+
+
+def load_tasks_from_scope(
+    path: str,
+    suites: set[str] | None = None,
+    dts: set[str] | None = None,
+    modes: set[str] | None = None,
+    scenarios: set[str] | None = None,
+) -> list[TestTask]:
+    """Build tasks from a tier config.yaml using its own backends, precisions, scenarios and models."""
+    import yaml
+
+    with open(path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    backends = cfg.get("backends") or ["default"]
+    precisions = cfg.get("precision") or []
+    scenario_list = [s for s in cfg.get("scenario") or [] if not scenarios or s in scenarios]
+
+    suite_list = cfg.get("suite") or []
+
+    tasks: list[TestTask] = []
+    for suite, by_mode in (cfg.get("models") or {}).items():
+        if suite_list and suite not in suite_list:
+            continue
+        if suites and suite not in suites:
+            continue
+        for mode in (by_mode or {}):
+            if modes and mode not in modes:
+                continue
+            models = dict.fromkeys(get_model_list(suite, mode, path))
+            precision_list = [
+                p["dtype"] for p in precisions
+                if p.get("mode", mode) == mode and (not dts or p["dtype"] in dts)
+            ]
+            for scenario, dt, model in product(scenario_list, precision_list, models):
+                if suite == "pt2e":
+                    # pt2e has no backend axis; generating it per backend would duplicate runs.
+                    tasks.extend(_pt2e_tasks(dt, scenario, model))
+                else:
+                    tasks.extend(TestTask(suite, dt, mode, scenario, model, backend=backend) for backend in backends)
+    return tasks
+
+
 def generate_tasks(
     suites: list[str],
     dts: list[str],
@@ -194,16 +248,12 @@ def generate_tasks(
         for model in sorted(set(get_model_list(suite, mode, model_only)))
     ]
 
-    # PT2E tasks (inference only, dtypes: float32/int8)
-    if "pt2e" in suites:
+    # PT2E tasks are inference-only (dtypes: float32/int8), so skip them for other modes.
+    if "pt2e" in suites and "inference" in modes:
         pt2e_dts = [d for d in dts if d in PT2E_DT]
         for scenario in scenarios:
             for dt in pt2e_dts:
                 models = sorted(set(get_model_list("pt2e", "inference", model_only, scenario)))
                 for model in models:
-                    if dt == "int8" and scenario == "performance":
-                        tasks.append(TestTask("pt2e", dt, "inference", scenario, model, "symm"))
-                        tasks.append(TestTask("pt2e", dt, "inference", scenario, model, "asymm"))
-                    else:
-                        tasks.append(TestTask("pt2e", dt, "inference", scenario, model))
+                    tasks.extend(_pt2e_tasks(dt, scenario, model))
     return tasks

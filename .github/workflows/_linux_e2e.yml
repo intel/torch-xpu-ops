@@ -88,30 +88,24 @@ jobs:
           rm -rf ${{ github.workspace }}/pytorch/inductor_log
 
       # CICD launch
-      - name: CICD Huggingface BF16 & FP16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'huggingface') }}
+      - name: CICD Training Test (amp_fp16)
+        if: ${{ contains(github.event_name, 'pull_request') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: huggingface
-          dt: bfloat16,float16
+          suite: ${{ inputs.suite }}
+          dt: amp_fp16
           mode: training
           scenario: ${{ inputs.scenario }}
-      - name: CICD Timm_models BF16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
+          test_scope: p0
+      - name: CICD Inference Test (bfloat16)
+        if: ${{ contains(github.event_name, 'pull_request') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: timm_models
+          suite: ${{ inputs.suite }}
           dt: bfloat16
-          mode: training
+          mode: inference
           scenario: ${{ inputs.scenario }}
-      - name: CICD Torchbench BF16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: torchbench
-          dt: bfloat16
-          mode: training
-          scenario: ${{ inputs.scenario }}
+          test_scope: p0
 
       # Nihglty launch
       - name: Nightly Huggingface Full Test
@@ -227,6 +221,7 @@ jobs:
           dt: amp_fp16
           mode: training
           scenario: ${{ inputs.scenario }}
+          test_scope: p0
       - name: Acceptance Test - inference (${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
@@ -235,6 +230,7 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: ${{ inputs.scenario }}
+          test_scope: p0
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}

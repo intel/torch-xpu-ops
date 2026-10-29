@@ -11,6 +11,7 @@ from .tasks import (
     filter_valid,
     generate_tasks,
     load_tasks_from_file,
+    load_tasks_from_scope,
     parse_string_list,
 )
 from .workers import (
@@ -19,6 +20,12 @@ from .workers import (
     get_num_gpus,
     parse_numactl_args,
 )
+
+
+
+def _explicit(value: str) -> set[str] | None:
+    """Return the CLI filter values, or None when unset (all)."""
+    return set(parse_string_list(value)) or None
 
 
 def main() -> None:
@@ -47,13 +54,15 @@ def main() -> None:
     parser.add_argument("--scenario", default="",
                         help="Comma- or space-separated scenarios (accuracy, performance). Empty = all.")
     parser.add_argument("--model-only", default=None,
-                        help="Run only specific model(s) (overrides list file).")
+                        help="Run only specific model(s). Filters --task-file tasks when given.")
     parser.add_argument("--device", default="xpu", help="Device type (xpu, cuda, or cpu)")
     parser.add_argument("--backend", default="default", choices=sorted(config.VALID_BACKENDS),
                         help="Inductor backend variant (default, dynamic, cpp_wrapper, freezing, "
                              "aot_inductor, inductor_deterministic_perf). Applies to inductor suites only.")
     parser.add_argument("--task-file", default=None,
-                        help="Load tasks from a delimited file. Overrides --suite/--dt/--mode/--scenario/--model-only.")
+                        help="Comma-separated task sources, run one by one. A tier config .yaml uses its own "
+                             "backends/precisions/scenarios/models (CLI --suite/--dt/--mode/--scenario filter it); "
+                             ".csv/.txt holds task rows and uses --backend. --model-only filters the result.")
     parser.add_argument("--cores-per-instance", type=int, default=None,
                         help="CPU-only: cores per worker instance. Default = all cores per NUMA node.")
     parser.add_argument("--numactl-args", default="",
@@ -62,7 +71,7 @@ def main() -> None:
                         help="Path to ImageNet dataset directory (required for pt2e accuracy)")
     parser.add_argument("--gpu-memory-threshold", type=float, default=None,
                         help="GPU memory utilisation threshold (0.0-1.0) to kill a process. "
-                             "Default: 0.90 on Windows, 0.95 on Linux.")
+                             "Default: 1.0.")
     parser.add_argument("--no-gpu-memory-monitor", action="store_true", default=False,
                         help="Disable GPU memory monitoring (enabled by default).")
     parser.add_argument("--task-timeout", type=int, default=None,
@@ -89,14 +98,33 @@ def main() -> None:
         if not requested or set(requested) != {"pt2e"}:
             sys.exit("ERROR: benchmarks/dynamo directory not found. Are you in the pytorch directory?")
 
-    if args.task_file:
-        tasks = load_tasks_from_file(args.task_file)
-        if not tasks:
-            sys.exit(f"No valid tasks found in {args.task_file}.")
-        suites = sorted({t.suite for t in tasks})
-        dts = sorted({t.dt for t in tasks})
-        modes = sorted({t.mode for t in tasks})
-        scenarios = sorted({t.scenario for t in tasks})
+    task_files = [p.strip() for p in args.task_file.split(",") if p.strip()] if args.task_file else []
+
+    if task_files:
+        runs = []
+        for path in task_files:
+            if path.endswith((".yaml", ".yml")):
+                tasks = load_tasks_from_scope(
+                    path, _explicit(args.suite), _explicit(args.dt), _explicit(args.mode), _explicit(args.scenario))
+            else:
+                tasks = load_tasks_from_file(path)
+                for t in tasks:
+                    t.backend = args.backend
+            if args.model_only:
+                names = set(parse_string_list(args.model_only))
+                tasks = [t for t in tasks if t.model in names]
+            if not tasks:
+                sys.exit(f"No valid tasks found in {path}.")
+            label = None
+            if len(task_files) > 1:
+                label = Path(path).parent.name if Path(path).stem == "config" else Path(path).stem
+            runs.append((label, tasks))
+        all_tasks = [t for _, ts in runs for t in ts]
+        suites = sorted({t.suite for t in all_tasks})
+        dts = sorted({t.dt for t in all_tasks})
+        modes = sorted({t.mode for t in all_tasks})
+        scenarios = sorted({t.scenario for t in all_tasks})
+        backends = sorted({t.backend for t in all_tasks})
     else:
         suites = filter_valid(
             parse_string_list(args.suite) or list(config.VALID_SUITES), config.VALID_SUITES, "suite")
@@ -113,6 +141,10 @@ def main() -> None:
         tasks = generate_tasks(suites, dts, modes, scenarios, args.model_only)
         if not tasks:
             sys.exit("No valid tasks generated.")
+        for t in tasks:
+            t.backend = args.backend
+        runs = [(None, tasks)]
+        backends = [args.backend]
 
     banner("Configuration")
     if num_gpus is not None:
@@ -122,10 +154,10 @@ def main() -> None:
     log(f"Modes:      {', '.join(modes)}")
     log(f"Scenarios:  {', '.join(scenarios)}")
     log(f"Device:     {args.device}")
-    log(f"Backend:    {args.backend}")
+    log(f"Backends:   {', '.join(backends)}")
     if args.cores_per_instance:
         log(f"Cores/inst: {args.cores_per_instance}")
-    log(f"Tasks:      {len(tasks)}")
+    log(f"Tasks:      {sum(len(t) for _, t in runs)}")
 
     # Determine workers
     banner("Worker Setup")
@@ -143,7 +175,15 @@ def main() -> None:
         log(f"Auto-generated {len(workers)} GPU worker(s)")
 
     banner("Running Benchmarks")
-    run_all(tasks, workers, args.device, args.backend, args.dataset_dir)
+    total_failed = 0
+    for label, tasks in runs:
+        if label:
+            banner(f"Task file {label}")
+        log_root = Path.cwd().resolve() / "inductor_log" / (label or "")
+        total_failed += run_all(tasks, workers, args.device, args.dataset_dir, base_log_dir=log_root)
+
+    if total_failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
