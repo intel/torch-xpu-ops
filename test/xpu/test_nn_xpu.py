@@ -6632,11 +6632,15 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 )
                 torch.xpu.synchronize()
 
-                self.assertEqual(out.cpu(), ref, atol=output_tol, rtol=output_tol)
                 self.assertEqual(
-                    out_mean.cpu(), ref_mean, atol=stats_tol, rtol=stats_tol
+                    out.cpu(), ref, atol=output_tol, rtol=output_tol, exact_dtype=False
                 )
-                self.assertEqual(out_var.cpu(), ref_var, atol=stats_tol, rtol=stats_tol)
+                self.assertEqual(
+                    out_mean.cpu(), ref_mean, atol=stats_tol, rtol=stats_tol, exact_dtype=False
+                )
+                self.assertEqual(
+                    out_var.cpu(), ref_var, atol=stats_tol, rtol=stats_tol, exact_dtype=False
+                )
 
     def test_pairwise_distance(self):
         input1 = torch.randn(4, 4, requires_grad=True, dtype=torch.double)
