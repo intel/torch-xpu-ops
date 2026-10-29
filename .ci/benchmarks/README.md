@@ -28,7 +28,7 @@ PyTorch component acceptance tests run the full scope (the union of p0, p1, and 
 ## Tiers
 
 - `p0`, `p1`, `p2` are independent selections. They differ in backend and precision; p0 and p1 share the same model lists. Each file defines the backends, precisions, suites, scenarios, and models.
-- Commented backends (`dynamic`, `cpp_wrapper`, `freezing`, `aot_inductor`, `inductor_deterministic_perf`) are not executed unless uncommented.
+- Only the `default` backend is active. Commented backends (`dynamic`, `cpp_wrapper`, `freezing`, `aot_inductor`, `inductor_deterministic_perf`) are not executed unless uncommented; the full backend set will be added later.
 
 | Tier | Backends (active) | Precisions per mode | Models (inference / training) | Cases |
 |---|---|---|---|---|
