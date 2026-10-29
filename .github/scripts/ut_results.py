@@ -64,16 +64,6 @@ OP_UT_EXPECTED = {"linux": int(_UT["op_ut_linux"]), "windows": int(_UT["op_ut_wi
 # A category losing more than 5% of its cases is a broken run, not a fixed one.
 EXPECTED_CASES = {k.removeprefix("case_"): int(v) for k, v in _UT.items() if k.startswith("case_")}
 
-# Cases that pass at random; a pass of one says nothing about a fix.
-IGNORE_TESTS = (
-    "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
-    "test_parity__foreach_div_fastpath_outplace_xpu_complex128",
-    "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128",
-    "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128",
-    "test_python_ref__refs_log2_xpu_complex128",
-    "_jiterator_",
-)
-
 ERROR_TYPES = (
     "RuntimeError",
     "ValueError",
@@ -843,9 +833,8 @@ class Checker:
         write_lines(self.path("known-passed-issue.cases"), known)
         write_lines(self.path("new-passed-issue.cases"), sorted(set(known) | set(now_passing)))
 
-        new = [case for case in now_passing
-               if case not in set(known)
-               and not any(ignored in case for ignored in IGNORE_TESTS)]
+        known_set = set(known)
+        new = [case for case in now_passing if case not in known_set]
         write_lines(self.path("new-passed-this-run.cases"), new)
         if new:
             print(f"❌ {len(new)} NEW PASSING TESTS:")
