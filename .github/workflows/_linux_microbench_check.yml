@@ -88,12 +88,13 @@ jobs:
       - name: Install dependencies
         run: uv pip install pyyaml numpy
       - name: Download run data
-        uses: actions/download-artifact@v8
-        with:
-          # a rerun of only this job has a newer run_attempt than the run
-          # jobs that produced the data, so match any attempt
-          pattern: microbench-data-${{ inputs.artifact_id }}-*
-          path: ${{ github.workspace }}/mb_data
+        # a rerun of only this job has a newer run_attempt than the run
+        # jobs that produced the data, so match any attempt. gh keeps one
+        # directory per artifact even when a single one matches (an on-demand
+        # A/B or A/A); actions/download-artifact extracts that one in place.
+        run: |
+          gh run download ${{ github.run_id }} --repo ${{ github.repository }} \
+            -p "microbench-data-${{ inputs.artifact_id }}-*" -D "${WS}/mb_data"
       - name: Pick the latest attempt of every run job
         run: |
           mkdir -p "${WS}/mb_runs"
