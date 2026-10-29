@@ -356,7 +356,9 @@ def add_env_parser(sub):
 # Reference records are matched per environment key (GPU model, kernel
 # driver, user-mode driver, GPU firmware, frequency range) and per card.
 # ``machine_id`` is the runner name (container hostnames change per job);
-# ``card_id`` is the PCI address plus a serial number when sysfs has one.
+# ``card_id`` is the PCI address plus a serial number when sysfs has one;
+# without a serial (e.g. in the CI containers) the machine id takes its place,
+# since the same PCI address exists on every host.
 
 FIRMWARE_FILES = (
     "device/tile0/gt0/uc/guc_version",
@@ -408,7 +410,7 @@ def card_identity(card):
         os.path.basename(os.path.realpath(f"{base}/device")) if base else None
     )
     return {
-        "card_id": "/".join(filter(None, (bdf, serial))) or f"index{card['index']}",
+        "card_id": "/".join((bdf or f"index{card['index']}", serial or machine_id())),
         "gpu_firmware": firmware,
         "freq_lock_mhz": _freq_text(read_freq(drm)) if drm else None,
     }
