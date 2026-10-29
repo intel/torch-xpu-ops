@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: oneapi-src/level-zero
-          ref: v1.35.0
+          ref: v1.34.0
           path: level-zero
       - name: Checkout intel-llvm
         uses: actions/checkout@v7
