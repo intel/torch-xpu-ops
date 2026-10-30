@@ -6586,6 +6586,81 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 running_var=running_var,
             )
 
+    @onlyOn(["xpu"])
+    def test_batch_norm_backward_reduce_dispatch_boundaries(self):
+        def reference(input, grad_output, weight):
+            input = input.float()
+            grad_output = grad_output.float()
+            mean = input.mean((0, 2, 3))
+            invstd = input.var((0, 2, 3), unbiased=False).add(1e-5).rsqrt()
+            sum_dy = grad_output.sum((0, 2, 3))
+            sum_dy_xmu = (grad_output * (input - mean[None, :, None, None])).sum(
+                (0, 2, 3)
+            )
+            grad_weight = sum_dy_xmu * invstd
+            return sum_dy, sum_dy_xmu, grad_weight, sum_dy
+
+        for dtype in (torch.float16, torch.bfloat16):
+            for channels in (36, 38, 48):
+                for misalign_input, misalign_grad in (
+                    (True, False),
+                    (False, True),
+                    (False, False),
+                ):
+                    for mixed_weight in (False, True):
+                        torch.manual_seed(0)
+                        shape = (4, channels, 7, 7)
+                        strides = (channels * 7 * 7, 1, channels * 7, channels)
+                        storage_size = 4 * channels * 7 * 7 + 1
+                        input_storage = torch.randn(storage_size, dtype=dtype)
+                        grad_storage = torch.randn_like(input_storage)
+                        input = torch.as_strided(
+                            input_storage,
+                            shape,
+                            strides,
+                            storage_offset=1 if misalign_input else 0,
+                        )
+                        grad_output = torch.as_strided(
+                            grad_storage,
+                            shape,
+                            strides,
+                            storage_offset=1 if misalign_grad else 0,
+                        )
+                        weight_dtype = torch.float32 if mixed_weight else dtype
+                        weight = torch.randn(channels, dtype=weight_dtype)
+
+                        ref = reference(input, grad_output, weight)
+                        input_xpu = input.to(device_type)
+                        grad_output_xpu = grad_output.to(device_type)
+                        weight_xpu = weight.to(device_type)
+                        mean = input_xpu.float().mean((0, 2, 3))
+                        invstd = (
+                            input_xpu.float()
+                            .var((0, 2, 3), unbiased=False)
+                            .add(1e-5)
+                            .rsqrt()
+                        )
+                        actual = torch.batch_norm_backward_reduce(
+                            grad_output_xpu,
+                            input_xpu,
+                            mean,
+                            invstd,
+                            weight_xpu,
+                            True,
+                            True,
+                            True,
+                        )
+                        torch.xpu.synchronize()
+
+                        tol = 2e-2 if dtype == torch.float16 else 2e-1
+                        for actual_value, reference_value in zip(actual, ref):
+                            self.assertEqual(
+                                actual_value.cpu(),
+                                reference_value,
+                                atol=tol,
+                                rtol=tol,
+                            )
+
     def test_pairwise_distance(self):
         input1 = torch.randn(4, 4, requires_grad=True, dtype=torch.double)
         input2 = torch.randn(4, 4, requires_grad=True, dtype=torch.double)
