@@ -281,35 +281,7 @@ skip_dict = {
     ),
     "test_tensor_creation_ops_xpu.py": None,
     "test_testing_xpu.py": None,
-    "test_torch_xpu.py": (
-        # due to #2164, CUDA specific test
-        "test_no_cuda_monkeypatch",
-        # skipped due to #2536, torch._C._scatter or torch._C._gather
-        "test_pickle_gradscaler_xpu",
-        "test_grad_scaler_pass_itself_xpu",
-        "test_grad_scaling_state_dict_xpu",
-        "test_typed_storage_deprecation_warning",
-        "test_typed_storage_internal_no_warning",
-        # TypeError: map2_ is only implemented on CPU tensors
-        "test_broadcast_fn_map2_xpu",
-        "test_broadcast_fn_map_xpu",
-        # RuntimeError: _share_fd_: only available on CPU
-        "test_module_share_memory_xpu",
-        # TypedStorage tests are not applicable to XPU. TypedStorage is deprecated in favor of
-        # UntypedStorage paired with torch.dtype. XPU does not provide typed storage classes
-        # (e.g., torch.xpu.FloatStorage, torch.xpu.BFloat16Storage). See NOTE in
-        # torch.storage._dtype_to_storage_type_map() upstream:
-        # https://github.com/pytorch/pytorch/blob/main/torch/storage.py
-        "test_storage_setitem_xpu",
-        "test_storage_error",
-        # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
-        # under pytest -k substring semantics used by the XPU skip runner.
-        # https://github.com/intel/torch-xpu-ops/issues/2531
-        # CudaSyncGuard has no XPU counterpart yet.
-        "test_sync_warning_xpu",
-        "test_print",
-        "test_tensor_storage_type_xpu",
-    ),
+    "test_torch_xpu.py": None,
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
         "test_math_backend_high_precision_xpu",
