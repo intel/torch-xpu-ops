@@ -34,10 +34,10 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 900
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: ${{ contains(inputs.runner, 'bmg') && 'intel/omix:0.4.1-runtime-ubuntu26.04' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri
+      options: ${{ contains(inputs.runner, 'bmg') && '--entrypoint= ' || '' }}--device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
     steps:
