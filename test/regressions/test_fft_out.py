@@ -269,8 +269,7 @@ class TestFftOut(TestCase):
         "ndim,dims", ((1, (0,)), (2, (1,)), (2, (0, 1)), (3, (2,)), (3, (0, 1, 2)))
     )
     def test_fft_r2c_out_twosided(self, device, ndim, dims):
-        # onesided=False mirrors the second half in place, the one path that
-        # replaces the destination after the transform has already run.
+        # onesided=False fills the second half using conjugate symmetry.
         shape = (2, 3, 4)[-ndim:]
         x = torch.randn(*shape, dtype=torch.float64, device=device)
         expected = torch.fft.fftn(x.to(torch.complex128), dim=dims)
