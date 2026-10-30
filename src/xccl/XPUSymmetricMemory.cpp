@@ -18,6 +18,7 @@
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <array>
 #include <atomic>
 #include <mutex>
 
@@ -295,6 +296,8 @@ size_t XPUSymmetricMemoryAllocator::get_alloc_size(void* ptr) {
   return block->buffer_size;
 }
 
+using DeviceUuid = std::array<unsigned char, 16>;
+
 struct RendezvousRequest {
   int device_idx;
   int pid;
@@ -302,7 +305,30 @@ struct RendezvousRequest {
   size_t buffer_size;
   size_t signal_pad_offset;
   bool has_multicast_support;
+  DeviceUuid device_uuid;
 };
+
+DeviceUuid get_device_uuid(const sycl::device& device) {
+  if (!device.has(sycl::aspect::ext_intel_device_info_uuid)) {
+    return {};
+  }
+  return device.get_info<sycl::ext::intel::info::device::uuid>();
+}
+
+// The device of `ctx` with the given UUID, or `fallback` if it has none.
+sycl::device find_device(
+    const sycl::context& ctx,
+    const DeviceUuid& uuid,
+    const sycl::device& fallback) {
+  if (uuid != DeviceUuid{}) {
+    for (const auto& device : ctx.get_devices()) {
+      if (get_device_uuid(device) == uuid) {
+        return device;
+      }
+    }
+  }
+  return fallback;
+}
 
 void validate_rendezvous_requests(
     const std::vector<RendezvousRequest>& reqs,
@@ -396,7 +422,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       .block_size = block->block_size,
       .buffer_size = block->buffer_size,
       .signal_pad_offset = block->signal_pad_offset,
-      .has_multicast_support = false};
+      .has_multicast_support = false,
+      .device_uuid = get_device_uuid(current_queue.get_device())};
   auto reqs = storeExchange.all_gather(store, rank, world_size, local_req);
   validate_rendezvous_requests(reqs, world_size);
 
@@ -438,7 +465,11 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     syclexp::ipc_memory::handle_data_t peer_bytes(
         reinterpret_cast<const std::byte*>(payload.data()),
         reinterpret_cast<const std::byte*>(payload.data()) + payload.size());
-    void* remote_base = syclexp::ipc_memory::open(peer_bytes, ctx, dev);
+    // Open the handle on the device that owns the memory, so that Level Zero,
+    // and the profilers that ask it, know where the data lives. A process that
+    // does not see that device opens it on its own.
+    void* remote_base = syclexp::ipc_memory::open(
+        peer_bytes, ctx, find_device(ctx, reqs[r].device_uuid, dev));
 
     handles[r] = remote_base;
     buffers[r] = remote_base;
