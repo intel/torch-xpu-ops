@@ -95,7 +95,9 @@ is a judgement.
       "baseline_passed": 412, "baseline_run": 12345000 }
   ],
 
-  // Per category, for the filing step's Reproduce section.
+  // Per category, for the filing step's Reproduce section. A category missing
+  // here recorded no command: then the draft's own `reproduce` is used, which
+  // SKILL.md says how to write.
   "reproduce": {
     "op_extended": { "file_path": "cd pytorch/third_party/torch-xpu-ops/test/xpu/extended",
                      "command_template": "pytest -sv failed_case" }
