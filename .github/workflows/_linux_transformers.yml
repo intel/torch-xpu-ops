@@ -82,7 +82,7 @@ defaults:
 
 jobs:
   prepare:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'bmg' }}
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'disable_all')
@@ -113,12 +113,12 @@ jobs:
 
   tests:
     needs: prepare
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'bmg' }}
     container:
-      image: ${{ contains(inputs.runner || 'pvc', 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-26.04-rolling:26.14' }}
+      image: ${{ contains(inputs.runner != '' && inputs.runner || 'bmg', 'bmg') && 'intel/omix:0.4.1-runtime-ubuntu26.04' || contains(inputs.runner, 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-26.04-rolling:26.14' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri
+      options: ${{ contains(inputs.runner != '' && inputs.runner || 'bmg', 'bmg') && '--entrypoint= ' || '' }}--device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
