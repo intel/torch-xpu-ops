@@ -144,7 +144,7 @@ skip_dict = {
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
-    "test_distributions_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/distributions/test_distributions.py": None,
     "test_expanded_weights_xpu.py": None,
     "test_fake_tensor_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2472
