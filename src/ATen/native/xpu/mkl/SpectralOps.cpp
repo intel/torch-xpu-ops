@@ -733,11 +733,6 @@ static void _fft_r2c_mkl_out_impl(
   impl::_fft_apply_normalization(out_slice, normalization, input_sizes, dim);
 
   if (!onesided) {
-    if (fft_out.sizes()[last_dim] != out_sizes[last_dim]) {
-      auto full_out = at::empty(out_sizes, self.options().dtype(fft_dtype));
-      full_out.slice(last_dim, 0, last_dim_halfsize).copy_(fft_out);
-      fft_out = std::move(full_out);
-    }
     at::native::_fft_fill_with_conjugate_symmetry_(fft_out, dim);
   }
 
