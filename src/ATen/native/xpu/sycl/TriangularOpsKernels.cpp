@@ -15,6 +15,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Resize.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
@@ -154,7 +155,8 @@ void apply_triu_tril(
   int64_t N_padded =
       c10::multiply_integers(sizes.begin(), sizes.end() - 1) * last_dim_padded;
 
-  int64_t local_range = syclMaxWorkItemsPerSubSlice();
+  int64_t local_range = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t global_range =
       round_up<int64_t>(N_padded / elements_per_thread, local_range);
 

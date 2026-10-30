@@ -349,15 +349,15 @@ def read_issue_field_values(node_id):
                 field{ ... on IssueFieldCommon { name } }
               }
               ... on IssueFieldTextValue {
-                text
+                value
                 field{ ... on IssueFieldCommon { name } }
               }
               ... on IssueFieldNumberValue {
-                number
+                value
                 field{ ... on IssueFieldCommon { name } }
               }
               ... on IssueFieldDateValue {
-                date
+                value
                 field{ ... on IssueFieldCommon { name } }
               }
             }
@@ -379,9 +379,10 @@ def read_issue_field_values(node_id):
         if not n:
             continue
         name = ((n.get("field") or {}).get("name"))
-        # exactly one value key is present per node, depending on the field type
+        # single-select exposes the option under "name"; text/number/date all
+        # expose their scalar under "value". Exactly one is present per node.
         val = next(
-            (n[k] for k in ("name", "text", "number", "date") if n.get(k) is not None),
+            (n[k] for k in ("name", "value") if n.get(k) is not None),
             None,
         )
         if name and val is not None:
