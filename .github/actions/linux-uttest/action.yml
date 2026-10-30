@@ -5,9 +5,6 @@ inputs:
   ut_name:
     required: true
     description: Which ut to launch
-  skip_summary:
-    default: 'false'
-    description: "When 'true', do not write the per-job UT summary panel (caller runs its own comparison)"
 
 runs:
   using: composite
@@ -24,154 +21,153 @@ runs:
         # Global pytest plugin: auto-registered via pytest11 entry point,
         # restarts an xdist worker on fatal XPU failures (crash/OOM/segfault).
         uv pip install ${{ github.workspace }}/.github/scripts/pytest_custom_config
+    - name: Prepare UT log layout
+      shell: bash -xe {0}
+      run: |
+        # ut_log/ is the UT-Data artifact:
+        #   ut_meta.env  env/  junit/*.xml  logs/<ut_name>/ (console logs, reproduce_*.log)
+        {
+          echo "UT_JUNIT_DIR=${GITHUB_WORKSPACE}/ut_log/junit"
+          echo "UT_LOG_DIR=${GITHUB_WORKSPACE}/ut_log/logs/${{ inputs.ut_name }}"
+        } >> "${GITHUB_ENV}"
+        mkdir -p "${GITHUB_WORKSPACE}/ut_log/junit" "${GITHUB_WORKSPACE}/ut_log/logs/${{ inputs.ut_name }}"
     - name: op_regression
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
       run: |
-        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
-        mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/regressions
-        pytest --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
-          2> ${log_dir}/op_regression_test_error.log |tee ${log_dir}/op_regression_test.log
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression.log
+        pytest --junit-xml=${UT_JUNIT_DIR}/op_regression.xml \
+          2>&1 |tee ${UT_LOG_DIR}/op_regression_test.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${UT_LOG_DIR}/reproduce_op_regression.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_regression.log
     - name: op_regression_dev1
       shell: timeout 300 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
       run: |
-        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
-        mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/regressions
         timeout 180 pytest test_operation_on_device_1.py \
-          --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml \
-          2> ${log_dir}/op_regression_dev1_test_error.log |tee ${log_dir}/op_regression_dev1_test.log
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
+          --junit-xml=${UT_JUNIT_DIR}/op_regression_dev1.xml \
+          2>&1 |tee ${UT_LOG_DIR}/op_regression_dev1_test.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${UT_LOG_DIR}/reproduce_op_regression_dev1.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_regression_dev1.log
     - name: op_extended
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
-        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
-        mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/xpu/extended
         python run_test_with_skip.py \
-          2> ${log_dir}/op_extended_test_error.log |tee ${log_dir}/op_extended_test.log
+          2>&1 |tee ${UT_LOG_DIR}/op_extended_test.log
         ls -al
-        cp *.xml ${{ github.workspace }}/ut_log
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
+        cp *.xml ${UT_JUNIT_DIR}
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a ${UT_LOG_DIR}/reproduce_op_extended.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_extended.log
     - name: op_ut
       shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
-        mkdir -p ut_log/op_ut
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         python run_test_with_skip.py \
-          2> ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
-        find . -type f -name "op_ut_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
+          2>&1 | \
+          tee ${UT_LOG_DIR}/op_ut_with_skip_test.log
+        find . -type f -name "op_ut_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_op_ut.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_ut.log
     - name: skipped_ut
       shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'skipped_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTEST_ADDOPTS="$(echo "${PYTEST_ADDOPTS}" | sed 's/--timeout 600/--timeout 3600/')"
-        mkdir -p ut_log/skipped_ut
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         python run_test_with_skip.py --test-cases skipped \
-          2> ${{ github.workspace }}/ut_log/skipped_ut/skipped_ut_with_skip_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/skipped_ut/skipped_ut_with_skip_test.log
-        find . -type f -name "op_ut_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
+          2>&1 | \
+          tee ${UT_LOG_DIR}/skipped_ut_with_skip_test.log
+        find . -type f -name "op_ut_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_skipped_ut.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_skipped_ut.log
     - name: torch_xpu
       shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        mkdir -p ut_log/torch_xpu
         cd pytorch
         test_cmd="python test/run_test.py --include "
         for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
         for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
         if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
-        eval $test_cmd 2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+        eval $test_cmd 2>&1 | \
+          tee ${UT_LOG_DIR}/torch_xpu_test.log
     - name: xpu_profiling
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
-        mkdir -p ut_log/xpu_profiling/issue_reproduce
+        mkdir -p ${UT_LOG_DIR}/issue_reproduce
         cd pytorch/third_party/torch-xpu-ops
         # xdist (-n / --tx from detect-devices.sh) captures stdout and would drop
         # the profiler tables the cases print for manual check
         export PYTEST_ADDOPTS="-v --timeout 3600 --timeout_method=thread"
         # RN50 Test (runs rn50.py, then checks its kernel events, runtime op time and .pt artifact)
-        # the xpu_profiling_ prefix is what check-ut.py uses to group these reports
+        # the xpu_profiling_ prefix is what ut_results.py uses to group these reports
         python -m pytest -s -v \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_rn50.xml \
+          --junitxml=${UT_LOG_DIR}/xpu_profiling_rn50.xml \
           test/profiling/test_rn50_profiling.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/rn50.log
-        cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/xpu_profiling || true
+          tee ${UT_LOG_DIR}/rn50.log
+        cp profiling.fp32.train.pt ${UT_LOG_DIR} || true
         # All Issue Reproduce UT (-s keeps the profiler tables in the log for manual check)
         python -m pytest -s -v \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_issue_reproducers.xml \
+          --junitxml=${UT_LOG_DIR}/issue_reproduce/xpu_profiling_test_issue_reproducers.xml \
           test/profiling/test_issue_reproducers.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_issue_reproducers.log
+          tee ${UT_LOG_DIR}/issue_reproduce/test_issue_reproducers.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_profiler_correctness.xml \
+          --junitxml=${UT_LOG_DIR}/issue_reproduce/xpu_profiling_test_profiler_correctness.xml \
           test/profiling/test_profiler_correctness.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_profiler_correctness.log
+          tee ${UT_LOG_DIR}/issue_reproduce/test_profiler_correctness.log
         # Overlapping kernels test (depends on rn50.log.json from RN50 run above)
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_for_overlapping_kernels.xml \
+          --junitxml=${UT_LOG_DIR}/issue_reproduce/xpu_profiling_test_for_overlapping_kernels.xml \
           test/profiling/test_for_overlapping_kernels.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
+          tee ${UT_LOG_DIR}/issue_reproduce/test_for_overlapping_kernels.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_profiler_use_cases.xml \
+          --junitxml=${UT_LOG_DIR}/xpu_profiling_test_profiler_use_cases.xml \
           test/xpu/profiler/test_profiler_use_cases.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_use_cases.log
+          tee ${UT_LOG_DIR}/test_profiler_use_cases.log
 
         # llama case for calls number test
         uv pip install transformers
         python -m pytest -s -v \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_llama.xml \
+          --junitxml=${UT_LOG_DIR}/xpu_profiling_llama.xml \
           test/profiling/test_llama_profiling.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
+          tee ${UT_LOG_DIR}/llama.log
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_execution_trace.xml \
+          --junitxml=${UT_LOG_DIR}/xpu_profiling_test_execution_trace.xml \
           test_execution_trace.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
+          tee ${UT_LOG_DIR}/test_execution_trace.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_memory_profiler.xml \
+          --junitxml=${UT_LOG_DIR}/xpu_profiling_test_memory_profiler.xml \
           test_memory_profiler.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
+          tee ${UT_LOG_DIR}/test_memory_profiler.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_profiler_tree.xml \
+          --junitxml=${UT_LOG_DIR}/xpu_profiling_test_profiler_tree.xml \
           test_profiler_tree.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
+          tee ${UT_LOG_DIR}/test_profiler_tree.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_xpu_profiler.xml \
+          --junitxml=${UT_LOG_DIR}/xpu_profiling_test_xpu_profiler.xml \
           test_xpu_profiler.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
+          tee ${UT_LOG_DIR}/test_xpu_profiler.log
 
-        find ${{ github.workspace }}/ut_log/xpu_profiling -type f -name "*.xml" \
-          -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
+        find ${UT_LOG_DIR} -type f -name "*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
 
     - name: xpu_distributed
       shell: timeout 36000 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
-        mkdir -p ut_log/xpu_distributed
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
@@ -179,47 +175,42 @@ runs:
         fi
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         python run_distributed.py \
-          2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
-        find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
+          2>&1 | \
+          tee ${UT_LOG_DIR}/xpu_distributed_test.log
+        find ../ -type f -name "*.xml" -exec cp {} ${UT_JUNIT_DIR}/ \;
 
     - name: xpu_p0
       shell: timeout 72000 bash -xe -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_p0' }}
       env:
         PYTORCH_TEST_WITH_SLOW: 1
-        LOG_BASE: ${{ github.workspace }}/ut_log/xpu_p0
         PYTORCH_ROOT_DIR: ${{ github.workspace }}/pytorch
-        XML_OUTPUT_DIR: ${{ github.workspace }}/ut_log
         XML_PREFIX: xpu_p0_with_
       run: |
-        mkdir -p "${LOG_BASE}"
+        # run_ut.sh writes to LOG_BASE and XML_OUTPUT_DIR.
+        export LOG_BASE="${UT_LOG_DIR}" XML_OUTPUT_DIR="${UT_JUNIT_DIR}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
         bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" inductor non-inductor profiling \
-          2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
-          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
-        find . -name "xpu_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
+          2>&1 | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
+        find . -name "xpu_p0_with_*.xml" -exec cp {} "${UT_JUNIT_DIR}/" \; 2>/dev/null || true
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
-          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
+          | tee "${UT_LOG_DIR}/reproduce_xpu_p0.log"
 
     - name: xpu_p0_distributed
       shell: timeout 72000 bash -xe -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_p0_distributed' }}
       env:
         PYTORCH_TEST_WITH_SLOW: 1
-        LOG_BASE: ${{ github.workspace }}/ut_log/xpu_p0_distributed
         PYTORCH_ROOT_DIR: ${{ github.workspace }}/pytorch
-        XML_OUTPUT_DIR: ${{ github.workspace }}/ut_log
         XML_PREFIX: xpu_p0_with_
       run: |
-        mkdir -p "${LOG_BASE}"
+        export LOG_BASE="${UT_LOG_DIR}" XML_OUTPUT_DIR="${UT_JUNIT_DIR}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
         bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" distributed \
-          2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
-          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
-        find . -name "xpu_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
+          2>&1 | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
+        find . -name "xpu_p0_with_*.xml" -exec cp {} "${UT_JUNIT_DIR}/" \; 2>/dev/null || true
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
-          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
+          | tee "${UT_LOG_DIR}/reproduce_xpu_p0.log"
 
     - name: upstream_ut
       shell: timeout 172800 bash -e -o pipefail {0}
@@ -237,55 +228,10 @@ runs:
           uv pip install python-etcd
           xpu-smi topology -m
         fi
-        # Exit code 1 means test failures, which the summary step reports; fail only on setup errors
+        # Exit code 1 means test failures, which the check job reports; fail only on setup errors
         rc=0
         python .github/scripts/run_upstream_ut.py "${category}" --ut-name "${ut_name}" \
           --pytorch-dir pytorch \
-          --log-dir "${{ github.workspace }}/ut_log/${ut_name}" \
-          --xml-dir "${{ github.workspace }}/ut_log" || rc=$?
+          --log-dir "${UT_LOG_DIR}" \
+          --xml-dir "${UT_JUNIT_DIR}" || rc=$?
         [ "${rc}" -le 1 ]
-
-    # Summary
-    - name: UT Test Results Summary
-      if: ${{ !cancelled() && inputs.skip_summary != 'true' }}
-      shell: timeout 180 bash -xe {0}
-      run: |
-        uv pip install junitparser
-        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i $(find ${{ github.workspace }}/ut_log/ -name "*.xml") >> $GITHUB_STEP_SUMMARY || true
-        # Check the failure logs
-        if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
-          echo -e "Exist Failure logs"
-          echo "Found Failure logs as below: "
-          for file in ${{ github.workspace }}/failures*.log; do
-            echo "  - $file"
-            cp "$file" ${{ github.workspace }}/ut_log
-          done
-          echo -e "Failure logs Copied"
-        else
-          echo -e "No Failure logs"
-        fi
-        # Copied the passed logs
-        if ls passed*.log 1> /dev/null 2>&1; then
-          cp passed*.log ${{ github.workspace }}/ut_log
-          echo -e "Passed logs Copied"
-        else
-          echo -e "No Passed logs"
-        fi
-        # Copied the full case universe (includes skipped cases), used by
-        # ut_collect_evidence.py to classify a failure against its baseline.
-        if ls all_cases_*.log 1> /dev/null 2>&1; then
-          cp all_cases_*.log ${{ github.workspace }}/ut_log
-          echo -e "All-cases logs Copied"
-        else
-          echo -e "No All-cases logs"
-        fi
-        # Copied the Summary logs
-        if ls category*.log 1> /dev/null 2>&1; then
-          cp category*.log ${{ github.workspace }}/ut_log
-          echo -e "Category logs Copied"
-        else
-          echo -e "No Category logs"
-        fi
-        if [ -e ut_failure_list.csv ];then
-            cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
-        fi

@@ -1,0 +1,19 @@
+common:
+  python: 3.12.15
+
+ut:
+  # op UT total per platform
+  op_ut_linux: 325448
+  op_ut_windows: 105263
+  # expected cases: op
+  case_op_extended: 5352
+  case_op_regression: 445
+  case_op_regression_dev1: 1
+  # expected cases: xpu
+  case_test_xpu: 69
+  case_xpu_profiling: 109
+  case_xpu_distributed: 777
+  # expected cases: upstream
+  case_upstream_default: 246540
+  case_upstream_inductor: 50320
+  case_upstream_distributed: 4777

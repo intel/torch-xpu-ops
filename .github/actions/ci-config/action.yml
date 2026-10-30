@@ -1,5 +1,5 @@
 name: CI Config
-description: Resolve the shared CI defaults from .github/ci-config/defaults.json and export PYTHON_VERSION
+description: Resolve the shared CI defaults from .github/ci-config/defaults.yaml and export PYTHON_VERSION
 
 inputs:
   python:
@@ -9,7 +9,7 @@ inputs:
   config:
     type: string
     default: ''
-    description: Config file path. Defaults to $BASE_ENV, then .github/ci-config/defaults.json
+    description: Config file path. Defaults to $BASE_ENV, then .github/ci-config/defaults.yaml
 
 outputs:
   python:

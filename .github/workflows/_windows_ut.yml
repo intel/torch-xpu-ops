@@ -22,11 +22,15 @@ on:
         required: false
         type: string
         default: ''
-        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
       runner:
         required: true
         type: string
         description: Runner label
+      category:
+        type: string
+        default: ''
+        description: 'Optional artifact tag; also selects known-failure label scope'
       xpu_version:
         required: false
         type: string
@@ -213,8 +217,8 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           python run_test_with_skip_mtl.py
 
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy op_extended.xml %GITHUB_WORKSPACE%\ut_log /Y
+          if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
+          copy op_extended.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run CPP Extensions AOT SYCL UT
         if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
         shell: cmd
@@ -229,8 +233,8 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python -m pytest test_cpp_extensions_aot_xpu.py -v --junit-xml=test_cpp_extensions_aot_xpu.xml
 
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
+          if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
+          copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run Test XPU UT
         if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
         shell: cmd
@@ -242,8 +246,8 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_win_with_skip_mtl.py
 
-          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
+          if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
+          copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run OP UT
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         shell: cmd
@@ -256,138 +260,51 @@ jobs:
           set PYTEST_ADDOPTS=-v --timeout 600 --timeout_method=thread --max-worker-restart 1000000 -n 1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_with_windows_nightly.py
+          if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
+          for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\junit\" >nul 2>&1 || echo "File move completed"
+      - name: Record UT job metadata
+        if: ${{ ! cancelled() }}
+        shell: cmd
+        run: |
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
-      - name: Upload Inductor XPU UT Log
+          rem The summary reads this to know which known-failure labels and
+          rem which platform name apply to the artifact.
+          echo UT_NAME=${{ inputs.ut }}> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
+          echo UT_RUNNER=${{ inputs.runner }}>> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
+          echo UT_CATEGORY=${{ inputs.category }}>> "%GITHUB_WORKSPACE%\ut_log\ut_meta.env"
+      - name: Upload UT data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
+          name: UT-Data-windows-${{ inputs.ut }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}-${{ github.run_attempt }}
           path: "${{ github.workspace }}/ut_log"
           if-no-files-found: ignore
 
-  summary:
+  check:
     needs: [ut_test]
+    if: ${{ ! cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
-      - name: Setup python
-        uses: ./.github/actions/setup-python
+      - name: Check UT failures
+        id: ut
+        uses: ./.github/actions/ut-check
         with:
-          python: ${{ inputs.python }}
-      - name: Download XPU UT Logs
-        uses: actions/download-artifact@v8
-        with:
-          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
-          path: ${{ github.workspace }}/ut_log
-      - name: UT Test Results Summary
-        shell: bash
+          platform: windows
+          ut: ${{ inputs.ut }}
+          category: ${{ inputs.category }}
+          pytorch: ${{ inputs.pytorch }}
+      - name: Fail on new failures
+        if: ${{ steps.ut.outputs.passed != 'true' }}
+        shell: bash {0}
         run: |
-          uv pip install junitparser
-          find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
-          python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-          # Check the failure logs
-          if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
-            echo -e "Exist Failure logs"
-            echo "Found Failure logs as below: "
-            for file in ${{ github.workspace }}/failures*.log; do
-              echo "  - $file"
-              cp "$file" ${{ github.workspace }}/ut_log
-            done
-            echo -e "Failure logs Copied"
-          else
-            echo -e "No Failure logs"
-          fi
-          # Copied the passed logs
-          if ls passed*.log 1> /dev/null 2>&1; then
-            cp passed*.log ${{ github.workspace }}/ut_log
-            echo -e "Passed logs Copied"
-          else
-            echo -e "No Passed logs"
-          fi
-          # Copied the Summary logs
-          if ls category*.log 1> /dev/null 2>&1; then
-            cp category*.log ${{ github.workspace }}/ut_log
-            echo -e "Category logs Copied"
-          else
-            echo -e "No Category logs"
-          fi
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log
-          overwrite: true
-
-  summary_check:
-    needs: [summary]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
-      - name: Download XPU UT Logs
-        uses: actions/download-artifact@v8
-        with:
-          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
-          path: ${{ github.workspace }}/ut_log
-      - name: Check UT Results
-        shell: bash
-        run: |
-          ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log
-          # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*" |sort -V |tail -n 1)
-          latest_dir="${latest_dir:-.}"
-          cd "${latest_dir}"
-          find "${{ github.workspace }}/ut_log" -type f \
-              \( -name "failures_*.log" -o \
-                -name "passed_*.log" -o \
-                -name "category_*.log" \) \
-              -exec mv {} ./ \; || true
-
-          # get skipped known issues on Linux
-          count_linux=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
-          if [ "$count_linux" -gt 0 ]; then
-            echo -e "$count_linux issues on linux with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
-              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          fi
-
-          # get skipped known issues only on Windows
-          count_windows_only=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped_windows+state:open" --jq '.total_count')
-          if [ "$count_windows_only" -gt 0 ]; then
-            echo -e "$count_windows_only windows only issues with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" \
-              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' >> issues.log
-          fi
-
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          for ut_name in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
-          do
-            touch Known_issue.log
-            if [ -f "issues.log" ]; then
-              awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
-                if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
-                if ( print_row == 1 && $1 ~ r ) { print $0 };
-                if ( $0 ~ /Cases:/ ) { print_row = 1 };
-              }' issues.log > Known_issue.log
-            else
-              echo "Info: issues.log not found or empty, using empty Known_issue.log"
-            fi
-            TEST_PLATFORM=windows bash ut_result_check.sh ${ut_name}
-          done
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log
-          overwrite: true
+          echo "::error::${{ steps.ut.outputs.new_failures }} new UT failures:"
+          cat "${{ steps.ut.outputs.work_dir }}"/*/new_failures.txt
+          exit 1
