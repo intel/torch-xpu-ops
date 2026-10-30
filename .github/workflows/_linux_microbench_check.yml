@@ -1,0 +1,189 @@
+name: Linux OP Microbench (check)
+
+# The microbench-check job of every flow: reads the data of
+# all microbench-run jobs of this run and makes the final verdicts.
+#
+#   ondemand  report of an on-demand A/B or A/A (microbench-report-<id>; never
+#             fails)
+#   nightly   merges the shards, attributes confirmed regressions, appends the
+#             night to the reference state, writes the nightly report, the
+#             coverage report and the issue evidence (microbench-nightly-<id>).
+#             Output has_regressions for the auto-issue job.
+
+on:
+  workflow_call:
+    inputs:
+      scope:
+        type: string
+        required: true
+        description: "ondemand | nightly"
+      artifact_id:
+        type: string
+        required: true
+        description: Artifact name component of the microbench-run jobs (the run id)
+      python:
+        type: string
+        default: ''
+      head_sha:
+        type: string
+        default: ''
+      head_repo:
+        type: string
+        default: ''
+        description: owner/name of the repository of head_sha (a fork); empty is this repository
+      base_sha:
+        type: string
+        default: ''
+      mode_label:
+        type: string
+        default: ''
+        description: Banner shown in the report (on-demand runs)
+      test_type:
+        type: string
+        default: ''
+      write_state:
+        type: boolean
+        default: false
+        description: "nightly: publish the new state as microbench-reference-state (scheduled main runs only)"
+      reference_run:
+        type: string
+        default: ''
+        description: "nightly: extend the state of this run instead of the latest valid one (on-demand tests)"
+    outputs:
+      has_regressions:
+        value: ${{ jobs.microbench-check.outputs.has_regressions }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  microbench-check:
+    name: microbench-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      has_regressions: ${{ steps.nightly.outputs.has_regressions }}
+    env:
+      WS: ${{ github.workspace }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.head_repo || github.repository }}
+          ref: ${{ inputs.head_sha || github.sha }}
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
+      - name: Install dependencies
+        run: uv pip install pyyaml numpy
+      - name: Download run data
+        # a rerun of only this job has a newer run_attempt than the run
+        # jobs that produced the data, so match any attempt. gh keeps one
+        # directory per artifact even when a single one matches (an on-demand
+        # A/B or A/A); actions/download-artifact extracts that one in place.
+        run: |
+          gh run download ${{ github.run_id }} --repo ${{ github.repository }} \
+            -p "microbench-data-${{ inputs.artifact_id }}-*" -D "${WS}/mb_data"
+      - name: Pick the latest attempt of every run job
+        run: |
+          mkdir -p "${WS}/mb_runs"
+          # microbench-data-<id>-<scope>[-<shard>]-<attempt> -> mb_runs/<scope>[-<shard>]
+          prefix="microbench-data-${{ inputs.artifact_id }}-"
+          for key in $(find "${WS}/mb_data" -maxdepth 1 -mindepth 1 -type d -name "${prefix}*" -printf '%f\n' | sed -E 's/-[0-9]+$//' | sort -u); do
+            latest=$(find "${WS}/mb_data" -maxdepth 1 -mindepth 1 -type d -name "${key}-*" | sort -V | tail -n 1)
+            mv "$latest" "${WS}/mb_runs/${key#${prefix}}"
+          done
+          ls "${WS}/mb_runs"
+      - name: Judge (on-demand)
+        if: ${{ inputs.scope == 'ondemand' }}
+        run: |
+          cd test
+          ARGS=(--scope ondemand --out-dir "${WS}/mb_report"
+                --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                --mode-label "${{ inputs.mode_label }}")
+          for s in pr-vs-base ondemand; do
+            [ -d "${WS}/mb_runs/$s" ] && ARGS+=(--ab-dir "${WS}/mb_runs/$s")
+          done
+          [ -n "${{ inputs.head_sha }}" ] && ARGS+=(--head-sha "${{ inputs.head_sha }}")
+          [ -n "${{ inputs.base_sha }}" ] && ARGS+=(--base-sha "${{ inputs.base_sha }}")
+          python -m microbench check "${ARGS[@]}"
+      - name: Previous reference state (nightly)
+        id: state
+        if: ${{ inputs.scope == 'nightly' }}
+        run: |
+          cd test
+          python -m microbench reference fetch --repo ${{ github.repository }} --out-dir "${WS}/mb_reference" \
+            --exclude-run ${{ github.run_id }} ${{ inputs.reference_run != '' && format('--run-id {0}', inputs.reference_run) || '' }} \
+            --github-output "${GITHUB_OUTPUT}"
+      - name: Nightly check
+        id: nightly
+        if: ${{ inputs.scope == 'nightly' }}
+        run: |
+          cd test
+          mkdir -p "${WS}/mb_shards"
+          for d in "${WS}"/mb_runs/nightly-vs-reference-*; do [ -d "$d" ] && mv "$d" "${WS}/mb_shards/"; done
+          ARGS=(--scope nightly --nightly-dir "${WS}/mb_shards" --out-dir "${WS}/mb_report"
+                --state-out "${WS}/mb_state/reference.jsonl" --run-id "${{ github.run_id }}"
+                --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                --test-type "${{ inputs.test_type }}")
+          [ -d "${WS}/mb_runs/nightly-xpu-ops-vs-pytorch" ] && ARGS+=(--attribution-dir "${WS}/mb_runs/nightly-xpu-ops-vs-pytorch")
+          [ -n "${{ steps.state.outputs.state }}" ] && ARGS+=(--state "${{ steps.state.outputs.state }}" --state-run "${{ steps.state.outputs.state_run }}")
+          python -m microbench check "${ARGS[@]}"
+      - name: Coverage report and case costs (nightly)
+        if: ${{ inputs.scope == 'nightly' && !cancelled() }}
+        continue-on-error: true
+        run: |
+          cd test
+          cat "${WS}"/mb_shards/*/validation_all.jsonl > "${WS}/mb_report/validation_all.jsonl" 2>/dev/null || true
+          NF=$(find "${WS}/mb_shards" -name native_functions.yaml | head -n 1)
+          if [ -n "$NF" ] && [ -s "${WS}/mb_report/validation_all.jsonl" ]; then
+            cp "$NF" "${WS}/mb_report/native_functions.yaml"
+            PREV_NF=""
+            PREV=$(gh run list --repo ${{ github.repository }} --workflow nightly_ondemand.yml --event schedule --branch main \
+              --limit 10 --json databaseId --jq '.[].databaseId' | grep -vx "${{ github.run_id }}" | head -n 1 || true)
+            if [ -n "$PREV" ] && gh run download "$PREV" --repo ${{ github.repository }} -n microbench-native-functions -D /tmp/prev_nf; then
+              PREV_NF="--prev-native-functions /tmp/prev_nf/native_functions.yaml"
+            fi
+            python -m microbench coverage --native-functions "$NF" $PREV_NF \
+              --observed "${WS}/mb_report/validation_all.jsonl" \
+              --out-json "${WS}/mb_report/coverage.json" --out-md "${WS}/mb_report/coverage.md" \
+              --summary "${GITHUB_STEP_SUMMARY}"
+          fi
+          python -m microbench srcmap --summary "${GITHUB_STEP_SUMMARY}"
+          python -m microbench noise summarize "${WS}"/mb_shards/* \
+            --out "${WS}/mb_report/noise_summary.json" --history-out "${WS}/mb_report/history.json"
+      - name: Upload the reference state
+        if: ${{ inputs.scope == 'nightly' && steps.nightly.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          # only scheduled (or maintainer rebuild) main runs publish the state
+          # that later nightlies read
+          name: ${{ inputs.write_state && 'microbench-reference-state' || 'microbench-reference-state-ondemand' }}
+          path: ${{ github.workspace }}/mb_state/reference.jsonl
+          retention-days: 90
+      - name: Upload native_functions.yaml
+        if: ${{ inputs.scope == 'nightly' && !cancelled() && hashFiles('mb_report/native_functions.yaml') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: microbench-native-functions
+          path: ${{ github.workspace }}/mb_report/native_functions.yaml
+          retention-days: 90
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.scope == 'nightly' && 'microbench-nightly' || 'microbench-report' }}-${{ inputs.artifact_id }}
+          path: ${{ github.workspace }}/mb_report
+          retention-days: 90
+          overwrite: true
