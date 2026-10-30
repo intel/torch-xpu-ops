@@ -57,7 +57,7 @@ from torch.testing._internal.common_cuda import (
     PLATFORM_SUPPORTS_MEM_EFF_ATTENTION,
 )
 from torch.testing._internal.common_distributed import skip_if_lt_x_gpu
-from torch.testing._internal.common_utils import run_tests, skipIfRocm
+from torch.testing._internal.common_utils import TestCase, run_tests, skipIfRocm
 from torch.testing._internal.distributed._tensor.common_dtensor import (
     create_local_tensor_test_class,
     DTensorTestBase,
@@ -675,6 +675,34 @@ class CPFlexAttentionTest(DTensorTestBase):
 
     @skip_if_lt_x_gpu(2)
     @with_comms
+    def test_cp_flex_attention_preserves_block_size(self) -> None:
+        qkv_size = 256 * self.world_size
+        device_mesh = init_device_mesh(
+            device_type=self.device_type,
+            mesh_shape=(self.world_size,),
+            mesh_dim_names=("cp",),
+        )
+        block_mask = create_block_mask(
+            causal_mask,
+            B=1,
+            H=1,
+            Q_LEN=qkv_size,
+            KV_LEN=qkv_size,
+            device=self.device_type,
+            BLOCK_SIZE=(256, 128),
+        )
+
+        (cp_block_mask,) = _context_parallel_shard(
+            device_mesh,
+            [block_mask],
+            [2],
+        )
+        self.assertEqual(cp_block_mask.BLOCK_SIZE, block_mask.BLOCK_SIZE)
+        expected_mask = block_mask.to_dense().chunk(self.world_size, dim=-2)[self.rank]
+        self.assertEqual(cp_block_mask.to_dense(), expected_mask)
+
+    @skip_if_lt_x_gpu(2)
+    @with_comms
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FLASH_ATTENTION, "Does not support flash attention"
     )
@@ -881,6 +909,35 @@ class TestSharding(DTensorTestBase):
                 ),
             ),
         )
+
+    @skip_if_lt_x_gpu(2)
+    @with_comms
+    def test_context_parallel_shard_per_document_balance(self) -> None:
+        rng = random.Random(1234)
+        doc_lengths = [
+            2 * self.world_size * rng.randint(1, 6)
+            for _ in range(rng.randint(1, 5))
+        ]
+        seq_len = sum(doc_lengths)
+        device_mesh = init_device_mesh(
+            mesh_shape=(self.world_size,),
+            mesh_dim_names=("cp",),
+            device_type=self.device_type,
+        )
+        cost = torch.tensor(
+            [position for length in doc_lengths for position in range(1, length + 1)],
+            device=self.device_type,
+        )
+        buffer = torch.arange(seq_len, device=self.device_type).view(1, seq_len)
+        load_balancer = _PerDocumentHeadTailLoadBalancer(
+            [doc_lengths], self.world_size, torch.device(self.device_type)
+        )
+        (sharded,) = _context_parallel_shard(
+            device_mesh, [buffer], [1], load_balancer=load_balancer
+        )
+
+        local_load = int(cost[sharded.reshape(-1).long()].sum())
+        self.assertEqual(local_load, int(cost.sum()) // self.world_size)
 
     @skip_if_lt_x_gpu(2)
     @with_comms
@@ -1262,6 +1319,56 @@ class TestContextParallelStyleSDPA(DTensorTestBase):
         self.assertEqual(out_args[0].placements, [Shard(2)])
         self.assertEqual(out_kwargs["key"].placements, [Shard(2)])
         self.assertEqual(out_kwargs["value"].placements, [Shard(2)])
+
+
+class PerDocumentHeadTailLoadBalancerTest(TestCase):
+    @staticmethod
+    def _causal_cost(doc_lengths: list[int]) -> list[int]:
+        cost = []
+        for length in doc_lengths:
+            cost.extend(range(1, length + 1))
+        return cost
+
+    def _per_rank_causal_load(self, doc_lengths: list[int], world_size: int) -> list[int]:
+        seq_len = sum(doc_lengths)
+        cost = self._causal_cost(doc_lengths)
+        load_balancer = _PerDocumentHeadTailLoadBalancer(
+            [doc_lengths], world_size, "cpu"
+        )
+        rearranged = load_balancer._generate_indices()[0].tolist()
+        shard_size = seq_len // world_size
+        return [
+            sum(
+                cost[token]
+                for token in rearranged[rank * shard_size : (rank + 1) * shard_size]
+            )
+            for rank in range(world_size)
+        ]
+
+    def test_mixed_length_documents_are_balanced(self) -> None:
+        loads = self._per_rank_causal_load([4, 12], world_size=2)
+        self.assertEqual(loads, [44, 44])
+
+    def test_random_documents_are_balanced_across_world_sizes(self) -> None:
+        rng = random.Random(2024)
+        for world_size in (2, 3, 4, 8):
+            for _ in range(20):
+                num_docs = rng.randint(1, 6)
+                doc_lengths = [
+                    2 * world_size * rng.randint(1, 5) for _ in range(num_docs)
+                ]
+                loads = self._per_rank_causal_load(doc_lengths, world_size)
+                self.assertEqual(
+                    loads,
+                    [loads[0]] * world_size,
+                    msg=f"world_size={world_size}, doc_lengths={doc_lengths}",
+                )
+
+    def test_restore_indices_invert_rearrange(self) -> None:
+        load_balancer = _PerDocumentHeadTailLoadBalancer([[4, 12]], 2, "cpu")
+        rearranged = load_balancer._generate_indices()[0]
+        restore = load_balancer._generate_indices(restore=True)[0]
+        self.assertEqual(rearranged[restore].tolist(), list(range(16)))
 
 
 RingAttentionTestWithLocalTensor = create_local_tensor_test_class(

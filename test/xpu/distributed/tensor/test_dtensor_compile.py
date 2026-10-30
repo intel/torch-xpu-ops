@@ -2734,6 +2734,56 @@ class outer_fn(torch.nn.Module):
             "the make_fx graph; disable_proxy_modes_tracing is not active",
         )
 
+    def test_async_collective_tensor_nested_in_dtensor_reuses(self):
+        from torch.distributed._functional_collectives import AsyncCollectiveTensor
+
+        mesh = DeviceMesh(self.device_type, torch.arange(self.world_size))
+        counter = torch._dynamo.testing.CompileCounterWithBackend("aot_eager")
+
+        @torch.compile(backend=counter, fullgraph=True)
+        def fn(x):
+            return x + 1
+
+        def make_dt(act_local):
+            dt = DTensor.from_local(
+                torch.ones(4, 4, device=self.device_type),
+                mesh,
+                [Replicate()],
+                run_check=False,
+            )
+            if act_local:
+                dt._local_tensor = AsyncCollectiveTensor(dt._local_tensor.clone())
+            return dt
+
+        expected = torch.full((4, 4), 2.0, device=self.device_type)
+        for index in range(4):
+            output = fn(make_dt(act_local=index % 2 == 0))
+            self.assertEqual(output.to_local(), expected)
+        self.assertEqual(counter.frame_count, 1)
+
+    def test_stable_hash_for_caching_is_rank_specific(self):
+        mesh = DeviceMesh("cpu", torch.arange(self.world_size))
+        dt = DTensor.from_local(
+            torch.empty(2, 4), mesh, [Shard(0)], run_check=False
+        )
+        cpu_hash = dt._stable_hash_for_caching()
+        dt._local_tensor = dt._local_tensor.to("meta")
+        meta_hash = dt._stable_hash_for_caching()
+        self.assertNotEqual(cpu_hash, meta_hash)
+
+    @unittest.skipIf(
+        torch.accelerator.device_count() < 2, "requires 2 accelerator devices"
+    )
+    def test_stable_hash_for_caching_accelerator_ranks(self):
+        mesh = DeviceMesh(device_type, torch.arange(self.world_size))
+        local0 = torch.empty(2, 4, device=f"{device_type}:0")
+        local1 = torch.empty(2, 4, device=f"{device_type}:1")
+        dt0 = DTensor.from_local(local0, mesh, [Shard(0)], run_check=False)
+        dt1 = DTensor.from_local(local1, mesh, [Shard(0)], run_check=False)
+        self.assertNotEqual(
+            dt0._stable_hash_for_caching(), dt1._stable_hash_for_caching()
+        )
+
 
 @instantiate_parametrized_tests
 class TestDTensorCompileE2E(DTensorTestBase):
@@ -3040,6 +3090,57 @@ class TestDTensorCompileE2E(DTensorTestBase):
             self.assertEqual(len(result), len(expected))
             for dt_chunk, tensor_chunk in zip(result, expected):
                 self.assertEqual(dt_chunk.full_tensor(), tensor_chunk)
+
+    @with_comms
+    @parametrize(
+        "input_placement,expected_output_placement",
+        [
+            (Replicate(), Replicate()),
+            (Shard(0), None),
+            (Shard(1), Shard(0)),
+        ],
+    )
+    def test_unbind_with_symint_size(self, input_placement, expected_output_placement):
+        mesh = self.build_device_mesh()
+        global_tensor = torch.randn(8, 8, device=self.device_type)
+        input_dt = distribute_tensor(global_tensor, mesh, [input_placement])
+
+        def unbind_fn(x):
+            return torch.unbind(x, dim=0)
+
+        compiled_unbind_fn = torch.compile(unbind_fn, dynamic=True)
+        if expected_output_placement is None:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Attempted to unbind along the sharded dimension 0. "
+                "Please redistribute the input explicitly before unbinding.",
+            ):
+                compiled_unbind_fn(input_dt)
+            return
+
+        expected = unbind_fn(global_tensor)
+        result = compiled_unbind_fn(input_dt)
+        self.assertEqual(len(result), len(expected))
+        for dt_slice, tensor_slice in zip(result, expected):
+            self.assertEqual(dt_slice.placements, (expected_output_placement,))
+            self.assertEqual(dt_slice.full_tensor(), tensor_slice)
+
+    @with_comms
+    def test_unbind_with_unbacked_sharded_size(self):
+        mesh = self.build_device_mesh()
+        global_tensor = torch.randn(8, 8, device=self.device_type)
+        input_dt = distribute_tensor(global_tensor, mesh, [Shard(1)])
+        torch._dynamo.decorators.mark_unbacked(input_dt, 1)
+
+        def unbind_fn(x):
+            return torch.unbind(x, dim=0)
+
+        expected = unbind_fn(global_tensor)
+        result = torch.compile(unbind_fn, backend="eager", fullgraph=True)(input_dt)
+        self.assertEqual(len(result), len(expected))
+        for dt_slice, tensor_slice in zip(result, expected):
+            self.assertEqual(dt_slice.placements, (Shard(0),))
+            self.assertEqual(dt_slice.full_tensor(), tensor_slice)
 
     @with_comms
     def test_dtensor_processgroup_backward(self):

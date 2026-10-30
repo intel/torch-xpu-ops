@@ -400,6 +400,65 @@ if not TEST_WITH_DEV_DBG_ASAN:
                 )
                 self.assertTrue(torch.allclose(output, expected))
 
+        @requires_accelerator_dist_backend(["nccl", "xccl"])
+        @skip_if_lt_x_gpu(2)
+        @with_dist_debug_levels(levels=["DETAIL"])
+        def test_allgather_into_tensor_coalesced_debug_mode(self):
+            torch.accelerator.set_device_index(self.rank)
+            pg = self._create_wrapper_pg(with_new_group=True)
+            dev = torch.accelerator.current_accelerator()
+
+            input_shapes = [(2, 2), (3, 3)]
+            output_shapes = [
+                (shape[0] * self.world_size,) + shape[1:]
+                for shape in input_shapes
+            ]
+            inputs = [
+                torch.ones(shape, device=dev) * (self.rank + 1)
+                for shape in input_shapes
+            ]
+            outputs = [torch.zeros(shape, device=dev) for shape in output_shapes]
+
+            work = pg.allgather_into_tensor_coalesced(outputs, inputs)
+            work.wait()
+
+            for input_shape, output in zip(input_shapes, outputs):
+                expected = torch.cat(
+                    [
+                        torch.ones(input_shape, device=dev) * (rank + 1)
+                        for rank in range(self.world_size)
+                    ]
+                )
+                self.assertTrue(torch.allclose(output, expected))
+
+        @requires_accelerator_dist_backend(["nccl", "xccl"])
+        @skip_if_lt_x_gpu(2)
+        @with_dist_debug_levels(levels=["DETAIL"])
+        def test_allgather_into_tensor_coalesced_op_mismatch_debug_mode(self):
+            torch.accelerator.set_device_index(self.rank)
+            pg = self._create_wrapper_pg(with_new_group=True)
+            dev = torch.accelerator.current_accelerator()
+
+            with self.assertRaisesRegex(RuntimeError, ".*") as cm:
+                if self.rank == 0:
+                    output = torch.zeros(4 * self.world_size, device=dev)
+                    input = torch.ones(4, device=dev)
+                    pg.allgather_into_tensor_coalesced([output], [input]).wait()
+                else:
+                    output = torch.zeros(4, device=dev)
+                    input = torch.ones(4 * self.world_size, device=dev)
+                    pg.reduce_scatter_tensor_coalesced([output], [input]).wait()
+
+            error = str(cm.exception)
+            expected_op = (
+                "ALLGATHER_INTO_TENSOR_COALESCED"
+                if self.rank == 0
+                else "REDUCE_SCATTER_TENSOR_COALESCED"
+            )
+            self.assertIn(expected_op, error)
+            self.assertIn("SequenceNumber", error)
+            self.assertIn("Collectives differ in the following", error)
+
         @skip_if_lt_x_gpu(2)
         @with_dist_debug_levels(levels=["DETAIL"])
         @patch(

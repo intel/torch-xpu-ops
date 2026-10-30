@@ -2776,6 +2776,36 @@ class TestNNFunctionalCompile(torch._dynamo.test_case.TestCase):
         with self.assertRaisesRegex(RuntimeError, expected):
             fn(x)
 
+    def test_nn_functional_deprecated(self):
+        import torch.distributed.nn.functional as functional
+
+        tensor = torch.randn(4)
+        calls = {
+            "broadcast": lambda: functional.broadcast(tensor, src=0),
+            "gather": lambda: functional.gather(tensor, dst=0),
+            "scatter": lambda: functional.scatter([tensor, tensor], src=0),
+            "reduce": lambda: functional.reduce(tensor, dst=0),
+            "reduce_scatter": lambda: functional.reduce_scatter(
+                tensor, [tensor, tensor]
+            ),
+            "all_gather": lambda: functional.all_gather(tensor),
+            "_all_gather_base": lambda: functional._all_gather_base(
+                torch.empty(8), tensor
+            ),
+            "all_to_all": lambda: functional.all_to_all(
+                [tensor, tensor], [tensor, tensor]
+            ),
+            "all_to_all_single": lambda: functional.all_to_all_single(
+                torch.empty(4), tensor
+            ),
+            "all_reduce": lambda: functional.all_reduce(tensor),
+        }
+        for name, call in calls.items():
+            with self.subTest(name=name):
+                message = f"torch.distributed.nn.functional.{name} is deprecated"
+                with self.assertWarnsOnceRegex(FutureWarning, re.escape(message)):
+                    call()
+
     def test_nn_functional_all_reduce_unsupported(self):
         from torch.distributed.nn.functional import all_reduce
 
