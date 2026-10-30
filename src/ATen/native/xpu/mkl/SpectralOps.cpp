@@ -14,6 +14,7 @@
 
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
+#include <ATen/native/utils/ParamsHash.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
 #include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/ops/complex.h>
@@ -22,9 +23,18 @@
 #include <ATen/ops/mul.h>
 #include <ATen/ops/real.h>
 #include <ATen/ops/zeros_like.h>
+#include <c10/xpu/XPUFunctions.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl.hpp>
+
+#include <cstddef>
+#include <cstring>
+#include <list>
+#include <memory>
+#include <mutex>
+#include <type_traits>
+#include <unordered_map>
 
 using namespace oneapi::mkl::dft;
 
@@ -33,6 +43,191 @@ namespace at::native::xpu {
 namespace impl {
 
 constexpr int64_t mkl_max_ndim = 3;
+constexpr size_t mkl_fft_plan_cache_size = 64;
+
+struct MklFFTParams {
+  int64_t signal_ndim;
+  int64_t signal_sizes[mkl_max_ndim + 1];
+  int64_t input_strides[mkl_max_ndim + 1];
+  int64_t output_strides[mkl_max_ndim + 1];
+  int64_t stream_id;
+  DeviceIndex device_index;
+  bool inverse;
+
+  MklFFTParams() = default;
+
+  MklFFTParams(
+      IntArrayRef sizes,
+      IntArrayRef in_strides,
+      IntArrayRef out_strides,
+      const c10::xpu::XPUStream& stream,
+      bool inverse_) {
+    std::memset(this, 0, sizeof(*this));
+    signal_ndim = sizes.size() - 1;
+    std::copy(sizes.begin(), sizes.end(), signal_sizes);
+    std::copy(in_strides.begin(), in_strides.end(), input_strides);
+    std::copy(out_strides.begin(), out_strides.end(), output_strides);
+    stream_id = stream.id();
+    device_index = stream.device_index();
+    inverse = inverse_;
+  }
+};
+
+static_assert(std::is_trivial_v<MklFFTParams>);
+
+struct XPUWorkspaceDeleter {
+  void operator()(std::byte* workspace) const {
+    sycl::free(workspace, c10::xpu::get_device_context());
+  }
+};
+
+template <precision prec, domain signal_type, typename scalar_t>
+class MklFFTPlan {
+ public:
+  MklFFTPlan(
+      const MklFFTParams& params,
+      sycl::queue& queue)
+      : desc_(std::vector<int64_t>(
+            params.signal_sizes + 1,
+            params.signal_sizes + params.signal_ndim + 1)) {
+    const auto batch = params.signal_sizes[0];
+    const auto input_strides = std::vector<int64_t>(
+        params.input_strides, params.input_strides + params.signal_ndim + 1);
+    const auto output_strides = std::vector<int64_t>(
+        params.output_strides, params.output_strides + params.signal_ndim + 1);
+    const auto idist = input_strides[0];
+    const auto odist = output_strides[0];
+
+    auto input_signal_strides = input_strides;
+    auto output_signal_strides = output_strides;
+    input_signal_strides[0] = 0;
+    output_signal_strides[0] = 0;
+
+    desc_.set_value(config_param::PLACEMENT, config_value::NOT_INPLACE);
+    desc_.set_value(config_param::NUMBER_OF_TRANSFORMS, batch);
+    if (!params.inverse) {
+      desc_.set_value(config_param::FWD_DISTANCE, idist);
+      desc_.set_value(config_param::BWD_DISTANCE, odist);
+      desc_.set_value(config_param::FWD_STRIDES, input_signal_strides);
+      desc_.set_value(config_param::BWD_STRIDES, output_signal_strides);
+    } else {
+      desc_.set_value(config_param::FWD_DISTANCE, odist);
+      desc_.set_value(config_param::BWD_DISTANCE, idist);
+      desc_.set_value(config_param::FWD_STRIDES, output_signal_strides);
+      desc_.set_value(config_param::BWD_STRIDES, input_signal_strides);
+    }
+
+    desc_.set_value(config_param::WORKSPACE, config_value::WORKSPACE_EXTERNAL);
+    desc_.commit(queue);
+
+    int64_t workspace_size_bytes = 0;
+    desc_.get_value(config_param::WORKSPACE_BYTES, &workspace_size_bytes);
+    // This plan outlives Inductor warmup, so its workspace must not become a
+    // live allocation in the cudagraph private pool.
+    workspace_.reset(sycl::malloc_device<std::byte>(
+        std::max<int64_t>(workspace_size_bytes, 1), queue));
+    TORCH_CHECK(workspace_, "Failed to allocate XPU FFT workspace");
+    desc_.set_workspace(reinterpret_cast<scalar_t*>(workspace_.get()));
+  }
+
+  void execute(
+      const Tensor& input,
+      Tensor& output,
+      bool inverse,
+      bool capturing) {
+    captured_ |= capturing;
+    auto* input_data = const_cast<scalar_t*>(
+        static_cast<const scalar_t*>(input.const_data_ptr()));
+    auto* output_data = static_cast<scalar_t*>(output.mutable_data_ptr());
+    if (!inverse) {
+      compute_forward(desc_, input_data, output_data);
+    } else {
+      compute_backward(desc_, input_data, output_data);
+    }
+  }
+
+  bool captured() const {
+    return captured_;
+  }
+
+ private:
+  std::unique_ptr<std::byte, XPUWorkspaceDeleter> workspace_;
+  descriptor<prec, signal_type> desc_;
+  bool captured_ = false;
+};
+
+template <precision prec, domain signal_type, typename scalar_t>
+class MklFFTPlanCache {
+  using Plan = MklFFTPlan<prec, signal_type, scalar_t>;
+  using CacheEntry =
+      std::pair<std::unique_ptr<Plan>, std::list<MklFFTParams>::iterator>;
+  using Cache = std::unordered_map<
+      MklFFTParams,
+      CacheEntry,
+      ParamsHash<MklFFTParams>,
+      ParamsEqual<MklFFTParams>>;
+
+ public:
+  void execute(
+      const MklFFTParams& params,
+      const Tensor& input,
+      Tensor& output,
+      bool inverse,
+      sycl::queue& queue) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto cache_it = cache_.find(params);
+    if (cache_it == cache_.end()) {
+      TORCH_CHECK(
+          queue.ext_oneapi_get_state() !=
+              sycl::ext::oneapi::experimental::queue_state::recording,
+          "XPU FFT plan must be warmed up on the capture stream before XPU "
+          "graph capture");
+      auto plan = std::make_unique<Plan>(params, queue);
+      if (cache_.size() >= mkl_fft_plan_cache_size) {
+        // A captured graph retains the workspace pointer in its kernel
+        // arguments, so plans used by a graph cannot be evicted safely.
+        auto evict_it = lru_.end();
+        while (evict_it != lru_.begin()) {
+          --evict_it;
+          auto candidate = cache_.find(*evict_it);
+          TORCH_INTERNAL_ASSERT(candidate != cache_.end());
+          if (!candidate->second.first->captured()) {
+            cache_.erase(candidate);
+            lru_.erase(evict_it);
+            break;
+          }
+        }
+      }
+      lru_.push_front(params);
+      cache_it =
+          cache_
+              .emplace(
+                  params,
+                  CacheEntry{
+                      std::move(plan), lru_.begin()})
+              .first;
+    } else {
+      lru_.splice(lru_.begin(), lru_, cache_it->second.second);
+    }
+    const bool capturing =
+        queue.ext_oneapi_get_state() ==
+        sycl::ext::oneapi::experimental::queue_state::recording;
+    cache_it->second.first->execute(input, output, inverse, capturing);
+  }
+
+ private:
+  std::mutex mutex_;
+  std::list<MklFFTParams> lru_;
+  Cache cache_;
+};
+
+template <precision prec, domain signal_type, typename scalar_t>
+MklFFTPlanCache<prec, signal_type, scalar_t>& get_mkl_fft_plan_cache() {
+  // oneMKL descriptors reference the SYCL context, which may already be gone
+  // during static destruction.
+  static auto* cache = new MklFFTPlanCache<prec, signal_type, scalar_t>();
+  return *cache;
+}
 
 template <precision prec, domain signal_type, typename scalar_t>
 void _mkl_dft(
@@ -44,67 +239,16 @@ void _mkl_dft(
     bool inverse,
     IntArrayRef checked_signal_sizes,
     bool onesided) {
-  auto& queue = at::xpu::getCurrentSYCLQueue();
-  int64_t batch = checked_signal_sizes[0];
-  std::vector<int64_t> mkl_signal_sizes(
-      checked_signal_sizes.begin() + 1, checked_signal_sizes.end());
-
-  auto istrides = input.strides();
-  auto ostrides = output.strides();
-
-  int64_t idist = istrides[0];
-  int64_t odist = ostrides[0];
-
-  std::vector<int64_t> input_strides(
-      istrides.cbegin(), istrides.cbegin() + signal_ndim + 1),
-      output_strides(ostrides.cbegin(), ostrides.cbegin() + signal_ndim + 1);
-  input_strides[0] = 0;
-  output_strides[0] = 0;
-
-  auto desc = descriptor<prec, signal_type>(mkl_signal_sizes);
-  desc.set_value(config_param::PLACEMENT, config_value::NOT_INPLACE);
-  desc.set_value(config_param::NUMBER_OF_TRANSFORMS, batch);
-
-  if (!inverse) {
-    desc.set_value(config_param::FWD_DISTANCE, idist);
-    desc.set_value(config_param::BWD_DISTANCE, odist);
-
-    desc.set_value(config_param::FWD_STRIDES, input_strides);
-    desc.set_value(config_param::BWD_STRIDES, output_strides);
-  } else {
-    desc.set_value(config_param::FWD_DISTANCE, odist);
-    desc.set_value(config_param::BWD_DISTANCE, idist);
-
-    desc.set_value(config_param::FWD_STRIDES, output_strides);
-    desc.set_value(config_param::BWD_STRIDES, input_strides);
-  }
-
-  desc.set_value(
-      oneapi::mkl::dft::config_param::WORKSPACE,
-      oneapi::mkl::dft::config_value::WORKSPACE_EXTERNAL);
-  desc.commit(queue);
-
-  // Obtain the size of workspace required after commit.
-  int64_t workspaceSizeBytes = 0;
-  desc.get_value(
-      oneapi::mkl::dft::config_param::WORKSPACE_BYTES, &workspaceSizeBytes);
-
-  // Allocate USM workspace and provide it to the descriptor.
-  Tensor workspaceBuf = at::empty(
-      {(long)(workspaceSizeBytes / sizeof(double))},
-      input.options().dtype(at::kDouble),
-      std::nullopt);
-  desc.set_workspace((double*)workspaceBuf.mutable_data_ptr());
-
-  auto in_data = (scalar_t*)input.const_data_ptr();
-  auto out_data = (scalar_t*)output.mutable_data_ptr();
-
-  sycl::event event;
-  if (!inverse) {
-    event = compute_forward(desc, in_data, out_data);
-  } else {
-    event = compute_backward(desc, in_data, out_data);
-  }
+  auto stream = c10::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+  auto params = MklFFTParams(
+      checked_signal_sizes,
+      input.strides().slice(0, signal_ndim + 1),
+      output.strides().slice(0, signal_ndim + 1),
+      stream,
+      inverse);
+  get_mkl_fft_plan_cache<prec, signal_type, scalar_t>().execute(
+      params, input, output, inverse, queue);
   queue.throw_asynchronous();
 }
 
