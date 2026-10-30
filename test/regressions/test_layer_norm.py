@@ -56,6 +56,44 @@ class TestLayerNorm(TestCase):
         self.assertEqual(y_xpu.float().cpu(), y_cpu, atol=tol, rtol=tol)
 
     @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @parametrize("norm", [220, 244, 221, 256])
+    def test_layer_norm_constant_input_is_exactly_zero(self, dtype, norm):
+        # 220 and 244 exercise unequal partial counts in the vectorized
+        # reduction; 221 and 256 cover the fallback and power-of-two counts.
+        x = torch.ones(4, norm, dtype=dtype, device=xpu_device)
+        y = nn.functional.layer_norm(x, (norm,), eps=1e-5)
+        self.assertEqual(y, torch.zeros_like(y), atol=0, rtol=0)
+
+        _, mean, _ = torch.native_layer_norm(x, (norm,), None, None, 1e-5)
+        self.assertEqual(mean, torch.ones_like(mean), atol=0, rtol=0)
+
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @parametrize("norm", [28, 220, 244, 221, 256, 8192, 8196])
+    def test_layer_norm_constant_rows_preserve_mean(self, dtype, norm):
+        # Include negative and large constants, and a wide row that exercises
+        # merging between subgroups as well as the small-row reduction.
+        values = torch.tensor([1.0, -3.0, 1000.0, 0.5], dtype=dtype, device=xpu_device)
+        x = values[:, None].expand(-1, norm).contiguous()
+        y, mean, _ = torch.native_layer_norm(x, (norm,), None, None, 1e-5)
+        self.assertEqual(y, torch.zeros_like(y), atol=0, rtol=0)
+        self.assertEqual(mean, values[:, None].to(mean.dtype), atol=0, rtol=0)
+
+        weight = torch.full((norm,), 1.5, dtype=dtype, device=xpu_device)
+        bias = torch.linspace(-0.25, 0.25, norm, dtype=dtype, device=xpu_device)
+        y = nn.functional.layer_norm(x, (norm,), weight, bias, eps=1e-5)
+        self.assertEqual(y, bias.expand_as(y), atol=0, rtol=0)
+
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @parametrize("norm", [220, 244, 221, 256])
+    def test_layer_norm_constant_input_weight_grad_is_zero(self, dtype, norm):
+        x = torch.ones(4, norm, dtype=dtype, device=xpu_device, requires_grad=True)
+        weight = torch.ones(norm, dtype=dtype, device=xpu_device, requires_grad=True)
+        bias = torch.zeros(norm, dtype=dtype, device=xpu_device, requires_grad=True)
+        nn.functional.layer_norm(x, (norm,), weight, bias, eps=1e-5).sum().backward()
+        self.assertEqual(weight.grad, torch.zeros_like(weight), atol=0, rtol=0)
+        self.assertEqual(bias.grad, torch.full_like(bias, 4), atol=0, rtol=0)
+
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
     def test_rms_norm_fast_path_forward(self, dtype):
         """Same fast path, rms_norm instantiation, [1024, 8192] fp32/fp16/bf16."""
         torch.manual_seed(0)
