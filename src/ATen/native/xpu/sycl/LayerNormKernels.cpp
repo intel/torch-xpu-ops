@@ -1355,9 +1355,10 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      *dgamma = dgamma_blocks.sum(0);
+      // sum(0) is flat {N}; the gradient may be multi-dimensional.
+      *dgamma = dgamma_blocks.sum(0).view_as(*dgamma);
       if constexpr (!rms_norm) {
-        *dbeta = dbeta_blocks.sum(0);
+        *dbeta = dbeta_blocks.sum(0).view_as(*dbeta);
       }
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
@@ -1401,7 +1402,7 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      *dgamma = dgamma_blocks.sum(0);
+      *dgamma = dgamma_blocks.sum(0).view_as(*dgamma);
     } else if (!dgamma->defined() && dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1445,7 +1446,7 @@ void layer_norm_backward_kernel_impl(
           getCurrentSYCLQueue(),
           kfn);
       if constexpr (!rms_norm) {
-        *dbeta = dbeta_blocks.sum(0);
+        *dbeta = dbeta_blocks.sum(0).view_as(*dbeta);
       }
     } else {
       return;
