@@ -41,11 +41,10 @@ runs:
         cd ./pytorch
         if [ "${{ inputs.overwrite_model_list }}" == "true" ];then
           # overlay torch-xpu-ops model lists for nightly / PR tests
-          rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
+          cp -av ../.ci/benchmarks/. benchmarks/dynamo/
         elif [ "${{ inputs.overwrite_model_list }}" == "p0" ];then
-          # overlay torch-xpu-ops configs, then apply the P0 model-list subset
-          # rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/    # use upstream configs, but overlay P0 model-list subset
-          rsync -avz ../.ci/benchmarks/p0/ benchmarks/dynamo/
+          # use upstream configs, only overlay the P0 model-list subset
+          cp -av ../.ci/benchmarks/p0/. benchmarks/dynamo/
         fi
         rm -rf inductor_log torch
         sed -i 's/choices=range(1, 16),/choices=range(1, 17),/g' benchmarks/dynamo/common.py

@@ -149,7 +149,7 @@ jobs:
           if [ "${old_status}" != "${new_status}" ];then
             cd pytorch
             git reset --hard
-            rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
+            rm -rf gs-scripts && cp -a ${{ github.workspace }}/gs-scripts gs-scripts
             git bisect start ${new_commit} ${old_commit}
             git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
@@ -182,7 +182,7 @@ jobs:
           if [ "${old_status}" != "${new_status}" ];then
             cd pytorch
             git reset --hard
-            rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
+            rm -rf gs-scripts && cp -a ${{ github.workspace }}/gs-scripts gs-scripts
             git bisect start ${new_commit} ${old_commit}
             git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
