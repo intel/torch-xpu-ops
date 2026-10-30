@@ -96,6 +96,7 @@ custom_headers:
       - "test/xpu/test_sparse_csr_xpu.py"
       - "test/xpu/test_sparse_xpu.py"
       - "test/xpu/test_tensor_creation_ops_xpu.py"
+      - "test/xpu/test_torch_xpu.py"
       - "test/xpu/test_unary_ufuncs_xpu.py"
       - "test/xpu/xpu_test_utils.py"
       - "tools/linter/adapters/actionlint_linter.py"

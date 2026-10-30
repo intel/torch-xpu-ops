@@ -281,6 +281,7 @@ skip_dict = {
     ),
     "test_tensor_creation_ops_xpu.py": None,
     "test_testing_xpu.py": None,
+    "test_torch_xpu.py": None,
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
         "test_math_backend_high_precision_xpu",
@@ -437,7 +438,6 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
-    f"{PYTORCH_TEST_DIR}/test_torch.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
 }
