@@ -7,6 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 import re
+import subprocess
 import sys
 from io import StringIO
 
@@ -35,5 +36,25 @@ sys.stdout = original_stdout
 cleaned_output = re.sub(
     r"\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)test(\/|\\)", "", output
 )
-print(cleaned_output, end="")
-sys.exit(res)
+print(cleaned_output, end="", flush=True)
+
+# TestXpuTrace in test_xpu.py enables GPU trace for the rest of the process and
+# the trace hook swallows pending Python exceptions, so run GEMM tests separately.
+# The "test_xpu." prefix makes check-ut.py count these cases as test_xpu.
+gemm_options = (
+    "test__int_mm or test__int4_mm or test_compile_int4_mm or test__int_mm_errors"
+)
+res_gemm = subprocess.run(
+    [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-k",
+        gemm_options,
+        "test_linalg_xpu.py",
+        "-v",
+        "--junit-xml",
+        "./test_xpu.test_linalg_xpu.xml",
+    ]
+).returncode
+sys.exit(res or res_gemm)
