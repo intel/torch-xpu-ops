@@ -312,6 +312,21 @@ static bool _has_exact_contiguous_strides(const Tensor& tensor) {
   return tensor.strides() == c10::contiguous_strides(tensor.sizes());
 }
 
+static bool _can_write_fft_out(
+    const Tensor& out,
+    const Tensor& input,
+    IntArrayRef dim,
+    ScalarType fft_dtype,
+    ScalarType result_dtype,
+    bool single_pass,
+    bool preserve_out_layout) {
+  return out.scalar_type() == fft_dtype &&
+      (!preserve_out_layout || out.scalar_type() == result_dtype) &&
+      _has_exact_contiguous_strides(out) &&
+      (!preserve_out_layout ||
+       (single_pass && _exec_fft_preserves_layout(input, dim)));
+}
+
 } // namespace impl
 
 static void _fft_c2c_mkl_out_impl(
@@ -321,6 +336,7 @@ static void _fft_c2c_mkl_out_impl(
     bool forward,
     Tensor& out,
     bool preserve_out_layout) {
+  TORCH_INTERNAL_ASSERT(!dim.empty());
   auto self = impl::promote_fft_input(orig_self);
 
   auto sorted_dims = impl::_sort_dims(self, dim);
@@ -331,15 +347,16 @@ static void _fft_c2c_mkl_out_impl(
 
   const auto pass_count =
       (sorted_dims.size() + impl::mkl_max_ndim - 1) / impl::mkl_max_ndim;
-  const bool needs_type_conversion = self.scalar_type() != out.scalar_type();
   // A multi-pass transform hands its last pass the outermost dims, so the
   // permutation is no longer the identity even when the full dim set is.
-  const bool can_write_out = !needs_type_conversion &&
-      (!preserve_out_layout || out.scalar_type() == result_dtype) &&
-      impl::_has_exact_contiguous_strides(out) &&
-      (!preserve_out_layout ||
-       (pass_count == 1 &&
-        impl::_exec_fft_preserves_layout(self, sorted_dims)));
+  const bool can_write_out = impl::_can_write_fft_out(
+      out,
+      self,
+      sorted_dims,
+      self.scalar_type(),
+      result_dtype,
+      pass_count == 1,
+      preserve_out_layout);
   Tensor fft_out = can_write_out ? out : at::empty(out_sizes, self.options());
 
   // The final pass always lands in fft_out, so a single-pass transform never
@@ -390,6 +407,9 @@ static void _fft_c2c_mkl_out_impl(
         impl::_fft_apply_normalization(result, normalization, input_sizes, dim);
         out.copy_(result);
       }
+    } else {
+      // The functional wrapper casts and normalizes this promoted output.
+      TORCH_INTERNAL_ASSERT(fft_out.is_same(out));
     }
   } else {
     impl::_fft_apply_normalization(fft_out, normalization, input_sizes, dim);
@@ -478,6 +498,7 @@ static void _fft_c2r_mkl_out_impl(
     int64_t last_dim_size,
     Tensor& out,
     bool preserve_out_layout) {
+  TORCH_INTERNAL_ASSERT(!dim.empty());
   auto self = impl::promote_fft_input(orig_self);
 
   auto input = self;
@@ -510,13 +531,14 @@ static void _fft_c2r_mkl_out_impl(
   const auto result_dtype = c10::toRealValueType(orig_self.scalar_type());
   const bool needs_result_conversion =
       c10::toRealValueType(self.scalar_type()) != result_dtype;
-  const bool needs_type_conversion =
-      c10::toRealValueType(self.scalar_type()) != out.scalar_type();
-  const bool can_write_out = !needs_type_conversion &&
-      (!preserve_out_layout || out.scalar_type() == result_dtype) &&
-      impl::_has_exact_contiguous_strides(out) &&
-      (!preserve_out_layout ||
-       impl::_exec_fft_preserves_layout(input, dim.back()));
+  const bool can_write_out = impl::_can_write_fft_out(
+      out,
+      input,
+      dim.back(),
+      c10::toRealValueType(self.scalar_type()),
+      result_dtype,
+      /*single_pass=*/true,
+      preserve_out_layout);
   Tensor fft_out = can_write_out
       ? out
       : at::empty(
@@ -545,6 +567,9 @@ static void _fft_c2r_mkl_out_impl(
         impl::_fft_apply_normalization(result, normalization, out_sizes, dim);
         out.copy_(result);
       }
+    } else {
+      // The functional wrapper casts and normalizes this promoted output.
+      TORCH_INTERNAL_ASSERT(fft_out.is_same(out));
     }
   } else {
     impl::_fft_apply_normalization(fft_out, normalization, out_sizes, dim);
@@ -648,13 +673,14 @@ static void _fft_r2c_mkl_out_impl(
   const auto pass_count = 1 + c2c_pass_count;
   auto working_tensor = self.contiguous();
 
-  const bool needs_type_conversion = fft_dtype != out.scalar_type();
-  const bool can_write_out = !needs_type_conversion &&
-      (!preserve_out_layout || out.scalar_type() == result_dtype) &&
-      impl::_has_exact_contiguous_strides(out) &&
-      (!preserve_out_layout ||
-       (pass_count == 1 &&
-        impl::_exec_fft_preserves_layout(working_tensor, last_dim)));
+  const bool can_write_out = impl::_can_write_fft_out(
+      out,
+      working_tensor,
+      last_dim,
+      fft_dtype,
+      result_dtype,
+      pass_count == 1,
+      preserve_out_layout);
   Tensor fft_out = can_write_out
       ? out
       : at::empty(out_sizes, self.options().dtype(fft_dtype));
