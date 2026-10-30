@@ -212,7 +212,8 @@ int get_prefer_simd(int numPlane, int nHw) {
 
   int64_t target_tile_size = at::xpu::getDeviceMaxWorkItems(dev_id);
   // for work group barrier perf
-  int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
+  int64_t wg_size = at::xpu::getDeviceMaxSubGroupSize(dev_id) *
+      dev_prop->gpu_hw_threads_per_eu;
   if (simd == SIMD32) {
     // when setting wg_size 256 can achieve high occupancy, use SIMD16
     if (wg_size * numPlane >= target_tile_size)
@@ -1561,7 +1562,7 @@ static void launch_batch_norm_transform_channels_last_1d(
       1,
       std::min<int64_t>(
           at::ceil_div(work_items, wg_size),
-          syclMaxWorkItemsPerTile() / wg_size));
+          static_cast<int64_t>(at::xpu::getDeviceMaxWorkItems()) / wg_size));
   sycl_kernel_submit(num_wg * wg_size, wg_size, queue, kfn);
 }
 
@@ -1630,7 +1631,7 @@ static void batch_norm_transform_channels_last_1d(
          memory::can_vectorize_up_to<scalar_t>((char*)z_ptr) >= 2);
     const bool use_slm = stride < 1024 &&
         4 * stride * static_cast<int64_t>(sizeof(accscalar_t)) <=
-            syclLocalMemSize();
+            static_cast<int64_t>(at::xpu::getDeviceLocalMemSize());
     if (can_vec && use_slm) {
       LAUNCH_BN_CL_1D(2, true);
       return;
@@ -1661,11 +1662,12 @@ void batch_norm_elemt_channels_last_template(
   // `idx += global_stride` runs one step past the last valid index. Even when
   // every valid index fits in int32, that final increment can exceed INT32_MAX
   // (signed overflow is UB). global_stride is bounded by
-  // syclMaxWorkItemsPerTile(), so only take the int32 fast path when numel
-  // leaves that much headroom below INT32_MAX; otherwise use the int64 path.
+  // at::xpu::getDeviceMaxWorkItems(), so only take the int32 fast path when
+  // numel leaves that much headroom below INT32_MAX; otherwise use the int64
+  // path.
   const int64_t index32_limit =
       static_cast<int64_t>(std::numeric_limits<int32_t>::max()) -
-      syclMaxWorkItemsPerTile();
+      static_cast<int64_t>(at::xpu::getDeviceMaxWorkItems());
   const bool can_use_32bit_index = canUse32BitIndexMath(input, index32_limit);
 
   if (input.scalar_type() != second_dtype) {
@@ -2337,7 +2339,8 @@ batch_norm_backward_reduce_channels_last_template(
   at::Tensor grad_bias = at::empty({grad_size}, grad_opts);
 
   auto config = get_adaptive_launch_config(
-      syclMaxWorkItemsPerSubSlice() * 2,
+      at::xpu::getDeviceMaxSubGroupSize() *
+          at::xpu::getDeviceEUCountPerXeCore() * 2,
       reduction_size,
       stride,
       false,

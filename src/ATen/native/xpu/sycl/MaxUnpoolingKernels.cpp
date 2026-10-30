@@ -18,6 +18,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/MaxUnpoolingKernels.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/MemoryFormat.h>
 #include <comm/SYCLHelpers.h>
 
@@ -143,7 +144,8 @@ Tensor& max_unpooling2d_forward_kernel(
               "max_unpooling2d_forward_xpu",
               [&] {
                 if (is_channels_last(memory_format)) {
-                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+                  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
+                      at::xpu::getDeviceEUCountPerXeCore();
                   int64_t num_groups =
                       xpuKernelLoopGroupRange(count, group_size);
                   sycl_kernel_submit<max_unpooling_2d_forward_kernel_impl<
@@ -164,7 +166,8 @@ Tensor& max_unpooling2d_forward_kernel(
                       owidth,
                       output.mutable_data_ptr<scalar_t>());
                 } else {
-                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+                  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
+                      at::xpu::getDeviceEUCountPerXeCore();
                   int64_t num_groups =
                       xpuKernelLoopGroupRange(count, group_size);
 
@@ -247,7 +250,10 @@ void max_unpooling3d_forward_template(
     const int64_t oW,
     const int64_t offsetZ) {
   int64_t work_group_size_w = 32;
-  int64_t work_group_size_h = syclMaxWorkItemsPerSubSlice() / work_group_size_w;
+  int64_t work_group_size_h = static_cast<int64_t>(
+                                  at::xpu::getDeviceMaxSubGroupSize() *
+                                  at::xpu::getDeviceEUCountPerXeCore()) /
+      work_group_size_w;
   int64_t total_t = batchSize * inputSlices * iT;
   // int64_t num_groups_w = CeilDiv(iW, work_group_size_w);
   // int64_t num_groups_h = CeilDiv(iH, work_group_size_h);
@@ -325,7 +331,8 @@ void max_unpooling3d_cl_forward_template(
     const int64_t outputHeight,
     const int64_t outputWidth,
     scalar_t* output) {
-  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t num_groups = xpuKernelLoopGroupRange(numInputElements, group_size);
   int64_t total_items = num_groups * group_size;
   sycl_kernel_submit<
