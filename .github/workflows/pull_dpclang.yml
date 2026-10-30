@@ -166,7 +166,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       category: dpclang
-      runner: bmg-test
+      runner: bmg
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}

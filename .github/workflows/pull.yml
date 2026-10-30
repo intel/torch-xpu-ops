@@ -268,7 +268,7 @@ jobs:
         ut_name: [op_ut,basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: bmg-test
+      runner: bmg
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -287,7 +287,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
+      runner: bmg
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -304,7 +304,7 @@ jobs:
         scenario: [accuracy, performance]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
+      runner: ${{ matrix.scenario == 'performance' && 'bmg-b70' || 'bmg' }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}
