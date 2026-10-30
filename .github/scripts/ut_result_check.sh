@@ -303,48 +303,6 @@ run_main_tests() {
     fi
 }
 
-# Special runner for distributed test suite (different log format)
-run_distributed_tests() {
-    local suite="$1"
-    echo "========================================================================="
-    echo "Running distributed tests for: ${suite}"
-    echo "========================================================================="
-    # Process distributed test logs (different format than main tests)
-    grep -E "FAILED|ERROR" ${suite}_test*.log > "${suite}_failed.log"
-    clean_file "${suite}_failed.log"
-    grep "PASSED" ${suite}_test*.log > "${suite}_passed.log"
-    clean_file "${suite}_passed.log"
-    echo "📋 Failed Cases:"
-    cat "${suite}_failed.log"
-    # Identify filtered tests (known issues in distributed tests)
-    echo -e "\\n🔍 Filtered Cases:"
-    local filtered_count
-    grep -noFf "Known_issue.log" "${suite}_failed.log" > "${suite}_removed.log"
-    filtered_count=$(wc -l < "${suite}_removed.log")
-    if [[ "$filtered_count" -gt 0 ]]; then
-        echo "⏩ Skipping ${filtered_count} known issues"
-        awk -F':' '{printf "   Line %3d: %s\n", $1, $2}' "${suite}_removed.log"
-    else
-        echo "✅ No skipped cases"
-    fi
-    # Run standard checks for distributed tests
-    check_passed_known_issues "${suite}_passed.log" "Known_issue.log"
-    check_new_failed "${suite}_failed.log" "Known_issue.log"
-    # Calculate final statistics for distributed tests
-    local failed_count=0 passed_count=0
-    if [[ -f "failures_${suite}_filtered.log" ]]; then
-        failed_count=$(wc -l < "failures_${suite}_filtered.log")
-    fi
-    passed_count=$(wc -l < "${suite}_passed.log")
-    # Final result determination for distributed tests
-    if [[ "$failed_count" -gt 0 ]] || [[ "$passed_count" -eq 0 ]]; then
-        echo "❌ TEST FAILED: ${suite}"
-        exit 1
-    else
-        echo "✅ TEST PASSED: ${suite}"
-    fi
-}
-
 # Mark passed items in GitHub issues with strikethrough
 mark_passed_issue() {
     local PASSED_FILE="$1"
@@ -483,11 +441,8 @@ check_profiling_ut() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_ut|test_xpu|upstream_default|upstream_inductor|upstream_distributed)
+    op_regression|op_regression_dev1|op_extended|op_ut|test_xpu|upstream_default|upstream_inductor|upstream_distributed|xpu_distributed)
         run_main_tests "$ut_suite"
-        ;;
-    xpu_distributed)
-        run_distributed_tests "$ut_suite"
         ;;
     skipped_ut)
         check_skipped_ut
