@@ -231,9 +231,10 @@ runs:
           upstream_inductor) category="inductor" ;;
           *) category="default" ;;
         esac
+        sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends valgrind
         # Distributed needs an etcd rendezvous and the XCCL topology
         if [[ "${category}" == 'distributed' ]]; then
-          sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends etcd-server
+          sudo -E apt-get install -y --no-install-recommends etcd-server
           uv pip install python-etcd
           xpu-smi topology -m
         fi
