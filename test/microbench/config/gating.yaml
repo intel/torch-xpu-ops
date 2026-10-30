@@ -1,0 +1,126 @@
+# gating.yaml - statistical decision parameters.
+#
+# A case blocks a PR only if all hold: A/B run, PR tier, op not excluded from
+# gating, not quarantined, device-time verdict "regression" in both screening
+# and confirmation.
+
+# regression / improvement threshold on median(B) / median(A)
+threshold: 0.10
+# per-case noise margin delta by noise_class; a case whose A/A (nightly A/A in
+# the reference state, else history.json) shows a larger delta uses that one.
+# Regression also needs CI lower bound > 1 + delta
+default_delta:
+  normal: 0.03
+  atomic: 0.08
+  random: 0.08
+  host_bound: 0.05
+# Holm-adjusted one-sided p-value
+alpha: 0.05
+# CI wider than this (hi/lo - 1) is inconclusive
+max_ci_width: 0.10
+# E2E is report-only; list noise classes whose E2E may block (e.g. host_bound)
+e2e_blocking_noise_classes: []
+e2e_threshold: 0.20
+n_boot: 2000
+
+# Cases/ops whose results are reported but never block (high-noise
+# cases that stay above their threshold after extra rounds). Filled from
+# nightly noise statistics; each entry needs a reason, e.g.
+#   cases: [{case_id: 0123456789ab, reason: "nightly A/A CI width 14%"}]
+#   ops:   [{op: index_add, reason: "atomic contention noise"}]
+quarantine:
+  cases: []
+  ops: []
+
+# ---------------------------------------------------------------------------
+# Screening against reference data (PR) and nightly detection.
+#
+# Thresholds per case: sigma_tot^2 = sigma_run^2 + sigma_proc^2 / n + sigma_ref^2
+# (+ sigma_card^2 when the reference is not from the same card);
+# t = min(t_max, 0.10 - z * sigma_tot). A case whose t falls below t_min is
+# too noisy to screen and is treated as suspicious (and should be listed in
+# always_ab). Noise statistics come from the reference state (nightly
+# measure records); default_noise covers cases without enough records.
+
+pr_vs_reference:
+  z: 2.33
+  t_max: 0.05
+  t_min: 0.02
+  # reference records older than this are not used
+  freshness_days: 7
+  # at least min_records nightly runs and min_processes processes, at most
+  # max_records runs (the most recent ones)
+  min_records: 2
+  max_records: 5
+  min_processes: 6
+  # PR side: processes per case, plus extra processes for a ratio within one
+  # sigma of the threshold
+  processes: 3
+  extra_processes: 2
+  # relative spread (log std) of the PR-side process medians above which the
+  # case is screen_invalid
+  max_process_spread: 0.05
+  # always_ab: cases whose cross-day / cross-card noise is too high for
+  # screening; screening sends them to the A/B regardless of the reference.
+  # Suggested by the nightly report, confirmed by a maintainer.
+  #   - {case_id: 0123456789ab, reason: "sigma_run 4.1% (14 nightlies)"}
+  always_ab: []
+
+nightly_detect:
+  z: 2.33
+  t_max: 0.05
+  t_min: 0.02
+  reference_runs: 5
+  min_records: 2
+  # fraction of PR-tier cases also measured as A/A each night (one week covers all)
+  aa_fraction: 0.14
+  # when more cases than this have no reference (driver upgrade, protocol
+  # bump), recheck only PR-tier and core-set cases
+  max_no_reference_recheck: 300
+
+# auto: confirm suspect improvements only when the base is built anyway;
+# always: build the base for improvements too; never: report them unconfirmed
+confirm_improvements: auto
+
+# relative noise used when the reference state has too few records
+default_noise:
+  run: 0.02
+  card: 0.03
+  proc: 0.01
+  ab: 0.01
+
+# PR test budget in minutes: single-sided screening and the A/B of the
+# suspicious cases
+budget:
+  screen_minutes: 15
+  confirm_minutes: 15
+
+# ---------------------------------------------------------------------------
+# Benchmark hosts. `default` applies to every host; a `hosts` entry whose key
+# (a regex) matches the hostname overrides it. Without `cards`, the layout is
+# autodetected from sysfs: Intel display-class DRM devices in PCI order
+# (= ZE_AFFINITY_MASK index), the NUMA node of each card, and an even split
+# of the node's CPUs, restricted to the cards in ZE_AFFINITY_MASK when it is
+# set (shared CI runners such as bmg-test own a subset of the host's cards).
+# `protocol` overrides measure.py ProtocolConfig (defaults fit BMG G31).
+machines:
+  default:
+    # pre-run checks (python -m microbench env check)
+    limits:
+      require_idle: true
+      # bmg-test hosts set the frequency range themselves (e.g. min 1200,
+      # max 2400 MHz), not min == max; the range is recorded in run_meta.json
+      # and the report. Enable on dedicated machines with a fixed frequency.
+      require_freq_lock: false
+      # the CPU governor of shared bmg-test hosts is not ours to set; it is
+      # still recorded in run_meta.json. Enable on dedicated machines.
+      require_cpu_performance: false
+      max_temp_c: 85
+  hosts: {}
+  # Example:
+  #   hosts:
+  #     "bmg-mb-0[0-9]":
+  #       protocol: {l2_bytes: 33554432}
+  #       cards:
+  #         - {index: 0, drm: card1, numa: 0, cpus: "0-15"}
+  #         - {index: 1, drm: card2, numa: 0, cpus: "16-31"}

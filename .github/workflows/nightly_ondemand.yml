@@ -54,6 +54,18 @@ on:
         type: boolean
         default: false
         description: Analyse this run's UT failures. Evidence only - an on-demand run files no issues
+      microbench_base:
+        type: string
+        default: ''
+        description: "Microbench (ut=microbench). Empty: PR flow (screen vs reference data, A/B vs the merge-base when suspicious); 'merge-base' or commit/branch: direct A/B against it; 'none': A/A with the B wheel; 'nightly': simulate a nightly (state read-only, no issues)"
+      microbench_cases:
+        type: string
+        default: 'selected'
+        description: "Microbench cases: selected (from the merge-base..B diff), core, all, pr, or comma separated op names"
+      microbench_reference_run:
+        type: string
+        default: ''
+        description: "Microbench: read the reference state of this run id (test states of on-demand runs)"
 
 permissions: read-all
 
@@ -75,6 +87,10 @@ jobs:
       scenario: ${{ steps.inputs-check.outputs.scenario }}
       triton: ${{ steps.inputs-check.outputs.triton }}
       python: ${{ steps.inputs-check.outputs.python }}
+      microbench: ${{ steps.inputs-check.outputs.microbench }}
+      microbench_flow: ${{ steps.inputs-check.outputs.microbench_flow }}
+      microbench_pytorch_sha: ${{ steps.microbench-sha.outputs.pytorch_sha }}
+      microbench_xpu_ops_sha: ${{ steps.microbench-sha.outputs.xpu_ops_sha }}
     steps:
       - name: Inputs check
         id: inputs-check
@@ -109,6 +125,8 @@ jobs:
             scenario='["accuracy","performance"]'
             triton=''
             python=''
+            # microbench needs a source build (previous nightly wheel vs this one)
+            microbench=$([[ "${test_type}" == build-* ]] && echo true || echo false)
           else
             pytorch="${{ inputs.pytorch }}"
             if [ -z ${{ inputs.torch_xpu_ops }} ];then
@@ -130,7 +148,15 @@ jobs:
             fi
             triton="${{ inputs.triton }}"
             python="${{ inputs.python }}"
+            microbench=$([[ ",${{ inputs.ut }}," == *",microbench,"* && "${{ inputs.pytorch }}" != *"_wheel" ]] && echo true || echo false)
           fi
+          # microbench flow: nightly | pr | ab | aa
+          case "${{ github.event_name == 'schedule' && 'nightly' || inputs.microbench_base }}" in
+            nightly) microbench_flow=nightly ;;
+            "") microbench_flow=pr ;;
+            none) microbench_flow=aa ;;
+            *) microbench_flow=ab ;;
+          esac
           echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
           echo "pytorch=${pytorch}" >> ${GITHUB_OUTPUT}
           echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
@@ -139,6 +165,28 @@ jobs:
           echo "scenario=${scenario}" >> ${GITHUB_OUTPUT}
           echo "triton=${triton}" >> ${GITHUB_OUTPUT}
           echo "python=${python}" >> ${GITHUB_OUTPUT}
+          echo "microbench=${microbench}" >> ${GITHUB_OUTPUT}
+          echo "microbench_flow=${microbench_flow}" >> ${GITHUB_OUTPUT}
+      - name: Resolve PyTorch and xpu-ops commits for microbench
+        id: microbench-sha
+        if: ${{ steps.inputs-check.outputs.microbench == 'true' }}
+        run: |
+          # Resolved once: linux-build and microbench-build-base (merge-base,
+          # or P') build the same PyTorch commit, and the nightly records the
+          # exact xpu-ops commit it measured.
+          resolve() {  # ref, default repo
+            local REF="$1" REPO="$2"
+            if [[ "$REF" == *"https://"* ]]; then REPO="${REF%@*}"; REF="${REF##*@}"; fi
+            if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then echo "$REF"; return; fi
+            git ls-remote "$REPO" "refs/heads/$REF" "refs/tags/$REF" | head -n 1 | cut -f1
+          }
+          SHA=$(resolve "${{ steps.inputs-check.outputs.pytorch }}" https://github.com/pytorch/pytorch.git)
+          if [ -z "$SHA" ]; then echo "::error::cannot resolve pytorch ${{ steps.inputs-check.outputs.pytorch }}"; exit 1; fi
+          echo "pytorch_sha=$SHA" >> "${GITHUB_OUTPUT}"
+          XPU="${{ steps.inputs-check.outputs.torch_xpu_ops }}"
+          if [ "$XPU" != "pinned" ]; then
+            echo "xpu_ops_sha=$(resolve "$XPU" https://github.com/${{ github.repository }}.git)" >> "${GITHUB_OUTPUT}"
+          fi
 
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
@@ -152,7 +200,8 @@ jobs:
     with:
       runner: build
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
+      pytorch_sha: ${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_sha || needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
@@ -238,25 +287,271 @@ jobs:
     with:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
 
-  Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
-    name: linux-microbench
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    # if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
-    if: false # Temporarily disabled
+  # Microbench. Nightly: every case of this
+  # nightly wheel N (sharded), compared with the reference data of earlier
+  # nightlies; suspects are rechecked against the previous nightly wheel P;
+  # confirmed regressions with candidate commits are attributed with P'
+  # (P's xpu-ops built with N's PyTorch); the check job appends the night to
+  # the reference state and the auto-issue job files issues. On demand: the
+  # PR flow, a direct A/B, an A/A or a nightly simulation (microbench_base).
+  Linux-Nightly-Ondemand-Microbench-Select:
+    name: microbench-select
+    needs: [Conditions-Filter]
+    if: ${{ needs.Conditions-Filter.outputs.microbench == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      need_run: ${{ steps.select.outputs.need_run }}
+      path: ${{ steps.select.outputs.path }}
+      base_sha: ${{ steps.refs.outputs.base_sha }}
+      b_sha: ${{ steps.refs.outputs.b_sha }}
+      mode_label: ${{ steps.select.outputs.mode_label }}
+      shards: ${{ steps.select.outputs.shards }}
+      n_shards: ${{ steps.select.outputs.n_shards }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FLOW: ${{ needs.Conditions-Filter.outputs.microbench_flow }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ needs.Conditions-Filter.outputs.python }}
+      - name: Install dependencies
+        run: uv pip install pyyaml numpy
+      - name: Resolve A and B commits
+        id: refs
+        run: |
+          B_SHA="${{ needs.Conditions-Filter.outputs.microbench_xpu_ops_sha }}"
+          if [ -n "$B_SHA" ]; then git fetch --no-tags origin "$B_SHA" || true; fi
+          BASE="${{ github.event_name == 'schedule' && '' || inputs.microbench_base }}"
+          BASE_SHA=""
+          if [ "$FLOW" == "pr" ] || [ "$BASE" == "merge-base" ]; then
+            git fetch --no-tags origin main
+            BASE_SHA=$(git merge-base origin/main "${B_SHA:-HEAD}")
+          elif [ "$FLOW" == "ab" ]; then
+            git fetch --no-tags origin "$BASE" && BASE_SHA=$(git rev-parse FETCH_HEAD)
+          fi
+          echo "b_sha=${B_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "base_sha=${BASE_SHA}" >> "${GITHUB_OUTPUT}"
+      - name: Fetch the nightly reference state
+        id: state
+        if: ${{ needs.Conditions-Filter.outputs.microbench_flow == 'pr' }}
+        continue-on-error: true
+        run: |
+          cd test
+          python -m microbench reference fetch --repo "${{ github.repository }}" --out-dir ../mb_reference \
+            ${{ inputs.microbench_reference_run != '' && format('--run-id {0}', inputs.microbench_reference_run) || '' }} \
+            --github-output "${GITHUB_OUTPUT}"
+      - name: Select cases
+        id: select
+        run: |
+          cd test
+          SPEC="${{ github.event_name == 'schedule' && 'all' || inputs.microbench_cases }}"
+          [ "$FLOW" == "nightly" ] && [ "${SPEC:-selected}" == "selected" ] && SPEC=all
+          BASE_SHA="${{ steps.refs.outputs.base_sha }}"
+          B_SHA="${{ steps.refs.outputs.b_sha }}"
+          ARGS=(--flow "$FLOW" --out ../selection.json --summary "${GITHUB_STEP_SUMMARY}" --cards 8
+                --pytorch-sha "${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}" --head "${B_SHA:-HEAD}")
+          [ -n "$BASE_SHA" ] && ARGS+=(--base "$BASE_SHA")
+          if [ -n "${{ steps.state.outputs.state }}" ]; then
+            ARGS+=(--reference-state "${{ steps.state.outputs.state }}" --reference-run "${{ steps.state.outputs.state_run }}")
+          fi
+          if [ "${SPEC:-selected}" == "selected" ] && [ -n "$BASE_SHA" ]; then
+            ARGS+=(--repo ..)
+          elif [ "${SPEC:-selected}" == "selected" ]; then
+            echo "No merge-base..B diff available; selecting the core set." >> "${GITHUB_STEP_SUMMARY}"
+            ARGS+=(--spec core --repo ..)
+          else
+            ARGS+=(--spec "$SPEC" --repo ..)
+          fi
+          python -m microbench select "${ARGS[@]}"
+          N=${{ vars.MICROBENCH_NIGHTLY_SHARDS || 4 }}
+          if [ "$FLOW" == "nightly" ]; then
+            echo "shards=$(python -c "import json; print(json.dumps(list(range($N))))")" >> "${GITHUB_OUTPUT}"
+            echo "n_shards=$N" >> "${GITHUB_OUTPUT}"
+          else
+            echo "shards=[0]" >> "${GITHUB_OUTPUT}"
+            echo "n_shards=1" >> "${GITHUB_OUTPUT}"
+          fi
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            LABEL=""
+          else
+            LABEL="ondemand ${FLOW}: B=${{ needs.Conditions-Filter.outputs.torch_xpu_ops }} (${B_SHA:0:12})"
+            [ -n "$BASE_SHA" ] && LABEL="$LABEL, base=${{ inputs.microbench_base || 'merge-base' }} (${BASE_SHA:0:12})"
+            LABEL="$LABEL, cases=${SPEC:-selected}"
+          fi
+          echo "mode_label=${LABEL}" >> "${GITHUB_OUTPUT}"
+      - name: PRs merged with disable_microbench (last 7 days)
+        if: ${{ github.event_name == 'schedule' }}
+        continue-on-error: true
+        run: |
+          SINCE=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          {
+            echo "### PRs merged with disable_microbench since ${SINCE}"
+            gh pr list --repo ${{ github.repository }} --state merged --label disable_microbench \
+              --search "merged:>=${SINCE}" --json number,title,url --jq '.[] | "- #\(.number) \(.title)"' || true
+          } >> "${GITHUB_STEP_SUMMARY}"
+      - name: Upload selection
+        uses: actions/upload-artifact@v7
+        with:
+          name: microbench-selection-${{ github.run_id }}
+          path: selection.json
+          overwrite: true
+          retention-days: 90
+
+  # microbench / microbench-run (nightly-vs-reference), one job per shard, or
+  # (pr-vs-reference) for the on-demand PR flow
+  Linux-Nightly-Ondemand-Microbench-Run-Reference:
+    name: microbench
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build, Linux-Nightly-Ondemand-Microbench-Select]
+    if: >-
+      ${{ !cancelled() &&
+      needs.Linux-Nightly-Ondemand-Build.result == 'success' &&
+      needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.need_run == 'true' &&
+      (needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' ||
+       needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'vs-reference') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.shards) }}
+    permissions:
+      actions: read
+      contents: read
+    secrets: inherit
+    uses: ./.github/workflows/_linux_microbench.yml
+    with:
+      scope: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' && 'nightly-vs-reference' || 'pr-vs-reference' }}
+      runner: bmg-test
+      python: ${{ needs.Conditions-Filter.outputs.python }}
+      selection_artifact: microbench-selection-${{ github.run_id }}
+      artifact_id: ${{ github.run_id }}
+      pytorch_sha: ${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}
+      head_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.b_sha }}
+      shard: ${{ matrix.shard }}
+      shards: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.n_shards }}
+      reference_run: ${{ github.event_name == 'schedule' && '' || inputs.microbench_reference_run }}
+      coverage: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' }}
+      # nightly: measurement must end by ~07:00 Beijing time
+      budget_min: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' && '540' || '20' }}
+
+  # Base wheel, torch only: the merge-base (PR flow, direct A/B) or P' (the
+  # previous nightly's xpu-ops with this nightly's PyTorch)
+  Linux-Nightly-Ondemand-Microbench-Build-Base:
+    name: microbench-build-base
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build, Linux-Nightly-Ondemand-Microbench-Select, Linux-Nightly-Ondemand-Microbench-Run-Reference]
+    if: >-
+      ${{ !cancelled() &&
+      needs.Linux-Nightly-Ondemand-Build.result == 'success' &&
+      needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.need_run == 'true' &&
+      (needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'vs-base' ||
+       (needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'vs-reference' &&
+        needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.result == 'success' &&
+        needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.outputs.suspect == 'true') ||
+       (needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' &&
+        needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.outputs.need_attribution == 'true')) }}
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      runner: build
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      pytorch_sha: ${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}
+      torch_xpu_ops: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' && needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.outputs.prev_xpu_ops_sha || needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.base_sha }}
+      triton: ${{ needs.Conditions-Filter.outputs.triton }}
+      python: ${{ needs.Conditions-Filter.outputs.python }}
+      torch_only: true
+      category: baseline
+
+  # microbench / microbench-run (pr-vs-base | ondemand | nightly-xpu-ops-vs-pytorch)
+  Linux-Nightly-Ondemand-Microbench-Run-AB:
+    name: microbench
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build, Linux-Nightly-Ondemand-Microbench-Select, Linux-Nightly-Ondemand-Microbench-Run-Reference, Linux-Nightly-Ondemand-Microbench-Build-Base]
+    if: >-
+      ${{ !cancelled() &&
+      needs.Linux-Nightly-Ondemand-Build.result == 'success' &&
+      needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.need_run == 'true' &&
+      (needs.Linux-Nightly-Ondemand-Microbench-Build-Base.result == 'success' ||
+       needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'aa') }}
+    permissions:
+      actions: read
+      contents: read
+    secrets: inherit
+    uses: ./.github/workflows/_linux_microbench.yml
+    with:
+      scope: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' && 'nightly-xpu-ops-vs-pytorch' || (needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'aa' && 'ondemand' || 'pr-vs-base') }}
+      runner: bmg-test
+      python: ${{ needs.Conditions-Filter.outputs.python }}
+      selection_artifact: microbench-selection-${{ github.run_id }}
+      artifact_id: ${{ github.run_id }}
+      pytorch_sha: ${{ needs.Conditions-Filter.outputs.microbench_pytorch_sha }}
+      head_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.b_sha }}
+      base_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.base_sha }}
+      prev_run_id: ${{ needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.outputs.prev_run_id }}
+      budget_min: '120'
+
+  # microbench / microbench-check (nightly | ondemand)
+  Linux-Nightly-Ondemand-Microbench-Check:
+    name: microbench
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Microbench-Select, Linux-Nightly-Ondemand-Microbench-Run-Reference, Linux-Nightly-Ondemand-Microbench-Build-Base, Linux-Nightly-Ondemand-Microbench-Run-AB]
+    # nightly: merge whatever shards finished (a failed shard only loses its
+    # cases for tonight), with or without attribution
+    if: >-
+      ${{ !cancelled() &&
+      needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.need_run == 'true' &&
+      ((needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' &&
+        (needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.result == 'success' ||
+         needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.result == 'failure')) ||
+       needs.Linux-Nightly-Ondemand-Microbench-Run-AB.result == 'success' ||
+       (needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'vs-reference' &&
+        needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.result == 'success' &&
+        needs.Linux-Nightly-Ondemand-Microbench-Run-Reference.outputs.suspect != 'true')) }}
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    secrets: inherit
+    uses: ./.github/workflows/_linux_microbench_check.yml
+    with:
+      scope: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' && 'nightly' || 'ondemand' }}
+      artifact_id: ${{ github.run_id }}
+      python: ${{ needs.Conditions-Filter.outputs.python }}
+      head_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.b_sha }}
+      base_sha: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.base_sha }}
+      mode_label: ${{ needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.mode_label }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      # only scheduled main runs, or a maintainer's rebuild dispatch
+      # on main (MICROBENCH_REFERENCE_WRITE_DISPATCH), publish the state
+      write_state: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (vars.MICROBENCH_REFERENCE_WRITE_DISPATCH == 'true' && inputs.microbench_base == 'nightly')) }}
+      reference_run: ${{ github.event_name == 'schedule' && '' || inputs.microbench_reference_run }}
+
+  # Issues for confirmed nightly regressions
+  Linux-Nightly-Ondemand-Microbench-Auto-Issue:
+    name: microbench-auto-issue
+    needs: [Linux-Nightly-Ondemand-Microbench-Select, Linux-Nightly-Ondemand-Microbench-Check]
+    if: >-
+      ${{ !cancelled() &&
+      needs.Linux-Nightly-Ondemand-Microbench-Select.outputs.path == 'nightly' &&
+      needs.Linux-Nightly-Ondemand-Microbench-Check.outputs.has_regressions == 'true' }}
+    secrets: inherit
     permissions:
       actions: read
       contents: read
       issues: write
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        microbench: [microbench]
-    uses: ./.github/workflows/_linux_op_benchmark.yml
+      pull-requests: read
+    uses: ./.github/workflows/_microbench_auto_issue.yml
     with:
-      runner: pvc
-      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      python: ${{ needs.Conditions-Filter.outputs.python }}
+      run_id: ${{ github.run_id }}
+      # Off unless the repo variable is 'true'; never for on-demand runs
+      create_issues: ${{ github.event_name == 'schedule' && vars.MICROBENCH_AUTO_ISSUE_ENABLED == 'true' }}
 
   Windows-Nightly-Ondemand-Build:
     name: windows-build

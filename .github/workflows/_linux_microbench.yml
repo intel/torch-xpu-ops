@@ -1,0 +1,293 @@
+name: Linux OP Microbench (run)
+
+# The microbench-run job of every flow. One job, one scope:
+#
+#   pr-vs-reference             PR wheel only; screening against the nightly
+#                               reference data. Output `suspect`.
+#   pr-vs-base                  merge-base (torch-only build + the PR's other
+#                               wheels) vs PR wheel A/B: the screening suspects
+#                               (all cases for an on-demand direct A/B).
+#   nightly-vs-reference        one shard of the nightly: measurement, A/A
+#                               rotation, detection, recheck against the
+#                               previous nightly wheel P, candidate commits.
+#                               Output `need_attribution` (only when true).
+#   nightly-xpu-ops-vs-pytorch  P, P' (previous xpu-ops + this PyTorch) and N
+#                               alternated for attribution.
+#   ondemand                    A/A of one wheel (two-stage, report only).
+#
+# Fails only on infrastructure errors or case-validation failures; the
+# verdicts are made by _linux_microbench_check.yml. Uploads one artifact,
+# microbench-data-<id>-<scope>[-<shard>]-<attempt>: results, raw samples,
+# records and the per-case logs (logs/<op>/<pass>_<case_id>/, logs/index.csv).
+
+on:
+  workflow_call:
+    inputs:
+      scope:
+        type: string
+        required: true
+        description: "pr-vs-reference | pr-vs-base | nightly-vs-reference | nightly-xpu-ops-vs-pytorch | ondemand"
+      runner:
+        type: string
+        default: 'bmg-test'
+        description: Runner label of the BMG machines; a job uses the cards of its ZE_AFFINITY_MASK
+      python:
+        type: string
+        default: ''
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
+      selection_artifact:
+        type: string
+        required: true
+        description: Artifact with selection.json (from `python -m microbench select`)
+      artifact_id:
+        type: string
+        required: true
+        description: Artifact name component shared by the run and check jobs (PR number or run id)
+      pytorch_sha:
+        type: string
+        default: ''
+        description: PyTorch SHA the measured wheel(s) must report; empty skips the check
+      head_sha:
+        type: string
+        default: ''
+        description: xpu-ops commit of the PR / this nightly; its benchmark code runs on every side
+      base_sha:
+        type: string
+        default: ''
+        description: xpu-ops commit of the base wheel (pr-vs-base)
+      prev_run_id:
+        type: string
+        default: ''
+        description: nightly-xpu-ops-vs-pytorch - run of the previous nightly wheel P
+      shard:
+        type: string
+        default: '0'
+      shards:
+        type: string
+        default: '1'
+      budget_min:
+        type: string
+        default: '30'
+      reference_run:
+        type: string
+        default: ''
+        description: nightly-vs-reference - read the reference state of this run (on-demand tests)
+      coverage:
+        type: boolean
+        default: false
+        description: Validate this shard's cases and keep the observed ops for the coverage report (nightly)
+    outputs:
+      suspect:
+        value: ${{ jobs.microbench-run.outputs.suspect }}
+      need_attribution:
+        value: ${{ jobs.microbench-run.outputs.need_attribution }}
+      prev_xpu_ops_sha:
+        value: ${{ jobs.microbench-run.outputs.prev_xpu_ops_sha }}
+      prev_run_id:
+        value: ${{ jobs.microbench-run.outputs.prev_run_id }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  microbench-run:
+    name: microbench-run (${{ inputs.scope }})
+    runs-on: ${{ inputs.runner }}
+    # nightly: the full case list on one shard can take many hours (the job
+    # token expires after 24 h); --budget-min leaves room for uploads
+    timeout-minutes: ${{ startsWith(inputs.scope, 'pr-') && 120 || 1440 }}
+    container:
+      image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -e ZE_AFFINITY_MASK
+    outputs:
+      suspect: ${{ steps.run.outputs.suspect }}
+      need_attribution: ${{ steps.run.outputs.need_attribution }}
+      prev_xpu_ops_sha: ${{ steps.prev.outputs.prev_sha }}
+      prev_run_id: ${{ steps.prev.outputs.prev_run }}
+    env:
+      # records use RUNNER_NAME as machine_id (container hostnames change per job)
+      WS: ${{ github.workspace }}
+    steps:
+      - name: Checkout torch-xpu-ops (benchmark code of the PR head / this nightly)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.head_sha || github.sha }}
+          # candidate commits of a nightly regression need the history
+          fetch-depth: ${{ inputs.scope == 'nightly-vs-reference' && 0 || 1 }}
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
+      - name: Install scheduler dependencies
+        run: |
+          uv pip install pyyaml numpy
+          which gh || (apt-get update -qq && apt-get install -y -qq gh numactl) || true
+          which numactl || (apt-get update -qq && apt-get install -y -qq numactl) || true
+          git config --global --add safe.directory "${WS}"
+      - name: Download selection
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.selection_artifact }}
+          path: ${{ github.workspace }}/mb_selection
+      - name: Download wheels of this run
+        uses: actions/download-artifact@v8
+        with:
+          pattern: Torch-XPU-Wheel-*
+          path: ${{ github.workspace }}/mb_wheels
+      - name: Download screening result
+        if: ${{ inputs.scope == 'pr-vs-base' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: microbench-data-${{ inputs.artifact_id }}-pr-vs-reference-*
+          path: ${{ github.workspace }}/mb_screen_tmp
+      - name: Download nightly shard results
+        if: ${{ inputs.scope == 'nightly-xpu-ops-vs-pytorch' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: microbench-data-${{ inputs.artifact_id }}-nightly-vs-reference-*
+          path: ${{ github.workspace }}/mb_nightly
+      - name: Fetch the previous nightly wheel (P)
+        id: prev
+        if: ${{ startsWith(inputs.scope, 'nightly-') }}
+        run: |
+          # P: the newest earlier scheduled build-from-source nightly with a
+          # wheel and a selection (its xpu-ops commit); 10.1
+          mkdir -p "${WS}/mb_prev"
+          IDS="${{ inputs.prev_run_id }}"
+          if [ -z "$IDS" ]; then
+            IDS=$(gh run list --repo ${{ github.repository }} --workflow nightly_ondemand.yml --event schedule \
+              --branch main --status completed --limit 30 --json databaseId --jq '.[].databaseId' | grep -vx "${{ github.run_id }}" || true)
+          fi
+          PREV=""
+          for id in $IDS; do
+            rm -rf "${WS}/mb_prev"/*
+            gh run download "$id" --repo ${{ github.repository }} -p 'Torch-XPU-Wheel-*' -D "${WS}/mb_prev/wheels" >/dev/null 2>&1 || continue
+            gh run download "$id" --repo ${{ github.repository }} -n "microbench-selection-$id" -D "${WS}/mb_prev/sel" >/dev/null 2>&1 || continue
+            if find "${WS}/mb_prev/wheels" -path '*baseline*' -prune -o -name 'torch-*.whl' -print | grep -q .; then PREV="$id"; break; fi
+          done
+          if [ -n "$PREV" ]; then
+            echo "prev_run=${PREV}" >> "${GITHUB_OUTPUT}"
+            echo "prev_sha=$(python -c 'import json,sys; print(json.load(open(sys.argv[1])).get("head") or "")' "${WS}/mb_prev/sel/selection.json")" >> "${GITHUB_OUTPUT}"
+          else
+            echo "No previous nightly wheel: recheck and attribution are skipped (inconclusive)." >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      - name: Fetch the reference state
+        id: state
+        if: ${{ inputs.scope == 'nightly-vs-reference' }}
+        run: |
+          cd test
+          python -m microbench reference fetch --repo ${{ github.repository }} --out-dir "${WS}/mb_reference" \
+            --exclude-run ${{ github.run_id }} ${{ inputs.reference_run != '' && format('--run-id {0}', inputs.reference_run) || '' }} \
+            --github-output "${GITHUB_OUTPUT}"
+      - name: Create venvs
+        run: |
+          pick() {  # newest artifact dir matching a name filter
+            find "$1" -maxdepth 1 -mindepth 1 -type d | grep -E "$2" | sort -V | tail -n 1
+          }
+          venv() {  # venv name, wheel files...
+            local name=$1; shift
+            uv venv --clear "${WS}/$name" --python "$(python -c 'import sys; print(sys.executable)')"
+            VIRTUAL_ENV="${WS}/$name" uv pip install --python "${WS}/$name/bin/python" "$@" numpy
+          }
+          infra() {
+            echo "::error::$1"
+            { echo "### Benchmark did not complete (infra error)"; echo "$1; rerun the failed jobs."; } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          }
+          B_DIR=$(pick "${WS}/mb_wheels" 'Torch-XPU-Wheel-[^/]*-[0-9]+$')
+          B_DIR=${B_DIR:-${WS}/mb_wheels}
+          [ -n "$(find "$B_DIR" -maxdepth 1 -name 'torch-*.whl')" ] || infra "wheel of this run not found"
+          venv venv_b $(find "$B_DIR" -maxdepth 1 -name '*.whl')
+          echo "MB_PY=${WS}/venv_b/bin/python" >> "${GITHUB_ENV}"
+          if [ "${{ inputs.scope }}" == "pr-vs-base" ] || [ "${{ inputs.scope }}" == "nightly-xpu-ops-vs-pytorch" ]; then
+            # torch-only base build (merge-base, or P'): torchvision, torchaudio
+            # and Triton of this run share its PyTorch commit and pins
+            A_DIR=$(pick "${WS}/mb_wheels" 'Torch-XPU-Wheel-.*-baseline$')
+            [ -n "$A_DIR" ] && [ -n "$(find "$A_DIR" -maxdepth 1 -name 'torch-*.whl')" ] || infra "base wheel artifact not found"
+            venv venv_a $(find "$A_DIR" -maxdepth 1 -name 'torch-*.whl') $(find "$B_DIR" -maxdepth 1 -name '*.whl' ! -name 'torch-*')
+            echo "MB_PY_BASE=${WS}/venv_a/bin/python" >> "${GITHUB_ENV}"
+          fi
+          if [ -n "${{ steps.prev.outputs.prev_run }}" ]; then
+            P_DIR=$(find "${WS}/mb_prev/wheels" -path '*baseline*' -prune -o -name 'torch-*.whl' -printf '%h\n' | head -n 1)
+            venv venv_p $(find "$P_DIR" -maxdepth 1 -name '*.whl')
+            echo "MB_PY_PREV=${WS}/venv_p/bin/python" >> "${GITHUB_ENV}"
+          elif [ "${{ inputs.scope }}" == "nightly-xpu-ops-vs-pytorch" ]; then
+            infra "previous nightly wheel (P) not found"
+          fi
+          if [ "${{ inputs.scope }}" == "pr-vs-base" ]; then
+            SCREEN=$(find "${WS}/mb_screen_tmp" -name screen.json | sort -V | tail -n 1)
+            echo "MB_SCREEN=${SCREEN}" >> "${GITHUB_ENV}"
+          fi
+      - name: GPU frequency status
+        # the runner hosts manage GPU frequency themselves; logged here and
+        # recorded in run_meta.json / records.jsonl for the cards of this runner
+        run: |
+          cd test && python -m microbench env status
+      - name: Run microbench (${{ inputs.scope }})
+        id: run
+        run: |
+          cd test
+          ARGS=(--scope "${{ inputs.scope }}" --selection "${WS}/mb_selection/selection.json"
+                --python "${MB_PY}" --out-dir "${WS}/mb_out" --repo "${WS}"
+                --budget-min "${{ inputs.budget_min }}" --env-check
+                --max-restarts "${{ startsWith(inputs.scope, 'pr-') && 2 || 50 }}"
+                --run-id "${{ github.run_id }}"
+                --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                --summary "${GITHUB_STEP_SUMMARY}")
+          [ -n "${{ inputs.head_sha }}" ] && ARGS+=(--head-sha "${{ inputs.head_sha }}")
+          [ -n "${{ inputs.base_sha }}" ] && ARGS+=(--base-sha "${{ inputs.base_sha }}")
+          [ -n "${{ inputs.pytorch_sha }}" ] && ARGS+=(--expect-torch-sha "${{ inputs.pytorch_sha }}")
+          [ -n "${MB_PY_BASE:-}" ] && ARGS+=(--python-base "${MB_PY_BASE}")
+          [ -n "${MB_PY_PREV:-}" ] && ARGS+=(--python-prev "${MB_PY_PREV}" --prev-run-id "${{ steps.prev.outputs.prev_run }}" --prev-sha "${{ steps.prev.outputs.prev_sha }}")
+          [ -n "${MB_SCREEN:-}" ] && ARGS+=(--screen "${MB_SCREEN}")
+          [ -n "${{ steps.state.outputs.state }}" ] && ARGS+=(--state "${{ steps.state.outputs.state }}" --state-run "${{ steps.state.outputs.state_run }}")
+          if [ "${{ inputs.scope }}" == "nightly-vs-reference" ]; then
+            ARGS+=(--shard "${{ inputs.shard }}" --shards "${{ inputs.shards }}")
+          fi
+          if [ "${{ inputs.scope }}" == "nightly-xpu-ops-vs-pytorch" ]; then
+            ARGS+=(--nightly-dir "${WS}/mb_nightly")
+          fi
+          python -m microbench ci-run "${ARGS[@]}"
+      - name: Case validation and observed ops of this shard (coverage)
+        if: ${{ inputs.coverage && !cancelled() }}
+        continue-on-error: true
+        run: |
+          cd test
+          # one validator per card of this runner, each on a slice of the shard's cases
+          IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK:-0}"
+          python -c 'import json, sys; [print(c) for c in json.load(open(sys.argv[1])).get("selected_ids", [])]' \
+            "${WS}/mb_out/nightly.json" > /tmp/mb_ids.txt
+          [ -s /tmp/mb_ids.txt ] || exit 0
+          split -n "r/${#gpus[@]}" -d /tmp/mb_ids.txt /tmp/mb_ids_
+          for i in "${!gpus[@]}"; do
+            "${MB_PY}" -c 'import json, sys; print(json.dumps(open(sys.argv[1]).read().split()))' \
+              "/tmp/mb_ids_$(printf '%02d' "$i")" > "/tmp/mb_ids_$i.json"
+            ZE_AFFINITY_MASK="${gpus[$i]}" "${MB_PY}" -m microbench validate --cases "/tmp/mb_ids_$i.json" \
+              --out "/tmp/mb_validation_$i.jsonl" > "/tmp/mb_validation_$i.log" 2>&1 &
+          done
+          wait || true
+          cat /tmp/mb_validation_*.jsonl > "${WS}/mb_out/validation_all.jsonl"
+          NF=$("${MB_PY}" -c 'import torchgen, os; print(os.path.join(os.path.dirname(torchgen.__file__), "packaged/ATen/native/native_functions.yaml"))')
+          cp "$NF" "${WS}/mb_out/native_functions.yaml"
+      - name: Fix workspace ownership
+        if: ${{ always() }}
+        run: |
+          chown 1000:1000 ${{ github.workspace }} -R || true
+      - name: Upload results, raw data and logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: microbench-data-${{ inputs.artifact_id }}-${{ inputs.scope }}${{ inputs.scope == 'nightly-vs-reference' && format('-{0}', inputs.shard) || '' }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/mb_out
+          retention-days: ${{ startsWith(inputs.scope, 'pr-') && 30 || 90 }}
