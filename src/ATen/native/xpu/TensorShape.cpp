@@ -86,5 +86,21 @@ Tensor& _chunk_cat_out_xpu(
   return xpu::_chunk_cat_out_xpu_kernel(tensors, dim, num_chunks, out);
 }
 
+Tensor& narrow_copy_out_xpu(
+    const Tensor& self,
+    int64_t dim,
+    int64_t start,
+    int64_t length,
+    Tensor& out) {
+  TORCH_CHECK(self.dim() > 0, "narrow() cannot be applied to a 0-dim tensor.");
+  TORCH_CHECK(self.dtype() == out.dtype());
+  TORCH_CHECK(self.device() == out.device());
+
+  auto narrowed = self.narrow(dim, start, length);
+  at::native::resize_output(out, narrowed.sizes());
+  out.copy_(narrowed);
+  return out;
+}
+
 } // namespace native
 } // namespace at
