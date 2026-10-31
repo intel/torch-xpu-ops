@@ -111,7 +111,9 @@ inline void spin_until_eq(uint32_t* addr, uint32_t val) {
 // Put signal: wait until addr == 0, then set to 1 (release semantics)
 // =============================================================================
 
-inline bool try_put_signal_device(uint32_t* addr, size_t /*timeout_ms*/) {
+inline bool try_put_signal_device(
+    uint32_t* addr,
+    [[maybe_unused]] size_t timeout_ms) {
   // Wait until the slot is free (value == 0)
   spin_until_eq(addr, 0);
   // Set signal to 1 with release semantics
@@ -122,7 +124,9 @@ inline bool try_put_signal_device(uint32_t* addr, size_t /*timeout_ms*/) {
 // =============================================================================
 // Wait signal: wait until addr == 1, then set to 0 (acquire semantics)
 // =============================================================================
-inline bool try_wait_signal_device(uint32_t* addr, size_t /*timeout_ms*/) {
+inline bool try_wait_signal_device(
+    uint32_t* addr,
+    [[maybe_unused]] size_t timeout_ms) {
   // Wait until signal is set (value == 1)
   spin_until_eq(addr, 1);
   // Clear signal to 0; the acq_rel fence inside also provides the acquire that

@@ -215,11 +215,11 @@ void roll_template(
     const Tensor& in_tensor,
     Tensor& out_tensor,
     int64_t N,
-    int64_t /*roll_dim*/,
+    [[maybe_unused]] int64_t roll_dim,
     int64_t start,
     int64_t size,
     int64_t stride,
-    int64_t /*total_dims*/) {
+    [[maybe_unused]] int64_t total_dims) {
   using KernelClass = RollKernelFunctor<scalar_t>;
 
   auto shift = size - start;

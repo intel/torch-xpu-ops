@@ -207,7 +207,7 @@ struct FMHAFwdMainloop<
       int seq_len,
       int seq_len_qo,
       int seq_len_kv,
-      int /*l_coord*/,
+      [[maybe_unused]] int l_coord,
       // For LSE
       int& tile_row_idx,
       const int& rows_of_maxima,

@@ -133,7 +133,8 @@ struct vectorized {
         num_items_per_group(num_items_per_group),
         group_work_size(vec_size * num_items_per_group) {}
 
-  inline constexpr bool check_inbounds(int /*item_work_elem*/) const {
+  inline constexpr bool check_inbounds(
+      [[maybe_unused]] int item_work_elem) const {
     return true;
   }
 

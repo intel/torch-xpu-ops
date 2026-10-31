@@ -190,7 +190,7 @@ struct Msg {
 // SYCL_KERNEL_ASSERT_MSG is not ready
 template <typename scalar_t>
 struct AssertAsyncKernelFunctor1 {
-  void operator()(sycl::nd_item<1> /*item*/) const {
+  void operator()([[maybe_unused]] sycl::nd_item<1> item) const {
     SYCL_KERNEL_ASSERT(input_[0] != 0);
   }
   // TODO: add actual handling for the message argument
@@ -202,7 +202,7 @@ struct AssertAsyncKernelFunctor1 {
 };
 
 struct AssertAsyncKernelFunctor2 {
-  void operator()(sycl::nd_item<1> /*item*/) const {
+  void operator()([[maybe_unused]] sycl::nd_item<1> item) const {
     SYCL_KERNEL_ASSERT(input_[0] != c10::complex<float>(0, 0));
   }
   // TODO: add actual handling for the message argument
@@ -215,7 +215,7 @@ struct AssertAsyncKernelFunctor2 {
 };
 
 struct AssertAsyncKernelFunctor3 {
-  void operator()(sycl::nd_item<1> /*item*/) const {
+  void operator()([[maybe_unused]] sycl::nd_item<1> item) const {
     SYCL_KERNEL_ASSERT(input_[0] != c10::complex<double>(0, 0));
   }
   // TODO: add actual handling for the message argument

@@ -394,7 +394,7 @@ static Tensor NestedTensor_batch_offsets_from_size_tensor(
 void _transform_bias_rescale_qkv_kernel(
     const Tensor& qkv,
     const Tensor& qkv_bias,
-    const int64_t /*num_head*/,
+    [[maybe_unused]] const int64_t num_head,
     Tensor& q_k_v,
     int64_t B,
     int64_t T,

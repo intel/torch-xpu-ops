@@ -45,7 +45,7 @@ void upsample_bilinear2d_kernel(
     GenericPackedTensorAccessor<scalar_t, 4> out_data_acc,
     int64_t input_height,
     int64_t input_width,
-    int64_t /*output_height*/,
+    [[maybe_unused]] int64_t output_height,
     int64_t output_width,
     int64_t nbatch,
     int64_t channels) {
@@ -491,7 +491,7 @@ void launch_upsample_bilinear2d_backward_kernel(
     int64_t input_width,
     int64_t output_height,
     int64_t output_width,
-    int64_t /*nbatch*/,
+    [[maybe_unused]] int64_t nbatch,
     int64_t channels,
     const accscalar_t rheight,
     const accscalar_t rwidth,

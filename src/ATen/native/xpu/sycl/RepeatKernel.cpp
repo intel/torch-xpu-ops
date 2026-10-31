@@ -23,7 +23,7 @@ void repeat_interleave_kernel_implement(
     const int64_t* cum_data,
     index_t* res_data,
     int64_t size,
-    int64_t /*result_size*/) {
+    [[maybe_unused]] int64_t result_size) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto rep_ptr = rep_data;
   auto cum_ptr = cum_data;

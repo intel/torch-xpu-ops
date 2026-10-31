@@ -715,7 +715,7 @@ void mul_sparse_sparse_kernel(
 
 struct RhsProjOp {
   template <typename scalar_t>
-  static inline scalar_t apply(scalar_t /*a*/, scalar_t b) {
+  static inline scalar_t apply([[maybe_unused]] scalar_t a, scalar_t b) {
     return b;
   }
 };
@@ -732,7 +732,7 @@ void sparse_mask_intersection_kernel(
 
 struct LhsProjOp {
   template <typename scalar_t>
-  static inline scalar_t apply(scalar_t a, scalar_t /*b*/) {
+  static inline scalar_t apply(scalar_t a, [[maybe_unused]] scalar_t b) {
     return a;
   }
 };

@@ -442,7 +442,7 @@ struct MaskedScatterElementwiseFunctor {
 };
 
 struct MaskedScatterSizeCheckFunctor {
-  void operator()(sycl::nd_item<1> /*item*/) const {
+  void operator()([[maybe_unused]] sycl::nd_item<1> item) const {
     const auto totalElements = *mask_exclusive_sum_ + *mask_;
     SYCL_KERNEL_ASSERT(totalElements <= srcSize_);
   }
@@ -519,8 +519,8 @@ class IndexCopyScalarFunctor {
       const ValType* src,
       int64_t dst_off,
       int64_t src_off,
-      int64_t /*idx*/,
-      ValType /*alpha*/) const {
+      [[maybe_unused]] int64_t idx,
+      [[maybe_unused]] ValType alpha) const {
     dst[dst_off] = src[src_off];
   }
 };
@@ -1152,7 +1152,7 @@ struct IndexReduceAddFunctor {
   void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t /*numel*/,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
     atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }
@@ -1933,7 +1933,7 @@ struct IndexReduceMeanFunctor {
   void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t /*numel*/,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
     atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }

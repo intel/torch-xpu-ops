@@ -18,7 +18,7 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct AddrKernelFunctorForBetaIsFalse {
   scalar_t operator()(
-      scalar_t /*self_val*/,
+      [[maybe_unused]] scalar_t self_val,
       scalar_t vec1_val,
       scalar_t vec2_val) const {
     return alpha_val_ && vec1_val && vec2_val;
@@ -47,7 +47,7 @@ struct AddrKernelFunctorForBetaIsTrue {
 template <typename scalar_t>
 struct AddrKernelFunctorForBetaIsZero {
   scalar_t operator()(
-      scalar_t /*self_val*/,
+      [[maybe_unused]] scalar_t self_val,
       scalar_t vec1_val,
       scalar_t vec2_val) const {
     return alpha_val_ * vec1_val * vec2_val;

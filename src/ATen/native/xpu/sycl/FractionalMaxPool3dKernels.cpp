@@ -133,7 +133,7 @@ void fractional_max_pool3d_kernel(
     int64_t outputH,
     int64_t outputW,
     const Tensor& randomSamples,
-    int64_t /*numBatch*/,
+    [[maybe_unused]] int64_t numBatch,
     int64_t numPlanes,
     int64_t inputT,
     int64_t inputH,

@@ -33,7 +33,7 @@ void parallel_replication_pad_1d_kernel_func(
     PackedTensorAccessor64<input_scalar_t, 3> input,
     PackedTensorAccessor64<output_scalar_t, 3> output,
     int64_t pad_left,
-    int64_t /*pad_right*/,
+    [[maybe_unused]] int64_t pad_right,
     const F f,
     int64_t output_plane_size) {
   auto item = syclext::this_work_item::get_nd_item<3>();

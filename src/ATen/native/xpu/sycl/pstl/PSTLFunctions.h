@@ -83,7 +83,7 @@ template <class T, class InputIt>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void get_item_fn(
     InputIt first,
-    T /*index*/,
+    [[maybe_unused]] T index,
     InputIt d_first,
     int64_t N) {
   auto item = syclext::this_work_item::get_nd_item<1>();
@@ -718,10 +718,10 @@ template <class T, class InputIt1, class InputIt2, class OutputIt>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void piecewise_kernel_fn(
     InputIt1 first,
-    InputIt1 /*last*/,
+    [[maybe_unused]] InputIt1 last,
     InputIt1 cnt_start_first,
     InputIt1 cnt_end_first,
-    InputIt2 /*flag_first*/,
+    [[maybe_unused]] InputIt2 flag_first,
     OutputIt d_first,
     int64_t N) {
   auto item = syclext::this_work_item::get_nd_item<1>();

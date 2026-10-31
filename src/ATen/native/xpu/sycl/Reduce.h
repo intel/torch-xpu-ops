@@ -499,7 +499,7 @@ struct func_wrapper_t {
 
   func_wrapper_t(const func_t& op) : combine(op) {}
 
-  arg_t reduce(arg_t acc, scalar_t val, int64_t /*idx*/) const {
+  arg_t reduce(arg_t acc, scalar_t val, [[maybe_unused]] int64_t idx) const {
     return combine(acc, val);
   }
 };
@@ -913,8 +913,9 @@ struct ReduceOp {
 
   template <bool can_acc>
     requires can_acc
-  out_scalar_t get_accumulated_output(out_scalar_t* /*out*/, arg_t value)
-      const {
+  out_scalar_t get_accumulated_output(
+      [[maybe_unused]] out_scalar_t* out,
+      arg_t value) const {
     assert(!final_output);
     return (out_scalar_t)value;
   }
@@ -936,8 +937,9 @@ struct ReduceOp {
   // when accumulation in the output is not possible.
   template <bool can_acc>
     requires(!can_acc)
-  out_scalar_t get_accumulated_output(out_scalar_t* out, arg_t /*value*/)
-      const {
+  out_scalar_t get_accumulated_output(
+      out_scalar_t* out,
+      [[maybe_unused]] arg_t value) const {
     assert(false);
     return *out;
   }

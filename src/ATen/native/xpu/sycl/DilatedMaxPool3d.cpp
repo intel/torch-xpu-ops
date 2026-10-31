@@ -44,7 +44,7 @@ void max_pool3d_kernel_impl(
     index_t itime,
     index_t iheight,
     index_t iwidth,
-    index_t /*obatch*/,
+    [[maybe_unused]] index_t obatch,
     index_t otime,
     index_t oheight,
     index_t owidth,
@@ -63,12 +63,12 @@ void max_pool3d_kernel_impl(
     index_t OutputSize,
     index_t out_cf_d_stride,
     index_t out_cf_c_stride,
-    index_t /*in_cf_d_stride*/,
+    [[maybe_unused]] index_t in_cf_d_stride,
     index_t in_cf_c_stride,
     index_t out_cl_h_stride,
     index_t out_cl_d_stride,
-    index_t /*in_cl_h_stride*/,
-    index_t /*in_cl_d_stride*/,
+    [[maybe_unused]] index_t in_cl_h_stride,
+    [[maybe_unused]] index_t in_cl_d_stride,
     index_t in_batch_stride,
     index_t out_batch_stride,
     index_t in_hw_stride) {
@@ -545,7 +545,7 @@ void max_pool3d_with_indices_backward_kernel(
     IntArrayRef stride,
     IntArrayRef padding,
     IntArrayRef dilation,
-    bool /*ceil_mode*/) {
+    [[maybe_unused]] bool ceil_mode) {
   TensorArg gradInput_arg{gradInput, "gradInput", 1};
   TensorArg gradOutput_arg{gradOutput, "gradOutput", 2};
   TensorArg input_arg{input, "input", 3};

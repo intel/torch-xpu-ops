@@ -36,14 +36,19 @@ class Dists {
 // Zero norm
 template <typename scalar_t>
 struct DistsZero {
-  static void inc(scalar_t& agg, const scalar_t diff, const scalar_t /*p*/) {
+  static void inc(
+      scalar_t& agg,
+      const scalar_t diff,
+      [[maybe_unused]] const scalar_t p) {
     if (diff != diff) { // NaN
       agg = diff;
     } else if (diff != 0.0) {
       agg += 1.0;
     }
   }
-  static scalar_t finish(const scalar_t agg, const scalar_t /*p*/) {
+  static scalar_t finish(
+      const scalar_t agg,
+      [[maybe_unused]] const scalar_t p) {
     return agg;
   }
   static void agg(scalar_t& update, const scalar_t other) {
@@ -54,10 +59,15 @@ struct DistsZero {
 // One norm
 template <typename scalar_t>
 struct DistsOne {
-  static void inc(scalar_t& agg, const scalar_t diff, const scalar_t /*p*/) {
+  static void inc(
+      scalar_t& agg,
+      const scalar_t diff,
+      [[maybe_unused]] const scalar_t p) {
     agg += diff;
   }
-  static scalar_t finish(const scalar_t agg, const scalar_t /*p*/) {
+  static scalar_t finish(
+      const scalar_t agg,
+      [[maybe_unused]] const scalar_t p) {
     return agg;
   }
   static void agg(scalar_t& update, const scalar_t other) {
@@ -66,8 +76,8 @@ struct DistsOne {
   static scalar_t backward(
       const scalar_t diff,
       const scalar_t grad,
-      const scalar_t /*dist*/,
-      const scalar_t /*p*/) {
+      [[maybe_unused]] const scalar_t dist,
+      [[maybe_unused]] const scalar_t p) {
     return grad * Dists<scalar_t>::sign(diff);
   }
 };
@@ -97,10 +107,15 @@ struct DistsLtTwo {
 // Two norm
 template <typename scalar_t>
 struct DistsTwo {
-  static void inc(scalar_t& agg, const scalar_t diff, const scalar_t /*p*/) {
+  static void inc(
+      scalar_t& agg,
+      const scalar_t diff,
+      [[maybe_unused]] const scalar_t p) {
     agg += diff * diff;
   }
-  static scalar_t finish(const scalar_t agg, const scalar_t /*p*/) {
+  static scalar_t finish(
+      const scalar_t agg,
+      [[maybe_unused]] const scalar_t p) {
     return device_sqrt<scalar_t>(agg);
   }
   static void agg(scalar_t& update, const scalar_t other) {
@@ -110,7 +125,7 @@ struct DistsTwo {
       const scalar_t diff,
       const scalar_t grad,
       const scalar_t dist,
-      const scalar_t /*p*/) {
+      [[maybe_unused]] const scalar_t p) {
     return dist == 0.0f ? static_cast<scalar_t>(0) : grad * diff / dist;
   }
 };
@@ -154,12 +169,17 @@ struct DistsP {
 // Inf norm
 template <typename scalar_t>
 struct DistsInf {
-  static void inc(scalar_t& agg, const scalar_t diff, const scalar_t /*p*/) {
+  static void inc(
+      scalar_t& agg,
+      const scalar_t diff,
+      [[maybe_unused]] const scalar_t p) {
     if (diff > agg) {
       agg = diff;
     }
   }
-  static scalar_t finish(const scalar_t agg, const scalar_t /*p*/) {
+  static scalar_t finish(
+      const scalar_t agg,
+      [[maybe_unused]] const scalar_t p) {
     return agg;
   }
   static void agg(scalar_t& update, const scalar_t other) {
@@ -171,7 +191,7 @@ struct DistsInf {
       const scalar_t diff,
       const scalar_t grad,
       const scalar_t dist,
-      const scalar_t /*p*/) {
+      [[maybe_unused]] const scalar_t p) {
     return grad * Dists<scalar_t>::sign(diff) * (sycl::fabs(diff) == dist);
   }
 };
@@ -283,7 +303,7 @@ std::tuple<Tensor, Tensor> _euclidean_dist_backward(
 template <typename scalar_t, typename F, int p_type, typename accscalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void cdist_forward_kernel(
-    const int64_t /*r1*/,
+    [[maybe_unused]] const int64_t r1,
     const int64_t r2,
     const int64_t m,
     const int64_t r_size,
@@ -500,7 +520,7 @@ static void cdist_backward_kernel_impl(
     const Tensor& x1,
     const Tensor& x2,
     const Tensor& dist,
-    int64_t /*gs*/,
+    [[maybe_unused]] int64_t gs,
     const double p,
     const int64_t r1,
     const int64_t r2,

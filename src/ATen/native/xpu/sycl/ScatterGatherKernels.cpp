@@ -40,7 +40,7 @@ class ReduceMultiply {
   constexpr C10_DEVICE void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t /*numel*/,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
     atomicMul((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }
@@ -59,7 +59,7 @@ class ReduceAdd {
   constexpr C10_DEVICE void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t /*numel*/,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
     atomicAdd(
         (sycl_global_ptr<scalar_t>)(self_data_start + index),
@@ -80,7 +80,7 @@ class ReduceMean {
   constexpr C10_DEVICE void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t /*numel*/,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
     atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }
@@ -99,7 +99,7 @@ class ReduceMinimum {
   constexpr C10_DEVICE void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t /*numel*/,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
     atomicMin((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }
@@ -118,7 +118,7 @@ class ReduceMaximum {
   constexpr C10_DEVICE void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t /*numel*/,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
     atomicMax((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }
@@ -137,7 +137,7 @@ class TensorAssign {
   constexpr C10_DEVICE void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t /*numel*/,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
     *(self_data_start + index) = *src_data;
   }
@@ -350,7 +350,7 @@ struct ScatterGatherBaseKernel {
       int64_t dim,
       const Tensor& index,
       const Tensor& src,
-      const std::string& /*method_name*/,
+      [[maybe_unused]] const std::string& method_name,
       const ReduceAdd& f) {
     at::assert_no_internal_overlap(self);
 
@@ -413,7 +413,7 @@ struct ScatterGatherBaseKernel {
       int64_t dim,
       const Tensor& index,
       const Tensor& src,
-      const std::string& /*method_name*/,
+      [[maybe_unused]] const std::string& method_name,
       const TensorAssign& f) {
     at::assert_no_internal_overlap(self);
 
@@ -503,7 +503,7 @@ struct ScatterGatherBaseKernel {
       int64_t dim,
       const Tensor& index,
       const Tensor& src,
-      const std::string& /*method_name*/,
+      [[maybe_unused]] const std::string& method_name,
       const func_t& f) {
     at::assert_no_internal_overlap(self);
 
@@ -639,7 +639,7 @@ struct ScatterFillBaseKernel {
       int64_t dim,
       const Tensor& index,
       const Scalar& src,
-      const std::string& /*method_name*/,
+      [[maybe_unused]] const std::string& method_name,
       const func_t& f) {
     at::assert_no_internal_overlap(self);
 
@@ -688,7 +688,7 @@ struct ScatterFillBaseKernel {
       int64_t dim,
       const Tensor& index,
       const Scalar& src,
-      const std::string& /*method_name*/,
+      [[maybe_unused]] const std::string& method_name,
       const TensorAssign& f) {
     at::assert_no_internal_overlap(self);
 
@@ -739,7 +739,7 @@ struct ScatterFillBaseKernel {
       int64_t dim,
       const Tensor& index,
       const Scalar& src,
-      const std::string& /*method_name*/,
+      [[maybe_unused]] const std::string& method_name,
       const ReduceMultiply& f) {
     at::assert_no_internal_overlap(self);
 

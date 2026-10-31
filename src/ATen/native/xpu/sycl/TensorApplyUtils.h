@@ -212,7 +212,7 @@ struct ApplyOp2<Op, scalar1, scalar2, IndexType, 0, Offsets...> {
       TensorInfo<scalar2, IndexType> b,
       const Op& op,
       int n,
-      IndexType /*linearIndex*/,
+      [[maybe_unused]] IndexType linearIndex,
       Offsets... aOffsets,
       Offsets... bOffsets) {
     op(item, n, a.data[aOffsets]..., b.data[bOffsets]...);
