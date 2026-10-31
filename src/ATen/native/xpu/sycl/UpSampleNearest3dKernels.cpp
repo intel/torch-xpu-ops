@@ -294,7 +294,7 @@ struct UpsampleNearest3dBackwardFunctor {
       float depth_scale,
       float height_scale,
       float width_scale,
-      index_bw_op_t index_bw_op)
+      [[maybe_unused]] index_bw_op_t index_bw_op)
       : grad_o_(grad_o),
         dim_b_(dim_b),
         dim_c_(dim_c),

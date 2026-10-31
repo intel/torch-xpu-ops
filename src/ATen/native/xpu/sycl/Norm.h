@@ -462,7 +462,7 @@ class NormBackward {
       nd_item_id item_id,
       accscalar_t sum1,
       accscalar_t sum2,
-      const NormConfig& cfg) const {
+      [[maybe_unused]] const NormConfig& cfg) const {
     auto group_id = item_id.get_group(0);
     if constexpr (!rms_norm) {
       a_data[group_id] = sum1;

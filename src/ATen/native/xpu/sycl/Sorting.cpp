@@ -84,7 +84,7 @@ void sort_stable_kernel(
     const TensorBase& indices_base,
     int64_t dim,
     bool descending,
-    bool stable) {
+    [[maybe_unused]] bool stable) {
   // Macro for converting `TensorBase` -> `Tensor` without
   // reference count bumps.
 #define TOTENSOR(BASE, VAR)           \
@@ -177,7 +177,7 @@ void gather_median_kernel_func(
     TensorInfo<int64_t, index_t> indices,
     TensorInfo<const scalar_t, index_t> input,
     index_t inputSliceSize,
-    index_t numInputSlices,
+    [[maybe_unused]] index_t numInputSlices,
     index_t inputWithinSliceStride,
     bool ignore_nan,
     const scalar_t* in_data,
@@ -263,7 +263,7 @@ void gather_kth_value_kernel_func(
     TensorInfo<int64_t, index_t> indices,
     TensorInfo<const scalar_t, index_t> input,
     index_t inputSliceSize,
-    index_t numInputSlices,
+    [[maybe_unused]] index_t numInputSlices,
     index_t inputWithinSliceStride,
     index_t k,
     const scalar_t* in_data,
@@ -408,9 +408,9 @@ struct MedianLauncher {
   template <typename scalar_t, typename index_t, int all_dims>
   inline void launch(
       TensorInfo<scalar_t, index_t> values_info,
-      int collapse_values_dim,
+      [[maybe_unused]] int collapse_values_dim,
       TensorInfo<int64_t, index_t> indices_info,
-      int collapse_indices_dim,
+      [[maybe_unused]] int collapse_indices_dim,
       TensorInfo<const scalar_t, index_t> self_info,
       int collapse_self_dim,
       int64_t num_slices,
@@ -434,9 +434,9 @@ struct KthValueLauncher {
   template <typename scalar_t, typename index_t, int all_dims>
   inline void launch(
       TensorInfo<scalar_t, index_t> values_info,
-      int collapse_values_dim,
+      [[maybe_unused]] int collapse_values_dim,
       TensorInfo<int64_t, index_t> indices_info,
-      int collapse_indices_dim,
+      [[maybe_unused]] int collapse_indices_dim,
       TensorInfo<const scalar_t, index_t> self_info,
       int collapse_self_dim,
       int64_t num_slices,
