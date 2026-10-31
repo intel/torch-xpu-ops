@@ -968,6 +968,30 @@ struct ReduceOp {
       at::detail::Array<arg_t, output_vec_size> value,
       at::detail::Array<index_t, output_vec_size> base_offset) const {
     assert(final_output);
+    using project_t = decltype(ops.project(std::declval<arg_t>()));
+    if constexpr (
+        output_vec_size > 1 && std::is_convertible_v<project_t, out_scalar_t>) {
+      // One vector store instead of output_vec_size narrow stores when the
+      // outputs are adjacent and aligned.
+      using vec_t =
+          at::native::memory::aligned_vector<out_scalar_t, output_vec_size>;
+      char* ptr = (char*)dst[0] + base_offset[0];
+      bool contig = noutputs == 1 && (uint64_t)ptr % sizeof(vec_t) == 0;
+#pragma unroll(output_vec_size)
+      for (int i = 1; i < output_vec_size; ++i) {
+        contig = contig &&
+            base_offset[i] == base_offset[0] + i * sizeof(out_scalar_t);
+      }
+      if (contig) {
+        vec_t v;
+#pragma unroll(output_vec_size)
+        for (int i = 0; i < output_vec_size; ++i) {
+          v.val[i] = ops.project(value[i]);
+        }
+        *reinterpret_cast<vec_t*>(ptr) = v;
+        return;
+      }
+    }
 #pragma unroll(output_vec_size)
     for (int i = 0; i < output_vec_size; ++i) {
       set_results(ops.project(value[i]), base_offset[i]);
@@ -1226,6 +1250,42 @@ inline void gpu_reduce_kernel(
   static constexpr bool can_accumulate_in_output =
       std::is_convertible_v<arg_t, out_scalar_t> &&
       !(is_inp_out_type_half_or_chalf || is_inp_out_type_bfloat16);
+
+  // If the input's unit-stride dim is kept but the output is not unit-stride
+  // along it (e.g. channels-last input reduced into a contiguous output), the
+  // iterator follows the output layout and the reduction reads are strided.
+  // Reduce into a temporary laid out like the input, then copy (transpose).
+  if (acc_buf_ptr == nullptr && iter.noutputs() == 1 &&
+      !iter.should_accumulate() && iter.is_final_output() &&
+      iter.numel() >= (1 << 20)) {
+    const TensorBase& in = iter.input(0);
+    const TensorBase& out = iter.output(0);
+    int64_t fast_dim = -1;
+    for (int64_t d = 0; d < in.dim(); d++) {
+      if (in.size(d) > 1 && in.stride(d) == 1) {
+        fast_dim = d;
+      }
+    }
+    if (fast_dim >= 0 && out.dim() == in.dim() &&
+        out.size(fast_dim) == in.size(fast_dim) && out.stride(fast_dim) != 1) {
+      std::vector<int64_t> perm(in.dim());
+      std::iota(perm.begin(), perm.end(), 0);
+      std::stable_sort(perm.begin(), perm.end(), [&](int64_t a, int64_t b) {
+        return in.stride(a) > in.stride(b);
+      });
+      std::vector<int64_t> sizes(in.dim());
+      std::vector<int64_t> inv(in.dim());
+      for (int64_t i = 0; i < in.dim(); i++) {
+        sizes[i] = out.size(perm[i]);
+        inv[perm[i]] = i;
+      }
+      TensorBase tmp = at::empty(sizes, out.options()).permute(inv);
+      auto tmp_iter = TensorIterator::reduce_op(tmp, in);
+      gpu_reduce_kernel<scalar_t, out_scalar_t, vt0, vt1>(tmp_iter, ops, ident);
+      Tensor(out).copy_(Tensor(tmp));
+      return;
+    }
+  }
 
   bool can_use_32bit_indexing = iter.can_use_32bit_indexing();
   std::unique_ptr<AccumulationBuffer> owned_buf_ptr;
