@@ -219,7 +219,6 @@
     "../../../../test/distributed/launcher/test_api.py": None,
     "../../../../test/distributed/launcher/test_run.py": None,
     "../../../../test/distributed/nn/jit/test_instantiator.py": None,
-    "../../../../test/distributed/pipelining/test_schedule.py": None,
     "../../../../test/distributed/tensor/debug/test_comm_mode.py": None,
     "../../../../test/distributed/tensor/debug/test_comm_mode_features.py": None,
     "../../../../test/distributed/tensor/debug/test_op_coverage.py": None,
@@ -269,7 +268,7 @@
     "../../../../test/distributed/algorithms/quantization/test_quantization.py": None,
     "../../../../test/distributed/pipelining/test_dtensor_pp_integration.py": None,
     "../../../../test/distributed/pipelining/test_dtensor_pp_unit_tests.py": None,
-    "../../../../test/distributed/tensor/test_compile_on_one_rank.py": None,
+    "distributed/tensor/test_compile_on_one_rank.py": None,
     "../../../../test/distributed/tensor/test_dtensor_logging.py": None,
     "../../../../test/distributed/test_symmetric_memory.py": None,
 }
@@ -280,5 +279,4 @@ skip_dict_python = {
     # "distributed/pipelining/test_stage.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
 }
-
 
