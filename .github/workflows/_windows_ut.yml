@@ -200,6 +200,7 @@ jobs:
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.xpu.device_count())"
+          python -c "import importlib.util as u; print('triton', __import__('triton').__version__ if u.find_spec('triton') else 'not installed')"
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         shell: cmd

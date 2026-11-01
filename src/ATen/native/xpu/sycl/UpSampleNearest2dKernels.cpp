@@ -10,9 +10,9 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/LaunchUtils.h>
-#include <ATen/native/xpu/sycl/UpSampleNearest2dBackwardBmg.h>
-#include <ATen/native/xpu/sycl/UpSampleNearest2dBmg.h>
+#include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/UpSampleNearest2dKernels.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
@@ -21,6 +21,202 @@
 
 namespace at::native {
 namespace xpu {
+
+namespace nearest_optimized {
+
+template <int SH, int SW>
+struct NearestVector {
+  const uint32_t* in;
+  uint32_t* out;
+  int h, w, oh, ow, count;
+  at::detail::IntDivider<uint32_t> dc, dw, dh;
+  void operator()(sycl::nd_item<1> it) const {
+    int step = it.get_global_range(0) * 4;
+    for (int i = it.get_global_linear_id() * 4; i < count; i += step) {
+      memory::aligned_vector<uint32_t, 4> values;
+      uint32_t pixel = dc.div(i), channel = i - pixel * dc.divisor;
+      uint32_t ny = dw.div(pixel), x = pixel - ny * dw.divisor;
+      uint32_t n = dh.div(ny), y = ny - n * dh.divisor;
+      uint32_t s = ((n * h + y / SH) * w + x / SW) * dc.divisor + channel;
+      int delta = x == ow - 1 ? ((y % SH == SH - 1) ? 0 : -w * int(dc.divisor))
+                              : ((x % SW == SW - 1) ? 0 : -int(dc.divisor));
+#pragma unroll
+      for (int j = 0; j < 4; ++j) {
+        int index = s + j + (channel + j >= dc.divisor ? delta : 0);
+        values[j] = i + j < count ? in[index] : 0;
+      }
+      if (i + 4 <= count)
+        *reinterpret_cast<memory::aligned_vector<uint32_t, 4>*>(out + i) =
+            values;
+      else {
+#pragma unroll
+        for (int j = 0; j < 4; ++j)
+          if (i + j < count)
+            out[i + j] = values[j];
+      }
+    }
+  }
+};
+
+template <int SH, int SW>
+void vector_launch(const at::Tensor& x, const at::Tensor& y) {
+  int count = y.numel() / 2, c = x.size(1) / 2;
+  int groups = std::min((count + 1023) / 1024, 1280);
+  c10::xpu::getCurrentXPUStream().queue().parallel_for(
+      sycl::nd_range<1>(groups * 256, 256),
+      NearestVector<SH, SW>{
+          reinterpret_cast<const uint32_t*>(x.data_ptr()),
+          reinterpret_cast<uint32_t*>(y.data_ptr()),
+          int(x.size(2)),
+          int(x.size(3)),
+          int(y.size(2)),
+          int(y.size(3)),
+          count,
+          at::detail::IntDivider<uint32_t>(c),
+          at::detail::IntDivider<uint32_t>(y.size(3)),
+          at::detail::IntDivider<uint32_t>(y.size(2))});
+}
+
+// Packed accesses require dense channels-last tensors with pairs of channels.
+inline bool can_use_packed(
+    const Tensor& input,
+    const Tensor& output,
+    bool is_exact) {
+  if (is_exact || input.dim() != 4 || output.dim() != 4 || input.numel() == 0 ||
+      output.numel() == 0 || input.numel() >= INT_MAX ||
+      output.numel() >= INT_MAX) {
+    return false;
+  }
+  if ((input.scalar_type() != kHalf && input.scalar_type() != kBFloat16) ||
+      output.scalar_type() != input.scalar_type()) {
+    return false;
+  }
+  if (!input.is_contiguous(MemoryFormat::ChannelsLast) ||
+      !output.is_contiguous(MemoryFormat::ChannelsLast)) {
+    return false;
+  }
+  return input.size(0) == output.size(0) && input.size(1) == output.size(1) &&
+      input.size(1) >= 16 && input.size(1) % 2 == 0;
+}
+
+// Explicit scales must agree with the integer replication implied by the sizes.
+inline int packed_scale(
+    const Tensor& small,
+    const Tensor& large,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
+  if (large.size(2) % small.size(2) || large.size(3) % small.size(3)) {
+    return 0;
+  }
+  const int sh = large.size(2) / small.size(2);
+  const int sw = large.size(3) / small.size(3);
+  if (sh != sw || (sh != 2 && sh != 4 && sh != 8) ||
+      (scales_h && *scales_h != sh) || (scales_w && *scales_w != sw)) {
+    return 0;
+  }
+  return sh;
+}
+
+inline bool try_forward(
+    const Tensor& input,
+    const Tensor& output,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w,
+    bool is_exact) {
+  if (!can_use_packed(input, output, is_exact) ||
+      reinterpret_cast<uintptr_t>(input.data_ptr()) % 4 ||
+      reinterpret_cast<uintptr_t>(output.data_ptr()) % 16) {
+    return false;
+  }
+  const int sh = packed_scale(input, output, scales_h, scales_w);
+  if (sh == 0) {
+    return false;
+  }
+  if (sh == 2)
+    vector_launch<2, 2>(input, output);
+  else if (sh == 4)
+    vector_launch<4, 4>(input, output);
+  else
+    vector_launch<8, 8>(input, output);
+  return true;
+}
+
+template <typename scalar_t, int S>
+struct NearestBackwardVector {
+  const uint32_t* x;
+  uint32_t* y;
+  int count;
+  at::detail::IntDivider<uint32_t> dc, dw;
+  void operator()(sycl::nd_item<1> it) const {
+    for (int i = it.get_global_linear_id(); i < count;
+         i += it.get_global_range(0)) {
+      uint32_t p = dc.div(i), c = i - p * dc.divisor, nh = dw.div(p),
+               w = p - nh * dw.divisor;
+      uint32_t base = (nh * S * dw.divisor + w) * S * dc.divisor + c;
+      memory::aligned_vector<float, 2> acc{{0.f, 0.f}};
+#pragma unroll
+      for (int h = 0; h < S; ++h) {
+#pragma unroll
+        for (int w = 0; w < S; ++w) {
+          auto v = sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+              x[base + (h * dw.divisor * S + w) * dc.divisor]);
+#pragma unroll
+          for (int j = 0; j < 2; ++j)
+            acc[j] += float(v[j]);
+        }
+      }
+      memory::aligned_vector<scalar_t, 2> value{
+          {scalar_t(acc[0]), scalar_t(acc[1])}};
+      y[i] = sycl::bit_cast<uint32_t>(value);
+    }
+  }
+};
+template <typename scalar_t, int S>
+void backward_launch(const at::Tensor& x, const at::Tensor& y) {
+  int count = y.numel() / 2;
+  int groups = std::min((count + 255) / 256, 1280);
+  c10::xpu::getCurrentXPUStream().queue().parallel_for(
+      sycl::nd_range<1>(groups * 256, 256),
+      NearestBackwardVector<scalar_t, S>{
+          reinterpret_cast<const uint32_t*>(x.data_ptr()),
+          reinterpret_cast<uint32_t*>(y.data_ptr()),
+          count,
+          at::detail::IntDivider<uint32_t>(y.size(1) / 2),
+          at::detail::IntDivider<uint32_t>(y.size(3))});
+}
+
+template <typename scalar_t>
+void dispatch_backward(const Tensor& input, const Tensor& output, int sh) {
+  if (sh == 2)
+    backward_launch<scalar_t, 2>(input, output);
+  else if (sh == 4)
+    backward_launch<scalar_t, 4>(input, output);
+  else
+    backward_launch<scalar_t, 8>(input, output);
+}
+
+inline bool try_backward(
+    const Tensor& input,
+    const Tensor& output,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w,
+    bool is_exact) {
+  if (!can_use_packed(input, output, is_exact) ||
+      reinterpret_cast<uintptr_t>(input.data_ptr()) % 4 ||
+      reinterpret_cast<uintptr_t>(output.data_ptr()) % 4) {
+    return false;
+  }
+  const int sh = packed_scale(output, input, scales_h, scales_w);
+  if (sh == 0) {
+    return false;
+  }
+  if (input.scalar_type() == kHalf)
+    dispatch_backward<c10::Half>(input, output, sh);
+  else
+    dispatch_backward<c10::BFloat16>(input, output, sh);
+  return true;
+}
+} // namespace nearest_optimized
 
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 struct UpsampleNearest2dBackwardKernelFunctor {
@@ -115,7 +311,8 @@ void upsample_nearest2d_backward_frame(
     float width_scale,
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  auto work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
   auto caller = UpsampleNearest2dBackwardKernelFunctor<
@@ -216,7 +413,8 @@ void upsample_nearest2d_backward_channels_last_frame(
     const size_t gi_numel,
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  auto work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t global_range =
       (gi_numel + work_group_size - 1) / work_group_size * work_group_size;
   auto caller = UpsampleNearest2dBackwardChannelsLastKernelFunctor<
@@ -252,7 +450,7 @@ void upsample_nearest2d_backward_kernel(
     return;
   }
 
-  if (bmg_nearest::try_backward(
+  if (nearest_optimized::try_backward(
           grad_output_, grad_input, scales_h, scales_w, is_exact)) {
     return;
   }
@@ -471,7 +669,8 @@ void upsample_nearest2d_frame(
     index_op_t index_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
 
-  auto work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int local_x = std::min<int>(lastPow2(width2), work_group_size);
   int local_y = std::min<int>(lastPow2(height2), work_group_size / local_x);
   int local_z = std::min<int>(nc, work_group_size / local_x / local_y);
@@ -574,7 +773,8 @@ void upsample_nearest2d_channels_last_frame(
     index_op_t index_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
 
-  auto work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t global_range =
       (out_numel + work_group_size - 1) / work_group_size * work_group_size;
   int64_t max_groups = at::xpu::getDeviceMaxWorkItems() / work_group_size;
@@ -611,7 +811,8 @@ void upsample_nearest2d_kernel(
     return;
   }
 
-  if (bmg_nearest::try_forward(input_, output, scales_h, scales_w, is_exact)) {
+  if (nearest_optimized::try_forward(
+          input_, output, scales_h, scales_w, is_exact)) {
     return;
   }
 
