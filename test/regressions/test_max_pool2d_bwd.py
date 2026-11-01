@@ -8,7 +8,11 @@
 
 # Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_utils import parametrize, run_tests, subtest, TestCase
 
 aten = torch.ops.aten
 
@@ -71,3 +75,100 @@ class TestMaxPool2dBwd(TestCase):
 
         self.assertEqual(actual.cpu(), expected)
         self.assertTrue(actual.is_contiguous(memory_format=torch.channels_last))
+
+
+class TestMaxPool2dLayouts(TestCase):
+    @dtypes(torch.float16)
+    @parametrize("pattern", ["ties", "nan", "infinity"])
+    @parametrize(
+        "shape,kernel,stride,padding,memory_format",
+        [
+            subtest(((2, 24, 17, 17), 3, 2, 0, torch.channels_last), name="odd_spatial"),
+            subtest(((2, 32, 16, 16), 3, 2, 1, torch.channels_last), name="padded"),
+            subtest(((2, 32, 16, 16), 3, 2, 1, torch.contiguous_format), name="nchw"),
+            subtest(((2, 32, 12, 16), 5, 1, 2, torch.channels_last), name="window5"),
+            subtest(((2, 32, 12, 16), 9, 1, 4, torch.channels_last), name="window9"),
+            subtest(((2, 32, 12, 16), 13, 1, 6, torch.channels_last), name="window13"),
+            subtest(((2, 216, 42, 42), 3, 1, 1, torch.channels_last), name="stride1"),
+            subtest(((2, 25, 17, 17), 3, 2, 1, torch.channels_last), name="odd_channels"),
+        ],
+    )
+    def test_max_pool2d_forward_indices(
+        self, device, dtype, pattern, shape, kernel, stride, padding, memory_format
+    ):
+        # Repeated maxima and multiple NaNs exercise both the first-maximum
+        # tie rule and the last-NaN index rule, including padded windows.
+        x = torch.zeros(shape, dtype=dtype, device="cpu").contiguous(
+            memory_format=memory_format
+        )
+        x[..., 1::3, 1::3] = 1
+        if pattern == "nan":
+            x[..., 1::3, 1::3] = float("nan")
+            x[..., 2::3, 2::3] = float("nan")
+        elif pattern == "infinity":
+            x.fill_(-float("inf"))
+            x[..., 1::3, 1::3] = float("inf")
+        args = ([kernel, kernel], [stride, stride], [padding, padding], [1, 1], False)
+        expected, expected_indices = aten.max_pool2d_with_indices(x.float(), *args)
+        actual, actual_indices = aten.max_pool2d_with_indices(x.to(device), *args)
+        self.assertEqual(actual.cpu(), expected.to(dtype), rtol=0, atol=0)
+        self.assertEqual(actual_indices.cpu(), expected_indices)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize(
+        "shape,kernel,stride,padding,dilation,ceil_mode,gap",
+        [
+            subtest(((2, 24, 56, 56), 3, 2, 1, 1, False, 8), name="packed_channels"),
+            subtest(((2, 26, 56, 56), 3, 2, 1, 1, False, 6), name="unaligned_channels"),
+            subtest(((2, 32, 56, 56), 2, 2, 0, 1, False, 8), name="nonoverlap"),
+            subtest(((2, 128, 17, 17), 3, 2, 0, 1, False, 8), name="odd_spatial"),
+            subtest(((2, 216, 42, 42), 3, 1, 1, 1, False, 8), name="compact42"),
+            subtest(((2, 432, 21, 21), 3, 1, 1, 1, False, 8), name="compact21"),
+            subtest(((2, 864, 11, 11), 3, 1, 1, 1, False, 8), name="compact11"),
+            subtest(((1, 24, 256, 256), 3, 2, 1, 1, False, 8), name="large_spatial"),
+            subtest(((2, 25, 17, 17), 3, 2, 1, 1, False, 7), name="odd_channels"),
+            subtest(((2, 24, 17, 17), 3, 2, 1, 2, False, 8), name="dilation"),
+            subtest(((2, 24, 16, 16), 3, 2, 1, 1, True, 8), name="ceil_mode"),
+        ],
+    )
+    def test_max_pool2d_backward_gapped_gradient(
+        self, device, dtype, shape, kernel, stride, padding, dilation, ceil_mode, gap
+    ):
+        # Keep the original channel/spatial families with smaller batches.
+        # The backward fast path accepts NCHW indices and a channels-last
+        # gradient view with gaps between pixels; .to() on the view would
+        # compact those gaps, so allocate the backing storage on the device.
+        x = torch.testing.make_tensor(shape, dtype=dtype, device="cpu").contiguous(
+            memory_format=torch.channels_last
+        )
+        args = (
+            [kernel, kernel], [stride, stride], [padding, padding],
+            [dilation, dilation], ceil_mode,
+        )
+        values, indices = aten.max_pool2d_with_indices(x.float(), *args)
+        n, c, h, w = values.shape
+        storage = torch.empty((n, h, w, c + gap), dtype=dtype, device=device)
+        grad = storage[..., :c].permute(0, 3, 1, 2)
+        # Small integers make accumulation exactly representable in both dtypes.
+        grad_cpu = torch.randint(-2, 3, values.shape, device="cpu").to(dtype)
+        grad.copy_(grad_cpu)
+        indices = indices.contiguous()
+        expected = aten.max_pool2d_with_indices_backward(
+            grad_cpu.float(), x.float(), *args, indices
+        ).to(dtype)
+        self.assertFalse(grad.is_contiguous(memory_format=torch.channels_last))
+        self.assertEqual(grad.stride(), (h * w * (c + gap), 1, w * (c + gap), c + gap))
+        actual = aten.max_pool2d_with_indices_backward(
+            grad, x.to(device), *args, indices.to(device)
+        )
+        self.assertEqual(actual.cpu(), expected, rtol=0, atol=0)
+        self.assertTrue(actual.is_contiguous(memory_format=torch.channels_last))
+
+
+instantiate_device_type_tests(
+    TestMaxPool2dLayouts, globals(), only_for="xpu", allow_xpu=True
+)
+
+
+if __name__ == "__main__":
+    run_tests()
