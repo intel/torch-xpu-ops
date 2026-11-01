@@ -630,6 +630,139 @@ struct VectorizedLayerNormKernelFunctor
   sycl_local_acc_t<T_ACC> buf_;
 };
 
+// For short rows (N / vec_size < SIMD), a work-group of one sub-group
+// normalizes ROWS_PER_WG rows, each owned by SIMD / ROWS_PER_WG contiguous
+// lanes, so fewer lanes idle than with one row per work-group.
+template <typename T, typename T_ACC, bool rms_norm, int ROWS_PER_WG>
+struct VectorizedLayerNormKernelSmallFunctor {
+  static_assert(
+      ROWS_PER_WG > 0 && ROWS_PER_WG <= SIMD &&
+          (ROWS_PER_WG & (ROWS_PER_WG - 1)) == 0,
+      "ROWS_PER_WG must be a power of two no larger than SIMD");
+  static constexpr int kLanesPerRow = SIMD / ROWS_PER_WG;
+
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD)
+  void operator()(sycl::nd_item<1> item_id) const {
+    using vec_t = aligned_vector<T, vec_size<T>>;
+    using acc_t = acc_type_device<T, kXPU>;
+    auto sg = item_id.get_sub_group();
+    const int lane_id = item_id.get_local_id(0);
+    const int row_in_wg = lane_id / kLanesPerRow;
+    const int lane_in_row = lane_id % kLanesPerRow;
+    const int64_t row =
+        static_cast<int64_t>(item_id.get_group(0)) * ROWS_PER_WG + row_in_wg;
+    // Lanes of a row past M must still take part in the sub-group shuffles.
+    const bool row_valid = row < M_;
+    const int n_vec_to_read = N_ / vec_size<T>;
+    const vec_t* X_vec = reinterpret_cast<const vec_t*>(X_ + row * N_);
+
+    WelfordDataLN wd(0.f, 0.f, 0.f);
+    if (row_valid) {
+      // no tail, we check that N is multiple of vec_size
+      for (int i = lane_in_row; i < n_vec_to_read; i += kLanesPerRow) {
+        vec_t data = X_vec[i];
+#pragma unroll
+        for (int ii = 0; ii < vec_size<T>; ii++) {
+          wd = WelfordOnlineSum<acc_t, rms_norm>(
+              static_cast<acc_t>(data.val[ii]), wd);
+        }
+      }
+    }
+
+    // Reduce within each row's lane segment; the segment's first lane ends up
+    // holding the row statistics and broadcasts them to the segment.
+    for (int offset = kLanesPerRow >> 1; offset > 0; offset >>= 1) {
+      WelfordDataLN wdB{
+          sycl::shift_group_left(sg, wd.mean, offset),
+          sycl::shift_group_left(sg, wd.sigma2, offset),
+          sycl::shift_group_left(sg, wd.count, offset)};
+      wd = WelfordCombine<rms_norm>(wd, wdB);
+    }
+    const int row_leader = row_in_wg * kLanesPerRow;
+    const T_ACC mean_val = sycl::select_from_group(sg, wd.mean, row_leader);
+    const T_ACC var_val =
+        sycl::select_from_group(sg, wd.sigma2, row_leader) / float(N_);
+    const T_ACC rstd_val = c10::xpu::compat::rsqrt(var_val + eps_);
+
+    if (!row_valid) {
+      return;
+    }
+
+    const vec_t* gamma_vec =
+        (gamma_ != nullptr) ? reinterpret_cast<const vec_t*>(gamma_) : nullptr;
+    const vec_t* beta_vec =
+        (beta_ != nullptr) ? reinterpret_cast<const vec_t*>(beta_) : nullptr;
+    vec_t* Y_vec = reinterpret_cast<vec_t*>(Y_ + row * N_);
+
+    for (int i = lane_in_row; i < n_vec_to_read; i += kLanesPerRow) {
+      vec_t data = X_vec[i];
+      vec_t gamma_data, beta_data;
+      if (gamma_vec != nullptr) {
+        gamma_data = gamma_vec[i];
+      }
+      if (!rms_norm && beta_vec != nullptr) {
+        beta_data = beta_vec[i];
+      }
+      vec_t out;
+      // Computation is performed in T_ACC, X is cast to T_ACC and result is
+      // implicitly cast to T
+#pragma unroll
+      for (int ii = 0; ii < vec_size<T>; ii++) {
+        T_ACC y = static_cast<T_ACC>(data.val[ii]);
+        if constexpr (!rms_norm) {
+          y -= mean_val;
+        }
+        y *= rstd_val;
+        if (gamma_vec != nullptr) {
+          y = static_cast<T_ACC>(gamma_data.val[ii]) * y;
+        }
+        if (!rms_norm && beta_vec != nullptr) {
+          y += static_cast<T_ACC>(beta_data.val[ii]);
+        }
+        out.val[ii] = y;
+      }
+      Y_vec[i] = out;
+    }
+    if (lane_in_row == 0) {
+      if constexpr (!rms_norm) {
+        mean_[row] = mean_val;
+      }
+      rstd_[row] = rstd_val;
+    }
+  }
+
+  VectorizedLayerNormKernelSmallFunctor(
+      const int N,
+      const int64_t M,
+      T_ACC eps,
+      const T* RESTRICT X,
+      const T* gamma,
+      const T* beta,
+      T_ACC* mean,
+      T_ACC* rstd,
+      T* Y)
+      : N_(N),
+        M_(M),
+        eps_(eps),
+        X_(X),
+        gamma_(gamma),
+        beta_(beta),
+        mean_(mean),
+        rstd_(rstd),
+        Y_(Y) {}
+
+ private:
+  const int N_;
+  const int64_t M_;
+  T_ACC eps_;
+  const T* RESTRICT X_;
+  const T* gamma_;
+  const T* beta_;
+  T_ACC* mean_;
+  T_ACC* rstd_;
+  T* Y_;
+};
+
 int64_t layer_norm_wg_size_select(
     const int64_t max_wg_size,
     const int64_t M,
@@ -660,6 +793,27 @@ int64_t layer_norm_wg_size_select(
   return wg_size;
 }
 
+template <typename T, typename T_ACC, bool rms_norm, int ROWS_PER_WG>
+void launch_vectorized_layer_norm_small_kernel(
+    int N,
+    int64_t M,
+    T_ACC eps,
+    const T* X_data,
+    const T* gamma_data,
+    const T* beta_data,
+    T* Y_data,
+    T_ACC* mean_data,
+    T_ACC* rstd_data) {
+  using KernelClass =
+      VectorizedLayerNormKernelSmallFunctor<T, T_ACC, rms_norm, ROWS_PER_WG>;
+  KernelClass kfn(
+      N, M, eps, X_data, gamma_data, beta_data, mean_data, rstd_data, Y_data);
+  const int64_t num_wg = (M + ROWS_PER_WG - 1) / ROWS_PER_WG;
+  sycl::range<1> local_range{size_t(SIMD)};
+  sycl::range<1> global_range{size_t(num_wg) * SIMD};
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+}
+
 template <typename T, typename T_ACC, bool rms_norm>
 void launch_vectorized_layer_norm_kernel(
     int N,
@@ -671,6 +825,54 @@ void launch_vectorized_layer_norm_kernel(
     T* Y_data,
     T_ACC* mean_data,
     T_ACC* rstd_data) {
+  const int n_vec = N / vec_size<T>;
+
+  // (XeCore count * EUs per XeCore) * HW threads per EU
+  const int64_t total_hw_threads = at::xpu::getDeviceHWThreads();
+
+  // `n_vec <= SIMD / 2` ensures `rows_per_wg >= 2` below, and
+  // `M > total_hw_threads` keeps `rows_per_wg = 2` above the occupancy bound,
+  // so each work-group of small kernel packs at least two rows.
+  if (n_vec <= SIMD / 2 && M > total_hw_threads) {
+    // Each work-group of small kernel contains only one sub-group.
+    int lanes_per_row = 1;
+    while (lanes_per_row < n_vec) {
+      lanes_per_row <<= 1;
+    }
+
+    // Ensure that at least 50% HW threads would not be left idle
+    int rows_per_wg = SIMD / lanes_per_row;
+    while (rows_per_wg > 2 &&
+           (M + rows_per_wg - 1) / rows_per_wg <= total_hw_threads / 2) {
+      rows_per_wg >>= 1;
+    }
+
+#define LAUNCH_SMALL(ROWS)                                               \
+  case ROWS:                                                             \
+    launch_vectorized_layer_norm_small_kernel<T, T_ACC, rms_norm, ROWS>( \
+        N,                                                               \
+        M,                                                               \
+        eps,                                                             \
+        X_data,                                                          \
+        gamma_data,                                                      \
+        beta_data,                                                       \
+        Y_data,                                                          \
+        mean_data,                                                       \
+        rstd_data);                                                      \
+    return;
+
+    switch (rows_per_wg) {
+      LAUNCH_SMALL(32)
+      LAUNCH_SMALL(16)
+      LAUNCH_SMALL(8)
+      LAUNCH_SMALL(4)
+      LAUNCH_SMALL(2)
+      default:
+        TORCH_INTERNAL_ASSERT(false, "unexpected rows_per_wg ", rows_per_wg);
+    }
+#undef LAUNCH_SMALL
+  }
+
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
   auto wg_size = layer_norm_wg_size_select(
       at::xpu::getKernelMaxWorkGroupSize<KernelClass>(), M, N / vec_size<T>);
