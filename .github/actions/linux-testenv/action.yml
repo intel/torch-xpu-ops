@@ -33,7 +33,7 @@ runs:
         gcc -v && g++ -v
         uname -a
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
-        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
+        sudo -n rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python
       uses: ./.github/actions/setup-python
