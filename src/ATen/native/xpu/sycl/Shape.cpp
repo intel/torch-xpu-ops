@@ -971,6 +971,69 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl::local_accessor<uint8_t, 1> slm_table_;
 };
 
+// Stack along the last dim: K inputs each give one unit per output row of K
+// units (cat_dim 0, size[0] == K). A work-item writes R rows (16 bytes) with
+// one R-unit load per input, interleaved in registers; the gather kernel
+// would load unit by unit.
+template <int U, int R, int K>
+struct CatInterleaveFunctor {
+  using T = OpaqueType<U>;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const uint32_t vid = item.get_global_linear_id();
+    if (vid >= p_.nvec) {
+      return;
+    }
+    uint32_t c[kCatMaxDims];
+    cat_decompose(p_, vid * (R * K), c);
+    memory::aligned_vector<T, R * K> v;
+#pragma unroll
+    for (int k = 0; k < K; ++k) {
+      const CatInputMeta& m = p_.in[k];
+      int32_t off = 0;
+#pragma unroll
+      for (int d = 1; d < kCatMaxDims; ++d) {
+        if (d < p_.ndim) {
+          off += static_cast<int32_t>(c[d]) * m.stride[d];
+        }
+      }
+      const T* src = reinterpret_cast<const T*>(m.ptr) + off;
+      memory::aligned_vector<T, R> r;
+      if (m.vec_ok) {
+        r = *reinterpret_cast<const memory::aligned_vector<T, R>*>(src);
+      } else {
+#pragma unroll
+        for (int j = 0; j < R; ++j) {
+          r[j] = src[j * m.stride[1]];
+        }
+      }
+#pragma unroll
+      for (int j = 0; j < R; ++j) {
+        v[j * K + k] = r[j];
+      }
+    }
+    reinterpret_cast<decltype(v)*>(out_)[vid] = v;
+  }
+
+  CatInterleaveFunctor(void* out, const CatParams<K>& p)
+      : out_(static_cast<T*>(out)), p_(p) {}
+
+ private:
+  T* out_;
+  CatParams<K> p_;
+};
+
+template <int U, int R, int K>
+void launch_cat_interleave(const Tensor& out, CatParams<K>& p) {
+  p.nvec = static_cast<uint32_t>(out.numel() / (R * K));
+  CatInterleaveFunctor<U, R, K> kfn(out.mutable_data_ptr(), p);
+  sycl_kernel_submit(
+      sycl::range<1>(ceil_div<int64_t>(p.nvec, kCatGroupSize) * kCatGroupSize),
+      sycl::range<1>(kCatGroupSize),
+      getCurrentSYCLQueue(),
+      kfn);
+}
+
 template <int U, int V, bool kWrap, int kRegInputs, typename FillFn>
 void launch_cat_gather(
     const Tensor& out,
@@ -1140,6 +1203,49 @@ bool cat_output_driven(
     }
   }
   const int64_t v = vec_bytes / u;
+
+  // Interleave: every input gives one unit per row (e.g. stack along the
+  // last dim).
+  const int64_t rows = 16 / (nin * u);
+  if (cat_dim == 0 && size[0] == nin && nd >= 2 && (nin == 2 || nin == 4) &&
+      rows * nin * u == 16 && rows >= 2 && size[1] % rows == 0 &&
+      out_addr % 16 == 0) {
+    auto launch = [&]<int U, int R, int K>() {
+      CatParams<K> p;
+      p.ndim = nd;
+      for (int d = 0; d < nd; ++d) {
+        p.size[d] = at::detail::IntDivider<uint32_t>(size[d]);
+      }
+      for (int k = 0; k < K; ++k) {
+        CatInputMeta& m = p.in[k];
+        m = CatInputMeta{};
+        m.ptr = static_cast<uint64_t>(addr(*in[k]));
+        m.vec_ok = stride[k][1] == 1 && m.ptr % (R * U) == 0;
+        for (int d = 0; d < nd; ++d) {
+          m.stride[d] = static_cast<int32_t>(stride[k][d]);
+          m.vec_ok &= d < 2 || stride[k][d] % R == 0;
+        }
+      }
+      launch_cat_interleave<U, R, K>(out, p);
+    };
+    switch (u * 8 + nin) {
+      case 1 * 8 + 2:
+        launch.template operator()<1, 8, 2>();
+        return true;
+      case 1 * 8 + 4:
+        launch.template operator()<1, 4, 4>();
+        return true;
+      case 2 * 8 + 2:
+        launch.template operator()<2, 4, 2>();
+        return true;
+      case 2 * 8 + 4:
+        launch.template operator()<2, 2, 4>();
+        return true;
+      case 4 * 8 + 2:
+        launch.template operator()<4, 2, 2>();
+        return true;
+    }
+  }
   // Up to 4 inputs: metadata in registers when every vector is one unit
   // (one lookup each) or the output is small. Else SLM, which needs the
   // cat-coordinate table.

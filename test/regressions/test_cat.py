@@ -392,6 +392,16 @@ class TestTorchMethod(TestCase):
             check([t(2, 1, 3) for _ in range(40)], 1)
             check([t(3000, 3), t(2000, 3).t().contiguous().t(), t(1, 3)], 0)
 
+    def test_stack_last_dim(self):
+        # Every input contributes one element per output row (interleave).
+        for dtype in (torch.int8, torch.float16, torch.float32, torch.float64):
+            for n in (2, 3, 4):
+                xs = [torch.randn(64, 48).mul(10).to(dtype) for _ in range(n)]
+                xs[0] = torch.randn(48, 64).mul(10).to(dtype).t()
+                res_cpu = torch.stack(xs, -1)
+                res_xpu = torch.stack([x.to(xpu_device) for x in xs], -1)
+                self.assertEqual(res_xpu.cpu(), res_cpu, atol=0, rtol=0)
+
 
 instantiate_device_type_tests(
     TestTorchMethod, globals(), only_for="xpu", allow_xpu=True
