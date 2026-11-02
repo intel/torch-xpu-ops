@@ -171,6 +171,50 @@ PYTEST_SIBLING_IMPORT_DIRS=(
     "test/distributed/pipelining"
 )
 
+# -------------------- Device detection --------------------
+# Some known failures are specific to a GPU family (e.g. BMG / Arc Pro B60).
+# Detect the online XPU device family so device-scoped deselect lists can be
+# applied only on the matching hardware (pvc / bmg).
+detect_xpu_device_family() {
+    local name=""
+    name=$(python -c "import torch; print(torch.xpu.get_device_name(0))" 2>/dev/null) || name=""
+    if [ -z "$name" ]; then
+        name=$(clinfo 2>/dev/null | grep -m1 -i "Device Name" | sed "s/.*Device Name[[:space:]]*//")
+    fi
+    case "$name" in
+        *Arc*|*B60*|*Battlemage*) echo "bmg" ;;
+        *"Data Center GPU Max"*|*PVC*) echo "pvc" ;;
+        *) echo "unknown" ;;
+    esac
+}
+XPU_DEVICE_FAMILY="${XPU_DEVICE_FAMILY:-$(detect_xpu_device_family)}"
+echo "Detected XPU device family: ${XPU_DEVICE_FAMILY}"
+
+# Known failures that only reproduce on BMG (Arc Pro B60). Applied in addition
+# to PYTEST_DESELECTS when XPU_DEVICE_FAMILY == bmg. Observed on the 2.15
+# test_wheel P0 run (actions/runs/40892572474).
+PYTEST_DESELECTS_BMG=(
+    # interpolate bicubic fp16 numeric mismatch (tracked: issue #5860)
+    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoXPU::test_comprehensive_nn_functional_interpolate_bicubic_xpu_float16"
+    # grid_sample bicubic with 5-D input not implemented on XPU (tracked: issue #5452, feature #5542)
+    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_grid_sample_xpu_float32"
+    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_forward_ad_nn_functional_grid_sample_xpu_float32"
+    # inductor nextafter noncontiguous numeric mismatch (tracking issue pending)
+    "test/inductor/test_torchinductor_opinfo.py::TestInductorNextafterXPU::test_nextafter_noncontiguous_False_xpu_float32"
+    "test/inductor/test_torchinductor_opinfo.py::TestInductorNextafterXPU::test_nextafter_noncontiguous_False_xpu_float64"
+    "test/inductor/test_torchinductor_opinfo.py::TestInductorNextafterXPU::test_nextafter_noncontiguous_True_xpu_float32"
+    "test/inductor/test_torchinductor_opinfo.py::TestInductorNextafterXPU::test_nextafter_noncontiguous_True_xpu_float64"
+    # histc out= unsafe-cast expected RuntimeError not raised (tracking issue pending)
+    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_histc_xpu_float32"
+    # linalg.tensorinv unexpected success (tracking issue pending)
+    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_numpy_ref_linalg_tensorinv_xpu_float64"
+    # mkldnn conv+binary broadcast accuracy, CPU (tracking issue pending)
+    "test/inductor/test_mkldnn_pattern_matcher.py::TestPatternMatcherGenericCPU::test_conv2d_binary_broadcast_shapes_cpu"
+    "test/inductor/test_mkldnn_pattern_matcher.py::TestPatternMatcherGenericCPU::test_conv3d_binary_broadcast_shapes_cpu"
+    # aot_inductor_package missing pytree registration error (tracking issue pending)
+    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackage_cpu::test_custom_output_type_missing_pytree_registration_error"
+)
+
 # -------------------- Helper Functions --------------------
 # Run pytest with a unique JUnit XML filename
 # Arguments: test_file [optional: extra pytest args]
@@ -197,6 +241,13 @@ run_pytest() {
             pythonpath="$PWD/$import_dir${pythonpath:+:$pythonpath}"
         fi
     done
+    if [[ "${XPU_DEVICE_FAMILY:-}" == "bmg" ]]; then
+        for deselect in "${PYTEST_DESELECTS_BMG[@]}"; do
+            if [[ "$deselect" == "$test_file"::* ]]; then
+                extra_args+=("--deselect=$deselect")
+            fi
+        done
+    fi
     test_name=$(basename "$test_file" .py)
     xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_$(date +%s).xml"
     echo "Running pytest $test_file -> $xml_file"
