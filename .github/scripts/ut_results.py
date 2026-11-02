@@ -92,6 +92,7 @@ MAIN_CATEGORIES = (
     "upstream_default",
     "upstream_inductor",
     "upstream_distributed",
+    "xpu_distributed",
 )
 
 # A UT job name maps to the categories its reports carry.
@@ -226,14 +227,11 @@ FAILURE_HEADER = ["Category", "Class name", "Test name", "Status", "Message", "S
 
 
 def determine_category(ut: str, ut_job: str = "") -> str:
-    # The distributed job names its junit reports op_ut_*, which they are not.
-    if ut_job == "xpu_distributed":
-        return ut_job
     exact = {"op_regression", "op_regression_dev1", "op_extended", "test_xpu"}
     if ut in exact:
         return ut
-    for marker in ("op_ut", "upstream_distributed", "upstream_inductor",
-                   "upstream_default", "xpu_profiling"):
+    for marker in ("op_ut", "xpu_distributed", "upstream_distributed",
+                   "upstream_inductor", "upstream_default", "xpu_profiling"):
         if marker in ut:
             return marker
     return "unknown"
@@ -734,14 +732,12 @@ class Checker:
     def run(self, category: str) -> CheckResult:
         if category in MAIN_CATEGORIES:
             return self.run_main(category)
-        if category == "xpu_distributed":
-            return self.run_distributed(category)
         if category == "skipped_ut":
             return self.run_skipped()
         if category == "xpu_profiling":
             return self.run_profiling()
         print(f"❌ Unknown test suite: {category}", file=sys.stderr)
-        print("💡 Available: " + ", ".join([*MAIN_CATEGORIES, "xpu_distributed",
+        print("💡 Available: " + ", ".join([*MAIN_CATEGORIES,
                                             "skipped_ut", "xpu_profiling"]),
               file=sys.stderr)
         return CheckResult(category=category, passed=True)
@@ -774,40 +770,6 @@ class Checker:
         return self.finish(category, new, len(passed), counts_normal,
                            total=self.total_cases(category) or len(passed) + len(failures),
                            new_passes=new_passes, failures=failures)
-
-    def run_distributed(self, category: str) -> CheckResult:
-        """The distributed suite prints a pytest console log, not a junit xml."""
-        self.banner(category)
-        passed = [console_case_line(category, node)
-                  for node in self.scan_console(category, ("PASSED",))]
-        passed_set = set(passed)
-        failures = [console_case_line(category, node)
-                    for node in self.scan_console(category, ("FAILED", "ERROR"))]
-        failures = [line for line in failures if line not in passed_set]
-        write_lines(self.path(f"{category}_failed.log"), failures)
-        write_lines(self.path(f"{category}_passed.log"), passed)
-
-        print("📋 Failed Cases:")
-        print("\n".join(failures))
-
-        print("\n🔍 Filtered Cases:")
-        self.report_filtered(category, failures)
-        new_passes = self.report_passing_known_issues(passed)
-        new = self.new_failures(category, failures)
-        return self.finish(category, new, len(passed), None,
-                           total=self.total_cases(category) or len(passed) + len(failures),
-                           new_passes=new_passes, failures=failures)
-
-    def scan_console(self, category: str, markers: tuple[str, ...]) -> list[str]:
-        """Sorted, unique `file::class::case` node ids of one outcome."""
-        found: set[str] = set()
-        for log in sorted(self.work_dir.glob(f"{category}_test*.log")):
-            for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
-                if not any(marker in line for marker in markers):
-                    continue
-                found.update(word for word in line.split()
-                             if re.search(r"::.*::", word))
-        return sorted(found)
 
     def run_skipped(self) -> CheckResult:
         """Cases skipped on purpose that pass anyway: a review item, not a gate."""
@@ -1048,12 +1010,6 @@ def case_fields(line: str) -> tuple[str, str]:
         return classname, name
     fields = line.split(",", 2)
     return (fields[1], fields[2]) if len(fields) == 3 else ("", line)
-
-
-def console_case_line(category: str, node_id: str) -> str:
-    """The `category,class,test` form that Known_issue.log uses for a console node id."""
-    classname, name = case_fields(node_id)
-    return f"{category},{classname},{name}"
 
 
 def issue_links(ids: list[str]) -> str:
