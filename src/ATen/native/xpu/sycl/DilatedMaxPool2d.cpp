@@ -622,7 +622,7 @@ void forward_tile_launch(const Tensor& x, const Tensor& v, const Tensor& idx) {
   const int YT = (v.size(2) + (S == 1 ? 1 : 0)) / (S == 1 ? 2 : 1),
             count = x.size(0) * CT * XT * YT;
   c10::xpu::getCurrentXPUStream().queue().parallel_for(
-      sycl::nd_range<1>((count + 7) / 8 * 128, 128),
+      sycl::nd_range<1>((int64_t(count) + 7) / 8 * 128, 128),
       ForwardTile<K, S, P>{
           reinterpret_cast<const uint32_t*>(x.data_ptr()),
           reinterpret_cast<uint32_t*>(v.data_ptr()),
@@ -1165,21 +1165,13 @@ struct BackwardTile {
                     : partial[h * 2 + w][pp][c];
               packed[pp] = sycl::bit_cast<uint32_t>(v);
             }
-            if constexpr (Aligned) {
-              cute::XE_2D_U32x8x16_ST_N::copy(
-                  gi + ((n * H + yb * 2 + h) * W + w) * (C / 2),
-                  C * 2,
-                  sycl::min((W + 1 - w) / 2, px + 7),
-                  C * 4,
-                  cute::intel::coord_t{cb / 2, px},
-                  packed.val);
-            } else {
-#pragma unroll
-              for (int pp = 0; pp < 7; ++pp)
-                if (cb + lane * 2 < C && (px + pp) * 2 + w < W)
-                  gi[((n * H + yb * 2 + h) * W + (px + pp) * 2 + w) * (C / 2) +
-                     cb / 2 + lane] = packed[pp];
-            }
+            cute::XE_2D_U32x8x16_ST_N::copy(
+                gi + ((n * H + yb * 2 + h) * W + w) * (C / 2),
+                C * 2,
+                sycl::min((W + 1 - w) / 2, px + 7),
+                C * 4,
+                cute::intel::coord_t{cb / 2, px},
+                packed.val);
           }
         }
       }

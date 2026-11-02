@@ -12,7 +12,12 @@ from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
 )
-from torch.testing._internal.common_utils import parametrize, run_tests, subtest, TestCase
+from torch.testing._internal.common_utils import (
+    parametrize,
+    run_tests,
+    subtest,
+    TestCase,
+)
 
 aten = torch.ops.aten
 
@@ -83,14 +88,18 @@ class TestMaxPool2dLayouts(TestCase):
     @parametrize(
         "shape,kernel,stride,padding,memory_format",
         [
-            subtest(((2, 24, 17, 17), 3, 2, 0, torch.channels_last), name="odd_spatial"),
+            subtest(
+                ((2, 24, 17, 17), 3, 2, 0, torch.channels_last), name="odd_spatial"
+            ),
             subtest(((2, 32, 16, 16), 3, 2, 1, torch.channels_last), name="padded"),
             subtest(((2, 32, 16, 16), 3, 2, 1, torch.contiguous_format), name="nchw"),
             subtest(((2, 32, 12, 16), 5, 1, 2, torch.channels_last), name="window5"),
             subtest(((2, 32, 12, 16), 9, 1, 4, torch.channels_last), name="window9"),
             subtest(((2, 32, 12, 16), 13, 1, 6, torch.channels_last), name="window13"),
             subtest(((2, 216, 42, 42), 3, 1, 1, torch.channels_last), name="stride1"),
-            subtest(((2, 25, 17, 17), 3, 2, 1, torch.channels_last), name="odd_channels"),
+            subtest(
+                ((2, 25, 17, 17), 3, 2, 1, torch.channels_last), name="odd_channels"
+            ),
         ],
     )
     def test_max_pool2d_forward_indices(
@@ -122,6 +131,7 @@ class TestMaxPool2dLayouts(TestCase):
             subtest(((2, 26, 56, 56), 3, 2, 1, 1, False, 6), name="unaligned_channels"),
             subtest(((2, 32, 56, 56), 2, 2, 0, 1, False, 8), name="nonoverlap"),
             subtest(((2, 128, 17, 17), 3, 2, 0, 1, False, 8), name="odd_spatial"),
+            subtest(((288, 128, 17, 17), 3, 2, 0, 1, False, 8), name="whole_row"),
             subtest(((2, 216, 42, 42), 3, 1, 1, 1, False, 8), name="compact42"),
             subtest(((2, 432, 21, 21), 3, 1, 1, 1, False, 8), name="compact21"),
             subtest(((2, 864, 11, 11), 3, 1, 1, 1, False, 8), name="compact11"),
@@ -142,8 +152,11 @@ class TestMaxPool2dLayouts(TestCase):
             memory_format=torch.channels_last
         )
         args = (
-            [kernel, kernel], [stride, stride], [padding, padding],
-            [dilation, dilation], ceil_mode,
+            [kernel, kernel],
+            [stride, stride],
+            [padding, padding],
+            [dilation, dilation],
+            ceil_mode,
         )
         values, indices = aten.max_pool2d_with_indices(x.float(), *args)
         n, c, h, w = values.shape
