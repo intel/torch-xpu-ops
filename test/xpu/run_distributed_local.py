@@ -137,7 +137,7 @@ for key in skip_dict_python:
 # run pytest with skiplist
 for key in skip_dict:
     skip_list = skip_dict[key]
-    fail = launch_test(key, skip_list)
+    fail = launch_test(key, skip_list, xml_prefix="xpu_distributed")
     res += fail
     if fail:
         fail_test.append(key)
