@@ -101,11 +101,9 @@ class GroupRadixSort {
     sycl::group_barrier(item_.get_group());
   }
 
-  inline GroupRadixSort(sycl::nd_item<1>& item, sycl_local_acc_t<char> buffer)
+  inline GroupRadixSort(sycl::nd_item<1>& item, void* slm_ptr)
       : item_(item),
-        local_storage_(reinterpret_cast<LocalStorage&>(
-            *(buffer.template get_multi_ptr<sycl::access::decorated::no>()
-                  .get()))),
+        local_storage_(*static_cast<LocalStorage*>(slm_ptr)),
         lid_(item.get_local_id(0)) {}
 
   inline void load_keys(
@@ -659,7 +657,7 @@ class RadixSortUpsweep {
       int end_bit,
       int num_groups,
       int* count_out,
-      sycl_local_acc_t<char> local_ptr)
+      char* local_ptr)
       : item_(item),
         keys_in_(keys_in),
         lid_(item.get_local_id(0)),
@@ -668,11 +666,10 @@ class RadixSortUpsweep {
         end_bit_(end_bit),
         num_groups_(num_groups),
         count_out_(count_out),
-        subgroup_id_(lid_ / SUBGROUP_SIZE),
-        subgroup_tid_(lid_ % SUBGROUP_SIZE),
-        local_storage_(reinterpret_cast<LocalStorage&>(
-            *(local_ptr.template get_multi_ptr<sycl::access::decorated::no>()
-                  .get()))) {}
+        local_storage_(*reinterpret_cast<LocalStorage*>(local_ptr)) {
+    subgroup_id_ = lid_ / SUBGROUP_SIZE;
+    subgroup_tid_ = lid_ % SUBGROUP_SIZE;
+  }
 
   inline DigitT extract_digit(KeyTraitsT key) {
     auto pass_bits = end_bit_ - begin_bit_;
@@ -830,14 +827,10 @@ class RadixSortScanBins {
     return NUM_SUBGROUPS * sizeof(int);
   }
 
-  inline RadixSortScanBins(
-      sycl::nd_item<1>& item,
-      int* count,
-      sycl_local_acc_t<char> slm)
+  inline RadixSortScanBins(sycl::nd_item<1>& item, int* count, char* slm)
       : item_(item),
         count_(count),
-        slm_(reinterpret_cast<int*>(
-            slm.template get_multi_ptr<sycl::access::decorated::no>().get())),
+        slm_(reinterpret_cast<int*>(slm)),
         lid_(item.get_local_id(0)) {}
 
   template <bool is_partial>
