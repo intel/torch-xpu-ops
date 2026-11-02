@@ -269,18 +269,15 @@ class XeFMHAFwdKernel {
       // written for these rows instead of being left uninitialized.
       const bool fully_masked = CollectiveMainloop::CausalMask && seq_len == 0;
 
-      int offset_q = 0, offset_k = 0, offset_v = 0, offset_o = 0;
+      int64_t offset_q = 0, offset_k = 0, offset_v = 0, offset_o = 0;
       if constexpr (is_var_len) {
+        // Row offset only: the head is applied by Q(_, _, head_q, 0) below.
         auto qo_cumulative = s.seq_len_qo.cumulative_length;
         auto kv_cumulative = s.seq_len_kv.cumulative_length;
-        offset_q =
-            p.q_head_stride * head_q + p.q_row_stride * qo_cumulative[idx_b];
-        offset_k =
-            p.k_head_stride * head + p.k_row_stride * kv_cumulative[idx_b];
-        offset_v =
-            p.v_head_stride * head + p.v_row_stride * kv_cumulative[idx_b];
-        offset_o =
-            p.o_head_stride * head_q + p.o_row_stride * qo_cumulative[idx_b];
+        offset_q = p.q_row_stride * qo_cumulative[idx_b];
+        offset_k = p.k_row_stride * kv_cumulative[idx_b];
+        offset_v = p.v_row_stride * kv_cumulative[idx_b];
+        offset_o = p.o_row_stride * qo_cumulative[idx_b];
       }
 
       auto batch_dim = is_var_len ? 1 : s.batch;
