@@ -22,6 +22,8 @@
 #include <comm/xpu_aten.h>
 
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <numeric>
 
 #include <ATen/native/xpu/sycl/TensorTransformationsKernels.h>
@@ -176,10 +178,13 @@ struct ShiftedCopyParams {
   uint32_t nvec = 0;
   at::detail::IntDivider<uint32_t> size[kShiftedCopyMaxDims];
   int32_t shift[kShiftedCopyMaxDims] = {};
+  int32_t isize[kShiftedCopyMaxDims] = {}; // input sizes
   int32_t stride[kShiftedCopyMaxDims] = {}; // input strides
 };
 
-// out[c] = in[(c + shift) mod size] along every dim. Each work-item writes V
+// out[c] = in[(c + shift) mod size] along every dim, or the fill value where
+// c + shift lies outside the input (pad: shift = -left padding, which never
+// wraps; roll: the input has the output's sizes). Each work-item writes V
 // consecutive output units of U bytes as one aligned store and gathers them
 // from the input, so sub-group stores cover whole cache lines and all dims
 // are handled in a single pass. kWrap: a vector may run past the end of an
@@ -222,12 +227,20 @@ struct ShiftedCopyFunctor {
     return s >= n ? s - n : s;
   }
 
-  int32_t row_offset(const uint32_t* c) const {
+  bool inside(int d, int32_t s) const {
+    return static_cast<uint32_t>(s) < static_cast<uint32_t>(p_.isize[d]);
+  }
+
+  // Input offset of the outer coordinates; `valid`: they are inside it.
+  int32_t row_offset(const uint32_t* c, bool& valid) const {
     int32_t off = 0;
+    valid = true;
 #pragma unroll
     for (int d = 1; d < kShiftedCopyMaxDims; ++d) {
       if (d < p_.ndim) {
-        off += src(d, c[d]) * p_.stride[d];
+        const int32_t s = src(d, c[d]);
+        valid &= inside(d, s);
+        off += s * p_.stride[d];
       }
     }
     return off;
@@ -240,7 +253,8 @@ struct ShiftedCopyFunctor {
     }
     uint32_t c[kShiftedCopyMaxDims];
     uint32_t x = decompose(vid * V, c);
-    int32_t off = row_offset(c);
+    bool valid;
+    int32_t off = row_offset(c, valid);
     // U is the input's alignment, so with V > 1 the units are loaded one by
     // one; the store is still one aligned vector.
     VecT v;
@@ -249,30 +263,43 @@ struct ShiftedCopyFunctor {
       if (kWrap && x == p_.size[0].divisor) {
         x = 0;
         next_row(vid * V + i, c);
-        off = row_offset(c);
+        off = row_offset(c, valid);
       }
-      v[i] = in_[off + src(0, x) * p_.stride[0]];
+      const int32_t s = src(0, x);
+      if (valid && inside(0, s)) {
+        v[i] = in_[off + s * p_.stride[0]];
+      } else {
+        v[i] = fill_;
+      }
       ++x;
     }
     reinterpret_cast<VecT*>(out_)[vid] = v;
   }
 
-  ShiftedCopyFunctor(const void* in, void* out, const ShiftedCopyParams& p)
-      : in_(static_cast<const T*>(in)), out_(static_cast<T*>(out)), p_(p) {}
+  ShiftedCopyFunctor(
+      const void* in,
+      void* out,
+      const ShiftedCopyParams& p,
+      const void* fill)
+      : in_(static_cast<const T*>(in)), out_(static_cast<T*>(out)), p_(p) {
+    std::memcpy(&fill_, fill, sizeof(T));
+  }
 
  private:
   const T* in_;
   T* out_;
   ShiftedCopyParams p_;
+  T fill_;
 };
 
 template <int U, int V, bool kWrap>
 void launch_shifted_copy(
     const Tensor& input,
     Tensor& output,
-    const ShiftedCopyParams& p) {
+    const ShiftedCopyParams& p,
+    const void* fill) {
   ShiftedCopyFunctor<U, V, kWrap> kfn(
-      input.const_data_ptr(), output.mutable_data_ptr(), p);
+      input.const_data_ptr(), output.mutable_data_ptr(), p, fill);
   const int64_t groups = ceil_div<int64_t>(p.nvec, kShiftedCopyGroupSize);
   sycl_kernel_submit(
       sycl::range<1>(groups * kShiftedCopyGroupSize),
@@ -281,9 +308,15 @@ void launch_shifted_copy(
       kfn);
 }
 
-// out[c] = in[(c + shift) mod size] for a dense `output` of the input's
-// sizes; `shift[d]` is in [0, size(d)). Returns false if unsupported.
-bool shifted_copy(const Tensor& input, Tensor& output, IntArrayRef shift) {
+// Launches ShiftedCopyFunctor for a dense `output`. Roll: `shift[d]` in
+// [0, size(d)) and the input has the output's sizes. Pad: `shift[d]` in
+// (-output size, 0]. `fill` holds the fill value repeated over 16 bytes.
+// Returns false if unsupported.
+bool shifted_copy(
+    const Tensor& input,
+    Tensor& output,
+    IntArrayRef shift,
+    const std::array<char, 16>& fill) {
   const int64_t ndim = output.dim();
   if (ndim == 0 || !output.is_non_overlapping_and_dense() ||
       !canUse32BitIndexMath(input) || !canUse32BitIndexMath(output)) {
@@ -296,19 +329,20 @@ bool shifted_copy(const Tensor& input, Tensor& output, IntArrayRef shift) {
   });
 
   // Walk dims innermost first. A dim is merged into the inner one when that
-  // is not shifted and the input is contiguous across both; shifting the
-  // merged dim by shift * inner size is the same.
-  int64_t size[kShiftedCopyMaxDims], stride[kShiftedCopyMaxDims],
-      sh[kShiftedCopyMaxDims];
+  // is neither shifted nor padded and the input is contiguous across both;
+  // shifting the merged dim by shift * inner size is the same.
+  int64_t size[kShiftedCopyMaxDims], isize[kShiftedCopyMaxDims],
+      stride[kShiftedCopyMaxDims], sh[kShiftedCopyMaxDims];
   int nd = 0;
   for (const int64_t d : order) {
     const int64_t n = output.size(d);
     if (n == 1) {
       continue;
     }
-    if (nd > 0 && sh[nd - 1] == 0 &&
+    if (nd > 0 && sh[nd - 1] == 0 && isize[nd - 1] == size[nd - 1] &&
         input.stride(d) == stride[nd - 1] * size[nd - 1]) {
       sh[nd - 1] = shift[d] * size[nd - 1];
+      isize[nd - 1] *= input.size(d);
       size[nd - 1] *= n;
       continue;
     }
@@ -316,12 +350,13 @@ bool shifted_copy(const Tensor& input, Tensor& output, IntArrayRef shift) {
       return false;
     }
     size[nd] = n;
+    isize[nd] = input.size(d);
     stride[nd] = input.stride(d);
     sh[nd] = shift[d];
     ++nd;
   }
   if (nd == 0) {
-    size[0] = stride[0] = 1;
+    size[0] = isize[0] = stride[0] = 1;
     sh[0] = 0;
     nd = 1;
   }
@@ -336,13 +371,15 @@ bool shifted_copy(const Tensor& input, Tensor& output, IntArrayRef shift) {
       reinterpret_cast<uintptr_t>(output.const_data_ptr()));
   int64_t u = es;
   if (stride[0] == 1) {
-    int64_t bits = 16 | in_addr | out_addr | size[0] * es | sh[0] * es;
+    int64_t bits =
+        16 | in_addr | out_addr | size[0] * es | isize[0] * es | sh[0] * es;
     for (int d = 1; d < nd; ++d) {
       bits |= stride[d] * es;
     }
     u = bits & -bits;
     const int64_t k = u / es;
     size[0] /= k;
+    isize[0] /= k;
     sh[0] /= k;
     for (int d = 1; d < nd; ++d) {
       stride[d] /= k;
@@ -373,18 +410,19 @@ bool shifted_copy(const Tensor& input, Tensor& output, IntArrayRef shift) {
   for (int d = 0; d < nd; ++d) {
     p.size[d] = at::detail::IntDivider<uint32_t>(size[d]);
     p.shift[d] = static_cast<int32_t>(sh[d]);
+    p.isize[d] = static_cast<int32_t>(isize[d]);
     p.stride[d] = static_cast<int32_t>(stride[d]);
   }
 
-#define SHIFTED_COPY_CASE(U, V)                            \
-  case U * 32 + V:                                         \
-    if constexpr (V > 1) {                                 \
-      if (wrap) {                                          \
-        launch_shifted_copy<U, V, true>(input, output, p); \
-        return true;                                       \
-      }                                                    \
-    }                                                      \
-    launch_shifted_copy<U, V, false>(input, output, p);    \
+#define SHIFTED_COPY_CASE(U, V)                                         \
+  case U * 32 + V:                                                      \
+    if constexpr (V > 1) {                                              \
+      if (wrap) {                                                       \
+        launch_shifted_copy<U, V, true>(input, output, p, fill.data()); \
+        return true;                                                    \
+      }                                                                 \
+    }                                                                   \
+    launch_shifted_copy<U, V, false>(input, output, p, fill.data());    \
     return true;
   switch (u * 32 + v) {
     SHIFTED_COPY_CASE(1, 1)
@@ -417,7 +455,36 @@ bool roll_kernel(
     const int64_t n = input.size(d);
     start[d] = ((start[d] - shifts[i]) % n + n) % n;
   }
-  return shifted_copy(input, output, start);
+  return shifted_copy(input, output, start, {});
+}
+
+bool constant_pad_nd_kernel(
+    const Tensor& input,
+    Tensor& output,
+    IntArrayRef lo,
+    const Scalar& value) {
+  std::array<char, 16> fill{};
+  AT_DISPATCH_V2(
+      output.scalar_type(),
+      "constant_pad_nd_xpu",
+      AT_WRAP([&] {
+        const scalar_t v = value.to<scalar_t>();
+        for (size_t i = 0; i < fill.size(); i += sizeof(v)) {
+          std::memcpy(fill.data() + i, &v, sizeof(v));
+        }
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+      kComplexHalf,
+      kHalf,
+      kBool,
+      kBFloat16);
+  c10::SmallVector<int64_t, kShiftedCopyMaxDims> shift(lo.size());
+  for (const auto d : c10::irange(lo.size())) {
+    shift[d] = -lo[d];
+  }
+  return shifted_copy(input, output, shift, fill);
 }
 
 } // namespace at::native::xpu

@@ -24,4 +24,13 @@ TORCH_XPU_API bool roll_kernel(
     IntArrayRef shifts,
     IntArrayRef dims);
 
+// Writes `input` at offset `lo` (per dim) into `output` and `value` around it
+// in a single pass. `input` has the negative pads already narrowed away.
+// Returns false if the shape is not supported.
+TORCH_XPU_API bool constant_pad_nd_kernel(
+    const Tensor& input,
+    Tensor& output,
+    IntArrayRef lo,
+    const Scalar& value);
+
 } // namespace at::native::xpu
