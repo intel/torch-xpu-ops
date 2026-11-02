@@ -27,6 +27,11 @@ patterns = [
     re.compile(r"out.*of.*memory"),
 ]
 
+# On Windows a lost device (e.g. after a GPU TDR reset) can make
+# torch.xpu.synchronize() block instead of raising, so exit without cleanup;
+# the new worker gets a fresh XPU context either way.
+_SKIP_XPU_CLEANUP = sys.platform == "win32"
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
@@ -48,21 +53,26 @@ def pytest_runtest_logreport(report):
 
     # Direct inline pattern checks (fastest)
     if any(p in err_msg if isinstance(p, str) else p.search(err_msg) for p in patterns):
-        try:
-            import gc
-
-            import torch
-
-            # Only force GC when XPU is actually used
-            gc.collect()
-
-            # Direct XPU operations without try-catch if possible
-            torch.xpu.synchronize()
-            torch.xpu.empty_cache()
-        except Exception:
-            # Silent fail - XPU ops might fail in some states
-            pass
+        if not _SKIP_XPU_CLEANUP:
+            _cleanup_xpu()
 
         sys.stderr.write(f"\n!RESTART {_worker_id} {report.nodeid}\n")
         sys.stderr.flush()
         os._exit(_WORKER_RESTART_CODE)
+
+
+def _cleanup_xpu():
+    try:
+        import gc
+
+        import torch
+
+        # Only force GC when XPU is actually used
+        gc.collect()
+
+        # Direct XPU operations without try-catch if possible
+        torch.xpu.synchronize()
+        torch.xpu.empty_cache()
+    except Exception:
+        # Silent fail - XPU ops might fail in some states
+        pass

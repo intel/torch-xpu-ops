@@ -7,7 +7,8 @@ memory, segmentation fault, `ur_result_error`, etc.).
 When such a failure is seen in a test report, the plugin:
 
 1. Attempts to clean up the XPU device (`gc.collect()`, `torch.xpu.synchronize()`,
-   `torch.xpu.empty_cache()`).
+   `torch.xpu.empty_cache()`). This step is skipped on Windows, where
+   synchronizing a lost device (e.g. after a GPU TDR reset) can block.
 2. Forwards the real failure report to the xdist controller.
 3. Forcibly exits the worker with code `101` so xdist respawns a fresh worker.
 
