@@ -21,7 +21,7 @@
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/Allocator.h>
 #include <c10/macros/Macros.h>
-#include <c10/util/complex_utils.h>
+#include <c10/util/complex.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUPair.h>
 #include <comm/xpu_aten.h>
