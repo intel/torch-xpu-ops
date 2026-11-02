@@ -622,9 +622,9 @@ class Checker:
 
     def report_filtered(self, category: str, failures: list[str]) -> None:
         """The known failures this run hit, which are not news."""
-        known = self.known_issues
+        known = set(self.known_issues)
         hits = [(number, line) for number, line in enumerate(failures, 1)
-                if any(pattern in line for pattern in known)]
+                if line in known]
         write_lines(self.path(f"failures_{category}_removed.log"),
                     [f"{n}:{line}" for n, line in hits])
         if hits:
