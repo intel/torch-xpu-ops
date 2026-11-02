@@ -11,7 +11,16 @@
 #pragma once
 
 #include <c10/core/impl/GPUTrace.h>
+
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl). XPUStream.h transitively
+// includes <sycl/sycl.hpp>.
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <c10/xpu/XPUStream.h>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 
 namespace xpu {
 namespace sycl {
