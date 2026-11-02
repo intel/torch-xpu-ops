@@ -92,6 +92,7 @@ class TestMaxPool2dLayouts(TestCase):
                 ((2, 24, 17, 17), 3, 2, 0, torch.channels_last), name="odd_spatial"
             ),
             subtest(((2, 32, 16, 16), 3, 2, 1, torch.channels_last), name="padded"),
+            subtest(((2, 32, 38, 42), 1, 2, 0, torch.channels_last), name="window1"),
             subtest(((2, 32, 16, 16), 3, 2, 1, torch.contiguous_format), name="nchw"),
             subtest(((2, 32, 12, 16), 5, 1, 2, torch.channels_last), name="window5"),
             subtest(((2, 32, 12, 16), 9, 1, 4, torch.channels_last), name="window9"),
@@ -118,6 +119,27 @@ class TestMaxPool2dLayouts(TestCase):
             x.fill_(-float("inf"))
             x[..., 1::3, 1::3] = float("inf")
         args = ([kernel, kernel], [stride, stride], [padding, padding], [1, 1], False)
+        expected, expected_indices = aten.max_pool2d_with_indices(x.float(), *args)
+        actual, actual_indices = aten.max_pool2d_with_indices(x.to(device), *args)
+        self.assertEqual(actual.cpu(), expected.to(dtype), rtol=0, atol=0)
+        self.assertEqual(actual_indices.cpu(), expected_indices)
+
+    @dtypes(torch.float16, torch.bfloat16, torch.float32)
+    @parametrize("pattern", ["ties", "nan", "infinity"])
+    def test_max_pool2d_vector_fallback(self, device, dtype, pattern):
+        # Enough channel vectors to select the generic vectorized launcher.
+        # Rectangular, dilated windows exercise its runtime geometry.
+        x = torch.zeros((8, 64, 33, 35), dtype=dtype).contiguous(
+            memory_format=torch.channels_last
+        )
+        x[..., 1::3, 1::3] = 1
+        if pattern == "nan":
+            x[..., 1::3, 1::3] = float("nan")
+            x[..., 2::3, 2::3] = float("nan")
+        elif pattern == "infinity":
+            x.fill_(-float("inf"))
+            x[..., 1::3, 1::3] = float("inf")
+        args = ([3, 2], [1, 1], [1, 0], [2, 1], True)
         expected, expected_indices = aten.max_pool2d_with_indices(x.float(), *args)
         actual, actual_indices = aten.max_pool2d_with_indices(x.to(device), *args)
         self.assertEqual(actual.cpu(), expected.to(dtype), rtol=0, atol=0)

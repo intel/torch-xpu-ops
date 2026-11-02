@@ -84,44 +84,6 @@ inline uint32_t pack_pair(memory::aligned_vector<float, 2> v) {
 inline int compact_index(int64_t value) {
   return value >= 0 && value <= INT_MAX ? int(value) : -1;
 }
-template <int K, int S, int P>
-struct Forward {
-  const uint32_t* x;
-  uint32_t* y;
-  int64_t* idx;
-  int H, W, OH, OW, C, count;
-  at::detail::IntDivider<uint32_t> dc, dw, dh;
-  void operator()(sycl::nd_item<1> it) const {
-    for (uint32_t i = it.get_global_linear_id(); i < count;
-         i += it.get_global_range(0)) {
-      auto pix = dc.div(i), c = i - pix * C, nh = dw.div(pix),
-           ox = pix - nh * OW, n = dh.div(nh), oy = nh - n * OH;
-      int h0 = int(oy) * S - P, w0 = int(ox) * S - P;
-      auto best = filled<float, 2>(-INFINITY);
-      auto index = filled<int, 2>(sycl::max(h0, 0) * W + sycl::max(w0, 0));
-#pragma unroll
-      for (int h = 0; h < K; ++h) {
-#pragma unroll
-        for (int w = 0; w < K; ++w) {
-          int ih = h0 + h, iw = w0 + w;
-          if (ih >= 0 && ih < H && iw >= 0 && iw < W) {
-            auto v = unpack_pair(x[((n * H + ih) * W + iw) * C + c]);
-#pragma unroll
-            for (int j = 0; j < 2; ++j)
-              if (v[j] > best[j] || sycl::isnan(v[j])) {
-                best[j] = v[j];
-                index[j] = ih * W + iw;
-              }
-          }
-        }
-      }
-      y[i] = pack_pair(best);
-      *reinterpret_cast<memory::aligned_vector<int64_t, 2>*>(
-          idx + int64_t(i) * 2) = vector_cast<int64_t>(index);
-    }
-  }
-};
-
 template <int K>
 struct LargeForward {
   auto get(sycl::ext::oneapi::experimental::properties_tag) const {
@@ -296,46 +258,6 @@ void large_launch(
   });
 }
 
-struct NchwForward {
-  const sycl::half* x;
-  uint32_t* y;
-  int64_t* idx;
-  int count;
-  void operator()(sycl::nd_item<1> it) const {
-    for (int i = it.get_global_linear_id(); i < count;
-         i += it.get_global_range(0)) {
-      int nc = i / 32, oy = (i / 4) % 8, ox = i % 4 * 2;
-      auto best = filled<float, 2>(-INFINITY);
-      auto bi = memory::aligned_vector<int, 2>{
-          {sycl::max(oy * 2 - 1, 0) * 16 + sycl::max(ox * 2 - 1, 0),
-           sycl::max(oy * 2 - 1, 0) * 16 + ox * 2 + 1}};
-#pragma unroll
-      for (int h = 0; h < 3; ++h) {
-        int iy = oy * 2 - 1 + h;
-        if (iy >= 0 && iy < 16) {
-#pragma unroll
-          for (int w = 0; w < 3; ++w) {
-#pragma unroll
-            for (int j = 0; j < 2; ++j) {
-              int ix = (ox + j) * 2 - 1 + w;
-              if (ix >= 0 && ix < 16) {
-                float v = float(x[nc * 256 + iy * 16 + ix]);
-                if (v > best[j] || sycl::isnan(v)) {
-                  best[j] = v;
-                  bi[j] = iy * 16 + ix;
-                }
-              }
-            }
-          }
-        }
-      }
-      y[i] = pack_pair(best);
-      *reinterpret_cast<memory::aligned_vector<int64_t, 2>*>(
-          idx + int64_t(i) * 2) = vector_cast<int64_t>(bi);
-    }
-  }
-};
-
 template <typename scalar_t, int K, int P, int CB, int XB>
 struct BlockBackward {
   const uint32_t* go;
@@ -478,30 +400,6 @@ void block_launch(
     block_launch_impl<scalar_t, K, P, 64, 32>(x, v, idx, out);
 }
 
-template <int K, int S, int P>
-void forward_launch(
-    const at::Tensor& x,
-    const at::Tensor& v,
-    const at::Tensor& idx) {
-  int H = x.size(2), W = x.size(3), C = x.size(1) / 2, OH = v.size(2),
-      OW = v.size(3), count = v.numel() / 2;
-  int groups = std::min((count + 255) / 256, 1280);
-  c10::xpu::getCurrentXPUStream().queue().parallel_for(
-      sycl::nd_range<1>(groups * 256, 256),
-      Forward<K, S, P>{
-          (const uint32_t*)x.data_ptr(),
-          (uint32_t*)v.data_ptr(),
-          idx.data_ptr<int64_t>(),
-          H,
-          W,
-          OH,
-          OW,
-          C,
-          count,
-          at::detail::IntDivider<uint32_t>(C),
-          at::detail::IntDivider<uint32_t>(OW),
-          at::detail::IntDivider<uint32_t>(OH)});
-}
 template <int K, int S, int P>
 struct ForwardTile {
   const uint32_t* x;
@@ -736,203 +634,21 @@ void nonoverlap_launch(
           at::detail::IntDivider<uint32_t>(XT),
           at::detail::IntDivider<uint32_t>(v.size(2))});
 }
-template <typename scalar_t>
-struct WholeRowBackward {
-  auto get(sycl::ext::oneapi::experimental::properties_tag) const {
-    return sycl::ext::oneapi::experimental::properties{
-        sycl::ext::oneapi::experimental::sub_group_size<16>,
-        sycl::ext::intel::experimental::grf_size<128>};
-  }
-  const uint64_t* idx;
-  const uint32_t* go;
-  uint32_t* gi;
-  int H, OH, C, CS;
-  void operator()(sycl::nd_item<3> it) const {
-    const int n = it.get_group(0), yb = it.get_group(1);
-    const int cb =
-        (it.get_group(2) * 8 + it.get_sub_group().get_group_linear_id()) * 32;
-    if (cb >= C)
-      return;
-    const int HW = OH * 8;
-    using IndexCopy = cute::XE_LOAD_2D_TRANSPOSE<32, 32, 8>;
-    auto source = cute::make_tensor(
-        cute::make_gmem_ptr(
-            reinterpret_cast<const uint32_t*>(idx + int64_t(n) * C * HW)),
-        cute::make_layout(
-            cute::make_shape(HW * 2, C),
-            cute::make_stride(cute::_1{}, HW * 2)));
-    cute::Copy_Traits<
-        IndexCopy,
-        cute::_0,
-        cute::_1,
-        uint32_t,
-        cute::Stride<cute::_0, cute::_0>>
-        index_copy(source);
-    float overlap[9][2];
-    scalar_t partial[3][9][2];
-#pragma unroll
-    for (int pp = 0; pp < 9; ++pp) {
-#pragma unroll
-      for (int c = 0; c < 2; ++c) {
-        overlap[pp][c] = 0.f;
-#pragma unroll
-        for (int k = 0; k < 3; ++k)
-          partial[k][pp][c] = scalar_t(0);
-      }
-    }
-#pragma unroll
-    for (int hh = 0; hh < 2; ++hh) {
-      const int ph = yb - 1 + hh;
-      if (ph >= 0 && ph < OH) {
-        uint16_t indices[10][2];
-        uint32_t values[10];
-        values[0] = 0;
-        values[9] = 0;
-#pragma unroll
-        for (int c = 0; c < 2; ++c) {
-          indices[0][c] = 65535;
-          indices[9][c] = 65535;
-        }
-#pragma unroll
-        for (int block = 0; block < 2; ++block) {
-          memory::aligned_vector<uint32_t, 16> raw, paired;
-          index_copy.template update_payload<32>(
-              cute::make_coord((ph * 8 + block * 4) * 2, cb));
-          IndexCopy::copy(index_copy.payload, raw.val);
-          auto input = cute::make_tensor(
-              cute::make_rmem_ptr(raw.val), cute::make_layout(cute::Int<16>{}));
-          auto output = cute::make_tensor(
-              cute::make_rmem_ptr(paired.val),
-              cute::make_layout(cute::Int<16>{}));
-          using TVShape =
-              cute::Shape<cute::_16, cute::Shape<cute::_2, cute::_8>>;
-          cute::reorder(
-              input,
-              output,
-              cute::Layout<
-                  TVShape,
-                  cute::Stride<cute::_1, cute::Stride<cute::_16, cute::_32>>>{},
-              cute::Layout<
-                  TVShape,
-                  cute::Stride<cute::_2, cute::Stride<cute::_1, cute::_32>>>{});
-#pragma unroll
-          for (int j = 0; j < 4; ++j) {
-#pragma unroll
-            for (int c = 0; c < 2; ++c)
-              indices[block * 4 + j + 1][c] =
-                  paired[j * 4 + c + 2] == 0 && paired[j * 4 + c] < 65535
-                  ? uint16_t(paired[j * 4 + c])
-                  : uint16_t(65535);
-          }
-        }
-        memory::aligned_vector<uint32_t, 8> raw_values;
-        cute::XE_2D_U32x8x16_LD_N::copy(
-            go + int64_t(n) * HW * (CS / 2),
-            C * 2,
-            HW,
-            CS * 2,
-            cute::intel::coord_t{cb / 2, ph * 8},
-            raw_values.val);
-#pragma unroll
-        for (int j = 0; j < 8; ++j)
-          values[j + 1] = raw_values[j];
-#pragma unroll
-        for (int ww = 0; ww < 2; ++ww) {
-#pragma unroll
-          for (int pp = 0; pp < 9; ++pp) {
-            auto v = sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
-                values[pp + ww]);
-#pragma unroll
-            for (int h = 0; h < 2; ++h) {
-#pragma unroll
-              for (int w = 0; w < 2; ++w) {
-                if ((hh == 1 || h == 0) && (ww == 1 || w == 0)) {
-                  const int target = (yb * 2 + h) * 17 + pp * 2 + w;
-#pragma unroll
-                  for (int c = 0; c < 2; ++c) {
-                    const scalar_t add =
-                        indices[pp + ww][c] == target ? v[c] : scalar_t(0);
-                    if (h * 2 + w == 0)
-                      overlap[pp][c] += float(add);
-                    else
-                      partial[h * 2 + w - 1][pp][c] += add;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-#pragma unroll
-    for (int h = 0; h < 2; ++h) {
-      if (yb * 2 + h < H) {
-#pragma unroll
-        for (int w = 0; w < 2; ++w) {
-          memory::aligned_vector<uint32_t, 8> packed;
-#pragma unroll
-          for (int pp = 0; pp < 8; ++pp) {
-            memory::aligned_vector<scalar_t, 2> v;
-#pragma unroll
-            for (int c = 0; c < 2; ++c)
-              v[c] = h * 2 + w == 0 ? scalar_t(overlap[pp][c])
-                                    : partial[h * 2 + w - 1][pp][c];
-            packed[pp] = sycl::bit_cast<uint32_t>(v);
-          }
-          auto dst = gi + ((n * H + yb * 2 + h) * 17 + w) * (C / 2);
-          cute::XE_2D_U32x8x16_ST_N::copy(
-              dst,
-              C * 2,
-              (18 - w) / 2,
-              C * 4,
-              cute::intel::coord_t{cb / 2, 0},
-              packed.val);
-          if (w == 0) {
-            memory::aligned_vector<scalar_t, 2> v;
-#pragma unroll
-            for (int c = 0; c < 2; ++c)
-              v[c] = h == 0 ? scalar_t(overlap[8][c]) : partial[1][8][c];
-            uint32_t tail = sycl::bit_cast<uint32_t>(v);
-            cute::XE_2D_U32x1x16_ST_N::copy(
-                dst, C * 2, 9, C * 4, cute::intel::coord_t{cb / 2, 8}, &tail);
-          }
-        }
-      }
-    }
-  }
-};
-template <typename scalar_t>
-void whole_row_launch(
-    const Tensor& x,
-    const Tensor& v,
-    const Tensor& idx,
-    const Tensor& out) {
-  const int C = x.size(1), YT = (x.size(2) + 1) / 2;
-  c10::xpu::getCurrentXPUStream().queue().parallel_for(
-      sycl::nd_range<3>(
-          sycl::range<3>(x.size(0), YT, ((C / 32 + 7) / 8) * 128),
-          sycl::range<3>(1, 1, 128)),
-      WholeRowBackward<scalar_t>{
-          reinterpret_cast<const uint64_t*>(idx.data_ptr()),
-          reinterpret_cast<const uint32_t*>(v.data_ptr()),
-          reinterpret_cast<uint32_t*>(out.data_ptr()),
-          int(x.size(2)),
-          int(v.size(2)),
-          C,
-          int(v.stride(3))});
-}
 template <
     typename scalar_t,
     int K,
     int P,
     bool Aligned = false,
-    bool Packed = false>
+    bool Packed = false,
+    bool WholeRow = false>
 struct BackwardTile {
   auto get(sycl::ext::oneapi::experimental::properties_tag) const {
     return sycl::ext::oneapi::experimental::properties{
         sycl::ext::oneapi::experimental::sub_group_size<16>,
         sycl::ext::intel::experimental::grf_size<128>};
   }
+  static constexpr int tiles = WholeRow ? 9 : 7;
+  static_assert(!WholeRow || (K == 3 && P == 0 && Aligned && !Packed));
   const uint64_t* idx;
   const uint32_t* go;
   uint32_t* gi;
@@ -944,17 +660,24 @@ struct BackwardTile {
     if (id >= CT * XT)
       return;
     const int lane = it.get_local_linear_id() % 16;
-    const int q = dc.div(id), cb = (id - q * CT) * 32, px = q * 7;
+    const int q = WholeRow ? 0 : dc.div(id);
+    const int cb = (id - q * CT) * 32, px = q * tiles;
+    const int width = WholeRow ? 17 : W;
+    const int pooled_width = WholeRow ? 8 : OW;
     const int n = it.get_group(0), yb = it.get_group(1);
-    const int HW = OH * OW;
+    const int HW = OH * pooled_width;
     constexpr int D = K == 3 && P == 0 ? -1 : 0;
-    using IndexCopy = cute::XE_LOAD_2D_TRANSPOSE<32, Packed ? 32 : 16, 8>;
+    using IndexCopy =
+        cute::XE_LOAD_2D_TRANSPOSE<32, (Packed || WholeRow) ? 32 : 16, 8>;
     auto index_source = cute::make_tensor(
         cute::make_gmem_ptr(
-            reinterpret_cast<const uint32_t*>(idx + n * C * HW)),
+            reinterpret_cast<const uint32_t*>(idx + int64_t(n) * C * HW)),
         cute::make_layout(
-            cute::make_shape(HW * (Packed ? 2 : 4), C / (Packed ? 1 : 2)),
-            cute::make_stride(cute::_1{}, HW * (Packed ? 2 : 4))));
+            cute::make_shape(
+                HW * ((Packed || WholeRow) ? 2 : 4),
+                C / ((Packed || WholeRow) ? 1 : 2)),
+            cute::make_stride(
+                cute::_1{}, HW * ((Packed || WholeRow) ? 2 : 4))));
     cute::Copy_Traits<
         IndexCopy,
         cute::_0,
@@ -963,10 +686,10 @@ struct BackwardTile {
         cute::Stride<cute::_0, cute::_0>>
         index_copy(index_source);
     // Explicit initialization avoids copying zero arrays from constant memory.
-    float overlap[7][2];
-    scalar_t partial[4][7][2];
+    float overlap[tiles][2];
+    scalar_t partial[4][tiles][2];
 #pragma unroll
-    for (int pp = 0; pp < 7; ++pp) {
+    for (int pp = 0; pp < tiles; ++pp) {
 #pragma unroll
       for (int c = 0; c < 2; ++c) {
         overlap[pp][c] = 0.f;
@@ -979,14 +702,22 @@ struct BackwardTile {
     for (int hh = 0; hh < (K == 2 ? 1 : 2); ++hh) {
       const int ph = yb + D + hh;
       if (ph >= 0 && ph < OH) {
-        const int pw = px + D, pbase = ph * OW + pw;
-        uint16_t indices[8][2];
+        const int pw = px + D, pbase = ph * pooled_width + pw;
+        uint16_t indices[tiles + 1][2];
+        uint32_t values[tiles + 1];
+        if constexpr (WholeRow) {
+          // One source row supplies nine input pairs with an invalid halo.
+          values[0] = values[9] = 0;
+#pragma unroll
+          for (int c = 0; c < 2; ++c)
+            indices[0][c] = indices[9][c] = 65535;
+        }
 #pragma unroll
         for (int block = 0; block < 2; ++block) {
-          if constexpr (Packed) {
+          if constexpr (Packed || WholeRow) {
             memory::aligned_vector<uint32_t, 16> raw, paired;
-            index_copy.template update_payload<32>(
-                cute::make_coord((pbase + block * 4) * 2, cb));
+            index_copy.template update_payload<32>(cute::make_coord(
+                (pbase + (WholeRow ? 1 : 0) + block * 4) * 2, cb));
             IndexCopy::copy(index_copy.payload, raw.val);
             auto input = cute::make_tensor(
                 cute::make_rmem_ptr(raw.val),
@@ -1011,7 +742,7 @@ struct BackwardTile {
             for (int j = 0; j < 4; ++j) {
 #pragma unroll
               for (int c = 0; c < 2; ++c)
-                indices[block * 4 + j][c] =
+                indices[block * 4 + j + (WholeRow ? 1 : 0)][c] =
                     paired[j * 4 + c + 2] == 0 && paired[j * 4 + c] < 65535
                     ? uint16_t(paired[j * 4 + c])
                     : uint16_t(65535);
@@ -1032,15 +763,18 @@ struct BackwardTile {
             }
           }
         }
-        memory::aligned_vector<uint32_t, 8> values;
         if constexpr (Aligned) {
+          memory::aligned_vector<uint32_t, 8> loaded_values;
           cute::XE_2D_U32x8x16_LD_N::copy(
-              go + n * HW * (CS / 2),
+              go + int64_t(n) * HW * (CS / 2),
               C * 2,
               HW,
               CS * 2,
-              cute::intel::coord_t{cb / 2, pbase},
-              values.val);
+              cute::intel::coord_t{cb / 2, pbase + (WholeRow ? 1 : 0)},
+              loaded_values.val);
+#pragma unroll
+          for (int j = 0; j < 8; ++j)
+            values[j + (WholeRow ? 1 : 0)] = loaded_values[j];
         } else if (NP % 4 == 0) {
 #pragma unroll
           for (int parity = 0; parity < 4; ++parity) {
@@ -1059,14 +793,16 @@ struct BackwardTile {
         } else {
 #pragma unroll
           for (int j = 0; j < 8; ++j)
-            values[j] = cb + lane * 2 < C && pw + j >= 0 && pw + j < OW
-                ? go[((n * OH + ph) * OW + pw + j) * (CS / 2) + cb / 2 + lane]
+            values[j] =
+                cb + lane * 2 < C && pw + j >= 0 && pw + j < pooled_width
+                ? go[((n * OH + ph) * pooled_width + pw + j) * (CS / 2) +
+                     cb / 2 + lane]
                 : 0;
         }
 #pragma unroll
         for (int ww = 0; ww < (K == 2 ? 1 : 2); ++ww) {
 #pragma unroll
-          for (int pp = 0; pp < 7; ++pp) {
+          for (int pp = 0; pp < tiles; ++pp) {
             auto v = sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
                 values[pp + ww]);
 #pragma unroll
@@ -1076,11 +812,13 @@ struct BackwardTile {
                 if (K == 2 ||
                     ((P == 1 ? (hh == 0 || h == 1) : (hh == 1 || h == 0)) &&
                      (P == 1 ? (ww == 0 || w == 1) : (ww == 1 || w == 0)))) {
-                  const uint16_t target = (yb * 2 + h) * W + (px + pp) * 2 + w;
+                  const uint16_t target =
+                      (yb * 2 + h) * width + (px + pp) * 2 + w;
 #pragma unroll
                   for (int c = 0; c < 2; ++c) {
                     const scalar_t add = pw + pp + ww >= 0 &&
-                            pw + pp + ww < OW && indices[pp + ww][c] == target
+                            pw + pp + ww < pooled_width &&
+                            indices[pp + ww][c] == target
                         ? v[c]
                         : scalar_t(0);
                     if (K == 3 && h * 2 + w == (P == 1 ? 3 : 0))
@@ -1101,7 +839,7 @@ struct BackwardTile {
         if constexpr (Packed || !Aligned) {
           uint32_t row[14];
 #pragma unroll
-          for (int pp = 0; pp < 7; ++pp) {
+          for (int pp = 0; pp < tiles; ++pp) {
 #pragma unroll
             for (int w = 0; w < 2; ++w) {
               memory::aligned_vector<scalar_t, 2> v;
@@ -1123,15 +861,15 @@ struct BackwardTile {
               cute::XE_2D_U32x8x16_ST_N::copy(
                   gi + ((n * H + yb * 2 + h) * W) * 12,
                   48,
-                  sycl::min(W, px * 2 + 14),
+                  sycl::min(width, px * 2 + 14),
                   48,
                   cute::intel::coord_t{0, px * 2 + block * 8},
                   packed.val);
             }
           } else {
             // Four spatial positions form a row with a 16-byte aligned pitch.
-            const int first = (n * H + yb * 2 + h) * W + px * 2;
-            const int valid = sycl::min(14, W - px * 2);
+            const int first = (n * H + yb * 2 + h) * width + px * 2;
+            const int valid = sycl::min(14, width - px * 2);
 #pragma unroll
             for (int parity = 0; parity < 4; ++parity) {
               if (parity < valid) {
@@ -1156,7 +894,7 @@ struct BackwardTile {
             memory::aligned_vector<uint32_t, 8> packed;
             packed[7] = 0;
 #pragma unroll
-            for (int pp = 0; pp < 7; ++pp) {
+            for (int pp = 0; pp < (tiles < 8 ? tiles : 8); ++pp) {
               memory::aligned_vector<scalar_t, 2> v;
 #pragma unroll
               for (int c = 0; c < 2; ++c)
@@ -1166,12 +904,28 @@ struct BackwardTile {
               packed[pp] = sycl::bit_cast<uint32_t>(v);
             }
             cute::XE_2D_U32x8x16_ST_N::copy(
-                gi + ((n * H + yb * 2 + h) * W + w) * (C / 2),
+                gi + ((n * H + yb * 2 + h) * width + w) * (C / 2),
                 C * 2,
-                sycl::min((W + 1 - w) / 2, px + 7),
+                sycl::min((width + 1 - w) / 2, px + tiles),
                 C * 4,
                 cute::intel::coord_t{cb / 2, px},
                 packed.val);
+            if constexpr (WholeRow) {
+              if (w == 0) {
+                memory::aligned_vector<scalar_t, 2> v;
+#pragma unroll
+                for (int c = 0; c < 2; ++c)
+                  v[c] = h == 0 ? scalar_t(overlap[8][c]) : partial[2][8][c];
+                uint32_t tail = sycl::bit_cast<uint32_t>(v);
+                cute::XE_2D_U32x1x16_ST_N::copy(
+                    gi + ((n * H + yb * 2 + h) * width) * (C / 2),
+                    C * 2,
+                    9,
+                    C * 4,
+                    cute::intel::coord_t{cb / 2, 8},
+                    &tail);
+              }
+            }
           }
         }
       }
@@ -1183,19 +937,20 @@ template <
     int K,
     int P,
     bool Aligned = false,
-    bool Packed = false>
+    bool Packed = false,
+    bool WholeRow = false>
 void backward_tile_impl(
     const Tensor& x,
     const Tensor& v,
     const Tensor& idx,
     const Tensor& out) {
-  const int C = x.size(1), CT = (C + 31) / 32, XT = (x.size(3) + 13) / 14,
-            YT = (x.size(2) + 1) / 2;
+  const int C = x.size(1), CT = (C + 31) / 32,
+            XT = WholeRow ? 1 : (x.size(3) + 13) / 14, YT = (x.size(2) + 1) / 2;
   c10::xpu::getCurrentXPUStream().queue().parallel_for(
       sycl::nd_range<3>(
           sycl::range<3>(x.size(0), YT, ((CT * XT + 7) / 8) * 128),
           sycl::range<3>(1, 1, 128)),
-      BackwardTile<scalar_t, K, P, Aligned, Packed>{
+      BackwardTile<scalar_t, K, P, Aligned, Packed, WholeRow>{
           reinterpret_cast<const uint64_t*>(idx.data_ptr()),
           reinterpret_cast<const uint32_t*>(v.data_ptr()),
           reinterpret_cast<uint32_t*>(out.data_ptr()),
@@ -1412,26 +1167,13 @@ inline bool forward(
   bool nhwc = x.is_contiguous(at::MemoryFormat::ChannelsLast) &&
       v.is_contiguous(at::MemoryFormat::ChannelsLast) &&
       idx.is_contiguous(at::MemoryFormat::ChannelsLast);
-  bool nchw = x.is_contiguous() && v.is_contiguous() && idx.is_contiguous() &&
-      x.size(2) == 16 && x.size(3) == 16 && v.size(2) == 8 && v.size(3) == 8 &&
-      K == 3 && S == 2 && P == 1;
-  if (!nhwc && !nchw)
+  if (!nhwc || K == 1)
     return false;
   if (K >= 5 && (!nhwc || x.size(2) != 12 || x.size(3) != 16 || x.size(1) % 32))
     return false;
   if (S == 1 && K == 3 &&
       (x.size(2) * x.size(3) >= 65535 || v.sizes() != x.sizes()))
     return false;
-  if (nchw) {
-    c10::xpu::getCurrentXPUStream().queue().parallel_for(
-        sycl::nd_range<1>(1280 * 256, 256),
-        NchwForward{
-            (const sycl::half*)x.data_ptr(),
-            (uint32_t*)v.data_ptr(),
-            idx.data_ptr<int64_t>(),
-            int(v.numel() / 2)});
-    return true;
-  }
   if (K >= 5) {
     if (K == 5)
       large_launch<5>(x, v, idx);
@@ -1441,8 +1183,6 @@ inline bool forward(
       large_launch<13>(x, v, idx);
   } else if (S == 1)
     forward_tile_launch<3, 1, 1>(x, v, idx);
-  else if (K == 1)
-    forward_launch<1, 2, 0>(x, v, idx);
   else if (K == 2)
     forward_tile_launch<2, 2, 0>(x, v, idx);
   else if (P == 0)
@@ -1480,7 +1220,7 @@ bool dispatch_backward(
   }
   if (K == 3 && S == 2 && P == 0 && W == 17 && OW == 8 && C >= 128 &&
       C % 32 == 0 && CS % 8 == 0 && out.numel() >= (10LL << 20)) {
-    whole_row_launch<scalar_t>(x, v, idx, out);
+    backward_tile_impl<scalar_t, 3, 0, true, false, true>(x, v, idx, out);
     return true;
   }
   if (S == 1) {
@@ -1749,62 +1489,129 @@ template <
     typename scalar_t,
     typename vec_t,
     int vec_size,
-    typename index_t = int>
-struct MaxPool2dChannelLastVec {
+    typename index_t = int,
+    bool is_channels_last = true,
+    int K = 0,
+    int S = 0,
+    int P = 0,
+    int InputSize = 0,
+    int OutputSize = 0>
+// Vector lanes span channels in NHWC or adjacent output columns in NCHW.
+// K == 0 retains the runtime window/dilation used by the generic path.
+struct MaxPool2dVectorFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    for (auto outputIndex = item.get_global_linear_id();
+    const index_t IH = InputSize ? InputSize : inputSizeH_;
+    const index_t IW = InputSize ? InputSize : inputSizeW_;
+    const index_t OH = OutputSize ? OutputSize : outputSizeH_;
+    const index_t OW = OutputSize ? OutputSize : outputSizeW_;
+    const int KH = K ? K : kH_, KW = K ? K : kW_;
+    const int SH = K ? S : dH_, SW = K ? S : dW_;
+    const int PH = K ? P : padH_, PW = K ? P : padW_;
+    const int DH = K ? 1 : dilationH_, DW = K ? 1 : dilationW_;
+    using value_t = std::conditional_t<K != 0, float, scalar_t>;
+    using loop_index_t = std::conditional_t<K != 0, uint32_t, size_t>;
+    for (auto outputIndex =
+             static_cast<loop_index_t>(item.get_global_linear_id());
          outputIndex < numBatch_ * stride_ / vec_size;
-         outputIndex += item.get_local_range(0) * item.get_group_range(0)) {
-      index_t batch = outputIndex / (stride_ / vec_size);
-      index_t plane, outputH, outputW;
-      int64_t load_offset, store_offset;
-      plane = outputIndex % (numPlane_ / vec_size);
-      outputH =
-          outputIndex / (numPlane_ / vec_size) / outputSizeW_ % outputSizeH_;
-      outputW = outputIndex / (numPlane_ / vec_size) % outputSizeW_;
-      store_offset = outputIndex;
-
-      vec_t maxVal_vec;
-#pragma unroll
-      for (int i = 0; i < vec_size; i++) {
-        maxVal_vec[i] = at::numeric_limits<scalar_t>::lower_bound();
+         outputIndex += item.get_global_range(0)) {
+      index_t outputH, outputW;
+      index_t base;
+      if constexpr (is_channels_last) {
+        index_t batch, plane;
+        if constexpr (K != 0) {
+          const auto pixel = dc_.div(outputIndex);
+          const auto row = dw_.div(pixel);
+          batch = dh_.div(row);
+          plane = outputIndex - pixel * (numPlane_ / vec_size);
+          outputH = row - batch * OH;
+          outputW = pixel - row * OW;
+        } else {
+          batch = outputIndex / (stride_ / vec_size);
+          plane = outputIndex % (numPlane_ / vec_size);
+          outputH = outputIndex / (numPlane_ / vec_size) / OW % OH;
+          outputW = outputIndex / (numPlane_ / vec_size) % OW;
+        }
+        base = batch * IH * IW * (numPlane_ / vec_size) + plane;
+      } else {
+        base = index_t(outputIndex / (OH * OW / vec_size)) * IH * IW;
+        outputH = outputIndex / (OW / vec_size) % OH;
+        outputW = outputIndex % (OW / vec_size) * vec_size;
       }
-      index_t StartH = outputH * dH_ - padH_;
-      index_t StartW = outputW * dW_ - padW_;
-      index_t EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
-      index_t EndW = std::min(StartW + (kW_ - 1) * dilationW_ + 1, inputSizeW_);
-      while (StartH < 0)
-        StartH += dilationH_;
-      while (StartW < 0)
-        StartW += dilationW_;
-      int64_t maxIndex[vec_size];
-      for (int i = 0; i < vec_size; i++) {
-        maxIndex[i] = StartH * inputSizeW_ + StartW;
+      const index_t rawW = outputW * SW - PW;
+      index_t startH = outputH * SH - PH;
+      const index_t endH = std::min(startH + (KH - 1) * DH + 1, IH);
+      const index_t endW = is_channels_last
+          ? std::min(rawW + (KW - 1) * DW + 1, IW)
+          : rawW + (KW - 1) * DW + 1;
+      while (startH < 0)
+        startH += DH;
+      index_t startW = rawW;
+      if constexpr (is_channels_last) {
+        while (startW < 0)
+          startW += DW;
       }
-      for (index_t h = StartH; h < EndH; h += dilationH_) {
-        for (index_t w = StartW; w < EndW; w += dilationW_) {
-          load_offset =
-              batch * inputSizeH_ * inputSizeW_ * numPlane_ / vec_size + plane +
-              h * inputSizeW_ * numPlane_ / vec_size + w * numPlane_ / vec_size;
-          vec_t val_vec = input_vec_[load_offset];
+      memory::aligned_vector<value_t, vec_size> maximum;
+      memory::aligned_vector<index_t, vec_size> maxIndex;
 #pragma unroll
-          for (int i = 0; i < vec_size; i++) {
-            if ((static_cast<scalar_t>(val_vec[i]) > maxVal_vec[i]) ||
-                at::_isnan(val_vec[i])) {
-              maxIndex[i] = h * inputSizeW_ + w;
-              maxVal_vec[i] = static_cast<scalar_t>(val_vec[i]);
+      for (int i = 0; i < vec_size; ++i) {
+        maximum[i] = at::numeric_limits<value_t>::lower_bound();
+        index_t firstW = rawW + (is_channels_last ? 0 : i * SW);
+        while (firstW < 0)
+          firstW += DW;
+        maxIndex[i] = startH * IW + firstW;
+      }
+      const index_t scanH = K ? outputH * SH - PH : startH;
+      const index_t scanW = K ? rawW : startW;
+#pragma unroll
+      for (index_t h = scanH; h < (K ? scanH + KH * DH : endH); h += DH) {
+        if constexpr (K != 0) {
+          if (h < 0 || h >= IH)
+            continue;
+        }
+#pragma unroll
+        for (index_t w = scanW; w < (K ? scanW + KW * DW : endW); w += DW) {
+          if constexpr (K != 0 && is_channels_last) {
+            if (w < 0 || w >= IW)
+              continue;
+          }
+          vec_t values;
+          if constexpr (is_channels_last)
+            values = input_vec_[base + (h * IW + w) * (numPlane_ / vec_size)];
+#pragma unroll
+          for (int i = 0; i < vec_size; ++i) {
+            const index_t iw = w + (is_channels_last ? 0 : i * SW);
+            value_t value;
+            if constexpr (is_channels_last) {
+              value = values[i];
+            } else {
+              if (iw < 0 || iw >= IW)
+                continue;
+              value = reinterpret_cast<const scalar_t*>(
+                  input_vec_)[base + h * IW + iw];
+            }
+            if (value > maximum[i] || at::_isnan(value)) {
+              maximum[i] = value;
+              maxIndex[i] = h * IW + iw;
             }
           }
         }
       }
+      vec_t result;
+      memory::aligned_vector<int64_t, vec_size> result_indices;
 #pragma unroll
-      for (int i = 0; i < vec_size; i++) {
-        indices_[store_offset * vec_size + i] = maxIndex[i];
+      for (int i = 0; i < vec_size; ++i) {
+        result[i] = static_cast<scalar_t>(maximum[i]);
+        result_indices[i] = maxIndex[i];
+        if constexpr (K == 0)
+          indices_[outputIndex * vec_size + i] = maxIndex[i];
       }
-      output_vec_[store_offset] = maxVal_vec;
+      if constexpr (K != 0)
+        *reinterpret_cast<memory::aligned_vector<int64_t, vec_size>*>(
+            indices_ + outputIndex * vec_size) = result_indices;
+      output_vec_[outputIndex] = result;
     }
   }
-  MaxPool2dChannelLastVec(
+  MaxPool2dVectorFunctor(
       vec_t* output_vec,
       int64_t* indices,
       const vec_t* input_vec,
@@ -1840,7 +1647,10 @@ struct MaxPool2dChannelLastVec {
         padW_(padW),
         dilationH_(dilationH),
         dilationW_(dilationW),
-        stride_(stride) {}
+        stride_(stride),
+        dc_(is_channels_last && K ? numPlane / vec_size : 1),
+        dw_(is_channels_last && K ? outputSizeW : 1),
+        dh_(is_channels_last && K ? outputSizeH : 1) {}
 
  private:
   vec_t* output_vec_;
@@ -1861,6 +1671,7 @@ struct MaxPool2dChannelLastVec {
   int dilationH_;
   int dilationW_;
   index_t stride_;
+  at::detail::IntDivider<uint32_t> dc_, dw_, dh_;
 };
 
 template <typename scalar_t, bool is_channels_last, typename index_t = int>
@@ -2185,55 +1996,55 @@ struct MaxPool2dBackwardChannelLastVec {
   int dilation_w_;
 };
 
-#define LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(                                    \
-    scalar_t,                                                               \
-    vec_size,                                                               \
-    index_t,                                                                \
-    num_wg,                                                                 \
-    wg_size,                                                                \
-    queue,                                                                  \
-    output,                                                                 \
-    indices,                                                                \
-    input,                                                                  \
-    numBatch,                                                               \
-    numPlane,                                                               \
-    inputSizeH,                                                             \
-    inputSizeW,                                                             \
-    outputSizeH,                                                            \
-    outputSizeW,                                                            \
-    kH,                                                                     \
-    kW,                                                                     \
-    dH,                                                                     \
-    dW,                                                                     \
-    padH,                                                                   \
-    padW,                                                                   \
-    dilationH,                                                              \
-    dilationW,                                                              \
-    stride)                                                                 \
-  {                                                                         \
-    using vec_t = memory::aligned_vector<scalar_t, vec_size>;               \
-    vec_t* output_vec = reinterpret_cast<vec_t*>(output);                   \
-    const vec_t* input_vec = reinterpret_cast<const vec_t*>(input);         \
-    auto kfn = MaxPool2dChannelLastVec<scalar_t, vec_t, vec_size, index_t>( \
-        output_vec,                                                         \
-        indices,                                                            \
-        input_vec,                                                          \
-        numBatch,                                                           \
-        numPlane,                                                           \
-        inputSizeH,                                                         \
-        inputSizeW,                                                         \
-        outputSizeH,                                                        \
-        outputSizeW,                                                        \
-        kH,                                                                 \
-        kW,                                                                 \
-        dH,                                                                 \
-        dW,                                                                 \
-        padH,                                                               \
-        padW,                                                               \
-        dilationH,                                                          \
-        dilationW,                                                          \
-        stride);                                                            \
-    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);               \
+#define LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(                                   \
+    scalar_t,                                                              \
+    vec_size,                                                              \
+    index_t,                                                               \
+    num_wg,                                                                \
+    wg_size,                                                               \
+    queue,                                                                 \
+    output,                                                                \
+    indices,                                                               \
+    input,                                                                 \
+    numBatch,                                                              \
+    numPlane,                                                              \
+    inputSizeH,                                                            \
+    inputSizeW,                                                            \
+    outputSizeH,                                                           \
+    outputSizeW,                                                           \
+    kH,                                                                    \
+    kW,                                                                    \
+    dH,                                                                    \
+    dW,                                                                    \
+    padH,                                                                  \
+    padW,                                                                  \
+    dilationH,                                                             \
+    dilationW,                                                             \
+    stride)                                                                \
+  {                                                                        \
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;              \
+    vec_t* output_vec = reinterpret_cast<vec_t*>(output);                  \
+    const vec_t* input_vec = reinterpret_cast<const vec_t*>(input);        \
+    auto kfn = MaxPool2dVectorFunctor<scalar_t, vec_t, vec_size, index_t>( \
+        output_vec,                                                        \
+        indices,                                                           \
+        input_vec,                                                         \
+        numBatch,                                                          \
+        numPlane,                                                          \
+        inputSizeH,                                                        \
+        inputSizeW,                                                        \
+        outputSizeH,                                                       \
+        outputSizeW,                                                       \
+        kH,                                                                \
+        kW,                                                                \
+        dH,                                                                \
+        dW,                                                                \
+        padH,                                                              \
+        padW,                                                              \
+        dilationH,                                                         \
+        dilationW,                                                         \
+        stride);                                                           \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);              \
   }
 
 template <typename scalar_t, bool is_channels_last, typename index_t = int>
@@ -2261,6 +2072,57 @@ void launch_max_pool2d_kernel(
       static_cast<int64_t>(outputSizeW);
   int64_t stride = static_cast<int64_t>(numPlane) *
       static_cast<int64_t>(outputSizeH) * static_cast<int64_t>(outputSizeW);
+  if constexpr (
+      std::is_same_v<scalar_t, at::Half> && std::is_same_v<index_t, int>) {
+    const bool packed_window = is_channels_last
+        ? kH == 1 && kW == 1 && dH == 2 && dW == 2 && padH == 0 && padW == 0
+        : kH == 3 && kW == 3 && dH == 2 && dW == 2 && padH == 1 && padW == 1 &&
+            inputSizeH == 16 && inputSizeW == 16 && outputSizeH == 8 &&
+            outputSizeW == 8;
+    if (max_pool_optimized::bmg_device() && packed_window && dilationH == 1 &&
+        dilationW == 1 && numPlane % 2 == 0 &&
+        int64_t(numBatch) * numPlane * inputSizeH * inputSizeW <= INT_MAX &&
+        outputSize <= INT_MAX && reinterpret_cast<uintptr_t>(input) % 64 == 0 &&
+        reinterpret_cast<uintptr_t>(output) % 4 == 0 &&
+        reinterpret_cast<uintptr_t>(indices) % 16 == 0) {
+      using vec_t = memory::aligned_vector<scalar_t, 2>;
+      using Kernel = MaxPool2dVectorFunctor<
+          scalar_t,
+          vec_t,
+          2,
+          index_t,
+          is_channels_last,
+          is_channels_last ? 1 : 3,
+          2,
+          is_channels_last ? 0 : 1,
+          is_channels_last ? 0 : 16,
+          is_channels_last ? 0 : 8>;
+      const int groups = is_channels_last
+          ? std::min<int64_t>((outputSize / 2 + 255) / 256, 1280)
+          : 1280;
+      auto kernel = Kernel(
+          reinterpret_cast<vec_t*>(output),
+          indices,
+          reinterpret_cast<const vec_t*>(input),
+          numBatch,
+          numPlane,
+          inputSizeH,
+          inputSizeW,
+          outputSizeH,
+          outputSizeW,
+          kH,
+          kW,
+          dH,
+          dW,
+          padH,
+          padW,
+          dilationH,
+          dilationW,
+          stride);
+      sycl_kernel_submit(groups * 256, 256, queue, kernel);
+      return;
+    }
+  }
   int vec_size = 1;
   int thread_slots = at::xpu::getDeviceHWThreads();
   int64_t num_sub_wg;
