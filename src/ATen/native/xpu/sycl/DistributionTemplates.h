@@ -42,9 +42,8 @@ const uint32_t rand4_engine_calls = 4;
 template <uint32_t UNROLL = rand4_engine_calls>
 inline std::tuple<uint64_t, uint32_t, uint32_t> calc_execution_policy(
     int64_t total_elements) {
-  auto group_size =
-      syclMaxWorkItemsPerSubSlice(); // TODO: see
-                                     // https://github.com/intel/torch-xpu-ops/issues/135
+  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   auto num_groups = (total_elements + group_size - 1) / group_size;
   int64_t hw_max_groups = at::xpu::getDeviceMaxWorkItems() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;

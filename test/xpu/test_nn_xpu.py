@@ -9921,7 +9921,7 @@ class TestAddRelu(TestCase):
         self.assertEqual(broadcasted_res, res)
 
 
-def add_test(test, decorator=None):
+def add_test(test, decorator=None, tf32_decorator=None):
     def add(test_name, fn):
         if hasattr(TestNN, test_name):
             raise RuntimeError("Found two tests with the same name: " + test_name)
@@ -9932,78 +9932,87 @@ def add_test(test, decorator=None):
     test_name = test.get_name()
     if not hasattr(test, "test_cpu") or test.test_cpu:
         add(test_name, lambda self, test=test: test(self))
-    cuda_test_name = test_name + f"_{device_type}"
+
+    if not torch.accelerator.is_available():
+        return
+
+    device_test_name = test_name + f"_{device_type}"
+    tf32_supported = torch.cuda.is_tf32_supported() or torch.xpu.is_tf32_supported()
     # With dtype enable, it's good enough to test against three floating types
     kwargs = {}
-    if "extra_args" in get_function_arglist(test.test_cuda):
+    if "extra_args" in get_function_arglist(test.test_accelerator):
         kwargs["extra_args"] = test.extra_args
 
-    if "dtype" in get_function_arglist(test.test_cuda):
-        if torch.cuda.is_tf32_supported() and test.with_tf32:
+    if "dtype" in get_function_arglist(test.test_accelerator):
+        if tf32_supported and test.with_tf32:
 
             def with_tf32_off(self, test=test, kwargs=kwargs):
                 with tf32_off():
-                    test.test_cuda(self, dtype=torch.float, **kwargs)
+                    test.test_accelerator(self, dtype=torch.float, **kwargs)
 
-            add(cuda_test_name + "_fp32", with_tf32_off)
+            add(device_test_name + "_fp32", with_tf32_off)
 
             def with_tf32_on(self, test=test, kwargs=kwargs):
                 with tf32_on(self, test.tf32_precision):
-                    test.test_cuda(self, dtype=torch.float, **kwargs)
+                    test.test_accelerator(self, dtype=torch.float, **kwargs)
 
-            add(cuda_test_name + "_tf32", with_tf32_on)
+            if tf32_decorator is not None:
+                with_tf32_on = tf32_decorator(with_tf32_on)
+            add(device_test_name + "_tf32", with_tf32_on)
         else:
             add(
-                cuda_test_name + "_float",
-                lambda self, test=test, kwargs=kwargs: test.test_cuda(
+                device_test_name + "_float",
+                lambda self, test=test, kwargs=kwargs: test.test_accelerator(
                     self, dtype=torch.float, **kwargs
                 ),
             )
         add(
-            cuda_test_name + "_double",
-            lambda self, test=test, kwargs=kwargs: test.test_cuda(
+            device_test_name + "_double",
+            lambda self, test=test, kwargs=kwargs: test.test_accelerator(
                 self, dtype=torch.double, **kwargs
             ),
         )
 
         def test_half(self, test=test, kwargs=kwargs):
-            test.test_cuda(self, dtype=torch.half, **kwargs)
+            test.test_accelerator(self, dtype=torch.half, **kwargs)
 
         if getattr(test, "check_half", True):
-            add(cuda_test_name + "_half", test_half)
+            add(device_test_name + "_half", test_half)
 
         def test_bfloat16(self, test=test, kwargs=kwargs):
-            test.test_cuda(self, dtype=torch.bfloat16, **kwargs)
+            test.test_accelerator(self, dtype=torch.bfloat16, **kwargs)
 
         if getattr(test, "check_bfloat16", True):
-            add(cuda_test_name + "_bfloat16", test_bfloat16)
+            add(device_test_name + "_bfloat16", test_bfloat16)
 
         def test_cfloat(self, test=test, kwargs=kwargs):
-            test.test_cuda(self, dtype=torch.cfloat, **kwargs)
+            test.test_accelerator(self, dtype=torch.cfloat, **kwargs)
 
         def test_cdouble(self, test=test, kwargs=kwargs):
-            test.test_cuda(self, dtype=torch.cdouble, **kwargs)
+            test.test_accelerator(self, dtype=torch.cdouble, **kwargs)
 
         if getattr(test, "check_complex", False):
-            add(cuda_test_name + "_cfloat", test_cfloat)
-            add(cuda_test_name + "_cdouble", test_cdouble)
+            add(device_test_name + "_cfloat", test_cfloat)
+            add(device_test_name + "_cdouble", test_cdouble)
 
     else:
 
         def with_tf32_off(self, test=test, kwargs=kwargs):
             with tf32_off():
-                test.test_cuda(self, **kwargs)
+                test.test_accelerator(self, **kwargs)
 
-        if torch.cuda.is_tf32_supported() and test.with_tf32:
-            add(cuda_test_name + "_fp32", with_tf32_off)
+        if tf32_supported and test.with_tf32:
+            add(device_test_name + "_fp32", with_tf32_off)
 
             def with_tf32_on(self, test=test, kwargs=kwargs):
                 with tf32_on(self, test.tf32_precision):
-                    test.test_cuda(self, **kwargs)
+                    test.test_accelerator(self, **kwargs)
 
-            add(cuda_test_name + "_tf32", with_tf32_on)
+            if tf32_decorator is not None:
+                with_tf32_on = tf32_decorator(with_tf32_on)
+            add(device_test_name + "_tf32", with_tf32_on)
         else:
-            add(cuda_test_name, with_tf32_off)
+            add(device_test_name, with_tf32_off)
 
 
 for test_params in module_tests + get_new_module_tests():
@@ -10012,8 +10021,9 @@ for test_params in module_tests + get_new_module_tests():
         name = test_params.pop("module_name")
         test_params["constructor"] = getattr(nn, name)
     decorator = test_params.pop("decorator", None)
+    tf32_decorator = test_params.pop("tf32_decorator", None)
     test = NewModuleTest(**test_params)
-    add_test(test, decorator)
+    add_test(test, decorator, tf32_decorator)
     if "check_eval" in test_params:
         # create a new test that is identical but that sets module.training to False
         desc = test_params.get("desc", None)
@@ -10030,7 +10040,7 @@ for test_params in module_tests + get_new_module_tests():
 
         test_params["constructor"] = gen_eval_constructor(test_params["constructor"])
         test = NewModuleTest(**test_params)
-        add_test(test, decorator)
+        add_test(test, decorator, tf32_decorator)
     if "check_with_long_tensor" in test_params:
         fullname = test_params.get("fullname", None)
         if fullname:
@@ -10084,8 +10094,8 @@ for test_params in module_tests + get_new_module_tests():
         test_params["input_fn"] = gen_long_tensor_input(test_params["input_size"])
         test_params["reference_fn"] = reference_fn
         test_params["check_forward_only"] = True
-        # Currently we don't support conv2d/conv3d for LongTensor in CUDA
-        test_params["test_cuda"] = False
+        # Currently we don't support conv2d/conv3d for LongTensor on accelerators
+        test_params["test_accelerator"] = False
         test = NewModuleTest(**test_params)
 
         add_test(test, decorator)
