@@ -16,7 +16,9 @@ namespace at::native::xpu {
 
 TORCH_XPU_API void flip_kernel(TensorIterator& iter, bool quantized);
 
-TORCH_XPU_API void roll_kernel(
+// Rolls `input` along `dims` into the contiguous `output` in a single pass.
+// Returns false if the shape is not supported (64-bit indexing).
+TORCH_XPU_API bool roll_kernel(
     const Tensor& input,
     Tensor& output,
     IntArrayRef shifts,

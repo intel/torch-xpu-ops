@@ -17,28 +17,23 @@
 #include <ATen/native/xpu/sycl/TensorTransformationsKernels.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/ops/roll_native.h>
+
 namespace at {
 namespace native {
 
 REGISTER_XPU_DISPATCH(flip_stub, &xpu::flip_kernel);
 
 Tensor roll_xpu(const Tensor& self, IntArrayRef shifts, IntArrayRef dims) {
-  if (dims.size() != 1 || shifts.size() != 1) {
+  if (dims.empty() || shifts.size() != dims.size()) {
+    // Flattened roll and argument errors.
     return at::native::roll_common(self, shifts, dims);
   }
-
-  auto in_tensor = self;
-  if (!self.is_contiguous()) {
-    in_tensor = self.contiguous();
+  auto out = at::empty_like(self, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  if (out.numel() == 0 || xpu::roll_kernel(self, out, shifts, dims)) {
+    return out;
   }
-  auto out_tensor = at::empty_like(in_tensor, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  if (out_tensor.numel() == 0) {
-    return out_tensor;
-  }
-
-  xpu::roll_kernel(in_tensor, out_tensor, shifts, dims);
-
-  return out_tensor;
+  return at::native::roll(self, shifts, dims);
 }
 
 } // namespace native
