@@ -28,17 +28,17 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void krn_partials_per_segment_kernel(
     index_t* ret_data,
     const index_t* offsets_data,
-    index_t num_of_segments,
+    const int64_t* num_of_segments_ptr,
     int64_t numel) {
   auto ret_ptr = ret_data;
   auto offsets_ptr = offsets_data;
 
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto id = item.get_global_linear_id();
-  auto stride = item.get_global_range(0);
-  for (; id < num_of_segments; id += stride) {
+  const auto stride = item.get_global_range(0);
+  for (; id < *num_of_segments_ptr; id += stride) {
     const index_t idx_start = offsets_ptr[id];
-    const index_t idx_end = (id == num_of_segments - 1)
+    const index_t idx_end = (id == *num_of_segments_ptr - 1)
         ? static_cast<index_t>(numel)
         : offsets_ptr[id + 1];
     const index_t size = idx_end - idx_start;
@@ -50,18 +50,14 @@ template <typename index_t>
 void krn_partials_per_segment(
     index_t* ret,
     const index_t* segment_offsets,
-    index_t num_of_segments,
+    const int64_t* num_of_segments_ptr,
+    int64_t max_segments,
     int64_t numel) {
   constexpr auto caller = krn_partials_per_segment_kernel<index_t>;
-  if (num_of_segments == 0) {
-    return;
-  }
   const int64_t group_size = std::min<int64_t>(
-      static_cast<int64_t>(num_of_segments),
-      at::xpu::getKernelMaxWorkGroupSize<caller>());
+      max_segments, at::xpu::getKernelMaxWorkGroupSize<caller>());
   const int64_t global_range =
-      xpuKernelLoopGroupRange(
-          static_cast<int64_t>(num_of_segments), group_size) *
+      xpuKernelLoopGroupRange(static_cast<int64_t>(max_segments), group_size) *
       group_size;
   sycl_kernel_submit<caller>(
       sycl::range<1>((size_t)global_range),
@@ -70,7 +66,7 @@ void krn_partials_per_segment(
       0,
       ret,
       segment_offsets,
-      num_of_segments,
+      num_of_segments_ptr,
       numel);
 }
 
@@ -81,7 +77,7 @@ inline void krn_partial_segment_offset_kernel(
     const index_t* partials_per_segment_data,
     const index_t* partials_per_segment_offset_data,
     const index_t* segment_offsets_data,
-    index_t num_of_segments) {
+    const int64_t* num_of_segments_ptr) {
   auto ret_ptr = ret_data;
   auto partials_per_segment_ptr = partials_per_segment_data;
   auto partials_per_segment_offset_ptr = partials_per_segment_offset_data;
@@ -90,7 +86,7 @@ inline void krn_partial_segment_offset_kernel(
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto id = item.get_global_linear_id();
   auto stride = item.get_global_range(0);
-  for (; id < num_of_segments; id += stride) {
+  for (; id < *num_of_segments_ptr; id += stride) {
     index_t idx = partials_per_segment_offset_ptr[id];
     const index_t num_partials = partials_per_segment_ptr[id];
     const index_t segment_offset = segment_offsets_ptr[id];
@@ -106,17 +102,14 @@ void krn_partial_segment_offset(
     const index_t* partials_per_segment,
     const index_t* partials_per_segment_offset,
     const index_t* segment_offsets,
-    index_t num_of_segments) {
+    const int64_t* num_of_segments_ptr,
+    int64_t max_segments) {
   constexpr auto caller = krn_partial_segment_offset_kernel<index_t>;
-  if (num_of_segments == 0) {
-    return;
-  }
   const int64_t group_size = std::min<int64_t>(
-      static_cast<int64_t>(num_of_segments),
+      static_cast<int64_t>(max_segments),
       at::xpu::getKernelMaxWorkGroupSize<caller>());
   const int64_t global_range =
-      xpuKernelLoopGroupRange(
-          static_cast<int64_t>(num_of_segments), group_size) *
+      xpuKernelLoopGroupRange(static_cast<int64_t>(max_segments), group_size) *
       group_size;
   sycl_kernel_submit<caller>(
       sycl::range<1>((size_t)global_range),
@@ -127,7 +120,7 @@ void krn_partial_segment_offset(
       partials_per_segment,
       partials_per_segment_offset,
       segment_offsets,
-      num_of_segments);
+      num_of_segments_ptr);
 }
 
 template <typename scalar_t, typename index_t, typename acc_t>
@@ -136,12 +129,12 @@ inline void compute_grad_weight_bags_kernel(
     int64_t numel,
     int64_t stride,
     int mode_mean,
-    int64_t num_of_segments,
     int64_t stride_warped,
     bool per_sample_weight_defined,
     bool count_defined,
     int64_t per_sample_weights_stride,
     acc_t* grad_weight_per_segment_data,
+    const int64_t* num_of_segments_ptr,
     const index_t* indices_data,
     const scalar_t* gradoutput_data,
     const index_t* offset2bag_data,
@@ -161,12 +154,13 @@ inline void compute_grad_weight_bags_kernel(
 
   auto item = syclext::this_work_item::get_nd_item<1>();
 
-  const int gid = item.get_global_linear_id();
-  const int id = gid / stride_warped;
-  const int startFeature = gid % stride_warped;
+  const int64_t gid = item.get_global_linear_id();
+  const int64_t id = gid / stride_warped;
+  const int64_t startFeature = gid % stride_warped;
   if (startFeature >= stride) {
     return;
   }
+  const auto num_of_segments = *num_of_segments_ptr;
   if (id >= num_of_segments) {
     return;
   }
@@ -209,7 +203,8 @@ void compute_grad_weight_bags(
     const Tensor& bag_size,
     const Tensor& per_sample_weights,
     const Tensor& segment_offsets,
-    int64_t num_of_segments,
+    const int64_t* num_of_segments_ptr,
+    int64_t max_segments,
     const Tensor& grad_weight_per_segment) {
   bool per_sample_weight_defined = per_sample_weights.defined();
   bool count_defined = count.defined();
@@ -243,7 +238,7 @@ void compute_grad_weight_bags(
 
   int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<kfn>();
   int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
+  auto num_groups = at::ceil_div(max_segments * stride_warped, group_size);
   auto total_items = num_groups * group_size;
   auto global_range = sycl::range<1>((size_t)total_items);
   auto local_range = sycl::range<1>((size_t)group_size);
@@ -256,12 +251,12 @@ void compute_grad_weight_bags(
       numel,
       stride,
       mode_mean,
-      num_of_segments,
       stride_warped,
       per_sample_weight_defined,
       count_defined,
       per_sample_weights_stride,
       grad_weight_per_segment_data,
+      num_of_segments_ptr,
       indices_data,
       gradOutput_data,
       offset2bag_data,
@@ -276,10 +271,10 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void compute_grad_weight_kernel(
     ptrdiff_t numel,
     int64_t stride,
-    int64_t num_of_segments,
     int64_t stride_warped,
     bool count_defined,
     acc_t* grad_weight_per_segment_data,
+    const int64_t* num_of_segments_ptr,
     const index_t* indices_data,
     const scalar_t* grad_output_data,
     const index_t* count_data,
@@ -291,12 +286,13 @@ inline void compute_grad_weight_kernel(
   auto segment_offsets_ptr = segment_offsets_data;
 
   auto item = syclext::this_work_item::get_nd_item<1>();
-  const int gid = item.get_global_linear_id();
-  const int id = gid / stride_warped;
-  const int startFeature = gid % stride_warped;
+  const int64_t gid = item.get_global_linear_id();
+  const int64_t id = gid / stride_warped;
+  const int64_t startFeature = gid % stride_warped;
   if (startFeature >= stride) {
     return;
   }
+  const auto num_of_segments = *num_of_segments_ptr;
   if (id >= num_of_segments) {
     return;
   }
@@ -323,7 +319,8 @@ void compute_grad_weight(
     ptrdiff_t numel,
     int64_t stride,
     const Tensor& segment_offsets,
-    int64_t num_of_segments,
+    const int64_t* num_of_segments_ptr,
+    int64_t max_segments,
     const Tensor& grad_weight_per_segment) {
   bool count_defined = count.defined();
 
@@ -345,7 +342,7 @@ void compute_grad_weight(
 
   int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<kfn>();
   int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
+  auto num_groups = at::ceil_div(max_segments * stride_warped, group_size);
   auto total_items = num_groups * group_size;
   auto global_range = sycl::range<1>((size_t)total_items);
   auto local_range = sycl::range<1>((size_t)group_size);
@@ -357,10 +354,10 @@ void compute_grad_weight(
       0,
       numel,
       stride,
-      num_of_segments,
       stride_warped,
       count_defined,
       grad_weight_per_segment_data,
+      num_of_segments_ptr,
       indices_data,
       grad_output_data,
       count_data,
@@ -371,11 +368,11 @@ template <typename scalar_t, typename index_t, typename acc_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 inline void sum_and_scatter_kernel(
     int64_t stride,
-    int64_t num_of_segments,
-    int64_t num_of_partial_segments,
+    const int64_t* num_of_partial_segments_ptr,
     const int64_t padding_idx,
     int64_t stride_warped,
     scalar_t* grad_weight_data,
+    const int64_t* num_of_segments_ptr,
     const index_t* input_data,
     const index_t* segment_offsets_data,
     const acc_t* grad_weight_per_segment_data,
@@ -387,12 +384,14 @@ inline void sum_and_scatter_kernel(
   auto segment_sizes_offsets_ptr = segment_sizes_offsets_data;
 
   auto item = syclext::this_work_item::get_nd_item<1>();
-  const int gid = item.get_global_linear_id();
-  const int id = gid / stride_warped;
-  const int startFeature = gid % stride_warped;
+  const int64_t gid = item.get_global_linear_id();
+  const int64_t id = gid / stride_warped;
+  const int64_t startFeature = gid % stride_warped;
   if (startFeature >= stride) {
     return;
   }
+  const auto num_of_segments = *num_of_segments_ptr;
+  const auto num_of_partial_segments = *num_of_partial_segments_ptr;
   if (id >= num_of_segments) {
     return;
   }
@@ -418,10 +417,11 @@ void sum_and_scatter(
     const Tensor& grad_weight,
     int64_t stride,
     const Tensor& segment_offsets,
-    int64_t num_of_segments,
+    const int64_t* num_of_segments_ptr,
+    int64_t max_segments,
     const Tensor& grad_weight_per_segment,
     const Tensor& segment_sizes_offsets,
-    int64_t num_of_partial_segments,
+    const int64_t* num_of_partial_segments_ptr,
     const int64_t padding_idx) {
   auto grad_weight_data = grad_weight.data_ptr<scalar_t>();
   auto input_data = input.const_data_ptr<index_t>();
@@ -439,7 +439,7 @@ void sum_and_scatter(
       at::ceil_div(stride, work_group_size) * work_group_size;
 
   int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
+  auto num_groups = at::ceil_div(max_segments * stride_warped, group_size);
   auto total_items = num_groups * group_size;
   auto global_range = sycl::range<1>((size_t)total_items);
   auto local_range = sycl::range<1>((size_t)group_size);
@@ -450,40 +450,61 @@ void sum_and_scatter(
       getCurrentSYCLQueue(),
       0,
       stride,
-      num_of_segments,
-      num_of_partial_segments,
+      num_of_partial_segments_ptr,
       padding_idx,
       stride_warped,
       grad_weight_data,
+      num_of_segments_ptr,
       input_data,
       segment_offsets_data,
       grad_weight_per_segment_data,
       segment_sizes_offsets_data);
 }
 
-struct EmbeddingBackwardDeterministicKernelCopyIfFunctor {
-  template <typename T>
-  auto operator()(T x) const {
-    return x != -1;
+template <typename index_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void embedding_segment_flags_kernel(
+    const index_t* sorted_indices,
+    index_t* flags,
+    int64_t numel) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const auto id = item.get_global_linear_id();
+  if (id < numel) {
+    flags[id] = id == 0 || sorted_indices[id] != sorted_indices[id - 1];
   }
-};
+}
 
-struct EmbeddingBackwardDeterministicKernelTransformFirstTrueFunctor {
-  template <typename U, typename V>
-  auto operator()(U d, V idx) const {
-    return d ? idx : -1;
+template <typename index_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void embedding_segment_offsets_kernel(
+    const index_t* segment_ids,
+    index_t* segment_offsets,
+    int64_t* num_of_segments,
+    int64_t numel) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const auto id = item.get_global_linear_id();
+  if (id >= numel) {
+    return;
   }
-};
+  if (id == 0 || segment_ids[id] != segment_ids[id - 1]) {
+    segment_offsets[segment_ids[id] - 1] = id;
+  }
+  if (id == numel - 1) {
+    *num_of_segments = segment_ids[id];
+  }
+}
 
-struct EmbeddingBackwardDeterministicKernelAdjacentDifferenceFunctor {
-  template <typename T>
-  bool operator()(T lhs, T rhs) const {
-    if (lhs != rhs) {
-      return true;
-    }
-    return false;
-  }
-};
+template <typename index_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void compute_num_of_partial_segments_kernel(
+    const index_t* partials_per_segment,
+    const index_t* partials_per_segment_offset,
+    const int64_t* num_of_segments,
+    int64_t* num_of_partial_segments) {
+  const auto last = *num_of_segments - 1;
+  *num_of_partial_segments = static_cast<int64_t>(partials_per_segment[last]) +
+      partials_per_segment_offset[last];
+}
 
 template <typename scalar_t, typename index_t>
 Tensor embedding_backward_deterministic_kernel(
@@ -500,54 +521,58 @@ Tensor embedding_backward_deterministic_kernel(
   const int64_t numel = sorted_indices.numel();
   auto grad_weight = at::zeros({num_weights, grad.size(-1)}, grad.options());
   const int64_t stride = grad_weight.stride(0);
-
-  auto segment_offsets = at::empty({numel}, orig_indices.options());
-  index_t num_of_segments;
-  {
-    // sorted:          2 5 5 5 7 7 8 9 9
-    // dummy:           1 1 0 0 1 0 1 1 0
-    // segment_offsets: 0 1 - - 4 - 6 7 -
-    auto sorted_indices_begin = sorted_indices.const_data_ptr<index_t>();
-    auto dummy = at::empty_like(sorted_indices);
-    auto dummy_begin = dummy.data_ptr<index_t>();
-    auto idx_tensor = at::empty_like(sorted_indices);
-    auto idx_begin = idx_tensor.data_ptr<index_t>();
-    EmbeddingBackwardDeterministicKernelAdjacentDifferenceFunctor
-        adjacent_difference_functor;
-    pstl::adjacent_difference<index_t>(
-        sorted_indices_begin,
-        sorted_indices_begin + numel,
-        dummy_begin,
-        adjacent_difference_functor);
-
-    // For algorithm adjacent difference, for output, its first element is
-    // always equal to source first element. We need to set it as 1 manually.
-    Tensor count_tensor =
-        at::empty({numel}, at::TensorOptions().device(kXPU).dtype(kLong));
-    auto count_begin = count_tensor.data_ptr<int64_t>();
-    pstl::itoa(count_begin, count_begin + numel, (int64_t)0);
-    auto segment_offsets_begin = segment_offsets.data_ptr<index_t>();
-    EmbeddingBackwardDeterministicKernelTransformFirstTrueFunctor
-        transform_first_true_functor;
-    pstl::transform_first_true<index_t>(
-        dummy_begin,
-        dummy_begin + numel,
-        count_begin,
-        idx_begin,
-        transform_first_true_functor);
-    EmbeddingBackwardDeterministicKernelCopyIfFunctor copy_if_functor;
-    auto ends = pstl::copy_if<index_t>(
-        idx_begin, idx_begin + numel, segment_offsets_begin, copy_if_functor);
-    num_of_segments = std::distance(segment_offsets_begin, ends);
+  if (numel == 0 || grad.size(-1) == 0) {
+    return grad_weight;
   }
 
-  auto partials_per_segment =
-      at::empty({num_of_segments}, orig_indices.options());
+  auto segment_offsets = at::empty({numel}, orig_indices.options());
+  auto num_of_segments = at::empty({}, orig_indices.options().dtype(kLong));
+  auto num_of_segments_ptr = num_of_segments.data_ptr<int64_t>();
+  auto& queue = getCurrentSYCLQueue();
+  {
+    auto flags = at::empty({numel}, orig_indices.options());
+    auto segment_ids = at::empty_like(flags);
+    auto flags_ptr = flags.data_ptr<index_t>();
+    auto segment_ids_ptr = segment_ids.data_ptr<index_t>();
+    constexpr auto flags_kfn = embedding_segment_flags_kernel<index_t>;
+    const int64_t flags_group_size = std::min<int64_t>(
+        numel, at::xpu::getKernelMaxWorkGroupSize<flags_kfn>());
+    const int64_t flags_global_range =
+        at::ceil_div(numel, flags_group_size) * flags_group_size;
+    sycl_kernel_submit<flags_kfn>(
+        sycl::range<1>((size_t)flags_global_range),
+        sycl::range<1>((size_t)flags_group_size),
+        queue,
+        0,
+        sorted_indices.const_data_ptr<index_t>(),
+        flags_ptr,
+        numel);
+    pstl::inclusive_scan(
+        flags_ptr, flags_ptr + numel, segment_ids_ptr, (index_t)0);
+    constexpr auto offsets_kfn = embedding_segment_offsets_kernel<index_t>;
+    const int64_t offsets_group_size = std::min<int64_t>(
+        numel, at::xpu::getKernelMaxWorkGroupSize<offsets_kfn>());
+    const int64_t offsets_global_range =
+        at::ceil_div(numel, offsets_group_size) * offsets_group_size;
+    sycl_kernel_submit<offsets_kfn>(
+        sycl::range<1>((size_t)offsets_global_range),
+        sycl::range<1>((size_t)offsets_group_size),
+        queue,
+        0,
+        segment_ids_ptr,
+        segment_offsets.data_ptr<index_t>(),
+        num_of_segments_ptr,
+        numel);
+  }
+
+  const int64_t max_segments = std::min(numel, num_weights);
+  auto partials_per_segment = at::empty({max_segments}, orig_indices.options());
 
   krn_partials_per_segment<index_t>(
       partials_per_segment.template data_ptr<index_t>(),
       segment_offsets.const_data_ptr<index_t>(),
-      num_of_segments,
+      num_of_segments_ptr,
+      max_segments,
       numel);
 
   // In order to compute `partial_segment_offset`, which is the start index
@@ -555,27 +580,41 @@ Tensor embedding_backward_deterministic_kernel(
   // start position of each _segment_ in `partial_segment_offset`.
   // Unit: index in `partial_segment_offset`
   auto partials_per_segment_offset =
-      at::empty({num_of_segments}, orig_indices.options());
+      at::empty({max_segments}, orig_indices.options());
   pstl::exclusive_scan(
       partials_per_segment.template data_ptr<index_t>(),
-      partials_per_segment.template data_ptr<index_t>() + num_of_segments,
+      partials_per_segment.template data_ptr<index_t>() + max_segments,
       partials_per_segment_offset.template data_ptr<index_t>(),
       (index_t)0);
 
   // The total number of partial-segments is the sum of
   // `partials_per_segment_offset`
   auto num_of_partial_segments =
-      partials_per_segment[num_of_segments - 1].template item<index_t>() +
-      partials_per_segment_offset[num_of_segments - 1].template item<index_t>();
+      at::empty({}, orig_indices.options().dtype(kLong));
+  auto num_of_partial_segments_ptr =
+      num_of_partial_segments.data_ptr<int64_t>();
+  constexpr auto num_partials_kfn =
+      compute_num_of_partial_segments_kernel<index_t>;
+  sycl_kernel_submit<num_partials_kfn>(
+      sycl::range<1>(1),
+      sycl::range<1>(1),
+      queue,
+      0,
+      partials_per_segment.const_data_ptr<index_t>(),
+      partials_per_segment_offset.const_data_ptr<index_t>(),
+      num_of_segments_ptr,
+      num_of_partial_segments_ptr);
 
+  const int64_t max_partial_segments = numel / NROWS_PER_THREAD + max_segments;
   auto partial_segment_offset =
-      at::empty({num_of_partial_segments}, orig_indices.options());
+      at::empty({max_partial_segments}, orig_indices.options());
   krn_partial_segment_offset<index_t>(
       partial_segment_offset.template data_ptr<index_t>(),
       partials_per_segment.template data_ptr<index_t>(),
       partials_per_segment_offset.template data_ptr<index_t>(),
       segment_offsets.const_data_ptr<index_t>(),
-      num_of_segments);
+      num_of_segments_ptr,
+      max_segments);
 
   TensorOptions op;
   if (grad.dtype() == at::kBFloat16 || grad.dtype() == at::kHalf) {
@@ -583,8 +622,7 @@ Tensor embedding_backward_deterministic_kernel(
   } else {
     op = grad.options();
   }
-  auto grad_weight_per_segment =
-      at::empty({num_of_partial_segments, stride}, op);
+  auto grad_weight_per_segment = at::empty({max_partial_segments, stride}, op);
   // Compute the sum of each partial-segment and handle bags
   if (offset2bag.defined()) {
     compute_grad_weight_bags<scalar_t, index_t>(
@@ -598,7 +636,8 @@ Tensor embedding_backward_deterministic_kernel(
         bag_size,
         per_sample_weights,
         partial_segment_offset,
-        num_of_partial_segments,
+        num_of_partial_segments_ptr,
+        max_partial_segments,
         grad_weight_per_segment);
   } else {
     compute_grad_weight<scalar_t, index_t>(
@@ -608,7 +647,8 @@ Tensor embedding_backward_deterministic_kernel(
         numel,
         stride,
         partial_segment_offset,
-        num_of_partial_segments,
+        num_of_partial_segments_ptr,
+        max_partial_segments,
         grad_weight_per_segment);
   }
 
@@ -617,10 +657,11 @@ Tensor embedding_backward_deterministic_kernel(
       grad_weight,
       stride,
       segment_offsets,
-      num_of_segments,
+      num_of_segments_ptr,
+      max_segments,
       grad_weight_per_segment,
       partials_per_segment_offset,
-      num_of_partial_segments,
+      num_of_partial_segments_ptr,
       padding_idx);
 
   return grad_weight;
