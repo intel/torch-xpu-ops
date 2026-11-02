@@ -102,20 +102,35 @@ class TestAvgPool2dBackwardStrided(TestCase):
         n, c, h, w = shape
         oh = (h + 2 * padding - kernel) // stride + 1
         ow = (w + 2 * padding - kernel) // stride + 1
-        grad_values = make_tensor((n, c, oh, ow), device="cpu", dtype=dtype, low=-2, high=2)
-        grad_format = torch.channels_last if stride == 2 and kernel == 3 else memory_format
+        grad_values = make_tensor(
+            (n, c, oh, ow), device="cpu", dtype=dtype, low=-2, high=2
+        )
+        grad_format = (
+            torch.channels_last if stride == 2 and kernel == 3 else memory_format
+        )
         grad_output = grad_values.to(device).contiguous(memory_format=grad_format)
         expected = torch.zeros(shape, dtype=torch.float32)
         for y in range(oh):
             y0, y1 = max(y * stride - padding, 0), min(y * stride - padding + kernel, h)
             for x in range(ow):
-                x0, x1 = max(x * stride - padding, 0), min(x * stride - padding + kernel, w)
+                x0, x1 = (
+                    max(x * stride - padding, 0),
+                    min(x * stride - padding + kernel, w),
+                )
                 denominator = kernel * kernel if include_pad else (y1 - y0) * (x1 - x0)
-                contribution = (grad_values[:, :, y, x].float() / denominator).to(dtype).float()
+                contribution = (
+                    (grad_values[:, :, y, x].float() / denominator).to(dtype).float()
+                )
                 expected[:, :, y0:y1, x0:x1] += contribution[:, :, None, None]
         actual = torch.ops.aten.avg_pool2d_backward(
-            grad_output, input, [kernel, kernel], [stride, stride], [padding, padding],
-            False, include_pad, None,
+            grad_output,
+            input,
+            [kernel, kernel],
+            [stride, stride],
+            [padding, padding],
+            False,
+            include_pad,
+            None,
         )
         self.assertEqual(actual.cpu(), expected.to(dtype), rtol=0, atol=0)
         self.assertTrue(actual.is_contiguous(memory_format=memory_format))

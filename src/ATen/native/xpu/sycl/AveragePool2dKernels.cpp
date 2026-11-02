@@ -1243,9 +1243,8 @@ inline bool try_backward(
       reinterpret_cast<uintptr_t>(out.data_ptr()) % 16) {
     return false;
   }
-  const bool pool3 =
-      kh == 3 && ph == 1 && !ceil_mode && (sh == 1 || (sh == 2 && include)) &&
-      (include || (H > 1 && W > 1));
+  const bool pool3 = kh == 3 && ph == 1 && !ceil_mode &&
+      (sh == 1 || (sh == 2 && include)) && (include || (H > 1 && W > 1));
   const bool pool2 = kh == 2 && ph == 0 && sh == 2 && H % 2 == 0 && W % 2 == 0;
   const bool pool1 = kh == 1 && ph == 0 && sh == 2 && !ceil_mode;
   if (!pool3 && !pool2 && !pool1) {
