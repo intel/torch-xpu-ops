@@ -30,6 +30,8 @@ class TestAvgPool2dBackwardStrided(TestCase):
             (13, 15, 17, 52, False, False, None),
             (26, 15, 17, 104, False, True, None),
             (26, 15, 17, 104, False, False, 7),
+            (14, 1, 4, 56, False, False, None),
+            (14, 4, 1, 56, False, False, None),
         ],
     )
     @parametrize("include_pad", [True, False])
@@ -49,9 +51,7 @@ class TestAvgPool2dBackwardStrided(TestCase):
         # XPU rounds each normalized contribution to the input dtype before
         # accumulating in float32. CPU low-precision backward rounds each sum.
         shape = (2, channels, height, width)
-        strides = (
-            height * width * pixel_stride, 1, width * pixel_stride, pixel_stride
-        )
+        strides = (height * width * pixel_stride, 1, width * pixel_stride, pixel_stride)
         input = (
             torch.empty(shape, device=device, dtype=dtype)
             if mixed
@@ -80,6 +80,44 @@ class TestAvgPool2dBackwardStrided(TestCase):
         )
         self.assertEqual(actual.cpu(), expected.to(dtype), rtol=0, atol=0)
         memory_format = torch.contiguous_format if mixed else torch.channels_last
+        self.assertTrue(actual.is_contiguous(memory_format=memory_format))
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize(
+        "shape,kernel,stride,padding,include_pad,memory_format",
+        [
+            ((2, 14, 8, 8), 1, 2, 0, False, torch.channels_last),
+            ((2, 16, 8, 8), 2, 2, 0, False, torch.contiguous_format),
+            ((2, 24, 16, 16), 3, 2, 1, True, torch.channels_last),
+            ((2, 32, 16, 16), 3, 2, 1, True, torch.contiguous_format),
+            ((2, 16, 7, 7), 3, 1, 1, False, torch.contiguous_format),
+        ],
+    )
+    def test_avg_pool2d_backward_launch_paths(
+        self, device, dtype, shape, kernel, stride, padding, include_pad, memory_format
+    ):
+        input = torch.empty(shape, device=device, dtype=dtype).contiguous(
+            memory_format=memory_format
+        )
+        n, c, h, w = shape
+        oh = (h + 2 * padding - kernel) // stride + 1
+        ow = (w + 2 * padding - kernel) // stride + 1
+        grad_values = make_tensor((n, c, oh, ow), device="cpu", dtype=dtype, low=-2, high=2)
+        grad_format = torch.channels_last if stride == 2 and kernel == 3 else memory_format
+        grad_output = grad_values.to(device).contiguous(memory_format=grad_format)
+        expected = torch.zeros(shape, dtype=torch.float32)
+        for y in range(oh):
+            y0, y1 = max(y * stride - padding, 0), min(y * stride - padding + kernel, h)
+            for x in range(ow):
+                x0, x1 = max(x * stride - padding, 0), min(x * stride - padding + kernel, w)
+                denominator = kernel * kernel if include_pad else (y1 - y0) * (x1 - x0)
+                contribution = (grad_values[:, :, y, x].float() / denominator).to(dtype).float()
+                expected[:, :, y0:y1, x0:x1] += contribution[:, :, None, None]
+        actual = torch.ops.aten.avg_pool2d_backward(
+            grad_output, input, [kernel, kernel], [stride, stride], [padding, padding],
+            False, include_pad, None,
+        )
+        self.assertEqual(actual.cpu(), expected.to(dtype), rtol=0, atol=0)
         self.assertTrue(actual.is_contiguous(memory_format=memory_format))
 
 

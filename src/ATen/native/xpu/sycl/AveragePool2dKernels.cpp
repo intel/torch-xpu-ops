@@ -1232,6 +1232,10 @@ inline bool try_backward(
     return false;
   }
   const int C = input.size(1), H = input.size(2), W = input.size(3);
+  // Leave room for launch rounding and the planar kernel's halo indices.
+  if (out.numel() > INT_MAX - 2048) {
+    return false;
+  }
   const bool cl = input.suggest_memory_format() == MemoryFormat::ChannelsLast;
   if (!out.is_contiguous(
           cl ? MemoryFormat::ChannelsLast : MemoryFormat::Contiguous) ||
@@ -1240,7 +1244,8 @@ inline bool try_backward(
     return false;
   }
   const bool pool3 =
-      kh == 3 && ph == 1 && !ceil_mode && (sh == 1 || (sh == 2 && include));
+      kh == 3 && ph == 1 && !ceil_mode && (sh == 1 || (sh == 2 && include)) &&
+      (include || (H > 1 && W > 1));
   const bool pool2 = kh == 2 && ph == 0 && sh == 2 && H % 2 == 0 && W % 2 == 0;
   const bool pool1 = kh == 1 && ph == 0 && sh == 2 && !ceil_mode;
   if (!pool3 && !pool2 && !pool1) {
