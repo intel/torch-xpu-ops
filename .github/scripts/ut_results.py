@@ -778,10 +778,12 @@ class Checker:
     def run_distributed(self, category: str) -> CheckResult:
         """The distributed suite prints a pytest console log, not a junit xml."""
         self.banner(category)
-        passed = self.scan_console(category, ("PASSED",))
+        passed = [console_case_line(category, node)
+                  for node in self.scan_console(category, ("PASSED",))]
         passed_set = set(passed)
-        failures = [line for line in self.scan_console(category, ("FAILED", "ERROR"))
-                    if line not in passed_set]
+        failures = [console_case_line(category, node)
+                    for node in self.scan_console(category, ("FAILED", "ERROR"))]
+        failures = [line for line in failures if line not in passed_set]
         write_lines(self.path(f"{category}_failed.log"), failures)
         write_lines(self.path(f"{category}_passed.log"), passed)
 
@@ -1046,6 +1048,12 @@ def case_fields(line: str) -> tuple[str, str]:
         return classname, name
     fields = line.split(",", 2)
     return (fields[1], fields[2]) if len(fields) == 3 else ("", line)
+
+
+def console_case_line(category: str, node_id: str) -> str:
+    """The `category,class,test` form that Known_issue.log uses for a console node id."""
+    classname, name = case_fields(node_id)
+    return f"{category},{classname},{name}"
 
 
 def issue_links(ids: list[str]) -> str:
