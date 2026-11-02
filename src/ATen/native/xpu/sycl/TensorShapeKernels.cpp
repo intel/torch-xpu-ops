@@ -697,8 +697,6 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
     at::IntArrayRef split_sizes,
     int64_t dim,
     at::TensorList out) {
-  // Every output is empty, and the launch size math below would divide by
-  // zero chunks per group.
   if (self.numel() == 0) {
     return;
   }
