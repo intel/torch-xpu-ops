@@ -1,4 +1,5 @@
 # Priority p0 (CI gate). Cases = backends x scenario x (mode, dtype) x models.
+# Total cases: 388
 # Each group sets mode and dtype (string or list); a group without mode runs in both modes.
 group:
   training:

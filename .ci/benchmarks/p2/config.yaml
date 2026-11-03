@@ -1,4 +1,5 @@
 # Priority p2 (weekly, legacy coverage). Cases = backends x scenario x (mode, dtype) x models.
+# Total cases: 2230
 # Each group sets mode and dtype (string or list); a group without mode runs in both modes.
 group:
   all:
