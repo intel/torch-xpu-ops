@@ -6635,8 +6635,24 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                         weight = torch.randn(channels, dtype=weight_dtype)
 
                         ref = reference(input, grad_output, weight)
-                        input_xpu = input.to(device_type)
-                        grad_output_xpu = grad_output.to(device_type)
+                        input_xpu = torch.as_strided(
+                            input_storage.to(device_type),
+                            shape,
+                            strides,
+                            storage_offset=1 if misalign_input else 0,
+                        )
+                        grad_output_xpu = torch.as_strided(
+                            grad_storage.to(device_type),
+                            shape,
+                            strides,
+                            storage_offset=1 if misalign_grad else 0,
+                        )
+                        self.assertEqual(
+                            input_xpu.data_ptr() % 4, 2 if misalign_input else 0
+                        )
+                        self.assertEqual(
+                            grad_output_xpu.data_ptr() % 4, 2 if misalign_grad else 0
+                        )
                         weight_xpu = weight.to(device_type)
                         mean = input_xpu.float().mean((0, 2, 3))
                         invstd = (
