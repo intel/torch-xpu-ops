@@ -181,7 +181,9 @@ runs:
         python run_distributed.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
-        find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
+        find ../ -type f -name "xpu_distributed_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_xpu_distributed.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_xpu_distributed.log
 
     - name: xpu_p0
       shell: timeout 72000 bash -xe -o pipefail {0}
