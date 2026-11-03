@@ -24,17 +24,12 @@ from torch.testing._internal.common_device_type import (
 from torch.testing._internal.common_utils import parametrize, run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUImportCtx
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUImportCtx
 
 
-with XPUPatchForImport(False):
-
-    def _set_allocator_settings(device=None):
-        pass
-
-    torch.cuda.memory._set_allocator_settings = _set_allocator_settings
+with XPUImportCtx(False):
     from test_dataloader import (
         supported_multiprocessing_contexts,
         TestCustomPinFn,
