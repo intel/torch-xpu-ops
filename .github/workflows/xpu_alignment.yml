@@ -86,6 +86,7 @@ jobs:
     outputs:
       scan_date: ${{ needs.collect.outputs.scan_date }}
       usage: ${{ steps.usage.outputs.usage }}
+      needs_validation: ${{ steps.plan.outputs.needs_validation }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -126,11 +127,11 @@ jobs:
 
             Treat collection/collection.json and collection/pages/ as immutable.
             Validate their schema and digests, then give every collected inventory
-            object exactly one reject/validate decision. The collector, not this
-            agent, owns enumeration and collection status. Preserve a `partial`
+            object exactly one reject/record-only/validate decision. The collector
+            owns enumeration and collection status. Preserve a `partial`
             status and its blockers exactly; do not infer uncollected objects.
-            Reject work already scoped exclusively to XPU when its body,
-            reproducer, tests, or diff show that upstream already tracks or
+            For validation candidates, reject exclusively XPU-scoped work when
+            its body, reproducer, tests, or diff show that upstream already tracks or
             implements the XPU work. A title, label, or XPU mention alone is not
             enough to reject it. Generic or shared work originating in CPU,
             CUDA, ROCm, MPS, or another backend remains eligible while XPU parity
@@ -138,6 +139,12 @@ jobs:
             Reproduce a linked issue, PR, and commit chain only once; reject the
             other objects as `duplicate-chain` and name the canonical object in
             the free-text reason.
+            Apply the scope policy in the skill: record training performance
+            and distributed work without checking XPU applicability. Validate
+            only training functional and inference functional/performance work.
+            Include categories on every record-only/validate decision. For mixed
+            functional and training-performance work, validate only the functional
+            part and retain the performance observation on the same decision.
             For each validated object, write a faithful bounded XPU reproducer
             and execution entry with its exact SHA-256, 120-second timeout,
             upstream oracle, and expected target path.
@@ -149,6 +156,15 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           GH_TOKEN: ${{ github.token }}
+
+      - name: Validate preparation and select execution jobs
+        id: plan
+        env:
+          RUN_ROOT: ${{ env.ALIGNMENT_RUN_ROOT }}/${{ needs.collect.outputs.scan_date }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/xpu_alignment_runner.py \
+            --root "$RUN_ROOT" --prepare prepare.json --check-only
 
       - name: Capture Claude usage
         id: usage
@@ -211,7 +227,10 @@ jobs:
   run-reproducers:
     name: Run immutable reproducers without agent credentials
     needs: [collect, scan-prepare]
-    if: ${{ needs.collect.result == 'success' && needs.scan-prepare.result == 'success' }}
+    if: >-
+      ${{ needs.collect.result == 'success'
+      && needs.scan-prepare.result == 'success'
+      && needs.scan-prepare.outputs.needs_validation == 'true' }}
     runs-on: xpu-agent
     timeout-minutes: 120
     container:
@@ -332,7 +351,7 @@ jobs:
   scan-finalize:
     name: Finalize scan from runner evidence
     needs: [collect, scan-prepare, run-reproducers]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.run-reproducers.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -455,7 +474,7 @@ jobs:
   independent-review:
     name: Independent alignment review
     needs: [collect, scan-prepare, run-reproducers, scan-finalize]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.scan-finalize.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -626,6 +645,7 @@ jobs:
           path: collection_snapshot/collection
 
       - name: Restore original runner evidence
+        if: needs.scan-prepare.outputs.needs_validation != 'false'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -633,6 +653,7 @@ jobs:
           path: runner_snapshot/runner
 
       - name: Restore final scan
+        if: needs.scan-prepare.outputs.needs_validation != 'false'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -640,6 +661,7 @@ jobs:
           path: scan_snapshot
 
       - name: Restore independent review
+        if: needs.scan-prepare.outputs.needs_validation != 'false'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -653,9 +675,13 @@ jobs:
           PRODUCERS_CLEAN: >-
             ${{ needs.collect.result == 'success'
             && needs.scan-prepare.result == 'success'
-            && needs.run-reproducers.result == 'success'
+            && ((needs.scan-prepare.outputs.needs_validation == 'false'
+            && needs.run-reproducers.result == 'skipped'
+            && needs.scan-finalize.result == 'skipped'
+            && needs.independent-review.result == 'skipped')
+            || (needs.run-reproducers.result == 'success'
             && needs.scan-finalize.result == 'success'
-            && needs.independent-review.result == 'success' }}
+            && needs.independent-review.result == 'success')) }}
           SCAN_DATE: ${{ needs.collect.outputs.scan_date }}
         run: |
           set -euo pipefail
@@ -730,6 +756,7 @@ jobs:
           PREPARE_USAGE: ${{ needs.scan-prepare.outputs.usage }}
           FINALIZE_USAGE: ${{ needs.scan-finalize.outputs.usage }}
           REVIEW_USAGE: ${{ needs.independent-review.outputs.usage }}
+          NEEDS_VALIDATION: ${{ needs.scan-prepare.outputs.needs_validation }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -738,7 +765,7 @@ jobs:
               ['scan-prepare', process.env.PREPARE_USAGE],
               ['scan-finalize', process.env.FINALIZE_USAGE],
               ['independent-review', process.env.REVIEW_USAGE],
-            ];
+            ].filter(([role]) => role === 'scan-prepare' || process.env.NEEDS_VALIDATION !== 'false');
             const usage = [];
             for (const [role, raw] of sources) {
               if (!raw) continue;

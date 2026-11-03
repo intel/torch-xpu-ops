@@ -18,8 +18,30 @@ reachable from the `pytorch/pytorch` default branch whose committer timestamp is
 in the interval. Ordinary comments, labels, and other updates to older objects do
 not create candidates. Fetch linked older objects when they provide context.
 
-An observed inventory object is not yet an alignment validation candidate. If
-the upstream issue body or reproducer, PR tests or diff, or commit diff shows
+Classify behavior from the body, reproducer, tests, and diff:
+
+| Category | Action |
+|---|---|
+| `training-functional` | Validate on XPU. |
+| `training-performance` | Record without XPU applicability checks or execution. |
+| `inference-functional` | Validate on XPU. |
+| `inference-performance` | Validate on XPU with a valid performance comparison. |
+| `distributed` | Record without XPU applicability checks or execution. |
+
+Distributed behavior requires multi-process, communication, sharding, or another
+distributed mechanism, including DDP, FSDP, DTensor, and collectives. It is always
+record-only, including correctness defects. A plain single-device operator defect
+discovered during distributed training remains eligible for functional validation
+when it reproduces independently of those mechanisms. Classify forward-only
+operator/compiler performance without training dependencies as inference; behavior
+depending on backward, gradients, or optimizer steps is training performance.
+Use multiple categories for mixed functional/training-performance concerns.
+Validate the functional portion and record the training-performance portion
+without making XPU claims about it.
+
+An observed inventory object is not yet an alignment validation candidate. For
+behavior selected for validation, if the upstream issue body or reproducer,
+PR tests or diff, or commit diff shows
 that its primary scope is independent XPU work already tracked or implemented
 upstream, reject it with `already-xpu-scoped` in the reason. Do not create a
 reproducer, review it, or open a parallel `torch-xpu-ops` issue. A title, label,
@@ -62,6 +84,12 @@ Before execution, identify:
 - evidence that the target path, rather than setup data, ran on XPU;
 - how the script distinguishes the same failure, a related failure, and success;
 - a bounded timeout and a credential-scrubbed execution command.
+
+For inference performance, require a credible version or reference-implementation
+comparison in the same XPU environment. If the comparison is unavailable, use
+`needs-performance-harness` and name the missing baseline. Execution success alone
+does not establish acceptable performance. Do not provision additional versions
+or extend the existing execution timeout to build a performance harness.
 
 Retain the exact script and raw stdout/stderr. A broad exception or substring
 match does not establish a result by itself. Treat timeout, crash, or setup
