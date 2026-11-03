@@ -214,6 +214,12 @@ PYTEST_DESELECTS_BMG=(
     # aot_inductor_package missing pytree registration error (tracking issue pending)
     "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackage_cpu::test_custom_output_type_missing_pytree_registration_error"
 )
+# Keep skip policy separate from test execution; resolve it independently of cwd.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+if ! source "$SCRIPT_DIR/ut_skips.sh"; then
+    echo "ERROR: Could not load P0 skip list: $SCRIPT_DIR/ut_skips.sh" >&2
+    exit 1
+fi
 
 # -------------------- Helper Functions --------------------
 # Run pytest with a unique JUnit XML filename
@@ -226,7 +232,7 @@ run_pytest() {
     # pytest's rootdir is PYTORCH_ROOT_DIR (it holds pytest.ini), so node IDs of
     # files run from a subdirectory such as third_party/torch-xpu-ops carry
     # that subdirectory as a prefix.
-    rel_dir=$(realpath --relative-to="$PYTORCH_ROOT_DIR" "$PWD")
+    rel_dir=$(realpath --relative-to="$PYTORCH_ROOT_DIR" "$PWD") || return 1
     if [[ "$rel_dir" != "." ]]; then
         node_prefix="$rel_dir/"
     fi
@@ -241,17 +247,11 @@ run_pytest() {
             pythonpath="$PWD/$import_dir${pythonpath:+:$pythonpath}"
         fi
     done
-    if [[ "${XPU_DEVICE_FAMILY:-}" == "bmg" ]]; then
-        for deselect in "${PYTEST_DESELECTS_BMG[@]}"; do
-            if [[ "$deselect" == "$test_file"::* ]]; then
-                extra_args+=("--deselect=$deselect")
-            fi
-        done
-    fi
     test_name=$(basename "$test_file" .py)
     xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_$(date +%s).xml"
     echo "Running pytest $test_file -> $xml_file"
-    PYTHONPATH="$pythonpath" pytest "$test_file" --junit-xml="$xml_file" "${extra_args[@]}"
+    PYTHONPATH="$pythonpath" pytest "$test_file" --junit-xml="$xml_file" "${extra_args[@]}" \
+        --rootdir="$PYTORCH_ROOT_DIR"
 }
 
 # -------------------- Test Groups --------------------
@@ -343,6 +343,7 @@ if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
     echo "Usage: $0 [group1 group2 ...]"
     echo "Available groups: inductor, non-inductor, profiling, distributed"
     echo "If no groups given, all groups are run."
+    echo "All groups use the platform-independent skip list: $SCRIPT_DIR/ut_skips.sh"
     exit 0
 fi
 
