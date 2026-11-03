@@ -136,7 +136,7 @@ struct AngleWrapper {
       return v;
     }
     using opmath_t = at::opmath_type<scalar_t>;
-    return sycl::signbit(opmath_t{v})
+    return sycl::signbit(static_cast<opmath_t>(v))
         ? static_cast<scalar_t>(std::numbers::pi_v<double>)
         : scalar_t(0);
   }
