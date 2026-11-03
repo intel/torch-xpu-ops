@@ -31,7 +31,7 @@ enum class SbtopkResult : int {
 // Dispatches between the subgroup topk kernel (sub-group bitonic merge,
 // output SORTED) and the single workgroup topk kernel (radix select,
 // output UNSORTED) based on (nsegments, nelements, k).
-SbtopkResult sbtopk_try_launch(
+TORCH_XPU_API SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,

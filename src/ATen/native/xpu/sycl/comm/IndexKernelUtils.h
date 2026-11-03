@@ -51,7 +51,7 @@ inline bool fast_gather_kernel_eligible(
 inline constexpr int SIMD = 32;
 
 template <int64_t Alignment, typename index_t>
-void vectorized_gather_kernel_launch(
+TORCH_XPU_API void vectorized_gather_kernel_launch(
     char* out,
     char* inp,
     index_t* idx,

@@ -362,7 +362,7 @@ inline void sbtopk_launch_vec_dispatch(
 // Per-K launch functions -- defined in TensorTopKSbtopkKernel_k*.cpp.
 // Each handles AT_DISPATCH + IndexT + Largest + VEC dispatch for one K.
 // ================================================================
-void sbtopk_k1_launch(
+TORCH_XPU_API void sbtopk_k1_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,
@@ -370,7 +370,7 @@ void sbtopk_k1_launch(
     bool largest,
     const at::Tensor& values,
     const at::Tensor& indices);
-void sbtopk_k2_launch(
+TORCH_XPU_API void sbtopk_k2_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,
@@ -378,7 +378,7 @@ void sbtopk_k2_launch(
     bool largest,
     const at::Tensor& values,
     const at::Tensor& indices);
-void sbtopk_k4_launch(
+TORCH_XPU_API void sbtopk_k4_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,
@@ -386,7 +386,7 @@ void sbtopk_k4_launch(
     bool largest,
     const at::Tensor& values,
     const at::Tensor& indices);
-void sbtopk_k8_launch(
+TORCH_XPU_API void sbtopk_k8_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,

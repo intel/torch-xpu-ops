@@ -14,7 +14,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void _fft_fill_with_conjugate_symmetry_xpu(
+TORCH_XPU_API void _fft_fill_with_conjugate_symmetry_xpu(
     ScalarType dtype,
     IntArrayRef mirror_dims,
     IntArrayRef signal_half_sizes,
@@ -35,37 +35,37 @@ void _fft_fill_with_conjugate_symmetry_(const Tensor& input, IntArrayRef dim_);
 
 namespace impl {
 
-DimVector _sort_dims(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool exclude_last = false);
+TORCH_XPU_API DimVector
+_sort_dims(const Tensor& self, IntArrayRef dim, bool exclude_last = false);
 
-double _dft_scale(
+TORCH_XPU_API double _dft_scale(
     IntArrayRef dim,
     IntArrayRef norm_sizes,
     int64_t normalization);
 
-const Tensor& _fft_apply_normalization(
+TORCH_XPU_API const Tensor& _fft_apply_normalization(
     const Tensor& self,
     int64_t normalization,
     IntArrayRef norm_sizes,
     IntArrayRef dims);
 
-ScalarType promote_fft_dtype(ScalarType dtype);
+TORCH_XPU_API ScalarType promote_fft_dtype(ScalarType dtype);
 
-Tensor promote_fft_input(const Tensor& input);
+TORCH_XPU_API Tensor promote_fft_input(const Tensor& input);
 
 } // namespace impl
 
-bool _is_fft_size_supported_sycl(const Tensor& orig_self, IntArrayRef dim);
+TORCH_XPU_API bool _is_fft_size_supported_sycl(
+    const Tensor& orig_self,
+    IntArrayRef dim);
 
-Tensor _fft_c2c_sycl(
+TORCH_XPU_API Tensor _fft_c2c_sycl(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,
     bool forward);
 
-Tensor& _fft_c2c_sycl_out(
+TORCH_XPU_API Tensor& _fft_c2c_sycl_out(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,
