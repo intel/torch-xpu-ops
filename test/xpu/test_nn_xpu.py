@@ -6598,7 +6598,12 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 (0, 2, 3)
             )
             grad_weight = sum_dy_xmu * invstd
-            return sum_dy, sum_dy_xmu, grad_weight, sum_dy
+            return (
+                sum_dy,
+                sum_dy_xmu,
+                grad_weight.to(weight.dtype),
+                sum_dy.to(weight.dtype),
+            )
 
         for dtype in (torch.float16, torch.bfloat16):
             for channels in (36, 38, 48):
