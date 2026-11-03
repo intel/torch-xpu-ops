@@ -84,155 +84,212 @@ inline uint32_t pack_pair(memory::aligned_vector<float, 2> v) {
 inline int compact_index(int64_t value) {
   return value >= 0 && value <= INT_MAX ? int(value) : -1;
 }
+struct LargeForwardConfig {
+  // One group processes a 12x16 image for a contiguous 64-byte channel tile.
+  // The image dimensions are algorithm limits, not device limits.
+  static constexpr int kInputHeight = 12;
+  static constexpr int kInputWidth = 16;
+  static constexpr int kChannelTileBytes = 64;
+  static constexpr int kValuesPerWord = sizeof(uint32_t) / sizeof(Half);
+  static constexpr int kChannelWords = kChannelTileBytes / sizeof(uint32_t);
+  static constexpr int kChannelsPerTile = kChannelWords * kValuesPerWord;
+  static constexpr int kWorkGroupSize = kInputWidth * kChannelWords;
+  static constexpr int kTileWords = kInputHeight * kInputWidth * kChannelWords;
+  static constexpr int kLocalWords = 2 * kTileWords; // Values, then indices.
+  static constexpr int kIndexBits = 8; // Each horizontal index fits in a byte.
+  static constexpr uint32_t kIndexMask = (1u << kIndexBits) - 1;
+  static_assert(kInputWidth <= (1 << kIndexBits));
+};
+
 template <int K>
-struct LargeForward {
-  auto get(sycl::ext::oneapi::experimental::properties_tag) const {
-    if constexpr (K >= 9)
-      return sycl::ext::oneapi::experimental::properties{
-          sycl::ext::intel::experimental::grf_size<256>};
-    else
-      return sycl::ext::oneapi::experimental::properties{
-          sycl::ext::intel::experimental::grf_size<128>};
-  }
-  const uint32_t* x;
-  uint32_t* y;
-  int64_t* idx;
-  int C;
-  sycl::local_accessor<uint32_t, 1> smem;
-  void operator()(sycl::nd_item<1> it) const {
-    int cb = it.get_group(0) % (C / 16), n = it.get_group(0) / (C / 16),
-        ox = it.get_local_id(0) / 16, c = it.get_local_id(0) % 16;
-    int row = ox;
-    if (row < 12) {
-      uint32_t raw[16], pv[16], pi[16];
-      auto best = filled<float, 2>(-INFINITY);
-      auto bi = filled<int, 2>(0);
+struct LargeForward : LargeForwardConfig {
+  static_assert(K == 5 || K == 9 || K == 13);
+  static constexpr int kRadius = K / 2;
+
+  using ValuePair = memory::aligned_vector<float, kValuesPerWord>;
+  using IndexPair = memory::aligned_vector<int, kValuesPerWord>;
+  using OutputIndexPair = memory::aligned_vector<int64_t, kValuesPerWord>;
+
+  const uint32_t* input;
+  uint32_t* output;
+  int64_t* indices;
+  int channel_words;
+  sycl::local_accessor<uint32_t, 1> local_buffer;
+  void operator()(sycl::nd_item<1> item) const {
+    int channel_tile = item.get_group(0) % (channel_words / kChannelWords),
+        batch = item.get_group(0) / (channel_words / kChannelWords),
+        output_column = item.get_local_id(0) / kChannelWords,
+        channel_word = item.get_local_id(0) % kChannelWords;
+    int row = output_column;
+    // Horizontal prefix/suffix maxima share overlapping windows. Local memory
+    // then exposes each column to one work item for the vertical reduction.
+    if (row < kInputHeight) {
+      uint32_t input_row[kInputWidth], prefix_values[kInputWidth],
+          prefix_indices[kInputWidth];
+      auto best_values = filled<float, kValuesPerWord>(-INFINITY);
+      auto best_indices = filled<int, kValuesPerWord>(0);
 #pragma unroll
-      for (int xx = 0; xx < 16; ++xx)
-        raw[xx] = x[((n * 12 + row) * 16 + xx) * C + cb * 16 + c];
+      for (int column = 0; column < kInputWidth; ++column)
+        input_row[column] = input
+            [((batch * kInputHeight + row) * kInputWidth + column) *
+                 channel_words +
+             channel_tile * kChannelWords + channel_word];
 #pragma unroll
-      for (int xx = 0; xx < 16; ++xx) {
-        auto v = unpack_pair(raw[xx]);
+      for (int column = 0; column < kInputWidth; ++column) {
+        auto v = unpack_pair(input_row[column]);
 #pragma unroll
-        for (int j = 0; j < 2; ++j)
-          if (xx % K == 0 || v[j] > best[j] || sycl::isnan(v[j])) {
-            best[j] = v[j];
-            bi[j] = xx;
+        for (int j = 0; j < kValuesPerWord; ++j)
+          if (column % K == 0 || v[j] > best_values[j] || sycl::isnan(v[j])) {
+            best_values[j] = v[j];
+            best_indices[j] = column;
           }
-        pv[xx] = pack_pair(best);
-        pi[xx] = bi[0] | (bi[1] << 8);
-        if (xx >= K / 2 && xx < K) {
-          int dest = (row * 16 + xx - K / 2) * 16 + c;
-          smem[dest] = pv[xx];
-          smem[3072 + dest] = pi[xx];
+        prefix_values[column] = pack_pair(best_values);
+        prefix_indices[column] =
+            best_indices[0] | (best_indices[1] << kIndexBits);
+        if (column >= kRadius && column < K) {
+          int dest = (row * kInputWidth + column - kRadius) * kChannelWords +
+              channel_word;
+          local_buffer[dest] = prefix_values[column];
+          local_buffer[kTileWords + dest] = prefix_indices[column];
         }
       }
-      best = filled<float, 2>(-INFINITY);
-      bi = filled<int, 2>(15);
+      // Reverse scans prefer earlier equal maxima, but preserve the last NaN.
+      best_values = filled<float, kValuesPerWord>(-INFINITY);
+      best_indices = filled<int, kValuesPerWord>(kInputWidth - 1);
 #pragma unroll
-      for (int xx = 15; xx >= 0; --xx) {
-        auto v = unpack_pair(raw[xx]);
+      for (int column = kInputWidth - 1; column >= 0; --column) {
+        auto v = unpack_pair(input_row[column]);
 #pragma unroll
-        for (int j = 0; j < 2; ++j)
-          if (xx == 15 || xx % K == K - 1 ||
-              (!sycl::isnan(best[j]) &&
-               (v[j] >= best[j] || sycl::isnan(v[j])))) {
-            best[j] = v[j];
-            bi[j] = xx;
+        for (int j = 0; j < kValuesPerWord; ++j)
+          if (column == kInputWidth - 1 || column % K == K - 1 ||
+              (!sycl::isnan(best_values[j]) &&
+               (v[j] >= best_values[j] || sycl::isnan(v[j])))) {
+            best_values[j] = v[j];
+            best_indices[j] = column;
           }
-        if (xx > 0 && xx + K / 2 < 16) {
-          int hi = sycl::min(15, xx + K - 1);
-          auto vv = best;
-          auto ii = bi;
-          if (xx / K != hi / K) {
-            auto bv = unpack_pair(pv[hi]);
-            auto bj = memory::aligned_vector<int, 2>{
-                {int(pi[hi] & 255), int(pi[hi] >> 8)}};
+        if (column > 0 && column + kRadius < kInputWidth) {
+          int window_end = sycl::min(kInputWidth - 1, column + K - 1);
+          auto window_values = best_values;
+          auto window_indices = best_indices;
+          if (column / K != window_end / K) {
+            auto prefix_max = unpack_pair(prefix_values[window_end]);
+            auto prefix_argmax = IndexPair{
+                {int(prefix_indices[window_end] & kIndexMask),
+                 int(prefix_indices[window_end] >> kIndexBits)}};
 #pragma unroll
-            for (int j = 0; j < 2; ++j)
-              if (bv[j] > vv[j] || sycl::isnan(bv[j])) {
-                vv[j] = bv[j];
-                ii[j] = bj[j];
+            for (int j = 0; j < kValuesPerWord; ++j)
+              if (prefix_max[j] > window_values[j] ||
+                  sycl::isnan(prefix_max[j])) {
+                window_values[j] = prefix_max[j];
+                window_indices[j] = prefix_argmax[j];
               }
           }
-          int dest = (row * 16 + xx + K / 2) * 16 + c;
-          smem[dest] = pack_pair(vv);
-          smem[3072 + dest] = ii[0] | (ii[1] << 8);
+          int dest = (row * kInputWidth + column + kRadius) * kChannelWords +
+              channel_word;
+          local_buffer[dest] = pack_pair(window_values);
+          local_buffer[kTileWords + dest] =
+              window_indices[0] | (window_indices[1] << kIndexBits);
         }
       }
     }
-    it.barrier(sycl::access::fence_space::local_space);
-    memory::aligned_vector<float, 2> hv[12];
-    memory::aligned_vector<int, 2> hi[12];
+    item.barrier(sycl::access::fence_space::local_space);
+    ValuePair row_values[kInputHeight];
+    IndexPair row_indices[kInputHeight];
 #pragma unroll
-    for (int h = 0; h < 12; ++h) {
-      int a = (h * 16 + ox) * 16 + c;
-      hv[h] = unpack_pair(smem[a]);
-      uint32_t q = smem[3072 + a];
-      hi[h] = memory::aligned_vector<int, 2>{
-          {h * 16 + int(q & 255), h * 16 + int(q >> 8)}};
+    for (int h = 0; h < kInputHeight; ++h) {
+      int a = (h * kInputWidth + output_column) * kChannelWords + channel_word;
+      row_values[h] = unpack_pair(local_buffer[a]);
+      uint32_t q = local_buffer[kTileWords + a];
+      row_indices[h] = IndexPair{
+          {h * kInputWidth + int(q & kIndexMask),
+           h * kInputWidth + int(q >> kIndexBits)}};
     }
-    if constexpr (K == 13) {
-      auto best = filled<float, 2>(-INFINITY);
-      memory::aligned_vector<int, 2> bi = hi[0];
+    // For this window the top/bottom windows are prefixes/suffixes; two
+    // central outputs cover the entire column.
+    if constexpr (K == kInputHeight + 1) {
+      auto best_values = filled<float, kValuesPerWord>(-INFINITY);
+      IndexPair best_indices = row_indices[0];
 #pragma unroll
-      for (int yy = 0; yy < 12; ++yy) {
+      for (int input_row_index = 0; input_row_index < kInputHeight;
+           ++input_row_index) {
 #pragma unroll
-        for (int j = 0; j < 2; ++j)
-          if (hv[yy][j] > best[j] || sycl::isnan(hv[yy][j])) {
-            best[j] = hv[yy][j];
-            bi[j] = hi[yy][j];
+        for (int j = 0; j < kValuesPerWord; ++j)
+          if (row_values[input_row_index][j] > best_values[j] ||
+              sycl::isnan(row_values[input_row_index][j])) {
+            best_values[j] = row_values[input_row_index][j];
+            best_indices[j] = row_indices[input_row_index][j];
           }
-        if (yy >= 6) {
-          int dest = ((n * 12 + yy - 6) * 16 + ox) * C + cb * 16 + c;
-          y[dest] = pack_pair(best);
-          *reinterpret_cast<memory::aligned_vector<int64_t, 2>*>(
-              idx + int64_t(dest) * 2) = vector_cast<int64_t>(bi);
+        if (input_row_index >= kRadius) {
+          int dest = ((batch * kInputHeight + input_row_index - kRadius) *
+                          kInputWidth +
+                      output_column) *
+                  channel_words +
+              channel_tile * kChannelWords + channel_word;
+          output[dest] = pack_pair(best_values);
+          *reinterpret_cast<OutputIndexPair*>(
+              indices + int64_t(dest) * kValuesPerWord) =
+              vector_cast<int64_t>(best_indices);
         }
       }
       {
-        int dest = ((n * 12 + 6) * 16 + ox) * C + cb * 16 + c;
-        y[dest] = pack_pair(best);
-        *reinterpret_cast<memory::aligned_vector<int64_t, 2>*>(
-            idx + int64_t(dest) * 2) = vector_cast<int64_t>(bi);
+        int dest =
+            ((batch * kInputHeight + kRadius) * kInputWidth + output_column) *
+                channel_words +
+            channel_tile * kChannelWords + channel_word;
+        output[dest] = pack_pair(best_values);
+        *reinterpret_cast<OutputIndexPair*>(
+            indices + int64_t(dest) * kValuesPerWord) =
+            vector_cast<int64_t>(best_indices);
       }
-      best = hv[11];
-      bi = hi[11];
+      best_values = row_values[kInputHeight - 1];
+      best_indices = row_indices[kInputHeight - 1];
 #pragma unroll
-      for (int yy = 10; yy >= 1; --yy) {
+      for (int input_row_index = kInputHeight - 2; input_row_index >= 1;
+           --input_row_index) {
 #pragma unroll
-        for (int j = 0; j < 2; ++j)
-          if (!sycl::isnan(best[j]) &&
-              (hv[yy][j] >= best[j] || sycl::isnan(hv[yy][j]))) {
-            best[j] = hv[yy][j];
-            bi[j] = hi[yy][j];
+        for (int j = 0; j < kValuesPerWord; ++j)
+          if (!sycl::isnan(best_values[j]) &&
+              (row_values[input_row_index][j] >= best_values[j] ||
+               sycl::isnan(row_values[input_row_index][j]))) {
+            best_values[j] = row_values[input_row_index][j];
+            best_indices[j] = row_indices[input_row_index][j];
           }
-        if (yy <= 5) {
-          int dest = ((n * 12 + yy + 6) * 16 + ox) * C + cb * 16 + c;
-          y[dest] = pack_pair(best);
-          *reinterpret_cast<memory::aligned_vector<int64_t, 2>*>(
-              idx + int64_t(dest) * 2) = vector_cast<int64_t>(bi);
+        if (input_row_index < kInputHeight - kRadius) {
+          int dest = ((batch * kInputHeight + input_row_index + kRadius) *
+                          kInputWidth +
+                      output_column) *
+                  channel_words +
+              channel_tile * kChannelWords + channel_word;
+          output[dest] = pack_pair(best_values);
+          *reinterpret_cast<OutputIndexPair*>(
+              indices + int64_t(dest) * kValuesPerWord) =
+              vector_cast<int64_t>(best_indices);
         }
       }
     } else {
 #pragma unroll
-      for (int h = 0; h < 12; ++h) {
-        auto best = filled<float, 2>(-INFINITY);
-        memory::aligned_vector<int, 2> index = hi[sycl::max(0, h - K / 2)];
+      for (int h = 0; h < kInputHeight; ++h) {
+        auto best_values = filled<float, kValuesPerWord>(-INFINITY);
+        IndexPair index = row_indices[sycl::max(0, h - kRadius)];
 #pragma unroll
-        for (int yy = 0; yy < 12; ++yy) {
-          if (yy >= h - K / 2 && yy <= h + K / 2) {
+        for (int input_row_index = 0; input_row_index < kInputHeight;
+             ++input_row_index) {
+          if (input_row_index >= h - kRadius &&
+              input_row_index <= h + kRadius) {
 #pragma unroll
-            for (int j = 0; j < 2; ++j)
-              if (hv[yy][j] > best[j] || sycl::isnan(hv[yy][j])) {
-                best[j] = hv[yy][j];
-                index[j] = hi[yy][j];
+            for (int j = 0; j < kValuesPerWord; ++j)
+              if (row_values[input_row_index][j] > best_values[j] ||
+                  sycl::isnan(row_values[input_row_index][j])) {
+                best_values[j] = row_values[input_row_index][j];
+                index[j] = row_indices[input_row_index][j];
               }
           }
         }
-        int dest = ((n * 12 + h) * 16 + ox) * C + cb * 16 + c;
-        y[dest] = pack_pair(best);
-        *reinterpret_cast<memory::aligned_vector<int64_t, 2>*>(idx + dest * 2) =
+        int dest = ((batch * kInputHeight + h) * kInputWidth + output_column) *
+                channel_words +
+            channel_tile * kChannelWords + channel_word;
+        output[dest] = pack_pair(best_values);
+        *reinterpret_cast<OutputIndexPair*>(indices + dest * kValuesPerWord) =
             vector_cast<int64_t>(index);
       }
     }
@@ -240,21 +297,26 @@ struct LargeForward {
 };
 template <int K>
 void large_launch(
-    const at::Tensor& x,
-    const at::Tensor& y,
-    const at::Tensor& idx) {
-  auto& q = c10::xpu::getCurrentXPUStream().queue();
-  int groups = x.size(0) * x.size(1) / 32;
-  q.submit([&](sycl::handler& h) {
-    sycl::local_accessor<uint32_t, 1> smem(2 * 12 * 16 * 16, h);
-    h.parallel_for(
-        sycl::nd_range<1>(groups * 256, 256),
-        LargeForward<K>{
-            (const uint32_t*)x.data_ptr(),
-            (uint32_t*)y.data_ptr(),
-            idx.data_ptr<int64_t>(),
-            int(x.size(1) / 2),
-            smem});
+    const at::Tensor& input,
+    const at::Tensor& output,
+    const at::Tensor& indices) {
+  using Kernel = LargeForward<K>;
+  auto& queue = c10::xpu::getCurrentXPUStream().queue();
+  const int64_t groups =
+      input.size(0) * input.size(1) / Kernel::kChannelsPerTile;
+  queue.submit([&](sycl::handler& handler) {
+    sycl::local_accessor<uint32_t, 1> local_buffer(
+        Kernel::kLocalWords, handler);
+    handler.parallel_for(
+        sycl::nd_range<1>(
+            groups * Kernel::kWorkGroupSize, Kernel::kWorkGroupSize),
+        Kernel{
+            {},
+            reinterpret_cast<const uint32_t*>(input.const_data_ptr<Half>()),
+            reinterpret_cast<uint32_t*>(output.mutable_data_ptr<Half>()),
+            indices.mutable_data_ptr<int64_t>(),
+            int(input.size(1) / Kernel::kValuesPerWord),
+            local_buffer});
   });
 }
 
@@ -1169,7 +1231,12 @@ inline bool forward(
       idx.is_contiguous(at::MemoryFormat::ChannelsLast);
   if (!nhwc || K == 1)
     return false;
-  if (K >= 5 && (!nhwc || x.size(2) != 12 || x.size(3) != 16 || x.size(1) % 32))
+  // Large windows use a fixed image tile and packed channel groups.
+  using LargeGeometry = LargeForwardConfig;
+  if (K >= 5 &&
+      (x.size(2) != LargeGeometry::kInputHeight ||
+       x.size(3) != LargeGeometry::kInputWidth ||
+       x.size(1) % LargeGeometry::kChannelsPerTile))
     return false;
   if (S == 1 && K == 3 &&
       (x.size(2) * x.size(3) >= 65535 || v.sizes() != x.sizes()))
