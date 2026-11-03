@@ -66,9 +66,12 @@ not be mistaken for a complete scan.
 
 Titles and labels help prioritize reading but do not decide relevance. Inspect
 the body, changed code, tests, linked work, or diff whenever it could change the
-decision. Clear documentation/infrastructure-only changes, platform-exclusive
-behavior, nonfunctional refactors, and duplicate issue/PR/commit chains can be
-rejected with a concrete explanation.
+decision. Clear documentation/infrastructure-only changes, nonfunctional
+refactors, and duplicate issue/PR/commit chains can be rejected with a concrete
+explanation. Platform-exclusive behavior can be rejected only when selected for
+validation. The training-performance and distributed record-only policy takes
+precedence over platform applicability filtering, including CUDA/NCCL-only
+reports. Linked-chain deduplication still applies.
 
 ## Faithful XPU evidence
 
