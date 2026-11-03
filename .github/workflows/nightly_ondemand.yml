@@ -269,6 +269,7 @@ jobs:
       runner: windows-build
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      triton: ${{ needs.Conditions-Filter.outputs.triton }}
 
   Windows-Nightly-Ondemand-UT-Tests:
     name: windows-ut
