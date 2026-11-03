@@ -10,7 +10,6 @@
 
 #include <ATen/native/transformers/xpu/flash_attn/flash_api.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/flash_api.h>
- #include <ATen/native/transformers/xpu/flash_attn/sycltla/flash_api.h>
 #include <comm/Macros.h>
 DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // Official suppression macro provided by Intel SYCL headers for
