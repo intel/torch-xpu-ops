@@ -46,8 +46,8 @@ struct SigmoidFunctor {
       // the SYCL complex extension avoids this.
       namespace syclex = sycl::ext::oneapi::experimental;
       const syclex::complex<value_t> z(a_.real(), a_.imag());
-      const auto sig = value_t(1) / (value_t(1) + syclex::exp(-z));
-      return opmath_t(sig.real(), sig.imag());
+      const auto e = syclex::exp(-z);
+      return one / (one + opmath_t(e.real(), e.imag()));
     } else {
       return one / (one + sycl::exp(-a_));
     }
