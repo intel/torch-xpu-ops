@@ -16,7 +16,6 @@
 
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_bwd.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_common.h>
-#include <limits>
 #include <numbers>
 
 namespace cute {
@@ -102,6 +101,12 @@ void compute_o_dot_do(
   Tensor thr_tile_o_S = thr_load_odo.partition_S(mO);
   Tensor thr_tile_dq_D = thr_load_dq.partition_D(mdQaccum);
   Tensor rdQ = make_fragment_like(thr_tile_dq_D);
+
+  clear(rdQ);
+  for (int m = 0; m < size<1>(thr_tile_dq_D); ++m) {
+    copy(rdQ(_, m, _), thr_tile_dq_D(_, m, _));
+  }
+
   Tensor rdO = make_fragment_like<DType>(rdQ);
   Tensor rO = make_fragment_like<DType>(rdQ);
   Tensor cO = make_identity_tensor(dQ_shape);
@@ -455,9 +460,10 @@ CUTLASS_DEVICE void scale_apply_exp2(
       }
     }
     const float row_max = max(m);
-    const float max_scaled = row_max == -std::numeric_limits<float>::infinity()
-        ? 0.f
-        : row_max * std::numbers::log2e_v<float>;
+    // A fully masked row carries LSE = +inf (the forward's sentinel). Every
+    // entry of such a row was set to -inf by apply_mask, so exp2f(-inf - inf)
+    // = 0 falls out naturally.
+    const float max_scaled = row_max * std::numbers::log2e_v<float>;
     CUTLASS_PRAGMA_UNROLL
     for (int ni = 0; ni < size<1>(tensor); ++ni) {
       tensor(mi, ni) = exp2f(tensor(mi, ni) * scale_softmax_log2 - max_scaled);

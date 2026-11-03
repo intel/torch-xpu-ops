@@ -213,11 +213,6 @@ runs:
         else
           uv pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         fi
-        if [ "${{ inputs.suite }}" != "None" ];then
-          # To install numpy 1.x for benchmarks as CUDA
-          # yolov requires numpy>=1.23
-          uv pip install -U numpy==1.26.4 scipy==1.11.4
-        fi
     - name: Detect devices
       shell: bash -euo pipefail {0}
       run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'
