@@ -16,31 +16,31 @@
 namespace cute {
 
 template <>
-void run_mha_fwd_<cute::half_t, 32, false>(
+void run_mha_fwd_<cute::half_t, 32, false, false>(
     sycl::queue& queue,
     FLASH_FWD_params& params) {
-  run_mha_fwd_hdim32<cute::half_t, false>(queue, params);
+  run_mha_fwd_hdim32<cute::half_t, false, false>(queue, params);
 }
 
 template <>
-void run_mha_fwd_<cute::half_t, 32, true>(
+void run_mha_fwd_<cute::half_t, 32, true, false>(
     sycl::queue& queue,
     FLASH_FWD_params& params) {
-  run_mha_fwd_hdim32<cute::half_t, true>(queue, params);
+  run_mha_fwd_hdim32<cute::half_t, true, false>(queue, params);
 }
 
 template <>
-void run_mha_fwd_<cute::bfloat16_t, 32, false>(
+void run_mha_fwd_<cute::bfloat16_t, 32, false, false>(
     sycl::queue& queue,
     FLASH_FWD_params& params) {
-  run_mha_fwd_hdim32<cute::bfloat16_t, false>(queue, params);
+  run_mha_fwd_hdim32<cute::bfloat16_t, false, false>(queue, params);
 }
 
 template <>
-void run_mha_fwd_<cute::bfloat16_t, 32, true>(
+void run_mha_fwd_<cute::bfloat16_t, 32, true, false>(
     sycl::queue& queue,
     FLASH_FWD_params& params) {
-  run_mha_fwd_hdim32<cute::bfloat16_t, true>(queue, params);
+  run_mha_fwd_hdim32<cute::bfloat16_t, true, false>(queue, params);
 }
 
 } // namespace cute

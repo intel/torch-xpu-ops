@@ -103,8 +103,15 @@ struct FA2Runner {
     shape.batch = batch;
     shape.num_heads_q = num_heads_qo;
     shape.num_heads_kv = num_heads_kv;
-    shape.seq_len_qo = seq_len_qo;
-    shape.seq_len_kv = seq_len_kv;
+    if constexpr (isVarLen) {
+      // seq_len_* holds the max length; per-doc lengths come from cu_seqlens.
+      shape.seq_len_qo = {seq_len_qo, params.cu_seqlens_q};
+      shape.seq_len_kv = {seq_len_kv, params.cu_seqlens_k};
+      shape.total_seq_len_qo = params.total_q;
+    } else {
+      shape.seq_len_qo = seq_len_qo;
+      shape.seq_len_kv = seq_len_kv;
+    }
     shape.head_size_qk = head_size_qk;
     shape.head_size_vo = head_size_vo;
 
@@ -276,14 +283,15 @@ void run_mha_fwd_impl(sycl::queue& queue, FLASH_FWD_params& params) {
       TileShapePV_,              \
       TileShapeOutPut_,          \
       SubgroupLayoutQK_,         \
-      PipelineStages_>(queue, params)
+      PipelineStages_,           \
+      IS_VARLEN>(queue, params)
 
 // Per-headdim dispatch functions.
 // The template functions below are implementation details used by the
 // per-headdim .cpp files. The non-template entry points declared after
 // them are what mha_fwd.cpp calls for runtime headdim dispatch.
 
-template <typename T, bool IS_CAUSAL>
+template <typename T, bool IS_CAUSAL, bool IS_VARLEN>
 void run_mha_fwd_hdim32(sycl::queue& queue, FLASH_FWD_params& params) {
   constexpr int PipelineStages = 2;
   using TileShapeQK = Shape<_128, _64, _32>;
@@ -298,7 +306,7 @@ void run_mha_fwd_hdim32(sycl::queue& queue, FLASH_FWD_params& params) {
       PipelineStages);
 }
 
-template <typename T, bool IS_CAUSAL>
+template <typename T, bool IS_CAUSAL, bool IS_VARLEN>
 void run_mha_fwd_hdim64(sycl::queue& queue, FLASH_FWD_params& params) {
   constexpr int PipelineStages = 2;
   int64_t batch_size = params.batch_size;
@@ -329,7 +337,7 @@ void run_mha_fwd_hdim64(sycl::queue& queue, FLASH_FWD_params& params) {
   }
 }
 
-template <typename T, bool IS_CAUSAL>
+template <typename T, bool IS_CAUSAL, bool IS_VARLEN>
 void run_mha_fwd_hdim96(sycl::queue& queue, FLASH_FWD_params& params) {
   constexpr int PipelineStages = 2;
   using TileShapeQK = Shape<_128, _64, _32>;
@@ -344,7 +352,7 @@ void run_mha_fwd_hdim96(sycl::queue& queue, FLASH_FWD_params& params) {
       PipelineStages);
 }
 
-template <typename T, bool IS_CAUSAL>
+template <typename T, bool IS_CAUSAL, bool IS_VARLEN>
 void run_mha_fwd_hdim128(sycl::queue& queue, FLASH_FWD_params& params) {
   constexpr int PipelineStages = 2;
   using TileShapeQK = Shape<_128, _32, _32>;
@@ -359,7 +367,7 @@ void run_mha_fwd_hdim128(sycl::queue& queue, FLASH_FWD_params& params) {
       PipelineStages);
 }
 
-template <typename T, bool IS_CAUSAL>
+template <typename T, bool IS_CAUSAL, bool IS_VARLEN>
 void run_mha_fwd_hdim192(sycl::queue& queue, FLASH_FWD_params& params) {
   constexpr int PipelineStages = 2;
   using TileShapeQK = Shape<_256, _64, _32>;
@@ -374,7 +382,7 @@ void run_mha_fwd_hdim192(sycl::queue& queue, FLASH_FWD_params& params) {
       PipelineStages);
 }
 
-template <typename T, bool IS_CAUSAL>
+template <typename T, bool IS_CAUSAL, bool IS_VARLEN>
 void run_mha_fwd_hdim256(sycl::queue& queue, FLASH_FWD_params& params) {
   constexpr int PipelineStages = 2;
   using TileShapeQK = Shape<_256, _64, _32>;
@@ -391,7 +399,7 @@ void run_mha_fwd_hdim256(sycl::queue& queue, FLASH_FWD_params& params) {
 
 // Primary template declaration -- explicit specializations are provided by
 // the per-headdim compilation units (mha_fwd_hdim*.cpp).
-template <typename T, int Headdim, bool IS_CAUSAL>
+template <typename T, int Headdim, bool IS_CAUSAL, bool IS_VARLEN>
 void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params);
 
 #undef run_mha_fwd_specialized
