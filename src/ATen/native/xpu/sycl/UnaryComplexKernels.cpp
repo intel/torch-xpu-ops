@@ -135,7 +135,6 @@ struct AngleWrapper {
     if (at::_isnan(v)) {
       return v;
     }
-    // signbit, not `v < 0`, so that angle(-0.0) == pi (matches CPU/CUDA).
     using opmath_t = at::opmath_type<scalar_t>;
     return sycl::signbit(opmath_t{v})
         ? static_cast<scalar_t>(std::numbers::pi_v<double>)
