@@ -233,38 +233,38 @@ TestTorchDeviceType.test_addcmul_cuda_errors_with_cpu_scalars = (
 
 # https://github.com/intel/torch-xpu-ops/issues/5661 (empty inputs crash on XPU)
 def test_split_with_sizes_copy_out(self, device):
-        shape = (30, 40, 50)
+    shape = (30, 40, 50)
+    x = torch.rand(*shape, device=device)
+    cases = [
+        (0, [3, 7, 8, 12]),
+        (1, [3, 7, 10, 20]),
+        (-2, [3, 7, 10, 20]),
+        (2, [3, 7, 10, 12, 18]),
+        (-1, [3, 7, 10, 12, 18]),
+        (2, [3, 7, 10, 0, 30]),
+    ]
+    for dim, split_sizes in cases:
+        views = x.split_with_sizes(split_sizes, dim=dim)
+        expects = [v.clone() for v in views]
+        out = [torch.zeros_like(v) for v in views]
+        for expect, t in zip(expects, out):
+            if expect.numel() != 0:
+                self.assertFalse(expect.eq(t).all().item())
+
+        torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
+        for expect, t in zip(expects, out):
+            self.assertTrue(expect.eq(t).all().item())
+
+    # Empty inputs, including all-empty splits, copy nothing
+    for shape, dim, split_sizes in (
+        ((30, 0, 50), 1, [0, 0]),
+        ((0, 40), 1, [10, 30]),
+    ):
         x = torch.rand(*shape, device=device)
-        cases = [
-            (0, [3, 7, 8, 12]),
-            (1, [3, 7, 10, 20]),
-            (-2, [3, 7, 10, 20]),
-            (2, [3, 7, 10, 12, 18]),
-            (-1, [3, 7, 10, 12, 18]),
-            (2, [3, 7, 10, 0, 30]),
-        ]
-        for dim, split_sizes in cases:
-            views = x.split_with_sizes(split_sizes, dim=dim)
-            expects = [v.clone() for v in views]
-            out = [torch.zeros_like(v) for v in views]
-            for expect, t in zip(expects, out):
-                if expect.numel() != 0:
-                    self.assertFalse(expect.eq(t).all().item())
-
-            torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
-            for expect, t in zip(expects, out):
-                self.assertTrue(expect.eq(t).all().item())
-
-        # Empty inputs, including all-empty splits, copy nothing
-        for shape, dim, split_sizes in (
-            ((30, 0, 50), 1, [0, 0]),
-            ((0, 40), 1, [10, 30]),
-        ):
-            x = torch.rand(*shape, device=device)
-            views = x.split_with_sizes(split_sizes, dim=dim)
-            out = [torch.empty_like(v) for v in views]
-            torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
-            self.assertEqual([t.shape for t in out], [v.shape for v in views])
+        views = x.split_with_sizes(split_sizes, dim=dim)
+        out = [torch.empty_like(v) for v in views]
+        torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
+        self.assertEqual([t.shape for t in out], [v.shape for v in views])
 
 
 TestTorchDeviceType.test_split_with_sizes_copy_out = _test_split_with_sizes_copy_out
