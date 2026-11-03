@@ -95,6 +95,34 @@ class TestLayerNorm(TestCase):
         rtol = 1e-3 if dtype == torch.float16 else 1e-2
         self.assertEqual(actual, baseline, atol=atol, rtol=rtol)
 
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @parametrize("shape", [(256, 16, 24), (64, 49, 64), (16, 512, 128)])
+    def test_layer_norm_small_reduce_dim_accuracy(self, shape, dtype):
+        generator = torch.Generator().manual_seed(0)
+        normalized_shape = (shape[-1],)
+        x = torch.randn(shape, generator=generator)
+        weight = torch.randn(normalized_shape, generator=generator)
+        bias = torch.randn(normalized_shape, generator=generator)
+
+        baseline = nn.functional.layer_norm(
+            x.to(dtype).float(),
+            normalized_shape,
+            weight.to(dtype).float(),
+            bias.to(dtype).float(),
+            eps=1e-5,
+        )
+        actual = nn.functional.layer_norm(
+            x.to(device=xpu_device, dtype=dtype),
+            normalized_shape,
+            weight.to(device=xpu_device, dtype=dtype),
+            bias.to(device=xpu_device, dtype=dtype),
+            eps=1e-5,
+        )
+
+        atol = 1e-5
+        rtol = {torch.float32: 1e-5, torch.float16: 1e-3, torch.bfloat16: 1e-2}[dtype]
+        self.assertEqual(actual.float().cpu(), baseline, atol=atol, rtol=rtol)
+
 
 if __name__ == "__main__":
     run_tests()
