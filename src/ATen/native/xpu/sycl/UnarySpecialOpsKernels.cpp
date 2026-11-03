@@ -38,18 +38,16 @@ struct SigmoidFunctor {
     const auto a_ = static_cast<opmath_t>(a);
     if constexpr (c10::is_complex<opmath_t>::value) {
       using value_t = typename opmath_t::value_type;
-      if constexpr (
-          std::is_same_v<value_t, float> || std::is_same_v<value_t, double>) {
-        // std::complex::exp on Windows/MSVC returns 0 instead of nan for
-        // exp(finite + inf*i) if the real part exceeds some threshold;
-        // the SYCL complex extension avoids this.
-        namespace syclex = sycl::ext::oneapi::experimental;
-        const syclex::complex<value_t> z(a_.real(), a_.imag());
-        const auto sig = value_t(1) / (value_t(1) + syclex::exp(-z));
-        return opmath_t(sig.real(), sig.imag());
-      } else {
-        return one / (one + std::exp(-a_));
-      }
+      static_assert(
+          std::is_same_v<value_t, float> || std::is_same_v<value_t, double>,
+          "Complex sigmoid requires float or double opmath type");
+      // std::complex::exp on Windows/MSVC returns 0 instead of nan for
+      // exp(finite + inf*i) if the real part exceeds some threshold;
+      // the SYCL complex extension avoids this.
+      namespace syclex = sycl::ext::oneapi::experimental;
+      const syclex::complex<value_t> z(a_.real(), a_.imag());
+      const auto sig = value_t(1) / (value_t(1) + syclex::exp(-z));
+      return opmath_t(sig.real(), sig.imag());
     } else {
       return one / (one + sycl::exp(-a_));
     }
