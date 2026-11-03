@@ -232,7 +232,7 @@ TestTorchDeviceType.test_addcmul_cuda_errors_with_cpu_scalars = (
 
 
 # https://github.com/intel/torch-xpu-ops/issues/5661 (empty inputs crash on XPU)
-def test_split_with_sizes_copy_out(self, device):
+def _test_split_with_sizes_copy_out(self, device):
     shape = (30, 40, 50)
     x = torch.rand(*shape, device=device)
     cases = [
@@ -265,7 +265,6 @@ def test_split_with_sizes_copy_out(self, device):
         out = [torch.empty_like(v) for v in views]
         torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
         self.assertEqual([t.shape for t in out], [v.shape for v in views])
-
 
 TestTorchDeviceType.test_split_with_sizes_copy_out = _test_split_with_sizes_copy_out
 
