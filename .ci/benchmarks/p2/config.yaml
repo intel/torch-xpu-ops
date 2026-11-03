@@ -1,8 +1,8 @@
 # Priority p2 (weekly, legacy coverage). Cases = backends x scenario x (mode, dtype) x models.
 # Total cases: 2230
 # Each group sets mode and dtype (string or list); a group without mode runs in both modes.
-group:
-  all:
+configs:
+  group1:
     mode:
       - training
       - inference
@@ -12,16 +12,16 @@ group:
       - bfloat16
       - amp_fp16
       - amp_bf16
+    backends:
+      - default
+    suite:
+      - huggingface
+      - timm_models
+      - torchbench
+    scenario:
+      - accuracy
+      - performance
 
-backends:
-  - default
-suite:
-  - huggingface
-  - timm_models
-  - torchbench
-scenario:
-  - accuracy
-  - performance
 # Model lists per suite and mode. Total models: 223.
 models:
   torchbench:

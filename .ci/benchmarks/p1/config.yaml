@@ -1,33 +1,44 @@
 # Priority p1 (nightly). Cases = backends x scenario x (mode, dtype) x models.
 # Total cases: 1552
 # Each group sets mode and dtype (string or list); a group without mode runs in both modes.
-group:
-  training:
+configs:
+  group1:
     mode: training
     dtype:
       - float32
       - bfloat16
       - float16
       - amp_bf16
-  inference:
+    backends:
+      - default
+      # - dynamic
+      # - cpp_wrapper
+    suite:
+      - huggingface
+      - timm_models
+      - torchbench
+    scenario:
+      - accuracy
+      - performance
+  group2:
     mode: inference
     dtype:
       - float32
       - float16
       - amp_fp16
       - amp_bf16
+    backends:
+      - default
+      # - dynamic
+      # - cpp_wrapper
+    suite:
+      - huggingface
+      - timm_models
+      - torchbench
+    scenario:
+      - accuracy
+      - performance
 
-backends:
-  - default
-  # - dynamic
-  # - cpp_wrapper
-suite:
-  - huggingface
-  - timm_models
-  - torchbench
-scenario:
-  - accuracy
-  - performance
 # Model lists per suite and mode. Total models: 194.
 models:
   torchbench:

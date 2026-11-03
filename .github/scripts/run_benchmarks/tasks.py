@@ -228,7 +228,7 @@ def _as_list(value, default: list) -> list:
 
 
 def _resolve_group(group: dict | None, cfg: dict) -> dict:
-    """Resolve one ``group`` entry; omitted keys inherit the top level, and omitted mode means both modes."""
+    """Resolve one ``configs`` entry; omitted keys inherit the top level, and omitted mode means both modes."""
     group = group or {}
     return {
         "suite": _as_list(group.get("suite"), _as_list(cfg.get("suite"), [])),
@@ -272,7 +272,7 @@ def load_tasks_from_scope(
 
     planned = [
         (group, list(_combos(group, cfg, path, dts, modes)))
-        for group in (_resolve_group(g, cfg) for g in (cfg.get("group") or {}).values())
+        for group in (_resolve_group(g, cfg) for g in (cfg.get("configs") or {}).values())
     ]
     covered = {(suite, mode, dt) for _, combos in planned for suite, mode, dt, _ in combos}
     baseline = _resolve_group(None, cfg)

@@ -1,28 +1,42 @@
 # Priority p0 (CI gate). Cases = backends x scenario x (mode, dtype) x models.
 # Total cases: 388
 # Each group sets mode and dtype (string or list); a group without mode runs in both modes.
-group:
-  training:
+configs:
+  group1:
     mode: training
     dtype: amp_fp16
-  inference:
+    backends:
+      - default
+      # - dynamic
+      # - cpp_wrapper
+      # - freezing
+      # - aot_inductor
+      # - inductor_deterministic_perf
+    suite:
+      - huggingface
+      - timm_models
+      - torchbench
+    scenario:
+      - accuracy
+      - performance
+  group2:
     mode: inference
     dtype: bfloat16
+    backends:
+      - default
+      # - dynamic
+      # - cpp_wrapper
+      # - freezing
+      # - aot_inductor
+      # - inductor_deterministic_perf
+    suite:
+      - huggingface
+      - timm_models
+      - torchbench
+    scenario:
+      - accuracy
+      - performance
 
-backends:
-  - default
-  # - dynamic
-  # - cpp_wrapper
-  # - freezing
-  # - aot_inductor
-  # - inductor_deterministic_perf
-suite:
-  - huggingface
-  - timm_models
-  - torchbench
-scenario:
-  - accuracy
-  - performance
 # Model lists per suite and mode. Total models: 194.
 models:
   torchbench:
