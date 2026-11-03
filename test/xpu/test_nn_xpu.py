@@ -6586,7 +6586,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 running_var=running_var,
             )
 
-    @onlyOn(["xpu"])
+    @unittest.skipIf(device_type != "xpu" or not TEST_XPU, "XPU not available")
     def test_batch_norm_backward_reduce_dispatch_boundaries(self):
         def reference(input, grad_output, weight):
             input = input.float()
