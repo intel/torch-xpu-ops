@@ -38,7 +38,7 @@ It is copied into the PyTorch checkout as `run_e2e` and executed from there (`py
 
 ### Task sources
 
-- **Tier YAML** (`.yaml`/`.yml`): a file such as [p0/config.yaml](../../../.ci/benchmarks/p0/config.yaml) declares its own `backends`, `group`, `suite`, `scenario`, and `models` (per suite and mode). Each `group` entry sets `mode` (string or list) and `dtype` (string or list); a group without `mode` runs in both modes. Without `group`, top-level `mode` and `dtype` form one implicit group. CLI `--suite/--dt/--mode/--scenario` act as filters on top.
+- **Tier YAML** (`.yaml`/`.yml`): a file such as [p0/config.yaml](../../../.ci/benchmarks/p0/config.yaml) declares top-level `backends`, `suite`, `scenario`, and `models` (per suite and mode). Each `group` entry (any name; `null` or `{}` is allowed) sets `mode` and `dtype` (string or list) and may override `backends`, `suite`, `scenario`, and `models` (same shape as the top-level `models`); omitted keys inherit from the top level, and if no mode is set anywhere, both modes are used. Combinations (suite, mode, dtype) not claimed by any group come from the top-level config. CLI `--suite/--dt/--mode/--scenario` act as filters on top.
 - **CSV**: header-named columns (`suite, dtype, mode, model[, scenario, backend, quant]`), so output summary CSVs work as-is. Missing `scenario` is derived from `result` (numeric means performance).
 - **TXT**: `suite dtype mode model result` per row, separated by commas or spaces; header row optional. Numeric `result` means performance, otherwise accuracy.
 - The `backend` column wins when present; otherwise `--backend` applies.

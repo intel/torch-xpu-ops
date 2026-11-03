@@ -86,7 +86,7 @@ def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str 
                     models_by_suite = (yaml.safe_load(f) or {}).get("models") or {}
                 if mode not in models_by_suite.get(suite, {}):
                     raise ValueError(f"No '{suite} {mode}' models in {path}")
-                models.extend(str(m).strip() for m in models_by_suite[suite][mode])
+                models.extend(str(m).strip() for m in models_by_suite[suite][mode] or [] if m is not None)
             models = list(dict.fromkeys(models))
         elif os.path.isfile(model_only):
             import pandas as pd
@@ -116,10 +116,19 @@ def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str 
                 and parts[0].strip()
             ]
 
+    return _drop_skipped(suite, models)
+
+
+def _drop_skipped(suite: str, models: list[str]) -> list[str]:
+    return list(_drop_skipped_cached(suite, tuple(models)))
+
+
+@cache
+def _drop_skipped_cached(suite: str, models: tuple[str, ...]) -> tuple[str, ...]:
     skipped = get_skipped_models(suite)
     if dropped := sorted(set(models) & skipped):
         log(f"Skipping {suite} models disabled in {suite}.yaml: {', '.join(dropped)}", level="WARN")
-    return [model for model in models if model not in skipped]
+    return tuple(model for model in models if model not in skipped)
 
 
 def _is_numeric(s: str) -> bool:
@@ -212,16 +221,40 @@ def _pt2e_tasks(dt: str, scenario: str, model: str) -> list[TestTask]:
     return [TestTask("pt2e", dt, "inference", scenario, model)]
 
 
-def _expand_groups(groups: dict) -> list[tuple[str, str]]:
-    """Expand ``group`` entries into (mode, dtype) pairs; a group without ``mode`` runs in both modes."""
-    def as_list(value) -> list[str]:
-        return [] if value is None else [value] if isinstance(value, str) else list(value)
+def _as_list(value, default: list) -> list:
+    if value is None:
+        return list(default)
+    return [value] if isinstance(value, str) else list(value)
 
-    pairs: list[tuple[str, str]] = []
-    for group in groups.values():
-        modes = as_list(group.get("mode")) or ["training", "inference"]
-        pairs.extend((mode, dt) for mode in modes for dt in as_list(group.get("dtype")))
-    return pairs
+
+def _resolve_group(group: dict | None, cfg: dict) -> dict:
+    """Resolve one ``group`` entry; omitted keys inherit the top level, and omitted mode means both modes."""
+    group = group or {}
+    return {
+        "suite": _as_list(group.get("suite"), _as_list(cfg.get("suite"), [])),
+        "mode": _as_list(group.get("mode"), _as_list(cfg.get("mode"), ["training", "inference"])),
+        "dtype": _as_list(group.get("dtype"), _as_list(cfg.get("dtype"), [])),
+        "scenario": _as_list(group.get("scenario"), _as_list(cfg.get("scenario"), [])),
+        "backends": _as_list(group.get("backends"), _as_list(cfg.get("backends"), ["default"])),
+        "models": group.get("models"),  # None = use the top-level models
+    }
+
+
+def _combos(group: dict, cfg: dict, path: str, dts, modes):
+    """Yield (suite, mode, dt, models) for every combination a group selects."""
+    top_models = cfg.get("models") or {}
+    for suite in group["suite"] or list(top_models if group["models"] is None else group["models"]):
+        models_by_mode = (top_models if group["models"] is None else group["models"]).get(suite) or {}
+        for mode in group["mode"]:
+            if (modes and mode not in modes) or mode not in models_by_mode:
+                continue
+            if group["models"] is None:
+                models = get_model_list(suite, mode, path)
+            else:
+                models = _drop_skipped(suite, [str(m).strip() for m in models_by_mode[mode] or [] if m is not None])
+            for dt in group["dtype"]:
+                if not dts or dt in dts:
+                    yield suite, mode, dt, models
 
 
 def load_tasks_from_scope(
@@ -231,38 +264,44 @@ def load_tasks_from_scope(
     modes: set[str] | None = None,
     scenarios: set[str] | None = None,
 ) -> list[TestTask]:
-    """Build tasks from a tier config.yaml using its own backends, groups, scenarios and models."""
+    """Build tasks from a tier config.yaml; combinations not claimed by any group come from the top level."""
     import yaml
 
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
-    backends = cfg.get("backends") or ["default"]
-    groups = cfg.get("group") or {"default": {"mode": cfg.get("mode"), "dtype": cfg.get("dtype")}}
-    group_pairs = _expand_groups(groups)
-    scenario_list = [s for s in cfg.get("scenario") or [] if not scenarios or s in scenarios]
 
-    suite_list = cfg.get("suite") or []
+    planned = [
+        (group, list(_combos(group, cfg, path, dts, modes)))
+        for group in (_resolve_group(g, cfg) for g in (cfg.get("group") or {}).values())
+    ]
+    covered = {(suite, mode, dt) for _, combos in planned for suite, mode, dt, _ in combos}
+    baseline = _resolve_group(None, cfg)
+    planned.append((baseline, [c for c in _combos(baseline, cfg, path, dts, modes) if c[:3] not in covered]))
 
     tasks: list[TestTask] = []
-    for suite, by_mode in (cfg.get("models") or {}).items():
-        if suite_list and suite not in suite_list:
-            continue
-        if suites and suite not in suites:
-            continue
-        for mode in (by_mode or {}):
-            if modes and mode not in modes:
+    for group, combos in planned:
+        for suite, mode, dt, models in combos:
+            if suites and suite not in suites:
                 continue
-            models = dict.fromkeys(get_model_list(suite, mode, path))
-            dtype_list = list(dict.fromkeys(
-                dt for m, dt in group_pairs if m == mode and (not dts or dt in dts)
-            ))
-            for scenario, dt, model in product(scenario_list, dtype_list, models):
+            scenario_list = [s for s in group["scenario"] if not scenarios or s in scenarios]
+            for scenario, model in product(scenario_list, dict.fromkeys(models)):
                 if suite == "pt2e":
                     # pt2e has no backend axis; generating it per backend would duplicate runs.
                     tasks.extend(_pt2e_tasks(dt, scenario, model))
                 else:
-                    tasks.extend(TestTask(suite, dt, mode, scenario, model, backend=backend) for backend in backends)
-    return tasks
+                    tasks.extend(
+                        TestTask(suite, dt, mode, scenario, model, backend=backend)
+                        for backend in group["backends"]
+                    )
+
+    seen: set[tuple] = set()
+    unique: list[TestTask] = []
+    for t in tasks:
+        key = (t.suite, t.dt, t.mode, t.scenario, t.model, t.quant, t.backend)
+        if key not in seen:
+            seen.add(key)
+            unique.append(t)
+    return unique
 
 
 def generate_tasks(
