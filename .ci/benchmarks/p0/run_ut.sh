@@ -15,165 +15,12 @@ XML_OUTPUT_DIR="${XML_OUTPUT_DIR:-./test-reports}"        # where JUnit XML file
 XML_PREFIX="${XML_PREFIX:-op_p0_with_}"                   # prefix for XML filenames
 mkdir -p "$XML_OUTPUT_DIR"
 
-# Known failures tracked by issues, plus the current AOTInductor package failures.
-PYTEST_DESELECTS=(
-    "test/distributed/fsdp/test_fsdp_misc.py::TestFSDPMiscWorldSize1::test_training_device_mismatch_errors"
-    "test/inductor/test_aot_inductor.py::AOTInductorTestDualWrapper::test_update_user_managed_buffer_xpu"
-    "test/inductor/test_aot_inductor.py::AOTInductorTestABICompatibleGpu::test_update_user_managed_buffer_xpu"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_cpu::test_compile_with_exporter"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_cpu::test_compile_with_exporter_weights"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_xpu::test_compile_with_exporter"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_xpu::test_compile_with_exporter_weights"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_cpu::test_compile_after_package"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_cpu::test_compile_after_package_static"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_cpu::test_compile_standalone_cos"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_xpu::test_compile_after_package_static"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_xpu::test_compile_standalone_cos"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_xpu::test_compile_after_package"
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackageCpp_xpu::test_compile_after_package_multi_arch"
-    "test/inductor/test_torchinductor.py::GPUTests::test_topk_xpu"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoXPU::test_comprehensive_combinations_xpu_float16"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoXPU::test_comprehensive_nn_functional_max_pool3d_xpu_float32"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_float32"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_int32"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_int32"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_float16"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_float16"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_float32"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_float64"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoXPU::test_comprehensive_nn_functional_max_pool3d_xpu_float64"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_float64"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_int64"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_int64"
-    "test/profiler/test_profiler_tree.py::TestProfilerTree::test_profiler_experimental_tree_with_stack_and_torch_dispatch"
-    "test/profiler/test_profiler_tree.py::TestProfilerTree::test_profiler_experimental_tree_with_stack_and_torch_function"
-    "test/profiler/test_profiler_tree.py::TestProfilerTree::test_profiler_experimental_tree_with_stack_and_modules"
-    "test/xpu/distributed/test_c10d_xccl.py::ProcessGroupXCCLTest::test_nan_assert_float64"
-    "test/xpu/distributed/test_c10d_xccl.py::ProcessGroupXCCLTest::test_nan_assert_float16"
-    "test/xpu/distributed/test_c10d_xccl.py::ProcessGroupXCCLTest::test_nan_assert_float8_e5m2"
-    "test/xpu/distributed/test_c10d_xccl.py::ProcessGroupXCCLTest::test_nan_assert_float32"
-    "test/xpu/distributed/test_c10d_xccl.py::ProcessGroupXCCLTest::test_nan_assert_bfloat16"
-    "test/xpu/distributed/test_c10d_xccl.py::ProcessGroupXCCLTest::test_nan_assert_float8_e4m3fn"
-    "test/xpu/test_ops_xpu.py::TestFakeTensorXPU::test_fake_crossref_backward_amp_torch_ops_aten__efficient_attention_forward_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_ormqr_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_noncontiguous_samples_histogramdd_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_view_replay_histogramdd_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_compare_cpu_topk_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_conv1d_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_conv2d_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_conv3d_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_conv_transpose1d_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_conv_transpose2d_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_conv_transpose3d_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_view_replay_torch_ops_aten__efficient_attention_forward_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_torch_ops_aten__efficient_attention_forward_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_torch_ops_aten__flash_attention_forward_xpu_float16"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_variant_consistency_eager_histogramdd_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_triangular_solve_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_torch_ops_aten__efficient_attention_forward_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestMathBitsXPU::test_neg_view_histogramdd_xpu_float64"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_warning_histogramdd_xpu"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_variant_consistency_eager_torch_ops_aten__efficient_attention_forward_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_warning_torch_ops_aten__efficient_attention_forward_xpu"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_warning_torch_ops_aten__flash_attention_forward_xpu"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_python_ref__refs_true_divide_xpu_complex32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_cholesky_inverse_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_geqrf_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_histogramdd_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestFakeTensorXPU::test_fake_crossref_backward_no_amp_torch_ops_aten__efficient_attention_forward_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_operator_histogramdd_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_dtypes_histogramdd_xpu"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_dtypes_torch_ops_aten__efficient_attention_forward_xpu"
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_dtypes_torch_ops_aten__flash_attention_forward_xpu"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_state_dict_with_cuda_params_Muon_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_hook_skips_existing_state_amsgrad_True_Adam_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_numerics_AdamW_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_numerics_Adam_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_False_AdamW_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_False_Adam_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_True_AdamW_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_True_Adam_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_hook_skips_existing_state_amsgrad_False_AdamW_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_hook_skips_existing_state_amsgrad_False_Adam_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_fused_mixed_precision_hook_skips_existing_state_amsgrad_True_AdamW_xpu_float32"
-    "test/xpu/test_optim_xpu.py::TestOptimRenewedXPU::test_state_dict_cross_device_Muon_xpu_float32"
-    "test/xpu/test_shape_ops_xpu.py::TestShapeOpsXPU::test_flip_xpu_float32"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_tan_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_tanh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal_acosh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal_asin_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal_asinh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal_asinh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal_round_decimals_3_xpu_bfloat16"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal_tan_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal_tanh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_large__refs_acosh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_large__refs_asinh_xpu_complex128"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_large__refs_asinh_xpu_complex32"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_large__refs_asinh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal__refs_asinh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal_polygamma_polygamma_n_1_xpu_float16"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal_polygamma_polygamma_n_2_xpu_float16"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal_polygamma_polygamma_n_3_xpu_float16"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal_polygamma_polygamma_n_4_xpu_float16"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_acos_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_acosh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_asin_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal_round_decimals_3_xpu_bfloat16"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_asinh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_large_acosh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_large_asinh_xpu_complex128"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_large_asinh_xpu_complex32"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_large_asinh_xpu_complex64"
-    "test/xpu/test_unary_ufuncs_xpu.py::TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64"
-)
-
-# -------------------- Device detection --------------------
-# Some known failures are specific to a GPU family (e.g. BMG / Arc Pro B60).
-# Detect the online XPU device family so device-scoped deselect lists can be
-# applied only on the matching hardware (pvc / bmg).
-detect_xpu_device_family() {
-    local name=""
-    name=$(python -c "import torch; print(torch.xpu.get_device_name(0))" 2>/dev/null) || name=""
-    if [ -z "$name" ]; then
-        name=$(clinfo 2>/dev/null | grep -m1 -i "Device Name" | sed "s/.*Device Name[[:space:]]*//")
-    fi
-    case "$name" in
-        *Arc*|*B60*|*Battlemage*) echo "bmg" ;;
-        *"Data Center GPU Max"*|*PVC*) echo "pvc" ;;
-        *) echo "unknown" ;;
-    esac
-}
-XPU_DEVICE_FAMILY="${XPU_DEVICE_FAMILY:-$(detect_xpu_device_family)}"
-echo "Detected XPU device family: ${XPU_DEVICE_FAMILY}"
-
-# Known failures that only reproduce on BMG (Arc Pro B60). Applied in addition
-# to PYTEST_DESELECTS when XPU_DEVICE_FAMILY == bmg. Observed on the 2.15
-# test_wheel P0 run (actions/runs/40892572474).
-PYTEST_DESELECTS_BMG=(
-    # interpolate bicubic fp16 numeric mismatch (tracked: issue #5860)
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoXPU::test_comprehensive_nn_functional_interpolate_bicubic_xpu_float16"
-    # grid_sample bicubic with 5-D input not implemented on XPU (tracked: issue #5452, feature #5542)
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_grid_sample_xpu_float32"
-    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_forward_ad_nn_functional_grid_sample_xpu_float32"
-    # inductor nextafter noncontiguous numeric mismatch (tracking issue pending)
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorNextafterXPU::test_nextafter_noncontiguous_False_xpu_float32"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorNextafterXPU::test_nextafter_noncontiguous_False_xpu_float64"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorNextafterXPU::test_nextafter_noncontiguous_True_xpu_float32"
-    "test/inductor/test_torchinductor_opinfo.py::TestInductorNextafterXPU::test_nextafter_noncontiguous_True_xpu_float64"
-    # histc out= unsafe-cast expected RuntimeError not raised (tracking issue pending)
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_histc_xpu_float32"
-    # linalg.tensorinv unexpected success (tracking issue pending)
-    "test/xpu/test_ops_xpu.py::TestCommonXPU::test_numpy_ref_linalg_tensorinv_xpu_float64"
-    # mkldnn conv+binary broadcast accuracy, CPU (tracking issue pending)
-    "test/inductor/test_mkldnn_pattern_matcher.py::TestPatternMatcherGenericCPU::test_conv2d_binary_broadcast_shapes_cpu"
-    "test/inductor/test_mkldnn_pattern_matcher.py::TestPatternMatcherGenericCPU::test_conv3d_binary_broadcast_shapes_cpu"
-    # aot_inductor_package missing pytree registration error (tracking issue pending)
-    "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackage_cpu::test_custom_output_type_missing_pytree_registration_error"
-)
+# Keep skip policy separate from test execution; resolve it independently of cwd.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+if ! source "$SCRIPT_DIR/ut_skips.sh"; then
+    echo "ERROR: Could not load P0 skip list: $SCRIPT_DIR/ut_skips.sh" >&2
+    exit 1
+fi
 
 # -------------------- Helper Functions --------------------
 # Run pytest with a unique JUnit XML filename
@@ -182,23 +29,23 @@ run_pytest() {
     local test_file="$1"
     shift
     local extra_args=("$@")
-    local deselect test_name xml_file
+    local deselect test_name xml_file node_prefix
+    node_prefix=$(realpath --relative-to="$PYTORCH_ROOT_DIR" "$PWD") || return 1
+    if [[ "$node_prefix" == "." ]]; then
+        node_prefix=""
+    else
+        node_prefix+="/"
+    fi
     for deselect in "${PYTEST_DESELECTS[@]}"; do
         if [[ "$deselect" == "$test_file"::* ]]; then
-            extra_args+=("--deselect=$deselect")
+            extra_args+=("--deselect=${node_prefix}${deselect}")
         fi
     done
-    if [[ "${XPU_DEVICE_FAMILY:-}" == "bmg" ]]; then
-        for deselect in "${PYTEST_DESELECTS_BMG[@]}"; do
-            if [[ "$deselect" == "$test_file"::* ]]; then
-                extra_args+=("--deselect=$deselect")
-            fi
-        done
-    fi
     test_name=$(basename "$test_file" .py)
     xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_$(date +%s).xml"
     echo "Running pytest $test_file -> $xml_file"
-    pytest "$test_file" --junit-xml="$xml_file" "${extra_args[@]}"
+    # A fixed root keeps node IDs consistent for tests in the nested XPU repo.
+    pytest "$test_file" --junit-xml="$xml_file" "${extra_args[@]}" --rootdir="$PYTORCH_ROOT_DIR"
 }
 
 # -------------------- Test Groups --------------------
@@ -290,6 +137,7 @@ if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
     echo "Usage: $0 [group1 group2 ...]"
     echo "Available groups: inductor, non-inductor, profiling, distributed"
     echo "If no groups given, all groups are run."
+    echo "All groups use the platform-independent skip list: $SCRIPT_DIR/ut_skips.sh"
     exit 0
 fi
 
