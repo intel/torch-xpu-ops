@@ -266,6 +266,7 @@ def _test_split_with_sizes_copy_out(self, device):
         torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
         self.assertEqual([t.shape for t in out], [v.shape for v in views])
 
+
 TestTorchDeviceType.test_split_with_sizes_copy_out = _test_split_with_sizes_copy_out
 
 # https://github.com/intel/torch-xpu-ops/issues/5309 (passes when run from test/xpu)
