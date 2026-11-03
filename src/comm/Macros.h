@@ -66,3 +66,11 @@
 #define DISABLE_RETURN_TYPE_WARNING_BEGIN
 #define DISABLE_RETURN_TYPE_WARNING_END
 #endif
+
+// Device assert with a message kept out of the asserted condition. A string
+// literal in the condition is tested against null at run time, and IGC for
+// Gen12 GPUs can emit relocations against the null symbol for such strings,
+// so valid inputs take the assert path and fault. Until this is fixed in the
+// compiler the message is not emitted into device code:
+// https://github.com/pytorch/pytorch/issues/201672
+#define XPU_KERNEL_ASSERT_MSG(cond, msg) SYCL_KERNEL_ASSERT(cond)
