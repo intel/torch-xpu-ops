@@ -63,8 +63,8 @@ The E2E job is capped at 3600 minutes (`timeout-minutes` in `_linux_e2e.yml`). T
 
 ## Config structure
 
+- `group`: named entries, each with `mode` (string or list) and `dtype` (string or list). Mode and dtype are defined only here. A group without `mode` runs in both modes.
 - `models`: nested as `suite -> mode -> [model names]`. Modes are `inference` and `training`.
-- A precision entry without `mode` runs in both modes. An entry with `mode` runs only in that mode.
 
 ## Case count
 

@@ -1,12 +1,19 @@
-# Test scope for priority p2. A precision without mode runs in both training and inference.
+# Priority p2 (weekly, legacy coverage). Cases = backends x scenario x (mode, dtype) x models.
+# Each group sets mode and dtype (string or list); a group without mode runs in both modes.
+group:
+  all:
+    mode:
+      - training
+      - inference
+    dtype:
+      - float32
+      - float16
+      - bfloat16
+      - amp_fp16
+      - amp_bf16
+
 backends:
   - default
-precision:
-  - dtype: float32
-  - dtype: float16
-  - dtype: bfloat16
-  - dtype: amp_fp16
-  - dtype: amp_bf16
 suite:
   - huggingface
   - timm_models
@@ -14,7 +21,7 @@ suite:
 scenario:
   - accuracy
   - performance
-# Model lists per suite and mode. Total cases: 223.
+# Model lists per suite and mode. Total models: 223.
 models:
   torchbench:
     inference:  # 44 models

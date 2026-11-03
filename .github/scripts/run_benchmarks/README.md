@@ -38,8 +38,10 @@ It is copied into the PyTorch checkout as `run_e2e` and executed from there (`py
 
 ### Task sources
 
-- **Tier YAML** (`.yaml`/`.yml`): a file such as [p0/config.yaml](../../../.ci/benchmarks/p0/config.yaml) declares its own `backends`, `precision`, `suite`, `scenario`, and `models` (per suite and mode). Each precision without a `mode` runs in both modes. CLI `--suite/--dt/--mode/--scenario` act as filters on top.
-- **CSV/TXT** rows: either the legacy 5-column format (`suite, dtype, mode, model, result`) or an output CSV with 8+ columns (`dev, backend, suite, dtype, mode, name, scenario, batch_size, elapsed, result[, quant]`). The backend comes from `--backend`.
+- **Tier YAML** (`.yaml`/`.yml`): a file such as [p0/config.yaml](../../../.ci/benchmarks/p0/config.yaml) declares its own `backends`, `group`, `suite`, `scenario`, and `models` (per suite and mode). Each `group` entry sets `mode` (string or list) and `dtype` (string or list); a group without `mode` runs in both modes. Without `group`, top-level `mode` and `dtype` form one implicit group. CLI `--suite/--dt/--mode/--scenario` act as filters on top.
+- **CSV**: header-named columns (`suite, dtype, mode, model[, scenario, backend, quant]`), so output summary CSVs work as-is. Missing `scenario` is derived from `result` (numeric means performance).
+- **TXT**: `suite dtype mode model result` per row, separated by commas or spaces; header row optional. Numeric `result` means performance, otherwise accuracy.
+- The `backend` column wins when present; otherwise `--backend` applies.
 - **No task file**: the cross product of the filters is generated from the model list files (`benchmarks/dynamo/<suite>_models_list.txt`), or from `--model-only`.
 
 Models listed in `benchmarks/dynamo/<suite>.yaml` under `skip` (including `device.xpu`) are dropped with a warning.

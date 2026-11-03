@@ -61,7 +61,7 @@ def main() -> None:
                              "aot_inductor, inductor_deterministic_perf). Applies to inductor suites only.")
     parser.add_argument("--task-file", default=None,
                         help="Comma-separated task sources, run one by one. A tier config .yaml uses its own "
-                             "backends/precisions/scenarios/models (CLI --suite/--dt/--mode/--scenario filter it); "
+                             "backends/group/scenarios/models (CLI --suite/--dt/--mode/--scenario filter it); "
                              ".csv/.txt holds task rows and uses --backend. --model-only filters the result.")
     parser.add_argument("--cores-per-instance", type=int, default=None,
                         help="CPU-only: cores per worker instance. Default = all cores per NUMA node.")
@@ -107,9 +107,7 @@ def main() -> None:
                 tasks = load_tasks_from_scope(
                     path, _explicit(args.suite), _explicit(args.dt), _explicit(args.mode), _explicit(args.scenario))
             else:
-                tasks = load_tasks_from_file(path)
-                for t in tasks:
-                    t.backend = args.backend
+                tasks = load_tasks_from_file(path, args.backend)
             if args.model_only:
                 names = set(parse_string_list(args.model_only))
                 tasks = [t for t in tasks if t.model in names]

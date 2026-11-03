@@ -1,4 +1,13 @@
-# Test scope for priority p0. A precision without mode runs in both training and inference.
+# Priority p0 (CI gate). Cases = backends x scenario x (mode, dtype) x models.
+# Each group sets mode and dtype (string or list); a group without mode runs in both modes.
+group:
+  training:
+    mode: training
+    dtype: amp_fp16
+  inference:
+    mode: inference
+    dtype: bfloat16
+
 backends:
   - default
   # - dynamic
@@ -6,11 +15,6 @@ backends:
   # - freezing
   # - aot_inductor
   # - inductor_deterministic_perf
-precision:
-  - dtype: amp_fp16
-    mode: training
-  - dtype: bfloat16
-    mode: inference
 suite:
   - huggingface
   - timm_models
@@ -18,7 +22,7 @@ suite:
 scenario:
   - accuracy
   - performance
-# Model lists per suite and mode. Total cases: 194.
+# Model lists per suite and mode. Total models: 194.
 models:
   torchbench:
     inference:  # 57 models
