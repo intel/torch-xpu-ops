@@ -65,6 +65,14 @@ def main():
         default=os.environ.get("TORCH_XPU_OPS_COMMIT", "main"),
     )
     parser.add_argument(
+        "--torch-xpu-ops-checkout",
+        action="store_true",
+        default=os.environ.get("TORCH_XPU_OPS_CHECKOUT", "") in ("1", "true"),
+        help="Clone --torch-xpu-ops-commit even for pull_request events "
+        "(default there: copy the checked-out PR source). Used to build the "
+        "microbench base wheel from the PR's merge-base.",
+    )
+    parser.add_argument(
         "--onednn-commit",
         default=os.environ.get("ONEDNN_COMMIT", ""),
         help="Optional oneDNN override: commit, or repo@commit",
@@ -85,6 +93,8 @@ def main():
     git("branch")
     git("show", "-s")
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    if re.fullmatch(r"[0-9a-f]{40}", args.pytorch_commit) and commit != args.pytorch_commit:
+        sys.exit(f"PyTorch checkout {commit} != requested {args.pytorch_commit}")
     (workspace / "pytorch.commit").write_text(commit + "\n")
 
     # Resolve pinned torch-xpu-ops
@@ -101,7 +111,7 @@ def main():
     if third_party_dir.exists():
         shutil.rmtree(third_party_dir, onerror=_force_remove_readonly)
 
-    if github_event == "pull_request":
+    if github_event == "pull_request" and not args.torch_xpu_ops_checkout:
         # Copy the checked-out PR source
         src = workspace / "torch-xpu-ops"
         shutil.copytree(src, third_party_dir, symlinks=True)
