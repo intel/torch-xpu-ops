@@ -111,6 +111,8 @@ runs:
         git -C third_party\torch-xpu-ops show -s
 
         python -m pip install -r .ci\docker\requirements-ci.txt || exit /b 1
+        REM Leave the source tree, or `import torch` picks up pytorch\torch instead of the wheel.
+        cd /d "%TEMP%"
         for /f "delims=" %%v in ('python -c "import torch; print(torch.version.git_version)"') do set TORCH_CHECK_ID=%%v
         if not "%TORCH_CHECK_ID%" == "%TORCH_COMMIT_ID%" echo ::error::torch was reinstalled while installing requirements: %TORCH_CHECK_ID% != %TORCH_COMMIT_ID%
         if not "%TORCH_CHECK_ID%" == "%TORCH_COMMIT_ID%" exit /b 1
