@@ -11,6 +11,14 @@ on:
         type: string
         default: 'nightly'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      pytorch_artifact_run_id:
+        type: string
+        default: ''
+        description: Optional PyTorch Actions run ID to download a wheel artifact from
+      pytorch_artifact_name:
+        type: string
+        default: ''
+        description: Optional PyTorch wheel artifact name
       torch_xpu_ops:
         type: string
         default: 'daisyden/distributed_2.16'
@@ -66,6 +74,9 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
+          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
+          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
+          pytorch_artifact_token: ${{ secrets.MERGE_TOKEN }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
@@ -108,6 +119,9 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
+          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
+          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
+          pytorch_artifact_token: ${{ secrets.MERGE_TOKEN }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
