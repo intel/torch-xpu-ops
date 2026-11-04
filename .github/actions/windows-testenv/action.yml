@@ -18,6 +18,16 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Clean compile caches
+      shell: cmd
+      run: |
+        REM Same as linux-testenv's rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*:
+        REM the machine is reused across jobs, so caches would carry over.
+        if exist "%USERPROFILE%\.triton" rmdir /s /q "%USERPROFILE%\.triton"
+        for /d %%d in ("%TEMP%\*inductor*" "%TEMP%\tmp*") do rmdir /s /q "%%~d"
+        del /f /q "%TEMP%\tmp*" 2>nul
+        REM A file another process still holds is not worth failing the job.
+        exit /b 0
     - name: Resolve python version
       uses: ./.github/actions/ci-config
       with:
@@ -42,17 +52,21 @@ runs:
     - name: Setup Python Environment
       shell: cmd
       run: |
-        echo "C:\ProgramData\miniforge3\Scripts" >> "$GITHUB_PATH"
-        echo "C:\ProgramData\miniforge3\Library\bin" >> "$GITHUB_PATH"
         call "C:\ProgramData\miniforge3\Scripts\activate.bat"
         rmdir /s /q "C:\ProgramData\miniforge3\envs\windows_ut"
         call conda clean -ay
         call conda remove --all -y -n windows_ut
         call conda create -n windows_ut python=%PYTHON_VERSION% -y
+        if errorlevel 1 exit /b 1
         call conda activate windows_ut
-        python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist
+        REM Without this, a failed activate leaves base active and everything below lands there.
+        if /i not "%CONDA_DEFAULT_ENV%" == "windows_ut" echo ::error::conda env windows_ut is not active
+        if /i not "%CONDA_DEFAULT_ENV%" == "windows_ut" exit /b 1
+        python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist || exit /b 1
         call conda install -y libuv
+        if errorlevel 1 exit /b 1
         call conda install -y rust
+        if errorlevel 1 exit /b 1
     - name: Install PyTorch Wheel
       shell: cmd
       run: |
