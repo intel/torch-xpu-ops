@@ -10,8 +10,9 @@ on:
       - release/*
     paths:
       - .github/workflows/pull_dpclang.yml
-      - ./.github/workflows/_linux_build.yml
-      - ./.github/workflows/_linux_ut.yml
+      - .github/workflows/_linux_build.yml
+      - .github/workflows/_linux_ut.yml
+      - .github/scripts/ut_results.py
   schedule:
     # 9:00 AM UTC every Sunday
     - cron: '0 9 * * 0'
@@ -156,6 +157,7 @@ jobs:
     needs: build-wheels
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
@@ -170,3 +172,15 @@ jobs:
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
+
+  ut-report:
+    needs: linux-ut
+    if: ${{ !cancelled() && !endsWith(needs.linux-ut.result, 'ed') }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/_ut_report.yml
+    with:
+      category: dpclang
