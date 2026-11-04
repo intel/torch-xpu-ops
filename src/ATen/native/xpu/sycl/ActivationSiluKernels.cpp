@@ -17,6 +17,7 @@
 
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/XPUMathCompat.h>
+#include <sycl/ext/intel/math.hpp>
 
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 
@@ -30,7 +31,7 @@ struct SiluFunctor {
     if constexpr (c10::is_complex<opmath_t>::value) {
       return x_acc / (opmath_t(1) + std::exp(-x_acc));
     } else {
-      return x_acc / (opmath_t(1) + sycl::exp(-x_acc));
+      return x_acc / (opmath_t(1) + sycl::ext::intel::math::exp(-x_acc));
     }
   }
 };
@@ -41,7 +42,8 @@ struct SiluBackwardFunctor {
     using opmath_t = at::opmath_type<scalar_t>;
     const opmath_t dy_acc = static_cast<opmath_t>(dy);
     const opmath_t x_acc = static_cast<opmath_t>(x);
-    const opmath_t s_acc = opmath_t(1) / (opmath_t(1) + sycl::exp(-x_acc));
+    const opmath_t s_acc =
+        opmath_t(1) / (opmath_t(1) + sycl::ext::intel::math::exp(-x_acc));
     return dy_acc * s_acc * (opmath_t(1) + x_acc * (opmath_t(1) - s_acc));
   }
 };

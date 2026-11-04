@@ -13,6 +13,7 @@
 #include <ATen/OpMathType.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <sycl/ext/intel/math.hpp>
 
 #include <ATen/native/xpu/sycl/UnaryGeometricTanKernel.h>
 
@@ -30,7 +31,7 @@ template <typename scalar_t>
 struct TanFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    return sycl::tan(static_cast<opmath_t>(a));
+    return sycl::ext::intel::math::tan(static_cast<opmath_t>(a));
   }
 };
 

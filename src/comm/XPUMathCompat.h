@@ -13,6 +13,11 @@
 #include <c10/macros/Macros.h>
 #include <c10/util/Exception.h>
 #include <sycl/sycl.hpp>
+// sycl::ext::intel::math (__imf_*) is the same library Inductor's XPU Triton
+// backend uses for libdevice.*, so eager and torch.compile agree bitwise.
+// The sycl:: built-ins round differently (2-4 ulp), see
+// https://github.com/intel/torch-xpu-ops/issues/5168.
+#include <sycl/ext/intel/math.hpp>
 #include <numbers>
 
 namespace c10::xpu::compat {
@@ -25,10 +30,10 @@ static inline double abs(double x) {
 }
 
 static inline float exp(float x) {
-  return sycl::exp(x);
+  return sycl::ext::intel::math::exp(x);
 }
 static inline double exp(double x) {
-  return sycl::exp(x);
+  return sycl::ext::intel::math::exp(x);
 }
 
 static inline float ceil(float x) {
@@ -60,10 +65,10 @@ static inline double log(double x) {
 }
 
 static inline float log1p(float x) {
-  return sycl::log1p(x);
+  return sycl::ext::intel::math::log1p(x);
 }
 static inline double log1p(double x) {
-  return sycl::log1p(x);
+  return sycl::ext::intel::math::log1p(x);
 }
 
 static inline float max(float x, float y) {
@@ -111,17 +116,17 @@ static inline double rsqrt(double x) {
 }
 
 static inline float tan(float x) {
-  return sycl::tan(x);
+  return sycl::ext::intel::math::tan(x);
 }
 static inline double tan(double x) {
-  return sycl::tan(x);
+  return sycl::ext::intel::math::tan(x);
 }
 
 static inline float tanh(float x) {
-  return sycl::tanh(x);
+  return sycl::ext::intel::math::tanh(x);
 }
 static inline double tanh(double x) {
-  return sycl::tanh(x);
+  return sycl::ext::intel::math::tanh(x);
 }
 
 static inline float normcdf(float x) {
