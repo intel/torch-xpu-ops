@@ -22,6 +22,8 @@ The tiers are ordered by cost and diagnostic yield. p0 is the lowest-cost parity
 | p1 | Precision coverage on the p0 models | Nightly (with p0) |
 | p2 | Broad coverage of additional models and dtypes | Weekly (`full` = p0 + p1 + p2) |
 
+On-demand runs use `full`, narrowed by the requested suite, dtype, mode, scenario, and model.
+
 
 ## Tiers
 
