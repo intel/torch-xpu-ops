@@ -57,7 +57,7 @@ template <typename T, int SIMD, typename shared_t, int DIM>
 inline T& GroupReduceSumWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
-    shared_t shared) {
+    shared_t& shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
@@ -131,7 +131,7 @@ template <typename T, int SIMD, typename shared_t, int DIM>
 inline T& GroupReduceMaxWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
-    shared_t shared) {
+    shared_t& shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
@@ -203,7 +203,7 @@ inline T& GroupReduceWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
     const ReduceOp& op,
-    shared_t shared) {
+    shared_t& shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
