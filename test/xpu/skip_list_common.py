@@ -46,7 +46,6 @@ skip_dict = {
     "export/test_strict_export_v2_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/nn/test_multihead_attention.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
@@ -202,8 +201,6 @@ skip_dict = {
     ),
     "test_numba_integration_xpu.py": None,
     "test_numpy_interop_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/test_ops_fwd_gradients.py": None,
-    f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": None,
     "test_ops_xpu.py": (
         "_jiterator_",
         # crash
@@ -355,6 +352,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_lazy_modules.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_multihead_attention.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
@@ -422,6 +420,8 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_mha.py": None,
     f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
+    f"{PYTORCH_TEST_DIR}/test_ops_fwd_gradients.py": None,
+    f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": None,
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
