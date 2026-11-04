@@ -14,6 +14,7 @@
 
 #include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
+#include <algorithm>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
@@ -56,6 +57,28 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 namespace at::native::xpu {
 
 namespace max_pool_optimized {
+// Check launch requirements independently of the device architecture.
+inline bool can_launch(
+    size_t work_group_size,
+    int subgroup_size = 0,
+    size_t local_bytes = 0) {
+  const auto* properties =
+      at::xpu::getDeviceProperties(at::xpu::current_device());
+  const auto& subgroup_sizes = properties->sub_group_sizes;
+  return properties->max_work_group_size >= work_group_size &&
+      properties->local_mem_size >= local_bytes &&
+      (subgroup_size == 0 ||
+       std::find(subgroup_sizes.begin(), subgroup_sizes.end(), subgroup_size) !=
+           subgroup_sizes.end());
+}
+
+#ifdef USE_SYCLTLA
+inline bool can_use_block_io() {
+  return at::xpu::getDeviceProperties(at::xpu::current_device())
+      ->has_subgroup_2d_block_io;
+}
+#endif
+
 template <typename T, int N>
 memory::aligned_vector<T, N> filled(T v) {
   memory::aligned_vector<T, N> out;
@@ -449,17 +472,24 @@ void block_launch_impl(
   });
 }
 template <typename scalar_t, int K, int P>
-void block_launch(
+bool block_launch(
     const at::Tensor& x,
     const at::Tensor& v,
     const at::Tensor& idx,
     const at::Tensor& out) {
+  constexpr int channel_tile = 64;
+  const int column_tile = x.size(3) <= 16 ? 8 : (x.size(3) <= 32 ? 16 : 32);
+  const size_t local_bytes = (K == 2 ? column_tile : 2 * (column_tile + 1)) *
+      (channel_tile + 1) * sizeof(int);
+  if (!can_launch(256, 0, local_bytes))
+    return false;
   if (x.size(3) <= 16)
-    block_launch_impl<scalar_t, K, P, 64, 8>(x, v, idx, out);
+    block_launch_impl<scalar_t, K, P, channel_tile, 8>(x, v, idx, out);
   else if (x.size(3) <= 32)
-    block_launch_impl<scalar_t, K, P, 64, 16>(x, v, idx, out);
+    block_launch_impl<scalar_t, K, P, channel_tile, 16>(x, v, idx, out);
   else
-    block_launch_impl<scalar_t, K, P, 64, 32>(x, v, idx, out);
+    block_launch_impl<scalar_t, K, P, channel_tile, 32>(x, v, idx, out);
+  return true;
 }
 
 template <int K, int S, int P>
@@ -1172,16 +1202,6 @@ void compact_backward_launch(
           total});
 }
 #endif
-inline bool bmg_device() {
-  const auto arch =
-      c10::xpu::getCurrentXPUStream()
-          .queue()
-          .get_device()
-          .get_info<
-              sycl::ext::oneapi::experimental::info::device::architecture>();
-  using A = sycl::ext::oneapi::experimental::architecture;
-  return arch == A::intel_gpu_bmg_g21 || arch == A::intel_gpu_bmg_g31;
-}
 inline bool parameters(
     at::IntArrayRef k,
     at::IntArrayRef s,
@@ -1242,6 +1262,22 @@ inline bool forward(
       (x.size(2) * x.size(3) >= 65535 || v.sizes() != x.sizes()))
     return false;
   if (K >= 5) {
+    if (!can_launch(
+            LargeGeometry::kWorkGroupSize,
+            0,
+            LargeGeometry::kLocalWords * sizeof(uint32_t)))
+      return false;
+  } else {
+    if (!can_launch(128, 16))
+      return false;
+#ifdef USE_SYCLTLA
+    // Reuse the generic vector kernel on devices without 2D block I/O rather
+    // than instantiate another set of small-window kernels.
+    if (!can_use_block_io())
+      return false;
+#endif
+  }
+  if (K >= 5) {
     if (K == 5)
       large_launch<5>(x, v, idx);
     else if (K == 9)
@@ -1273,47 +1309,51 @@ bool dispatch_backward(
     if (S == 1)
       return false;
     if (K == 2)
-      block_launch<scalar_t, 2, 0>(x, v, idx, out);
+      return block_launch<scalar_t, 2, 0>(x, v, idx, out);
     else if (P == 0)
-      block_launch<scalar_t, 3, 0>(x, v, idx, out);
+      return block_launch<scalar_t, 3, 0>(x, v, idx, out);
     else
-      block_launch<scalar_t, 3, 1>(x, v, idx, out);
-    return true;
+      return block_launch<scalar_t, 3, 1>(x, v, idx, out);
   }
 #ifdef USE_SYCLTLA
-  if (K == 2 && C % 32 == 0 && CS % 8 == 0 && H % 2 == 0 && W % 2 == 0) {
-    nonoverlap_launch<scalar_t>(x, v, idx, out);
-    return true;
+  if (can_use_block_io() && can_launch(16, 16)) {
+    if (K == 2 && C % 32 == 0 && CS % 8 == 0 && H % 2 == 0 && W % 2 == 0) {
+      nonoverlap_launch<scalar_t>(x, v, idx, out);
+      return true;
+    }
+    // Compact-index production uses subgroup 16; the C216 consumer uses 32.
+    if (can_launch(S == 1 ? 256 : 128, 16) &&
+        (S != 1 || C != 216 || can_launch(256, 32))) {
+      if (K == 3 && S == 2 && P == 0 && W == 17 && OW == 8 && C >= 128 &&
+          C % 32 == 0 && CS % 8 == 0 && out.numel() >= (10LL << 20)) {
+        backward_tile_impl<scalar_t, 3, 0, true, false, true>(x, v, idx, out);
+        return true;
+      }
+      if (S == 1) {
+        if (C == 864)
+          compact_backward_launch<scalar_t, 864, 11>(x, v, idx, out);
+        else if (C == 432)
+          compact_backward_launch<scalar_t, 432, 21>(x, v, idx, out);
+        else
+          compact_backward_launch<scalar_t, 216, 42>(x, v, idx, out);
+      } else if (K == 2)
+        backward_tile_launch<scalar_t, 2, 0>(x, v, idx, out);
+      else if (P == 0)
+        backward_tile_launch<scalar_t, 3, 0>(x, v, idx, out);
+      else
+        backward_tile_launch<scalar_t, 3, 1>(x, v, idx, out);
+      return true;
+    }
   }
-  if (K == 3 && S == 2 && P == 0 && W == 17 && OW == 8 && C >= 128 &&
-      C % 32 == 0 && CS % 8 == 0 && out.numel() >= (10LL << 20)) {
-    backward_tile_impl<scalar_t, 3, 0, true, false, true>(x, v, idx, out);
-    return true;
-  }
-  if (S == 1) {
-    if (C == 864)
-      compact_backward_launch<scalar_t, 864, 11>(x, v, idx, out);
-    else if (C == 432)
-      compact_backward_launch<scalar_t, 432, 21>(x, v, idx, out);
-    else
-      compact_backward_launch<scalar_t, 216, 42>(x, v, idx, out);
-  } else if (K == 2)
-    backward_tile_launch<scalar_t, 2, 0>(x, v, idx, out);
-  else if (P == 0)
-    backward_tile_launch<scalar_t, 3, 0>(x, v, idx, out);
-  else
-    backward_tile_launch<scalar_t, 3, 1>(x, v, idx, out);
-#else
+#endif
   if (S == 1)
     return false;
   if (K == 2)
-    block_launch<scalar_t, 2, 0>(x, v, idx, out);
+    return block_launch<scalar_t, 2, 0>(x, v, idx, out);
   else if (P == 0)
-    block_launch<scalar_t, 3, 0>(x, v, idx, out);
+    return block_launch<scalar_t, 3, 0>(x, v, idx, out);
   else
-    block_launch<scalar_t, 3, 1>(x, v, idx, out);
-#endif
-  return true;
+    return block_launch<scalar_t, 3, 1>(x, v, idx, out);
 }
 inline bool backward(
     const at::Tensor& x,
@@ -2146,8 +2186,8 @@ void launch_max_pool2d_kernel(
         : kH == 3 && kW == 3 && dH == 2 && dW == 2 && padH == 1 && padW == 1 &&
             inputSizeH == 16 && inputSizeW == 16 && outputSizeH == 8 &&
             outputSizeW == 8;
-    if (max_pool_optimized::bmg_device() && packed_window && dilationH == 1 &&
-        dilationW == 1 && numPlane % 2 == 0 &&
+    if (max_pool_optimized::can_launch(256) && packed_window &&
+        dilationH == 1 && dilationW == 1 && numPlane % 2 == 0 &&
         int64_t(numBatch) * numPlane * inputSizeH * inputSizeW <= INT_MAX &&
         outputSize <= INT_MAX && reinterpret_cast<uintptr_t>(input) % 64 == 0 &&
         reinterpret_cast<uintptr_t>(output) % 4 == 0 &&
@@ -2608,8 +2648,7 @@ void max_pool2d_with_indices_kernel(
     return;
   }
 
-  if (max_pool_optimized::bmg_device() &&
-      max_pool_optimized::forward(
+  if (max_pool_optimized::forward(
           input_, output, indices, kernel_size, stride, padding, dilation)) {
     return;
   }
@@ -2779,8 +2818,7 @@ void max_pool2d_with_indices_backward_kernel(
   checkAllSameGPU(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
-  if (max_pool_optimized::bmg_device() &&
-      max_pool_optimized::backward(
+  if (max_pool_optimized::backward(
           input_,
           gradOutput_,
           indices_,
