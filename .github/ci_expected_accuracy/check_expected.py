@@ -53,6 +53,14 @@ def get_test_result(data, suite, dtype, mode, model):
     return "N/A"
 
 
+def is_tracked(data, suite, dtype, mode, model):
+    """Return True if an issue table lists this suite/dtype/mode/model."""
+    return any(
+        row[:4] == [suite, dtype, mode, model]
+        for issue in data for row in issue.get('table_rows', [])
+    )
+
+
 def load_known_data(issue_file):
     """Load known test data from JSON file."""
     try:
@@ -157,6 +165,8 @@ def main():
     # Load data files
     test_data = load_data(args.csv_file)
     test_known_data = load_known_data(args.issue_file)
+    skip_labels = {'skipped', 'skipped_bmg', 'random'}
+    skip_data = [i for i in test_known_data if skip_labels & set(i.get('labels', []))]
     suite, dtype, mode = args.suite, args.dtype, args.mode
 
     # Load reference data
@@ -201,9 +211,12 @@ def main():
         # print(f"{model_name}: test={test_accuracy}, ref={refer_accuracy}, known={known_accuracy}")
 
         # Categorize model and determine if reference needs update
-        category, should_update = categorize_model(
-            model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models
-        )
+        if is_tracked(skip_data, suite, dtype, mode, model_name):
+            category, should_update = "skipped", False
+        else:
+            category, should_update = categorize_model(
+                model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models
+            )
 
         categories[category].append([model_name, test_accuracy])
 
