@@ -25,6 +25,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/Indexing.h>
 #include <ATen/native/xpu/sycl/IndexingUtils.h>
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
@@ -2133,6 +2134,32 @@ TensorInfo<T, IndexType> tensorInfoLegacyIfScalar(TensorInfo<T, IndexType> ti) {
   return ti;
 }
 
+template <typename index_t>
+struct IndexSelectBoundsCheckFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    XPU_KERNEL_LOOP_TYPE(item, position, num_indices_, int64_t) {
+      const auto index_value = indices_[position * stride_];
+      SYCL_KERNEL_ASSERT(index_value >= 0 && index_value < axis_size_);
+    }
+  }
+
+  IndexSelectBoundsCheckFunctor(
+      const index_t* indices,
+      int64_t num_indices,
+      int64_t stride,
+      int64_t axis_size)
+      : indices_(indices),
+        num_indices_(num_indices),
+        stride_(stride),
+        axis_size_(axis_size) {}
+
+ private:
+  const index_t* indices_;
+  int64_t num_indices_;
+  int64_t stride_;
+  int64_t axis_size_;
+};
+
 template <typename scalar_t>
 void index_select_out_impl(
     Tensor& out,
@@ -2157,6 +2184,32 @@ void index_select_out_impl(
   }
 
   at::native::resize_output(out, newSize);
+
+  if (self.numel() == 0 && numIndices > 0) {
+    const auto indexing_axis_dim = self.size(dim);
+    TORCH_CHECK(
+        indexing_axis_dim > 0,
+        "index_select(): self indexing axis dim should be positive");
+
+    // Keep value-dependent validation on device, including during graph replay.
+    AT_DISPATCH_INDEX_TYPES(
+        index.scalar_type(), "index_select_empty_source_bounds", [&] {
+          const int64_t group_size = std::min<int64_t>(
+              index.numel(), at::xpu::getDeviceMaxWorkGroupSize() / 2);
+          const auto num_groups =
+              xpuKernelLoopGroupRange(index.numel(), group_size);
+          auto check = IndexSelectBoundsCheckFunctor<index_t>(
+              index.const_data_ptr<index_t>(),
+              index.numel(),
+              index.dim() == 0 ? 1 : index.stride(0),
+              indexing_axis_dim);
+          sycl_kernel_submit(
+              num_groups * group_size,
+              group_size,
+              getCurrentSYCLQueue(),
+              check);
+        });
+  }
 
   uint64_t outTotalSize = out.numel();
   if (outTotalSize == 0) {
