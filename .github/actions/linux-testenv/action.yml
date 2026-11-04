@@ -100,7 +100,7 @@ runs:
           fi
           uv pip install --pre --force-reinstall \
             --index https://download.pytorch.org/whl/nightly/xpu \
-            --index-strategy unsafe-best-match "${pytorch_wheels[@]}"
+            --index-strategy unsafe-best-match "${pytorch_wheels[@]}" torchvision torchaudio
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
