@@ -71,13 +71,13 @@ void avg_pool2d_kernel_impl(
 
     int hstart = ph * stride_h - pad_h;
     int wstart = pw * stride_w - pad_w;
-    int hend = sycl::min(hstart + kernel_h, static_cast<int>(height + pad_h));
-    int wend = sycl::min(wstart + kernel_w, static_cast<int>(width + pad_w));
+    int hend = std::min(hstart + kernel_h, static_cast<int>(height + pad_h));
+    int wend = std::min(wstart + kernel_w, static_cast<int>(width + pad_w));
     const int pool_size = (hend - hstart) * (wend - wstart);
-    hstart = sycl::max(hstart, 0);
-    wstart = sycl::max(wstart, 0);
-    hend = sycl::min(hend, static_cast<int>(height));
-    wend = sycl::min(wend, static_cast<int>(width));
+    hstart = std::max(hstart, 0);
+    wstart = std::max(wstart, 0);
+    hend = std::min(hend, static_cast<int>(height));
+    wend = std::min(wend, static_cast<int>(width));
 
     if (hstart >= hend || wstart >= wend) {
       top_data[index] = scalar_t(0);
@@ -143,13 +143,13 @@ void avg_pool2d_channels_last_kernel_impl(
     const int n = dm_h.div;
     int hstart = ph * stride_h - pad_h;
     int wstart = pw * stride_w - pad_w;
-    int hend = sycl::min(hstart + kernel_h, static_cast<int>(height + pad_h));
-    int wend = sycl::min(wstart + kernel_w, static_cast<int>(width + pad_w));
+    int hend = std::min(hstart + kernel_h, static_cast<int>(height + pad_h));
+    int wend = std::min(wstart + kernel_w, static_cast<int>(width + pad_w));
     const int pool_size = (hend - hstart) * (wend - wstart);
-    hstart = sycl::max(hstart, 0);
-    wstart = sycl::max(wstart, 0);
-    hend = sycl::min(hend, static_cast<int>(height));
-    wend = sycl::min(wend, static_cast<int>(width));
+    hstart = std::max(hstart, 0);
+    wstart = std::max(wstart, 0);
+    hend = std::min(hend, static_cast<int>(height));
+    wend = std::min(wend, static_cast<int>(width));
 
     if (hstart >= hend || wstart >= wend) {
       top_data[index] = scalar_t(0);
@@ -233,13 +233,13 @@ void avg_pool2d_channels_last_vec_kernel_impl(
 
     int hstart = ph * stride_h - pad_h;
     int wstart = pw * stride_w - pad_w;
-    int hend = sycl::min(hstart + kernel_h, height + pad_h);
-    int wend = sycl::min(wstart + kernel_w, width + pad_w);
+    int hend = std::min(hstart + kernel_h, height + pad_h);
+    int wend = std::min(wstart + kernel_w, width + pad_w);
     const int pool_size = (hend - hstart) * (wend - wstart);
-    hstart = sycl::max(hstart, 0);
-    wstart = sycl::max(wstart, 0);
-    hend = sycl::min(hend, height);
-    wend = sycl::min(wend, width);
+    hstart = std::max(hstart, 0);
+    wstart = std::max(wstart, 0);
+    hend = std::min(hend, height);
+    wend = std::min(wend, width);
 
     if (hstart >= hend || wstart >= wend) {
       vec_t zero_vec;
@@ -394,24 +394,24 @@ void avg_pool2d_channels_last_vec_wtile_kernel_impl(
 
     // Compute H bounds (same for both outputs)
     int hstart = ph * stride_h - pad_h;
-    int hend = sycl::min(hstart + 3, height + pad_h);
+    int hend = std::min(hstart + 3, height + pad_h);
     const int pool_h_full = hend - hstart;
-    hstart = sycl::max(hstart, 0);
-    hend = sycl::min(hend, height);
+    hstart = std::max(hstart, 0);
+    hend = std::min(hend, height);
 
     // Compute W bounds for pw0
     int wstart0 = pw0 - pad_w;
-    int wend0 = sycl::min(wstart0 + 3, width + pad_w);
+    int wend0 = std::min(wstart0 + 3, width + pad_w);
     const int pool_w0_full = wend0 - wstart0;
-    wstart0 = sycl::max(wstart0, 0);
-    wend0 = sycl::min(wend0, width);
+    wstart0 = std::max(wstart0, 0);
+    wend0 = std::min(wend0, width);
 
     // Compute W bounds for pw1
     int wstart1 = pw1 - pad_w;
-    int wend1 = sycl::min(wstart1 + 3, width + pad_w);
+    int wend1 = std::min(wstart1 + 3, width + pad_w);
     const int pool_w1_full = wend1 - wstart1;
-    wstart1 = sycl::max(wstart1, 0);
-    wend1 = sycl::min(wend1, width);
+    wstart1 = std::max(wstart1, 0);
+    wend1 = std::min(wend1, width);
 
     const index_t batch_offset = n * height * width * num_vec_channels;
 
@@ -466,8 +466,8 @@ void avg_pool2d_channels_last_vec_wtile_kernel_impl(
       }
 
       // Shared and unique column ranges for data reuse
-      const int shared_wstart = sycl::max(wstart0, wstart1);
-      const int shared_wend = sycl::min(wend0, wend1);
+      const int shared_wstart = std::max(wstart0, wstart1);
+      const int shared_wend = std::min(wend0, wend1);
 
       for (int h = hstart; h < hend; ++h) {
         const index_t row_base = batch_offset + h * width * num_vec_channels;
@@ -591,28 +591,28 @@ void avg_pool2d_channels_last_vec_hwtile_kernel_impl(
     const int ph1 = ph0 + 1;
 
     int hstart0 = ph0 * stride_h - pad_h;
-    int hend0 = sycl::min(hstart0 + 3, height + pad_h);
+    int hend0 = std::min(hstart0 + 3, height + pad_h);
     const int pool_h0_full = hend0 - hstart0;
-    hstart0 = sycl::max(hstart0, 0);
-    hend0 = sycl::min(hend0, height);
+    hstart0 = std::max(hstart0, 0);
+    hend0 = std::min(hend0, height);
 
     int hstart1 = ph1 * stride_h - pad_h;
-    int hend1 = sycl::min(hstart1 + 3, height + pad_h);
+    int hend1 = std::min(hstart1 + 3, height + pad_h);
     const int pool_h1_full = hend1 - hstart1;
-    hstart1 = sycl::max(hstart1, 0);
-    hend1 = sycl::min(hend1, height);
+    hstart1 = std::max(hstart1, 0);
+    hend1 = std::min(hend1, height);
 
     int wstart0 = pw0 - pad_w;
-    int wend0 = sycl::min(wstart0 + 3, width + pad_w);
+    int wend0 = std::min(wstart0 + 3, width + pad_w);
     const int pool_w0_full = wend0 - wstart0;
-    wstart0 = sycl::max(wstart0, 0);
-    wend0 = sycl::min(wend0, width);
+    wstart0 = std::max(wstart0, 0);
+    wend0 = std::min(wend0, width);
 
     int wstart1 = pw1 - pad_w;
-    int wend1 = sycl::min(wstart1 + 3, width + pad_w);
+    int wend1 = std::min(wstart1 + 3, width + pad_w);
     const int pool_w1_full = wend1 - wstart1;
-    wstart1 = sycl::max(wstart1, 0);
-    wend1 = sycl::min(wend1, width);
+    wstart1 = std::max(wstart1, 0);
+    wend1 = std::min(wend1, width);
 
     const index_t batch_offset = n * height * width * num_vec_channels;
 
@@ -1203,9 +1203,9 @@ void avg_pool2d_channels_last_backward_kernel_impl(
     const int h = (index / channels / width) % height + pad_h;
     const int n = index / channels / width / height;
     const int phstart = (h < kernel_h) ? 0 : (h - kernel_h) / stride_h + 1;
-    const int phend = sycl::min(h / stride_h + 1, pooled_height);
+    const int phend = std::min(h / stride_h + 1, pooled_height);
     const int pwstart = (w < kernel_w) ? 0 : (w - kernel_w) / stride_w + 1;
-    const int pwend = sycl::min(w / stride_w + 1, pooled_width);
+    const int pwend = std::min(w / stride_w + 1, pooled_width);
     accscalar_t gradient = accscalar_t(0);
     const scalar_t* const top_slice =
         top_data + n * channels * pooled_height * pooled_width + c;
@@ -1215,14 +1215,13 @@ void avg_pool2d_channels_last_backward_kernel_impl(
         int hstart = ph * stride_h - pad_h;
         int wstart = pw * stride_w - pad_w;
         int hend =
-            sycl::min(hstart + kernel_h, static_cast<int>(height + pad_h));
-        int wend =
-            sycl::min(wstart + kernel_w, static_cast<int>(width + pad_w));
+            std::min(hstart + kernel_h, static_cast<int>(height + pad_h));
+        int wend = std::min(wstart + kernel_w, static_cast<int>(width + pad_w));
         int pool_size = (hend - hstart) * (wend - wstart);
-        hstart = sycl::max(hstart, 0);
-        wstart = sycl::max(wstart, 0);
-        hend = sycl::min(hend, static_cast<int>(height));
-        wend = sycl::min(wend, static_cast<int>(width));
+        hstart = std::max(hstart, 0);
+        wstart = std::max(wstart, 0);
+        hend = std::min(hend, static_cast<int>(height));
+        wend = std::min(wend, static_cast<int>(width));
         if (hstart >= hend || wstart >= wend) {
           continue;
         }
@@ -1273,9 +1272,9 @@ void avg_pool2d_backward_kernel_impl(
     const int c = (index / width / height) % channels;
     const int n = index / width / height / channels;
     const int phstart = (h < kernel_h) ? 0 : (h - kernel_h) / stride_h + 1;
-    const int phend = sycl::min(h / stride_h + 1, pooled_height);
+    const int phend = std::min(h / stride_h + 1, pooled_height);
     const int pwstart = (w < kernel_w) ? 0 : (w - kernel_w) / stride_w + 1;
-    const int pwend = sycl::min(w / stride_w + 1, pooled_width);
+    const int pwend = std::min(w / stride_w + 1, pooled_width);
     accscalar_t gradient = accscalar_t(0);
     const scalar_t* const top_data_slice =
         top_data + (n * channels + c) * pooled_height * pooled_width;
@@ -1285,14 +1284,13 @@ void avg_pool2d_backward_kernel_impl(
         int hstart = ph * stride_h - pad_h;
         int wstart = pw * stride_w - pad_w;
         int hend =
-            sycl::min(hstart + kernel_h, static_cast<int>(height + pad_h));
-        int wend =
-            sycl::min(wstart + kernel_w, static_cast<int>(width + pad_w));
+            std::min(hstart + kernel_h, static_cast<int>(height + pad_h));
+        int wend = std::min(wstart + kernel_w, static_cast<int>(width + pad_w));
         int pool_size = (hend - hstart) * (wend - wstart);
-        hstart = sycl::max(hstart, 0);
-        wstart = sycl::max(wstart, 0);
-        hend = sycl::min(hend, static_cast<int>(height));
-        wend = sycl::min(wend, static_cast<int>(width));
+        hstart = std::max(hstart, 0);
+        wstart = std::max(wstart, 0);
+        hend = std::min(hend, static_cast<int>(height));
+        wend = std::min(wend, static_cast<int>(width));
         if (hstart >= hend || wstart >= wend) {
           continue;
         }

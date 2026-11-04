@@ -40,10 +40,10 @@ void parallel_replication_pad_1d_kernel_func(
   auto output_id = item.get_global_id(2);
   if (output_id < output_plane_size) {
     int64_t output_x = output_id % output.size(2);
-    int64_t i_start_x = sycl::max(int64_t(0), -pad_left);
-    int64_t o_start_x = sycl::max(int64_t(0), pad_left);
+    int64_t i_start_x = std::max(int64_t(0), -pad_left);
+    int64_t o_start_x = std::max(int64_t(0), pad_left);
     int64_t input_x =
-        sycl::min(sycl::max(pad_left, output_x), input.size(2) + pad_left - 1) -
+        std::min(std::max(pad_left, output_x), input.size(2) + pad_left - 1) -
         o_start_x + i_start_x;
 
     f(input, output, item.get_group(1), item.get_group(0), output_x, input_x);
@@ -152,17 +152,17 @@ void parallel_replication_pad_2d_kernel_func(
     const int output_x = output_id / output.size(3); // height
     const int output_y = output_id % output.size(3); // width
 
-    const int iStartX = sycl::max(0, static_cast<int>(-padT));
-    const int iStartY = sycl::max(0, static_cast<int>(-padL));
-    const int oStartX = sycl::max(0, static_cast<int>(padT));
-    const int oStartY = sycl::max(0, static_cast<int>(padL));
+    const int iStartX = std::max(0, static_cast<int>(-padT));
+    const int iStartY = std::max(0, static_cast<int>(-padL));
+    const int oStartX = std::max(0, static_cast<int>(padT));
+    const int oStartY = std::max(0, static_cast<int>(padL));
 
-    const int input_x = sycl::min(
-                            sycl::max(static_cast<int>(padT), output_x),
+    const int input_x = std::min(
+                            std::max(static_cast<int>(padT), output_x),
                             static_cast<int>(input.size(2) + padT - 1)) -
         oStartX + iStartX;
-    const int input_y = sycl::min(
-                            sycl::max(static_cast<int>(padL), output_y),
+    const int input_y = std::min(
+                            std::max(static_cast<int>(padL), output_y),
                             static_cast<int>(input.size(3) + padL - 1)) -
         oStartY + iStartY;
 
@@ -275,22 +275,21 @@ void parallel_replication_pad_3d_kernel_func(
     int64_t output_y = (output_id / output.size(4)) % output.size(3);
     int64_t output_z = output_id / (output.size(3) * output.size(4));
 
-    int64_t i_start_x = sycl::max(int64_t(0), -pad_left);
-    int64_t i_start_y = sycl::max(int64_t(0), -pad_top);
-    int64_t i_start_z = sycl::max(int64_t(0), -pad_front);
-    int64_t o_start_x = sycl::max(int64_t(0), pad_left);
-    int64_t o_start_y = sycl::max(int64_t(0), pad_top);
-    int64_t o_start_z = sycl::max(int64_t(0), pad_front);
+    int64_t i_start_x = std::max(int64_t(0), -pad_left);
+    int64_t i_start_y = std::max(int64_t(0), -pad_top);
+    int64_t i_start_z = std::max(int64_t(0), -pad_front);
+    int64_t o_start_x = std::max(int64_t(0), pad_left);
+    int64_t o_start_y = std::max(int64_t(0), pad_top);
+    int64_t o_start_z = std::max(int64_t(0), pad_front);
 
     int64_t input_x =
-        sycl::min(sycl::max(pad_left, output_x), input.size(4) + pad_left - 1) -
+        std::min(std::max(pad_left, output_x), input.size(4) + pad_left - 1) -
         o_start_x + i_start_x;
     int64_t input_y =
-        sycl::min(sycl::max(pad_top, output_y), input.size(3) + pad_top - 1) -
+        std::min(std::max(pad_top, output_y), input.size(3) + pad_top - 1) -
         o_start_y + i_start_y;
     int64_t input_z =
-        sycl::min(
-            sycl::max(pad_front, output_z), input.size(2) + pad_front - 1) -
+        std::min(std::max(pad_front, output_z), input.size(2) + pad_front - 1) -
         o_start_z + i_start_z;
 
     f(input,
