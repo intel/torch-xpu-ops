@@ -53,119 +53,67 @@ runs:
         python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist
         call conda install -y libuv
         call conda install -y rust
-        cd ..
-        if exist "pytorch" (
-          rmdir /s /q pytorch
-        )
-        set pytorch=${{ inputs.pytorch }}
-        set torch_xpu_ops=${{ inputs.torch_xpu_ops }}
-
-        REM Skip pytorch clone for nightly wheel - will be handled after install
-        echo %pytorch% | findstr /C:"_wheel" >nul
-        if %errorlevel% equ 0 (
-          echo "Nightly wheel mode: skipping pytorch clone (will clone after install)"
-          goto :setup_done
-        )
-
-        echo %pytorch% | findstr /C:"https://" >nul
-        if %errorlevel% equ 0 (
-            echo %pytorch% | findstr "@" >nul
-            if %errorlevel% equ 0 (
-                for /f "tokens=1,2 delims=@" %%a in ("%pytorch%") do (
-                    set PYTORCH_REPO=%%a
-                    set PYTORCH_COMMIT=%%b
-                )
-            ) else (
-                set PYTORCH_REPO=%pytorch%
-                set PYTORCH_COMMIT=main
-            )
-        ) else (
-            set PYTORCH_REPO=https://github.com/pytorch/pytorch.git
-            set PYTORCH_COMMIT=%pytorch%
-        )
-
-        echo %torch_xpu_ops% | findstr /C:"https://" >nul
-        if %errorlevel% equ 0 (
-            echo %torch_xpu_ops% | findstr "@" >nul
-            if %errorlevel% equ 0 (
-                for /f "tokens=1,2 delims=@" %%a in ("%torch_xpu_ops%") do (
-                    set TORCH_XPU_OPS_REPO=%%a
-                    set TORCH_XPU_OPS_COMMIT=%%b
-                )
-            ) else (
-                set TORCH_XPU_OPS_REPO=%torch_xpu_ops%
-                set TORCH_XPU_OPS_COMMIT=main
-            )
-        ) else (
-            set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
-            set TORCH_XPU_OPS_COMMIT=%torch_xpu_ops%
-        )
-        git clone %PYTORCH_REPO% pytorch
-        cd pytorch && git checkout %PYTORCH_COMMIT%
-        if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
-          echo "Don't replace torch-xpu-ops!"
-        ) else (
-          echo "Replace torch-xpu-ops!"
-          cd third_party
-          if exist "torch-xpu-ops" (
-            rmdir /s /q torch-xpu-ops
-          )
-          cd ..
-          if "%GITHUB_EVENT_NAME%" == "pull_request" (
-            Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
-          ) else (
-            git clone "%TORCH_XPU_OPS_REPO%" "third_party\torch-xpu-ops"
-            cd "third_party\torch-xpu-ops"
-            git checkout "%TORCH_XPU_OPS_COMMIT%"
-            cd ../..
-          )
-          powershell -Command "(Get-Content caffe2/CMakeLists.txt) -replace 'checkout --quiet \${TORCH_XPU_OPS_COMMIT}', 'log -n 1' | Set-Content caffe2/CMakeLists.txt"
-        )
-        :setup_done
-    - name: Install PyTorch Wheel and Dependencies
+    - name: Install PyTorch Wheel
       shell: cmd
       run: |
         call "C:\ProgramData\miniforge3\Scripts\activate.bat"
         call conda activate windows_ut
         set PYTORCH_INPUT=${{ inputs.pytorch }}
         echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul
-        if %errorlevel% equ 0 (
-          echo "Installing PyTorch from nightly wheel..."
-          python -m pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          REM Clone pytorch source at the installed version's commit for test infra
-          for /f "delims=" %%v in ('python -c "import torch; print(torch.version.git_version)"') do set TORCH_COMMIT_ID=%%v
-          echo "Installed torch commit: %TORCH_COMMIT_ID%"
-          cd %GITHUB_WORKSPACE%\..
-          git clone https://github.com/pytorch/pytorch.git pytorch
-          cd pytorch && git checkout %TORCH_COMMIT_ID%
-          REM Prepare torch-xpu-ops for test scripts
-          set torch_xpu_ops=${{ inputs.torch_xpu_ops }}
-          if "%torch_xpu_ops%" == "pinned" (
-            for /f "delims=" %%c in ('type third_party\xpu.txt') do set XPU_OPS_COMMIT=%%c
-            cd third_party
-            if exist "torch-xpu-ops" rmdir /s /q torch-xpu-ops
-            cd ..
-            git clone "https://github.com/intel/torch-xpu-ops.git" "third_party\torch-xpu-ops"
-            cd "third_party\torch-xpu-ops"
-            git checkout "%XPU_OPS_COMMIT%"
-            cd ../..
-          ) else (
-            cd third_party
-            if exist "torch-xpu-ops" rmdir /s /q torch-xpu-ops
-            cd ..
-            git clone "https://github.com/intel/torch-xpu-ops.git" "third_party\torch-xpu-ops"
-            cd "third_party\torch-xpu-ops"
-            git checkout "%torch_xpu_ops%"
-            cd ../..
-          )
-        ) else (
-          REM Install in the loop body: %TORCH_WHL% would expand when cmd
-          REM parses this block, before the for has assigned it.
-          for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do python -m pip install "%%f"
-          python -c "import torch" || exit /b 1
-        )
-        cd %GITHUB_WORKSPACE%\..\pytorch
-        python -m pip install -r .ci\docker\requirements-ci.txt
+        if errorlevel 1 goto :install_built
+        python -m pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu || exit /b 1
+        goto :installed
+        :install_built
+        for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do python -m pip install "%%f"
+        :installed
+        python -c "import torch" || exit /b 1
+    # Keep the steps below free of %VAR% reads inside ( ) blocks: cmd expands
+    # them when the block is parsed, before a set inside the block has run.
+    - name: Prepare PyTorch and torch-xpu-ops Source
+      shell: cmd
+      run: |
+        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+        call conda activate windows_ut
+        REM Test sources must match the installed torch, whether it is a nightly
+        REM wheel or the wheel windows-build made from an earlier main.
+        for /f "delims=" %%v in ('python -c "import torch; print(torch.version.git_version)"') do set TORCH_COMMIT_ID=%%v
+        if "%TORCH_COMMIT_ID%" == "" exit /b 1
+        echo Installed torch commit: %TORCH_COMMIT_ID%
+
+        set PYTORCH_INPUT=${{ inputs.pytorch }}
+        set PYTORCH_REPO=https://github.com/pytorch/pytorch.git
+        echo %PYTORCH_INPUT% | findstr /C:"https://" >nul && for /f "tokens=1 delims=@" %%a in ("%PYTORCH_INPUT%") do set "PYTORCH_REPO=%%a"
+
+        set XPU_OPS_INPUT=${{ inputs.torch_xpu_ops }}
+        set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
+        set TORCH_XPU_OPS_COMMIT=%XPU_OPS_INPUT%
+        echo %XPU_OPS_INPUT% | findstr /C:"https://" >nul && for /f "tokens=1,2 delims=@" %%a in ("%XPU_OPS_INPUT%") do (set "TORCH_XPU_OPS_REPO=%%a" & set "TORCH_XPU_OPS_COMMIT=%%b")
+        if "%TORCH_XPU_OPS_COMMIT%" == "" set TORCH_XPU_OPS_COMMIT=main
+
+        cd /d "%GITHUB_WORKSPACE%\.."
+        if exist pytorch rmdir /s /q pytorch
+        REM Some pytorch test files exceed MAX_PATH; without long paths the checkout is partial.
+        git clone -c core.longpaths=true %PYTORCH_REPO% pytorch || exit /b 1
+        cd pytorch
+        git checkout %TORCH_COMMIT_ID% || exit /b 1
+        git show -s
+
+        if /i "%TORCH_XPU_OPS_COMMIT%" == "pinned" set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
+        if /i "%TORCH_XPU_OPS_COMMIT%" == "pinned" set /p TORCH_XPU_OPS_COMMIT=<third_party\xpu.txt
+        if exist third_party\torch-xpu-ops rmdir /s /q third_party\torch-xpu-ops
+        if "%GITHUB_EVENT_NAME%" == "pull_request" goto :copy_pr
+        git clone %TORCH_XPU_OPS_REPO% third_party\torch-xpu-ops || exit /b 1
+        git -C third_party\torch-xpu-ops checkout %TORCH_XPU_OPS_COMMIT% || exit /b 1
+        goto :xpu_ops_done
+        :copy_pr
+        xcopy "%GITHUB_WORKSPACE%" third_party\torch-xpu-ops /E /H /Y /I /Q || exit /b 1
+        :xpu_ops_done
+        git -C third_party\torch-xpu-ops show -s
+
+        python -m pip install -r .ci\docker\requirements-ci.txt || exit /b 1
+        for /f "delims=" %%v in ('python -c "import torch; print(torch.version.git_version)"') do set TORCH_CHECK_ID=%%v
+        if not "%TORCH_CHECK_ID%" == "%TORCH_COMMIT_ID%" echo ::error::torch was reinstalled while installing requirements: %TORCH_CHECK_ID% != %TORCH_COMMIT_ID%
+        if not "%TORCH_CHECK_ID%" == "%TORCH_COMMIT_ID%" exit /b 1
     - name: Install XPU worker restart pytest plugin
       shell: cmd
       run: |
