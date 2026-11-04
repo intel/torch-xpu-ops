@@ -102,12 +102,12 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
         iw_(gxacc.size(3)),
         oh_(gyacc.size(2)),
         ow_(gyacc.size(3)),
+        gyacc_(gyacc),
+        gxacc_(gxacc),
         numel(static_cast<int64_t>(ib_) * ic_ * ih_ * iw_),
         local_range(
             at::xpu::getDeviceMaxSubGroupSize() *
-            at::xpu::getDeviceEUCountPerXeCore()),
-        gyacc_(gyacc),
-        gxacc_(gxacc) {
+            at::xpu::getDeviceEUCountPerXeCore()) {
     int total_item = std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
     global_range = total_item < local_range
         ? local_range
