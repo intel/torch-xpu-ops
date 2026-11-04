@@ -2069,6 +2069,53 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
         finally:
             dist.destroy_process_group()
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    # On Max Series a device-to-device copy_ runs as a copy kernel by default,
+    # which the profiler does not report as a memory copy.
+    @mock.patch.dict(os.environ, {"TORCH_XPU_USE_COPY_ENGINE": "1"})
+    def test_profiler_symm_mem_peer_copy(self):
+        """The profiler reports a copy out of a peer's symmetric memory as a
+        copy from the peer's device."""
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        try:
+            device = torch.device("xpu", self.rank)
+            torch.xpu.set_device(device)
+
+            numel = 1024
+            t = symm_mem.empty(numel, dtype=torch.float32, device=device)
+            hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
+            t.fill_(float(self.rank))
+            hdl.barrier()
+
+            peer = (self.rank + 1) % self.world_size
+            out = torch.empty_like(t)
+            with profile(activities=[ProfilerActivity.XPU]) as prof:
+                out.copy_(hdl.get_buffer(peer, (numel,), torch.float32))
+                torch.xpu.synchronize()
+            hdl.barrier()
+            self.assertTrue(out.eq(float(peer)).all().item())
+
+            with TemporaryFileName(mode="w+") as fname:
+                prof.export_chrome_trace(fname)
+                with open(fname) as f:
+                    events = json.load(f).get("traceEvents", [])
+
+            copies = [e.get("args", {}) for e in events if e.get("cat") == "gpu_memcpy"]
+            self.assertIn(
+                (peer, self.rank),
+                [(c.get("fromDevice"), c.get("toDevice")) for c in copies],
+                f"[Rank {self.rank}] No copy from device {peer} in trace; saw {copies}",
+            )
+        finally:
+            dist.destroy_process_group()
+
 
 if __name__ == "__main__":
     run_tests()
