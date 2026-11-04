@@ -23,6 +23,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
+#include <ATen/xpu/XPUContext.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -202,7 +203,8 @@ void max_pool3d_with_indices_out_template(
   index_t out_batch_stride = otime * oheight * owidth * features;
   index_t in_hw_stride = iwidth * iheight;
 
-  int work_group_size = syclMaxWorkItemsPerSubSlice();
+  int work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   auto global_range =
       (OutputSize + work_group_size - 1) / work_group_size * work_group_size;
 
@@ -306,7 +308,8 @@ void max_pool3d_with_indices_backward_template(
   index_t out_nbatch_stride = features * out_cf_channel_stride;
   index_t in_nbatch_stride = features * in_cf_channel_stride;
 
-  int work_group_size = syclMaxWorkItemsPerSubSlice();
+  int work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
 
   auto global_range =
       ((gradOutputSize - 1) / work_group_size + 1) * work_group_size;
