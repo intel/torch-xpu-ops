@@ -6765,6 +6765,7 @@ def forward(self, primals_1, tangents_1):
                 args_descs,
                 meta=meta,
                 trace_joint=False,
+                inner_meta=meta,
             )
 
             num_tokens = len(meta.tokens)
