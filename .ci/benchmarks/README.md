@@ -16,13 +16,11 @@ The tiers are ordered by cost and diagnostic yield. p0 is the lowest-cost parity
 
 ## Purpose of each tier
 
-PyTorch component acceptance tests run the full scope (the union of p0, p1, and p2)
-
 | Tier | Purpose | Schedule |
 |---|---|---|
-| p0 | Regression gate with CUDA parity | CI (every change) |
-| p1 | Precision coverage on the p0 models | Nightly |
-| p2 | Broad coverage of additional models and dtypes | Weekly |
+| p0 | Regression gate with CUDA parity | PR CI and acceptance |
+| p1 | Precision coverage on the p0 models | Nightly (with p0) |
+| p2 | Broad coverage of additional models and dtypes | Weekly (`full` = p0 + p1 + p2) |
 
 
 ## Tiers

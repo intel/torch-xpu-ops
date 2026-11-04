@@ -7,13 +7,13 @@ inputs:
     default: 'huggingface'
     description: 'Dynamo benchmark suites. Comma-separated: huggingface,timm_models,torchbench'
   dt:
-    required: true
-    default: 'float32'
-    description: 'Data precisions. Comma-separated: float32,bfloat16,float16,amp_bf16,amp_fp16'
+    required: false
+    default: ''
+    description: 'Data precisions filter. Comma-separated: float32,bfloat16,float16,amp_bf16,amp_fp16. Empty uses the tier config'
   mode:
-    required: true
-    default: 'inference'
-    description: 'Comma-separated execution modes: inference,training'
+    required: false
+    default: ''
+    description: 'Execution modes filter. Comma-separated: inference,training. Empty uses the tier config'
   scenario:
     required: true
     default: 'accuracy'
