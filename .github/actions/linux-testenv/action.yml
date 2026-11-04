@@ -212,6 +212,10 @@ runs:
         else
           uv pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         fi
+        # E2E runs on numpy 1.x; reinstall its compiled dependents so they resolve to numpy-1 compatible builds.
+        if [[ "${{ inputs.suite }}" =~ huggingface|timm_models|torchbench|pt2e ]];then
+          uv pip install "numpy<2" pandas scipy scikit-learn opencv-python numba
+        fi
     - name: Detect devices
       shell: bash -euo pipefail {0}
       run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'

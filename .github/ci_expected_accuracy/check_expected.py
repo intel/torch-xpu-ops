@@ -5,6 +5,7 @@ Compares test results against reference data and calculates pass rates.
 Reference last updated: https://github.com/intel/torch-xpu-ops/pull/1223
 """
 
+import csv
 import json
 import argparse
 import pandas as pd
@@ -13,7 +14,16 @@ from pathlib import Path
 
 def load_data(csv_file):
     """Load CSV file with comment support."""
-    return pd.read_csv(csv_file, comment='#')
+    try:
+        return pd.read_csv(csv_file, comment='#')
+    except pd.errors.ParserError:
+        # Older runner CSVs have rows wider than the header; name the extra cells extra_<n>.
+        with open(csv_file, newline='', encoding='utf-8') as f:
+            rows = [r for r in csv.reader(f) if r and not r[0].startswith('#')]
+        header, data = rows[0], rows[1:]
+        width = max(len(r) for r in rows)
+        header += [f"extra_{i}" for i in range(len(header), width)]
+        return pd.DataFrame([r + [None] * (width - len(r)) for r in data], columns=header)
 
 
 def find_model_row(dataframe, model_name):
