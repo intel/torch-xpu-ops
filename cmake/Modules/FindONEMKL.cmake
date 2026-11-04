@@ -59,6 +59,10 @@ set(MKL_LIB_NAMES "mkl_sycl_blas" "mkl_sycl_dft" "mkl_sycl_lapack"
                   "mkl_sycl_sparse" "mkl_intel_lp64" "mkl_core")
 
 if(WIN32)
+  # Debug links sycld and /MDd; the oneMKL SYCL libs must match (mkl_sycl_*d).
+  if(CMAKE_BUILD_TYPE MATCHES "Debug")
+    list(TRANSFORM MKL_LIB_NAMES APPEND "d" REGEX "^mkl_sycl_")
+  endif()
   list(APPEND MKL_LIB_NAMES "mkl_intel_thread")
   list(TRANSFORM MKL_LIB_NAMES APPEND "_dll.lib")
 else()
