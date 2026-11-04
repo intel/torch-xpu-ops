@@ -295,7 +295,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [op_extended, test_xpu, test_cpp_extensions_aot_xpu, op_ut]
+        ut_name: [basic, op_ut]
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: ${{ matrix.ut_name }}

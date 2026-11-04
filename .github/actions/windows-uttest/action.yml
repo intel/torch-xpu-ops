@@ -4,13 +4,13 @@ description: Run one Windows UT scope; junit reports land in ut_log/junit
 inputs:
   ut_name:
     required: true
-    description: Which ut to launch, one of op_extended, test_xpu, test_cpp_extensions_aot_xpu, op_ut
+    description: Which ut to launch, basic (op_extended, test_xpu, test_cpp_extensions_aot_xpu) or op_ut, or one category of basic
 
 runs:
   using: composite
   steps:
     - name: Run XPU OP Extended UT
-      if: ${{ inputs.ut_name == 'op_extended' }}
+      if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       shell: cmd
       continue-on-error: true
       run: |
@@ -24,7 +24,7 @@ runs:
         if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
         copy op_extended.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
     - name: Run CPP Extensions AOT SYCL UT
-      if: ${{ inputs.ut_name == 'test_cpp_extensions_aot_xpu' }}
+      if: ${{ inputs.ut_name == 'test_cpp_extensions_aot_xpu' || inputs.ut_name == 'basic' }}
       shell: cmd
       continue-on-error: true
       run: |
@@ -40,7 +40,7 @@ runs:
         if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
         copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
     - name: Run Test XPU UT
-      if: ${{ inputs.ut_name == 'test_xpu' }}
+      if: ${{ inputs.ut_name == 'test_xpu' || inputs.ut_name == 'basic' }}
       shell: cmd
       continue-on-error: true
       run: |

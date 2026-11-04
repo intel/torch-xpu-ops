@@ -16,7 +16,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. one of `op_extended,test_xpu,test_cpp_extensions_aot_xpu,op_ut`; run one stage per call, like _linux_ut.yml
+        description: UT scope, like _linux_ut.yml. `basic` (op_extended, test_xpu, test_cpp_extensions_aot_xpu) or `op_ut`; a single category of basic also works
       python:
         required: false
         type: string
@@ -49,11 +49,12 @@ jobs:
         shell: cmd
         run: |
           set UT_NAME=${{ inputs.ut }}
+          if "%UT_NAME%" == "basic" exit /b 0
           if "%UT_NAME%" == "op_extended" exit /b 0
           if "%UT_NAME%" == "test_xpu" exit /b 0
           if "%UT_NAME%" == "test_cpp_extensions_aot_xpu" exit /b 0
           if "%UT_NAME%" == "op_ut" exit /b 0
-          echo ::error::Unsupported Windows UT scope '%UT_NAME%', expected exactly one of: op_extended, test_xpu, test_cpp_extensions_aot_xpu, op_ut
+          echo ::error::Unsupported Windows UT scope '%UT_NAME%', expected one of: basic, op_ut, op_extended, test_xpu, test_cpp_extensions_aot_xpu
           exit /b 1
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7

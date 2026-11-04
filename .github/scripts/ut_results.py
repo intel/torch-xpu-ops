@@ -96,8 +96,11 @@ MAIN_CATEGORIES = (
     "xpu_distributed",
 )
 
-# A UT job name maps to the categories its reports carry.
-JOB_CATEGORIES = {"basic": ("op_regression", "op_extended", "op_regression_dev1")}
+# A UT job name maps to the categories its reports carry, per platform.
+JOB_CATEGORIES = {
+    "linux": {"basic": ("op_regression", "op_extended", "op_regression_dev1")},
+    "windows": {"basic": ("op_extended", "test_xpu", "test_cpp_extensions_aot_xpu")},
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -154,9 +157,9 @@ def issue_platform(platform: str, runner: str) -> str:
     return "Linux"
 
 
-def categories_of(ut_job: str) -> tuple[str, ...]:
-    if ut_job in JOB_CATEGORIES:
-        return JOB_CATEGORIES[ut_job]
+def categories_of(ut_job: str, platform: str = "linux") -> tuple[str, ...]:
+    if ut_job in JOB_CATEGORIES[platform]:
+        return JOB_CATEGORIES[platform][ut_job]
     return tuple(part for part in ut_job.split(",") if part)
 
 
@@ -1135,7 +1138,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
         known_lines: list[tuple[str, str]] = []
         pass_lines: list[tuple[str, str]] = []
         links: dict[tuple[str, str], str] = {}
-        for category in categories_of(meta.ut_job):
+        for category in categories_of(meta.ut_job, platform):
             known.write_for(category, meta, job_dir / "Known_issue.log")
             result = checker.run(category)
             failed = failed or not result.passed
@@ -1170,7 +1173,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
         (out_job / "verdict.json").write_text(json.dumps(verdict, indent=2),
                                               encoding="utf-8")
         case_logs = [job_dir / f"{kind}_{category}.log" for category in
-                     categories_of(ut_job) for kind in CASE_LOG_KINDS]
+                     categories_of(ut_job, platform) for kind in CASE_LOG_KINDS]
         for path in [*case_logs, job_dir / "ut_failure_list.csv"]:
             if path.is_file():
                 shutil.copy2(path, out_job / "cases" / path.name)
