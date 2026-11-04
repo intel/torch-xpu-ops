@@ -8,6 +8,7 @@ import torch._prims_common as utils
 from torch._dynamo.utils import preserve_rng_state
 from torch._inductor import config
 from torch._inductor.compiler_bisector import CompilerBisector
+from torch._inductor.custom_graph_pass import CustomGraphPass
 from torch._inductor.test_case import TestCase
 from torch.library import _scoped_library, Library
 from torch.testing._internal.inductor_utils import GPU_TYPE
@@ -101,12 +102,16 @@ class TestCompilerBisector(TestCase):
         from torch._inductor import config
 
         # similar setup to test_joint_graph (see below)
-        def pass_fn(graph: torch.fx.Graph):
-            nodes = graph.find_nodes(op="call_function", target=operator.add)
-            assert len(nodes) == 1
-            args = list(nodes[0].args)
-            args[1] = 2
-            nodes[0].args = tuple(args)
+        class CustomPrePass(CustomGraphPass):
+            def __call__(self, graph: torch.fx.Graph):
+                nodes = graph.find_nodes(op="call_function", target=operator.add)
+                assert len(nodes) == 1
+                args = list(nodes[0].args)
+                args[1] = 2
+                nodes[0].args = tuple(args)
+
+            def uuid(self):
+                return hash("TestCompilerBisector.test_pre_grad.pass_class")
 
         def foo(x):
             return x + 1
@@ -121,7 +126,7 @@ class TestCompilerBisector(TestCase):
 
             return torch.allclose(out, out_c)
 
-        with config.patch(pre_grad_custom_pass=pass_fn):
+        with config.patch(pre_grad_custom_pass=CustomPrePass()):
             out = CompilerBisector.do_bisect(test_fn)
         self.assertEqual(out.backend, "inductor")
         self.assertEqual(out.subsystem, "pre_grad_passes")
@@ -131,14 +136,18 @@ class TestCompilerBisector(TestCase):
     def test_joint_graph(self):
         from torch._inductor import config
 
-        def pass_fn(graph: torch.fx.Graph):
-            nodes = graph.find_nodes(
-                op="call_function", target=torch.ops.aten.add.Tensor
-            )
-            assert len(nodes) == 1
-            args = list(nodes[0].args)
-            args[1] = 2
-            nodes[0].args = tuple(args)
+        class CustomPostPass(CustomGraphPass):
+            def __call__(self, graph: torch.fx.Graph):
+                nodes = graph.find_nodes(
+                    op="call_function", target=torch.ops.aten.add.Tensor
+                )
+                assert len(nodes) == 1
+                args = list(nodes[0].args)
+                args[1] = 2
+                nodes[0].args = tuple(args)
+
+            def uuid(self):
+                return hash("TestCompilerBisector.test_joint_graph.pass_class")
 
         def foo(x):
             return x + 1
@@ -153,7 +162,7 @@ class TestCompilerBisector(TestCase):
 
             return torch.allclose(out, out_c)
 
-        with config.patch(joint_custom_post_pass=pass_fn):
+        with config.patch(joint_custom_post_pass=CustomPostPass()):
             out = CompilerBisector.do_bisect(test_fn)
         self.assertEqual(out.backend, "inductor")
         self.assertEqual(out.subsystem, "joint_graph_passes")
