@@ -58,9 +58,14 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 **Condition:** ALL changed files are `test/xpu/skip_list_common.py`, `test/xpu/expect/`, `test/xpu/extended/skip_list_*.py`, or `test/xpu/test_decomp_xpu.py` (pure skip list / expect file updates with no test logic change).
 
-**Labels:** `disable_all`
+The prompt supplies a `SKIP_LIST_DELETIONS` fact indicating whether any of these files had lines removed.
 
-**Rationale:** Skip list changes don't need functional validation beyond lint.
+**Labels:**
+
+- `SKIP_LIST_DELETIONS=false` (entries only added) → `disable_all`
+- `SKIP_LIST_DELETIONS=true` (entries removed or edited) → `disable_e2e,disable_distributed,disable_build`
+
+**Rationale:** Adding a skip disables an already-failing test, so lint is enough. Removing a skip re-enables a test and MUST run UT to prove it now passes — `disable_all` would merge it unvalidated. A deletion inside an expect file has the same risk.
 
 ### Rule 4: Test infrastructure changes
 
@@ -97,6 +102,12 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 - `src/xccl/` involved (distributed communication backend):
   - Base: `disable_e2e` only — do NOT add `disable_distributed` (xccl changes must run distributed tests)
   - Add `disable_win` (xccl is Linux-only)
+
+**e2e-critical exception (overrides the above):** Do NOT add `disable_e2e` if any changed file is:
+
+- a header (`.h`) under `src/ATen/native/**/sycl/` — these are shared SYCL infrastructure included across kernels (`Loops.h` alone is included by 103 files), so a change can alter codegen for every operator the inductor benchmarks exercise
+- under `src/ATen/native/transformers/` — attention/SDPA kernels directly drive model-level e2e accuracy and performance
+- under `src/comm/` — shared utilities used by all kernels
 
 **Note:** Do NOT add `disable_build` — source changes require compilation.
 
