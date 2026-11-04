@@ -16,8 +16,7 @@ on:
       ut:
         required: true
         type: string
-        default: ''
-        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. one of `op_extended,test_xpu,test_cpp_extensions_aot_xpu,op_ut`; run one stage per call, like _linux_ut.yml
       python:
         required: false
         type: string
@@ -46,6 +45,16 @@ jobs:
     env:
       TORCH_SERIALIZATION_DEBUG: "1"
     steps:
+      - name: Validate UT scope
+        shell: cmd
+        run: |
+          set UT_NAME=${{ inputs.ut }}
+          if "%UT_NAME%" == "op_extended" exit /b 0
+          if "%UT_NAME%" == "test_xpu" exit /b 0
+          if "%UT_NAME%" == "test_cpp_extensions_aot_xpu" exit /b 0
+          if "%UT_NAME%" == "op_ut" exit /b 0
+          echo ::error::Unsupported Windows UT scope '%UT_NAME%', expected exactly one of: op_extended, test_xpu, test_cpp_extensions_aot_xpu, op_ut
+          exit /b 1
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
       - name: Resolve python version
@@ -214,7 +223,7 @@ jobs:
           python -c "import torch; print(torch.xpu.device_count())"
           python -c "import importlib.util as u; print('triton', __import__('triton').__version__ if u.find_spec('triton') else 'not installed')"
       - name: Run XPU OP Extended UT
-        if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
+        if: ${{ inputs.ut == 'op_extended' }}
         shell: cmd
         continue-on-error: true
         run: |
@@ -228,7 +237,7 @@ jobs:
           if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
           copy op_extended.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run CPP Extensions AOT SYCL UT
-        if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
+        if: ${{ inputs.ut == 'test_cpp_extensions_aot_xpu' }}
         shell: cmd
         continue-on-error: true
         run: |
@@ -244,7 +253,7 @@ jobs:
           if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
           copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run Test XPU UT
-        if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
+        if: ${{ inputs.ut == 'test_xpu' }}
         shell: cmd
         continue-on-error: true
         run: |
@@ -257,7 +266,7 @@ jobs:
           if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
           copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
       - name: Run OP UT
-        if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
+        if: ${{ inputs.ut == 'op_ut' }}
         shell: cmd
         continue-on-error: true
         run: |

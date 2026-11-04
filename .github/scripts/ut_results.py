@@ -89,6 +89,7 @@ MAIN_CATEGORIES = (
     "op_extended",
     "op_ut",
     "test_xpu",
+    "test_cpp_extensions_aot_xpu",
     "upstream_default",
     "upstream_inductor",
     "upstream_distributed",
@@ -227,7 +228,8 @@ FAILURE_HEADER = ["Category", "Class name", "Test name", "Status", "Message", "S
 
 
 def determine_category(ut: str, ut_job: str = "") -> str:
-    exact = {"op_regression", "op_regression_dev1", "op_extended", "test_xpu"}
+    exact = {"op_regression", "op_regression_dev1", "op_extended", "test_xpu",
+             "test_cpp_extensions_aot_xpu"}
     if ut in exact:
         return ut
     for marker in ("op_ut", "xpu_distributed", "upstream_distributed",
