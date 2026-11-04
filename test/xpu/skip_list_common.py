@@ -50,7 +50,6 @@ skip_dict = {
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
-    "profiler/test_execution_trace_xpu.py": None,
     "profiler/test_profiler_use_cases.py": None,
     "profiler/test_profiler_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/5638 (not XPU-specific, fix: pytorch/pytorch#200914)
