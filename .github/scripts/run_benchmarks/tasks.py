@@ -123,7 +123,7 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
 
     Supports two formats:
     1. Legacy: suite, dtype, mode, model, result (5 cols)
-    2. Output CSV: dev, backend, suite, dtype, mode, name, scenario, batch_size, elapsed, result[, extra] (9+ cols)
+    2. Output CSV: dev, backend, suite, dtype, mode, name, scenario, batch_size, elapsed, status, result... (10+ cols)
 
     Format is auto-detected from the header row or column count.
     """
@@ -133,6 +133,7 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
 
     tasks: list[TestTask] = []
     output_format: bool | None = None
+    quant_idx = 11  # default position of "quantization" in a pt2e performance CSV
     with open(file_path, encoding="utf-8") as f:
         for lineno, raw in enumerate(f, 1):
             line = raw.strip()
@@ -144,6 +145,8 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
             # Auto-detect format from header row
             if output_format is None and fields[0].lower() in ("dev", "suite"):
                 output_format = fields[0].lower() == "dev"
+                names = [h.lower() for h in fields]
+                quant_idx = names.index("quantization") if "quantization" in names else -1
                 continue  # skip header
 
             if output_format is None:
@@ -155,8 +158,11 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
                     log(f"Skipping line {lineno}: expected 8+ fields, got {len(fields)}: {line!r}", level="WARN")
                     continue
                 suite, dt, mode, model, scenario = fields[2], fields[3], fields[4], fields[5], fields[6]
-                backend = fields[1] if len(fields) >= 2 else "default"
-                quant = fields[10] if len(fields) >= 11 else ""
+                backend = fields[1]
+                # Quantization only applies to pt2e performance; "0" means none.
+                quant = ""
+                if suite == "pt2e" and scenario == "performance" and 0 <= quant_idx < len(fields):
+                    quant = "" if fields[quant_idx] == "0" else fields[quant_idx]
                 tasks.append(TestTask(suite, dt, mode, scenario, model, quant, backend))
             else:
                 # Legacy: suite, dtype, mode, model, result

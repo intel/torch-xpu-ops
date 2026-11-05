@@ -52,7 +52,10 @@ skip_dict = {
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_execution_trace_xpu.py": None,
     "profiler/test_profiler_use_cases.py": None,
-    "profiler/test_profiler_xpu.py": None,
+    "profiler/test_profiler_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/5638 (not XPU-specific, fix: pytorch/pytorch#200914)
+        "test_source_multithreaded",
+    ),
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Tensor-likes are not close!
         # RuntimeError: value cannot be converted to type int without overflow
@@ -232,7 +235,6 @@ skip_dict = {
     "test_optim_xpu.py": None,
     "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
-    "test_reductions_xpu.py": None,
     "test_scaled_matmul_cuda_xpu.py": {
         # https://github.com/intel/torch-xpu-ops/issues/5339
         # The operator 'aten::_scaled_addmm.out' is not currently implemented for the XPU device
@@ -279,35 +281,7 @@ skip_dict = {
     ),
     "test_tensor_creation_ops_xpu.py": None,
     "test_testing_xpu.py": None,
-    "test_torch_xpu.py": (
-        # due to #2164, CUDA specific test
-        "test_no_cuda_monkeypatch",
-        # skipped due to #2536, torch._C._scatter or torch._C._gather
-        "test_pickle_gradscaler_xpu",
-        "test_grad_scaler_pass_itself_xpu",
-        "test_grad_scaling_state_dict_xpu",
-        "test_typed_storage_deprecation_warning",
-        "test_typed_storage_internal_no_warning",
-        # TypeError: map2_ is only implemented on CPU tensors
-        "test_broadcast_fn_map2_xpu",
-        "test_broadcast_fn_map_xpu",
-        # RuntimeError: _share_fd_: only available on CPU
-        "test_module_share_memory_xpu",
-        # TypedStorage tests are not applicable to XPU. TypedStorage is deprecated in favor of
-        # UntypedStorage paired with torch.dtype. XPU does not provide typed storage classes
-        # (e.g., torch.xpu.FloatStorage, torch.xpu.BFloat16Storage). See NOTE in
-        # torch.storage._dtype_to_storage_type_map() upstream:
-        # https://github.com/pytorch/pytorch/blob/main/torch/storage.py
-        "test_storage_setitem_xpu",
-        "test_storage_error",
-        # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
-        # under pytest -k substring semantics used by the XPU skip runner.
-        # https://github.com/intel/torch-xpu-ops/issues/2531
-        # CudaSyncGuard has no XPU counterpart yet.
-        "test_sync_warning_xpu",
-        "test_print",
-        "test_tensor_storage_type_xpu",
-    ),
+    "test_torch_xpu.py": None,
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
         "test_math_backend_high_precision_xpu",
@@ -395,6 +369,44 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
     f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
+    f"{PYTORCH_TEST_DIR}/custom_backend/test_custom_backend.py": {
+        # Requires "custom_backend" target to be build
+        "test_execute",
+        "test_save_load",
+    },
+    f"{PYTORCH_TEST_DIR}/custom_operator/test_custom_ops.py": {
+        # Required "custom_operator" target to be build
+        "test_custom_library_is_loaded",
+        "test_op_with_no_abstract_impl_pystub",
+        "test_dynamo_pystub_suggestion",
+        "test_abstract_impl_pystub_faketensor",
+        "test_abstract_impl_pystub_meta",
+        "test_calling_custom_op_string",
+        "test_calling_custom_op",
+        "test_calling_custom_op_with_autograd",
+        "test_calling_custom_op_with_autograd_in_nograd_mode",
+        "test_calling_custom_op_inside_script_module",
+        "test_saving_and_loading_script_module_with_custom_op",
+    },
+    f"{PYTORCH_TEST_DIR}/test_bundled_images.py": {
+        # This is a "Facebook" test requiring torch.ops.fb
+        # and OpenCV. When run it raises:
+        # raise RuntimeError(
+        #   "This test is not currently used and should be "
+        #   "enabled in discover_tests.py if required."
+        "test_single_tensors",
+    },
+    f"{PYTORCH_TEST_DIR}/test_ci_sanity_check_fail.py": {
+        # Comment above both cases:
+        # "This check should fail and trigger reruns.  If it passes, something is wrong"
+        "test_env_vars_exist",
+        "test_env_vars_exist_slow",
+    },
+    f"{PYTORCH_TEST_DIR}/test_kernel_launch_checks.py": {
+        # CUDA only tests
+        "test_check_code",
+        "test_check_cuda_launches",
+    },
     f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
     f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
     f"{PYTORCH_TEST_DIR}/test_callback.py": None,
@@ -423,6 +435,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
+    f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
