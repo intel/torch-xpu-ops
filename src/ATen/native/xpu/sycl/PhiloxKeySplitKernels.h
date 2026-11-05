@@ -19,4 +19,7 @@ _philox_key_split_xpu(const Tensor& key, int64_t num_splits);
 
 TORCH_XPU_API Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data);
 
+TORCH_XPU_API Tensor
+_philox_key_fold_in_tensor_xpu(const Tensor& key, const Tensor& data);
+
 } // namespace at::native::xpu
