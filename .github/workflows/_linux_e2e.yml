@@ -70,7 +70,7 @@ jobs:
           sparse-checkout: .github
       - name: Select runner and image
         id: runner
-        uses: ./.github/actions/ci-runner
+        uses: ./.github/actions/ci-config
         with:
           runner: ${{ inputs.runner }}
 
@@ -114,7 +114,7 @@ jobs:
           scenario: ${{ inputs.scenario }}
           test_scope: p0
 
-      # Nihglty launch
+      # Nightly launch
       - name: Nightly Test (p0, p1)
         if: ${{ contains(inputs.test_type, 'nightly') && (contains(inputs.suite, 'huggingface') || contains(inputs.suite, 'timm_models') || contains(inputs.suite, 'torchbench')) }}
         uses: ./.github/actions/linux-e2etest

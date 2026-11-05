@@ -54,7 +54,7 @@ jobs:
           sparse-checkout: .github
       - name: Select runner and image
         id: runner
-        uses: ./.github/actions/ci-runner
+        uses: ./.github/actions/ci-config
         with:
           runner: ${{ inputs.runner }}
 
