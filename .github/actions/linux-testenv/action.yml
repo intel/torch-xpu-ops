@@ -253,6 +253,6 @@ runs:
     - name: Install test target
       shell: bash -xe {0}
       run: |
-        pip uninstall -y torch && pip uninstall -y torch
-        pip install --no-deps ${{ github.workspace }}/wheels/torch-*.whl
-        pip list |grep -E 'intel|torch|triton'
+        uv pip uninstall -y torch && pip uninstall -y torch
+        uv pip install --no-deps ${{ github.workspace }}/wheels/torch-*.whl
+        uv pip list |grep -E 'intel|torch|triton'
