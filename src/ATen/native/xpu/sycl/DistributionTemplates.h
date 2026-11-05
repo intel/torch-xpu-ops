@@ -105,6 +105,65 @@ void distribution_elementwise_kernel(
   }
 }
 
+// Vectorized variant for contiguous, aligned nullary output. Each thread
+// consumes a full dist_func result (unroll_factor elements) and writes them
+// as one vectorized store. This both uses every generated random (the
+// strided kernel drops unroll_factor - 1 of them when the tile exceeds numel)
+// and issues wide stores, which the scalar-store path cannot feed bandwidth
+// with for narrow dtypes such as bf16/fp16.
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    int unroll_factor,
+    typename index_t,
+    typename dist_t,
+    typename transform_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void distribution_elementwise_vector_kernel(
+    int64_t numel,
+    index_t elems_per_iter,
+    PhiloxXpuState philox_args,
+    dist_t dist_func,
+    transform_t transform_func,
+    scalar_t* out_data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+
+  index_t idx = static_cast<index_t>(item.get_global_linear_id());
+
+  auto seeds = at::xpu::philox::unpack(philox_args);
+  randStatePhilox4_32_10_t state;
+  rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+
+  using vec_t = at::native::memory::aligned_vector<scalar_t, unroll_factor>;
+
+  // The caller only launches this for 32-bit indexable tensors, so the
+  // index_t (uint32_t) math cannot overflow.
+  const index_t numel_u = static_cast<index_t>(numel);
+
+  // No barrier in the loop, so work-items may stop as soon as they pass
+  // numel instead of running to a tile-rounded bound.
+  for (index_t base = idx * unroll_factor; base < numel_u;
+       base += elems_per_iter) {
+    auto rand = dist_func(&state);
+    if (base + unroll_factor <= numel_u) {
+      vec_t v;
+#pragma unroll
+      for (int i = 0; i < unroll_factor; i++) {
+        v.val[i] = transform_func(static_cast<accscalar_t>((&rand.x)[i]));
+      }
+      *reinterpret_cast<vec_t*>(&out_data[base]) = v;
+    } else {
+#pragma unroll
+      for (int i = 0; i < unroll_factor; i++) {
+        index_t li = base + i;
+        if (li < numel_u) {
+          out_data[li] = transform_func(static_cast<accscalar_t>((&rand.x)[i]));
+        }
+      }
+    }
+  }
+}
+
 template <
     typename scalar_t,
     typename accscalar_t,
@@ -123,6 +182,71 @@ void distribution_nullary_kernel(
     return;
   }
 
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      distribution_nullary_kernel<scalar_t, accscalar_t, unroll_factor>(
+          sub_iter, gen, dist_func, transform_func);
+    }
+    return;
+  }
+
+  char* out_data = (char*)iter.data_ptr(0);
+
+  if constexpr (
+      std::same_as<scalar_t, float> || std::same_as<scalar_t, at::Half> ||
+      std::same_as<scalar_t, at::BFloat16>) {
+    // A contiguous, aligned output lets each work-item store a whole dist_func
+    // result with one vectorized store.
+    if (iter.is_trivial_1d() &&
+        iter.get_inner_strides()[0] == sizeof(scalar_t) &&
+        reinterpret_cast<uintptr_t>(out_data) %
+                (sizeof(scalar_t) * unroll_factor) ==
+            0) {
+      int64_t vec_count = (numel + unroll_factor - 1) / unroll_factor;
+      int group_size = at::xpu::getDeviceMaxSubGroupSize() *
+          at::xpu::getDeviceEUCountPerXeCore();
+      int64_t max_threads = std::min<int64_t>(
+          (vec_count + group_size - 1) / group_size * group_size,
+          static_cast<int64_t>(at::xpu::getDeviceMaxWorkItems()));
+      int num_groups = static_cast<int>(max_threads / group_size);
+      // counter_offset must match the launched grid, not the pre-truncation
+      // thread count, or consecutive launches would reuse Philox counters.
+      int64_t num_threads = static_cast<int64_t>(num_groups) * group_size;
+      int64_t iters = (vec_count + num_threads - 1) / num_threads;
+
+      PhiloxXpuState rng_engine_inputs;
+      {
+        // See Note [Acquire lock when using random generators]
+        std::lock_guard<std::mutex> lock(gen->mutex_);
+        rng_engine_inputs = gen->philox_xpu_state(
+            static_cast<uint64_t>(iters) * rand4_engine_calls);
+      }
+
+      // numel is 32-bit indexable here (checked above). The loop stride is
+      // uniform across work-items, so precompute it on the host.
+      using index_t = uint32_t;
+      index_t elems = static_cast<index_t>(num_threads) * unroll_factor;
+      sycl_kernel_submit<distribution_elementwise_vector_kernel<
+          scalar_t,
+          accscalar_t,
+          unroll_factor,
+          index_t,
+          dist_t,
+          transform_t>>(
+          num_threads,
+          group_size,
+          getCurrentSYCLQueue(),
+          0,
+          numel,
+          elems,
+          rng_engine_inputs,
+          dist_func,
+          transform_func,
+          (scalar_t*)out_data);
+      return;
+    }
+  }
+
   auto execution_policy = calc_execution_policy<unroll_factor>(numel);
   auto counter_offset = std::get<0>(execution_policy);
   auto num_groups = std::get<1>(execution_policy);
@@ -134,16 +258,6 @@ void distribution_nullary_kernel(
     std::lock_guard<std::mutex> lock(gen->mutex_);
     rng_engine_inputs = gen->philox_xpu_state(counter_offset);
   }
-
-  if (!iter.can_use_32bit_indexing()) {
-    for (auto& sub_iter : iter.with_32bit_indexing()) {
-      distribution_nullary_kernel<scalar_t, accscalar_t, unroll_factor>(
-          sub_iter, gen, dist_func, transform_func);
-    }
-    return;
-  }
-
-  char* out_data = (char*)iter.data_ptr(0);
 
   if (iter.is_trivial_1d()) {
     auto strides = iter.get_inner_strides();

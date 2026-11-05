@@ -228,26 +228,6 @@ static inline uint4 philox4x32_10(uint4 counter, uint2 key) {
   return philox4x32_rounds(counter, key, kPhilox4x32Rounds);
 }
 
-static inline void skipahead_sequence(
-    unsigned long long n,
-    randStatePhilox4_32_10_t* state) {
-  philox_counter_incr_high(state, n);
-  state->result = philox4x32_10(state->counter, state->key);
-}
-
-static inline void skipahead(
-    unsigned long long n,
-    randStatePhilox4_32_10_t* state) {
-  state->index += (n & 3);
-  n /= 4;
-  if (state->index > 3) {
-    n += 1;
-    state->index -= 4;
-  }
-  philox_counter_incr(state, n);
-  state->result = philox4x32_10(state->counter, state->key);
-}
-
 static inline void rand_init(
     unsigned long long seed,
     unsigned long long subsequence,
@@ -259,9 +239,15 @@ static inline void rand_init(
   state->counter.w = 0;
   state->key.x = (unsigned int)seed;
   state->key.y = (unsigned int)(seed >> 32);
-  state->index = 0;
-  skipahead_sequence(subsequence, state);
-  skipahead(offset, state);
+  // Advance the counter by the subsequence and offset. The Philox block for
+  // `counter` is only materialized here when the offset lands mid-block; see
+  // rand4() for the lazy-evaluation invariant.
+  philox_counter_incr_high(state, subsequence);
+  state->index = offset & 3;
+  philox_counter_incr(state, offset / 4);
+  if (state->index != 0) {
+    state->result = philox4x32_10(state->counter, state->key);
+  }
   // Reset Box-Muller transform state. These fields are not part of the core
   // Philox counter/key, but cache an extra normal variate generated from a
   // previous Box-Muller call. When (re)initializing the Philox state, this
@@ -273,6 +259,9 @@ static inline void rand_init(
 }
 
 static inline unsigned int rand(randStatePhilox4_32_10_t* state) {
+  if (state->index == 0) {
+    state->result = philox4x32_10(state->counter, state->key);
+  }
   unsigned int ret;
   switch (state->index++) {
     default:
@@ -290,20 +279,26 @@ static inline unsigned int rand(randStatePhilox4_32_10_t* state) {
   }
   if (state->index == 4) {
     philox_counter_incr_single(state);
-    state->result = philox4x32_10(state->counter, state->key);
     state->index = 0;
   }
   return ret;
 }
 
+// `result` holds the Philox block for `counter` only while `index != 0`; at a
+// block boundary the block is generated on demand. This yields the same
+// sequence as eagerly precomputing the next block, without computing a block
+// that the last call of a work-item never consumes.
 static inline uint4 rand4(randStatePhilox4_32_10_t* state) {
+  if (state->index == 0) {
+    uint4 r = philox4x32_10(state->counter, state->key);
+    philox_counter_incr_single(state);
+    return r;
+  }
   uint4 r;
   uint4 tmp = state->result;
   philox_counter_incr_single(state);
   state->result = philox4x32_10(state->counter, state->key);
   switch (state->index) {
-    case 0:
-      return tmp;
     case 1:
       r.x = tmp.y;
       r.y = tmp.z;
@@ -378,9 +373,12 @@ static inline float2 _rand_box_muller(unsigned int x, unsigned int y) {
   float2 result;
   float u = _rand_uniform(x);
   float v = y * RAND_2POW32_INV_2PI + RAND_2POW32_INV_2PI / 2;
+  // Keep log/sqrt precise (as curand does): native::log has no relative-error
+  // guarantee near u -> 1, where a slightly positive result would make the
+  // sqrt argument negative. Only sin/cos use the fast path.
   float s = sycl::sqrt(-2.0f * sycl::log(u));
-  result.x = sycl::sin(v);
-  result.y = sycl::cos(v);
+  result.x = sycl::native::sin(v);
+  result.y = sycl::native::cos(v);
   result.x *= s;
   result.y *= s;
   return result;
