@@ -2092,6 +2092,71 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       opts.asyncOp, // async_op
       "N/A"); // reductionOp
 
+  const auto dtype = inputTensors.front().scalar_type();
+  bool uniform = static_cast<int>(inputTensors.size()) == size_ &&
+      outputTensors.size() == inputTensors.size() &&
+      checkSameSize(inputTensors) && checkSameSize(outputTensors) &&
+      inputTensors.front().is_same_size(outputTensors.front());
+  for (const auto r : c10::irange(inputTensors.size())) {
+    uniform = uniform && inputTensors[r].scalar_type() == dtype &&
+        outputTensors[r].scalar_type() == dtype;
+  }
+  if (uniform) {
+    at::Tensor inputFlattened = newLikeFlat(inputTensors);
+    at::Tensor outputFlattened = newLikeFlat(outputTensors);
+    return collective(
+        inputFlattened,
+        outputFlattened,
+        [&](at::Tensor& input,
+            at::Tensor& output,
+            onecclComm_t& comm,
+            at::xpu::XPUStream& stream) {
+          std::vector<size_t> send_lengths(size_);
+          std::vector<size_t> recv_lengths(size_);
+          std::vector<size_t> send_offsets(size_);
+          std::vector<size_t> recv_offsets(size_);
+          c10d::computeLengthsAndOffsets(
+              std::vector<int64_t>(), input, &send_lengths, &send_offsets);
+          c10d::computeLengthsAndOffsets(
+              std::vector<int64_t>(), output, &recv_lengths, &recv_offsets);
+          xccl::onecclAllToAll(
+              input.data_ptr(),
+              send_lengths.data(),
+              send_offsets.data(),
+              output.data_ptr(),
+              recv_lengths.data(),
+              recv_offsets.data(),
+              input.element_size(),
+              input.scalar_type(),
+              comm,
+              stream);
+          return;
+        },
+        [&](at::xpu::XPUStream& Stream,
+            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
+          if (opts.asyncOp) {
+            work->stashed_for_allocator_safety_->stash(inputTensors);
+          }
+          c10::StreamGuard guard(Stream);
+          for (const auto j : c10::irange(inputTensors.size())) {
+            inputFlattened[j].copy_(inputTensors[j], true);
+          }
+        },
+        [&](at::xpu::XPUStream& Stream,
+            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
+          if (opts.asyncOp) {
+            work->stashed_for_allocator_safety_->stash(outputTensors);
+          }
+          c10::StreamGuard guard(Stream);
+          for (const auto j : c10::irange(outputTensors.size())) {
+            outputTensors[j].copy_(outputFlattened[j], true);
+          }
+        },
+        OpType::ALLTOALL,
+        opts.asyncOp,
+        "xccl:all_to_all");
+  }
+
   return collective(
       inputTensors.front(),
       outputTensors.front(),
