@@ -75,7 +75,26 @@ def _test_max_pool2d_pt2e(self):
         self.assertEqual(a_pool, a_hat, msg="ops.quantized.max_pool2d results are off")
 
 
+def _test_max_pool2d_invalid_padding(self):
+    # padding must be <= kernel_size/2; the XPU quantized kernel previously
+    # produced garbage output instead of raising for padding > kernel/2.
+    device = torch.device("xpu:0")
+    input = torch.randint(0, 8, (1, 3, 8, 8), dtype=torch.uint8, device=device)
+    with self.assertRaisesRegex(
+        RuntimeError, "padding should be smaller than half of kernel_size"
+    ):
+        torch.ops.quantized.max_pool2d(
+            input,
+            kernel_size=_pair(2),
+            stride=_pair(1),
+            padding=_pair(2),
+            dilation=_pair(1),
+            ceil_mode=False,
+        )
+
+
 TestQuantizedOps.test_max_pool2d_pt2e = _test_max_pool2d_pt2e
+TestQuantizedOps.test_max_pool2d_invalid_padding = _test_max_pool2d_invalid_padding
 
 instantiate_device_type_tests(
     TestQuantizedOps, globals(), only_for="xpu", allow_xpu=True

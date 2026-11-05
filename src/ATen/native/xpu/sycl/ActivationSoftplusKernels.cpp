@@ -25,7 +25,7 @@ struct SoftplusFunctor {
     opmath_t aop = static_cast<opmath_t>(a);
     return (aop * beta_) > threshold_
         ? aop
-        : (std::log1p(sycl::exp(aop * beta_))) / beta_;
+        : (sycl::log1p(sycl::exp(aop * beta_))) / beta_;
   }
 
   SoftplusFunctor(opmath_t beta, opmath_t threshold)

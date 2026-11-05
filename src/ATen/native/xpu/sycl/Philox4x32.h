@@ -47,6 +47,7 @@
 
 #include <ATen/core/DistributionsHelper.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <numbers>
 
 namespace at {
 namespace native {
@@ -78,12 +79,12 @@ struct alignas(sizeof(T) * 4) rand_vec4 {
   inline rand_vec4(T x_, T y_, T z_, T w_) : x(x_), y(y_), z(z_), w(w_) {}
 };
 
-typedef rand_vec4<float> float4;
-typedef rand_vec2<float> float2;
-typedef rand_vec2<double> double2;
-typedef rand_vec4<uint32_t> uint4;
-typedef rand_vec2<uint32_t> uint2;
-typedef rand_vec2<uint64_t> ulonglong2;
+using float4 = rand_vec4<float>;
+using float2 = rand_vec2<float>;
+using double2 = rand_vec2<double>;
+using uint4 = rand_vec4<uint32_t>;
+using uint2 = rand_vec2<uint32_t>;
+using ulonglong2 = rand_vec2<uint64_t>;
 
 constexpr uint32_t kPhiloxWeylSequence0 = 0x9E3779B9;
 constexpr uint32_t kPhiloxWeylSequence1 = 0xBB67AE85;
@@ -328,21 +329,19 @@ static inline uint4 rand4(randStatePhilox4_32_10_t* state) {
   return r;
 }
 
-#define RAND_2POW32_INV (2.3283064e-10f)
-#define RAND_2POW32_INV_2PI (2.3283064e-10f * 6.2831855f)
-#define RAND_2POW53_INV_DOUBLE (1.1102230246251565e-16)
-#define RAND_PI_DOUBLE (3.1415926535897932)
+inline constexpr float RAND_2POW32_INV = 0x1p-32f;
+inline constexpr float RAND_2POW32_INV_2PI =
+    RAND_2POW32_INV * 2 * std::numbers::pi_v<float>;
+inline constexpr double RAND_2POW53_INV_DOUBLE = 0x1p-53;
 
 // =================== uniform ===================
 
 static inline float _rand_uniform(unsigned int x) {
-  return x * RAND_2POW32_INV + (RAND_2POW32_INV / 2.0f);
+  return x * RAND_2POW32_INV + RAND_2POW32_INV / 2;
 }
 
 static inline float _rand_uniform(unsigned long long x) {
-  unsigned int t;
-  t = (unsigned int)(x >> 32);
-  return t * RAND_2POW32_INV + (RAND_2POW32_INV / 2.0f);
+  return _rand_uniform((unsigned int)(x >> 32));
 }
 
 static inline float rand_uniform(randStatePhilox4_32_10_t* state) {
@@ -352,10 +351,10 @@ static inline float rand_uniform(randStatePhilox4_32_10_t* state) {
 static inline float4 rand_uniform4(randStatePhilox4_32_10_t* state) {
   auto x = rand4(state);
   float4 y;
-  y.x = x.x * RAND_2POW32_INV + (RAND_2POW32_INV / 2.0f);
-  y.y = x.y * RAND_2POW32_INV + (RAND_2POW32_INV / 2.0f);
-  y.z = x.z * RAND_2POW32_INV + (RAND_2POW32_INV / 2.0f);
-  y.w = x.w * RAND_2POW32_INV + (RAND_2POW32_INV / 2.0f);
+  y.x = _rand_uniform(x.x);
+  y.y = _rand_uniform(x.y);
+  y.z = _rand_uniform(x.z);
+  y.w = _rand_uniform(x.w);
   return y;
 }
 
@@ -377,11 +376,11 @@ static inline double2 rand_uniform2_double(randStatePhilox4_32_10_t* state) {
 
 static inline float2 _rand_box_muller(unsigned int x, unsigned int y) {
   float2 result;
-  float u = x * RAND_2POW32_INV + (RAND_2POW32_INV / 2);
-  float v = y * RAND_2POW32_INV_2PI + (RAND_2POW32_INV_2PI / 2);
-  float s = std::sqrt(-2.0f * std::log(u));
-  result.x = std::sin(v);
-  result.y = std::cos(v);
+  float u = _rand_uniform(x);
+  float v = y * RAND_2POW32_INV_2PI + RAND_2POW32_INV_2PI / 2;
+  float s = sycl::sqrt(-2.0f * sycl::log(u));
+  result.x = sycl::sin(v);
+  result.y = sycl::cos(v);
   result.x *= s;
   result.y *= s;
   return result;
@@ -407,16 +406,14 @@ static inline double2 _rand_box_muller_double(
     unsigned int y0,
     unsigned int y1) {
   double2 result;
-  unsigned long long zx =
-      (unsigned long long)x0 ^ ((unsigned long long)x1 << (53 - 32));
-  double u = zx * RAND_2POW53_INV_DOUBLE + (RAND_2POW53_INV_DOUBLE / 2.0);
+  double u = _rand_uniform_double_hq(x0, x1);
   unsigned long long zy =
       (unsigned long long)y0 ^ ((unsigned long long)y1 << (53 - 32));
   double v = zy * (RAND_2POW53_INV_DOUBLE * 2.0) + RAND_2POW53_INV_DOUBLE;
-  double s = std::sqrt(-2.0 * std::log(u));
+  double s = sycl::sqrt(-2.0 * sycl::log(u));
 
-  result.x = std::sin(v * RAND_PI_DOUBLE);
-  result.y = std::cos(v * RAND_PI_DOUBLE);
+  result.x = sycl::sin(v * std::numbers::pi);
+  result.y = sycl::cos(v * std::numbers::pi);
   result.x *= s;
   result.y *= s;
 
@@ -469,6 +466,7 @@ static inline double lgamma_integer(int a) {
       0.0, // a=0: undefined, but return 0
       0.0, // a=1: log(Gamma(1)) = log(0!) = 0
       0.0, // a=2: log(Gamma(2)) = log(1!) = 0
+      // NOLINTNEXTLINE(modernize-use-std-numbers)
       0.6931471805599453, // a=3: log(Gamma(3)) = log(2!) = log(2)
       1.7917594692280550, // a=4: log(Gamma(4)) = log(3!) = log(6)
       3.1780538303479458, // a=5: log(Gamma(5)) = log(4!) = log(24)
@@ -486,7 +484,7 @@ static inline double lgamma_integer(int a) {
   // log(Gamma(x)) ≈ (x - 0.5)*log(x) - x + 0.5*log(2*pi) + 1/(12x) - 1/(360x^3)
   // + ...
   const double x = static_cast<double>(a);
-  const double log_x = std::log(x);
+  const double log_x = sycl::log(x);
   const double inv_x = 1.0 / x;
   const double inv_x2 = inv_x * inv_x;
 
@@ -514,9 +512,9 @@ static inline float pgammainc(float a, float x) {
 
   /* Second level parametrization constants (depends only on a) */
 
-  alpha = 1 / sqrtf(a - ma2);
+  alpha = 1 / sycl::sqrt(a - ma2);
   alpha = ma1 * alpha + ma3;
-  beta = 1 / sqrtf(a - mb2);
+  beta = 1 / sycl::sqrt(a - mb2);
   beta = mb1 * beta + mb3;
 
   /* Final approximation (depends on a and x) */
@@ -544,14 +542,14 @@ static inline float pgammaincinv(float a, float y) {
 
   /* Second level parametrization constants (depends only on a) */
 
-  alpha = 1.0f / sqrtf(a - ma2);
+  alpha = 1.0f / sycl::sqrt(a - ma2);
   alpha = ma1 * alpha + ma3;
-  beta = 1.0f / sqrtf(a - mb2);
+  beta = 1.0f / sycl::sqrt(a - mb2);
   beta = mb1 * beta + mb3;
 
   /* Final approximation (depends on a and y) */
 
-  t = 1.0f / sqrtf(y) - 1.0f;
+  t = 1.0f / sycl::sqrt(y) - 1.0f;
   t = logf(t);
   t = beta + t;
   t = -t * (1 / alpha) + a;
@@ -569,7 +567,7 @@ static inline unsigned int rand_poisson_gammainc(
   while (true) {
     y = rand_uniform(state);
     x = pgammaincinv(lambda, y);
-    x = floorf(x);
+    x = sycl::floor(x);
     z = rand_uniform(state);
     v = (pgammainc(lambda, x + 1.0f) - pgammainc(lambda, x)) * 1.3f;
     z = z * v;
@@ -601,7 +599,7 @@ static inline unsigned int rand_poisson(
   if (lambda < 64)
     return rand_poisson_knuth(state, (float)lambda);
   if (lambda > 4000)
-    return (unsigned int)((std::sqrt(lambda) * rand_normal_double(state)) +
+    return (unsigned int)((sycl::sqrt(lambda) * rand_normal_double(state)) +
                           lambda + 0.5); // Round to nearest
   return rand_poisson_gammainc(state, (float)lambda);
 }

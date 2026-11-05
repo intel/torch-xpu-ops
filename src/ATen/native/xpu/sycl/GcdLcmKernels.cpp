@@ -36,7 +36,7 @@ template <typename scalar_t>
 struct LcmFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
     scalar_t g = calc_gcd(a, b);
-    return (g == 0) ? 0 : std::abs(a / g * b);
+    return (g == 0) ? 0 : sycl::abs(a / g * b);
   }
 };
 

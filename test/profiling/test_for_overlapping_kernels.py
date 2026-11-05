@@ -28,7 +28,7 @@ def extract_kernels(trace_data):
     kernels = []
 
     # GPU-related categories to include
-    gpu_categories = {"fwdbwd", "ac2g", "kernel", "gpu", "cuda", "hip"}
+    gpu_categories = {"kernel", "gpu_memcpy", "gpu_memset"}
 
     for event in trace_data.get("traceEvents", []):
         # Filter events that have timestamp and duration
@@ -40,7 +40,7 @@ def extract_kernels(trace_data):
                 continue
 
             # Only include GPU-related events
-            if any(gpu_cat in cat for gpu_cat in gpu_categories):
+            if cat in gpu_categories:
                 kernels.append(
                     {
                         "name": event.get("name", "unknown"),

@@ -22,6 +22,5 @@ exclude:
   - "__pycache__/*"
   - ".ci/**/*"
   - ".github/**/*"
-  - "yaml/**/*"
   - "**/__init__.py"
   - "lint/**/*"

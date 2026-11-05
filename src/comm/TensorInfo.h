@@ -54,7 +54,7 @@ template <typename T, typename IndexType>
 struct TensorInfo {
   using scalar_t = T;
 
-  TensorInfo();
+  TensorInfo() = default;
   TensorInfo(
       T* p,
       int dim,
@@ -90,29 +90,19 @@ struct TensorInfo {
   IndexType sizes[XPU_MAX_TENSORINFO_DIMS];
   IndexType strides[XPU_MAX_TENSORINFO_DIMS];
   int dims = 0;
-  bool is_contiguous;
-  bool is_strict_contiguous;
+  bool is_contiguous = true;
+  bool is_strict_contiguous = true;
 };
-
-template <typename T, typename IndexType>
-TensorInfo<T, IndexType>::TensorInfo() {
-  data = nullptr;
-  dims = 0;
-  is_contiguous = true;
-  is_strict_contiguous = true;
-}
 
 template <typename T, typename IndexType>
 TensorInfo<T, IndexType>::TensorInfo(
     T* p,
     int dim,
     IndexType sz[XPU_MAX_TENSORINFO_DIMS],
-    IndexType st[XPU_MAX_TENSORINFO_DIMS]) {
-  data = p;
-  dims = dim;
+    IndexType st[XPU_MAX_TENSORINFO_DIMS])
+    : data(p), dims(dim) {
   TORCH_INTERNAL_ASSERT(dims <= XPU_MAX_TENSORINFO_DIMS);
 
-  is_contiguous = true;
   IndexType z = 1;
   for (int i = dim - 1; i >= 0; i--) {
     sizes[i] = sz[i];
@@ -225,7 +215,7 @@ TensorInfo<scalar, IndexType> getTensorInfo(const at::TensorBase& t) {
 
   scalar* data_ptr = nullptr;
 
-  if constexpr (std::is_const<scalar>::value) {
+  if constexpr (std::is_const_v<scalar>) {
     data_ptr = t.const_data_ptr<scalar>();
   } else {
     data_ptr = t.mutable_data_ptr<scalar>();

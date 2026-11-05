@@ -983,7 +983,7 @@ def forward(self, arg0_1, arg1_1):
 def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8):
     sdpa_score0 = self.sdpa_score0
     sdpa_mask0 = self.sdpa_mask0
-    flex_attention = torch.ops.higher_order.flex_attention(primals_0, primals_0, primals_0, sdpa_score0, (768, 768, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, 128, 128, sdpa_mask0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': True, 'OUTPUT_MAX': False}, (), ());  sdpa_score0 = sdpa_mask0 = None
+    flex_attention = torch.ops.higher_order.flex_attention(primals_0, primals_0, primals_0, sdpa_score0, (768, 768, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, None, None, None, None, 128, 128, sdpa_mask0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': True, 'OUTPUT_MAX': False}, (), ());  sdpa_score0 = sdpa_mask0 = None
     getitem = flex_attention[0]
     getitem_1 = flex_attention[1];  flex_attention = None
     return (getitem, primals_0, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, getitem, getitem_1)""",  # noqa: B950
@@ -998,7 +998,7 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
     fw_graph0 = self.fw_graph0
     joint_graph0 = self.joint_graph0
     mask_graph0 = self.mask_graph0
-    flex_attention_backward = torch.ops.higher_order.flex_attention_backward(primals_0, primals_0, primals_0, getitem, getitem_1, tangents_0, None, fw_graph0, joint_graph0, (768, 768, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, 128, 128, mask_graph0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': True, 'OUTPUT_MAX': False}, (), ());  primals_0 = getitem = getitem_1 = tangents_0 = fw_graph0 = joint_graph0 = primals_1 = primals_2 = primals_3 = primals_4 = primals_5 = primals_6 = primals_7 = primals_8 = mask_graph0 = None
+    flex_attention_backward = torch.ops.higher_order.flex_attention_backward(primals_0, primals_0, primals_0, getitem, getitem_1, tangents_0, None, fw_graph0, joint_graph0, (768, 768, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, None, None, None, None, 128, 128, mask_graph0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': True, 'OUTPUT_MAX': False}, (), ());  primals_0 = getitem = getitem_1 = tangents_0 = fw_graph0 = joint_graph0 = primals_1 = primals_2 = primals_3 = primals_4 = primals_5 = primals_6 = primals_7 = primals_8 = mask_graph0 = None
     getitem_3 = flex_attention_backward[0]
     getitem_4 = flex_attention_backward[1]
     getitem_5 = flex_attention_backward[2];  flex_attention_backward = None
@@ -1007,82 +1007,6 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
     return (add_1, None, None, None, None, None, None, None, None)""",  # noqa: B950
                 ignore_comments=True,
                 ignore_empty_lines=True,
-            )
-
-    @parametrize("serialize", [False])  # , True
-    def test_max_autotune_no_cudagraphs(self, serialize):
-        """Test that max-autotune-no-cudagraphs options are properly applied inductor_config_patches."""
-        import torch._inductor.config as inductor_config
-
-        nested_config = get_invoke_subgraph_compile_options(
-            inductor_config_patches={
-                "max_autotune": True,
-                "triton.cudagraphs": False,
-            }
-        )
-
-        @torch.compiler.nested_compile_region(options=nested_config)
-        def g(sin, y):
-            mul = sin * y
-            add = mul + 1
-            return add
-
-        def fn(x, y):
-            sin = torch.sin(x)
-            add = g(sin, y)
-            return torch.sin(add)
-
-        # Hook to verify options
-        original_compile = torch._inductor.compile_fx._compile_fx_inner
-        captured_options = []
-
-        def verify_options(*args, **kwargs):
-            options = kwargs.get("inductor_config_patches", {})
-            captured_options.append(options)
-
-            # Verify config is set as expected from explicit options
-            assert torch._inductor.config.max_autotune, "max_autotune should be True"
-            assert not inductor_config.triton.cudagraphs, (
-                "triton.cudagraphs should be False"
-            )
-
-            return original_compile(*args, **kwargs)
-
-        torch._inductor.compile_fx._compile_fx_inner = verify_options
-
-        try:
-            # Use backend without options - they come from annotations
-            backend = aot_eager_regional_inductor(
-                serialize=serialize, on_invoke_subgraph=True
-            )
-
-            opt_fn = torch.compile(fn, backend=backend, fullgraph=True)
-            x = torch.randn(10, requires_grad=True)
-            y = torch.randn(10, requires_grad=True)
-
-            # Run and check that options were passed
-            _, codes = run_fw_bw_and_get_code(lambda: opt_fn(x, y))
-            self.assertEqual(len(codes), 2)
-
-            # Verify that compilation happened
-            self.assertTrue(
-                len(captured_options) > 0, "Compilation should have occurred"
-            )
-
-        finally:
-            torch._inductor.compile_fx._compile_fx_inner = original_compile
-
-    def test_invalid_inductor_config(self):
-        """Test that invalid inductor config keys are caught with a clear error."""
-
-        with self.assertRaisesRegex(
-            ValueError,
-            "Invalid inductor config key 'invalid_config_key'",
-        ):
-            get_invoke_subgraph_compile_options(
-                inductor_config_patches={
-                    "invalid_config_key": True,
-                }
             )
 
     @requires_gpu_and_triton
@@ -1264,10 +1188,7 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
         else:
             partitioner = test_partitioner
 
-        config_patches = {
-            "max_autotune": True,
-            "triton.cudagraphs": False,
-        }
+        config_patches = {}
         decompositions = {}
         nested_config = get_invoke_subgraph_compile_options(
             config_patches, decompositions, partitioner

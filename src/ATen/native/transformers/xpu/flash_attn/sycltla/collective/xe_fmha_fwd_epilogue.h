@@ -22,6 +22,8 @@
 #include <flash_attention_v2/collective/copy_block_slm.hpp>
 #include <flash_attention_v2/collective/fmha_fusion.hpp>
 #include <sycl/sycl.hpp>
+#include <limits>
+#include <numbers>
 
 namespace cutlass::fmha::collective {
 
@@ -91,9 +93,11 @@ class FMHAFwdEpilogue {
   using TiledCopyO =
       conditional_t<is_void_v<TiledCopyO_>, DefaultTiledCopyO, TiledCopyO_>;
 
-  // Stateless design -- no arguments or parameters.
-  struct Arguments {};
-  struct Params {};
+  struct Arguments {
+    float rp_dropout;
+  };
+
+  using Params = Arguments;
 
   // Shared memory storage
   // Note sum/max tiles are padded to 16 elements, due to limitations in CuTe
@@ -115,13 +119,14 @@ class FMHAFwdEpilogue {
       SharedStorageNone>;
 
  private:
+  Params params;
   SharedStorage& shared;
 
  public:
   static constexpr Params to_underlying_arguments(
       Arguments const& args,
       void* /* workspace */) {
-    return {};
+    return args;
   }
 
   CUTLASS_HOST_DEVICE static bool can_implement(Arguments const&) {
@@ -129,7 +134,8 @@ class FMHAFwdEpilogue {
   }
 
   CUTLASS_HOST_DEVICE
-  FMHAFwdEpilogue(Params const&, SharedStorage& shared_) : shared(shared_) {}
+  FMHAFwdEpilogue(Params const& params_, SharedStorage& shared_)
+      : params(params_), shared(shared_) {}
 
   template <typename QVCoord>
   CUTLASS_DEVICE void operator()(
@@ -141,7 +147,8 @@ class FMHAFwdEpilogue {
       int thr_id, // Work-item ID
       float* pLSE, // Global LSE Ptr
       const std::tuple<int, int, int, int, int, int, int>&
-          metadata_for_lse // Metadata for LSE to calculate offset
+          metadata_for_lse, // Metadata for LSE to calculate offset
+      bool is_dropout // Whether dropout is enabled
   ) {
     using namespace cute;
     using ElementA = typename FragA::element_type;
@@ -154,18 +161,19 @@ class FMHAFwdEpilogue {
       return;
 
     auto non_reciprocal_rAsum = rA_sum(0);
-    /* Complete softmax, dividing out sums. */
+    /* Complete softmax, dividing out sums.
+       A sum of exactly zero therefore means the row is fully masked. Scale
+       those rows by zero to emit O = 0 directly. */
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < rA_sum.size(); i++)
-      rA_sum(i) = ElementA(1) / rA_sum(i);
+      rA_sum(i) =
+          rA_sum(i) == ElementA(0) ? ElementA(0) : ElementA(1) / rA_sum(i);
 
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < rA.size(); i++) {
       rA(i) *= broadcast<0>(rA_sum, rA, i);
-      if (std::isnan(rA(i))) {
-        rA(i) =
-            0; // Handle the -nan when the whole sequence is completely masked
-      }
+      if (is_dropout)
+        rA(i) *= params.rp_dropout;
     }
 
     /* Tile output */
@@ -208,12 +216,17 @@ class FMHAFwdEpilogue {
         (tile_row_idx % rows_of_maxima) ==
             lane_id) { // only 1 lane contain the correct row maxima for that
                        // particular row
-      // The softmax scale was multiplied by the kLog2e in the mainloop
-      // Need to divide it to restore the value
-      double kLog2e = 1.4426950408889634074;
-      tA_max[0] = tA_max[0] / kLog2e;
-      float lse_val = tA_max[0] + logf(non_reciprocal_rAsum);
-      *(pLSE + lse_offset + tile_row_idx) = lse_val == -INFINITY ? 0 : lse_val;
+      // The softmax scale was multiplied by log2(e) in the mainloop
+      // Multiply by ln(2) == 1/log2(e) to restore the value
+      tA_max[0] = tA_max[0] * std::numbers::ln2_v<float>;
+      // A zero softmax sum means the row is fully masked. Write +inf, matching
+      // upstream FA2's fully-masked path. This is a sentinel, not the
+      // mathematical value: log(0) is -inf, but the backward evaluates
+      // exp(S - LSE), which collapses to zero for +inf and blows up to NaN for
+      // -inf.
+      *(pLSE + lse_offset + tile_row_idx) = non_reciprocal_rAsum == 0
+          ? std::numeric_limits<float>::infinity()
+          : tA_max[0] + logf(non_reciprocal_rAsum);
     }
   }
 

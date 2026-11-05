@@ -21,8 +21,9 @@
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernelImpl.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
-#include <c10/util/llvmMathExtras.h>
-#include <comm/DeviceProperties.h>
+#include <ATen/xpu/XPUContext.h>
+
+#include <bit>
 
 namespace at::native::xpu {
 
@@ -46,7 +47,7 @@ static bool subgroup_topk_try_launch(
   }
 
   int K_sel = std::min<int>(
-      static_cast<int>(c10::llvm::PowerOf2Ceil(static_cast<uint64_t>(k))), 8);
+      static_cast<int>(std::bit_ceil(static_cast<uint64_t>(k))), 8);
 
   switch (K_sel) {
     case 1:
@@ -100,8 +101,7 @@ SbtopkResult sbtopk_try_launch(
   //   thread_slots/4 is the conservative cutoff.
   //
   // On B580: thread_slots = 160 EU * 8 HW threads = 1280, threshold = 320.
-  int64_t thread_slots =
-      ::xpu::sycl::syclGpuEuCount() * ::xpu::sycl::syclGpuHWThreadsPerEU();
+  int64_t thread_slots = at::xpu::getDeviceHWThreads();
   int64_t sg_threshold = thread_slots / 4;
   if (k <= 8 && nsegments >= sg_threshold) {
     if (subgroup_topk_try_launch(

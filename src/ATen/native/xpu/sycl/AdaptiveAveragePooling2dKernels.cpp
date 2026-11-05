@@ -15,6 +15,7 @@
 #include <ATen/native/Pool.h>
 #include <ATen/native/xpu/sycl/LaunchUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/MemoryFormat.h>
 #include <comm/xpu_aten.h>
 #include <vector>
@@ -81,17 +82,20 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
   AdaptiveAvgPool2dBwdKernelFunctor(
       PackedTensorAccessor64<const scalar_t, 4> gyacc,
       PackedTensorAccessor64<scalar_t, 4> gxacc)
-      : gyacc_(gyacc), gxacc_(gxacc) {
-    ib_ = gxacc_.size(0);
-    ic_ = gxacc_.size(1);
-    ih_ = gxacc_.size(2);
-    iw_ = gxacc_.size(3);
-    oh_ = gyacc_.size(2);
-    ow_ = gyacc_.size(3);
-
-    numel_ = ib_ * ic_ * ih_ * iw_;
-    int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
-    local_range_ = syclMaxWorkItemsPerSubSlice();
+      : ib_(gxacc.size(0)),
+        ic_(gxacc.size(1)),
+        ih_(gxacc.size(2)),
+        iw_(gxacc.size(3)),
+        oh_(gyacc.size(2)),
+        ow_(gyacc.size(3)),
+        numel_(static_cast<int64_t>(ib_) * ic_ * ih_ * iw_),
+        local_range_(
+            at::xpu::getDeviceMaxSubGroupSize() *
+            at::xpu::getDeviceEUCountPerXeCore()),
+        gyacc_(gyacc),
+        gxacc_(gxacc) {
+    int total_item =
+        std::min<int64_t>(numel_, at::xpu::getDeviceMaxWorkItems());
     global_range_ = total_item < local_range_
         ? local_range_
         : (total_item / local_range_) * local_range_;
@@ -197,18 +201,19 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   AdaptiveAvgPool2dBwdSLMKernelFunctor(
       PackedTensorAccessor64<const scalar_t, 4> gyacc,
       PackedTensorAccessor64<scalar_t, 4> gxacc)
-      : gyacc_(gyacc), gxacc_(gxacc) {
-    ib_ = gxacc_.size(0);
-    ic_ = gxacc_.size(1);
-    ih_ = gxacc_.size(2);
-    iw_ = gxacc_.size(3);
-    oh_ = gyacc_.size(2);
-    ow_ = gyacc_.size(3);
-
-    numel_ = ib_ * ic_ * ih_ * iw_;
-    int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
-
-    local_range_ = syclMaxWorkGroupSize(*this);
+      : ib_(gxacc.size(0)),
+        ic_(gxacc.size(1)),
+        ih_(gxacc.size(2)),
+        iw_(gxacc.size(3)),
+        oh_(gyacc.size(2)),
+        ow_(gyacc.size(3)),
+        numel_(static_cast<int64_t>(ib_) * ic_ * ih_ * iw_),
+        local_range_(at::xpu::getKernelMaxWorkGroupSize<
+                     AdaptiveAvgPool2dBwdSLMKernelFunctor>()),
+        gyacc_(gyacc),
+        gxacc_(gxacc) {
+    int total_item =
+        std::min<int64_t>(numel_, at::xpu::getDeviceMaxWorkItems());
     global_range_ = total_item < local_range_
         ? local_range_
         : (total_item / local_range_) * local_range_;
@@ -455,14 +460,17 @@ void adaptive_avg_pool2d_backward_kernel(
           {sizeC * isizeH * isizeW, 1, isizeW * sizeC, sizeC});
     }
 
-    int max_threads =
-        std::min<int>(syclMaxWorkItemsPerSubSlice(), XPU_MAX_THREADS);
-    size_t sharedMemPerGroup = syclLocalMemSize();
+    int max_threads = std::min<int>(
+        at::xpu::getDeviceMaxSubGroupSize() *
+            at::xpu::getDeviceEUCountPerXeCore(),
+        XPU_MAX_THREADS);
+    size_t sharedMemPerGroup = at::xpu::getDeviceLocalMemSize();
 
     bool done = false;
     do {
       int group_x = std::max<int>(
-          std::min<int>(lastPow2(sizeC), syclMaxSubGroupSize()), 1);
+          std::min<int>(lastPow2(sizeC), at::xpu::getDeviceMaxSubGroupSize()),
+          1);
       int group_y = std::max<int>(
           std::min<int>(lastPow2(isizeW), max_threads / group_x), 1);
       int group_z = std::max<int>(
@@ -485,7 +493,8 @@ void adaptive_avg_pool2d_backward_kernel(
           (size_t)range_y * group_y,
           (size_t)range_x * group_x};
 
-      AT_ASSERT(input.numel() < std::numeric_limits<int32_t>::max());
+      TORCH_INTERNAL_ASSERT(
+          input.numel() < std::numeric_limits<int32_t>::max());
 
       AT_DISPATCH_FLOATING_TYPES_AND2(
           kHalf,
@@ -540,8 +549,8 @@ void adaptive_avg_pool2d_backward_kernel(
 
           int64_t ohw01_shared_size = ((isizeH + isizeW) * 2) * sizeof(int);
           int64_t ikhw_shared_size = (osizeH + osizeW) * sizeof(opmath_t);
-          bool using_shared =
-              syclLocalMemSize() >= ohw01_shared_size + ikhw_shared_size;
+          bool using_shared = at::xpu::getDeviceLocalMemSize() >=
+              ohw01_shared_size + ikhw_shared_size;
 
           auto& q = getCurrentSYCLQueue();
           if (using_shared) {
@@ -760,20 +769,22 @@ void launch_adaptive_avg_pool2d_kernel_cl(const Tensor& input, Tensor& output) {
   int64_t numel = ob * oc * oh * ow;
   int vec_size = 1;
   for (vec_size = std::min(
-           8,
-           memory::can_vectorize_up_to<scalar_t>(
-               (char*)output.mutable_data_ptr<scalar_t>()));
+           {8,
+            memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(
+                output.mutable_data_ptr<scalar_t>())),
+            memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(
+                input.const_data_ptr<scalar_t>()))});
        vec_size > 1;
        vec_size /= 2) {
     if (oc % vec_size != 0)
       continue;
-    if (2 * numel / vec_size > syclMaxWorkItemsPerTile()) {
+    if (2 * numel / vec_size > at::xpu::getDeviceMaxWorkItems()) {
       numel /= vec_size;
       break;
     }
   }
 
-  auto wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t wg_size = at::xpu::getDeviceMaxWorkGroupSize();
   int64_t num_wg = (numel + wg_size - 1) / wg_size;
   switch (vec_size) {
     case 8:
@@ -866,8 +877,9 @@ void launch_adaptive_avg_pool2d_kernel(
   int ow = output.size(3);
 
   int64_t numel = ob * oc * oh * ow;
-  int total_item = std::min(numel, syclMaxWorkItemsPerTile());
-  int local_range = syclMaxWorkItemsPerSubSlice();
+  int total_item = std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
+  int local_range = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int global_range = total_item < local_range
       ? local_range
       : ((total_item + local_range - 1) / local_range) * local_range;

@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -34,6 +35,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 
 namespace at::native::xpu {
 
+#ifdef __SYCL_DEVICE_ONLY__
 static inline int p_start(
     int size,
     int pad,
@@ -48,6 +50,7 @@ static inline int p_start(
 static inline int p_end(int size, int pad, int pooled_size, int stride) {
   return std::min((size + pad) / stride + 1, pooled_size);
 }
+#endif
 
 static inline bool can_use_int32_nhwc(
     int64_t nbatch,
@@ -577,10 +580,10 @@ struct MaxPool2dBackwardChannelLastVec {
         grad_acc[i] = accscalar_t(0);
       }
 
-      int offset = batch * out_n_stride_ / vec_size + plane;
+      index_t offset = batch * out_n_stride_ / vec_size + plane;
       for (int ph = phstart; ph < phend; ++ph) {
         for (int pw = pwstart; pw < pwend; ++pw) {
-          int load_offset = offset +
+          index_t load_offset = offset +
               ph * gradOutputSizeW_ * numPlane_ / vec_size +
               pw * numPlane_ / vec_size;
           vec_t gout_val_vec = gradOutput_[load_offset];
@@ -740,9 +743,9 @@ void launch_max_pool2d_kernel(
   int64_t stride = static_cast<int64_t>(numPlane) *
       static_cast<int64_t>(outputSizeH) * static_cast<int64_t>(outputSizeW);
   int vec_size = 1;
-  int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int thread_slots = at::xpu::getDeviceHWThreads();
   int64_t num_sub_wg;
-  auto wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t wg_size = at::xpu::getDeviceMaxWorkGroupSize();
   int64_t num_wg;
   if constexpr (is_channels_last) {
     for (vec_size =
@@ -752,7 +755,7 @@ void launch_max_pool2d_kernel(
       if (numPlane % vec_size != 0) {
         continue;
       }
-      num_sub_wg = outputSize / vec_size / syclMaxSubGroupSize();
+      num_sub_wg = outputSize / vec_size / at::xpu::getDeviceMaxSubGroupSize();
       if (2 * num_sub_wg > thread_slots) {
         int total_thread = outputSize / vec_size;
         num_wg = (total_thread + wg_size - 1) / wg_size;
@@ -970,9 +973,9 @@ void launch_max_pool2d_backward_kernel(
   // deterministic path.
 
   int vec_size = 1;
-  int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int thread_slots = at::xpu::getDeviceHWThreads();
   int num_sub_wg;
-  auto wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t wg_size = at::xpu::getDeviceMaxWorkGroupSize();
   int64_t num_wg;
   if constexpr (is_channels_last) {
     for (vec_size = std::min(
@@ -982,7 +985,8 @@ void launch_max_pool2d_backward_kernel(
       if (numPlane % vec_size != 0) {
         continue;
       }
-      num_sub_wg = gradInputSize / vec_size / syclMaxSubGroupSize();
+      num_sub_wg =
+          gradInputSize / vec_size / at::xpu::getDeviceMaxSubGroupSize();
       if (2 * num_sub_wg > thread_slots) {
         int total_thread = gradInputSize / vec_size;
         num_wg = (total_thread + wg_size - 1) / wg_size;
@@ -1322,11 +1326,9 @@ void max_pool2d_with_indices_backward_kernel(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
   auto memory_format = input_.suggest_memory_format();
-  Tensor input, gradOutput, indices;
-
-  input = input_.contiguous(memory_format);
-  gradOutput = gradOutput_.contiguous(memory_format);
-  indices = indices_.contiguous(memory_format);
+  Tensor input = input_.contiguous(memory_format);
+  Tensor gradOutput = gradOutput_.contiguous(memory_format);
+  Tensor indices = indices_.contiguous(memory_format);
   gradInput.zero_();
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);

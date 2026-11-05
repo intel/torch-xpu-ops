@@ -10,393 +10,251 @@
 
 #include <xccl/xccl.h>
 
+#ifndef _WIN32
+#include <dlfcn.h>
+#include <link.h>
+#endif
+
+namespace {
+
+// WA. revert it once DLE 2026.2 releases.
+//
+// libccl.so.2 dlopen()s its legacy plugin libccl_legacy.so, which lists
+// libccl.so.1 in DT_NEEDED but ships without RPATH/RUNPATH. A dlopen'd object
+// does not inherit the search path of whoever pulled it in, so in the flat
+// PyPI/venv layout libccl.so.1 is looked up only in /etc/ld.so.cache, /lib and
+// /usr/lib; it is not found and oneCCL fails with "Could not load any plugin",
+// taking down every process group creation. Pulling it into the global scope
+// here lets the plugin bind against the already-loaded object.
+//
+// Our own RPATH is no help: libtorch_xpu.so is only an indirect dependency, so
+// glibc resolves dlopen() against the RPATH of whatever was dlopen'd directly
+// (libtorch_global_deps.so), never ours. Derive the location from the already
+// mapped libccl.so.2 instead -- oneCCL always ships the two side by side.
+//
+// A failure here is expected on a full oneAPI/DLE layout, where the plugin
+// resolves its own dependencies, so it is deliberately not reported.
+//
+// oneCCL 2022.2 adds $ORIGIN search paths to its wheels; drop this once that
+// is the minimum supported version.
+[[maybe_unused]] const bool preloaded_oneccl_legacy_dep = []() {
+#ifndef _WIN32
+  // libccl.so.2 is DT_NEEDED, so it is already mapped by the time this runs.
+  if (void* v2 = dlopen("libccl.so.2", RTLD_LAZY | RTLD_NOLOAD)) {
+    link_map* lm = nullptr;
+    if (dlinfo(v2, RTLD_DI_LINKMAP, static_cast<void*>(&lm)) == 0 &&
+        lm != nullptr && lm->l_name != nullptr && lm->l_name[0] != '\0') {
+      std::string path(lm->l_name);
+      const size_t slash = path.rfind('/');
+      if (slash != std::string::npos) {
+        path.replace(slash + 1, std::string::npos, "libccl.so.1");
+        (void)dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+      }
+    }
+    dlclose(v2);
+  }
+#endif
+  return true;
+}();
+
+} // namespace
+
 namespace c10d {
 namespace xccl {
 
 void oneccl_group_start() {
-  if (isCCLV2EnabledCached()) {
-    onecclGroupStart();
-  } else {
-    ccl::group_start();
-  }
+  onecclGroupStart();
 }
 
 void oneccl_group_end() {
-  if (isCCLV2EnabledCached()) {
-    onecclGroupEnd();
-  } else {
-    ccl::group_end();
-  }
+  onecclGroupEnd();
 }
 
 void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
-    ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
-    onecclAllReduce(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        comm.onecclComm,
-        &stream.queue());
-  } else {
-    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
-    ccl::allreduce(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        *comm.cclComm,
-        xcclStream);
-  }
-  return;
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
+  onecclAllReduce(
+      input.data_ptr(),
+      output.data_ptr(),
+      (size_t)input.numel(),
+      xcclDataType,
+      xcclReduceOp,
+      comm,
+      &stream.queue());
 }
 
 void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     const int root,
-    ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
-    onecclReduce(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        root,
-        comm.onecclComm,
-        &stream.queue());
-  } else {
-    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
-    ccl::reduce(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        root,
-        *comm.cclComm,
-        xcclStream);
-  }
-  return;
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
+  onecclReduce(
+      input.data_ptr(),
+      output.data_ptr(),
+      (size_t)input.numel(),
+      xcclDataType,
+      xcclReduceOp,
+      root,
+      comm,
+      &stream.queue());
 }
 
 void onecclBroadcast(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
-    ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
-    onecclBroadcast(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        root,
-        comm.onecclComm,
-        &stream.queue());
-  } else {
-    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
-    ccl::broadcast(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        root,
-        *comm.cclComm,
-        xcclStream);
-  }
-  return;
+  auto xcclDataType = getXcclDataType(input.scalar_type(), false);
+  onecclBroadcast(
+      input.data_ptr(),
+      output.data_ptr(),
+      (size_t)input.numel(),
+      xcclDataType,
+      root,
+      comm,
+      &stream.queue());
 }
 
 void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
-    ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
-    onecclReduceScatter(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)output.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        comm.onecclComm,
-        &stream.queue());
-  } else {
-    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
-    ccl::reduce_scatter(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)output.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        *comm.cclComm,
-        xcclStream);
-  }
-  return;
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
+  onecclReduceScatter(
+      input.data_ptr(),
+      output.data_ptr(),
+      (size_t)output.numel(),
+      xcclDataType,
+      xcclReduceOp,
+      comm,
+      &stream.queue());
 }
 
 void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
-    ccl::stream& xcclStream,
+    onecclComm_t& comm,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
-    onecclAllGather(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        comm.onecclComm,
-        &stream.queue());
-  } else {
-    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
-    ccl::allgather(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        *comm.cclComm,
-        xcclStream);
-  }
-  return;
+  auto xcclDataType = getXcclDataType(input.scalar_type(), false);
+  onecclAllGather(
+      input.data_ptr(),
+      output.data_ptr(),
+      (size_t)input.numel(),
+      xcclDataType,
+      comm,
+      &stream.queue());
 }
 
 void onecclSend(
     at::Tensor& input,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int dstRank,
-    ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
-    onecclSend(
-        input.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        dstRank,
-        comm.onecclComm,
-        &stream.queue());
-  } else {
-    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
-    ccl::send(
-        input.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        dstRank,
-        *comm.cclComm,
-        xcclStream);
-  }
-  return;
+  auto xcclDataType = getXcclDataType(input.scalar_type(), false);
+  onecclSend(
+      input.data_ptr(),
+      (size_t)input.numel(),
+      xcclDataType,
+      dstRank,
+      comm,
+      &stream.queue());
 }
 
 void onecclRecv(
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int srcRank,
-    ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(output.scalar_type(), false);
-    onecclRecv(
-        output.data_ptr(),
-        (size_t)output.numel(),
-        xcclDataType,
-        srcRank,
-        comm.onecclComm,
-        &stream.queue());
-  } else {
-    auto xcclDataType = getXcclDataTypeV1(output.scalar_type(), false);
-    ccl::recv(
-        output.data_ptr(),
-        (size_t)output.numel(),
-        xcclDataType,
-        srcRank,
-        *comm.cclComm,
-        xcclStream);
-  }
-  return;
+  auto xcclDataType = getXcclDataType(output.scalar_type(), false);
+  onecclRecv(
+      output.data_ptr(),
+      (size_t)output.numel(),
+      xcclDataType,
+      srcRank,
+      comm,
+      &stream.queue());
 }
 
 void onecclGather(
     const at::Tensor& inputs,
     std::vector<at::Tensor>& outputs,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
-    ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
   size_t count = inputs.numel();
-
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(inputs.scalar_type(), false);
-    int numranks = 0, cur_rank = 0;
-    onecclCommCount(comm.onecclComm, &numranks);
-    onecclCommUserRank(comm.onecclComm, &cur_rank);
-    onecclGroupStart();
-    if (cur_rank == root) {
-      for (const auto r : c10::irange(numranks)) {
-        if (r != root) {
-          auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
-          onecclRecv(
-              recvbuff,
-              count,
-              xcclDataType,
-              r,
-              comm.onecclComm,
-              &stream.queue());
-        } else {
-          // on its own rank, simply copy from the input
-          outputs[r].copy_(inputs);
-        }
+  auto xcclDataType = getXcclDataType(inputs.scalar_type(), false);
+  int numranks = 0, cur_rank = 0;
+  onecclCommCount(comm, &numranks);
+  onecclCommUserRank(comm, &cur_rank);
+  onecclGroupStart();
+  if (cur_rank == root) {
+    for (const auto r : c10::irange(numranks)) {
+      if (r != root) {
+        auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
+        onecclRecv(recvbuff, count, xcclDataType, r, comm, &stream.queue());
+      } else {
+        // on its own rank, simply copy from the input
+        outputs[r].copy_(inputs);
       }
-    } else {
-      onecclSend(
-          inputs.data_ptr(),
-          count,
-          xcclDataType,
-          root,
-          comm.onecclComm,
-          &stream.queue());
     }
-    onecclGroupEnd();
   } else {
-    auto xcclDataType = getXcclDataTypeV1(inputs.scalar_type(), false);
-    int numranks = comm.cclComm->size();
-    int cur_rank = comm.cclComm->rank();
-    ccl::group_start();
-    if (cur_rank == root) {
-      for (const auto r : c10::irange(numranks)) {
-        if (r != root) {
-          auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
-          ccl::recv(
-              recvbuff, count, xcclDataType, r, *comm.cclComm, xcclStream);
-        } else {
-          // on its own rank, simply copy from the input
-          outputs[r].copy_(inputs);
-        }
-      }
-    } else {
-      ccl::send(
-          inputs.data_ptr(),
-          count,
-          xcclDataType,
-          root,
-          *comm.cclComm,
-          xcclStream);
-    }
-    ccl::group_end();
+    onecclSend(
+        inputs.data_ptr(), count, xcclDataType, root, comm, &stream.queue());
   }
-  return;
+  onecclGroupEnd();
 }
 
 void onecclScatter(
     const std::vector<at::Tensor>& inputs,
     at::Tensor& outputs,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
-    ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(outputs.scalar_type(), false);
-    int numranks = 0, cur_rank = 0;
-    onecclCommCount(comm.onecclComm, &numranks);
-    onecclCommUserRank(comm.onecclComm, &cur_rank);
-    onecclGroupStart();
-    if (cur_rank == root) {
-      for (const auto r : c10::irange(numranks)) {
-        if (r != root) {
-          size_t send_count = inputs[r].numel();
-          onecclSend(
-              inputs[r].data_ptr(),
-              send_count,
-              xcclDataType,
-              r,
-              comm.onecclComm,
-              &stream.queue());
-        } else {
-          // on its own rank, simply copy from the input
-          outputs.copy_(inputs[r]);
-        }
+  auto xcclDataType = getXcclDataType(outputs.scalar_type(), false);
+  int numranks = 0, cur_rank = 0;
+  onecclCommCount(comm, &numranks);
+  onecclCommUserRank(comm, &cur_rank);
+  onecclGroupStart();
+  if (cur_rank == root) {
+    for (const auto r : c10::irange(numranks)) {
+      if (r != root) {
+        size_t send_count = inputs[r].numel();
+        onecclSend(
+            inputs[r].data_ptr(),
+            send_count,
+            xcclDataType,
+            r,
+            comm,
+            &stream.queue());
+      } else {
+        // on its own rank, simply copy from the input
+        outputs.copy_(inputs[r]);
       }
-    } else {
-      size_t recv_count = outputs.numel();
-      onecclRecv(
-          outputs.data_ptr(),
-          recv_count,
-          xcclDataType,
-          root,
-          comm.onecclComm,
-          &stream.queue());
     }
-    onecclGroupEnd();
   } else {
-    auto xcclDataType = getXcclDataTypeV1(outputs.scalar_type(), false);
-    int numranks = comm.cclComm->size();
-    int cur_rank = comm.cclComm->rank();
-    ccl::group_start();
-    if (cur_rank == root) {
-      for (const auto r : c10::irange(numranks)) {
-        if (r != root) {
-          size_t send_count = inputs[r].numel();
-          ccl::send(
-              inputs[r].data_ptr(),
-              send_count,
-              xcclDataType,
-              r,
-              *comm.cclComm,
-              xcclStream);
-        } else {
-          // on its own rank, simply copy from the input
-          outputs.copy_(inputs[r]);
-        }
-      }
-    } else {
-      size_t recv_count = outputs.numel();
-      ccl::recv(
-          outputs.data_ptr(),
-          recv_count,
-          xcclDataType,
-          root,
-          *comm.cclComm,
-          xcclStream);
-    }
-    ccl::group_end();
+    size_t recv_count = outputs.numel();
+    onecclRecv(
+        outputs.data_ptr(),
+        recv_count,
+        xcclDataType,
+        root,
+        comm,
+        &stream.queue());
   }
-  return;
+  onecclGroupEnd();
 }
 
 static std::pair<bool, size_t> checkUniformAllToAll(
@@ -431,96 +289,45 @@ void onecclAllToAll(
     const size_t* recvdispls,
     size_t size,
     at::ScalarType dataType,
-    xcclComm_t& comm,
-    ccl::stream& xcclStream,
+    onecclComm_t& comm,
     at::xpu::XPUStream& stream) {
-  if (isCCLV2EnabledCached()) {
-    auto xcclDataType = getXcclDataTypeV2(dataType, false);
-    int numranks = 0;
-    onecclCommCount(comm.onecclComm, &numranks);
+  auto xcclDataType = getXcclDataType(dataType, false);
+  int numranks = 0;
+  onecclCommCount(comm, &numranks);
 
-    auto [isUniform, uniformCount] = checkUniformAllToAll(
-        sendcounts, senddispls, recvcounts, recvdispls, numranks);
+  auto [isUniform, uniformCount] = checkUniformAllToAll(
+      sendcounts, senddispls, recvcounts, recvdispls, numranks);
 
-    if (isUniform) {
-      // Use native onecclAllToAll for uniform case
-      onecclAllToAll(
-          sendbuff,
-          recvbuff,
-          uniformCount,
-          xcclDataType,
-          comm.onecclComm,
-          &stream.queue());
-      return;
-    }
-
-    // Fallback to send/recv based implementation for non-uniform case
-    xccl::oneccl_group_start();
-    for (const auto r : c10::irange(numranks)) {
-      if (sendcounts[r] != 0) {
-        onecclSend(
-            ((char*)sendbuff) + senddispls[r] * size,
-            sendcounts[r],
-            xcclDataType,
-            r,
-            comm.onecclComm,
-            &stream.queue());
-      }
-      if (recvcounts[r] != 0) {
-        onecclRecv(
-            ((char*)recvbuff) + recvdispls[r] * size,
-            recvcounts[r],
-            xcclDataType,
-            r,
-            comm.onecclComm,
-            &stream.queue());
-      }
-    }
-    xccl::oneccl_group_end();
-  } else {
-    auto xcclDataType = getXcclDataTypeV1(dataType, false);
-    int numranks = comm.cclComm->size();
-
-    auto [isUniform, uniformCount] = checkUniformAllToAll(
-        sendcounts, senddispls, recvcounts, recvdispls, numranks);
-
-    if (isUniform) {
-      // Use native ccl::alltoall for uniform case
-      ccl::alltoall(
-          sendbuff,
-          recvbuff,
-          uniformCount,
-          xcclDataType,
-          *comm.cclComm,
-          xcclStream);
-      return;
-    }
-
-    // Fallback to send/recv based implementation for non-uniform case
-    xccl::oneccl_group_start();
-    for (const auto r : c10::irange(numranks)) {
-      if (sendcounts[r] != 0) {
-        ccl::send(
-            ((char*)sendbuff) + senddispls[r] * size,
-            sendcounts[r],
-            xcclDataType,
-            r,
-            *comm.cclComm,
-            xcclStream);
-      }
-      if (recvcounts[r] != 0) {
-        ccl::recv(
-            ((char*)recvbuff) + recvdispls[r] * size,
-            recvcounts[r],
-            xcclDataType,
-            r,
-            *comm.cclComm,
-            xcclStream);
-      }
-    }
-    xccl::oneccl_group_end();
+  if (isUniform) {
+    // Use native onecclAllToAll for uniform case
+    onecclAllToAll(
+        sendbuff, recvbuff, uniformCount, xcclDataType, comm, &stream.queue());
+    return;
   }
-  return;
+
+  // Fallback to send/recv based implementation for non-uniform case
+  xccl::oneccl_group_start();
+  for (const auto r : c10::irange(numranks)) {
+    if (sendcounts[r] != 0) {
+      onecclSend(
+          ((char*)sendbuff) + senddispls[r] * size,
+          sendcounts[r],
+          xcclDataType,
+          r,
+          comm,
+          &stream.queue());
+    }
+    if (recvcounts[r] != 0) {
+      onecclRecv(
+          ((char*)recvbuff) + recvdispls[r] * size,
+          recvcounts[r],
+          xcclDataType,
+          r,
+          comm,
+          &stream.queue());
+    }
+  }
+  xccl::oneccl_group_end();
 }
 
 } // namespace xccl

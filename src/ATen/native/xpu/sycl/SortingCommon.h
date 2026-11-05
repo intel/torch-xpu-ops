@@ -11,9 +11,9 @@
 #pragma once
 
 #include <comm/SYCLContext.h>
-#include <comm/Scalar.h>
 #include <comm/TensorInfo.h>
-#include <stdlib.h>
+#include <bit>
+#include <cstdlib>
 
 namespace at::native::xpu {
 
@@ -44,7 +44,7 @@ struct KeyTraits<NullType> {
   static inline NullType deconvert(Type v) {
     return NullType();
   }
-  static inline unsigned int endbit() {
+  static constexpr unsigned int endbit() {
     return 0;
   }
 };
@@ -53,15 +53,15 @@ template <>
 struct KeyTraits<float> {
   using Type = uint32_t;
   static inline Type convert(float v) {
-    Type x = *((Type*)&v);
+    Type x = std::bit_cast<Type>(v);
     Type mask = (x & 0x80000000) ? 0xffffffff : 0x80000000;
     return (x ^ mask);
   }
   static inline float deconvert(Type v) {
     Type mask = (v & 0x80000000) ? 0x80000000 : 0xffffffff;
-    return __int_as_float(v ^ mask);
+    return std::bit_cast<float>(v ^ mask);
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -75,7 +75,7 @@ struct KeyTraits<bool> {
   static inline bool deconvert(Type v) {
     return v;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return 1;
   }
 };
@@ -89,7 +89,7 @@ struct KeyTraits<uint8_t> {
   static inline uint8_t deconvert(Type v) {
     return v;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -104,7 +104,7 @@ struct KeyTraits<uint16_t> {
   static inline SrcType deconvert(Type v) {
     return v;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -119,7 +119,7 @@ struct KeyTraits<uint32_t> {
   static inline SrcType deconvert(Type v) {
     return v;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -134,7 +134,7 @@ struct KeyTraits<uint64_t> {
   static inline SrcType deconvert(Type v) {
     return v;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -147,7 +147,7 @@ struct KeyTraits<int8_t> {
   static inline int8_t deconvert(Type v) {
     return v - 128;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -161,7 +161,7 @@ struct KeyTraits<int16_t> {
   static inline int16_t deconvert(Type v) {
     return v - 32768;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -175,7 +175,7 @@ struct KeyTraits<int32_t> {
   static inline int32_t deconvert(Type v) {
     return v - 2147483648u;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -189,7 +189,7 @@ struct KeyTraits<int64_t> {
   static inline int64_t deconvert(Type v) {
     return v - 9223372036854775808ull;
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -198,15 +198,15 @@ template <>
 struct KeyTraits<double> {
   using Type = uint64_t;
   static inline Type convert(double v) {
-    Type x = *((Type*)&v);
+    Type x = std::bit_cast<Type>(v);
     Type mask = -((x >> 63)) | 0x8000000000000000;
     return (x ^ mask);
   }
   static inline double deconvert(Type v) {
     Type mask = ((v >> 63) - 1) | 0x8000000000000000;
-    return __long_long_as_double(v ^ mask);
+    return std::bit_cast<double>(v ^ mask);
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -215,16 +215,16 @@ template <>
 struct KeyTraits<at::Half> {
   using Type = uint16_t;
   static inline Type convert(at::Half v) {
-    Type x = *((Type*)&v);
+    Type x = std::bit_cast<Type>(v);
     Type mask = -((x >> 15)) | 0x8000;
     return (x ^ mask);
   }
   static inline at::Half deconvert(Type v) {
     Type mask = ((v >> 15) - 1) | 0x8000;
     Type v_de = v ^ mask;
-    return reinterpret_cast<at::Half&>(v_de);
+    return std::bit_cast<at::Half>(v_de);
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -233,16 +233,16 @@ template <>
 struct KeyTraits<at::BFloat16> {
   using Type = uint16_t;
   static inline Type convert(at::BFloat16 v) {
-    Type x = *((Type*)&v);
+    Type x = std::bit_cast<Type>(v);
     Type mask = -((x >> 15)) | 0x8000;
     return (x ^ mask);
   }
   static inline at::BFloat16 deconvert(Type v) {
     Type mask = ((v >> 15) - 1) | 0x8000;
     Type v_de = v ^ mask;
-    return reinterpret_cast<at::BFloat16&>(v_de);
+    return std::bit_cast<at::BFloat16>(v_de);
   }
-  static inline int endbit() {
+  static constexpr int endbit() {
     return sizeof(Type) << 3;
   }
 };
@@ -299,7 +299,7 @@ inline T group_cumsum(T* storage, sycl::nd_item<1>& item) {
   auto storage_lanes = storage + lid * COUNTER_LANES;
   T lane_all_sum = 0;
 
-  if (EXCLUSIVE) {
+  if constexpr (EXCLUSIVE) {
 #pragma unroll
     for (int lane = 0; lane < COUNTER_LANES; ++lane) {
       lane_temp_values[lane] = lane_all_sum;

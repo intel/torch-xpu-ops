@@ -28,15 +28,15 @@ template <typename T>
 inline c10::complex<T> reciprocal_wrapper(c10::complex<T> v) {
   // Handle extreme cases for numpy compatibility
   auto both_inf = [](T real, T imag) {
-    return (std::isinf(real) && std::isinf(imag));
+    return (sycl::isinf(real) && sycl::isinf(imag));
   };
 
   auto either_inf = [](T real, T imag) {
-    return std::isinf(real) || std::isinf(imag);
+    return sycl::isinf(real) || sycl::isinf(imag);
   };
 
   auto either_nan = [](T real, T imag) {
-    return std::isnan(real) || std::isnan(imag);
+    return sycl::isnan(real) || sycl::isnan(imag);
   };
 
   if (either_nan(v.real(), v.imag()) || both_inf(v.real(), v.imag())) {
@@ -71,7 +71,8 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct FracFunctor {
   scalar_t operator()(scalar_t a) const {
-    return a - std::trunc(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return a - sycl::trunc(static_cast<opmath_t>(a));
   }
 };
 
@@ -106,24 +107,24 @@ void ceil_kernel(TensorIteratorBase& iter) {
 
 template <typename scalar_t>
 inline scalar_t nearbyint_wrapper(scalar_t a) {
-  return static_cast<scalar_t>(std::nearbyintf(static_cast<float>(a)));
+  return static_cast<scalar_t>(sycl::rint(static_cast<float>(a)));
 }
 
 inline double nearbyint_wrapper(double a) {
-  return std::nearbyint(a);
+  return sycl::rint(a);
 }
 
 #pragma push
 inline c10::complex<float> nearbyint_wrapper(c10::complex<float> a) {
   return c10::complex<float>(
-      std::nearbyintf(static_cast<float>(a.real())),
-      std::nearbyintf(static_cast<float>(a.imag())));
+      sycl::rint(static_cast<float>(a.real())),
+      sycl::rint(static_cast<float>(a.imag())));
 }
 
 inline c10::complex<double> nearbyint_wrapper(c10::complex<double> a) {
   return c10::complex<double>(
-      std::nearbyint(static_cast<double>(a.real())),
-      std::nearbyint(static_cast<double>(a.imag())));
+      sycl::rint(static_cast<double>(a.real())),
+      sycl::rint(static_cast<double>(a.imag())));
 }
 #pragma pop
 
@@ -138,8 +139,12 @@ template <typename scalar_t>
 struct RoundDecimalsFunctor {
   scalar_t operator()(scalar_t a) const {
     return neg_flag_
-        ? std::nearbyint(a / ten_pow_decimals_) * ten_pow_decimals_
-        : std::nearbyint(a * ten_pow_decimals_) / ten_pow_decimals_;
+        ? sycl::rint(
+              static_cast<at::opmath_type<scalar_t>>(a / ten_pow_decimals_)) *
+            ten_pow_decimals_
+        : sycl::rint(
+              static_cast<at::opmath_type<scalar_t>>(a * ten_pow_decimals_)) /
+            ten_pow_decimals_;
   }
   RoundDecimalsFunctor(scalar_t ten_pow_decimals, bool neg_flag)
       : ten_pow_decimals_(ten_pow_decimals), neg_flag_(neg_flag) {}
@@ -174,7 +179,8 @@ void round_decimals_kernel(TensorIteratorBase& iter, int64_t decimals) {
 template <typename scalar_t>
 struct FloorFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::floor(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::floor(static_cast<opmath_t>(a));
   }
 };
 
@@ -192,27 +198,22 @@ void floor_kernel(TensorIteratorBase& iter) {
       });
 }
 
-// We manually overload trunc because std::trunc does not work with std::complex
-// types and ROCm.
+// We manually overload trunc because sycl::trunc does not work with
+// std::complex types.
 template <typename scalar_t>
 inline scalar_t trunc_wrapper(scalar_t a) {
-  return static_cast<scalar_t>(std::truncf(static_cast<float>(a)));
+  return static_cast<scalar_t>(sycl::trunc(static_cast<float>(a)));
 }
 
 inline double trunc_wrapper(double a) {
-  return std::trunc(a);
+  return sycl::trunc(a);
 }
 
-inline c10::complex<float> trunc_wrapper(c10::complex<float> a) {
-  return c10::complex<float>(
-      std::truncf(static_cast<float>(a.real())),
-      std::truncf(static_cast<float>(a.imag())));
-}
-
-inline c10::complex<double> trunc_wrapper(c10::complex<double> a) {
-  return c10::complex<double>(
-      std::trunc(static_cast<double>(a.real())),
-      std::trunc(static_cast<double>(a.imag())));
+template <typename T>
+inline c10::complex<T> trunc_wrapper(c10::complex<T> a) {
+  return c10::complex<T>(
+      sycl::trunc(static_cast<T>(a.real())),
+      sycl::trunc(static_cast<T>(a.imag())));
 }
 
 template <typename scalar_t>

@@ -10,7 +10,6 @@
 
 #include <comm/xpu_aten.h>
 
-#include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
@@ -18,6 +17,8 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
+
+#include <type_traits>
 
 namespace at::native::xpu {
 
@@ -146,16 +147,79 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
   }
 }
 
+// Not CastScalarFunc: its <Half, Float8DataType> partial specialization has an
+// unconstrained second parameter, so CastScalarFunc<Half, float> would select
+// it and inherit the float8 workaround that maps -0.0 to +0.0.
+template <typename in_scalar_t, typename out_scalar_t>
+inline constexpr bool is_fp32_16bit_cast_v =
+    (std::is_same_v<in_scalar_t, float> &&
+     (std::is_same_v<out_scalar_t, Half> ||
+      std::is_same_v<out_scalar_t, BFloat16>)) ||
+    (std::is_same_v<out_scalar_t, float> &&
+     (std::is_same_v<in_scalar_t, Half> ||
+      std::is_same_v<in_scalar_t, BFloat16>));
+
+template <
+    typename in_scalar_t,
+    typename out_scalar_t,
+    typename =
+        std::enable_if_t<is_fp32_16bit_cast_v<in_scalar_t, out_scalar_t>>>
+struct FpCastFunc {
+  out_scalar_t operator()(in_scalar_t src_val) const {
+    return static_cast<out_scalar_t>(src_val);
+  }
+};
+
+void float16_bfloat16_copy_kernel_xpu(TensorIteratorBase& iter) {
+  ScalarType dtype = iter.dtype(0);
+  ScalarType other_dtype = iter.dtype(1);
+
+  if (dtype == kHalf && other_dtype == kFloat) {
+    gpu_kernel_nocast(iter, FpCastFunc<float, Half>());
+  } else if (dtype == kBFloat16 && other_dtype == kFloat) {
+    gpu_kernel_nocast(iter, FpCastFunc<float, BFloat16>());
+  } else if (dtype == kFloat && other_dtype == kHalf) {
+    gpu_kernel_nocast(iter, FpCastFunc<Half, float>());
+  } else if (dtype == kFloat && other_dtype == kBFloat16) {
+    gpu_kernel_nocast(iter, FpCastFunc<BFloat16, float>());
+  } else {
+    TORCH_CHECK(
+        false,
+        "Copy from ",
+        other_dtype,
+        " to ",
+        dtype,
+        " has not been supported.");
+  }
+}
+
 void copy_kernel(TensorIteratorBase& iter) {
   ScalarType dtype = iter.common_dtype();
   if (isQIntType(dtype)) {
     AT_DISPATCH_QINT_TYPES(dtype, "copy_xpu", [&] {
       gpu_kernel(iter, CopyScalarFunc<scalar_t>());
     });
+  } else if (isBitsType(dtype)) {
+    TORCH_CHECK(
+        iter.dtype(0) == iter.dtype(1),
+        "copy_() does not support casting bits types to different bits types. "
+        "Source dtype is ",
+        iter.dtype(1),
+        ", target dtype is ",
+        iter.dtype(0));
+    AT_DISPATCH_BIT_TYPES(dtype, "copy_xpu", [&] {
+      gpu_kernel_nocast(iter, CopyScalarFunc<scalar_t>());
+    });
   } else if (isFloat8Type(iter.dtype(0))) {
     float8_copy_kernel_xpu(iter);
   } else if (iter.dtype(0) == kFloat4_e2m1fn_x2) {
     float4_copy_kernel_xpu(iter);
+  } else if (
+      (iter.dtype(0) == kFloat &&
+       (iter.dtype(1) == kHalf || iter.dtype(1) == kBFloat16)) ||
+      (iter.dtype(1) == kFloat &&
+       (iter.dtype(0) == kHalf || iter.dtype(0) == kBFloat16))) {
+    float16_bfloat16_copy_kernel_xpu(iter);
   } else {
     AT_DISPATCH_V2(
         dtype,
@@ -166,6 +230,7 @@ void copy_kernel(TensorIteratorBase& iter) {
         kBool,
         kBFloat16,
         kComplexHalf,
+        kBComplex32,
         AT_EXPAND(AT_FLOAT8_TYPES),
         AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
   }

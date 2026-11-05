@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -31,12 +32,17 @@ struct AcoshFunctor {
 void acosh_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "acosh_xpu", [&]() {
+    AT_DISPATCH_V2(
+        common_dtype,
+        "acosh_xpu",
+        AT_WRAP([&]() {
           using opmath_t = at::opmath_type<scalar_t>;
           auto caller = AcoshFunctor<scalar_t, opmath_t>();
           gpu_kernel(iter, caller);
-        });
+        }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half,

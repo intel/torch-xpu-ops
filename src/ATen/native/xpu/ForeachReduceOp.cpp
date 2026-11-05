@@ -13,6 +13,7 @@
 #include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
 #include <ATen/ops/_foreach_max_native.h>
 #include <ATen/ops/_foreach_norm_native.h>
+#include <ATen/ops/_foreach_powsum_native.h>
 
 namespace at {
 namespace native {
@@ -97,6 +98,40 @@ std::vector<Tensor> foreach_tensor_norm_xpu(
       dtype, tensors[0].scalar_type(), "_foreach_norm_xpu");
 
   return native::xpu::foreach_norm_kernel(tensors, ord, p, dtype);
+}
+
+// _foreach_powsum: like _foreach_norm but returns sum(|x|^ord) without the
+// final root. Only p == 1 and p == 2 use the fast fused path; integral/complex
+// dtypes and other ord values fall back to the slow path.
+std::vector<Tensor> foreach_tensor_powsum_xpu(
+    TensorList tensors,
+    const Scalar& ord,
+    std::optional<ScalarType> dtype) {
+  const auto p = [&]() -> double {
+    if (ord.isIntegral(false)) {
+      return ord.to<int64_t>();
+    } else if (ord.isFloatingPoint()) {
+      return ord.to<double>();
+    } else {
+      TORCH_CHECK(
+          false, "foreach_powsum_xpu expects ord to be integer or float");
+    }
+  }();
+  at::native::check_foreach_api_restrictions(tensors);
+  const bool has_int_or_complex =
+      std::any_of(tensors.begin(), tensors.end(), [](const auto& t) {
+        const auto scalar_type = t.scalar_type();
+        return at::isIntegralType(scalar_type, /*includeBool*/ true) ||
+            at::isComplexType(scalar_type);
+      });
+  if (!at::native::can_use_fast_route(tensors) || has_int_or_complex ||
+      !(p == static_cast<double>(1) || p == static_cast<double>(2))) {
+    return at::native::foreach_tensor_powsum_slow(tensors, ord, dtype);
+  }
+  check_foreach_norm_dtype(
+      dtype, tensors[0].scalar_type(), "_foreach_powsum_xpu");
+
+  return native::xpu::foreach_powsum_kernel(tensors, ord, p, dtype);
 }
 
 std::vector<Tensor> foreach_tensor_max_xpu(TensorList tensors) {

@@ -11,29 +11,43 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    torch_dtype=torch.float16,
-)
-model.eval().to("xpu")
+SORT_BY = "xpu_time_total"
+DEFAULT_ITERS = 5
+DTYPE = torch.float16
 
-prompt = "If Alice is older than Bob, and Bob is older than Charlie, who is the youngest? Explain your reasoning."
-inputs = tokenizer(prompt, return_tensors="pt").to("xpu")
+PROMPT = "If Alice is older than Bob, and Bob is older than Charlie, who is the youngest? Explain your reasoning."
 
-with torch.no_grad():
-    for i in range(5):
-        print(
-            "datatype:",
-            torch.float16,
-            "; i:",
-            i,
-        )
-        with torch.profiler.profile(
-            activities=[
-                torch.profiler.ProfilerActivity.CPU,
-                torch.profiler.ProfilerActivity.XPU,
-            ]
-        ) as prof:
-            outputs = model.generate(**inputs, max_new_tokens=1)
-        print(prof.key_averages().table(sort_by="xpu_time_total", row_limit=-1))
+
+def run_profile(iters=DEFAULT_ITERS, name=model_name):
+    """Yield (iteration, prof). The ``datatype: ... ; i: N`` header is printed
+    here because .github/scripts/llama_summary.py splits the log on it."""
+    tokenizer = AutoTokenizer.from_pretrained(name)
+    model = AutoModelForCausalLM.from_pretrained(
+        name,
+        torch_dtype=DTYPE,
+    )
+    model.eval().to("xpu")
+
+    inputs = tokenizer(PROMPT, return_tensors="pt").to("xpu")
+
+    with torch.no_grad():
+        for i in range(iters):
+            print(
+                "datatype:",
+                DTYPE,
+                "; i:",
+                i,
+            )
+            with torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.XPU,
+                ]
+            ) as prof:
+                model.generate(**inputs, max_new_tokens=1)
+            yield i, prof
+
+
+if __name__ == "__main__":
+    for _, p in run_profile():
+        print(p.key_averages().table(sort_by=SORT_BY, row_limit=-1))

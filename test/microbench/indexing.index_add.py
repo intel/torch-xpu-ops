@@ -19,51 +19,62 @@ step = int(1024 / 2)
 cache_r = torch.randn((8192 * 8192), device=device)
 cache_w = torch.randn((8192 * 8192), device=device)
 
+# How many distinct positions along `dim` the indices land on. The first set
+# keeps every index unique; the second folds all `step` indices onto 8
+# positions, 64 accumulations each, which is the high-contention embedding
+# backward case that index_add's shared-local-memory path targets. Both are
+# deterministic, so the contention level cannot drift between runs.
+index_sets = [
+    (step, torch.linspace(0, 1022, steps=step, device=device).to(torch.long)),
+    (8, torch.arange(step, device=device) % 8),
+]
+
 for shape in shape_list:
     for dtype in [torch.bfloat16, torch.float16, torch.float32]:
         for dim in [0, 1]:
             input = torch.zeros(shape, dtype=dtype, device=device)
-            indices = torch.linspace(0, 1022, steps=step, device=device).to(torch.long)
             y_0 = torch.ones((512, 1024), dtype=dtype, device=device)
             y_1 = torch.randn((1024, 512), dtype=dtype, device=device)
+            for distinct_indices, indices in index_sets:
+                # warm up
+                for i in range(10):
+                    output = input.index_add(0, indices, y_0)
 
-            # warm up
-            for i in range(10):
-                output = input.index_add(0, indices, y_0)
+                # go
+                print(
+                    "shape:",
+                    (shape),
+                    "; datatype:",
+                    dtype,
+                    "; dim:",
+                    dim,
+                    "; distinct_indices:",
+                    distinct_indices,
+                    "; backward:",
+                    backward,
+                )
+                with profile(
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                    record_shapes=True,
+                ) as prof:
+                    for i in range(num_iter):
+                        cache_r = cache_w * i
+                        if dim == 0:
+                            output = input.index_add(dim, indices, y_0)
+                        else:
+                            output = input.index_add(dim, indices, y_1)
+                print(prof.key_averages().table(sort_by="xpu_time_total"))
 
-            # go
-            print(
-                "shape:",
-                (shape),
-                "; datatype:",
-                dtype,
-                "; dim:",
-                dim,
-                "; backward:",
-                backward,
-            )
-            with profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
-                record_shapes=True,
-            ) as prof:
+                # E2E time
+                torch.xpu.synchronize()
+                t1 = time.time()
                 for i in range(num_iter):
                     cache_r = cache_w * i
                     if dim == 0:
                         output = input.index_add(dim, indices, y_0)
                     else:
                         output = input.index_add(dim, indices, y_1)
-            print(prof.key_averages().table(sort_by="xpu_time_total"))
-
-            # E2E time
-            torch.xpu.synchronize()
-            t1 = time.time()
-            for i in range(num_iter):
-                cache_r = cache_w * i
-                if dim == 0:
-                    output = input.index_add(dim, indices, y_0)
-                else:
-                    output = input.index_add(dim, indices, y_1)
-            torch.xpu.synchronize()
-            t2 = time.time()
-            e2e_time = (t2 - t1) / num_iter
-            print("E2E total time:", f"{float(e2e_time):.20f}")
+                torch.xpu.synchronize()
+                t2 = time.time()
+                e2e_time = (t2 - t1) / num_iter
+                print("E2E total time:", f"{float(e2e_time):.20f}")

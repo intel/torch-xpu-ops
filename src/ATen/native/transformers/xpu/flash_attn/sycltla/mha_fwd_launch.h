@@ -75,6 +75,9 @@ struct FA2Runner {
     compat::experimental::launch_properties launch_props{
         syclex::work_group_scratch_size(smem_size),
     };
+    static_assert(
+        kSubgroupSize == cute::intel::sg_size,
+        "Subgroup size must be consistent with the one used in mha_common.h");
     compat::experimental::kernel_properties kernel_props{
         syclex::sub_group_size<cute::intel::sg_size>, intelex::grf_size<256>};
     compat::experimental::launch_policy policy{
@@ -110,6 +113,9 @@ struct FA2Runner {
     const ElementV* v_ptr = static_cast<const ElementV*>(params.v_ptr);
     ElementO* o_ptr = static_cast<ElementO*>(params.o_ptr);
     float* lse_ptr = static_cast<float*>(params.lse_ptr);
+    float* p_ptr = static_cast<float*>(params.p_ptr);
+    uint64_t* rng_seed = static_cast<uint64_t*>(params.rng_seed);
+    uint64_t* rng_offset = static_cast<uint64_t*>(params.rng_offset);
     float softmax_scale = params.scale;
 
     typename FMHAPrefillKernel::Arguments arguments{
@@ -133,8 +139,14 @@ struct FA2Runner {
             params.o_row_stride,
             lse_ptr,
         },
-        {softmax_scale},
-        {},
+        {softmax_scale,
+         params.philox_args,
+         rng_seed,
+         rng_offset,
+         params.p_dropout,
+         params.p_dropout_in_uint16_t,
+         p_ptr},
+        {params.rp_dropout},
         hw_info};
 
     size_t workspace_size = FMHAPrefillKernel::get_workspace_size(arguments);
@@ -296,7 +308,7 @@ void run_mha_fwd_hdim64(sycl::queue& queue, FLASH_FWD_params& params) {
     using TileShapeQK = Shape<_64, _64, _32>;
     using TileShapePV = Shape<_64, _32, _64>;
     using TileShapeOutPut = Shape<_64, _64>;
-    using SubgroupLayoutQK = Layout<Shape<_16, _1, _1>>;
+    using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
     run_mha_fwd_specialized(
         TileShapeQK,
         TileShapePV,

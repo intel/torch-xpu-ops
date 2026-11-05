@@ -20,12 +20,15 @@ endif()
 
 find_package(ONEMKL)
 if(NOT ONEMKL_FOUND)
-  message(FATAL_ERROR "Can NOT find ONEMKL cmake helpers module!")
+  message(FATAL_ERROR "oneMKL not found or installation is incomplete; see warnings above for details.")
 endif()
 
 set(TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR ${ONEMKL_INCLUDE_DIR})
 
 set(TORCH_XPU_OPS_ONEMKL_LIBRARIES ${ONEMKL_LIBRARIES})
 
-list(PREPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES "-Wl,--start-group")
-list(APPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES "-Wl,--end-group")
+# --start-group/--end-group are GNU ld options; MSVC link does not know them.
+if(NOT WIN32)
+  list(PREPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES "-Wl,--start-group")
+  list(APPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES "-Wl,--end-group")
+endif()

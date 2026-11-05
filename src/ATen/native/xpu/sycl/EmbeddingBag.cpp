@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -15,6 +16,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/ceil_div.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -64,7 +66,7 @@ void embedding_bag(
   using vec_t = memory::aligned_vector<scalar_t, vec_size>;
   using vec_acc_t = memory::aligned_vector<accscalar_t, vec_size>;
   using vec_idx_t = memory::aligned_vector<index_t, vec_size>;
-  using KernelClass = EmbeddingBagKernelFunctor<
+  constexpr auto kfn = embedding_bag_kernel<
       scalar_t,
       accscalar_t,
       index_t,
@@ -81,14 +83,18 @@ void embedding_bag(
   vec_idx_t* max_idx_vec = reinterpret_cast<vec_idx_t*>(max_index);
 
   int vectorized_feature_dim = feature_dim / vec_size;
-  int64_t work_group_size = syclDeviceMaxWorkGroupSize();
+  int64_t work_group_size = at::xpu::getDeviceMaxWorkGroupSize();
   // TODO: we can set a smaller num_work_group and add for loop in kernel
   int64_t num_work_group = ceil_div(
       static_cast<int64_t>(bag_num * vectorized_feature_dim),
       static_cast<int64_t>(work_group_size));
 
   index_t fixing_bag_size = ignore_offsets ? index_size / bag_num : 0;
-  auto kfn = KernelClass(
+  sycl_kernel_submit<kfn>(
+      num_work_group * work_group_size,
+      work_group_size,
+      getCurrentSYCLQueue(),
+      0,
       index,
       offset,
       offset2bag,
@@ -105,11 +111,6 @@ void embedding_bag(
       max_idx_vec,
       fixing_bag_size,
       num_row);
-  sycl_kernel_submit(
-      num_work_group * work_group_size,
-      work_group_size,
-      getCurrentSYCLQueue(),
-      kfn);
 }
 
 #define EMBBAG_KERNEL_ACC(                                                     \
@@ -351,9 +352,9 @@ void embedding_bag_sum_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              int num_sub_wg =
-                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
-              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              int num_sub_wg = bag_num * feature_dim / vec_size /
+                  at::xpu::getDeviceMaxSubGroupSize();
+              int thread_slots = at::xpu::getDeviceHWThreads();
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
@@ -431,9 +432,9 @@ void embedding_bag_mean_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              int num_sub_wg =
-                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
-              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              int num_sub_wg = bag_num * feature_dim / vec_size /
+                  at::xpu::getDeviceMaxSubGroupSize();
+              int thread_slots = at::xpu::getDeviceHWThreads();
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
@@ -510,9 +511,9 @@ void embedding_bag_max_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              int num_sub_wg =
-                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
-              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              int num_sub_wg = bag_num * feature_dim / vec_size /
+                  at::xpu::getDeviceMaxSubGroupSize();
+              int thread_slots = at::xpu::getDeviceHWThreads();
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
@@ -615,55 +616,39 @@ Tensor embedding_bag_backward_xpu_sum_avg(
 }
 
 template <typename scalar_t, typename index_t>
-struct EmbeddingBagAccGradParametersKernelMaxFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto max_indices_ptr = max_indices_data_;
-    auto gradOutput_ptr = gradOutput_data_;
-    auto gradWeight_ptr = gradWeight_data_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void embedding_bag_acc_grad_parameters_kernel_max(
+    const index_t* max_indices_data,
+    const scalar_t* gradOutput_data,
+    scalar_t* gradWeight_data,
+    int64_t stride,
+    int64_t chunksPerBag,
+    int64_t numChunks) {
+  auto max_indices_ptr = max_indices_data;
+  auto gradOutput_ptr = gradOutput_data;
+  auto gradWeight_ptr = gradWeight_data;
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  auto chunkOffset =
+      item.get_group()[0] * item.get_local_range()[1] + item.get_local_id()[1];
 
-    auto chunkOffset = item.get_group()[0] * item.get_local_range()[1] +
-        item.get_local_id()[1];
+  for (auto chunk = chunkOffset; chunk < numChunks;
+       chunk += item.get_group_range()[0] * item.get_global_range()[1]) {
+    auto featureDim =
+        (chunk % chunksPerBag) * item.get_local_range(0) + item.get_local_id(0);
+    if (featureDim < stride) {
+      auto bag = chunk / chunksPerBag;
 
-    for (auto chunk = chunkOffset; chunk < numChunks_;
-         chunk += item.get_group_range()[0] * item.get_global_range()[1]) {
-      auto featureDim = (chunk % chunksPerBag_) * item.get_local_range(0) +
-          item.get_local_id(0);
-      if (featureDim < stride_) {
-        auto bag = chunk / chunksPerBag_;
-
-        auto word_idx = max_indices_ptr[bag * stride_ + featureDim];
-        if (word_idx >= 0) {
-          // If bag is empty, we have max_indices[idx] set to -1 in forward.
-          atomicAdd(
-              (sycl_global_ptr<
-                  scalar_t>)(&gradWeight_ptr[word_idx * stride_ + featureDim]),
-              gradOutput_ptr[bag * stride_ + featureDim]);
-        }
+      auto word_idx = max_indices_ptr[bag * stride + featureDim];
+      if (word_idx >= 0) {
+        // If bag is empty, we have max_indices[idx] set to -1 in forward.
+        atomicAdd(
+            (sycl_global_ptr<
+                scalar_t>)(&gradWeight_ptr[word_idx * stride + featureDim]),
+            gradOutput_ptr[bag * stride + featureDim]);
       }
     }
   }
-  EmbeddingBagAccGradParametersKernelMaxFunctor(
-      const index_t* max_indices_data,
-      const scalar_t* gradOutput_data,
-      scalar_t* gradWeight_data,
-      int64_t stride,
-      int64_t chunksPerBag,
-      int64_t numChunks)
-      : max_indices_data_(max_indices_data),
-        gradOutput_data_(gradOutput_data),
-        gradWeight_data_(gradWeight_data),
-        stride_(stride),
-        chunksPerBag_(chunksPerBag),
-        numChunks_(numChunks) {}
-
- private:
-  const index_t* max_indices_data_;
-  const scalar_t* gradOutput_data_;
-  scalar_t* gradWeight_data_;
-  int64_t stride_;
-  int64_t chunksPerBag_;
-  int64_t numChunks_;
-};
+}
 
 template <typename scalar_t, typename index_t>
 void EmbeddingBag_accGradParametersKernel_max(
@@ -672,7 +657,7 @@ void EmbeddingBag_accGradParametersKernel_max(
     scalar_t* gradWeight,
     int64_t stride,
     int64_t numBags) {
-  auto chunksPerBag = CeilDiv(stride, (int64_t)64);
+  auto chunksPerBag = at::ceil_div(stride, (int64_t)64);
   auto numChunks = numBags * chunksPerBag;
   auto kernel_range = 1024 * 64;
 
@@ -680,18 +665,22 @@ void EmbeddingBag_accGradParametersKernel_max(
   auto gradOutput_data = gradOutput;
   auto gradWeight_data = gradWeight;
 
-  auto caller =
-      EmbeddingBagAccGradParametersKernelMaxFunctor<scalar_t, index_t>(
-          max_indices_data,
-          gradOutput_data,
-          gradWeight_data,
-          stride,
-          chunksPerBag,
-          numChunks);
+  constexpr auto kfn =
+      embedding_bag_acc_grad_parameters_kernel_max<scalar_t, index_t>;
 
   auto global_range = sycl::range<2>(kernel_range, 4);
   auto local_range = sycl::range<2>(64, 4);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
+  sycl_kernel_submit<kfn>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
+      max_indices_data,
+      gradOutput_data,
+      gradWeight_data,
+      stride,
+      chunksPerBag,
+      numChunks);
 }
 
 template <typename scalar_t, typename index_t>
@@ -733,18 +722,22 @@ void _embedding_bag_per_sample_weights_backward_impl(
     index_t padding_idx) {
   using accscalar_t = at::acc_type<scalar_t, true>;
 
-  using Kernel = EmbeddingBagPerSampleWeightsBackwardKernelFunctor<
+  constexpr auto kfn = embedding_bag_per_sample_weights_backward_kernel<
       scalar_t,
       index_t,
       accscalar_t>;
 
-  int64_t max_group_size = syclMaxWorkGroupSize<Kernel>();
+  int64_t max_group_size = at::xpu::getKernelMaxWorkGroupSize<kfn>();
 
   int64_t num_group = (num_samples + max_group_size - 1) / max_group_size;
   auto global_range{num_group * max_group_size};
   auto local_range{max_group_size};
 
-  auto caller = Kernel(
+  sycl_kernel_submit<kfn>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
       grad,
       grad_stride0,
       grad_stride1,
@@ -759,8 +752,6 @@ void _embedding_bag_per_sample_weights_backward_impl(
       padding_idx,
       num_group,
       max_group_size);
-
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
 }
 
 std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
@@ -778,8 +769,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
   auto offsets_original = offsets_t.contiguous();
   auto per_sample_weights = per_sample_weights_t.contiguous();
 
-  Tensor indices, offsets;
-  std::tie(indices, offsets) =
+  auto [indices, offsets] =
       promoteIndicesAndOffsets(indices_original, offsets_original);
   auto indices_arg = TensorArg(indices, "indices", 1);
   checkScalarTypes("embedding_bag_kernel", indices_arg, {kLong, kInt});
@@ -921,16 +911,15 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
       mode == MODE_SUM,
       "embedding_bag_backward: per_sample_weights only supported for mode='sum'");
 
-  AT_ASSERT(grad.dim() == 2);
+  TORCH_INTERNAL_ASSERT(grad.dim() == 2);
   auto embedding_features = grad.size(1);
 
-  Tensor indices, offsets;
-  std::tie(indices, offsets) = promoteIndicesAndOffsets(indices_, offsets_);
-  AT_ASSERT(indices.dim() == 1);
+  auto [indices, offsets] = promoteIndicesAndOffsets(indices_, offsets_);
+  TORCH_INTERNAL_ASSERT(indices.dim() == 1);
   auto num_samples = indices.size(0);
 
-  AT_ASSERT(weight.dim() == 2);
-  AT_ASSERT(weight.size(1) == embedding_features);
+  TORCH_INTERNAL_ASSERT(weight.dim() == 2);
+  TORCH_INTERNAL_ASSERT(weight.size(1) == embedding_features);
 
   auto output = at::empty({num_samples}, grad.options());
 

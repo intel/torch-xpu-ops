@@ -77,7 +77,7 @@ struct unroll {
 
   template <typename args_t>
   inline void load(args_t* args) {
-    constexpr int arity = std::tuple_size<args_t>::value;
+    constexpr int arity = std::tuple_size_v<args_t>;
     int item_idx_ = item_idx;
 #pragma unroll
     for (int i = 0; i < item_work_size; i++) {
@@ -148,7 +148,7 @@ struct vectorized {
 
   template <typename args_t>
   inline void load(args_t* args) {
-    constexpr int arity = std::tuple_size<args_t>::value;
+    constexpr int arity = std::tuple_size_v<args_t>;
     int group_offset = group_work_size * group_idx;
     // `Unroll` policy cannot feed memory bandwidth well on Intel GPU,
     // 1. Small loop size cannot provide enough payloads, specially for small
@@ -220,7 +220,7 @@ struct multi_outputs_unroll {
 
   template <typename args_t>
   inline void load(args_t* args) {
-    constexpr int arity = std::tuple_size<args_t>::value;
+    constexpr int arity = std::tuple_size_v<args_t>;
     int item_idx_ = item_idx;
 #pragma unroll
     for (int i = 0; i < item_work_size; i++) {
@@ -254,24 +254,15 @@ struct multi_outputs_unroll {
 
 } // namespace policies
 
-static inline int preferred_vector_width(at::DeviceIndex dev_id, int elem_sz) {
+static inline int preferred_vector_width(int elem_sz) {
+  constexpr uint32_t vec_width = 16;
   size_t ret;
   switch (elem_sz) {
     case 1:
-      static_assert(sizeof(char) == 1, "the char size is not 1 bytes");
-      ret = syclPrefVectorWidth<char>(dev_id);
-      break;
     case 2:
-      static_assert(sizeof(short) == 2, "the short size is not 2 bytes");
-      ret = syclPrefVectorWidth<short>(dev_id);
-      break;
     case 4:
-      ret = syclPrefVectorWidth<int>(dev_id);
-      static_assert(sizeof(int) == 4, "the long size is not 4 bytes");
-      break;
     case 8:
-      static_assert(sizeof(int64_t) == 8, "the long size is not 8");
-      ret = syclPrefVectorWidth<int64_t>(dev_id);
+      ret = vec_width / elem_sz;
       break;
     default:
       // no vectorize
@@ -280,27 +271,22 @@ static inline int preferred_vector_width(at::DeviceIndex dev_id, int elem_sz) {
   return ret;
 }
 
-// Query vector size for specific `scalar_t` on current device.
-// Enlarge payloads on each work item with a definite data type
-// specific vector size preference queried from SYCL runtime to feed
-// memory bandwidth well on the specified hardward platform.
 // In `Vectorized` policy, using definite vector size for some data type could
 // get enough payloads without outer loop. Outer loop may bring additional
 // instructions and potential registers usage.
 template <typename scalar_t>
 inline int can_vectorize_up_to(const char* pointer) {
   int elem_size = sizeof(scalar_t);
-  at::DeviceIndex dev_id = c10::xpu::current_device();
-  int preferred_width = preferred_vector_width(dev_id, elem_size);
+  int preferred_width = preferred_vector_width(elem_size);
   uint64_t address = reinterpret_cast<uint64_t>(pointer);
   constexpr int vec2_alignment =
-      std::alignment_of<aligned_vector<scalar_t, 2>>::value;
+      std::alignment_of_v<aligned_vector<scalar_t, 2>>;
   constexpr int vec4_alignment =
-      std::alignment_of<aligned_vector<scalar_t, 4>>::value;
+      std::alignment_of_v<aligned_vector<scalar_t, 4>>;
   constexpr int vec8_alignment =
-      std::alignment_of<aligned_vector<scalar_t, 8>>::value;
+      std::alignment_of_v<aligned_vector<scalar_t, 8>>;
   constexpr int vec16_alignment =
-      std::alignment_of<aligned_vector<scalar_t, 16>>::value;
+      std::alignment_of_v<aligned_vector<scalar_t, 16>>;
   if (address % vec16_alignment == 0) {
     return std::min<int>(preferred_width, 16);
   } else if (address % vec8_alignment == 0) {
@@ -340,16 +326,11 @@ inline int can_vectorize_up_to(array_t pointers) {
 
 template <typename T>
 struct alignas(sizeof(T) * 4) m_vec4 {
-  union {
-    T val[4];
-    struct {
-      T x, y, z, w;
-    };
-  };
+  T val[4];
   m_vec4() = default;
-  m_vec4(T x_, T y_, T z_, T w_) : x(x_), y(y_), z(z_), w(w_) {}
+  m_vec4(T x, T y, T z, T w) : val{x, y, z, w} {}
 };
-typedef m_vec4<uint32_t> uint4;
+using uint4 = m_vec4<uint32_t>;
 
 template <typename T>
 inline size_t get_alignment(T ptr_or_size) {

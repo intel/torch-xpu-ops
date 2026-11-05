@@ -21,9 +21,9 @@ from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
 
 # test/fx is not in the XPUPatchForImport default search path; add it so
 # the TestCommonPass import works.
@@ -33,10 +33,13 @@ _FX_DIR = os.path.abspath(
 if _FX_DIR not in sys.path:
     sys.path.insert(0, _FX_DIR)
 
-with XPUPatchForImport(False):
+with XPUPatchForImport(False) as patcher:
     import test_common_passes
     from test_fx import _enrich_profiler_traces, TestFX
 
+# XPUPatchForImport restores sys.path on exit; keep test/ on it permanently
+# so multiprocessing.spawn (Windows) can re-import test_fx in test_getitem_subproc.
+ensure_pytorch_test_path(os.path.abspath(patcher.test_package[0]))
 
 # Canonical kernel launch event token used in test baselines.
 _XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
@@ -57,6 +60,7 @@ _XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
 )
 
 _XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
+_XPU_OVERHEAD_EVENT = "Instrumentation"  # Profiler overhead spans (cat="overhead")
 
 
 def _parse_event_name(line):
@@ -85,7 +89,7 @@ def _filter_xpu_runtime_events(actual_traces):
         if name in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
             kept.append(line)
             continue
-        if name.startswith(_XPU_RUNTIME_EVENT_PREFIXES):
+        if name.startswith(_XPU_RUNTIME_EVENT_PREFIXES) or name == _XPU_OVERHEAD_EVENT:
             continue
         kept.append(line)
     return "\n".join(kept)
@@ -238,7 +242,6 @@ event=aten::expand node=addmm stack_trace=return F.linear(input, self.weight, se
 event=aten::as_strided node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::empty node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
-event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::relu node=relu stack_trace=return F.relu(input, inplace=self.inplace)
 event=aten::clamp_min node=relu stack_trace=return F.relu(input, inplace=self.inplace)
 event={kernel_event_relu} node=relu stack_trace=return F.relu(input, inplace=self.inplace)
@@ -250,7 +253,6 @@ event=aten::resize_ node=addmm_1 stack_trace=return F.linear(input, self.weight,
 event=aten::expand node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::empty node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
-event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)"""
     else:
         expected = f"""\

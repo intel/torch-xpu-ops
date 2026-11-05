@@ -18,34 +18,12 @@ namespace cute {
 template <typename T, int Headdim, bool is_causal>
 void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params);
 
-template <typename T, bool is_causal>
-void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params) {
-  const int headdim = params.head_size_vo;
-
-  if (headdim <= 32) {
-    run_mha_bwd_<T, 32, is_causal>(queue, params);
-  } else if (headdim <= 64) {
-    run_mha_bwd_<T, 64, is_causal>(queue, params);
-  } else if (headdim <= 96) {
-    run_mha_bwd_<T, 96, is_causal>(queue, params);
-  } else if (headdim <= 128) {
-    run_mha_bwd_<T, 128, is_causal>(queue, params);
-  } else if (headdim <= 192) {
-    run_mha_bwd_<T, 192, is_causal>(queue, params);
-  } else if (headdim <= 256) {
-    run_mha_bwd_<T, 256, is_causal>(queue, params);
-  } else {
-    TORCH_CHECK(
-        false,
-        "FlashAttentionBackwardXPU only support headdim up to 256, got ",
-        headdim);
-  }
-}
-
 void run_mha_bwd(sycl::queue& queue, FLASH_BWD_params& params) {
   FP16_SWITCH(params.is_fp16, [&] {
     BOOL_SWITCH(params.is_causal, IS_CAUSAL, [&] {
-      run_mha_bwd_<elem_type, IS_CAUSAL>(queue, params);
+      HEADDIM_SWITCH(params.head_size_vo, [&] {
+        run_mha_bwd_<elem_type, Headdim, IS_CAUSAL>(queue, params);
+      });
     });
   });
 }
@@ -78,8 +56,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     const bool deterministic,
     const at::Tensor philox_seed,
     const at::Tensor philox_offset) {
-  TORCH_CHECK(
-      p_dropout == 0.0, "mha_bwd on xpu does not support dropout > 0.0 yet");
   TORCH_CHECK(
       !alibi_slopes_.has_value(),
       "mha_bwd on xpu does not support alibi slopes yet");
@@ -159,15 +135,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
   TORCH_CHECK(
       out.stride(-1) == 1,
       "mha_bwd on xpu: out tensor must have contiguous last dimension");
-  TORCH_CHECK(
-      dout.stride(-1) == 1,
-      "mha_bwd on xpu: dout tensor must have contiguous last dimension");
-  TORCH_CHECK(
-      softmax_lse.stride(-1) == 1,
-      "mha_bwd on xpu: softmax_lse tensor must have contiguous last dimension");
-  TORCH_CHECK(
-      softmax_lse.is_contiguous(),
-      "mha_bwd on xpu: softmax_lse must be contiguous in [batch_size, numhead_qo, seqlen_qo]");
 
   const int batch_size = q.sizes()[0];
   const int seqlen_qo = q.sizes()[1];
@@ -176,10 +143,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
   const int numhead_kv = k.sizes()[2];
   const int headsize_qk = q.sizes()[3];
   const int headsize_vo = v.sizes()[3];
-
-  TORCH_CHECK(
-      headsize_qk == headsize_vo,
-      "mha_bwd on xpu: headsize_qk must be equal to headsize_vo");
 
   if (batch_size == 0) {
     auto opts = q.options();
@@ -190,6 +153,19 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
         at::empty({0, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));
     return {dq, dk, dv, softmax_d};
   }
+
+  TORCH_CHECK(
+      dout.stride(-1) == 1,
+      "mha_bwd on xpu: dout tensor must have contiguous last dimension");
+  TORCH_CHECK(
+      softmax_lse.stride(-1) == 1,
+      "mha_bwd on xpu: softmax_lse tensor must have contiguous last dimension");
+  TORCH_CHECK(
+      softmax_lse.is_contiguous(),
+      "mha_bwd on xpu: softmax_lse must be contiguous in [batch_size, numhead_qo, seqlen_qo]");
+  TORCH_CHECK(
+      headsize_qk == headsize_vo,
+      "mha_bwd on xpu: headsize_qk must be equal to headsize_vo");
   TORCH_CHECK(batch_size > 0, "mha_bwd on xpu: batch size must be positive");
   TORCH_CHECK(
       headsize_qk <= 256,
@@ -290,7 +266,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
   int seqlen_kv_pad = (seqlen_kv + kBwdNPad - 1) / kBwdNPad * kBwdNPad;
   auto tensor_odo =
       at::empty({batch_size, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));
-  auto tensor_dqaccum = at::zeros(
+  auto tensor_dqaccum = at::empty(
       {batch_size, numhead_qo, seqlen_qo_pad, headsize_padded},
       opts.dtype(at::kFloat));
   auto tensor_pbuff =
@@ -321,7 +297,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
       tensor_dqaccum,
       tensor_pbuff,
       softmax_scale,
+      p_dropout,
       is_causal);
+
+  params.rng_seed = reinterpret_cast<uint64_t*>(philox_seed.data_ptr());
+  params.rng_offset = reinterpret_cast<uint64_t*>(philox_offset.data_ptr());
 
   if (seqlen_qo > 0) {
     cute::run_mha_bwd(sycl_queue, params);

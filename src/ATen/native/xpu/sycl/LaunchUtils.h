@@ -10,17 +10,11 @@
 
 #pragma once
 #include <algorithm>
+#include <bit>
 
-namespace at::native {
-namespace xpu {
-// returns 2**floor(log2(n))
-static int lastPow2(unsigned int n) {
-  n |= (n >> 1);
-  n |= (n >> 2);
-  n |= (n >> 4);
-  n |= (n >> 8);
-  n |= (n >> 16);
-  return std::max<int>(1, n - (n >> 1));
+namespace at::native::xpu {
+// returns 2**floor(log2(n)); n == 0 clamps to 1 so callers can divide by it
+inline int lastPow2(unsigned int n) {
+  return std::max<int>(1, std::bit_floor(n));
 }
-} // namespace xpu
-} // namespace at::native
+} // namespace at::native::xpu
