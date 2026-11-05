@@ -360,8 +360,8 @@ struct GreaterOrNan {
   }
 };
 
-// Same as LessOrNan / GreaterOrNan but ties are not broken by index: only valid
-// when a's index is known to be smaller than b's.
+// Like LessOrNan / GreaterOrNan, but ties (including two NaNs) keep b without
+// comparing indices. Only valid when b's index is smaller than a's.
 template <typename scalar_t>
 struct LessOrNanNoIdx {
   bool operator()(scalar_t a, scalar_t b) const {

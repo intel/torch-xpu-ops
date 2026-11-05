@@ -509,6 +509,10 @@ func_wrapper_t<out_scalar_t, func_t> func_wrapper(const func_t& op) {
   return func_wrapper_t<out_scalar_t, func_t>{op};
 }
 
+// Optional constexpr bool ops_t::single_accumulator defaults to false. When
+// true, each work-item shares one accumulator per output across vector/unrolled
+// elements; this must preserve the op's semantics. reduce() receives strictly
+// increasing indices per accumulator; combine() must handle unordered partials.
 template <typename ops_t, typename = void>
 struct single_accumulator : std::false_type {};
 
@@ -751,6 +755,8 @@ struct ReduceOp {
   arg_t input_vectorized_item_reduce_impl(
       sycl::nd_item<2> pos,
       const scalar_t* data) const {
+    // Keep reduce() indices strictly increasing per accumulator through the
+    // head, vectorized body, and tail; index-free min/max relies on this.
     index_t end = config.num_inputs;
     // Handle the head of input slice where data is not aligned
     arg_t value = ident;
@@ -823,6 +829,8 @@ struct ReduceOp {
       sycl::nd_item<2> pos,
       const scalar_t* data_,
       offset_calc_t calc) const {
+    // Keep reduce() indices strictly increasing per accumulator through the
+    // unrolled body and tail; index-free min/max relies on this.
     index_t idx = config.input_idx(pos);
     const index_t end = config.num_inputs;
     const index_t stride = config.step_input;
