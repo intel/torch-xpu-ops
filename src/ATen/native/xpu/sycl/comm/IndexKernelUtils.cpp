@@ -9,6 +9,7 @@
  */
 
 #include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
+#include <ATen/xpu/XPUContext.h>
 
 namespace at::native::xpu {
 
@@ -76,7 +77,8 @@ void vectorized_gather_kernel_launch(
     int64_t inp_stride_bytes,
     int64_t out_stride_bytes,
     bool allow_neg_indices) {
-  int64_t max_num_threads = syclMaxWorkItemsPerSubSlice();
+  int64_t max_num_threads = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   auto num_threads = at::round_up(
       at::ceil_div(slice_size_in_bytes, Alignment), static_cast<int64_t>(SIMD));
   auto wg_size = std::min(max_num_threads, num_threads);

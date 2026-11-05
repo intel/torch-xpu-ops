@@ -25,7 +25,7 @@ on:
       python:
         type: string
         default: ''
-        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
       ut:
         type: string
         default: ''
@@ -33,7 +33,7 @@ on:
       suite:
         type: string
         default: ''
-        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench,pt2e'. Delimiter is comma
+        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench'. Delimiter is comma
       dt:
         type: string
         default: ''
@@ -101,11 +101,11 @@ jobs:
               exit 1
             fi
             ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
+            suite='["huggingface","timm_models","torchbench"]'
             # Weekly also runs the upstream UT scopes
             if [[ "${test_type}" == *"-weekly" ]];then
               ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed","upstream_distributed","upstream_inductor","upstream_default"]'
             fi
-            suite='["huggingface","timm_models","torchbench","pt2e"]'
             scenario='["accuracy","performance"]'
             triton=''
             python=''
@@ -162,6 +162,7 @@ jobs:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
@@ -177,9 +178,24 @@ jobs:
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
 
+  Linux-Nightly-Ondemand-UT-Report:
+    name: ut-report
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests,
+            Windows-Nightly-Ondemand-UT-Tests]
+    if: >-
+      ${{ !cancelled()
+      && (!endsWith(needs.Linux-Nightly-Ondemand-UT-Tests.result, 'ed')
+      || !endsWith(needs.Windows-Nightly-Ondemand-UT-Tests.result, 'ed')) }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/_ut_report.yml
+
   Linux-Nightly-Ondemand-UT-Auto-Issue:
     name: linux-ut-auto-issue
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests, Linux-Nightly-Ondemand-UT-Report]
     # Not success(): the UT job fails whenever there are new failures, which is
     # precisely when this needs to run.
     # `contains(inputs.ut, 'p')` mirrors the UT job's own gate: with no UT job
@@ -269,6 +285,7 @@ jobs:
       runner: windows-build
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      triton: ${{ needs.Conditions-Filter.outputs.triton }}
 
   Windows-Nightly-Ondemand-UT-Tests:
     name: windows-ut
