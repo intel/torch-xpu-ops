@@ -20,8 +20,6 @@
 #include <ATen/native/xpu/sycl/TensorCompareKernels.h>
 #include <ATen/native/xpu/sycl/TensorModeKernel.h>
 
-#include <ATen/ops/_clamp_backward_tensor_native.h>
-#include <ATen/ops/empty_like.h>
 #include <ATen/ops/result_type_native.h>
 
 namespace at {
@@ -77,27 +75,12 @@ REGISTER_XPU_DISPATCH(clamp_min_scalar_stub, &xpu::clamp_min_scalar_kernel);
 REGISTER_XPU_DISPATCH(clamp_max_scalar_stub, &xpu::clamp_max_scalar_kernel);
 REGISTER_XPU_DISPATCH(clamp_scalar_stub, &xpu::clamp_scalar_kernel);
 REGISTER_XPU_DISPATCH(clamp_stub, &xpu::clamp_kernel);
+REGISTER_XPU_DISPATCH(
+    clamp_tensor_backward_stub,
+    &xpu::clamp_tensor_backward_kernel);
 REGISTER_XPU_DISPATCH(max_stub, &xpu::max_kernel_impl);
 REGISTER_XPU_DISPATCH(min_stub, &xpu::min_kernel_impl)
 REGISTER_XPU_DISPATCH(isin_default_stub, &xpu::isin_kernel);
-
-Tensor _clamp_backward_tensor_xpu(
-    const Tensor& grad_output,
-    const Tensor& self,
-    const Tensor& min,
-    const Tensor& max) {
-  Tensor result = at::empty_like(grad_output);
-  auto iter = at::TensorIteratorConfig()
-                  .add_output(result)
-                  .add_const_input(grad_output)
-                  .add_const_input(self)
-                  .add_const_input(min)
-                  .add_const_input(max)
-                  .promote_inputs_to_common_dtype(true)
-                  .build();
-  xpu::clamp_backward_kernel(iter);
-  return result;
-}
 
 void _assert_async_msg_xpu(
     const Tensor& self_tensor,
