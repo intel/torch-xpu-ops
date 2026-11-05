@@ -79,15 +79,19 @@ jobs:
       scenario: ${{ steps.inputs-check.outputs.scenario }}
       triton: ${{ steps.inputs-check.outputs.triton }}
       python: ${{ steps.inputs-check.outputs.python }}
-      ci_config: ${{ steps.ci-config.outputs.json }}
+      runner_ut: ${{ steps.ci-runner.outputs.ut }}
+      runner_accuracy: ${{ steps.ci-runner.outputs.accuracy }}
+      runner_performance: ${{ steps.ci-runner.outputs.performance }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
           sparse-checkout: .github
-      - name: Resolve CI config
-        id: ci-config
-        uses: ./.github/actions/ci-config
+      - name: Select runners
+        id: ci-runner
+        uses: ./.github/actions/ci-runner
+        with:
+          runner: ${{ inputs.runner }}
       - name: Inputs check
         id: inputs-check
         run: |
@@ -184,7 +188,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ inputs.runner || fromJSON(needs.Conditions-Filter.outputs.ci_config).runner.runner_ut }}
+      runner: ${{ needs.Conditions-Filter.outputs.runner_ut }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -244,7 +248,7 @@ jobs:
         scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ inputs.runner || fromJSON(needs.Conditions-Filter.outputs.ci_config).runner[format('runner_{0}', matrix.scenario)] }}
+      runner: ${{ needs.Conditions-Filter.outputs[format('runner_{0}', matrix.scenario)] }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -282,7 +286,7 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: ${{ inputs.runner || fromJSON(needs.Conditions-Filter.outputs.ci_config).runner.runner_performance }}
+      runner: ${{ needs.Conditions-Filter.outputs.runner_performance }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 

@@ -44,15 +44,17 @@ jobs:
       skip_distributed: ${{ steps.live-labels.outputs.skip_distributed }}
       skip_win: ${{ steps.live-labels.outputs.skip_win }}
       force_win_ut: ${{ steps.live-labels.outputs.force_win_ut }}
-      ci_config: ${{ steps.ci-config.outputs.json }}
+      runner_ut: ${{ steps.ci-runner.outputs.ut }}
+      runner_accuracy: ${{ steps.ci-runner.outputs.accuracy }}
+      runner_performance: ${{ steps.ci-runner.outputs.performance }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
-      - name: Resolve CI config
-        id: ci-config
-        uses: ./torch-xpu-ops/.github/actions/ci-config
+      - name: Select runners
+        id: ci-runner
+        uses: ./torch-xpu-ops/.github/actions/ci-runner
       - name: Run lint check
         id: lint-python
         continue-on-error: true
@@ -273,7 +275,7 @@ jobs:
         ut_name: [op_ut,basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ fromJSON(needs.preci-lint-check.outputs.ci_config).runner.runner_ut }}
+      runner: ${{ needs.preci-lint-check.outputs.runner_ut }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -293,7 +295,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ fromJSON(needs.preci-lint-check.outputs.ci_config).runner.runner_ut }}
+      runner: ${{ needs.preci-lint-check.outputs.runner_ut }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -324,7 +326,7 @@ jobs:
         scenario: [accuracy, performance]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ fromJSON(needs.preci-lint-check.outputs.ci_config).runner[format('runner_{0}', matrix.scenario)] }}
+      runner: ${{ needs.preci-lint-check.outputs[format('runner_{0}', matrix.scenario)] }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}
