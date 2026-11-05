@@ -180,8 +180,9 @@ runs:
         export USE_CCL_V2=1
         pip install transformers pulp
         sudo rm -rf /tmp/torchinductor_jenkins/
+        python -u -X faulthandler -c "import torch; torch.xpu.init(); print(torch.xpu.get_device_properties(0))"
         python -c "import inspect,shutil,torch.testing._internal.distributed.distributed_test as m; shutil.copyfile('distributed/distributed_test.py', inspect.getsourcefile(m) or m.__file__)"
-        python -u -X faulthandler run_distributed_local.py \
+        python run_distributed_local.py \
           2>&1 | tee "${UT_LOG_DIR}/xpu_distributed_test.log"
         find ../ -type f -name "xpu_distributed_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_xpu_distributed.log
