@@ -7,7 +7,7 @@ set -xeuo pipefail
 . /etc/os-release
 
 apt-get update
-if [ "${APT_UPGRADE:-1}" == "1" ]; then
+if [ "${APT_UPGRADE:-0}" == "1" ]; then
     apt-get upgrade -y --no-install-recommends
 fi
 apt-get install -y --no-install-recommends \
