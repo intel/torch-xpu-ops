@@ -6606,7 +6606,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             )
 
         for dtype in (torch.float16, torch.bfloat16):
-            for channels in (36, 38, 48):
+            for channels in (36, 37, 38, 48):
                 for misalign_input, misalign_grad in (
                     (True, False),
                     (False, True),
