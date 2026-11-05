@@ -53,8 +53,7 @@ jobs:
     timeout-minutes: 2880
     env:
       TORCH_SERIALIZATION_DEBUG: '1'
-      PYTEST_ADDOPTS: ${{ inputs.ut == 'xpu_distributed' && '-v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000' || '' }}
-    if: ${{ ! contains(inputs.ut, 'distributed') || inputs.ut == 'xpu_distributed' }}
+    if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
       image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
@@ -106,10 +105,10 @@ jobs:
 
   test-in-baremetal:
     timeout-minutes: 600
-    if: ${{ (contains(inputs.ut, 'distributed') && inputs.ut != 'xpu_distributed') || inputs.ut == 'xpu_p0' }}
+    if: ${{ contains(inputs.ut, 'distributed') || inputs.ut == 'xpu_p0' }}
     runs-on: ${{ inputs.runner }}
     env:
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      PYTEST_ADDOPTS: -v
       # xpu_p0 is split: the distributed group runs here (baremetal), the rest in the container job.
       UT_LABEL: ${{ inputs.ut == 'xpu_p0' && 'xpu_p0_distributed' || inputs.ut }}
     steps:

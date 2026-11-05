@@ -99,8 +99,9 @@ runs:
             exit 1
           fi
           uv pip install --pre --force-reinstall \
-            --index https://download.pytorch.org/whl/nightly/xpu \
-            --index-strategy first-index "${pytorch_wheels[@]}" torchvision torchaudio
+            "torch==2.16.0.dev20261102+xpu" torchvision torchaudio \
+            --index-url https://download.pytorch.org/whl/nightly/xpu
+          uv pip install "${pytorch_wheels[@]}"
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
