@@ -1,0 +1,93 @@
+# gating.yaml - statistical decision parameters.
+#
+# A/B verdicts (nightly recheck and attribution, on-demand A/B): a case is a
+# regression only if its device-time verdict is "regression" in both A/B
+# stages. A confirmed nightly regression files an issue unless the op is
+# excluded from gating or the case is quarantined.
+
+# regression / improvement threshold on median(B) / median(A)
+threshold: 0.10
+# per-case noise margin delta by noise_class; a case whose A/A (nightly A/A in
+# the reference state, else history.json) shows a larger delta uses that one.
+# Regression also needs CI lower bound > 1 + delta
+default_delta:
+  normal: 0.03
+  atomic: 0.08
+  random: 0.08
+  host_bound: 0.05
+# Holm-adjusted one-sided p-value
+alpha: 0.05
+# CI wider than this (hi/lo - 1) is inconclusive
+max_ci_width: 0.10
+# E2E verdicts use e2e_threshold for the noise classes listed here (e.g.
+# host_bound); E2E of other cases is report-only
+e2e_blocking_noise_classes: []
+e2e_threshold: 0.20
+n_boot: 2000
+
+# Cases/ops whose results are reported but never file an issue (high-noise
+# cases that stay above their threshold after extra rounds). Filled from
+# nightly noise statistics; each entry needs a reason, e.g.
+#   cases: [{case_id: 0123456789ab, reason: "nightly A/A CI width 14%"}]
+#   ops:   [{op: index_add, reason: "atomic contention noise"}]
+quarantine:
+  cases: []
+  ops: []
+
+# ---------------------------------------------------------------------------
+# Nightly detection against the previous nightly.
+#
+# Every case is compared with its most recent nightly record (normally last
+# night's, on whatever machine it ran), if that is at most max_age_days old;
+# otherwise it has no reference and goes to the recheck A/B directly.
+# Threshold per case: t = min(t_max, 0.10 - z * sigma_night), sigma_night
+# being the spread of the case's night-to-night ratios in the reference
+# state (default_noise.night until it has 3 of them). A case whose t falls
+# below t_min is too noisy to detect and is rechecked like a suspicious one.
+
+nightly_detect:
+  z: 2.33
+  t_max: 0.05
+  t_min: 0.02
+  max_age_days: 7
+  # processes per case of the nightly measurement
+  processes: 3
+  # fraction of PR-tier cases also measured as A/A each night (one week covers all)
+  aa_fraction: 0.14
+  # when more cases than this have no reference (protocol bump, first
+  # nightly), recheck only PR-tier and core-set cases
+  max_no_reference_recheck: 300
+
+# night-to-night noise used until a case has enough nightly records
+default_noise:
+  night: 0.01
+
+# ---------------------------------------------------------------------------
+# Benchmark hosts. `default` applies to every host; a `hosts` entry whose key
+# (a regex) matches the hostname overrides it. Without `cards`, the layout is
+# autodetected from sysfs: Intel display-class DRM devices in PCI order
+# (= ZE_AFFINITY_MASK index), the NUMA node of each card, and an even split
+# of the node's CPUs, restricted to the cards in ZE_AFFINITY_MASK when it is
+# set (shared CI runners such as bmg-test own a subset of the host's cards).
+# `protocol` overrides measure.py ProtocolConfig (defaults fit BMG G31).
+machines:
+  default:
+    # pre-run checks (python -m microbench env check)
+    limits:
+      require_idle: true
+      # bmg-test hosts set the frequency range themselves (e.g. min 1200,
+      # max 2400 MHz), not min == max; the range is recorded in run_meta.json
+      # and the report. Enable on dedicated machines with a fixed frequency.
+      require_freq_lock: false
+      # the CPU governor of shared bmg-test hosts is not ours to set; it is
+      # still recorded in run_meta.json. Enable on dedicated machines.
+      require_cpu_performance: false
+      max_temp_c: 85
+  hosts: {}
+  # Example:
+  #   hosts:
+  #     "bmg-mb-0[0-9]":
+  #       protocol: {l2_bytes: 33554432}
+  #       cards:
+  #         - {index: 0, drm: card1, numa: 0, cpus: "0-15"}
+  #         - {index: 1, drm: card2, numa: 0, cpus: "16-31"}

@@ -1,0 +1,305 @@
+# torch-xpu-ops microbench
+
+Operator microbenchmarks and a nightly regression detector. Every nightly
+measures all cases, detects steps against the reference data of earlier
+nightlies, rechecks them with an A/B against the previous nightly wheel,
+attributes confirmed regressions to torch-xpu-ops or PyTorch and files
+issues. Run every command from `test/`:
+
+```bash
+cd test
+python -m microbench <command> --help
+```
+
+## Layout
+
+| Path | Purpose |
+|---|---|
+| `case.py` | Case model (`OpBench`, `Case`, stable `case_id`), input helpers, case discovery |
+| `measure.py` | Measurement protocol (continuous passes, input sets, output lifetime, E2E and device time), worker, case validator |
+| `run.py` | Scheduler over cards: A/B (`A B / B A` rounds), single-sided and multi-wheel rounds; records (`records.jsonl`) and per-case logs; card layout and identity, GPU frequency, pre-run checks; `ci-run`, the microbench-run CI job of each scope |
+| `judge.py` | Hierarchical bootstrap, Holm, two-stage verdicts, English report, check job (on-demand report, and the nightly check: attribution, state update, nightly report, issue evidence) |
+| `selection.py` | Case selection of nightly / on-demand runs, candidate commits of a nightly regression |
+| `reference.py` | Reference state (nightly measurements and confirmed jumps), noise statistics, nightly detection against it |
+| `tools/` | `maintenance.py` (coverage report, unmapped-file report for `op_source_map.yaml`, noise calibration) and the config consistency check `test_registry.py` |
+| `cases/` | One module per op family (`elementwise.py`, `pooling.py`, ...); one `OpBench` class per op and pass set |
+| `config/` | `op_source_map.yaml` (file -> ops for candidate commits, core set), `coverage_exclude.yaml`, `gating.yaml` (A/B thresholds, quarantine, detection thresholds, machines); optional `history.json` written by `noise calibrate` (A/A deltas, case costs) |
+
+Listing and selecting cases never imports torch: cases reach torch through
+lazy proxies in `case.py`, so the ubuntu CI jobs only need `pyyaml` and `numpy`.
+
+Every op has a PR tier (`pr`, a few cases; the core set and the nightly A/A
+rotation draw from it) and a nightly tier (all other cases). The nightly
+measures both.
+
+## Writing a case
+
+Add the op to the module of its family in `cases/`:
+
+```python
+from ..case import FLOAT_DTYPES, grid, OpBench, randn, State, torch
+
+
+class Softmax(OpBench):
+    op = "softmax"                      # unique op name (selection, reports)
+    family = "softmax"                  # core-set group / reporting
+    passes = ("fwd", "bwd")
+    expected = {"fwd": ("_softmax",), "bwd": ("_softmax_backward_data",)}
+    params = grid(shape=[(8192, 8192), (64, 8192)], dtype=FLOAT_DTYPES, dim=[0, 1])
+    pr = [dict(shape=(8192, 8192), dtype="bf16", dim=1)]   # PR tier subset
+
+    def setup(self, p, device):         # untimed, once per input set
+        return State(x=randn(p["shape"], p["dtype"], device), dim=p["dim"])
+
+    def fwd(self, s):                   # the only code in the timed region
+        return torch.softmax(s.x, s.dim)
+```
+
+Rules:
+
+* `fwd()` calls the op and nothing else. No input construction, no
+  host-to-device copies, no syncs; the validator rejects random factories
+  and host/device copies inside the timed region.
+* `bwd` cases build the graph and `grad_out` in setup; the timed region is
+  `torch.autograd.grad(out, inputs, grad_out, retain_graph=True)`. Override
+  `grad_inputs()` (default `[s.x]` or `s.inputs`) to differentiate several
+  inputs, or override `bwd()` to call an aten `*_backward` op directly.
+* In-place ops that accumulate state set `inplace = True` and implement
+  `reset(s)`; it runs on every input set between passes, outside the
+  measured iterations.
+* `expected` lists the aten ops (no `aten::` prefix) the pass must execute on
+  the device; `a|b` accepts either. Ops without an XPU kernel of their own set
+  `composite = True` and list the XPU ops they decompose into.
+* `noise_class`: `normal`, `atomic` (atomics/contention), `random` (RNG ops) or
+  `host_bound` (host syncs). Only `normal` cases can be in the core set.
+* `gating = False` keeps an op's confirmed nightly regressions out of the
+  issues; they are only reported (e.g. `matmul`, oneDNN).
+* Values that drive performance (indices, masks, repeats, targets) come from
+  the CPU generator (`randint`/`mask` in `case.py`), so A and B see identical
+  data even if a PR changes an XPU RNG kernel.
+* Keep single tensors under ~512M elements (BMG memory with backward and
+  several input sets); scale the batch down and say so in a comment.
+* `case_id` is a hash of `(op, pass, params)`. Changing params creates new
+  cases (new history, new calibration). `case_code_hash` hashes the op's
+  bench and the code it shares with the other ops of its module (imports,
+  helpers, constants): editing an op keeps the ids but its cases lose their
+  reference records until the next nightlies measure them again; editing a
+  shared helper does so for every op of the module.
+
+### Table-driven cases
+
+Ops with real-model shapes use `table_bench()`: it builds a `TableBench`
+class from a list of cases (each in every float dtype unless it fixes
+`dtype`) and the op call; `setup()` builds the inputs from the keys of each
+case. `pr` indexes the list (bf16, or the fixed dtype).
+
+```python
+Mul = table_bench(
+    "mul",
+    [
+        dict(shape=(16, 12, 512, 64), in_stride=(393216, 64, 768, 1), other=0.354),
+        dict(shape=(1000, 81), other_shape=(1000, 81), dtype="bool"),
+    ],
+    pr=[0],
+    family="elementwise",
+    fwd=lambda self, s: torch.mul(s.x, s.other),
+)
+```
+
+Keys:
+
+* `shape`, `in_stride`, `in_dtype`: the main input `s.x` (stride only when
+  non-contiguous, including 0 strides of broadcast inputs; dtype only when it
+  differs from the case dtype);
+* `<arg>_shape`, `<arg>_stride`, `<arg>_dtype`: tensor `s.<arg>`;
+* `shapes`, `strides`: tensor list `s.xs` (`cat`, `_foreach_*`); `lists`
+  names more list arguments with the same shapes;
+* any other key is a scalar `s.<key>` (`dim`, `other`, `alpha`, ...);
+  `defaults` fills keys that only some cases set.
+
+`values` picks value ranges where performance or validity depends on them
+(`("uniform", lo, hi)`, `("int", lo, hi)`, `("mask", p)`, `("nonfinite",
+frac)`). `inplace=True` (class or case) restores the input before every
+iteration; `idempotent=True` skips that for ops such as `relu_`. Backward
+classes pass `passes=("bwd",)` and `bwd=...` calling the aten backward op
+(`expected` defaults to `<op>_backward`).
+
+## Measurement protocol
+
+The op runs continuously, as in a model: passes of `ring` iterations back to
+back, with no cache flush and no sync between iterations, and a sync after
+each pass. A measured pass follows a warm-up pass, so it pays for writing back
+the outputs the previous pass left dirty in L2, about as much as it leaves
+dirty itself; the result is the steady-state time. A cache flush before every
+iteration instead left the op's own output dirty in L2 (its write-back was
+never timed) and let the next output reuse the same cache lines, which made
+write-heavy ops that fit in L2 (fill, copy, cat, elementwise) look faster.
+
+* **Input sets**: `ring = max(10, 2 * (L2 / (input + output bytes) + 1))`
+  (at most 256, at most half of the free memory), so one pass touches more
+  than twice the L2 size; iteration `i` uses set `i % ring`. Inputs above
+  100 MB use a single set.
+* **Outputs** up to 100 MB stay alive for a pass, so every iteration writes
+  to a new address; the warm-up pass leaves the allocator with the blocks the
+  measured passes need.
+* **E2E**: `time.perf_counter()` around each measured pass, no profiler; one
+  sample per pass (pass time / ring).
+* **Device time**: the warm-up and measured passes again under the profiler
+  with `ZE_ENABLE_TRACING_LAYER=1`; `kernel`/`gpu_memcpy`/`gpu_memset` events
+  launched inside the `__mb_iter__` annotation of an iteration form its
+  sample. An iteration with a kernel launch but no device event is invalid;
+  more than 10% invalid marks the case invalid.
+* **Warmup** by passes (>= 200 ms) until three consecutive passes agree
+  within 5%; then at least one pass, 10 iterations and 40 ms of op time.
+* **`PROTOCOL_VERSION`** (`__init__.py`): bump it with any change that moves
+  measured values; reference records of another version are never compared.
+
+Every run writes the logs of each case to `logs/<op>/<pass>_<case_id>/`
+(`case_id` is a hash of the op, pass and parameters; `logs/index.csv` lists
+the parameters of every case and its directory). Every file starts with
+`<op>_<pass>_`:
+
+* `<op>_<pass>_summary.log`: configuration, commits and card of each side,
+  per-process device/E2E statistics, errors with the worker's stderr, A/B
+  ratio and CI, detection result;
+* `<op>_<pass>_samples.jsonl`: every device-time iteration and every E2E
+  pass;
+* `<op>_<pass>_<stage>[_<side>]_proc<k>_e2e.log` / `_device.log`: input sets
+  and output lifetime, warm-up passes, every measured pass, every device event
+  counted per iteration, why a sample is invalid.
+
+`--keep-traces` also keeps the chrome traces (large).
+
+## Validator
+
+```bash
+python -m microbench validate --op softmax -v             # on XPU
+python -m microbench validate --op softmax --device cpu   # dispatch-level checks only
+```
+
+Checks: every expected op is dispatched and (on GPU) launches device work,
+the first expected op receives the declared shape/dtype/stride, no input
+construction in the timed region, every kernel launched by `run()` is
+attributed to its iteration in the trace. The nightly runs it on every case
+of each shard and reports failures with the coverage report.
+
+## Running locally
+
+```bash
+python -m microbench list --op softmax                   # cases and ids
+python -m microbench run --op softmax --pass bwd --case '{"dim":1,"dtype":"bf16","shape":[8192,8192]}'
+python -m microbench env status                          # GPU freq / temperature per card
+sudo python -m microbench env lock --ratio 0.95          # pin min=max at 95% of RP0
+
+# A/B: two venvs with the base and the B wheel (same PyTorch commit)
+python -m microbench select --flow ab --spec softmax,layer_norm --base <sha> --head HEAD --out sel.json
+python -m microbench schedule --python-a venv_base/bin/python --python-b venv_b/bin/python \
+    --cases sel.json --out-dir out --env-check
+python -m microbench check --ab-dir out --selection sel.json --out-dir report
+
+# one nightly shard as in CI: reference state of the last nightly, wheel N
+# (and the previous nightly wheel P for the recheck), then the nightly check
+python -m microbench reference fetch --repo intel/torch-xpu-ops --out-dir ref
+python -m microbench select --flow nightly --spec core --head HEAD --out sel.json
+python -m microbench ci-run --scope nightly-vs-reference --selection sel.json \
+    --python venv_n/bin/python --python-prev venv_p/bin/python --prev-sha <P sha> \
+    --head-sha $(git rev-parse HEAD) --state ref/<run>/reference.jsonl --out-dir shards/0
+python -m microbench check --scope nightly --nightly-dir shards --state ref/<run>/reference.jsonl \
+    --state-out state/reference.jsonl --out-dir report
+```
+
+`schedule` without `--python-a` runs A/A with one wheel, `--single` measures
+one wheel, `--wheel NAME=PYTHON` (repeated) alternates several wheels.
+`--device cpu --quick --binding none` gives a functional smoke test without a
+GPU.
+
+## Statistics
+
+**A/B (confirmation).** `r = median(B) / median(A)` of device time. The 95%
+CI and one-sided p-values come from a hierarchical bootstrap (processes first,
+then iterations). A case is a regression only if `r > 1.10`, the CI lower
+bound exceeds `1 + delta` (per-case noise) and the Holm-adjusted p-value is
+below 0.05. Both A/B stages must agree (3 processes per side, then 6, B
+first, on another card). E2E is report-only. Parameters:
+`config/gating.yaml`.
+
+**Detection (nightly)** compares the median of the process medians with the
+case's most recent nightly record (normally last night's, on whatever machine
+it ran; at most 7 days old, from the case's last confirmed jump on). Threshold
+`t = min(0.05, 0.10 - 2.33 * sigma_night)` (a real 10% step is caught with 99%
+probability); `sigma_night` is the spread of the case's night-to-night ratios
+in the reference state (1% until it has three). Cases without a reference or
+too noisy to detect (`t < 0.02`) go to the recheck A/B directly. Detection only
+decides what to recheck; only A/B results file an issue. Parameters:
+`nightly_detect` in `config/gating.yaml`.
+
+**Noise margin `delta`.** The default of the case's noise class
+(`default_delta` in `config/gating.yaml`), raised to the case's own A/A
+delta when that is larger: the largest A/A deviation over at least 3 nightly
+A/A runs in the reference state (each nightly A/A-tests a seventh of the
+PR-tier cases), else the delta in `config/history.json`. Noisy cases are
+kept out of the issues with the `quarantine` list, which the nightly report
+suggests.
+`history.json` can still carry deltas from dedicated A/A runs:
+
+```bash
+python -m microbench noise calibrate out_aa_* --out microbench/config/history.json --min-runs 20
+```
+
+## CI
+
+`nightly_ondemand.yml`, build-nightly and build-weekly:
+
+1. `microbench / microbench-run (nightly-vs-reference)`, one job per shard
+   (`MICROBENCH_NIGHTLY_SHARDS`, default 4): every case of this nightly wheel
+   N (3 processes), A/A of a seventh of the PR-tier cases (the slice after
+   the previous nightly's, so seven nightlies cover them all), the
+   case validator (coverage), detection against the reference state, recheck
+   of the suspects against the previous nightly wheel P on the same card,
+   candidate commits (P..N commits touching files related to the case).
+2. `microbench-build-base` builds P' (P's xpu-ops, N's PyTorch, torch only)
+   when a confirmed regression has candidates, and
+   `microbench / microbench-run (nightly-xpu-ops-vs-pytorch)` alternates P,
+   P' and N.
+3. `microbench / microbench-check`: attribution (xpu-ops / pytorch / mixed),
+   new reference state (`microbench-reference-state`: this night's
+   measurements and confirmed jumps, 30 days), nightly report, coverage
+   report, quarantine suggestions, issue evidence
+   (`microbench-nightly-<run>`): every regression the recheck A/B confirmed,
+   except quarantined cases and ops kept out of gating (no A/A calibration
+   needed).
+4. `microbench-auto-issue` (`_microbench_auto_issue.yml`): evidence, LLM
+   drafts (`microbench-issue-authoring` skill), checked filing. Issues are
+   filed only when `MICROBENCH_AUTO_ISSUE_ENABLED` is `true`; otherwise the
+   drafts are in the report artifact.
+
+Run jobs upload one artifact, `microbench-data-<run>-<scope>[-<shard>]-<attempt>`
+(results, raw samples, `records.jsonl` and the per-case logs).
+
+On demand (`ut` containing `microbench`): `microbench_base` `nightly` (the
+default) simulates a nightly (its state is uploaded as
+`microbench-reference-state-ondemand`, which only `microbench_reference_run`
+reads; `microbench_prev_run` names the run whose wheel is the previous
+nightly P, default the latest scheduled run on `main`; no issues); a
+commit/branch runs an A/B of the B wheel
+(`torch_xpu_ops`) against it, e.g. to confirm a candidate commit of an issue
+against its parent; `none` an A/A. The A/B and A/A report is in
+`microbench-report-<run>`. `microbench_cases`: `core`, `all`, `pr`, or op
+names; empty means `all` for a nightly and `core` otherwise. With
+`MICROBENCH_REFERENCE_WRITE_DISPATCH` set, a `nightly` dispatch on `main`
+publishes the real state (rebuild after a driver upgrade).
+
+## Configuration files
+
+* `op_source_map.yaml`: file -> ops, maintained by hand (the files whose
+  commits are candidates of a regression), and the core set (1-2 cases per
+  shared code path; maintainer review); `python -m microbench srcmap` lists
+  unmapped kernel files (report only).
+* `coverage_exclude.yaml`: `excluded` / `deferred` XPU ops with reasons;
+  `python -m microbench coverage --native-functions <yaml>` reports coverage.
+* `gating.yaml`: A/B verdict thresholds, the `quarantine` list (cases/ops
+  reported but never filed as issues), detection thresholds, and `machines`
+  (per-host cards, NUMA/CPU binding, protocol overrides, pre-run limits).
+* `history.json` (optional, written by `noise calibrate`): A/A deltas (used
+  where the nightly A/A has none) and measured case costs (LPT sharding,
+  budget).
