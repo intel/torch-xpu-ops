@@ -36,6 +36,8 @@ def _is_xpu_smi_available() -> bool:
     with _xpu_smi_lock:
         if _xpu_smi_available is None:
             _xpu_smi_available = shutil.which("xpu-smi") is not None
+            if not _xpu_smi_available:
+                log("xpu-smi not found in PATH; GPU memory monitoring and GPU info are disabled", level="WARN")
         return _xpu_smi_available
 
 
@@ -105,13 +107,14 @@ def get_gpu_memory_utilization(
         device_id, tile_id = (card // tiles, card % tiles) if tiles > 1 else (card, None)
 
         cmd = ["xpu-smi", "dump", "-d", str(device_id)]
-        if tile_id is not None:
-            cmd += ["-t", str(tile_id)]
-        # metrics 0: GPU Utilization, 2: GPU Frequency, 3: GPU Core Temperature,
-        # 5: GPU Memory Utilization, 17: GPU Memory Bandwidth Utilization
-        cmd += ["--metrics", "0,2,3,5,17"]
-        # 1.x only accepts -n; 2.x renamed it to --number/--count.
-        cmd += ["--number", "1"] if _get_xpu_smi_major_version() >= 2 else ["-n", "1"]
+        if _get_xpu_smi_major_version() >= 2:
+            cmd += ["--metrics", "utilization.gpu,utilization.memory,temperature.gpu,clocks.current.graphics", "--number", "1"]
+        else:
+            if tile_id is not None:
+                cmd += ["-t", str(tile_id)]
+            # metrics 0: GPU Utilization, 2: GPU Frequency, 3: GPU Core Temperature,
+            # 5: GPU Memory Utilization
+            cmd += ["-m", "0,2,3,5", "-n", "1"]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         if result.returncode != 0:
@@ -125,9 +128,12 @@ def get_gpu_memory_utilization(
         for l in lines:
             if l.startswith("Timestamp"):
                 header_line = l
-            elif header_line is not None and re.match(r'\d{2}:\d{2}:\d{2}', l):
+            elif header_line is not None and data_line is None and re.match(r'\d{2}:\d{2}:\d{2}', l):
                 data_line = l
+            elif header_line is not None and data_line is None:
+                header_line += l  # xpu-smi 2.x wraps long headers mid-name
         if header_line is None or data_line is None:
+            log(f"Unparsed xpu-smi dump output for GPU {card}: {result.stdout!r}", level="WARN")
             return None
 
         headers = [h.strip() for h in header_line.split(',')]
@@ -140,7 +146,7 @@ def get_gpu_memory_utilization(
                     return values[idx]
             return None
 
-        mem_util_str = _get_col("GPU Memory Utilization")
+        mem_util_str = _get_col("GPU Memory Utilization", "utilization.memory")
         if mem_util_str is None:
             return None
 
@@ -150,10 +156,9 @@ def get_gpu_memory_utilization(
 
         # Gather additional metrics for logging
         # 1.x labels metric 0 "Average % utilization of all GPU Engines"; 2.x "GPU Utilization (%)"
-        gpu_util = _get_col("GPU Utilization", "utilization of all GPU Engines")
-        gpu_freq = _get_col("GPU Frequency")
-        gpu_temp = _get_col("GPU Core Temperature")
-        mem_bw = _get_col("Memory Bandwidth Utilization")
+        gpu_util = _get_col("GPU Utilization", "utilization of all GPU Engines", "utilization.gpu")
+        gpu_freq = _get_col("GPU Frequency", "clocks.current.graphics")
+        gpu_temp = _get_col("GPU Core Temperature", "temperature.gpu")
 
         loc = f"GPU {card} (Device {device_id} Tile {tile_id})" if tiles > 1 else f"GPU {card}"
         thr = f" ({memory_threshold:.0%})" if memory_threshold is not None else ""
@@ -165,8 +170,6 @@ def get_gpu_memory_utilization(
             extras.append(f"GPU Freq={gpu_freq}MHz")
         if gpu_temp is not None:
             extras.append(f"GPU Temp={gpu_temp}℃")
-        if mem_bw is not None:
-            extras.append(f"GPU Mem BW Util={mem_bw}%")
         extra_str = f" [{', '.join(extras)}]" if extras else ""
         log(f"{loc} GPU Memory Util: {val:.2%}{thr}{extra_str} | {model_name}")
         return val
