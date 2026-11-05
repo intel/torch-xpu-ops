@@ -63,11 +63,14 @@ void launch_poisson_kernel(
     const TensorBase& ret,
     const TensorBase& lambda,
     at::XPUGeneratorImpl* gen) {
+  // Knuth sampling near lambda=64 often needs more than 20 uniforms.
+  // Both sampling loops are unbounded; this budget is not a hard limit.
+  constexpr uint64_t poisson_rng_offset = 256;
   PhiloxXpuState rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(20);
+    rng_engine_inputs = gen->philox_xpu_state(poisson_rng_offset);
   }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,

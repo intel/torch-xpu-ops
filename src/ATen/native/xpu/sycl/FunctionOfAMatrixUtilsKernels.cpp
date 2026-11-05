@@ -13,6 +13,7 @@
 #include <ATen/native/xpu/sycl/FunctionOfAMatrixUtilsKernels.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 constexpr int n_elems_per_work_item = 4; // UNROLLED_ELEM_PER_WORK_ITEM;
@@ -40,7 +41,7 @@ template <int n_elems_per_work_item, typename func_t>
 void _elemwise_kernel(int total_n_elems, func_t f) {
   int total_work_items =
       (total_n_elems + n_elems_per_work_item - 1) / n_elems_per_work_item;
-  int64_t max_work_group_size = syclMaxWorkGroupSize<
+  int64_t max_work_group_size = at::xpu::getKernelMaxWorkGroupSize<
       elem_wise_kernel_impl<n_elems_per_work_item, func_t>>();
 
   int local_range = max_work_group_size;

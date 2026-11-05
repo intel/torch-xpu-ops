@@ -12,7 +12,7 @@ basic_gnn_gin,pass,pass,pass,pass,pass
 basic_gnn_sage,pass,pass,pass,pass,pass
 cm3leon_generate,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 dcgan,pass,pass,pass,pass,pass
-demucs,fail_accuracy,eager_fail_to_run,eager_fail_to_run,fail_accuracy,fail_accuracy
+demucs,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
 densenet121,pass,pass,pass,pass,pass
 detectron2_fasterrcnn_r_101_c4,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 detectron2_fasterrcnn_r_101_dc5,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
@@ -60,10 +60,10 @@ maml_omniglot,pass,pass,pass,pass,pass
 microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
 mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1787
-mobilenet_v2_quantized_qat,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+# https://github.com/intel/torch-xpu-ops/issues/1787, fixed in https://github.com/intel/torch-xpu-ops/issues/4415
+mobilenet_v2_quantized_qat,pass,pass,pass,pass,pass
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,model_fail_to_load,model_fail_to_load,eager_fail_to_run,model_fail_to_load,model_fail_to_load
+moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
@@ -79,8 +79,8 @@ pytorch_unet,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 resnet152,pass,pass,pass,pass,pass
 resnet18,pass,pass,pass,pass,pass
 resnet50,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1787
-resnet50_quantized_qat,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+# https://github.com/intel/torch-xpu-ops/issues/1787, fixed in https://github.com/intel/torch-xpu-ops/issues/4415
+resnet50_quantized_qat,pass,pass,pass,pass,pass
 resnext50_32x4d,pass,pass,pass,pass,pass
 sam,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 sam_fast,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
@@ -106,6 +106,6 @@ timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
-vision_maskrcnn,pass,pass,pass,pass,fail_to_run
+vision_maskrcnn,pass,pass,pass,pass,pass
 yolov3,pass,pass,pass,pass,pass
 hf_Roberta_base,pass,pass,pass,pass,pass

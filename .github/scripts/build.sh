@@ -12,6 +12,7 @@ for var; do
     eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
 done
 
+install_test=${INSTALL_TEST:-0}
 WORKSPACE=$(realpath "${WORKSPACE:-/tmp}")
 cd "${WORKSPACE}/pytorch"
 PYTORCH_WHEEL_LINUX_SCRIPT_PATH="./.ci/wheel/linux"
@@ -23,12 +24,11 @@ export DESIRED_CUDA=xpu
 if [ "${USE_DPCLANG}" == "yes" ]; then
     # dpclang: open-source SYCL compiler, skip upstream env setup (no oneAPI)
     export XPU_SYCL_COMPILER=dpclang
-    export USE_KINETO=0
     export USE_ONEMKL_XPU=0
     export USE_STATIC_MKL=1
     export TH_BINARY_BUILD=1
     export USE_CUDA=0
-    export INSTALL_TEST=0
+    export INSTALL_TEST="${install_test}"
     python -m pip install -r requirements.txt
     python -m pip install mkl-static==2026.0.0 mkl-include==2026.0.0
     python -m pip install build auditwheel==6.4.2
@@ -50,6 +50,7 @@ print(PYTORCH_EXTRA_INSTALL_REQUIREMENTS['xpu'])
     python "${PYTORCH_WHEEL_LINUX_SCRIPT_PATH}/build_env_setup.py" --env-out "$ENV_FILE"
     # shellcheck source=/dev/null
     source "$ENV_FILE"
+    export INSTALL_TEST="${install_test}"
 
     # Step 2: Install build dependencies
     python "${PYTORCH_WHEEL_LINUX_SCRIPT_PATH}/build_install_deps.py" "${WORKSPACE}/pytorch"

@@ -24,7 +24,9 @@ if(NOT __XCCL_INCLUDED)
     ${XCCL_INCLUDE_DIR})
   # Wrap with --no-as-needed,...,--as-needed so it remains in NEEDED.
   # Once the weak attribute is removed upstream, this wrapper can be dropped.
+  # CMAKE_DL_LIBS is for the libccl.so.1 preload in src/xccl/xccl.cpp; it can go
+  # away together with that workaround.
   set_property(
     TARGET torch::xccl PROPERTY INTERFACE_LINK_LIBRARIES
-    "-Wl,--no-as-needed,${XCCL_LIBRARY},--as-needed")
+    "-Wl,--no-as-needed,${XCCL_LIBRARY},--as-needed" ${CMAKE_DL_LIBS})
 endif()

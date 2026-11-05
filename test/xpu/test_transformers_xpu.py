@@ -34,6 +34,7 @@ from torch.testing._internal.common_device_type import (
     expectedFailureMPS,
     instantiate_device_type_tests,
     largeTensorTest,
+    onlyCUDA,
 )
 from torch.testing._internal.common_methods_invocations import wrapper_set_seed
 from torch.testing._internal.common_nn import NNTestCase
@@ -2790,7 +2791,7 @@ class TestSDPAFailureModes(NNTestCase):
             )
 
     @largeTensorTest("15GB")
-    @onlyAccelerator
+    @onlyCUDA  # This test is correctly marked as @onlyCUDA in upstream.
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_MEM_EFF_ATTENTION, "Does not support Efficient Attention"
     )

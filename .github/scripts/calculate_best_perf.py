@@ -37,8 +37,8 @@ def multiple_replace(text):
         Cleaned category name
     """
     regex_replacements = [
-        (r".*inductor_", ""),
-        (r"_xpu_performance.csv", ""),
+        (r".*inductor-", ""),
+        (r"-[^-]+-performance\.csv", ""),
     ]
     for old_pattern, new_pattern in regex_replacements:
         text = re.sub(old_pattern, new_pattern, text, flags=re.IGNORECASE)
@@ -213,7 +213,7 @@ def main():
     best_data = best_data.reset_index(drop=True)
 
     # Find and process new performance files
-    new_files = find_files("*_xpu_performance.csv", args.new)
+    new_files = find_files("*-performance.csv", args.new)
 
     if not new_files:
         print(f"No performance files found in {args.new}")
