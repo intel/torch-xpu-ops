@@ -73,7 +73,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
-      - name: Resolve python version
+      - name: Resolve CI config
         uses: ./torch-xpu-ops/.github/actions/ci-config
         with:
           python: ${{ inputs.python }}
@@ -156,8 +156,7 @@ jobs:
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc,bmg'
           fi
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
+          source /opt/rh/gcc-toolset-${GCC_VERSION}/enable
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
             2>&1 |tee ${{ github.workspace }}/build_pytorch.log
@@ -167,8 +166,7 @@ jobs:
           fi
       - name: Build Torchvision and Torchaudio
         run: |
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
+          source /opt/rh/gcc-toolset-${GCC_VERSION}/enable
           cd ./pytorch
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
@@ -215,8 +213,7 @@ jobs:
               curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
                       grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
             )"
-            # gcc 13
-            source /opt/rh/gcc-toolset-13/enable
+            source /opt/rh/gcc-toolset-${GCC_VERSION}/enable
             dnf install -y zlib-devel
             pip install cmake ninja pybind11
             python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
