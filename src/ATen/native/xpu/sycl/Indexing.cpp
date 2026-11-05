@@ -811,7 +811,8 @@ void take_put_kernel_template(
       f);
   auto caller =
       TakePutKernelFunctor<TAKE_PUT_UNROLL_SZIE, decltype(loop_fn)>(N, loop_fn);
-  auto wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   auto num_wg =
       (N + wg_sz * TAKE_PUT_UNROLL_SZIE - 1) / (wg_sz * TAKE_PUT_UNROLL_SZIE);
   sycl_kernel_submit(num_wg * wg_sz, wg_sz, getCurrentSYCLQueue(), caller);
@@ -862,7 +863,8 @@ struct PutFunctor {
 template <typename scalar_t, typename index_t>
 struct PutAccumulateFunctor {
   void operator()(scalar_t& iterated, const index_t offset) const {
-    atomicAdd(sycl_global_ptr<scalar_t>(indexed_ptr_ + offset), iterated);
+    atomicAdd(
+        sycl_global_ptr<scalar_t>(indexed_ptr_ + offset), c10::load(&iterated));
   }
   PutAccumulateFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
 
@@ -944,7 +946,7 @@ struct IndexFuncSmallIndexFunctor {
 
         T val;
         if constexpr (std::is_same_v<T, bool>) {
-          val = src_.data[srcOffset] && alpha_;
+          val = c10::load(&src_.data[srcOffset]) && alpha_;
         } else {
           val = src_.data[srcOffset] * alpha_;
         }
@@ -1052,7 +1054,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
       T val;
       if constexpr (std::is_same_v<T, bool>) {
-        val = src_.data[srcOffset] && alpha_;
+        val = c10::load(&src_.data[srcOffset]) && alpha_;
       } else {
         val = src_.data[srcOffset] * alpha_;
       }
@@ -1292,7 +1294,7 @@ void index_reduce_add_xpu_template(
   }
 
   const bool indContig = index.is_contiguous();
-  int ssc = syclMaxDSSNum();
+  int xecore_count = at::xpu::getDeviceXeCoreCount();
 
 #define SMALL_INDEX(                                                        \
     TENSOR_TYPE, INDICES_TYPE, TYPE, SELF_DIM, SOURCE_DIM, IDX_DIM, FUNC_T) \
@@ -1373,7 +1375,8 @@ void index_reduce_add_xpu_template(
             // index to choose
             if (numIndex <= 16) {
               size_t num_wg = std::min(
-                  ceil_div(sliceSize, (uint64_t)128), (uint64_t)(ssc * 8));
+                  ceil_div(sliceSize, (uint64_t)128),
+                  (uint64_t)(xecore_count * 8));
               size_t wg_size = std::min(sliceSize, (uint64_t)128);
               if (selfInfo.dims == 1 && sourceInfo.dims == 1 && indContig) {
                 auto caller = SMALL_INDEX(
@@ -1405,7 +1408,7 @@ void index_reduce_add_xpu_template(
                   at::xpu::getDeviceMaxWorkGroupSize();
               size_t num_wg = std::min(
                   ceil_div(sourceTotalSize, (uint64_t)128),
-                  (uint64_t)(ssc * 8));
+                  (uint64_t)(xecore_count * 8));
               size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
                   ? sourceTotalSize
                   : defaultMaxGroupThreads;
@@ -1480,7 +1483,8 @@ void index_reduce_add_xpu_template(
             uint64_t defaultMaxGroupThreads =
                 at::xpu::getDeviceMaxWorkGroupSize();
             size_t num_wg = std::min(
-                ceil_div(sourceTotalSize, (uint64_t)128), (uint64_t)(ssc * 8));
+                ceil_div(sourceTotalSize, (uint64_t)128),
+                (uint64_t)(xecore_count * 8));
             size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
                 ? sourceTotalSize
                 : defaultMaxGroupThreads;
@@ -1632,7 +1636,7 @@ void index_reduce_func_xpu_template(
       reduce_func,                           \
       alpha_value);
 
-  int ssc = syclMaxDSSNum();
+  int xecore_count = at::xpu::getDeviceXeCoreCount();
 
   if (canUse32BitIndexMath(result) && canUse32BitIndexMath(source) &&
       canUse32BitIndexMath(index)) {
@@ -1666,7 +1670,7 @@ void index_reduce_func_xpu_template(
                         scalar_t, index_t, unsigned int, 1, 1, -2, func_t);
                     size_t num_wg = std::min(
                         ceil_div(sliceSize, (uint64_t)128),
-                        (uint64_t)(ssc * 8));
+                        (uint64_t)(xecore_count * 8));
                     size_t wg_size = std::min(sliceSize, (uint64_t)128);
                     sycl_kernel_submit(
                         num_wg * wg_size,
@@ -1679,7 +1683,7 @@ void index_reduce_func_xpu_template(
                         scalar_t, index_t, unsigned int, 2, 2, -2, func_t);
                     size_t num_wg = std::min(
                         ceil_div(sliceSize, (uint64_t)128),
-                        (uint64_t)(ssc * 8));
+                        (uint64_t)(xecore_count * 8));
                     size_t wg_size = std::min(sliceSize, (uint64_t)128);
                     sycl_kernel_submit(
                         num_wg * wg_size,
@@ -1692,7 +1696,7 @@ void index_reduce_func_xpu_template(
                         scalar_t, index_t, unsigned int, 3, 3, -2, func_t);
                     size_t num_wg = std::min(
                         ceil_div(sliceSize, (uint64_t)128),
-                        (uint64_t)(ssc * 8));
+                        (uint64_t)(xecore_count * 8));
                     size_t wg_size = std::min(sliceSize, (uint64_t)128);
                     sycl_kernel_submit(
                         num_wg * wg_size,
@@ -1704,7 +1708,7 @@ void index_reduce_func_xpu_template(
                         scalar_t, index_t, unsigned int, -1, -1, -1, func_t);
                     size_t num_wg = std::min(
                         ceil_div(sliceSize, (uint64_t)128),
-                        (uint64_t)(ssc * 8));
+                        (uint64_t)(xecore_count * 8));
                     size_t wg_size = std::min(sliceSize, (uint64_t)128);
                     sycl_kernel_submit(
                         num_wg * wg_size,
@@ -1730,7 +1734,7 @@ void index_reduce_func_xpu_template(
                         at::xpu::getKernelMaxWorkGroupSize(caller);
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
-                        (uint64_t)(ssc * 8));
+                        (uint64_t)(xecore_count * 8));
                     size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
                         ? sourceTotalSize
                         : defaultMaxGroupThreads;
@@ -1755,7 +1759,7 @@ void index_reduce_func_xpu_template(
                           at::xpu::getKernelMaxWorkGroupSize(caller);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
-                          (uint64_t)(ssc * 8));
+                          (uint64_t)(xecore_count * 8));
                       size_t wg_size =
                           (sourceTotalSize < defaultMaxGroupThreads)
                           ? sourceTotalSize
@@ -1779,7 +1783,7 @@ void index_reduce_func_xpu_template(
                           at::xpu::getKernelMaxWorkGroupSize(caller);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
-                          (uint64_t)(ssc * 8));
+                          (uint64_t)(xecore_count * 8));
                       size_t wg_size =
                           (sourceTotalSize < defaultMaxGroupThreads)
                           ? sourceTotalSize
@@ -1806,7 +1810,7 @@ void index_reduce_func_xpu_template(
                           at::xpu::getKernelMaxWorkGroupSize(caller);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
-                          (uint64_t)(ssc * 8));
+                          (uint64_t)(xecore_count * 8));
                       size_t wg_size =
                           (sourceTotalSize < defaultMaxGroupThreads)
                           ? sourceTotalSize
@@ -1830,7 +1834,7 @@ void index_reduce_func_xpu_template(
                           at::xpu::getKernelMaxWorkGroupSize(caller);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
-                          (uint64_t)(ssc * 8));
+                          (uint64_t)(xecore_count * 8));
                       size_t wg_size =
                           (sourceTotalSize < defaultMaxGroupThreads)
                           ? sourceTotalSize
@@ -1855,7 +1859,7 @@ void index_reduce_func_xpu_template(
                         at::xpu::getKernelMaxWorkGroupSize(caller);
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
-                        (uint64_t)(ssc * 8));
+                        (uint64_t)(xecore_count * 8));
                     size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
                         ? sourceTotalSize
                         : defaultMaxGroupThreads;
@@ -1897,7 +1901,7 @@ void index_reduce_func_xpu_template(
                     at::xpu::getKernelMaxWorkGroupSize(caller);
                 size_t num_wg = std::min(
                     ceil_div(sourceTotalSize, (uint64_t)128),
-                    (uint64_t)(ssc * 8));
+                    (uint64_t)(xecore_count * 8));
                 size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
                     ? sourceTotalSize
                     : defaultMaxGroupThreads;
@@ -2169,7 +2173,7 @@ void index_select_out_impl(
   uint64_t selfSelectDimSize = self.dim() == 0 ? 1 : self.size(dim);
   uint64_t sliceSize = outTotalSize / numIndices;
 
-  int ssc = syclMaxDSSNum();
+  int xecore_count = at::xpu::getDeviceXeCoreCount();
 
 #define SMALL_INDEX(                                            \
     TENSOR_TYPE, INDICES_TYPE, TYPE, DST_DIM, SRC_DIM, IDX_DIM) \
@@ -2213,7 +2217,8 @@ void index_select_out_impl(
           uint64_t defaultMaxGroupThreads =
               at::xpu::getDeviceMaxWorkGroupSize() / 2;
           size_t num_wg = std::min(
-              ceil_div(sliceSize, defaultMaxGroupThreads), (uint64_t)(ssc * 8));
+              ceil_div(sliceSize, defaultMaxGroupThreads),
+              (uint64_t)(xecore_count * 8));
           size_t wg_size = std::min(sliceSize, defaultMaxGroupThreads);
 
           // A reasonable choice for when to have each thread iterate over
