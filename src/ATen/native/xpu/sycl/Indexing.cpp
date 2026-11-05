@@ -443,7 +443,10 @@ struct MaskedScatterElementwiseFunctor {
 
 struct MaskedScatterSizeCheckFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    const auto totalElements = *mask_exclusive_sum_ + *mask_;
+    // c10::load normalizes a bool whose storage holds a value other than 0/1
+    // (e.g. a uint8 tensor viewed as bool), as the prefix sum already does.
+    const auto totalElements =
+        *mask_exclusive_sum_ + (c10::load(mask_) ? 1 : 0);
     SYCL_KERNEL_ASSERT(totalElements <= srcSize_);
   }
   MaskedScatterSizeCheckFunctor(
