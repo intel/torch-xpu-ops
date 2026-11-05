@@ -64,17 +64,17 @@ GitHub access.
       "related": ["g2"]        // drafts sharing this root cause, if any
     }
   ],
-  "notes": "Anything you were unsure about, and anything you did not place."
+  "notes": "Anything you were unsure about."
 }
 ```
 
 Only `title_text` and `summary` are yours to write (and `reproduce`, see
-below). The prefixes
-(`[Bug Skip]: `, `[Regression] `, `[Failed to collect] `), the labels, the
-`Cases:` block, the traceback, the baseline table, the reproduce command and
-the marker are added by the filing step, from the evidence. A group is one root
-cause, not one message, so it may hold several: name the case whose traceback
-shows that cause most clearly in `error_case`.
+below). The prefixes (`[Bug Skip]: `, `[Regression] `, `[Failed to collect] `),
+the labels, the `Cases:` block, the traceback, the baseline table, the
+reproduce command the run recorded and the marker are added by the filing
+step, from the evidence. A group is one root cause, not one message, so it may
+hold several: name the case whose traceback shows that cause most clearly in
+`error_case`.
 
 **Analyse every case.** Each one goes in exactly one draft, and `drafts.json`
 must end complete with no placeholders (such as `"@@PART2@@"`): the filing
@@ -87,8 +87,8 @@ has to fit one session, so:
 - Read repository source only when the failure text cannot settle a grouping
   or a filing decision.
 - `Write` drafts.json as soon as the first category is done, then `Edit` in
-  each next one (allowed on that file only), rather than one large write at
-  the end.
+  each next one (both allowed on that file only), rather than one large write
+  at the end.
 
 Both the grouping and the summary are read off the failure text, so the draft
 carries the text they were read off: `traceback` is what `summary` argues from,
@@ -180,19 +180,25 @@ one looks to you like a `regression` or a `new_case_failure`, say so in
 
 ## Reproduce
 
-Only when evidence.json `reproduce` has no entry for the category, write
-`reproduce` for `error_case` (else the first case). Copy it from the
-`ut_job`'s step in `.github/actions/linux-uttest/action.yml`, never from the
-failure text: from the workspace root (`${GITHUB_WORKSPACE}` is `$PWD`), its
-test-relevant `export`s, the `cd`s and the invocation that ran the file
-`module` names, plus `::<class>::<test_name>`. For `run_test.py --inductor`,
-use `PYTORCH_TEST_WITH_INDUCTOR=1 python -m pytest pytorch/test/<file>.py`.
-Drop `--junit-xml`, `tee`, redirects, `PATH`, `${VENV_ROOT}`.
+Only when evidence.json `reproduce` has no entry for the category; otherwise
+leave `reproduce` out. Write it for `error_case` (else the first case), from
+how CI ran that case, never from the failure text:
 
-Allowed lines: `cd`, `export NAME=value`, `#`, `python`/`pytest`; no
-`;&|<>`, backticks, `$(` or `\`; at most 20; must contain `test_name`
-(`test_file` for a whole-module row, which runs just the file). Anything else
-is dropped.
+1. Find the command that ran the case's file: the `ut_job`'s step in
+   `.github/actions/linux-uttest/action.yml`, and for `upstream_*` the
+   `*_jobs` functions and `*_ENV` dicts of `.github/scripts/run_upstream_ut.py`
+   it calls.
+2. From the workspace root (`${GITHUB_WORKSPACE}` is `$PWD`): `export` what
+   changes the test, `cd` where it ran, then that `python -m pytest` on the
+   file plus `::<class>::<test_name>` (a whole-module row: the file alone).
+3. Leave out what only serves CI: junit, logs, `tee`, timeouts, xdist, reruns,
+   `PATH`, `PYTEST_ADDOPTS`.
+
+Allowed: `cd <dir>`, `export NAME=value`, `# comment`, and
+`[NAME=value ...] python -m pytest ...` or `pytest ...`; no `;&|<>`,
+backticks, `$(` or `\`; no plugin, config or file-writing pytest options;
+at most 20 lines and 2000 characters; a pytest line must contain `test_name`
+(`test_file` for a whole-module row). Anything else is dropped.
 
 ## Finally
 

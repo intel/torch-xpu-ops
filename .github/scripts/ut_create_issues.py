@@ -23,6 +23,7 @@ import base64
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -305,14 +306,54 @@ def evidence_block(run: dict, category: str, cls: str, cls_reason: str,
 
 # A drafted command is model output that read untrusted failure text, and it
 # lands in a block people paste into a shell. So it may only change directory,
-# set variables and run python or pytest, one command per line.
+# set variables and run pytest, one command per line - and neither the
+# variables nor the pytest options may load code or touch files of their own.
 _ASSIGN = r"[A-Za-z_][A-Za-z0-9_]*=\S*"
 DRAFTED_LINE = re.compile(
     rf"^(#.*|cd \S+|export {_ASSIGN}"
-    rf"|(?:{_ASSIGN} )*(?:python3? -m pytest|python3?|pytest) \S.*)$")
+    rf"|(?:{_ASSIGN} )*(?:python3? -m pytest|pytest) \S.*)$")
 DRAFTED_FORBIDDEN = ("`", ";", "&", "|", "<", ">", "$(", "\\")
+# Names that make python or the shell run something: an import hook, a plugin,
+# a startup file, a preloaded library, a different `python` on PATH.
+UNSAFE_ENV = re.compile(
+    r"^(LD_\w*|PYTHON(?!PATH$)\w*|PYTEST_\w*|BROWSER|PATH|BASH_ENV|ENV"
+    r"|PROMPT_COMMAND|IFS)$")
+# Plugins and config files load code; the rest write or delete paths
+# (--basetemp empties its directory). A prefix is checked as well, since
+# argparse accepts an abbreviated long option.
+UNSAFE_PYTEST_LONG = ("--basetemp", "--junit-xml", "--junitxml", "--junit-prefix",
+                      "--log-file", "--debug", "--result-log", "--override-ini",
+                      "--config-file", "--inifile", "--rootdir", "--confcutdir",
+                      "--pdbcls")
+UNSAFE_PYTEST_SHORT = re.compile(r"^-[A-Za-z]*[pco]")
 MAX_DRAFTED_LINES = 20
 MAX_DRAFTED_CHARS = 2000
+
+
+def unsafe_token(line: str) -> str:
+    """The first variable or pytest option in an allowed line that is not."""
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return line
+    if tokens[:1] == ["export"]:
+        tokens = tokens[1:]
+    is_pytest = False
+    for token in tokens:
+        name, sep, value = token.partition("=")
+        if not is_pytest and sep and re.fullmatch(r"[A-Za-z_]\w*", name):
+            # Clearing a variable, as CI does PYTEST_ADDOPTS, loads nothing.
+            if value and UNSAFE_ENV.match(name):
+                return name
+            continue
+        is_pytest = True
+        if token.startswith("--"):
+            if len(name) > 2 and any(o.startswith(name) or name.startswith(o)
+                                     for o in UNSAFE_PYTEST_LONG):
+                return token
+        elif UNSAFE_PYTEST_SHORT.match(token):
+            return token
+    return ""
 
 
 def drafted_reproduce(draft: dict, case: dict) -> tuple[str, str]:
@@ -335,9 +376,15 @@ def drafted_reproduce(draft: dict, case: dict) -> tuple[str, str]:
                      or not line.isprintable()
                      or not DRAFTED_LINE.match(line)):
             return "", f"`reproduce` has a line outside the allowed shape: `{line[:80]}`"
+        if line and not line.startswith("#"):
+            bad = unsafe_token(line)
+            if bad:
+                return "", f"`reproduce` uses `{bad[:40]}`, which is not allowed"
+    # In the command itself: a comment naming the case reproduces nothing.
     wanted = case["test_name"] if case["class_name"] else case["test_file"]
-    if wanted not in text:
-        return "", f"`reproduce` does not name `{wanted}`, the case it is shown for"
+    if not any("pytest" in line and wanted in line
+               for line in lines if not line.startswith("#")):
+        return "", f"no pytest line in `reproduce` names `{wanted}`, the case it is shown for"
     return "\n".join(lines), ""
 
 
@@ -434,8 +481,9 @@ def unfinished_drafts(doc: dict) -> str:
 
     A large drafts.json is sometimes written with a placeholder for a part the
     analysis meant to fill in later, and the session ends first. What it left
-    is valid JSON, and filing the
-    groups it did write would present half an analysis as all of it.
+    is valid JSON, and filing the groups it did write would present half an
+    analysis as all of it. A placeholder can stand anywhere - in `cases`, in a
+    `traceback` - so the whole document is searched.
     """
     drafts = doc.get("drafts")
     if not isinstance(drafts, list):
@@ -443,11 +491,9 @@ def unfinished_drafts(doc: dict) -> str:
     for position, draft in enumerate(drafts):
         if not isinstance(draft, dict):
             return f"entry {position} of `drafts` is `{str(draft)[:40]}`, not a draft"
-    for where, value in [("notes", doc.get("notes"))] + [
-            (f"draft {d.get('id', '?')} `{key}`", d.get(key))
-            for d in drafts for key in ("id", "title_text", "summary", "reason")]:
-        if isinstance(value, str) and PLACEHOLDER.search(value):
-            return f"{where} is the placeholder `{PLACEHOLDER.search(value).group()}`"
+    found = PLACEHOLDER.search(json.dumps(doc))
+    if found:
+        return f"the document contains the placeholder `{found.group()}`"
     return ""
 
 
