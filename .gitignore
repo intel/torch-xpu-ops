@@ -10,5 +10,8 @@
 */**/**/**/**/*.pyc
 .lintbin
 
+# beyond compare backup files
+*.orig
+
 agent_space/
 agent_space_xpu/
