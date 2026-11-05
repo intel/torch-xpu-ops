@@ -6465,17 +6465,18 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             self.assertEqual(mod.running_var, ref_mod.running_var)
             self.assertEqual(inp.grad, ref_inp.grad)
 
-        def _train(memory_format_name, ref_backend, mixed, dtype):
+        def _train(memory_format_name, ref_backend, mixed, dtype, size=None):
             memory_format = _get_memory_format_from_name(memory_format_name)
 
             ref_memory_format = _get_backend_memory_format(ref_backend, memory_format)
             ref_device = _get_ref_device(ref_backend, device=device_type)
 
-            size = (
-                (4, 8, 2, 2, 2)
-                if memory_format_name in ("NCHW3D", "NHWC3D")
-                else (4, 8, 2, 2)
-            )
+            if size is None:
+                size = (
+                    (4, 8, 2, 2, 2)
+                    if memory_format_name in ("NCHW3D", "NHWC3D")
+                    else (4, 8, 2, 2)
+                )
             inp = (
                 _create_tensor(size, memory_format, dtype, device=device_type)
                 .detach()
@@ -6533,6 +6534,16 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
 
         if mode == "train":
             _train(memory_format, ref_backend, mixed, dtype)
+            if (
+                device_type == "xpu"
+                and dims == 2
+                and memory_format == "NCHW"
+                and ref_backend == "cpu"
+                and mixed
+                and dtype == torch.bfloat16
+            ):
+                for size in [(256, 1280, 7, 7), (1024, 256, 16, 16)]:
+                    _train(memory_format, ref_backend, mixed, dtype, size)
         else:
             _inference(memory_format, ref_backend, mixed, dtype)
 
