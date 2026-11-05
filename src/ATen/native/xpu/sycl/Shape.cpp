@@ -734,7 +734,6 @@ struct CatInputMeta {
   int32_t begin; // first output coordinate of this input along the cat dim
   int32_t end; // one past its last one
   int32_t stride[kCatMaxDims];
-  int32_t cat_stride; // stride[cat_dim], so kernels never index by cat_dim
   int32_t vec_ok; // its V-unit vectors are aligned contiguous loads
 };
 
@@ -796,14 +795,17 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   static constexpr bool kReg = kRegInputs > 0;
   static constexpr int N = kReg ? kRegInputs : kCatMaxInputs;
 
-  // Start of the outer coordinates' row in input m, at cat coordinate 0.
-  const T* row_base(const CatInputMeta& m, const uint32_t* c, int32_t catst)
-      const {
-    int32_t off = -m.begin * catst;
+  // Start of the outer coordinates' row in input m. Coordinates are taken
+  // relative to the input (cat coordinate minus begin), so the offset stays
+  // within the input's 32-bit indexable extent.
+  const T* row_base(const CatInputMeta& m, const uint32_t* c) const {
+    int32_t off = 0;
 #pragma unroll
     for (int d = 1; d < kCatMaxDims; ++d) {
       if (d < p_.ndim) {
-        off += static_cast<int32_t>(c[d]) * m.stride[d];
+        const int32_t x = static_cast<int32_t>(c[d]) -
+            (d == p_.cat_dim ? m.begin : 0);
+        off += x * m.stride[d];
       }
     }
     return reinterpret_cast<const T*>(m.ptr) + off;
@@ -823,7 +825,6 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         for (int d = 0; d < kCatMaxDims; ++d) {
           m.stride[d] |= s.stride[d] & mask;
         }
-        m.cat_stride |= s.cat_stride & mask;
         m.vec_ok |= s.vec_ok & mask;
       }
       return m;
@@ -860,9 +861,9 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       // Several inputs per row: switch input when x leaves the current one.
       int k = find(slm, table, x);
       CatInputMeta m = meta(slm, k);
-      const T* base = row_base(m, c, m.stride[0]);
+      const T* base = row_base(m, c);
       if (m.vec_ok && x + V <= m.end && ((x - m.begin) & (V - 1)) == 0) {
-        return *reinterpret_cast<const VecT*>(base + x);
+        return *reinterpret_cast<const VecT*>(base + (x - m.begin));
       }
 #pragma unroll
       for (int i = 0; i < V; ++i) {
@@ -871,12 +872,12 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           cat_next_row(p_, vid * V + i, c);
           k = 0;
           m = meta(slm, k);
-          base = row_base(m, c, m.stride[0]);
+          base = row_base(m, c);
         } else if (x >= m.end) {
           m = meta(slm, ++k);
-          base = row_base(m, c, m.stride[0]);
+          base = row_base(m, c);
         }
-        v[i] = base[x * m.stride[0]];
+        v[i] = base[(x - m.begin) * m.stride[0]];
         ++x;
       }
       return v;
@@ -890,7 +891,7 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         cc = d == p_.cat_dim ? c[d] : cc;
       }
       m = meta(slm, find(slm, table, cc));
-      return row_base(m, c, m.cat_stride);
+      return row_base(m, c);
     };
     CatInputMeta m;
     const T* base = lookup(m);
@@ -974,7 +975,8 @@ void launch_cat_gather(
     int64_t table_size,
     const FillFn& fill) {
   using Kernel = CatGatherFunctor<U, V, kWrap, kRegInputs>;
-  CatParams<Kernel::N> p;
+  // Zeroed: the register blend in meta() reads all N entries.
+  CatParams<Kernel::N> p{};
   fill(p);
   const int64_t per_group = kCatGroupSize * (kRegInputs ? 1 : kCatChunk);
   const int64_t groups = ceil_div<int64_t>(p.nvec, per_group);
@@ -1161,7 +1163,6 @@ bool cat_output_driven(
         m.stride[d] = static_cast<int32_t>(stride[k][d]);
         m.vec_ok &= d == 0 || stride[k][d] % v == 0;
       }
-      m.cat_stride = m.stride[cat_dim];
     }
   };
 
