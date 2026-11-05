@@ -13,8 +13,11 @@
 # Owner(s): ["module: intel"]
 
 
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_utils import parametrize, run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -221,6 +224,62 @@ def _test_gamma_poisson_gpu_large_sample_independence(self):
     self.assertLess(_chi2(byte_counts, byte_expected), 500.0)
 
 
+@dtypes(torch.float32, torch.float64)
+@parametrize("rate", [4.0, 63.0, 64.0])
+@parametrize("numel", [0, 257, 4097])
+def _test_poisson_rng_reservation(self, device, dtype, rate, numel):
+    generator = torch.Generator(device=device).manual_seed(1234)
+    values = torch.full((numel,), rate, device=device, dtype=dtype)
+
+    first = torch.poisson(values, generator=generator)
+    self.assertEqual(generator.get_offset(), 256)
+    second = torch.poisson(values, generator=generator)
+    self.assertEqual(generator.get_offset(), 512)
+
+    generator.manual_seed(1234)
+    generator.set_offset(256)
+    self.assertEqual(torch.poisson(values, generator=generator), second)
+
+    generator.manual_seed(1234)
+    self.assertEqual(torch.poisson(values, generator=generator), first)
+    self.assertEqual(torch.poisson(values, generator=generator), second)
+    self.assertEqual(generator.get_offset(), 512)
+
+
+@dtypes(torch.float32, torch.float64)
+@parametrize("numel", [0, 1, 3, 4, 5, 2049])
+@parametrize("strided", [False, True])
+def _test_bernoulli_tensor_rng_reservation(self, device, dtype, numel, strided):
+    generator = torch.Generator(device=device).manual_seed(1234)
+    storage_size = 2 * numel if strided else numel
+    probabilities = torch.full((storage_size,), 0.5, device=device, dtype=dtype)
+    storage = torch.full_like(probabilities, -1)
+    if strided:
+        probabilities = probabilities[::2]
+        output = storage[::2]
+    else:
+        output = storage
+    offset = 4 if numel else 0
+
+    first = output.bernoulli_(probabilities, generator=generator).clone()
+    self.assertEqual(generator.get_offset(), offset)
+    second = output.bernoulli_(probabilities, generator=generator).clone()
+    self.assertEqual(generator.get_offset(), 2 * offset)
+    self.assertTrue(((first == 0) | (first == 1)).all().item())
+    self.assertTrue(((second == 0) | (second == 1)).all().item())
+
+    generator.manual_seed(1234)
+    generator.set_offset(offset)
+    self.assertEqual(output.bernoulli_(probabilities, generator=generator), second)
+
+    generator.manual_seed(1234)
+    self.assertEqual(output.bernoulli_(probabilities, generator=generator), first)
+    self.assertEqual(output.bernoulli_(probabilities, generator=generator), second)
+    self.assertEqual(generator.get_offset(), 2 * offset)
+    if strided:
+        self.assertEqual(storage[1::2], torch.full_like(storage[1::2], -1))
+
+
 def _test_torch_binomial_dtype_errors(self):
     dtypes = [torch.int, torch.long, torch.short]
     devices = ["cpu", "xpu"]
@@ -271,6 +330,10 @@ TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
 TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
 TestDistributions.test_gamma_poisson_gpu_large_sample_independence = (
     _test_gamma_poisson_gpu_large_sample_independence
+)
+TestDistributions.test_poisson_rng_reservation = _test_poisson_rng_reservation
+TestDistributions.test_bernoulli_tensor_rng_reservation = (
+    _test_bernoulli_tensor_rng_reservation
 )
 TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_errors
 TestDistributions.test_lowrank_multivariate_normal_moments = (
