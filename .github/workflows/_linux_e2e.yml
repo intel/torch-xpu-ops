@@ -70,7 +70,7 @@ jobs:
           sparse-checkout: .github
       - name: Select runner and image
         id: runner
-        uses: ./.github/actions/ci-runner
+        uses: ./.github/actions/ci-config
         with:
           runner: ${{ inputs.runner }}
 
@@ -131,7 +131,7 @@ jobs:
           mode: training
           scenario: ${{ inputs.scenario }}
 
-      # Nihglty launch
+      # Nightly launch
       - name: Nightly Huggingface Full Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
