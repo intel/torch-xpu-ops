@@ -1798,6 +1798,76 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
         OpType::REDUCE_SCATTER,
         opts.asyncOp,
         "xccl:reduce_scatter");
+  } else if (xcclActiveGroupCounter_ == 0) {
+    // Inside a group oneCCL defers the call, so a failure could not be retried.
+    TORCH_CHECK_WITH(
+        ValueError,
+        static_cast<int>(inputTensors_.size()) == size_,
+        "reduce_scatter: expected ",
+        size_,
+        " input tensors, got ",
+        inputTensors_.size());
+    TORCH_CHECK_WITH(
+        ValueError,
+        outputTensor.numel() == inputTensors_[rank_].numel(),
+        "reduce_scatter: output tensor has ",
+        outputTensor.numel(),
+        " elements but input tensor ",
+        rank_,
+        " has ",
+        inputTensors_[rank_].numel());
+    std::vector<size_t> recvCounts;
+    recvCounts.reserve(inputTensors_.size());
+    int64_t totalNumel = 0;
+    for (const auto& t : inputTensors_) {
+      recvCounts.push_back(static_cast<size_t>(t.numel()));
+      totalNumel += t.numel();
+    }
+    at::Tensor inputFlattened =
+        at::empty({totalNumel}, inputTensors_[0].options());
+    return collective(
+        inputFlattened,
+        outputTensor,
+        [&](at::Tensor& input,
+            at::Tensor& output,
+            onecclComm_t& comm,
+            at::xpu::XPUStream& stream) {
+          auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
+          if (xccl::onecclReduceScatterV(
+                  input, output, recvCounts, comm, actualReduceOp, stream)) {
+            return;
+          }
+          LOG(INFO) << "onecclReduceScatterV unavailable, falling back to "
+                    << "one reduce per rank";
+          OnecclGroupGuard group;
+          int64_t offset = 0;
+          for (const int i : c10::irange(size_)) {
+            const auto count = static_cast<int64_t>(recvCounts[i]);
+            at::Tensor chunk = input.narrow(0, offset, count);
+            at::Tensor dst = (i == rank_) ? output : chunk;
+            xccl::onecclReduce(chunk, dst, comm, actualReduceOp, i, stream);
+            offset += count;
+          }
+        },
+        [&](at::xpu::XPUStream& Stream,
+            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
+          if (opts.asyncOp) {
+            work->stashed_for_allocator_safety_->stash(inputTensors_);
+          }
+          c10::StreamGuard guard(Stream);
+          int64_t offset = 0;
+          for (const auto& t : inputTensors_) {
+            inputFlattened.narrow(0, offset, t.numel())
+                .view(t.sizes())
+                .copy_(t, true);
+            offset += t.numel();
+          }
+        },
+        [&](at::xpu::XPUStream&,
+            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
+        OpType::REDUCE_SCATTER,
+        opts.asyncOp,
+        "xccl:reduce_scatter");
   } else {
     const auto num_reduces = inputTensors_.size();
     startCoalescing();

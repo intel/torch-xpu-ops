@@ -143,6 +143,33 @@ void onecclReduceScatter(
       &stream.queue());
 }
 
+bool onecclReduceScatterV(
+    at::Tensor& input,
+    at::Tensor& output,
+    const std::vector<size_t>& recvCounts,
+    onecclComm_t& comm,
+    const c10d::ReduceOp& reduceOp,
+    at::xpu::XPUStream& stream) {
+#ifdef XCCL_HAS_REDUCE_SCATTER_V
+  // CCL_C_API symbols are weak, so this is null on a libccl without the API.
+  if (!::onecclReduceScatterV) {
+    return false;
+  }
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
+  return ::onecclReduceScatterV(
+             input.data_ptr(),
+             output.data_ptr(),
+             recvCounts.data(),
+             xcclDataType,
+             xcclReduceOp,
+             comm,
+             &stream.queue()) == onecclSuccess;
+#else
+  return false;
+#endif // XCCL_HAS_REDUCE_SCATTER_V
+}
+
 void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
