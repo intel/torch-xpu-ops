@@ -289,7 +289,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: bmg-test
+      runner: distributed
       pytorch: 00a102a9e392e36763164988e966431e62aeaf3d
       pytorch_artifact_run_id: '41573569195'
       pytorch_artifact_name: manywheel-py3_12-xpu
