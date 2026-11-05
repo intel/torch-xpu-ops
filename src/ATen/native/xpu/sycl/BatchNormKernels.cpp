@@ -4131,81 +4131,85 @@ template <
     typename index_t>
 struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
-    index_t plane = item.get_group(1);
+    int nwg_x = item.get_group_range(1);
+    int C = input_.size(1);
+    int planes_per_wg = (C + nwg_x - 1) / nwg_x;
+    index_t base_plane = item.get_group(1) * planes_per_wg;
+    index_t last_plane = std::min(base_plane + planes_per_wg, (index_t)C);
+
     index_t N = grad_output_.size(0) * grad_output_.size(2);
-
-    stat_accscalar_t mean, invstd;
-    if (train_) {
-      mean = save_mean_[plane];
-      invstd = save_invstd_[plane];
-    } else {
-      mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd = sycl::rsqrt(
-          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
-    }
-
-    stat_accscalar_t weight_val = weight_.size(0) > 0
-        ? static_cast<stat_accscalar_t>(weight_[plane])
-        : stat_accscalar_t(1);
     stat_accscalar_t norm = stat_accscalar_t(1) / N;
-
-    // Compute two values across (batch, x/y/z) in one pass:
-    // 1. Sum(grad_output)
-    // 2. DotProduct(input - mean, grad_output)
-    GradOp<
-        input_scalar_t,
-        stat_accscalar_t,
-        GenericPackedTensorAccessor<
-            const input_scalar_t,
-            3,
-            DefaultPtrTraits,
-            index_t>>
-        g(mean, input_, grad_output_);
     int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
-    auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
-        item, g, grad_output_, plane, num_sg, local_sum_);
-
-    stat_accscalar_t grad_output_sum = res.v1;
-    stat_accscalar_t dot_p = res.v2;
-
-    stat_accscalar_t grad_mean = grad_output_sum * norm;
-    stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
-    stat_accscalar_t grad_scale = invstd * weight_val;
-
     auto grad_input = grad_input_;
-    if (grad_input_.data() != NULL) {
-      for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
-           batch += item.get_local_range(0)) {
-        for (int x = item.get_local_id(1); x < grad_output_.size(2);
-             x += item.get_local_range(1)) {
-          input_scalar_t go = grad_output_[batch][plane][x];
-          if (train_) {
-            stat_accscalar_t inp = input_[batch][plane][x];
-            stat_accscalar_t proj = (inp - mean) * proj_scale;
-            grad_input[batch][plane][x] = static_cast<input_scalar_t>(
-                (go - proj - grad_mean) * grad_scale);
-          } else {
-            grad_input[batch][plane][x] =
-                static_cast<input_scalar_t>(go * grad_scale);
+
+    for (index_t plane = base_plane; plane < last_plane; plane++) {
+      stat_accscalar_t mean, invstd;
+      if (train_) {
+        mean = save_mean_[plane];
+        invstd = save_invstd_[plane];
+      } else {
+        mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
+        invstd = sycl::rsqrt(
+            static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+      }
+
+      stat_accscalar_t weight_val = weight_.size(0) > 0
+          ? static_cast<stat_accscalar_t>(weight_[plane])
+          : stat_accscalar_t(1);
+
+      GradOp<
+          input_scalar_t,
+          stat_accscalar_t,
+          GenericPackedTensorAccessor<
+              const input_scalar_t,
+              3,
+              DefaultPtrTraits,
+              index_t>>
+          g(mean, input_, grad_output_);
+      auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
+          item, g, grad_output_, plane, num_sg, local_sum_);
+
+      stat_accscalar_t grad_output_sum = res.v1;
+      stat_accscalar_t dot_p = res.v2;
+
+      stat_accscalar_t grad_mean = grad_output_sum * norm;
+      stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
+      stat_accscalar_t grad_scale = invstd * weight_val;
+
+      if (grad_input_.data() != NULL) {
+        for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
+             batch += item.get_local_range(0)) {
+          for (int x = item.get_local_id(1); x < grad_output_.size(2);
+               x += item.get_local_range(1)) {
+            input_scalar_t go = grad_output_[batch][plane][x];
+            if (train_) {
+              stat_accscalar_t inp = input_[batch][plane][x];
+              stat_accscalar_t proj = (inp - mean) * proj_scale;
+              grad_input[batch][plane][x] = static_cast<input_scalar_t>(
+                  (go - proj - grad_mean) * grad_scale);
+            } else {
+              grad_input[batch][plane][x] =
+                  static_cast<input_scalar_t>(go * grad_scale);
+            }
           }
         }
       }
-    }
 
-    if (grad_weight_.size(0) > 0) {
-      if (item.get_local_id(1) == 0) {
-        auto grad_weight = grad_weight_;
-        grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
+      if (grad_weight_.size(0) > 0) {
+        if (item.get_local_id(1) == 0) {
+          auto grad_weight = grad_weight_;
+          grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
+        }
+      }
+
+      if (grad_bias_.size(0) > 0) {
+        if (item.get_local_id(1) == 0) {
+          auto grad_bias = grad_bias_;
+          grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
+        }
       }
     }
-
-    if (grad_bias_.size(0) > 0) {
-      if (item.get_local_id(1) == 0) {
-        auto grad_bias = grad_bias_;
-        grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
-      }
-    }
-  }
+}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
@@ -4336,96 +4340,100 @@ template <
 struct BatchNormBackwardVectorizedKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
-    index_t plane = item.get_group(1);
+    int nwg_x = item.get_group_range(1);
+    int C = input_.size(1);
+    int planes_per_wg = (C + nwg_x - 1) / nwg_x;
+    index_t base_plane = item.get_group(1) * planes_per_wg;
+    index_t last_plane = std::min(base_plane + planes_per_wg, (index_t)C);
+
     index_t N = grad_output_.size(0) * grad_output_.size(2);
-
-    stat_accscalar_t mean, invstd;
-    if (train_) {
-      mean = save_mean_[plane];
-      invstd = save_invstd_[plane];
-    } else {
-      mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd = sycl::rsqrt(
-          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
-    }
-
-    stat_accscalar_t weight_val = weight_.size(0) > 0
-        ? static_cast<stat_accscalar_t>(weight_[plane])
-        : stat_accscalar_t(1);
     stat_accscalar_t norm = stat_accscalar_t(1) / N;
-
-    // Compute two values across (batch, x/y/z) in one pass:
-    // 1. Sum(grad_output)
-    // 2. DotProduct(input - mean, grad_output)
-    GradOp<
-        input_scalar_t,
-        stat_accscalar_t,
-        GenericPackedTensorAccessor<
-            const input_scalar_t,
-            3,
-            DefaultPtrTraits,
-            index_t>>
-        g(mean, input_, grad_output_);
     int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
-    auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
-        item, g, grad_output_, plane, num_sg, local_sum_);
-
-    stat_accscalar_t grad_output_sum = res.v1;
-    stat_accscalar_t dot_p = res.v2;
-
-    stat_accscalar_t grad_mean = grad_output_sum * norm;
-    stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
-    stat_accscalar_t grad_scale = invstd * weight_val;
-
     auto grad_input = grad_input_;
-    if (grad_input_.data() != NULL) {
-      for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
-           batch += item.get_local_range(0)) {
-        for (int x_vec_begin = item.get_local_id(1) * VEC_SIZE;
-             x_vec_begin < grad_output_.size(2);
-             x_vec_begin += VEC_SIZE * item.get_local_range(1)) {
-          using vec_t = memory::aligned_vector<input_scalar_t, VEC_SIZE>;
-          auto go_vec = *reinterpret_cast<vec_t*>(const_cast<input_scalar_t*>(
-              &grad_output_[batch][plane][x_vec_begin]));
-          vec_t grad_input_vec;
-          if (train_) {
-            auto inp_vec =
-                *reinterpret_cast<vec_t*>(const_cast<input_scalar_t*>(
-                    &input_[batch][plane][x_vec_begin]));
+
+    for (index_t plane = base_plane; plane < last_plane; plane++) {
+      stat_accscalar_t mean, invstd;
+      if (train_) {
+        mean = save_mean_[plane];
+        invstd = save_invstd_[plane];
+      } else {
+        mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
+        invstd = sycl::rsqrt(
+            static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+      }
+
+      stat_accscalar_t weight_val = weight_.size(0) > 0
+          ? static_cast<stat_accscalar_t>(weight_[plane])
+          : stat_accscalar_t(1);
+
+      GradOp<
+          input_scalar_t,
+          stat_accscalar_t,
+          GenericPackedTensorAccessor<
+              const input_scalar_t,
+              3,
+              DefaultPtrTraits,
+              index_t>>
+          g(mean, input_, grad_output_);
+      auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
+          item, g, grad_output_, plane, num_sg, local_sum_);
+
+      stat_accscalar_t grad_output_sum = res.v1;
+      stat_accscalar_t dot_p = res.v2;
+
+      stat_accscalar_t grad_mean = grad_output_sum * norm;
+      stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
+      stat_accscalar_t grad_scale = invstd * weight_val;
+
+      if (grad_input_.data() != NULL) {
+        for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
+             batch += item.get_local_range(0)) {
+          for (int x_vec_begin = item.get_local_id(1) * VEC_SIZE;
+               x_vec_begin < grad_output_.size(2);
+               x_vec_begin += VEC_SIZE * item.get_local_range(1)) {
+            using vec_t = memory::aligned_vector<input_scalar_t, VEC_SIZE>;
+            auto go_vec = *reinterpret_cast<vec_t*>(const_cast<input_scalar_t*>(
+                &grad_output_[batch][plane][x_vec_begin]));
+            vec_t grad_input_vec;
+            if (train_) {
+              auto inp_vec =
+                  *reinterpret_cast<vec_t*>(const_cast<input_scalar_t*>(
+                      &input_[batch][plane][x_vec_begin]));
 #pragma unroll
-            for (int vt = 0; vt < VEC_SIZE; ++vt) {
-              stat_accscalar_t proj =
-                  ((stat_accscalar_t)inp_vec[vt] - mean) * proj_scale;
-              grad_input_vec[vt] = static_cast<input_scalar_t>(
-                  (go_vec[vt] - proj - grad_mean) * grad_scale);
-            }
-          } else {
+              for (int vt = 0; vt < VEC_SIZE; ++vt) {
+                stat_accscalar_t proj =
+                    ((stat_accscalar_t)inp_vec[vt] - mean) * proj_scale;
+                grad_input_vec[vt] = static_cast<input_scalar_t>(
+                    (go_vec[vt] - proj - grad_mean) * grad_scale);
+              }
+            } else {
 #pragma unroll
-            for (int vt = 0; vt < VEC_SIZE; ++vt) {
-              grad_input_vec[vt] =
-                  static_cast<input_scalar_t>(go_vec[vt] * grad_scale);
+              for (int vt = 0; vt < VEC_SIZE; ++vt) {
+                grad_input_vec[vt] =
+                    static_cast<input_scalar_t>(go_vec[vt] * grad_scale);
+              }
             }
+            input_scalar_t* write_ptr = &grad_input[batch][plane][x_vec_begin];
+            *(reinterpret_cast<vec_t*>(write_ptr)) = grad_input_vec;
           }
-          input_scalar_t* write_ptr = &grad_input[batch][plane][x_vec_begin];
-          *(reinterpret_cast<vec_t*>(write_ptr)) = grad_input_vec;
+        }
+      }
+
+      if (grad_weight_.size(0) > 0) {
+        if (item.get_local_id(1) == 0) {
+          auto grad_weight = grad_weight_;
+          grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
+        }
+      }
+
+      if (grad_bias_.size(0) > 0) {
+        if (item.get_local_id(1) == 0) {
+          auto grad_bias = grad_bias_;
+          grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
         }
       }
     }
-
-    if (grad_weight_.size(0) > 0) {
-      if (item.get_local_id(1) == 0) {
-        auto grad_weight = grad_weight_;
-        grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
-      }
-    }
-
-    if (grad_bias_.size(0) > 0) {
-      if (item.get_local_id(1) == 0) {
-        auto grad_bias = grad_bias_;
-        grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
-      }
-    }
-  }
+}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
@@ -4614,71 +4622,26 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
       packed_accessor_or_dummy<const accscalar_t, 1, DefaultPtrTraits, index_t>(
           save_invstd_, "save_invstd");
 
-  int simd = get_prefer_simd(
-      input_reshaped.size(1), input_reshaped.size(0) * input_reshaped.size(1));
-
   auto& queue = getCurrentSYCLQueue();
 
-#define LAUNCH_KERNEL_WITH_SIMD(SIMD_W)                           \
-  {                                                               \
-    using KernelClass = BatchNormBackwardKernelFunctor<           \
-        SIMD_W,                                                   \
-        input_scalar_t,                                           \
-        stat_scalar_t,                                            \
-        accscalar_t,                                              \
-        index_t>;                                                 \
-    int max_group_size = get_max_group_size<KernelClass>(SIMD_W); \
-    int tf = get_num_threads<KernelClass>(input.size(2), SIMD_W); \
-    int wg_sz_y = std::max<int>(1, max_group_size / tf);          \
-    sycl::range<2> local_range(wg_sz_y, tf);                      \
-    sycl::range<2> global_range(1 * wg_sz_y, input.size(1) * tf); \
-    auto kfn = KernelClass(                                       \
-        input,                                                    \
-        grad_output,                                              \
-        grad_input,                                               \
-        grad_weight,                                              \
-        grad_bias,                                                \
-        weight,                                                   \
-        running_mean,                                             \
-        running_var,                                              \
-        save_mean,                                                \
-        save_invstd,                                              \
-        train,                                                    \
-        epsilon,                                                  \
-        wg_sz_y * tf);                                            \
-    sycl_kernel_submit(global_range, local_range, queue, kfn);    \
-  }
+  // NCHW: always SIMD32, tile channels per WG to match tile capacity.
+  constexpr int SIMD_W = SIMD32;
+  int feature_size = input.size(2);
+  int C = input.size(1);
+  int64_t tile_capacity = syclMaxWorkItemsPerTile();
 
-#define LAUNCH_VEC_KERNEL_WITH_SIMD(SIMD_W)                       \
-  {                                                               \
-    using KernelClass = BatchNormBackwardVectorizedKernelFunctor< \
-        SIMD_W,                                                   \
-        PREFERRED_VEC_SIZE,                                       \
-        input_scalar_t,                                           \
-        stat_scalar_t,                                            \
-        accscalar_t,                                              \
-        index_t>;                                                 \
-    int max_group_size = get_max_group_size<KernelClass>(SIMD_W); \
-    int tf = get_num_threads<KernelClass>(input.size(2), SIMD_W); \
-    int wg_sz_y = std::max<int>(1, max_group_size / tf);          \
-    sycl::range<2> local_range(wg_sz_y, tf);                      \
-    sycl::range<2> global_range(1 * wg_sz_y, input.size(1) * tf); \
-    auto kfn = KernelClass(                                       \
-        input,                                                    \
-        grad_output,                                              \
-        grad_input,                                               \
-        grad_weight,                                              \
-        grad_bias,                                                \
-        weight,                                                   \
-        running_mean,                                             \
-        running_var,                                              \
-        save_mean,                                                \
-        save_invstd,                                              \
-        train,                                                    \
-        epsilon,                                                  \
-        wg_sz_y * tf);                                            \
-    sycl_kernel_submit(global_range, local_range, queue, kfn);    \
-  }
+  using KernelClass = BatchNormBackwardKernelFunctor<
+      SIMD_W, input_scalar_t, stat_scalar_t, accscalar_t, index_t>;
+  int max_group_size = get_max_group_size<KernelClass>(SIMD_W);
+
+  int feature_size_padded = std::max(feature_size, SIMD_W);
+  int tf = get_num_threads<KernelClass>(feature_size_padded, SIMD_W);
+  int wg_sz_y = std::max<int>(1, max_group_size / tf);
+  int wg_thr = wg_sz_y * tf;
+  int target_nwg = std::min<int>(tile_capacity / wg_thr, C);
+  if (target_nwg < 1) target_nwg = 1;
+  sycl::range<2> local_range(wg_sz_y, tf);
+  sycl::range<2> global_range(wg_sz_y, target_nwg * tf);
 
   auto input_ptr = (char*)input_reshaped.const_data_ptr();
   auto grad_input_ptr = (char*)grad_input_reshaped.mutable_data_ptr();
@@ -4692,24 +4655,24 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
            PREFERRED_VEC_SIZE &&
        memory::can_vectorize_up_to<input_scalar_t>(grad_output_ptr) >=
            PREFERRED_VEC_SIZE &&
-       input.size(2) % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2);
+       feature_size % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2);
 
-  if (simd == SIMD32) {
-    if (can_use_vec_kernel) {
-      LAUNCH_VEC_KERNEL_WITH_SIMD(SIMD32);
-    } else {
-      LAUNCH_KERNEL_WITH_SIMD(SIMD32);
-    }
+  if (can_use_vec_kernel) {
+    using VecKernelClass = BatchNormBackwardVectorizedKernelFunctor<
+        SIMD_W, PREFERRED_VEC_SIZE, input_scalar_t, stat_scalar_t,
+        accscalar_t, index_t>;
+    auto kfn = VecKernelClass(
+        input, grad_output, grad_input, grad_weight, grad_bias,
+        weight, running_mean, running_var, save_mean, save_invstd,
+        train, epsilon, wg_thr);
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
-    if (can_use_vec_kernel) {
-      LAUNCH_VEC_KERNEL_WITH_SIMD(SIMD16);
-    } else {
-      LAUNCH_KERNEL_WITH_SIMD(SIMD16);
-    }
+    auto kfn = KernelClass(
+        input, grad_output, grad_input, grad_weight, grad_bias,
+        weight, running_mean, running_var, save_mean, save_invstd,
+        train, epsilon, wg_thr);
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
-
-#undef LAUNCH_KERNEL_WITH_SIMD
-#undef LAUNCH_VEC_KERNEL_WITH_SIMD
   return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
 }
 
