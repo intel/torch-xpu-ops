@@ -58,8 +58,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       runner: ${{ steps.runner.outputs.ut }}
-      image: ${{ steps.runner.outputs.image }}
-      options: ${{ steps.runner.outputs.options }}
+      image: ${{ steps.runner.outputs.ut_image }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -82,7 +81,8 @@ jobs:
       image: ${{ needs.config.outputs.image }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: ${{ needs.config.outputs.options }}--device=/dev/mem --device=/dev/dri
+      # --entrypoint= skips the OMIX entrypoint, which activates oneAPI
+      options: --entrypoint= --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:

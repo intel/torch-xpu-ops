@@ -45,8 +45,11 @@ jobs:
       skip_win: ${{ steps.live-labels.outputs.skip_win }}
       force_win_ut: ${{ steps.live-labels.outputs.force_win_ut }}
       runner_ut: ${{ steps.ci-config.outputs.ut }}
+      image_ut: ${{ steps.ci-config.outputs.ut_image }}
       runner_accuracy: ${{ steps.ci-config.outputs.accuracy }}
+      image_accuracy: ${{ steps.ci-config.outputs.accuracy_image }}
       runner_performance: ${{ steps.ci-config.outputs.performance }}
+      image_performance: ${{ steps.ci-config.outputs.performance_image }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -278,6 +281,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.preci-lint-check.outputs.runner_ut }}
+      image: ${{ needs.preci-lint-check.outputs.image_ut }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -298,6 +302,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.preci-lint-check.outputs.runner_ut }}
+      image: ${{ needs.preci-lint-check.outputs.image_ut }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -315,6 +320,7 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ needs.preci-lint-check.outputs[format('runner_{0}', matrix.scenario)] }}
+      image: ${{ needs.preci-lint-check.outputs[format('image_{0}', matrix.scenario)] }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}

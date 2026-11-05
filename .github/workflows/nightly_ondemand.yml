@@ -84,8 +84,11 @@ jobs:
       run_microbench: ${{ steps.scope.outputs.run_microbench }}
       run_windows: ${{ steps.scope.outputs.run_windows }}
       runner_ut: ${{ steps.ci-config.outputs.ut }}
+      image_ut: ${{ steps.ci-config.outputs.ut_image }}
       runner_accuracy: ${{ steps.ci-config.outputs.accuracy }}
+      image_accuracy: ${{ steps.ci-config.outputs.accuracy_image }}
       runner_performance: ${{ steps.ci-config.outputs.performance }}
+      image_performance: ${{ steps.ci-config.outputs.performance_image }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -195,6 +198,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.config.outputs.runner_ut }}
+      image: ${{ needs.config.outputs.image_ut }}
       pytorch: ${{ needs.config.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
       python: ${{ needs.config.outputs.python }}
@@ -213,6 +217,7 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ needs.config.outputs[format('runner_{0}', matrix.scenario)] }}
+      image: ${{ needs.config.outputs[format('image_{0}', matrix.scenario)] }}
       test_type: ${{ needs.config.outputs.test_type }}
       pytorch: ${{ needs.config.outputs.pytorch }}
       python: ${{ needs.config.outputs.python }}
@@ -235,6 +240,7 @@ jobs:
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
       runner: ${{ needs.config.outputs.runner_performance }}
+      image: ${{ needs.config.outputs.image_performance }}
       pytorch: ${{ needs.config.outputs.pytorch }}
       python: ${{ needs.config.outputs.python }}
 
