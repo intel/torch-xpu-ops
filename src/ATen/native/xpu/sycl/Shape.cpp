@@ -1211,7 +1211,7 @@ bool cat_output_driven(
       rows * nin * u == 16 && rows >= 2 && size[1] % rows == 0 &&
       out_addr % 16 == 0) {
     auto launch = [&]<int U, int R, int K>() {
-      CatParams<K> p;
+      CatParams<K> p{};
       p.ndim = nd;
       for (int d = 0; d < nd; ++d) {
         p.size[d] = at::detail::IntDivider<uint32_t>(size[d]);
