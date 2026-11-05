@@ -12,6 +12,8 @@
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/ScalarType.h>
 #include <comm/xpu_aten.h>
+#include <cmath>
+#include <limits>
 #include <vector>
 
 #include <ATen/core/CachingHostAllocator.h>
@@ -26,7 +28,6 @@ namespace at::native::xpu {
 
 // Instruction level Parallelism, namely vec size
 static constexpr int64_t kILP = 4;
-static constexpr int64_t kElementPerThread = 128;
 template <typename T>
 bool is_aligned(T* p) {
   return ((uint64_t)p) % (kILP * sizeof(T)) == 0;
@@ -63,13 +64,36 @@ struct TLMetaForWG {
   uint32_t wg_to_chunk;
 };
 
-static int64_t multi_tensor_apply_kernel_get_wg_size(int simd) {
-  return get_group_reduce_group_size(simd);
+static int64_t multi_tensor_apply_kernel_get_wg_size() {
+  return syclDeviceMaxWorkGroupSize();
 }
 
-static int64_t multi_tensor_apply_kernel_get_chunk_size(int simd) {
-  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
-  return max_wg_size * kElementPerThread;
+static int64_t multi_tensor_apply_kernel_get_chunk_size(size_t total_elements) {
+  int64_t wg_size = multi_tensor_apply_kernel_get_wg_size();
+  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
+  int64_t hw_threads_per_wg = wg_size / simd;
+  int64_t total_hw_threads = at::xpu::getDeviceHWThreads();
+  int64_t wgs_per_wave = total_hw_threads / hw_threads_per_wg;
+  // Candidate WG counts are multiples of wgs_per_wave. Pick the one whose
+  // last wave is the fullest, i.e. minimal ceil(n_wave) - n_wave.
+  constexpr int64_t kMaxWaves = 16;
+  int64_t best_chunk_size = wg_size;
+  double best_tail = std::numeric_limits<double>::max();
+#pragma unroll
+  for (int64_t m = 1; m <= kMaxWaves; ++m) {
+    int64_t num_wgs = wgs_per_wave * m;
+    int64_t element_per_thread = (int64_t)total_elements / (num_wgs * wg_size);
+    element_per_thread = std::max(element_per_thread, (int64_t)1);
+    int64_t chunk_size = wg_size * element_per_thread;
+    double n_wave =
+        (double)total_elements / (double)(chunk_size * wgs_per_wave);
+    double tail = std::ceil(n_wave) - n_wave;
+    if (tail < best_tail) {
+      best_tail = tail;
+      best_chunk_size = chunk_size;
+    }
+  }
+  return best_chunk_size;
 }
 
 static inline int64_t multi_tensor_apply_fused_kernel_get_wg_size() {
@@ -123,15 +147,14 @@ void launch_multi_tensor_apply_kernel(
     Y tlWGMeta,
     U callable,
     int num_wg,
+    int64_t chunk_size,
     ArgTypes... args) {
   auto& q = getCurrentSYCLQueue();
-  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
-  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
+  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size();
 
   if constexpr (fused_kernel) {
     max_wg_size = multi_tensor_apply_fused_kernel_get_wg_size();
-    kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
+    chunk_size = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
   // See MultiTensorApplyCallableWrapper above: fold extra args into a
@@ -146,7 +169,7 @@ void launch_multi_tensor_apply_kernel(
       sycl::range<1>(max_wg_size),
       q,
       0,
-      kChunkSize,
+      chunk_size,
       tlAddressMeta,
       tlWGMeta,
       wrapped);
@@ -165,8 +188,10 @@ void multi_tensor_apply(
   size_t n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
+  size_t total_elements = 0;
+  for (size_t t = 0; t < n_tensors; ++t)
+    total_elements += tensor_lists[0][t].numel();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(total_elements);
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLMetaForAddressScalar<scalar_vals_t, depth>) * n_tensors)},
@@ -233,7 +258,7 @@ void multi_tensor_apply(
       at::xpu::getCurrentXPUStream());
 
   launch_multi_tensor_apply_kernel<false>(
-      metaAddressInput, metaWGInput, callable, totalWG, args...);
+      metaAddressInput, metaWGInput, callable, totalWG, kChunkSize, args...);
 }
 
 template <int depth, typename T, typename... ArgTypes>
@@ -247,8 +272,10 @@ void multi_tensor_apply(
   size_t n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
+  size_t total_elements = 0;
+  for (size_t t = 0; t < n_tensors; ++t)
+    total_elements += tensor_lists[0][t].numel();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(total_elements);
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLMetaForAddress<depth>) * n_tensors)},
@@ -312,7 +339,7 @@ void multi_tensor_apply(
       at::xpu::getCurrentXPUStream());
 
   launch_multi_tensor_apply_kernel<false>(
-      metaAddressInput, metaWGInput, callable, totalWG, args...);
+      metaAddressInput, metaWGInput, callable, totalWG, kChunkSize, args...);
 }
 
 template <int depth, typename T, typename... ArgTypes>
@@ -392,7 +419,12 @@ void multi_tensor_apply_for_fused_optimizer(
       at::xpu::getCurrentXPUStream());
 
   launch_multi_tensor_apply_kernel<true>(
-      metaFusedAddressInput, metaWGInput, callable, totalWG, args...);
+      metaFusedAddressInput,
+      metaWGInput,
+      callable,
+      totalWG,
+      kChunkSize,
+      args...);
 }
 
 } // namespace at::native::xpu
