@@ -25,7 +25,7 @@ struct PoissonTensorApplyFunctor {
       sycl::nd_item<1> item,
       scalar_t& ret_val,
       const scalar_t& lambda) const {
-    XPU_KERNEL_ASSERT_MSG(
+    XPU_KERNEL_ASSERT_WORKAROUND(
         lambda >= 0, "invalid Poisson rate, expected rate to be non-negative");
     auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;

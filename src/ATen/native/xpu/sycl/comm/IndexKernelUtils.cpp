@@ -21,7 +21,7 @@ struct VectorizedGatherKernel {
     if (allow_neg_indices_) {
       ind = (ind < 0) ? ind + ind_dim_size_ : ind;
     }
-    XPU_KERNEL_ASSERT_MSG(
+    XPU_KERNEL_ASSERT_WORKAROUND(
         ind >= 0 && ind < ind_dim_size_,
         "vectorized gather kernel index out of bounds");
     int32_t off =

@@ -721,7 +721,7 @@ struct TakePutLoopFunctor {
     const auto offsets = offset_calc_.get(i);
     auto& iterated = *reinterpret_cast<scalar_t*>(iterated_ptr_ + offsets[0]);
     const auto idx = *reinterpret_cast<int64_t*>(idx_ptr_ + offsets[1]);
-    XPU_KERNEL_ASSERT_MSG(
+    XPU_KERNEL_ASSERT_WORKAROUND(
         idx < numel_ && idx >= -numel_,
         "take_put_kernel_template() index out of bounds");
     index_t offset = static_cast<index_t>(idx);
@@ -2296,7 +2296,7 @@ Tensor& index_select_kernel(
 template <typename index_t>
 struct IndexSelectSparse1Functor {
   index_t operator()(index_t idx) const {
-    XPU_KERNEL_ASSERT_MSG(
+    XPU_KERNEL_ASSERT_WORKAROUND(
         idx >= -size_ && idx < size_, "index_select(): index out of bounds");
     return idx < 0 ? idx + size_ : idx;
   }

@@ -387,7 +387,7 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         if (indice_size_bytes_ == 4) {
           int32_t index =
               *(int32_t*)(index_ptrs_[i] + local_index * indice_size_bytes_);
-          XPU_KERNEL_ASSERT_MSG(
+          XPU_KERNEL_ASSERT_WORKAROUND(
               index >= -sizes_[i] && index < sizes_[i], "index out of bounds");
           if (index < 0) {
             index += sizes_[i];
@@ -396,7 +396,7 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         } else {
           int64_t index =
               *(int64_t*)(index_ptrs_[i] + local_index * indice_size_bytes_);
-          XPU_KERNEL_ASSERT_MSG(
+          XPU_KERNEL_ASSERT_WORKAROUND(
               index >= -sizes_[i] && index < sizes_[i], "index out of bounds");
           if (index < 0) {
             index += sizes_[i];
@@ -612,7 +612,7 @@ struct IndexKernelFunctor {
       // with numbers of input datatypes.
       if (indice_size_bytes_ == 4) {
         int32_t index = *(int32_t*)(index_ptrs_[i] + offsets[2]);
-        XPU_KERNEL_ASSERT_MSG(
+        XPU_KERNEL_ASSERT_WORKAROUND(
             index >= -sizes_[i] && index < sizes_[i], "index out of bounds");
         if (index < 0) {
           index += sizes_[i];
@@ -620,7 +620,7 @@ struct IndexKernelFunctor {
         offset += index * strides_[i];
       } else {
         int64_t index = *(int64_t*)(index_ptrs_[i] + offsets[2]);
-        XPU_KERNEL_ASSERT_MSG(
+        XPU_KERNEL_ASSERT_WORKAROUND(
             index >= -sizes_[i] && index < sizes_[i], "index out of bounds");
         if (index < 0) {
           index += sizes_[i];

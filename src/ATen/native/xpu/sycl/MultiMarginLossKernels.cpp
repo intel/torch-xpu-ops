@@ -40,7 +40,7 @@ void multi_margin_loss_forward_kernel(
   const scalar_t* input_k = input + k * dim;
   scalar_t* output_k = output + k;
   int target_k = static_cast<int>(target[k]);
-  XPU_KERNEL_ASSERT_MSG(
+  XPU_KERNEL_ASSERT_WORKAROUND(
       target_k >= 0 && target_k < dim, "target index is out of bounds");
   scalar_t input_target_k = input_k[target_k];
   int i_start = item.get_local_linear_id();

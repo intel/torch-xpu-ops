@@ -232,7 +232,7 @@ struct ScatterGatherInternalKernelLoopFunctor {
     auto offsets = offset_calc_.get(i);
 
     int64_t idx_dim = *(index_t*)(index_ptr_ + offsets[2]);
-    XPU_KERNEL_ASSERT_MSG(
+    XPU_KERNEL_ASSERT_WORKAROUND(
         idx_dim >= 0 && idx_dim < index_size_,
         "scatter gather kernel index out of bounds");
 
