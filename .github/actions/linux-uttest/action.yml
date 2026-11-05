@@ -179,6 +179,7 @@ runs:
         export WORLD_SIZE=4
         export USE_CCL_V2=1
         pip install transformers pulp
+        pip install intel-cmplr-lib-ur==2026.2.0 intel-openmp==2026.2.0 umf==1.2.0
         sudo rm -rf /tmp/torchinductor_jenkins/
         python -u -X faulthandler -c "import torch; torch.xpu.init(); print(torch.xpu.get_device_properties(0))"
         python -c "import inspect,shutil,torch.testing._internal.distributed.distributed_test as m; shutil.copyfile('distributed/distributed_test.py', inspect.getsourcefile(m) or m.__file__)"
