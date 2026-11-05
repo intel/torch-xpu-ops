@@ -87,8 +87,8 @@ has to fit one session, so:
 - Read repository source only when the failure text cannot settle a grouping
   or a filing decision.
 - `Write` drafts.json as soon as the first category is done, then `Edit` in
-  each next one (both allowed on that file only), rather than one large write
-  at the end.
+  each next one (allowed on that file only), rather than one large write at
+  the end.
 
 Both the grouping and the summary are read off the failure text, so the draft
 carries the text they were read off: `traceback` is what `summary` argues from,
