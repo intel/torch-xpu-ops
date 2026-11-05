@@ -246,7 +246,7 @@ skip_dict = {
         "test_scaled_addmm_fullgraph",
         "test_scaled_addmm_cudagraph",
     },
-    "test_schema_check.py": None,
+    "test_schema_check_xpu.py": None,
     "test_segment_reductions_xpu.py": None,
     "test_serialization_xpu.py": None,
     "test_shape_ops_xpu.py": (
