@@ -4209,7 +4209,7 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         }
       }
     }
-}
+  }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
@@ -4433,7 +4433,7 @@ struct BatchNormBackwardVectorizedKernelFunctor
         }
       }
     }
-}
+  }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
@@ -4631,7 +4631,11 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
   int64_t tile_capacity = syclMaxWorkItemsPerTile();
 
   using KernelClass = BatchNormBackwardKernelFunctor<
-      SIMD_W, input_scalar_t, stat_scalar_t, accscalar_t, index_t>;
+      SIMD_W,
+      input_scalar_t,
+      stat_scalar_t,
+      accscalar_t,
+      index_t>;
   int max_group_size = get_max_group_size<KernelClass>(SIMD_W);
 
   int feature_size_padded = std::max(feature_size, SIMD_W);
@@ -4639,7 +4643,8 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
   int wg_sz_y = std::max<int>(1, max_group_size / tf);
   int wg_thr = wg_sz_y * tf;
   int target_nwg = std::min<int>(tile_capacity / wg_thr, C);
-  if (target_nwg < 1) target_nwg = 1;
+  if (target_nwg < 1)
+    target_nwg = 1;
   sycl::range<2> local_range(wg_sz_y, tf);
   sycl::range<2> global_range(wg_sz_y, target_nwg * tf);
 
@@ -4659,18 +4664,42 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
 
   if (can_use_vec_kernel) {
     using VecKernelClass = BatchNormBackwardVectorizedKernelFunctor<
-        SIMD_W, PREFERRED_VEC_SIZE, input_scalar_t, stat_scalar_t,
-        accscalar_t, index_t>;
+        SIMD_W,
+        PREFERRED_VEC_SIZE,
+        input_scalar_t,
+        stat_scalar_t,
+        accscalar_t,
+        index_t>;
     auto kfn = VecKernelClass(
-        input, grad_output, grad_input, grad_weight, grad_bias,
-        weight, running_mean, running_var, save_mean, save_invstd,
-        train, epsilon, wg_thr);
+        input,
+        grad_output,
+        grad_input,
+        grad_weight,
+        grad_bias,
+        weight,
+        running_mean,
+        running_var,
+        save_mean,
+        save_invstd,
+        train,
+        epsilon,
+        wg_thr);
     sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
     auto kfn = KernelClass(
-        input, grad_output, grad_input, grad_weight, grad_bias,
-        weight, running_mean, running_var, save_mean, save_invstd,
-        train, epsilon, wg_thr);
+        input,
+        grad_output,
+        grad_input,
+        grad_weight,
+        grad_bias,
+        weight,
+        running_mean,
+        running_var,
+        save_mean,
+        save_invstd,
+        train,
+        epsilon,
+        wg_thr);
     sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
   return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
