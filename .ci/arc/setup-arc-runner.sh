@@ -452,11 +452,17 @@ template:
           capabilities:
             drop:
               - ALL
+            # DAC_OVERRIDE lets root enter apt's _apt-owned 0700 partial dirs;
+            # FSETID/SETFCAP keep dpkg setuid bits and file capabilities intact.
             add:
               - CHOWN
+              - DAC_OVERRIDE
               - FOWNER
+              - FSETID
+              - SETFCAP
               - SETGID
               - SETUID
+              - AUDIT_WRITE
         resources:
           requests:
             cpu: "${RUNNER_CPU}"

@@ -5,49 +5,36 @@
 
 namespace c10d::symmetric_memory {
 
-struct barrierKernel {
-  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    auto thread_id = item.get_local_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<XCCL_SIGNAL_SUB_GROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void barrier_kernel(
+    uint32_t** signal_pads,
+    int channel,
+    int rank,
+    int world_size,
+    size_t timeout_ms) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto thread_id = item.get_local_id(0);
 
-    if (thread_id < world_size) {
-      auto target_rank = thread_id;
-      if (target_rank == rank) {
-        return;
-      }
-      auto put_success = try_put_signal_device(
-          signal_pads[target_rank] + world_size * channel + rank, timeout_ms);
-      if (!put_success) {
-        SYCL_KERNEL_ASSERT(false);
-      }
+  if (thread_id < world_size) {
+    auto target_rank = thread_id;
+    if (target_rank == rank) {
+      return;
+    }
+    auto put_success = try_put_signal_device(
+        signal_pads[target_rank] + world_size * channel + rank, timeout_ms);
+    if (!put_success) {
+      SYCL_KERNEL_ASSERT(false);
+    }
 
-      auto wait_success = try_wait_signal_device(
-          signal_pads[rank] + world_size * channel + target_rank, timeout_ms);
-      if (!wait_success) {
-        SYCL_KERNEL_ASSERT(false);
-      }
+    auto wait_success = try_wait_signal_device(
+        signal_pads[rank] + world_size * channel + target_rank, timeout_ms);
+    if (!wait_success) {
+      SYCL_KERNEL_ASSERT(false);
     }
   }
-
-  barrierKernel(
-      uint32_t** signal_pads,
-      int channel,
-      int rank,
-      int world_size,
-      size_t timeout_ms)
-      : signal_pads(signal_pads),
-        channel(channel),
-        rank(rank),
-        world_size(world_size),
-        timeout_ms(timeout_ms) {}
-
- private:
-  uint32_t** signal_pads;
-  int channel;
-  int rank;
-  int world_size;
-  size_t timeout_ms;
-};
+}
 
 void barrier_impl_xpu(
     uint32_t** signal_pads,
@@ -57,7 +44,7 @@ void barrier_impl_xpu(
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
   int64_t maxNumThreadsPerBlock =
-      at::xpu::getKernelMaxWorkGroupSize<barrierKernel>();
+      at::xpu::getKernelMaxWorkGroupSize<barrier_kernel>();
   const size_t numThreadsPerBlock =
       std::min<size_t>(maxNumThreadsPerBlock, std::max(32, world_size));
 
@@ -68,48 +55,39 @@ void barrier_impl_xpu(
   auto global_range = numBlocks * numThreadsPerBlock;
   auto local_range = numThreadsPerBlock;
 
-  using Kernel = barrierKernel;
-  auto kfn = Kernel(signal_pads, channel, rank, world_size, timeout_ms);
-
-  sycl_kernel_submit(global_range, local_range, stream.queue(), kfn);
+  sycl_kernel_submit<barrier_kernel>(
+      global_range,
+      local_range,
+      stream.queue(),
+      0,
+      signal_pads,
+      channel,
+      rank,
+      world_size,
+      timeout_ms);
 }
 
-struct putSignalKernel {
-  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    auto thread_id = item.get_local_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<XCCL_SIGNAL_SUB_GROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void put_signal_kernel(
+    uint32_t** signal_pads,
+    int dst_rank,
+    int channel,
+    int rank,
+    int world_size,
+    size_t timeout_ms) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto thread_id = item.get_local_id(0);
 
-    if (thread_id == 0) {
-      auto put_success = try_put_signal_device(
-          signal_pads[dst_rank] + world_size * channel + rank, timeout_ms);
-      if (!put_success) {
-        SYCL_KERNEL_ASSERT(false);
-      }
+  if (thread_id == 0) {
+    auto put_success = try_put_signal_device(
+        signal_pads[dst_rank] + world_size * channel + rank, timeout_ms);
+    if (!put_success) {
+      SYCL_KERNEL_ASSERT(false);
     }
   }
-
-  putSignalKernel(
-      uint32_t** signal_pads,
-      int dst_rank,
-      int channel,
-      int rank,
-      int world_size,
-      size_t timeout_ms)
-      : signal_pads(signal_pads),
-        dst_rank(dst_rank),
-        channel(channel),
-        rank(rank),
-        world_size(world_size),
-        timeout_ms(timeout_ms) {}
-
- private:
-  uint32_t** signal_pads;
-  int dst_rank;
-  int channel;
-  int rank;
-  int world_size;
-  size_t timeout_ms;
-};
+}
 
 void put_signal_impl_xpu(
     uint32_t** signal_pads,
@@ -120,7 +98,7 @@ void put_signal_impl_xpu(
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
   int64_t maxNumThreadsPerBlock =
-      at::xpu::getKernelMaxWorkGroupSize<putSignalKernel>();
+      at::xpu::getKernelMaxWorkGroupSize<put_signal_kernel>();
   const size_t numThreadsPerBlock = std::min<size_t>(maxNumThreadsPerBlock, 32);
 
   if (!(numThreadsPerBlock > 0)) {
@@ -131,49 +109,40 @@ void put_signal_impl_xpu(
   auto global_range = numBlocks * numThreadsPerBlock;
   auto local_range = numThreadsPerBlock;
 
-  using Kernel = putSignalKernel;
-  auto kfn =
-      Kernel(signal_pads, dst_rank, channel, rank, world_size, timeout_ms);
-
-  sycl_kernel_submit(global_range, local_range, stream.queue(), kfn);
+  sycl_kernel_submit<put_signal_kernel>(
+      global_range,
+      local_range,
+      stream.queue(),
+      0,
+      signal_pads,
+      dst_rank,
+      channel,
+      rank,
+      world_size,
+      timeout_ms);
 }
 
-struct waitSignalKernel {
-  SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE)
-  void operator()(sycl::nd_item<1> item) const {
-    auto thread_id = item.get_local_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (syclexp::sub_group_size<XCCL_SIGNAL_SUB_GROUP_SIZE>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void wait_signal_kernel(
+    uint32_t** signal_pads,
+    int src_rank,
+    int channel,
+    int rank,
+    int world_size,
+    size_t timeout_ms) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto thread_id = item.get_local_id(0);
 
-    if (thread_id == 0) {
-      auto wait_success = try_wait_signal_device(
-          signal_pads[rank] + world_size * channel + src_rank, timeout_ms);
-      if (!wait_success) {
-        SYCL_KERNEL_ASSERT(false);
-      }
+  if (thread_id == 0) {
+    auto wait_success = try_wait_signal_device(
+        signal_pads[rank] + world_size * channel + src_rank, timeout_ms);
+    if (!wait_success) {
+      SYCL_KERNEL_ASSERT(false);
     }
   }
-
-  waitSignalKernel(
-      uint32_t** signal_pads,
-      int src_rank,
-      int channel,
-      int rank,
-      int world_size,
-      size_t timeout_ms)
-      : signal_pads(signal_pads),
-        src_rank(src_rank),
-        channel(channel),
-        rank(rank),
-        world_size(world_size),
-        timeout_ms(timeout_ms) {}
-
- private:
-  uint32_t** signal_pads;
-  int src_rank;
-  int channel;
-  int rank;
-  int world_size;
-  size_t timeout_ms;
-};
+}
 
 void wait_signal_impl_xpu(
     uint32_t** signal_pads,
@@ -184,7 +153,7 @@ void wait_signal_impl_xpu(
     size_t timeout_ms,
     at::xpu::XPUStream& stream) {
   int64_t maxNumThreadsPerBlock =
-      at::xpu::getKernelMaxWorkGroupSize<waitSignalKernel>();
+      at::xpu::getKernelMaxWorkGroupSize<wait_signal_kernel>();
   const size_t numThreadsPerBlock = std::min<size_t>(maxNumThreadsPerBlock, 32);
 
   if (!(numThreadsPerBlock > 0)) {
@@ -195,11 +164,17 @@ void wait_signal_impl_xpu(
   auto global_range = numBlocks * numThreadsPerBlock;
   auto local_range = numThreadsPerBlock;
 
-  using Kernel = waitSignalKernel;
-  auto kfn =
-      Kernel(signal_pads, src_rank, channel, rank, world_size, timeout_ms);
-
-  sycl_kernel_submit(global_range, local_range, stream.queue(), kfn);
+  sycl_kernel_submit<wait_signal_kernel>(
+      global_range,
+      local_range,
+      stream.queue(),
+      0,
+      signal_pads,
+      src_rank,
+      channel,
+      rank,
+      world_size,
+      timeout_ms);
 }
 
 } // namespace c10d::symmetric_memory

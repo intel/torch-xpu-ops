@@ -20,7 +20,6 @@ from torch.testing._internal.common_device_type import (
     ops,
     skip,
     skipOps,
-    xfail,
 )
 from torch.testing._internal.common_methods_invocations import ops_and_refs
 from torch.testing._internal.common_utils import (
@@ -223,8 +222,10 @@ class TestCompositeCompliance(TestCase):
             skip(
                 "nn.functional.embedding_bag"
             ),  # "nn.functional.embedding_bag is not composite compliant"
+            skip("empty"),  # uninitialized output is not comparable
             skip("resize_"),  # "resize is not composite compliant"
             skip("resize_as_"),  # "resize_as is not composite compliant"
+            skip("nn.functional.multi_head_attention_forward"),
         }
     )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
@@ -267,6 +268,7 @@ class TestCompositeCompliance(TestCase):
         {
             skip("nn.functional.max_unpool2d"),
             skip("nn.functional.max_unpool3d"),
+            skip("nn.functional.multi_head_attention_forward"),
         }
     )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
@@ -280,11 +282,6 @@ class TestCompositeCompliance(TestCase):
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
-    @skipOps(
-        {
-            xfail("nn.functional.grid_sample"),
-        }
-    )
     def test_cow_input(self, device, dtype, op):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()

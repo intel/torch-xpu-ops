@@ -39,8 +39,8 @@ using at::native::memory::get_alignment;
 // surrounding code, so they hold exactly as many lanes as that width: a larger
 // exec size reads and writes past their end, a smaller one silently leaves the
 // upper lanes untouched. The two must therefore agree, so every kernel calling
-// these helpers declares SYCL_REQD_SUB_GROUP_SIZE(XCCL_SIGNAL_SUB_GROUP_SIZE),
-// and the literal in the asm below has to be kept in sync with that constant.
+// these helpers pins its sub-group size to XCCL_SIGNAL_SUB_GROUP_SIZE, and the
+// literal in the asm below has to be kept in sync with that constant.
 //
 // 16 is the only width every current target accepts. dg2 hits an IGC internal
 // error at 32 (GSD-13398): its LSC message is natively 16 lanes wide, and while

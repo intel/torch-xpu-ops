@@ -169,6 +169,7 @@ declare -A inductor_tests=(
 )
 
 declare -A non_inductor_tests=(
+    ["test/test_view_ops.py"]="$PYTORCH_ROOT_DIR"
     ["test/xpu/test_conv.py"]="$PYTORCH_ROOT_DIR"
     ["test/xpu/test_fusion.py"]="$PYTORCH_ROOT_DIR"
     ["test/xpu/test_gemm.py"]="$PYTORCH_ROOT_DIR"
@@ -178,7 +179,6 @@ declare -A non_inductor_tests=(
     ["test/xpu/test_optim_xpu.py"]="$PYTORCH_ROOT_DIR/third_party/torch-xpu-ops"
     ["test/xpu/test_shape_ops_xpu.py"]="$PYTORCH_ROOT_DIR/third_party/torch-xpu-ops"
     ["test/xpu/test_unary_ufuncs_xpu.py"]="$PYTORCH_ROOT_DIR/third_party/torch-xpu-ops"
-    ["test/xpu/test_view_ops_xpu.py"]="$PYTORCH_ROOT_DIR/third_party/torch-xpu-ops"
 )
 
 declare -A profiling_pytest_tests=(
