@@ -26,6 +26,10 @@ on:
         type: string
         default: ''
         description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
+      runner:
+        type: string
+        default: ''
+        description: Linux test runner label for UT, E2E and microbench. Empty uses the `runner` entries of .github/ci-config/defaults.yaml
       ut:
         type: string
         default: ''
@@ -75,7 +79,15 @@ jobs:
       scenario: ${{ steps.inputs-check.outputs.scenario }}
       triton: ${{ steps.inputs-check.outputs.triton }}
       python: ${{ steps.inputs-check.outputs.python }}
+      ci_config: ${{ steps.ci-config.outputs.json }}
     steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - name: Resolve CI config
+        id: ci-config
+        uses: ./.github/actions/ci-config
       - name: Inputs check
         id: inputs-check
         run: |
@@ -172,7 +184,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: bmg
+      runner: ${{ inputs.runner || fromJSON(needs.Conditions-Filter.outputs.ci_config).runner.runner_ut }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -232,7 +244,7 @@ jobs:
         scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'bmg-b70' || 'bmg-b60' }}
+      runner: ${{ inputs.runner || fromJSON(needs.Conditions-Filter.outputs.ci_config).runner[format('runner_{0}', matrix.scenario)] }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -270,7 +282,7 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: bmg-b70
+      runner: ${{ inputs.runner || fromJSON(needs.Conditions-Filter.outputs.ci_config).runner.runner_performance }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 

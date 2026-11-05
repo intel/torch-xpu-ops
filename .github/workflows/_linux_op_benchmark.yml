@@ -30,11 +30,26 @@ env:
   reference_issue: 1689
 
 jobs:
+  config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      json: ${{ steps.config.outputs.json }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - name: Resolve CI config
+        id: config
+        uses: ./.github/actions/ci-config
+
   op_benchmark:
+    needs: config
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 900
     container:
-      image: ${{ contains(inputs.runner, 'bmg') && 'intel/omix:0.4.1-runtime-ubuntu26.04' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+      image: ${{ contains(inputs.runner, 'bmg') && fromJSON(needs.config.outputs.json).image.image_bmg || fromJSON(needs.config.outputs.json).image.image_pvc }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: ${{ contains(inputs.runner, 'bmg') && '--entrypoint= ' || '' }}--device=/dev/mem --device=/dev/dri

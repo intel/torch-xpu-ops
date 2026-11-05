@@ -1,6 +1,17 @@
 common:
   python: 3.12.15
 
+runner:
+  # Linux runner labels per job type
+  runner_ut: bmg
+  runner_accuracy: bmg-b60
+  runner_performance: bmg-b70
+
+image:
+  # Linux test container image per runner family
+  image_bmg: intel/omix:0.4.1-runtime-ubuntu26.04
+  image_pvc: intelgpu/ubuntu-24.04-lts2:2523.40
+
 ut:
   # op UT total per platform
   op_ut_linux: 325448
