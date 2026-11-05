@@ -112,7 +112,8 @@ jobs:
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
-          chown 1000:1000 /__w /github ./ -R
+          # Runner user's uid differs per node; /__e is its read-only externals mount.
+          chown "$(stat -c %u:%g /__e)" /__w /github ./ -R
       - name: Write summary
         if: ${{ steps.reproducer-files.outcome != 'failure' && steps.reproducer-cmd.outcome != 'failure' }}
         run: echo "✅ Reproducer test passed. All reproducer tests executed successfully." >> $GITHUB_STEP_SUMMARY
