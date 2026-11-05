@@ -16,60 +16,10 @@ ARG XPU_DRIVER_TYPE
 ENV XPU_DRIVER_TYPE=${XPU_DRIVER_TYPE}
 
 # Base system updates and essential packages
+COPY ./common/install_base.sh /tmp/install_base.sh
 RUN --mount=type=cache,target=/var/cache/apt \
-    apt-get update && \
-    apt-get upgrade -y --no-install-recommends && \
-    if [ "${UBUNTU_VERSION}" == "22.04" ];then \
-        apt-get install -y software-properties-common && \
-        add-apt-repository ppa:ubuntu-toolchain-r/test -y ;\
-    fi && \
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        gnupg \
-        software-properties-common \
-        apt-transport-https \
-        lsb-release && \
-    rm -rf /var/lib/apt/lists/*
-
-# Add repositories and install packages in single layer for better caching
-RUN --mount=type=cache,target=/var/cache/apt \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        # System utilities
-        wget \
-        curl \
-        sudo \
-        git \
-        unzip \
-        zip \
-        gh \
-        numactl \
-        rsync \
-        jq \
-        # Build tools
-        gcc g++ \
-        gcc-${GCC_VERSION} g++-${GCC_VERSION} \
-        build-essential \
-        cmake \
-        ninja-build \
-        pkg-config \
-        autoconf \
-        automake \
-        libtool \
-        # Graphics libraries
-        libgl1 \
-        libglib2.0-0 \
-        libglib2.0-dev \
-        zlib1g \
-        zlib1g-dev \
-        # Python libraries
-        python3 \
-        python3-dev && \
-    # Setup gcc 13 as default
-    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
-    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
-    update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
-    gcc -v && g++ -v && gcov -v
+    bash /tmp/install_base.sh && \
+    rm -f /tmp/install_base.sh
 
 COPY ./common/install_xpu.sh /tmp/install_xpu.sh
 RUN bash /tmp/install_xpu.sh && \

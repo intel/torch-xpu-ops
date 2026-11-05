@@ -95,7 +95,7 @@ jobs:
           sparse-checkout: .github
       - name: Select runner and image
         id: runner
-        uses: ./.github/actions/ci-runner
+        uses: ./.github/actions/ci-config
         with:
           runner: ${{ inputs.runner }}
 
@@ -233,6 +233,11 @@ jobs:
         uses: ./torch-xpu-ops/.github/actions/setup-python
         with:
           python: ${{ inputs.python }}
+      - name: Setup gcc
+        uses: ./torch-xpu-ops/.github/actions/ci-config
+        with:
+          python: ${{ inputs.python }}
+          setup_gcc: 'true'
       - name: Prepare pytorch and deps
         run: |
           uv pip install junitparser
