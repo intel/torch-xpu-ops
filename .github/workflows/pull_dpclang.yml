@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       runner_ut: ${{ steps.ci-config.outputs.ut }}
+      image_ut: ${{ steps.ci-config.outputs.ut_image }}
       gcc: ${{ steps.ci-config.outputs.gcc }}
     steps:
       - name: Checkout torch-xpu-ops
@@ -187,6 +188,7 @@ jobs:
     with:
       category: dpclang
       runner: ${{ needs.config.outputs.runner_ut }}
+      image: ${{ needs.config.outputs.image_ut }}
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
