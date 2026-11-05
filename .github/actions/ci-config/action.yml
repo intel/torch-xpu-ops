@@ -28,18 +28,21 @@ outputs:
   ut:
     description: Runner for UT jobs
     value: ${{ steps.resolve.outputs.ut }}
+  ut_image:
+    description: Container image for the UT runner
+    value: ${{ steps.resolve.outputs.ut_image }}
   accuracy:
     description: Runner for E2E accuracy jobs
     value: ${{ steps.resolve.outputs.accuracy }}
+  accuracy_image:
+    description: Container image for the accuracy runner
+    value: ${{ steps.resolve.outputs.accuracy_image }}
   performance:
     description: Runner for E2E performance and microbench jobs
     value: ${{ steps.resolve.outputs.performance }}
-  image:
-    description: Container image for `runner` (or `ut` when empty), `image_bmg` for bmg runners and `image_pvc` otherwise
-    value: ${{ steps.resolve.outputs.image }}
-  options:
-    description: Docker options to prepend to the container options
-    value: ${{ steps.resolve.outputs.options }}
+  performance_image:
+    description: Container image for the performance runner
+    value: ${{ steps.resolve.outputs.performance_image }}
 
 runs:
   using: composite
@@ -62,12 +65,11 @@ runs:
           });
           const override = process.env.OVERRIDE_RUNNER;
           for (const [key, value] of Object.entries(runner)) {
-            core.setOutput(key.replace(/^runner_/, ''), override || value);
+            const type = key.replace(/^runner_/, '');
+            const label = override || value;
+            core.setOutput(type, label);
+            core.setOutput(`${type}_image`, label.includes('bmg') ? image.image_bmg : image.image_pvc);
           }
-          const bmg = (override || runner.runner_ut).includes('bmg');
-          core.setOutput('image', bmg ? image.image_bmg : image.image_pvc);
-          // the OMIX image entrypoint activates oneAPI
-          core.setOutput('options', bmg ? '--entrypoint= ' : '');
     - name: Install gcc-${{ steps.resolve.outputs.gcc }}
       if: ${{ inputs.setup_gcc == 'true' }}
       shell: bash -xe {0}
