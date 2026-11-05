@@ -4670,6 +4670,16 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
         stat_scalar_t,
         accscalar_t,
         index_t>;
+    int vec_max_group_size = get_max_group_size<VecKernelClass>(SIMD_W);
+    int vec_tf = get_num_threads<VecKernelClass>(feature_size_padded, SIMD_W);
+    int vec_wg_sz_y = std::max<int>(1, vec_max_group_size / vec_tf);
+    int vec_wg_thr = vec_wg_sz_y * vec_tf;
+    int vec_target_nwg = std::min<int>(tile_capacity / vec_wg_thr, C);
+    if (vec_target_nwg < 1)
+      vec_target_nwg = 1;
+    sycl::range<2> vec_local_range(vec_wg_sz_y, vec_tf);
+    sycl::range<2> vec_global_range(
+        vec_wg_sz_y, vec_target_nwg * vec_tf);
     auto kfn = VecKernelClass(
         input,
         grad_output,
@@ -4683,8 +4693,8 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
         save_invstd,
         train,
         epsilon,
-        wg_thr);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
+        vec_wg_thr);
+    sycl_kernel_submit(vec_global_range, vec_local_range, queue, kfn);
   } else {
     auto kfn = KernelClass(
         input,
