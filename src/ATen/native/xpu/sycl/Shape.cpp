@@ -851,6 +851,8 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     return k;
   }
 
+  // slm and table are only read on the SLM path; the register path (kReg)
+  // passes nullptr.
   VecT gather(const CatInputMeta* slm, const uint8_t* table, uint32_t vid)
       const {
     const int32_t n0 = p_.size[0].divisor;
@@ -1003,14 +1005,16 @@ void launch_cat(
                              : launch_cat_gather<U, V, false, 4>(out, 0, fill);
     }
   }
-  if constexpr (V > 1 && U * V == 16) {
+  // Rows wrap only for units below 8 bytes, and V > 1 with 8-byte units
+  // means more than 4 inputs, which use SLM.
+  if constexpr (V > 1 && U < 8 && U * V == 16) {
     if (wrap) {
       return reg_inputs
           ? launch_cat_gather<U, V, true, 4>(out, 0, fill)
           : launch_cat_gather<U, V, true, 0>(out, table_size, fill);
     }
   }
-  if constexpr (V > 1) {
+  if constexpr (V > 1 && U < 8) {
     if (reg_inputs) {
       return launch_cat_gather<U, V, false, 4>(out, 0, fill);
     }
