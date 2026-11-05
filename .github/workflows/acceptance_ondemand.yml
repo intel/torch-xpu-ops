@@ -93,13 +93,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+
+      - name: Resolve CI config
+        id: config
+        uses: ./.github/actions/ci-config
 
       - name: Pick python version
         id: pick
         env:
           REQUESTED: ${{ inputs.python }}
+          DEFAULT: ${{ steps.config.outputs.python }}
         run: |
-          default=$(jq -r .python .github/ci-config/defaults.json)
+          default="${DEFAULT}"
           python="${REQUESTED:-$default}"
           valid=true
           [[ "$python" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || valid=false
