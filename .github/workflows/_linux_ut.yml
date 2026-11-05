@@ -45,15 +45,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      json: ${{ steps.config.outputs.json }}
+      image: ${{ steps.runner.outputs.image }}
+      options: ${{ steps.runner.outputs.options }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
           sparse-checkout: .github
-      - name: Resolve CI config
-        id: config
-        uses: ./.github/actions/ci-config
+      - name: Select runner and image
+        id: runner
+        uses: ./.github/actions/ci-runner
+        with:
+          runner: ${{ inputs.runner }}
 
   test-in-container:
     needs: config
@@ -63,11 +66,11 @@ jobs:
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: ${{ contains(inputs.runner, 'bmg') && fromJSON(needs.config.outputs.json).image.image_bmg || fromJSON(needs.config.outputs.json).image.image_pvc }}
+      image: ${{ needs.config.outputs.image }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
-      options: ${{ contains(inputs.runner, 'bmg') && '--entrypoint= ' || '' }}--device=/dev/mem --device=/dev/dri
+      options: ${{ needs.config.outputs.options }}--device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
     steps:
