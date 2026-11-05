@@ -6612,11 +6612,14 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                     (False, True),
                     (False, False),
                 ):
-                    for mixed_weight in (False, True):
+                    for mixed_weight, spatial_size in itertools.product(
+                        (False, True), (2, 7)
+                    ):
                         torch.manual_seed(0)
-                        shape = (4, channels, 7, 7)
-                        strides = (channels * 7 * 7, 1, channels * 7, channels)
-                        storage_size = 4 * channels * 7 * 7 + 1
+                        shape = (4, channels, spatial_size, spatial_size)
+                        batch, _, height, width = shape
+                        strides = (channels * height * width, 1, channels * width, channels)
+                        storage_size = batch * channels * height * width + 1
                         input_storage = torch.randn(storage_size, dtype=dtype)
                         grad_storage = torch.randn_like(input_storage)
                         input = torch.as_strided(
