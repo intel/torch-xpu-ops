@@ -190,9 +190,8 @@ class LayerNormBackward
   int64_t N;
 };
 
-// we could make it dependent on dtype, but that would lead to different results
-// between float and low-p types
-constexpr int vec_size = 4;
+template <typename T>
+static constexpr int vec_size = sizeof(T) <= 2 ? 8 : 4;
 
 // Checks alignment of buffers for using vectorized loads / stores
 template <typename T>
@@ -385,18 +384,18 @@ WelfordDataLN compute_stats(
     T_ACC* buf,
     sycl::nd_item<2>& item_id) {
   // X points to the row to read
-  using vec_t = aligned_vector<T, vec_size>;
+  using vec_t = aligned_vector<T, vec_size<T>>;
   using acc_t = acc_type_device<T, kXPU>;
   const vec_t* X_vec = reinterpret_cast<const vec_t*>(X);
   const int numx = item_id.get_local_range(1) * item_id.get_local_range(0);
   const int thrx = item_id.get_local_linear_id();
-  const int n_vec_to_read = N / vec_size;
+  const int n_vec_to_read = N / vec_size<T>;
   WelfordDataLN wd(0.f, 0.f, 0.f);
   // no tail, we check that N is multiple of vec_size
   for (int i = thrx; i < n_vec_to_read; i += numx) {
     vec_t data = X_vec[i];
 #pragma unroll
-    for (int ii = 0; ii < vec_size; ii++) {
+    for (int ii = 0; ii < vec_size<T>; ii++) {
       wd = WelfordOnlineSum<acc_t, rms_norm>(
           static_cast<acc_t>(data.val[ii]), wd);
     }
@@ -510,7 +509,7 @@ void vectorized_layer_norm_kernel_impl(
   WelfordDataLN wd =
       compute_stats<T, T_ACC, rms_norm>(block_row, N, buf, item_id);
 
-  using vec_t = aligned_vector<T, vec_size>;
+  using vec_t = aligned_vector<T, vec_size<T>>;
   const vec_t* X_vec = reinterpret_cast<const vec_t*>(block_row);
   const vec_t* gamma_vec =
       (gamma != nullptr) ? reinterpret_cast<const vec_t*>(gamma) : nullptr;
@@ -520,7 +519,7 @@ void vectorized_layer_norm_kernel_impl(
 
   const int numx = item_id.get_local_range(1) * item_id.get_local_range(0);
   const int thrx = item_id.get_local_linear_id();
-  const int n_vec_to_read = N / vec_size;
+  const int n_vec_to_read = N / vec_size<T>;
 
   T_ACC rstd_val = c10::xpu::compat::rsqrt(wd.sigma2 + eps);
 
@@ -536,14 +535,14 @@ void vectorized_layer_norm_kernel_impl(
       if constexpr (!rms_norm) {
         vec_t beta_data = beta_vec[i];
 #pragma unroll
-        for (int ii = 0; ii < vec_size; ii++) {
+        for (int ii = 0; ii < vec_size<T>; ii++) {
           out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                   (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
               static_cast<T_ACC>(beta_data.val[ii]);
         }
       } else {
 #pragma unroll
-        for (int ii = 0; ii < vec_size; ii++) {
+        for (int ii = 0; ii < vec_size<T>; ii++) {
           out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
               (rstd_val * static_cast<T_ACC>(data.val[ii]));
         }
@@ -551,7 +550,7 @@ void vectorized_layer_norm_kernel_impl(
     } else if (gamma_vec != nullptr) {
       vec_t gamma_data = gamma_vec[i];
 #pragma unroll
-      for (int ii = 0; ii < vec_size; ii++) {
+      for (int ii = 0; ii < vec_size<T>; ii++) {
         if constexpr (!rms_norm) {
           out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
               (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean));
@@ -563,14 +562,14 @@ void vectorized_layer_norm_kernel_impl(
     } else if (beta_vec != nullptr) {
       vec_t beta_data = beta_vec[i];
 #pragma unroll
-      for (int ii = 0; ii < vec_size; ii++) {
+      for (int ii = 0; ii < vec_size<T>; ii++) {
         out.val[ii] =
             (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
             static_cast<T_ACC>(beta_data.val[ii]);
       }
     } else {
 #pragma unroll
-      for (int ii = 0; ii < vec_size; ii++) {
+      for (int ii = 0; ii < vec_size<T>; ii++) {
         if constexpr (!rms_norm) {
           out.val[ii] = rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean);
         } else {
@@ -592,7 +591,7 @@ int64_t layer_norm_wg_size_select(
     const int64_t max_wg_size,
     const int64_t M,
     const int n) {
-  if (n > max_wg_size)
+  if (n >= max_wg_size)
     return max_wg_size;
 
   int64_t wg_size = max_wg_size;
@@ -633,7 +632,7 @@ void launch_vectorized_layer_norm_kernel(
       at::xpu::getKernelMaxWorkGroupSize<
           vectorized_layer_norm_kernel_impl<T, T_ACC, rms_norm>>(),
       M,
-      N / vec_size);
+      N / vec_size<T>);
   sycl::range<2> local_range{size_t(wg_size / SIMD), SIMD};
   sycl::range<2> global_range(size_t(wg_size / SIMD), M * SIMD);
   auto queue = getCurrentSYCLQueue();
@@ -678,7 +677,8 @@ void layer_norm_kernel_impl(
     mean_data = mean->data_ptr<T_ACC>();
   }
   T_ACC* rstd_data = rstd->data_ptr<T_ACC>();
-  constexpr int num_vec_elems = vec_size;
+
+  constexpr int num_vec_elems = vec_size<T>;
   constexpr int alignment = num_vec_elems * sizeof(T);
   bool can_vec_X = can_vectorize(X_data, alignment);
   bool can_vec_Y = can_vectorize(Y_data, alignment);
@@ -688,8 +688,8 @@ void layer_norm_kernel_impl(
       beta.defined() ? can_vectorize(beta_data, alignment) : true;
 
   if ((std::is_same_v<T, float> || std::is_same_v<T, at::Half> ||
-       std::is_same_v<T, at::BFloat16>)&&N <=
-          static_cast<int64_t>(1ULL << std::numeric_limits<float>::digits) &&
+       std::is_same_v<T, at::BFloat16>) &&
+      N <= static_cast<int64_t>(1ULL << std::numeric_limits<float>::digits) &&
       N % num_vec_elems == 0 && can_vec_X && can_vec_Y && can_vec_gamma &&
       can_vec_beta) {
     launch_vectorized_layer_norm_kernel<T, T_ACC, rms_norm>(
@@ -1256,9 +1256,10 @@ void layer_norm_backward_kernel_impl(
           local_size_x,
           M,
           N);
-      *dgamma = dgamma_blocks.sum(0);
+      // sum(0) is flat {N}; the gradient may be multi-dimensional.
+      *dgamma = dgamma_blocks.sum(0).view_as(*dgamma);
       if constexpr (!rms_norm) {
-        *dbeta = dbeta_blocks.sum(0);
+        *dbeta = dbeta_blocks.sum(0).view_as(*dbeta);
       }
     } else if (dgamma->defined() && !dbeta->defined()) {
       size_t lsm_size = 2 * tile_size_n * tile_size_m / elements_per_thread *
@@ -1332,7 +1333,7 @@ void layer_norm_backward_kernel_impl(
           M,
           N);
       if constexpr (!rms_norm) {
-        *dbeta = dbeta_blocks.sum(0);
+        *dbeta = dbeta_blocks.sum(0).view_as(*dbeta);
       }
     } else {
       return;

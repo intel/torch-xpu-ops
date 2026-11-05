@@ -510,7 +510,8 @@ static void cdist_backward_kernel_impl(
     const int64_t l1_size,
     const int64_t l2_size) {
   int64_t wgroup_size =
-      syclGpuHWThreadsPerEU() * at::xpu::getDeviceMaxSubGroupSize();
+      at::xpu::getCurrentDeviceProperties()->gpu_hw_threads_per_eu *
+      at::xpu::getDeviceMaxSubGroupSize();
   const int group_size_x = 256 > wgroup_size ? wgroup_size : 256;
   const int group_size_y = wgroup_size / group_size_x;
   const int group_num_x = (m + group_size_x * 32 - 1) / (group_size_x * 32);

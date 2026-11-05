@@ -1,0 +1,96 @@
+name: UT Report
+
+on:
+  workflow_call:
+    inputs:
+      category:
+        type: string
+        default: ''
+        description: 'Artifact tag of the UT checks to report on (empty means every one of the run)'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+jobs:
+  report:
+    name: ut-report
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+      - name: Report UT results
+        id: ut
+        uses: ./.github/actions/ut-report
+        with:
+          category: ${{ inputs.category }}
+      - name: Comment on PR for new failures
+        if: >-
+          ${{ ! cancelled() && github.event_name == 'pull_request'
+          && steps.ut.outputs.has_new_failures == 'true'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
+              || github.event.pull_request.user.login == 'copilot[bot]') }}
+        uses: actions/github-script@v9
+        env:
+          WORK_DIR: ${{ steps.ut.outputs.work_dir }}
+          ARTIFACT_URL: ${{ steps.ut.outputs.artifact_url }}
+        with:
+          github-token: ${{ secrets.COPILOT_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+            // new_failures.csv is headerless and pipe delimited, with the
+            // artifact source as its last column.
+            const csvFile = `${process.env.WORK_DIR}/new_failures.csv`;
+            let failureTable = '';
+            let totalCount = 0;
+            if (fs.existsSync(csvFile)) {
+              const dataLines = fs.readFileSync(csvFile, 'utf8').trim().split('\n').filter(l => l.trim());
+              totalCount = dataLines.length;
+              const header = '| OS | Category | Class name | Test name | Status | Message |';
+              const separator = '| --- | --- | --- | --- | --- | --- |';
+              const rows = dataLines.slice(0, 5).map(line => line.split(' | ').slice(0, -1).join(' | '));
+              failureTable = [header, separator, ...rows].join('\n');
+              if (totalCount > 5) {
+                failureTable += `\n\n... and ${totalCount - 5} more failures. See full list in artifact.`;
+              }
+            }
+
+            const body = [
+              `@copilot New UT failures detected (${totalCount} total). Please check these new failures and analyze whether they are caused by the PR changes.`,
+              '',
+              '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
+              '',
+              `Job log: ${jobUrl}`,
+              `Full new failure report: ${process.env.ARTIFACT_URL}`,
+              '',
+              '**New failures:**',
+              '',
+              failureTable,
+              '',
+              'Instructions:',
+              '1. Download the full new failure report artifact for complete error messages',
+              '2. Analyze whether the failures are caused by PR changes',
+              '3. If caused by PR changes, fix those failures on this PR branch directly',
+              '4. Add failing test cases with pytest commands in the PR description for the reproducer job to use',
+              '5. Use reply comments to report analysis status - do NOT modify the PR description plan directly'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
