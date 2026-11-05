@@ -81,8 +81,27 @@ defaults:
     shell: bash {0}
 
 jobs:
+  config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      json: ${{ steps.config.outputs.json }}
+      runner: ${{ steps.runner.outputs.runner }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - name: Resolve CI config
+        id: config
+        uses: ./.github/actions/ci-config
+      - name: Resolve runner
+        id: runner
+        run: echo "runner=${{ inputs.runner || fromJSON(steps.config.outputs.json).runner.runner_ut }}" >> "$GITHUB_OUTPUT"
+
   prepare:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'bmg' }}
+    needs: config
+    runs-on: ${{ needs.config.outputs.runner }}
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'disable_all')
@@ -112,13 +131,13 @@ jobs:
           echo "triton=$triton" | tee -a "$GITHUB_OUTPUT"
 
   tests:
-    needs: prepare
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'bmg' }}
+    needs: [config, prepare]
+    runs-on: ${{ needs.config.outputs.runner }}
     container:
-      image: ${{ contains(inputs.runner != '' && inputs.runner || 'bmg', 'bmg') && 'intel/omix:0.4.1-runtime-ubuntu26.04' || contains(inputs.runner, 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-26.04-rolling:26.14' }}
+      image: ${{ contains(needs.config.outputs.runner, 'bmg') && fromJSON(needs.config.outputs.json).image.image_bmg || fromJSON(needs.config.outputs.json).image.image_pvc }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: ${{ contains(inputs.runner != '' && inputs.runner || 'bmg', 'bmg') && '--entrypoint= ' || '' }}--device=/dev/mem --device=/dev/dri
+      options: ${{ contains(needs.config.outputs.runner, 'bmg') && '--entrypoint= ' || '' }}--device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
