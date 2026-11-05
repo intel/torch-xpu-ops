@@ -320,7 +320,7 @@ jobs:
         scenario: [accuracy, performance]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'bmg-b70' || 'bmg' }}
+      runner: ${{ matrix.scenario == 'performance' && 'bmg-b70' || 'bmg-b60' }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}
