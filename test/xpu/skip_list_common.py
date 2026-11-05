@@ -30,7 +30,6 @@ skip_dict = {
     "dynamo/test_export_xpu.py": None,
     "dynamo/test_logging_xpu.py": None,
     "dynamo/test_misc_xpu.py": None,
-    "dynamo/test_recompiles_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
@@ -38,8 +37,6 @@ skip_dict = {
     "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "export/test_export_strict_xpu.py": None,
-    "export/test_export_training_ir_to_run_decomp_xpu.py": None,
     "export/test_retraceability_xpu.py": None,
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
@@ -193,7 +190,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/2285
         "_efficient_attention_forward",
     ),
-    "test_mkldnn_fusion_xpu.py": None,
     "test_nestedtensor_xpu.py": None,
     "test_nn_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2531
@@ -235,7 +231,6 @@ skip_dict = {
     "test_optim_xpu.py": None,
     "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
-    "test_reductions_xpu.py": None,
     "test_scaled_matmul_cuda_xpu.py": {
         # https://github.com/intel/torch-xpu-ops/issues/5339
         # The operator 'aten::_scaled_addmm.out' is not currently implemented for the XPU device
@@ -282,35 +277,7 @@ skip_dict = {
     ),
     "test_tensor_creation_ops_xpu.py": None,
     "test_testing_xpu.py": None,
-    "test_torch_xpu.py": (
-        # due to #2164, CUDA specific test
-        "test_no_cuda_monkeypatch",
-        # skipped due to #2536, torch._C._scatter or torch._C._gather
-        "test_pickle_gradscaler_xpu",
-        "test_grad_scaler_pass_itself_xpu",
-        "test_grad_scaling_state_dict_xpu",
-        "test_typed_storage_deprecation_warning",
-        "test_typed_storage_internal_no_warning",
-        # TypeError: map2_ is only implemented on CPU tensors
-        "test_broadcast_fn_map2_xpu",
-        "test_broadcast_fn_map_xpu",
-        # RuntimeError: _share_fd_: only available on CPU
-        "test_module_share_memory_xpu",
-        # TypedStorage tests are not applicable to XPU. TypedStorage is deprecated in favor of
-        # UntypedStorage paired with torch.dtype. XPU does not provide typed storage classes
-        # (e.g., torch.xpu.FloatStorage, torch.xpu.BFloat16Storage). See NOTE in
-        # torch.storage._dtype_to_storage_type_map() upstream:
-        # https://github.com/pytorch/pytorch/blob/main/torch/storage.py
-        "test_storage_setitem_xpu",
-        "test_storage_error",
-        # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
-        # under pytest -k substring semantics used by the XPU skip runner.
-        # https://github.com/intel/torch-xpu-ops/issues/2531
-        # CudaSyncGuard has no XPU counterpart yet.
-        "test_sync_warning_xpu",
-        "test_print",
-        "test_tensor_storage_type_xpu",
-    ),
+    "test_torch_xpu.py": None,
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
         "test_math_backend_high_precision_xpu",
@@ -365,8 +332,11 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_recompiles.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_converter.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_export_strict.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_export_training_ir_to_run_decomp.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_passes.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_torchbind.py": None,
@@ -455,6 +425,7 @@ skip_dict = {
     ),
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
+    f"{PYTORCH_TEST_DIR}/test_mkldnn_fusion.py": None,
     f"{PYTORCH_TEST_DIR}/test_modes.py": None,
     f"{PYTORCH_TEST_DIR}/test_modules.py": None,
     f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
@@ -464,6 +435,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
+    f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
