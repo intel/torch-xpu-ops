@@ -17,32 +17,32 @@ template <int Alignment, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 void vectorized_gather_kernel_impl(
-    char* out_,
-    char* inp_,
-    index_t* idx_,
-    int num_ind_,
-    int64_t slice_size_,
-    int64_t ind_dim_size_,
-    int64_t inp_stride_,
-    int64_t out_stride_,
-    bool allow_neg_indices_) {
+    char* out,
+    char* inp,
+    index_t* idx,
+    int num_ind,
+    int64_t slice_size,
+    int64_t ind_dim_size,
+    int64_t inp_stride,
+    int64_t out_stride,
+    bool allow_neg_indices) {
   auto item = syclext::this_work_item::get_nd_item<2>();
-  int64_t ind = idx_[item.get_group(1)];
-  if (allow_neg_indices_) {
-    ind = (ind < 0) ? ind + ind_dim_size_ : ind;
+  int64_t ind = idx[item.get_group(1)];
+  if (allow_neg_indices) {
+    ind = (ind < 0) ? ind + ind_dim_size : ind;
   }
   SYCL_KERNEL_ASSERT(
-      ind >= 0 && ind < ind_dim_size_ &&
+      ind >= 0 && ind < ind_dim_size &&
       "vectorized gather kernel index out of bounds");
   int32_t off =
       (item.get_local_range(1) * item.get_group(0) + item.get_local_id(1)) *
       Alignment; // off is guaranteed to be within int32 limits
-  if (off >= slice_size_)
+  if (off >= slice_size)
     return;
   auto vec =
-      at::native::memory::ld_vec<Alignment>(inp_ + ind * inp_stride_ + off);
+      at::native::memory::ld_vec<Alignment>(inp + ind * inp_stride + off);
   at::native::memory::st_vec<Alignment>(
-      out_ + item.get_group(1) * (int32_t)out_stride_ + off,
+      out + item.get_group(1) * (int32_t)out_stride + off,
       vec); // out offset is guaranteed to be within int32 limits
 }
 
