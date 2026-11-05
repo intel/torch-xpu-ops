@@ -47,7 +47,8 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  biisect-search:
+  bisect-search:
+    name: bisect-search
     runs-on: ${{ inputs.runner }}
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
@@ -65,6 +66,11 @@ jobs:
         USE_XCCL: 0
         USE_KINETO: 0
     steps:
+      # linux-testenv resolves its nested actions from ./.github
+      - name: Checkout CI actions
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
