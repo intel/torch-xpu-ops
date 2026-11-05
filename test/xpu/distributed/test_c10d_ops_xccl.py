@@ -59,6 +59,15 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
     def backend_str(cls) -> str:
         return "xccl"
 
+    @classmethod
+    def _init_pg(cls, rank, world_size, rdvz_file):
+        super()._init_pg(rank, world_size, rdvz_file)
+        # oneCCL before a766d7238 (MLSL-5025) keeps each unique ID's KVS until
+        # exit, and its destructor can hang once the comms are destroyed, so
+        # these long-lived workers fail to exit. Skip the backend teardown in
+        # this class's workers until CI's oneCCL has the fix.
+        dist.ProcessGroup.shutdown = lambda self: None
+
     # @classmethod
     # def opts(cls):
     #     opts = c10d.ProcessGroupXCCL.Options()
