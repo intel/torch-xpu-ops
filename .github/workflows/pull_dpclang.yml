@@ -29,15 +29,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      json: ${{ steps.config.outputs.json }}
+      runner_ut: ${{ steps.ci-runner.outputs.ut }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
           sparse-checkout: .github
-      - name: Resolve CI config
-        id: config
-        uses: ./.github/actions/ci-config
+      - name: Select runners
+        id: ci-runner
+        uses: ./.github/actions/ci-runner
 
   build-prereq:
     if: ${{ github.repository_owner == 'intel' }}
@@ -183,7 +183,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       category: dpclang
-      runner: ${{ fromJSON(needs.config.outputs.json).runner.runner_ut }}
+      runner: ${{ needs.config.outputs.runner_ut }}
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
