@@ -236,6 +236,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   int globalRankStart_;
   int globalRankStride_;
 
+  void shutdownImpl();
+
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
       at::Tensor& input,
