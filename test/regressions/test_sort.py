@@ -28,6 +28,40 @@ class TestNNMethod(TestCase):
         self.assertEqual(res1val, res1val_cpu.xpu())
         self.assertEqual(res1ind, res1ind_cpu.xpu())
 
+    def test_sort_descending_multi_tile(self):
+        # Rows longer than one tile take the multi-tile radix path, whose
+        # descending variant used to drop elements and return out-of-range
+        # indices.
+        dtypes = (
+            torch.float32,
+            torch.float64,
+            torch.float16,
+            torch.bfloat16,
+            torch.int64,
+            torch.int32,
+            torch.int16,
+            torch.uint8,
+            torch.bool,
+        )
+        for dtype in dtypes:
+            for cols in (2049, 4097, 8192, 50001):
+                torch.manual_seed(0)
+                if dtype == torch.bool:
+                    x = torch.randint(0, 2, (3, cols)).bool()
+                elif dtype.is_floating_point:
+                    x = torch.randn(3, cols).to(dtype)
+                    x[:, 1] = float("inf")
+                    x[:, ::5] = x[0, 0]
+                else:
+                    info = torch.iinfo(dtype)
+                    x = torch.randint(info.min, info.max, (3, cols), dtype=dtype)
+                    x[:, 1] = info.max
+                for descending in (False, True):
+                    val_cpu, ind_cpu = torch.sort(x, descending=descending, stable=True)
+                    val, ind = torch.sort(x.xpu(), descending=descending, stable=True)
+                    self.assertEqual(val.cpu(), val_cpu)
+                    self.assertEqual(ind.cpu(), ind_cpu)
+
     def test_sort_large_bool(self):
         tensor_dtype = torch.bool
         value_range = 2
