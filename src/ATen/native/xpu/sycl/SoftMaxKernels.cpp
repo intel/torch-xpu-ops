@@ -184,9 +184,9 @@ static inline int get_wgroup_size(
 // this method help to divide the computation resource for spatial_softmax
 template <int vec_size, class KernelClass>
 static inline void get_wgroup_size_spatial(
-    int bs,
-    int dim_size,
-    int inner_size,
+    int64_t bs,
+    int64_t dim_size,
+    int64_t inner_size,
     int& GroupSize,
     int& GroupRow) {
   int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
@@ -194,8 +194,8 @@ static inline void get_wgroup_size_spatial(
 
   // set the GroupSize smaller to ensure larger group number
   // smaller GroupSize is friendly to the tail case
-  GroupSize = int((inner_size + vec_size - 1) / vec_size);
-  GroupSize = std::min(GroupSize, SIMD32);
+  int64_t group_size = (inner_size + vec_size - 1) / vec_size;
+  GroupSize = int(std::min<int64_t>(group_size, SIMD32));
   auto local_group_num = (inner_size + GroupSize - 1) / GroupSize;
 
   // enlarge the GroupRow to occupy all the computation resource
@@ -206,7 +206,7 @@ static inline void get_wgroup_size_spatial(
     if (GroupRow * SIMD32 == maxWGSize)
       break;
   }
-  GroupRow = std::min(GroupRow, int(dim_size));
+  GroupRow = int(std::min<int64_t>(GroupRow, dim_size));
 }
 
 template <
@@ -760,7 +760,8 @@ struct SpatialSoftmaxForwardKernelFunctor
     for (int j = 0; j < vec_size; ++j) {
       max_value[j] = accscalar_t(value[j]);
     }
-    for (int i = local_row_id + block_row_; i < dim_size_; i += block_row_) {
+    for (IndexType i = local_row_id + block_row_; i < dim_size_;
+         i += block_row_) {
       offset = i * inner_size_ + global_col * vec_size;
       value =
           *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
@@ -791,7 +792,8 @@ struct SpatialSoftmaxForwardKernelFunctor
     for (int j = 0; j < vec_size; ++j) {
       sum_value[j] = sycl::exp(value[j] - max_value[j]);
     }
-    for (int i = local_row_id + block_row_; i < dim_size_; i += block_row_) {
+    for (IndexType i = local_row_id + block_row_; i < dim_size_;
+         i += block_row_) {
       offset = i * inner_size_ + global_col * vec_size;
       value =
           *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
@@ -826,7 +828,7 @@ struct SpatialSoftmaxForwardKernelFunctor
 
     // update result
     if (global_col * vec_size < inner_size_) {
-      for (int i = local_row_id; i < dim_size_; i += block_row_) {
+      for (IndexType i = local_row_id; i < dim_size_; i += block_row_) {
         auto offset = i * inner_size_ + global_col * vec_size;
         vec_t in_val =
             *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
@@ -874,12 +876,12 @@ struct SpatialSoftmaxForwardKernelFunctor
   SpatialSoftmaxForwardKernelFunctor(
       const inscalar_t* in_data,
       outscalar_t* out_data,
-      int dim_size,
-      int inner_size,
-      int outer_size,
+      IndexType dim_size,
+      IndexType inner_size,
+      IndexType outer_size,
       int local_size,
       int block_row,
-      int group_num)
+      int64_t group_num)
       : in_data_(in_data),
         out_data_(out_data),
         dim_size_(dim_size),
@@ -892,12 +894,12 @@ struct SpatialSoftmaxForwardKernelFunctor
  private:
   const inscalar_t* in_data_;
   outscalar_t* out_data_;
-  int dim_size_;
-  int inner_size_;
-  int outer_size_;
+  IndexType dim_size_;
+  IndexType inner_size_;
+  IndexType outer_size_;
   int local_size_;
   int block_row_;
-  int group_num_;
+  int64_t group_num_;
   sycl_local_acc_t<accscalar_t, 3> local_data_;
 }; // namespace impl
 
@@ -913,9 +915,9 @@ template <
 void spatial_softmax_forward(
     const inscalar_t* in_data,
     outscalar_t* out_data,
-    int dim_size,
-    int inner_size,
-    int outer_size) {
+    int64_t dim_size,
+    int64_t inner_size,
+    int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
   using KernelClass = SpatialSoftmaxForwardKernelFunctor<
       vec_size,
@@ -931,7 +933,7 @@ void spatial_softmax_forward(
   int local_size, block_row;
   get_wgroup_size_spatial<vec_size, KernelClass>(
       outer_size, dim_size, inner_size, local_size, block_row);
-  int group_num =
+  int64_t group_num =
       (inner_size + local_size * vec_size - 1) / (local_size * vec_size);
   sycl::range<3> global_range{
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
@@ -1399,17 +1401,18 @@ template <
     typename inscalar_t,
     typename outscalar_t,
     typename accscalar_t,
+    typename IndexType,
     bool LogSoftMax,
     typename vec_t,
     bool is_same_dtype>
 struct SpatialSoftmaxBackwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<3> item) const {
-    auto global_col = item.get_global_id(2);
+    IndexType global_col = item.get_global_id(2);
     auto local_row_id = item.get_local_id(1);
     auto local_col_id = item.get_local_id(2);
 
-    auto group_offset = item.get_global_id(0) * dim_size_ * inner_size_;
+    IndexType group_offset = item.get_global_id(0) * dim_size_ * inner_size_;
     auto gradin_ptr = gradInput_ + group_offset;
     auto out_ptr = output_ + group_offset;
     auto gradout_ptr = gradOutput_ + group_offset;
@@ -1420,7 +1423,7 @@ struct SpatialSoftmaxBackwardKernelFunctor
     for (int j = 0; j < vec_size; ++j)
       sum_value[j] = accscalar_t(0);
 
-    for (int i = local_row_id; i < dim_size_; i += block_row_) {
+    for (IndexType i = local_row_id; i < dim_size_; i += block_row_) {
       auto offset = i * inner_size_ + global_col * vec_size;
       vec_t gradout_val =
           *(reinterpret_cast<const vec_t*>(gradout_ptr + offset));
@@ -1450,7 +1453,7 @@ struct SpatialSoftmaxBackwardKernelFunctor
 
     // update result
     if (global_col * vec_size < inner_size_) {
-      for (int i = local_row_id; i < dim_size_; i += block_row_) {
+      for (IndexType i = local_row_id; i < dim_size_; i += block_row_) {
         auto offset = i * inner_size_ + global_col * vec_size;
         vec_t out_val = *(reinterpret_cast<const vec_t*>(out_ptr + offset));
         vec_t gradout_val =
@@ -1493,9 +1496,9 @@ struct SpatialSoftmaxBackwardKernelFunctor
       inscalar_t* gradInput,
       const outscalar_t* output,
       const outscalar_t* gradOutput,
-      int dim_size,
-      int inner_size,
-      int outer_size,
+      IndexType dim_size,
+      IndexType inner_size,
+      IndexType outer_size,
       int local_size,
       int block_row)
       : gradInput_(gradInput),
@@ -1511,9 +1514,9 @@ struct SpatialSoftmaxBackwardKernelFunctor
   inscalar_t* gradInput_;
   const outscalar_t* output_;
   const outscalar_t* gradOutput_;
-  int dim_size_;
-  int inner_size_;
-  int outer_size_;
+  IndexType dim_size_;
+  IndexType inner_size_;
+  IndexType outer_size_;
   int local_size_;
   int block_row_;
   sycl_local_acc_t<accscalar_t, 3> local_data_;
@@ -1524,21 +1527,23 @@ template <
     typename inscalar_t,
     typename outscalar_t,
     typename accscalar_t,
+    typename IndexType,
     bool LogSoftMax,
     bool is_same_dtype>
 void spatial_softmax_backward_kernel(
     inscalar_t* gradInput,
     const outscalar_t* output,
     const outscalar_t* gradOutput,
-    int dim_size,
-    int inner_size,
-    int outer_size) {
+    int64_t dim_size,
+    int64_t inner_size,
+    int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
   using KernelClass = SpatialSoftmaxBackwardKernelFunctor<
       vec_size,
       inscalar_t,
       outscalar_t,
       accscalar_t,
+      IndexType,
       LogSoftMax,
       vec_t,
       is_same_dtype>;
@@ -1546,7 +1551,7 @@ void spatial_softmax_backward_kernel(
   int local_size, block_row;
   get_wgroup_size_spatial<vec_size, KernelClass>(
       outer_size, dim_size, inner_size, local_size, block_row);
-  int group_num =
+  int64_t group_num =
       (inner_size + local_size * vec_size - 1) / (local_size * vec_size);
   sycl::range<3> global_range{
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
@@ -1557,6 +1562,7 @@ void spatial_softmax_backward_kernel(
       inscalar_t,
       outscalar_t,
       accscalar_t,
+      IndexType,
       LogSoftMax,
       vec_t,
       is_same_dtype>(
@@ -1832,6 +1838,7 @@ void spatial_softmax_backward(
       inscalar_t,                                          \
       outscalar_t,                                         \
       accscalar_t,                                         \
+      IndexType,                                           \
       LogSoftMax,                                          \
       is_same_dtype>(                                      \
       gradInput.mutable_data_ptr<inscalar_t>(),            \
