@@ -289,11 +289,8 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
-      pytorch: 00a102a9e392e36763164988e966431e62aeaf3d
-      pytorch_artifact_run_id: '41573569195'
-      pytorch_artifact_name: manywheel-py3_12-xpu
-      python: '3.12'
+      runner: bmg-test
+      pytorch: nightly_wheel
       torch_xpu_ops: daisyden/distributed_2.16
       ut: ${{ matrix.ut_name }}
 
