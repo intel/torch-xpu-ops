@@ -66,11 +66,11 @@ process_accuracy() {
 
     echo "Processing accuracy results..."
 
-    # Get known issues
+    # Get E2E accuracy issues; models in "skipped"/"skipped_bmg"/"random" ones are not checked.
     python "$SCRIPT_DIR/../scripts/get_issue.py" \
         --repo_owner intel \
         --repo_name torch-xpu-ops \
-        --labels "module: infra" E2E Accuracy skipped \
+        --labels "test: e2e" Accuracy \
         --output /tmp/tmp-known-issue.json
 
     generate_accuracy_summary "$results_dir"
