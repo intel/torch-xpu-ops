@@ -78,7 +78,14 @@ runs:
         python -m pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu || exit /b 1
         goto :installed
         :install_built
-        for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do python -m pip install "%%f"
+        REM A rerun of the build adds one artifact per attempt, each in its own folder;
+        REM take the latest attempt, as linux-testenv does. A lone artifact lands in the root.
+        set WHEEL_DIR=%GITHUB_WORKSPACE%\wheel_artifact
+        for /f "delims=" %%d in ('powershell -NoProfile -Command "Get-ChildItem -Directory '%WHEEL_DIR%' | Sort-Object { [int]($_.Name -split '-')[-1] } | Select-Object -Last 1 -ExpandProperty FullName"') do set "WHEEL_DIR=%%d"
+        echo Installing wheels from %WHEEL_DIR%
+        if not exist "%WHEEL_DIR%\torch-*.whl" echo ::error::no torch wheel in %WHEEL_DIR%
+        if not exist "%WHEEL_DIR%\torch-*.whl" exit /b 1
+        for %%f in ("%WHEEL_DIR%\*.whl") do python -m pip install --force-reinstall "%%f"
         :installed
         python -c "import torch" || exit /b 1
     # Keep the steps below free of %VAR% reads inside ( ) blocks: cmd expands
