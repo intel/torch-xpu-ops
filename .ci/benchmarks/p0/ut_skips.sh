@@ -120,6 +120,7 @@ PYTEST_DESELECTS=(
 
     # Additional failures observed in the 2.15 BMG CI run 40892572474.
     # https://github.com/intel/torch-xpu-ops/issues/5860
+    "test/inductor/test_torchinductor.py::TritonCodeGenTests::test_indirect_device_assert"
     "test/inductor/test_torchinductor_opinfo.py::TestInductorOpInfoXPU::test_comprehensive_nn_functional_interpolate_bicubic_xpu_float16"
     # https://github.com/intel/torch-xpu-ops/issues/5452 (feature: #5542)
     "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_cow_input_nn_functional_grid_sample_xpu_float32"
