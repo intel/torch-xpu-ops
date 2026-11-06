@@ -163,6 +163,15 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         bool is_high_priority_stream = false) {
       return c10::make_intrusive<Options>(is_high_priority_stream);
     }
+
+    // ProcessGroup::splitGroup() hands split() a clone of the parent's
+    // options. Without this override the clone is sliced, and ProcessGroup
+    // then passes the parent's own live options through instead, which
+    // split() would overwrite.
+    c10::intrusive_ptr<Backend::Options> clone() const override {
+      return c10::make_intrusive<Options>(*this);
+    }
+
     bool is_high_priority_stream;
   };
 
@@ -182,6 +191,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     return options_;
   }
 
+  c10::intrusive_ptr<Backend::Options> getBackendOptions() override {
+    return c10::static_intrusive_pointer_cast<Backend::Options>(options_);
+  }
+
   const std::string getBackendName() const override {
     return std::string(XCCL_BACKEND_NAME);
   }
@@ -189,6 +202,19 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool supportsCoalescing() const override {
     return true;
   }
+
+  bool supportsSplitting() const override {
+    return true;
+  }
+
+  c10::intrusive_ptr<Backend> split(
+      const c10::intrusive_ptr<Store>& store,
+      const std::vector<int>& ranks,
+      const c10::intrusive_ptr<Backend::Options>& opts) override;
+
+  void eagerConnectSingleDevice(at::Device device) override;
+
+  void performNocolorSplit(at::Device device);
 
   void startCoalescing() override;
 
