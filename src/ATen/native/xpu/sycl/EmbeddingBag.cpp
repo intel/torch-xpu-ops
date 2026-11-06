@@ -688,7 +688,7 @@ Tensor embedding_bag_backward_xpu_max(
     const Tensor& grad,
     const Tensor& max_indices_t,
     int64_t num_weights,
-    int64_t padding_idx) {
+    [[maybe_unused]] int64_t padding_idx) {
   globalContext().alertNotDeterministic("embedding_bag_backward_xpu_max");
 
   auto max_indices = max_indices_t.contiguous();
@@ -758,9 +758,9 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     const Tensor& weight_t,
     const Tensor& indices_t,
     const Tensor& offsets_t,
-    const bool scale_grad_by_freq,
+    [[maybe_unused]] const bool scale_grad_by_freq,
     const int64_t mode,
-    bool sparse,
+    [[maybe_unused]] bool sparse,
     const Tensor& per_sample_weights_t,
     bool include_last_offset,
     int64_t padding_idx) {

@@ -38,10 +38,10 @@ struct KeyTraits {};
 template <>
 struct KeyTraits<NullType> {
   using Type = uint32_t;
-  static inline Type convert(float v) {
+  static inline Type convert([[maybe_unused]] float v) {
     return 0;
   }
-  static inline NullType deconvert(Type v) {
+  static inline NullType deconvert([[maybe_unused]] Type v) {
     return NullType();
   }
   static constexpr unsigned int endbit() {

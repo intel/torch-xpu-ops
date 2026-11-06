@@ -217,7 +217,7 @@ void fractional_max_pool2d_backward_out_frame_kernel_impl(
 void fractional_max_pool2d_backward_kernel(
     const Tensor& gradOutput,
     const Tensor& input,
-    IntArrayRef pool_size /* unused */,
+    [[maybe_unused]] IntArrayRef pool_size /* unused */,
     IntArrayRef output_size,
     const Tensor& indices,
     const Tensor& gradInput) {
