@@ -33,7 +33,6 @@ skip_dict = {
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
-    "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
@@ -320,6 +319,7 @@ skip_dict = {
         # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
         "test_non_strict_export_distribution_validation_cpp_serdes",
     ),
+    f"{PYTORCH_TEST_DIR}/export/test_draft_export.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_export_strict.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_export_training_ir_to_run_decomp.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
