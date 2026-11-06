@@ -334,6 +334,22 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_destroy_flushes_blocking_collectives_on_side_stream(self):
+        self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(1 << 20, device=device)
+        # Blocking (async_op=False) collectives run on the current stream, here
+        # a side stream; the default stream is not ordered after it.
+        side = torch.xpu.Stream(device=device)
+        with torch.xpu.stream(side):
+            for _ in range(10):
+                dist.all_reduce(t)
+        dist.destroy_process_group()
+        # Read on the default stream: correct only if teardown waited.
+        self.assertEqual(t, torch.full_like(t, self.world_size**10))
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_destroy_with_p2p_and_collective_comms(self):
         pg = self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]
@@ -381,7 +397,8 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         pg.allreduce([t])  # queued in the open oneCCL group
         # Teardown submits the queued op on the live comm before destroying it.
         backend.shutdown()
-        self.assertIsNone(backend._end_coalescing())
+        # The flushed op's Work; teardown already waited for it.
+        backend._end_coalescing().wait()
         self.assertEqual(t, torch.full_like(t, self.world_size))
         with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
             pg.allreduce([t])

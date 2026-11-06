@@ -428,12 +428,15 @@ ProcessGroupXCCL::ProcessGroupXCCL(
 }
 
 ProcessGroupXCCL::~ProcessGroupXCCL() {
-  if (!terminated_ && !devXCCLCommMap_.empty()) {
-    LOG(WARNING)
-        << logPrefix() << "destroy_process_group() was not called before the "
-        << "ProcessGroupXCCL was destroyed; its oneCCL communicators "
-        << "are leaked, which can crash at exit with the libfabric cxi "
-        << "provider.";
+  // Once per process and from one rank per node, as ProcessGroupNCCL does.
+  const auto ndev = at::xpu::device_count();
+  if (!terminated_ && !devXCCLCommMap_.empty() &&
+      (ndev <= 0 || globalRank() % ndev == 0)) {
+    C10_LOG_FIRST_N(WARNING, 1)
+        << logPrefix() << "ProcessGroupXCCL destroyed with live oneCCL "
+        << "communicators; they are leaked until process exit, which can "
+        << "crash with the libfabric cxi provider. destroy_process_group() "
+        << "releases them.";
   }
   heartbeatMonitor_->stop();
   // Wait for all threads to finish before returning
@@ -447,18 +450,32 @@ void ProcessGroupXCCL::abort() {
       "ProcessGroupXCCL cannot abort its oneCCL communicators; they stay alive "
       "until process exit, which can crash with the libfabric cxi provider. "
       "Use destroy_process_group() to release them.");
+  // Upstream drops the PG after abort(); nothing is left to watch.
+  heartbeatMonitor_->stop();
 }
 
 void ProcessGroupXCCL::shutdown() {
   // Failures are logged, never thrown: destroy_process_group() loops over all
   // PGs without a try/except, so a throw here would leave the remaining PGs'
   // comms alive. The nccl2 shutdown() likewise logs a failing finalize().
+  try {
+    shutdownImpl();
+  } catch (const std::exception& e) {
+    LOG(ERROR) << logPrefix()
+               << "ProcessGroupXCCL::shutdown failed: " << e.what();
+  } catch (...) {
+    LOG(ERROR) << logPrefix() << "ProcessGroupXCCL::shutdown failed";
+  }
+}
+
+void ProcessGroupXCCL::shutdownImpl() {
   // Waiting for outstanding operations blocks forever if a peer is gone, and
   // without onecclCommAbort there is no abort() to recover with.
   struct CommToDestroy {
     std::string key;
     std::shared_ptr<onecclComm_t> comm;
     at::xpu::XPUStream stream;
+    bool drained = true;
   };
   std::vector<CommToDestroy> comms;
   {
@@ -479,8 +496,6 @@ void ProcessGroupXCCL::shutdown() {
   }
   LOG(INFO) << logPrefix()
             << "Starting to destroy process group, flushing operations.";
-  // Read without mutex_ by collectives, like the maps above.
-  coalescedComm_ = nullptr;
 
   // Ops queued in an open coalescing block sit in the open oneCCL group, and
   // oneCCL rejects finalize inside a group. As initXCCLComm() does, close every
@@ -499,15 +514,19 @@ void ProcessGroupXCCL::shutdown() {
     }
   }
 
-  // Wait for every comm's outstanding operations, whichever stream they ran
-  // on. oneCCL finalize is rank-local (ccl_comm::finalize() only waits on the
-  // comm's own events and queue, no barrier) and is rejected inside a group,
-  // so unlike NCCL there is no onecclGroupStart/End here.
+  // Wait for every comm's outstanding operations on every stream they ran on,
+  // user streams included: ccl_comm::finalize() waits on the comm's events from
+  // all streams and on its own queue, with no barrier, so it is rank-local
+  // (verified on oneCCL ccde48f4f, deps/libccl/src/comm/comm.cpp). It is
+  // rejected inside a group, so unlike NCCL there is no onecclGroupStart/End.
   for (auto& c : comms) {
     if (c.comm && *c.comm) {
       c10::DeviceGuard gpuGuard(c.stream.device());
       onecclResult_t res = onecclCommFinalize(*c.comm);
-      if (res != onecclSuccess) {
+      // A plugin without finalize cannot wait here; its comm is still
+      // destroyed below.
+      if (res != onecclSuccess && res != onecclNotImplemented) {
+        c.drained = false;
         LOG(ERROR) << logPrefix() << "onecclCommFinalize failed for comm key "
                    << c.key << " with code " << static_cast<int>(res);
       }
@@ -520,6 +539,7 @@ void ProcessGroupXCCL::shutdown() {
     try {
       c.stream.synchronize();
     } catch (const std::exception& e) {
+      c.drained = false;
       LOG(ERROR) << logPrefix() << "Synchronizing the stream of comm key "
                  << c.key << " failed: " << e.what();
     }
@@ -531,6 +551,13 @@ void ProcessGroupXCCL::shutdown() {
   // until exit crashes with the cxi provider: oneCCL dlclose()s libfabric
   // while its memhooks are still installed.
   for (auto& c : comms) {
+    if (!c.drained) {
+      // Destroying a comm whose operations may still be running is worse than
+      // leaking it.
+      LOG(ERROR) << logPrefix() << "Leaking comm key " << c.key
+                 << ": its outstanding operations could not be waited for";
+      continue;
+    }
     if (c.comm && *c.comm) {
       c10::DeviceGuard gpuGuard(c.stream.device());
       onecclResult_t res = onecclCommDestroy(*c.comm);
@@ -541,8 +568,6 @@ void ProcessGroupXCCL::shutdown() {
       *c.comm = nullptr;
     }
   }
-  // The comms' outstanding operations have completed.
-  coalescedTensors_.clear();
 
   for (const auto i : c10::irange(groupDepth)) {
     (void)i;
