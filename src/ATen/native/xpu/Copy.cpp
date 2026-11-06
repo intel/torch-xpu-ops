@@ -71,6 +71,28 @@ static bool copy_requires_temporaries(TensorIterator& iter, bool p2p_enabled) {
   }
 }
 
+// The Level Zero runtime serves host-to-device copies up to this size with a
+// host-side memcpy, which first drains the in-order queue. A small
+// `non_blocking` copy would therefore block the caller until the queue is
+// idle, and the pinned source is no longer in flight once copy_() returns, so
+// the caching host allocator recycles it right away. A device kernel is
+// enqueued asynchronously whatever the size; above the threshold the queue's
+// copy engine is asynchronous too and faster, so it stays in use there.
+constexpr int64_t kHostCopyKernelMaxBytes = 64 * 1024;
+
+// `src` must be device-accessible USM: pinned host memory, or a buffer from
+// the XPU host allocator.
+static void memcpyHostToDeviceAsync(
+    void* dst,
+    const void* src,
+    int64_t nbytes) {
+  if (nbytes <= kHostCopyKernelMaxBytes) {
+    copy_bytes_kernel(dst, src, nbytes);
+  } else {
+    getCurrentSYCLQueue().memcpy(dst, src, nbytes);
+  }
+}
+
 static bool maybe_enable_p2p_access(Device dst_device, Device src_device) {
   if (dst_device.is_cpu() || src_device.is_cpu()) {
     return false;
@@ -275,7 +297,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   if (non_blocking) {
     if (copy_kind == _H2D_) {
       if (at::detail::getXPUHooks().isPinnedPtr(src)) {
-        q.memcpy(dst, src, nbytes);
+        memcpyHostToDeviceAsync(dst, src, nbytes);
         at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(src),
             iter.tensor(1).storage().data_ptr().get_context(),
@@ -294,7 +316,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
         }
 
         std::memcpy(stage_mem, src, nbytes);
-        q.memcpy(dst, stage_mem, nbytes);
+        memcpyHostToDeviceAsync(dst, stage_mem, nbytes);
         at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(stage_mem),
             stage_mem_dptr.get_context(),
