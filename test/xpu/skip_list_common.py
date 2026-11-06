@@ -30,7 +30,6 @@ skip_dict = {
     "dynamo/test_export_xpu.py": None,
     "dynamo/test_logging_xpu.py": None,
     "dynamo/test_misc_xpu.py": None,
-    "dynamo/test_recompiles_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
@@ -38,15 +37,12 @@ skip_dict = {
     "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "export/test_export_strict_xpu.py": None,
-    "export/test_export_training_ir_to_run_decomp_xpu.py": None,
     "export/test_retraceability_xpu.py": None,
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
     "export/test_strict_export_v2_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    "nn/test_multihead_attention_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
@@ -193,7 +189,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/2285
         "_efficient_attention_forward",
     ),
-    "test_mkldnn_fusion_xpu.py": None,
     "test_nestedtensor_xpu.py": None,
     "test_nn_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2531
@@ -202,18 +197,6 @@ skip_dict = {
     ),
     "test_numba_integration_xpu.py": None,
     "test_numpy_interop_xpu.py": None,
-    "test_ops_fwd_gradients_xpu.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_fn_fwgrad_bwgrad_stft_xpu_complex128",
-        # https://github.com/intel/torch-xpu-ops/issues/4996
-        "test_fn_fwgrad_bwgrad_stft_xpu_float64",
-    ),
-    "test_ops_gradients_xpu.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_fn_gradgrad_stft_xpu_complex128",
-    ),
     "test_ops_xpu.py": (
         "_jiterator_",
         # crash
@@ -336,8 +319,11 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_recompiles.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_converter.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_export_strict.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_export_training_ir_to_run_decomp.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_passes.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_torchbind.py": None,
@@ -365,6 +351,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_lazy_modules.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_multihead_attention.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
@@ -426,12 +413,25 @@ skip_dict = {
     ),
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
+    f"{PYTORCH_TEST_DIR}/test_mkldnn_fusion.py": None,
     f"{PYTORCH_TEST_DIR}/test_modes.py": None,
     f"{PYTORCH_TEST_DIR}/test_modules.py": None,
     f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_mha.py": None,
     f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
+    f"{PYTORCH_TEST_DIR}/test_ops_fwd_gradients.py": (
+        # BMG hang (>10 min) taking down the xdist worker
+        # https://github.com/intel/torch-xpu-ops/issues/5930
+        "test_fn_fwgrad_bwgrad_stft_xpu_complex128",
+        # https://github.com/intel/torch-xpu-ops/issues/4996
+        "test_fn_fwgrad_bwgrad_stft_xpu_float64",
+    ),
+    f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": (
+        # BMG hang (>10 min) taking down the xdist worker
+        # https://github.com/intel/torch-xpu-ops/issues/5930
+        "test_fn_gradgrad_stft_xpu_complex128",
+    ),
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,

@@ -16,9 +16,9 @@ DistilBertForQuestionAnswering,512
 DistillGPT2,32
 ElectraForCausalLM,64
 ElectraForQuestionAnswering,128
-GoogleFnet,32
 google/gemma-2-2b,8
 google/gemma-3-4b-it,8
+GoogleFnet,32
 GPT2ForSequenceClassification,8
 GPTJForCausalLM,1
 GPTJForQuestionAnswering,1
@@ -32,17 +32,17 @@ MBartForConditionalGeneration,4
 MegatronBertForCausalLM,16
 MegatronBertForQuestionAnswering,16
 meta-llama/Llama-3.2-1B,8
-mistralai/Mistral-7B-Instruct-v0.3,8
+mistralai/Mistral-7B-Instruct-v0.3, 8
 MobileBertForMaskedLM,256
 MobileBertForQuestionAnswering,256
 MT5ForConditionalGeneration,32
-openai/gpt-oss-20b,8
 openai/whisper-tiny,8
 OPTForCausalLM,4
 PegasusForCausalLM,128
 PegasusForConditionalGeneration,64
 PLBartForCausalLM,16
 PLBartForConditionalGeneration,8
+Qwen/Qwen3.5-0.8B,8
 Qwen/Qwen3-0.6B,8
 RobertaForCausalLM,32
 RobertaForQuestionAnswering,32
