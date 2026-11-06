@@ -200,4 +200,26 @@ void cholesky_kernel_xpu(const Tensor& input, const Tensor& info, bool upper) {
 
 REGISTER_XPU_DISPATCH(cholesky_stub, &cholesky_kernel_xpu);
 
+Tensor& cholesky_inverse_kernel_fallback(
+    Tensor& input,
+    Tensor& info,
+    bool upper) {
+  TORCH_WARN_ONCE(
+      "torch.cholesky_inverse op is using CPU fallback implementation on XPU. "
+      "(temporary)");
+
+  auto input_cpu = input.to(input.options().device(kCPU));
+  auto info_cpu = info.to(info.options().device(kCPU));
+  cholesky_inverse_stub(at::kCPU, input_cpu, info_cpu, upper);
+  input.copy_(input_cpu);
+  info.copy_(info_cpu);
+  return input;
+}
+
+Tensor& cholesky_inverse_kernel_xpu(Tensor& input, Tensor& info, bool upper) {
+  return cholesky_inverse_kernel_fallback(input, info, upper);
+}
+
+REGISTER_XPU_DISPATCH(cholesky_inverse_stub, &cholesky_inverse_kernel_xpu);
+
 } // namespace at::native
