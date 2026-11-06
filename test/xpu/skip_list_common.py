@@ -36,10 +36,6 @@ skip_dict = {
     "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "export/test_retraceability_xpu.py": None,
-    "export/test_serdes_xpu.py": None,
-    "export/test_serialize_xpu.py": None,
-    "export/test_strict_export_v2_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
@@ -328,6 +324,21 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/export/test_export_training_ir_to_run_decomp.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_passes.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_retraceability.py": (
+        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
+        "test_non_strict_export_distribution_validation_retraceability_strict",
+        "test_non_strict_export_distribution_validation_retraceability_nonstrict",
+    ),
+    f"{PYTORCH_TEST_DIR}/export/test_serdes.py": (
+        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
+        "test_non_strict_export_distribution_validation_serdes_strict",
+        "test_non_strict_export_distribution_validation_serdes_nonstrict",
+    ),
+    f"{PYTORCH_TEST_DIR}/export/test_serialize.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_strict_export_v2.py": (
+        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
+        "test_non_strict_export_distribution_validation_strict_export_v2",
+    ),
     f"{PYTORCH_TEST_DIR}/export/test_torchbind.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_ac.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_aot_joint_with_descriptors.py": None,
