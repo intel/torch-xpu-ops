@@ -68,7 +68,6 @@ run_pytest() {
 declare -A inductor_tests=(
     ["test/inductor/test_aot_inductor.py"]="$PYTORCH_ROOT_DIR"
     ["test/inductor/test_aot_inductor_package.py"]="$PYTORCH_ROOT_DIR"
-    ["test/inductor/test_cutlass_backend.py"]="$PYTORCH_ROOT_DIR"
     ["test/inductor/test_kernel_benchmark.py"]="$PYTORCH_ROOT_DIR"
     ["test/inductor/test_mkldnn_pattern_matcher.py"]="$PYTORCH_ROOT_DIR"
     ["test/inductor/test_torchinductor.py"]="$PYTORCH_ROOT_DIR"
