@@ -363,7 +363,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
       "lu_unpack.out",
       "ormqr",
       "ormqr.out",
-      "triangular_solve.X",
       "_validate_compressed_sparse_indices",
   };
   for (auto& op_name : fallback_list) {
