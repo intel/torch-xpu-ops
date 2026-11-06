@@ -342,6 +342,7 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         # a side stream; the default stream is not ordered after it.
         side = torch.xpu.Stream(device=device)
         with torch.xpu.stream(side):
+            side.wait_stream(torch.xpu.current_stream(device))
             for _ in range(10):
                 dist.all_reduce(t)
         dist.destroy_process_group()

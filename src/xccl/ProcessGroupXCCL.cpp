@@ -19,6 +19,8 @@
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
+#include <cstdlib>
+
 namespace c10d {
 
 using FlightRecorderXCCL = FlightRecorder<at::xpu::XPUEvent>;
@@ -44,6 +46,24 @@ onecclComm_t& checkedXCCLComm(const std::shared_ptr<onecclComm_t>& comm) {
         "ProcessGroupXCCL has been shut down; its communicators were destroyed");
   }
   return *comm;
+}
+
+// Comms still alive at process exit. ~ProcessGroupXCCL() does not run during
+// interpreter exit, so the leak is reported from an atexit handler. It is
+// registered when the first comm is created, i.e. after oneCCL has set up its
+// own exit-time teardown (libccl.so.1 is dlopen()ed and initialized at first
+// use), so it runs before that teardown dlclose()s libfabric and crashes.
+std::atomic<int> liveXCCLComms{0};
+std::atomic<bool> reportLeakAtExit{false}; // one rank per node
+std::atomic<bool> leakReportRegistered{false};
+void reportXCCLLeakAtExit() {
+  if (liveXCCLComms.load() > 0 && reportLeakAtExit.load()) {
+    LOG(WARNING) << "[XCCL] " << liveXCCLComms.load()
+                 << " oneCCL communicator(s) are still alive at process exit "
+                 << "(destroy_process_group() was not called, or teardown "
+                 << "could not wait for them). This can crash at exit with "
+                 << "the libfabric cxi provider.";
+  }
 }
 
 struct OnecclGroupGuard {
@@ -429,10 +449,12 @@ ProcessGroupXCCL::ProcessGroupXCCL(
 
 ProcessGroupXCCL::~ProcessGroupXCCL() {
   // Once per process and from one rank per node, as ProcessGroupNCCL does.
+  // C10_LOG_FIRST_N only rate-limits with glog, so guard explicitly.
+  static std::atomic<bool> warned{false};
   const auto ndev = at::xpu::device_count();
   if (!terminated_ && !devXCCLCommMap_.empty() &&
-      (ndev <= 0 || globalRank() % ndev == 0)) {
-    C10_LOG_FIRST_N(WARNING, 1)
+      (ndev <= 0 || globalRank() % ndev == 0) && !warned.exchange(true)) {
+    LOG(WARNING)
         << logPrefix() << "ProcessGroupXCCL destroyed with live oneCCL "
         << "communicators; they are leaked until process exit, which can "
         << "crash with the libfabric cxi provider. destroy_process_group() "
@@ -504,13 +526,21 @@ void ProcessGroupXCCL::shutdownImpl() {
   // counter is per thread and shared by all PGs: this sees only blocks opened
   // on the calling thread, and also submits other PGs' queued ops early.
   const auto groupDepth = xcclActiveGroupCounter_;
+  bool flushFailed = false;
   for (const auto i : c10::irange(groupDepth)) {
     (void)i;
     onecclResult_t res = onecclGroupEnd();
     if (res != onecclSuccess) {
+      flushFailed = true;
       LOG(ERROR) << logPrefix()
                  << "onecclGroupEnd failed while flushing coalesced ops with "
                  << "code " << static_cast<int>(res);
+    }
+  }
+  if (flushFailed) {
+    // Queued ops may have been dropped; destroying the comms would hide that.
+    for (auto& c : comms) {
+      c.drained = false;
     }
   }
 
@@ -523,9 +553,10 @@ void ProcessGroupXCCL::shutdownImpl() {
     if (c.comm && *c.comm) {
       c10::DeviceGuard gpuGuard(c.stream.device());
       onecclResult_t res = onecclCommFinalize(*c.comm);
-      // A plugin without finalize cannot wait here; its comm is still
-      // destroyed below.
-      if (res != onecclSuccess && res != onecclNotImplemented) {
+      // Every shipped oneCCL plugin implements finalize. One without it
+      // (onecclNotImplemented) gives no way to wait, so its comm is leaked
+      // below like any other failure rather than destroyed undrained.
+      if (res != onecclSuccess) {
         c.drained = false;
         LOG(ERROR) << logPrefix() << "onecclCommFinalize failed for comm key "
                    << c.key << " with code " << static_cast<int>(res);
@@ -564,6 +595,8 @@ void ProcessGroupXCCL::shutdownImpl() {
       if (res != onecclSuccess) {
         LOG(ERROR) << logPrefix() << "onecclCommDestroy failed for comm key "
                    << c.key << " with code " << static_cast<int>(res);
+      } else {
+        --liveXCCLComms;
       }
       *c.comm = nullptr;
     }
@@ -836,6 +869,14 @@ std::shared_ptr<onecclComm_t> ProcessGroupXCCL::initXCCLComm(
       xcclStreamsMap_.emplace(deviceKey, at::xpu::XPUStream(stream));
       xcclEventsMap_.emplace(deviceKey, at::xpu::XPUEvent());
       inserted = true;
+      ++liveXCCLComms;
+      const auto ndev = at::xpu::device_count();
+      if (ndev <= 0 || globalRank() % ndev == 0) {
+        reportLeakAtExit = true;
+      }
+      if (!leakReportRegistered.exchange(true)) {
+        std::atexit(reportXCCLLeakAtExit);
+      }
     }
   }
   if (!inserted) {
