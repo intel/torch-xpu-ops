@@ -66,6 +66,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         # exit, and its destructor can hang once the comms are destroyed, so
         # these long-lived workers fail to exit. Skip the backend teardown in
         # this class's workers until CI's oneCCL has the fix.
+        # TODO: remove once CI's oneCCL includes a766d7238.
         dist.ProcessGroup.shutdown = lambda self: None
 
     # @classmethod
