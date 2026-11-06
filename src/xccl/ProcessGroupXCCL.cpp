@@ -35,12 +35,13 @@ bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
 }
 
 // shutdown() nulls destroyed handles; fail loudly instead of passing a null
-// comm to oneCCL.
+// comm to oneCCL. Best effort only: a collective racing shutdown() on another
+// thread can still read the handle just before it is nulled.
 onecclComm_t& checkedXCCLComm(const std::shared_ptr<onecclComm_t>& comm) {
   if (!comm || !*comm) {
     C10_THROW_ERROR(
         DistBackendError,
-        "XCCL communicator was destroyed by ProcessGroupXCCL::shutdown()");
+        "ProcessGroupXCCL has been shut down; its communicators were destroyed");
   }
   return *comm;
 }
@@ -427,9 +428,25 @@ ProcessGroupXCCL::ProcessGroupXCCL(
 }
 
 ProcessGroupXCCL::~ProcessGroupXCCL() {
+  if (!terminated_ && !devXCCLCommMap_.empty()) {
+    LOG(WARNING)
+        << logPrefix() << "destroy_process_group() was not called before the "
+        << "ProcessGroupXCCL was destroyed; its oneCCL communicators "
+        << "are leaked, which can crash at exit with the libfabric cxi "
+        << "provider.";
+  }
   heartbeatMonitor_->stop();
   // Wait for all threads to finish before returning
   heartbeatMonitor_->join();
+}
+
+void ProcessGroupXCCL::abort() {
+  // oneCCL has no comm abort (onecclCommAbort is not implemented), so the comms
+  // cannot be torn down without waiting for outstanding operations.
+  TORCH_WARN_ONCE(
+      "ProcessGroupXCCL cannot abort its oneCCL communicators; they stay alive "
+      "until process exit, which can crash with the libfabric cxi provider. "
+      "Use destroy_process_group() to release them.");
 }
 
 void ProcessGroupXCCL::shutdown() {
@@ -483,8 +500,9 @@ void ProcessGroupXCCL::shutdown() {
   }
 
   // Wait for every comm's outstanding operations, whichever stream they ran
-  // on. oneCCL finalize/destroy are rank-local and finalize is rejected inside
-  // a group, so unlike NCCL there is no onecclGroupStart/End here.
+  // on. oneCCL finalize is rank-local (ccl_comm::finalize() only waits on the
+  // comm's own events and queue, no barrier) and is rejected inside a group,
+  // so unlike NCCL there is no onecclGroupStart/End here.
   for (auto& c : comms) {
     if (c.comm && *c.comm) {
       c10::DeviceGuard gpuGuard(c.stream.device());

@@ -337,12 +337,13 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
     def test_destroy_with_p2p_and_collective_comms(self):
         pg = self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]
-        t = torch.ones(10, 10, device=device)
+        t = torch.full((10, 10), float(self.rank + 1), device=device)
         # Lazily creates the 2-rank P2P comm keyed "0:1".
         if self.rank == 0:
             dist.send(t, dst=1)
         else:
             dist.recv(t, src=0)
+            self.assertEqual(t, torch.ones_like(t))
         dist.all_reduce(t)
         self.assertEqual(t, torch.full_like(t, self.world_size))
         dist.destroy_process_group()
@@ -426,7 +427,9 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         # Before the fix, workers exited with SIGSEGV after teardown: oneCCL
         # dlclose()d libfabric with the cxi MR cache memhooks still installed.
         # MultiProcessTestCase checks that each rank exits with code 0.
-        os.environ["FI_PROVIDER"] = "cxi"
+        # Rank processes only (MultiProcessTestCase); later tests spawn fresh ranks.
+        if "cxi" not in os.environ.get("FI_PROVIDER", ""):
+            os.environ["FI_PROVIDER"] = "cxi,tcp;ofi_rxm"
         os.environ.pop("FI_MR_CACHE_MONITOR", None)
         self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]
