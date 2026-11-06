@@ -58,8 +58,9 @@ function resolve({ core, overrides = {}, config = '' }) {
     }
   }
   core.setOutput('json', JSON.stringify(resolved));
-  // exported so later steps of the calling job can reuse the resolved version
+  // exported so later steps of the calling job can reuse the resolved versions
   core.exportVariable('PYTHON_VERSION', resolved.common.python);
+  core.exportVariable('GCC_VERSION', resolved.common.gcc);
   core.info(`Resolved CI defaults from ${file}: ${JSON.stringify(resolved)}`);
 
   return resolved;

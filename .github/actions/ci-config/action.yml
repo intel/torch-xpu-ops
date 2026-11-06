@@ -1,23 +1,48 @@
 name: CI Config
-description: Resolve the shared CI defaults from .github/ci-config/defaults.yaml and export PYTHON_VERSION
+description: Resolve the shared CI defaults from .github/ci-config/defaults.yaml (python, gcc, runner labels, container image), export PYTHON_VERSION and GCC_VERSION, and optionally install that gcc
 
 inputs:
   python:
-    type: string
     default: ''
     description: Python version override. Empty resolves to the `python` entry of the config file
   config:
-    type: string
     default: ''
     description: Config file path. Defaults to $BASE_ENV, then .github/ci-config/defaults.yaml
+  runner:
+    default: ''
+    description: Runner label override applied to every job type. Empty uses the `runner` entries of the config
+  setup_gcc:
+    default: 'false'
+    description: Install the base packages with .ci/docker/common/install_base.sh and make the configured gcc the default (containers only)
 
 outputs:
   python:
     description: Resolved python version
     value: ${{ steps.resolve.outputs.python }}
+  gcc:
+    description: Resolved gcc version
+    value: ${{ steps.resolve.outputs.gcc }}
   json:
     description: Full resolved config as JSON, for use with fromJSON()
     value: ${{ steps.resolve.outputs.json }}
+  ut:
+    description: Runner for UT jobs
+    value: ${{ steps.resolve.outputs.ut }}
+  ut_image:
+    description: Container image for the UT runner
+    value: ${{ steps.resolve.outputs.ut_image }}
+  accuracy:
+    description: Runner for E2E accuracy jobs
+    value: ${{ steps.resolve.outputs.accuracy }}
+  accuracy_image:
+    description: Container image for the accuracy runner
+    value: ${{ steps.resolve.outputs.accuracy_image }}
+  performance:
+    description: Runner for E2E performance and microbench jobs
+    value: ${{ steps.resolve.outputs.performance }}
+  performance_image:
+    description: Container image for the performance runner
+    value: ${{ steps.resolve.outputs.performance_image }}
 
 runs:
   using: composite
@@ -29,11 +54,35 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         CONFIG_PATH: ${{ inputs.config }}
         OVERRIDE_PYTHON: ${{ inputs.python }}
+        OVERRIDE_RUNNER: ${{ inputs.runner }}
       with:
         script: |
           const { resolve } = require(`${process.env.ACTION_PATH}/../../ci-config/resolve.js`);
-          resolve({
+          const { runner, image } = resolve({
             core,
             config: process.env.CONFIG_PATH,
             overrides: { python: process.env.OVERRIDE_PYTHON },
           });
+          const override = process.env.OVERRIDE_RUNNER;
+          for (const [key, value] of Object.entries(runner)) {
+            const type = key.replace(/^runner_/, '');
+            const label = override || value;
+            core.setOutput(type, label);
+            core.setOutput(`${type}_image`, label.includes('bmg') ? image.image_bmg : image.image_pvc);
+          }
+    - name: Install gcc-${{ steps.resolve.outputs.gcc }}
+      if: ${{ inputs.setup_gcc == 'true' }}
+      shell: bash -xe {0}
+      env:
+        # keep the image's driver packages as shipped
+        APT_UPGRADE: '0'
+        INSTALL_BASE: ${{ github.action_path }}/../../../.ci/docker/common/install_base.sh
+      run: |
+        if [ ! -f /.dockerenv ]; then
+          echo "Not in a container, keeping the host gcc"
+          gcc -v
+          exit 0
+        fi
+        SUDO=""
+        [ "$(id -u)" -eq 0 ] || SUDO="sudo -E"
+        ${SUDO} bash "${INSTALL_BASE}"

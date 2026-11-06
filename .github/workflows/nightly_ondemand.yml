@@ -26,6 +26,10 @@ on:
         type: string
         default: ''
         description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
+      runner:
+        type: string
+        default: ''
+        description: Linux test runner label for UT, E2E and microbench. Empty uses the `runner` entries of .github/ci-config/defaults.yaml
       ut:
         type: string
         default: ''
@@ -60,89 +64,110 @@ permissions: read-all
 run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}
 
 jobs:
-  Conditions-Filter:
-    name: conditions-filter
+  config:
+    name: config
     if: ${{ github.repository_owner == 'intel' || github.event_name != 'schedule' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 5
     outputs:
-      # Test type, (build or wheel)-(nightly, weekly or ondemand)
-      test_type: ${{ steps.inputs-check.outputs.test_type }}
-      pytorch: ${{ steps.inputs-check.outputs.pytorch }}
-      torch_xpu_ops: ${{ steps.inputs-check.outputs.torch_xpu_ops }}
-      ut: ${{ steps.inputs-check.outputs.ut }}
-      suite: ${{ steps.inputs-check.outputs.suite }}
-      scenario: ${{ steps.inputs-check.outputs.scenario }}
-      triton: ${{ steps.inputs-check.outputs.triton }}
-      python: ${{ steps.inputs-check.outputs.python }}
+      # (build|wheel)-(nightly|weekly|ondemand)
+      test_type: ${{ steps.scope.outputs.test_type }}
+      pytorch: ${{ steps.scope.outputs.pytorch }}
+      torch_xpu_ops: ${{ steps.scope.outputs.torch_xpu_ops }}
+      triton: ${{ steps.scope.outputs.triton }}
+      python: ${{ steps.scope.outputs.python }}
+      ut: ${{ steps.scope.outputs.ut }}
+      suite: ${{ steps.scope.outputs.suite }}
+      scenario: ${{ steps.scope.outputs.scenario }}
+      run_ut: ${{ steps.scope.outputs.run_ut }}
+      run_e2e: ${{ steps.scope.outputs.run_e2e }}
+      run_microbench: ${{ steps.scope.outputs.run_microbench }}
+      run_windows: ${{ steps.scope.outputs.run_windows }}
+      runner_ut: ${{ steps.ci-config.outputs.ut }}
+      image_ut: ${{ steps.ci-config.outputs.ut_image }}
+      runner_accuracy: ${{ steps.ci-config.outputs.accuracy }}
+      image_accuracy: ${{ steps.ci-config.outputs.accuracy_image }}
+      runner_performance: ${{ steps.ci-config.outputs.performance }}
+      image_performance: ${{ steps.ci-config.outputs.performance_image }}
     steps:
-      - name: Inputs check
-        id: inputs-check
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - name: Select runners
+        id: ci-config
+        uses: ./.github/actions/ci-config
+        with:
+          runner: ${{ inputs.runner }}
+      - name: Resolve test scope
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          REF_NAME: ${{ github.ref_name }}
+          IN_PYTORCH: ${{ inputs.pytorch }}
+          IN_TORCH_XPU_OPS: ${{ inputs.torch_xpu_ops }}
+          IN_TRITON: ${{ inputs.triton }}
+          IN_PYTHON: ${{ inputs.python }}
+          IN_UT: ${{ inputs.ut }}
+          IN_SUITE: ${{ inputs.suite }}
+          IN_SCENARIO: ${{ inputs.scenario }}
         run: |
-          if [ "${{ github.event_name }}" == "schedule" ];then
-            if [ "${{ github.event.schedule }}" == "10 13 * * 0-4" ];then
-              test_type="build-nightly"
-              pytorch="main"
-              torch_xpu_ops="main"
-            elif [ "${{ github.event.schedule }}" == "30 13 * * 0-4" ];then
-              test_type="wheel-nightly"
-              pytorch="nightly_wheel"
-              torch_xpu_ops="pinned"
-            elif [ "${{ github.event.schedule }}" == "10 16 * * 5" ];then
-              test_type="build-weekly"
-              pytorch="main"
-              torch_xpu_ops="main"
-            elif [ "${{ github.event.schedule }}" == "30 16 * * 5" ];then
-              test_type="wheel-weekly"
-              pytorch="nightly_wheel"
-              torch_xpu_ops="pinned"
+          # comma list -> JSON array, dropping empty and the given non-matrix entries
+          to_json() { tr ',' '\n' <<< "$1" | { grep -vxE "${2:-}|" || true; } | jq -Rnc '[inputs]'; }
+          has() { tr ',' '\n' <<< "$1" | grep -qx "$2" && echo true || echo false; }
+          if [ "${EVENT}" == "schedule" ]; then
+            case "${SCHEDULE}" in
+              "10 13 * * 0-4") test_type="build-nightly" ;;
+              "30 13 * * 0-4") test_type="wheel-nightly" ;;
+              "10 16 * * 5")   test_type="build-weekly" ;;
+              "30 16 * * 5")   test_type="wheel-weekly" ;;
+              *) echo "No such scheduler: ${SCHEDULE}"; exit 1 ;;
+            esac
+            if [[ "${test_type}" == build-* ]]; then
+              pytorch="main"; torch_xpu_ops="main"
             else
-              echo "No such scheduler: ${{ github.event.schedule }}"
-              exit 1
+              pytorch="nightly_wheel"; torch_xpu_ops="pinned"
             fi
-            ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
-            suite='["huggingface","timm_models","torchbench"]'
-            # Weekly also runs the upstream UT scopes
-            if [[ "${test_type}" == *"-weekly" ]];then
-              ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed","upstream_distributed","upstream_inductor","upstream_default"]'
+            ut_list="basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed"
+            # weekly also runs the upstream UT scopes
+            if [[ "${test_type}" == *-weekly ]]; then
+              ut_list+=",upstream_distributed,upstream_inductor,upstream_default"
             fi
-            scenario='["accuracy","performance"]'
-            triton=''
-            python=''
+            ut="$(to_json "${ut_list}")"
+            suite="$(to_json huggingface,timm_models,torchbench)"
+            scenario="$(to_json accuracy,performance)"
+            triton=""; python=""
+            run_microbench=false; run_windows=true
           else
-            pytorch="${{ inputs.pytorch }}"
-            if [ -z ${{ inputs.torch_xpu_ops }} ];then
-              torch_xpu_ops="${{ github.ref_name }}"
-            else
-              torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
-            fi
-            if [[ "${{ inputs.pytorch }}" == *"_wheel" ]];then
-              test_type="wheel-ondemand"
-            else
-              test_type="build-ondemand"
-            fi
-            ut="$(echo ${{ inputs.ut }} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
-            suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
-            if [ -n "${{ inputs.scenario }}" ];then
-              scenario="$(echo ${{ inputs.scenario }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
-            else
-              scenario='["accuracy","performance"]'
-            fi
-            triton="${{ inputs.triton }}"
-            python="${{ inputs.python }}"
+            pytorch="${IN_PYTORCH}"
+            torch_xpu_ops="${IN_TORCH_XPU_OPS:-${REF_NAME}}"
+            [[ "${pytorch}" == *_wheel ]] && test_type="wheel-ondemand" || test_type="build-ondemand"
+            ut="$(to_json "${IN_UT}" 'microbench|windows')"
+            suite="$(to_json "${IN_SUITE}")"
+            scenario="$(to_json "${IN_SCENARIO:-accuracy,performance}")"
+            triton="${IN_TRITON}"; python="${IN_PYTHON}"
+            run_microbench="$(has "${IN_UT}" microbench)"
+            run_windows="$(has "${IN_UT}" windows)"
           fi
-          echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
-          echo "pytorch=${pytorch}" >> ${GITHUB_OUTPUT}
-          echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
-          echo "ut=${ut}" >> ${GITHUB_OUTPUT}
-          echo "suite=${suite}" >> ${GITHUB_OUTPUT}
-          echo "scenario=${scenario}" >> ${GITHUB_OUTPUT}
-          echo "triton=${triton}" >> ${GITHUB_OUTPUT}
-          echo "python=${python}" >> ${GITHUB_OUTPUT}
+          {
+            echo "test_type=${test_type}"
+            echo "pytorch=${pytorch}"
+            echo "torch_xpu_ops=${torch_xpu_ops}"
+            echo "triton=${triton}"
+            echo "python=${python}"
+            echo "ut=${ut}"
+            echo "suite=${suite}"
+            echo "scenario=${scenario}"
+            echo "run_ut=$([ "${ut}" != "[]" ] && echo true || echo false)"
+            echo "run_e2e=$([ "${suite}" != "[]" ] && echo true || echo false)"
+            echo "run_microbench=${run_microbench}"
+            echo "run_windows=${run_windows}"
+          } | tee -a "${GITHUB_OUTPUT}"
 
-  Linux-Nightly-Ondemand-Build:
-    needs: [Conditions-Filter]
+  linux-build:
     name: linux-build
+    needs: config
     secrets: inherit
     strategy:
       fail-fast: false
@@ -151,15 +176,15 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
-      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
-      triton: ${{ needs.Conditions-Filter.outputs.triton }}
-      python: ${{ needs.Conditions-Filter.outputs.python }}
+      pytorch: ${{ needs.config.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
+      triton: ${{ needs.config.outputs.triton }}
+      python: ${{ needs.config.outputs.python }}
 
-  Linux-Nightly-Ondemand-UT-Tests:
+  linux-ut:
     name: linux-ut
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
+    needs: [config, linux-build]
+    if: ${{ needs.config.outputs.run_ut == 'true' }}
     secrets: inherit
     permissions:
       actions: read
@@ -169,23 +194,88 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
+        ut_name: ${{ fromJSON(needs.config.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ (matrix.ut_name == 'xpu_distributed' || matrix.ut_name == 'upstream_distributed') && 'distributed' || 'bmg-test' }}
-      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
-      python: ${{ needs.Conditions-Filter.outputs.python }}
+      runner: ${{ needs.config.outputs.runner_ut }}
+      image: ${{ needs.config.outputs.image_ut }}
+      pytorch: ${{ needs.config.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
+      python: ${{ needs.config.outputs.python }}
       ut: ${{ matrix.ut_name }}
 
-  Linux-Nightly-Ondemand-UT-Report:
+  linux-e2e:
+    name: linux-e2e
+    needs: [config, linux-build]
+    if: ${{ needs.config.outputs.run_e2e == 'true' }}
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.config.outputs.suite) }}
+        scenario: ${{ fromJSON(needs.config.outputs.scenario) }}
+    uses: ./.github/workflows/_linux_e2e.yml
+    with:
+      runner: ${{ needs.config.outputs[format('runner_{0}', matrix.scenario)] }}
+      image: ${{ needs.config.outputs[format('image_{0}', matrix.scenario)] }}
+      test_type: ${{ needs.config.outputs.test_type }}
+      pytorch: ${{ needs.config.outputs.pytorch }}
+      python: ${{ needs.config.outputs.python }}
+      suite: ${{ matrix.suite }}
+      scenario: ${{ matrix.scenario }}
+      dt: ${{ inputs.dt }}
+      mode: ${{ inputs.mode }}
+      model: ${{ inputs.model }}
+
+  linux-microbench:
+    name: linux-microbench
+    needs: [config, linux-build]
+    # Temporarily disabled; re-enable with: needs.config.outputs.run_microbench == 'true'
+    if: false
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_linux_op_benchmark.yml
+    with:
+      runner: ${{ needs.config.outputs.runner_performance }}
+      image: ${{ needs.config.outputs.image_performance }}
+      pytorch: ${{ needs.config.outputs.pytorch }}
+      python: ${{ needs.config.outputs.python }}
+
+  windows-build:
+    name: windows-build
+    needs: config
+    if: ${{ needs.config.outputs.run_windows == 'true' }}
+    secrets: inherit
+    uses: ./.github/workflows/_windows_build.yml
+    with:
+      runner: windows-build
+      pytorch: ${{ needs.config.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
+      triton: ${{ needs.config.outputs.triton }}
+      python: ${{ needs.config.outputs.python }}
+
+  windows-ut:
+    name: windows-ut
+    needs: [config, windows-build]
+    secrets: inherit
+    uses: ./.github/workflows/_windows_ut.yml
+    with:
+      runner: windows-test
+      ut: 'op_extended,test_xpu,op_ut'
+      pytorch: ${{ needs.config.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
+      python: ${{ needs.config.outputs.python }}
+
+  ut-report:
     name: ut-report
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests,
-            Windows-Nightly-Ondemand-UT-Tests]
+    needs: [linux-ut, windows-ut]
+    # run when at least one UT job finished with success or failure
     if: >-
       ${{ !cancelled()
-      && (!endsWith(needs.Linux-Nightly-Ondemand-UT-Tests.result, 'ed')
-      || !endsWith(needs.Windows-Nightly-Ondemand-UT-Tests.result, 'ed')) }}
+      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.windows-ut.result, 'ed')) }}
     secrets: inherit
     permissions:
       actions: read
@@ -193,18 +283,16 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_ut_report.yml
 
-  Linux-Nightly-Ondemand-UT-Auto-Issue:
-    name: linux-ut-auto-issue
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests, Linux-Nightly-Ondemand-UT-Report]
+  ut-auto-issue:
+    name: ut-auto-issue
+    needs: [config, linux-ut, ut-report]
     # Not success(): the UT job fails whenever there are new failures, which is
     # precisely when this needs to run.
-    # `contains(inputs.ut, 'p')` mirrors the UT job's own gate: with no UT job
-    # there are no artifacts to analyse.
     if: >-
       ${{ !cancelled()
-          && (github.event_name == 'schedule'
-              || (inputs.ut_auto_issue && contains(inputs.ut, 'p')))
-          && needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel' }}
+      && needs.config.outputs.run_ut == 'true'
+      && needs.config.outputs.pytorch != 'nightly_wheel'
+      && (github.event_name == 'schedule' || inputs.ut_auto_issue) }}
     secrets: inherit
     permissions:
       actions: read
@@ -213,38 +301,16 @@ jobs:
     uses: ./.github/workflows/_ut_auto_issue.yml
     with:
       run_id: ${{ github.run_id }}
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
-      # Off unless the repo variable is set to 'true'. Kept as a variable rather
-      # than hardcoded so filing can be stopped without merging a PR. Never on
-      # for an on-demand run: its torch commit is arbitrary, so the baseline
-      # comparison behind `regression` and `new_case_failure` means nothing.
+      test_type: ${{ needs.config.outputs.test_type }}
+      # Off unless the repo variable is set to 'true', so filing can be stopped
+      # without a PR. Never on for on-demand runs: their torch commit is
+      # arbitrary, so the baseline comparison means nothing.
       create_issues: ${{ github.event_name == 'schedule' && vars.UT_AUTO_ISSUE_ENABLED == 'true' }}
 
-  Linux-Nightly-Ondemand-E2E-Tests:
-    name: linux-e2e
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: ${{ fromJSON(needs.Conditions-Filter.outputs.suite) }}
-        scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
-    uses: ./.github/workflows/_linux_e2e.yml
-    with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
-      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      python: ${{ needs.Conditions-Filter.outputs.python }}
-      suite: ${{ matrix.suite }}
-      dt: ${{ github.event_name == 'schedule' && '' || inputs.dt }}
-      mode: ${{ github.event_name == 'schedule' && '' || inputs.mode }}
-      scenario: ${{ matrix.scenario }}
-      model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
-  Linux-Nightly-Ondemand-E2E-Tests-Summary:
-    name: linux-e2e
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
-    if: ${{ !cancelled() && !endsWith(needs.Linux-Nightly-Ondemand-E2E-Tests.result, 'ed') }}
+  linux-e2e-summary:
+    name: linux-e2e-summary
+    needs: [config, linux-e2e]
+    if: ${{ !cancelled() && !endsWith(needs.linux-e2e.result, 'ed') }}
     permissions:
       actions: read
       contents: read
@@ -252,50 +318,4 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
-
-  Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
-    name: linux-microbench
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    # if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
-    if: false # Temporarily disabled
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        microbench: [microbench]
-    uses: ./.github/workflows/_linux_op_benchmark.yml
-    with:
-      runner: pvc
-      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      python: ${{ needs.Conditions-Filter.outputs.python }}
-
-  Windows-Nightly-Ondemand-Build:
-    name: windows-build
-    needs: [Conditions-Filter]
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
-    secrets: inherit
-    uses: ./.github/workflows/_windows_build.yml
-    with:
-      python: ${{ needs.Conditions-Filter.outputs.python }}
-      runner: windows-build
-      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
-      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      triton: ${{ needs.Conditions-Filter.outputs.triton }}
-
-  Windows-Nightly-Ondemand-UT-Tests:
-    name: windows-ut
-    needs: [Conditions-Filter, Windows-Nightly-Ondemand-Build]
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
-    secrets: inherit
-    uses: ./.github/workflows/_windows_ut.yml
-    with:
-      ut: 'op_extended,test_xpu,op_ut'
-      python: ${{ needs.Conditions-Filter.outputs.python }}
-      runner: windows-test
-      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
-      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      test_type: ${{ needs.config.outputs.test_type }}

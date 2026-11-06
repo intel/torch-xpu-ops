@@ -26,7 +26,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc'
+        default: 'bmg'
         description: Runner label
       accelerate:
         required: false
@@ -53,17 +53,36 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
+  config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      runner: ${{ steps.runner.outputs.ut }}
+      image: ${{ steps.runner.outputs.ut_image }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - name: Select runner and image
+        id: runner
+        uses: ./.github/actions/ci-config
+        with:
+          runner: ${{ inputs.runner }}
+
   tests:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc' }}
+    needs: config
+    runs-on: ${{ needs.config.outputs.runner }}
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'disable_all')
       && !contains(github.event.pull_request.labels.*.name, 'disable_accelerate')
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: ${{ needs.config.outputs.image }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri
+      # --entrypoint= skips the OMIX entrypoint, which activates oneAPI
+      options: --entrypoint= --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
@@ -90,6 +109,11 @@ jobs:
         uses: ./.github/actions/setup-python
         with:
           python: ${{ inputs.python }}
+      - name: Setup gcc
+        uses: ./.github/actions/ci-config
+        with:
+          python: ${{ inputs.python }}
+          setup_gcc: 'true'
       - name: Install pytorch and deps
         run: |
           uv pip install junitparser
@@ -171,4 +195,5 @@ jobs:
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
-          chown 1000:1000 /__w /github ./ -R
+          # Runner user's uid differs per node; /__e is its read-only externals mount.
+          chown "$(stat -c %u:%g /__e)" /__w /github ./ -R
