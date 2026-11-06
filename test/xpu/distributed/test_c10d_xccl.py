@@ -771,6 +771,50 @@ class CommTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_reduce_scatter_uneven(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        device = torch.device("xpu", self.rank)
+
+        # Same split as oneCCL's reduce_scatterv benchmark: an even share, then
+        # 64 bytes moved from each rank of the second half to its mirror rank.
+        def uneven_counts(total, elt_size):
+            base, rem = divmod(total, self.world_size)
+            shift = min(64 // elt_size, base // 2)
+            counts = [base + (r < rem) for r in range(self.world_size)]
+            for r in range(self.world_size // 2):
+                counts[r] += shift
+                counts[-1 - r] -= shift
+            return counts
+
+        rank_sum = sum(r + 1 for r in range(self.world_size))
+        ops = [
+            (dist.ReduceOp.SUM, 1.0),
+            (dist.ReduceOp.AVG, 1.0 / self.world_size),
+            (dist._make_nccl_premul_sum(2.0), 2.0),
+        ]
+        for total in (67, 1 << 20):
+            counts = uneven_counts(total, torch.float.itemsize)
+            for op, scale in ops:
+                inputs = [
+                    torch.arange(n, dtype=torch.float, device=device) + (self.rank + 1)
+                    for n in counts
+                ]
+                originals = [t.clone() for t in inputs]
+                output = torch.empty_like(inputs[self.rank])
+                dist.reduce_scatter(output, inputs, op=op)
+                base = torch.arange(counts[self.rank], dtype=torch.float, device=device)
+                expected = (base * self.world_size + rank_sum) * scale
+                self.assertEqual(output, expected)
+                self.assertEqual(inputs, originals)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     # The difference between this case and `test_send_recv` is that `test_send_recv` uses a previously created process group,
     # whereas this case performs point-to-point operations immediately after creating the process group.
     def test_single_p2p(self):
