@@ -232,6 +232,9 @@ runs:
         # Land the environment and the exact shas under test in ut_log so they
         # ride along in the UT artifact; ut_collect_evidence.py reads them to
         # render the issue body and to build baseline..current compare links.
+        # Cleared here rather than later, so a reused workspace drops its old
+        # logs without taking these with them.
+        rm -rf "${{ github.workspace }}/ut_log"
         mkdir -p "${{ github.workspace }}/ut_log/env"
         python pytorch/torch/utils/collect_env.py |tee "${{ github.workspace }}/ut_log/env/collect_env.log"
         # collect_env only carries an abbreviated torch sha and no torch-xpu-ops sha.

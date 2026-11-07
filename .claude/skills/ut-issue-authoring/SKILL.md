@@ -60,19 +60,35 @@ GitHub access.
       // That case's failure text, copied verbatim from evidence.json
       // `tracebacks`. Omit when the case has no entry there.
       "traceback": ["Traceback (most recent call last):", "..."],
+      "reproduce": "python -m pytest -sv pytorch/test/foo/test_bar.py::TestBar::test_baz",  // see Reproduce
       "related": ["g2"]        // drafts sharing this root cause, if any
     }
   ],
-  "notes": "Anything you were unsure about, and anything you did not place."
+  "notes": "Anything you were unsure about."
 }
 ```
 
-Only `title_text` and `summary` are yours to write. The prefixes
-(`[Bug Skip]: `, `[Regression] `, `[Failed to collect] `), the labels, the
-`Cases:` block, the traceback, the baseline table, the reproduce command and
-the marker are added by the filing step, from the evidence. A group is one root
-cause, not one message, so it may hold several: name the case whose traceback
-shows that cause most clearly in `error_case`.
+Only `title_text` and `summary` are yours to write (and `reproduce`, see
+below). The prefixes (`[Bug Skip]: `, `[Regression] `, `[Failed to collect] `),
+the labels, the `Cases:` block, the traceback, the baseline table, the
+reproduce command the run recorded and the marker are added by the filing
+step, from the evidence. A group is one root cause, not one message, so it may
+hold several: name the case whose traceback shows that cause most clearly in
+`error_case`.
+
+**Analyse every case.** Each one goes in exactly one draft, and `drafts.json`
+must end complete with no placeholders (such as `"@@PART2@@"`): the filing
+step files nothing from a file that has one. A night with many failures still
+has to fit one session, so:
+
+- Read evidence.json once. Start from the sets of cases sharing a test file
+  and exact message - most groups are one or a few such sets - and spend your
+  effort on which sets merge and whether to file.
+- Read repository source only when the failure text cannot settle a grouping
+  or a filing decision.
+- `Write` drafts.json as soon as the first category is done, then `Edit` in
+  each next one (allowed on that file only), rather than one large write at
+  the end.
 
 Both the grouping and the summary are read off the failure text, so the draft
 carries the text they were read off: `traceback` is what `summary` argues from,
@@ -161,6 +177,28 @@ issue as a test that never worked, and takes the commit range for the onset of
 a failure that may be years old. You cannot move a case out of `unknown`: if
 one looks to you like a `regression` or a `new_case_failure`, say so in
 `notes`, and do not act on it.
+
+## Reproduce
+
+Only when evidence.json `reproduce` has no entry for the category; otherwise
+leave `reproduce` out. Write it for `error_case` (else the first case), from
+how CI ran that case, never from the failure text:
+
+1. Find the command that ran the case's file: the `ut_job`'s step in
+   `.github/actions/linux-uttest/action.yml`, and for `upstream_*` the
+   `*_jobs` functions and `*_ENV` dicts of `.github/scripts/run_upstream_ut.py`
+   it calls.
+2. From the workspace root (`${GITHUB_WORKSPACE}` is `$PWD`): `export` what
+   changes the test, `cd` where it ran, then that `python -m pytest` on the
+   file plus `::<class>::<test_name>` (a whole-module row: the file alone).
+3. Leave out what only serves CI: junit, logs, `tee`, timeouts, xdist, reruns,
+   `PATH`, `PYTEST_ADDOPTS`.
+
+Allowed: `cd <dir>`, `export NAME=value`, `# comment`, and
+`[NAME=value ...] python -m pytest ...` or `pytest ...`; no `;&|<>`,
+backticks, `$(` or `\`; no plugin, config or file-writing pytest options;
+at most 20 lines and 2000 characters; a pytest line must contain `test_name`
+(`test_file` for a whole-module row). Anything else is dropped.
 
 ## Finally
 
