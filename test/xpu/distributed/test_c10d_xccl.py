@@ -324,6 +324,23 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_destroy_comms_opt_out(self):
+        # Rank processes only (MultiProcessTestCase); later tests spawn fresh
+        # ranks. The comms are leaked on purpose, so disable the libfabric MR
+        # cache monitor whose hooks crash at exit with the cxi provider.
+        os.environ["TORCH_XCCL_DESTROY_COMMS"] = "0"
+        os.environ["FI_MR_CACHE_MONITOR"] = "disabled"
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(10, device=device)
+        pg.allreduce(t).wait()
+        dist.destroy_process_group()
+        # The backend teardown was skipped, so the comm is still usable.
+        pg.allreduce(t).wait()
+        self.assertEqual(t, torch.full_like(t, self.world_size**2))
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_destroy_flushes_pending_work(self):
         pg = self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]

@@ -61,16 +61,16 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
 
     @classmethod
     def _init_pg(cls, rank, world_size, rdvz_file):
-        super()._init_pg(rank, world_size, rdvz_file)
         # oneCCL before a766d7238 (MLSL-5025) keeps each unique ID's KVS until
         # exit, and its destructor can hang once the comms are destroyed, so
         # these long-lived workers fail to exit. The hang needs the comms
         # created by this whole class: no subset of it, and no other
         # MultiProcContinuousTest class in these files (SymmetricMemoryTest
-        # included), has hung. Skip the backend teardown in this class's
-        # workers until CI's oneCCL has the fix.
+        # included), has hung. Leave the comms alive in this class's workers
+        # until CI's oneCCL has the fix.
         # TODO: remove once CI's oneCCL includes a766d7238.
-        dist.ProcessGroup.shutdown = lambda self: None
+        os.environ["TORCH_XCCL_DESTROY_COMMS"] = "0"
+        super()._init_pg(rank, world_size, rdvz_file)
 
     # @classmethod
     # def opts(cls):
