@@ -48,9 +48,10 @@ _flash_attention_forward(
   return std::make_tuple(
       at::Tensor(), at::Tensor(), at::Tensor(), at::Tensor(), at::Tensor());
 #else
+  // num_splits == 1 means no split-KV, which is what this kernel does.
   TORCH_CHECK(
-      !num_splits.has_value(),
-      "num_splits requires FA3. Register FA3 with `register_flash_attention_fa3()` to set num_splits.");
+      !num_splits.has_value() || num_splits.value() == 1,
+      "num_splits > 1 requires FA3. Register FA3 with `register_flash_attention_fa3()` to set num_splits.");
 
   const auto softmax_scale = sdp::calculate_scale(query, scale).expect_float();
   std::optional<at::Tensor> seqused_k = _seqused_k;
@@ -59,8 +60,6 @@ _flash_attention_forward(
   const float softcap = 0.0;
   const int window_left = window_size_left.value_or(-1);
   const int window_right = window_size_right.value_or(-1);
-  static_cast<void>(seqused_k);
-  static_cast<void>(block_table);
 
   // We are going to have two paths:
   // 1. The standard MHA path for dense tensors
@@ -73,39 +72,39 @@ _flash_attention_forward(
   at::Tensor output, q_padded, k_padded, v_padded, logsumexp, philox_seed,
       philox_offset, debug_attn_mask;
   if (cumulative_sequence_length_q.has_value()) {
-    // std::tie(
-    //     output,
-    //     q_padded,
-    //     k_padded,
-    //     v_padded,
-    //     logsumexp,
-    //     philox_seed,
-    //     philox_offset,
-    //     debug_attn_mask) =
-    //     FLASH_NAMESPACE::mha_varlen_fwd(
-    //         query,
-    //         key,
-    //         value,
-    //         out,
-    //         cumulative_sequence_length_q.value(),
-    //         cumulative_sequence_length_k.value(),
-    //         seqused_k, /*seqused_k*/
-    //         block_table, /*block_table*/
-    //         alibi_slopes, /*alibi_slopes*/
-    //         max_seqlen_batch_q,
-    //         max_seqlen_batch_k,
-    //         dropout_p,
-    //         softmax_scale,
-    //         false /*zero_tensors*/,
-    //         is_causal,
-    //         window_left,
-    //         window_right,
-    //         softcap,
-    //         return_debug_mask,
-    //         std::nullopt /*gen_*/);
     TORCH_CHECK(
-        false,
-        "_flash_attention_forward: Varseqlen path is not implemented yet.");
+        !seqused_k.has_value(),
+        "_flash_attention_forward on xpu does not support seqused_k yet");
+    TORCH_CHECK(
+        !block_table.has_value(),
+        "_flash_attention_forward on xpu does not support block_table yet");
+    std::tie(
+        output,
+        q_padded,
+        k_padded,
+        v_padded,
+        logsumexp,
+        philox_seed,
+        philox_offset,
+        debug_attn_mask) =
+        mha_varlen_fwd(
+            query,
+            key,
+            value,
+            out,
+            cumulative_sequence_length_q.value(),
+            cumulative_sequence_length_k.value(),
+            alibi_slopes,
+            max_seqlen_batch_q,
+            max_seqlen_batch_k,
+            dropout_p,
+            softmax_scale,
+            is_causal,
+            window_left,
+            window_right,
+            softcap,
+            return_debug_mask,
+            std::nullopt);
   } else {
     std::tie(
         output,

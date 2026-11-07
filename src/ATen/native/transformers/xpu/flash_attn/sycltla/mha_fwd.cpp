@@ -44,14 +44,16 @@ namespace cute {
 
 // Declared but not defined here -- explicit specializations are provided by
 // the per-headdim compilation units (mha_fwd_hdim*.cpp).
-template <typename T, int Headdim, bool IS_CAUSAL>
+template <typename T, int Headdim, bool IS_CAUSAL, bool IS_VARLEN>
 void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params);
 
 void run_mha_fwd(sycl::queue& queue, FLASH_FWD_params& params) {
   FP16_SWITCH(params.is_fp16, [&] {
     BOOL_SWITCH(params.is_causal, IS_CAUSAL, [&] {
-      HEADDIM_SWITCH(params.head_size_vo, [&] {
-        run_mha_fwd_<elem_type, Headdim, IS_CAUSAL>(queue, params);
+      BOOL_SWITCH(params.is_varlen, IS_VARLEN, [&] {
+        HEADDIM_SWITCH(params.head_size_vo, [&] {
+          run_mha_fwd_<elem_type, Headdim, IS_CAUSAL, IS_VARLEN>(queue, params);
+        });
       });
     });
   });
@@ -59,6 +61,27 @@ void run_mha_fwd(sycl::queue& queue, FLASH_FWD_params& params) {
 } // namespace cute
 
 namespace sycltla {
+
+static void check_device_architecture(sycl::queue& sycl_queue) {
+  auto device_architecture =
+      sycl_queue.get_device()
+          .get_info<
+              sycl::ext::oneapi::experimental::info::device::architecture>();
+  constexpr auto supported_architectures =
+      std::array<sycl::ext::oneapi::experimental::architecture, 4>{
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc,
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg,
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21,
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g31};
+  if (std::find(
+          supported_architectures.begin(),
+          supported_architectures.end(),
+          device_architecture) == supported_architectures.end()) {
+    TORCH_CHECK(
+        false,
+        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21, intel_gpu_bmg_g31.");
+  }
+}
 
 std::tuple<
     at::Tensor,
@@ -97,24 +120,7 @@ mha_fwd(
       "mha_fwd on xpu does not support custom generator yet");
 
   auto sycl_queue = at::xpu::getCurrentXPUStream().queue();
-  auto device_architecture =
-      sycl_queue.get_device()
-          .get_info<
-              sycl::ext::oneapi::experimental::info::device::architecture>();
-  constexpr auto supported_architectures =
-      std::array<sycl::ext::oneapi::experimental::architecture, 4>{
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc,
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg,
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21,
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g31};
-  if (std::find(
-          supported_architectures.begin(),
-          supported_architectures.end(),
-          device_architecture) == supported_architectures.end()) {
-    TORCH_CHECK(
-        false,
-        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21, intel_gpu_bmg_g31.");
-  }
+  check_device_architecture(sycl_queue);
 
   TORCH_CHECK(
       !q.is_nested() && !k.is_nested() && !v.is_nested(),
@@ -322,6 +328,218 @@ mha_fwd(
       std::move(philox_seed),
       std::move(philox_offset),
       std::move(p)};
+}
+
+std::tuple<
+    at::Tensor,
+    at::Tensor,
+    at::Tensor,
+    at::Tensor,
+    at::Tensor,
+    at::Tensor,
+    at::Tensor,
+    at::Tensor>
+mha_varlen_fwd(
+    const at::Tensor& q, // total_q x num_heads x head_size
+    const at::Tensor& k, // total_k x num_heads_k x head_size
+    const at::Tensor& v, // total_k x num_heads_k x head_size
+    std::optional<at::Tensor>& out_, // total_q x num_heads x head_size
+    const at::Tensor& cu_seqlens_q, // batch_size + 1
+    const at::Tensor& cu_seqlens_k, // batch_size + 1
+    std::optional<at::Tensor>& alibi_slopes_,
+    int max_seqlen_q,
+    const int max_seqlen_k,
+    const float p_dropout,
+    const float softmax_scale,
+    bool is_causal,
+    int window_size_left,
+    int window_size_right,
+    const float softcap,
+    const bool return_softmax,
+    const std::optional<at::Generator>& gen_) {
+  TORCH_CHECK(
+      !alibi_slopes_.has_value(),
+      "mha_varlen_fwd on xpu does not support alibi_slopes yet");
+  TORCH_CHECK(
+      softcap == 0.0, "mha_varlen_fwd on xpu does not support softcap yet");
+  TORCH_CHECK(
+      !gen_.has_value(),
+      "mha_varlen_fwd on xpu does not support custom generator yet");
+  // The kernel's dropout and debug-softmax offsets assume the dense layout.
+  TORCH_CHECK(
+      p_dropout == 0.0f, "mha_varlen_fwd on xpu does not support dropout yet");
+  TORCH_CHECK(
+      !return_softmax,
+      "mha_varlen_fwd on xpu does not support return_softmax yet");
+
+  auto sycl_queue = at::xpu::getCurrentXPUStream().queue();
+  check_device_architecture(sycl_queue);
+
+  auto dtype = q.scalar_type();
+  TORCH_CHECK(
+      dtype == at::kHalf || dtype == at::kBFloat16,
+      "mha_varlen_fwd on xpu only support fp16 and bf16 data type");
+  TORCH_CHECK(
+      k.scalar_type() == dtype && v.scalar_type() == dtype,
+      "mha_varlen_fwd on xpu: query, key and value must have the same dtype");
+  TORCH_CHECK(
+      cu_seqlens_q.scalar_type() == at::kInt &&
+          cu_seqlens_k.scalar_type() == at::kInt,
+      "mha_varlen_fwd on xpu: cu_seqlens must have dtype int32");
+
+  CHECK_DEVICE(q);
+  CHECK_DEVICE(k);
+  CHECK_DEVICE(v);
+  CHECK_DEVICE(cu_seqlens_q);
+  CHECK_DEVICE(cu_seqlens_k);
+
+  TORCH_CHECK(
+      q.stride(-1) == 1 && k.stride(-1) == 1 && v.stride(-1) == 1,
+      "mha_varlen_fwd on xpu: input tensor must have contiguous last dimension");
+  TORCH_CHECK(
+      cu_seqlens_q.is_contiguous() && cu_seqlens_k.is_contiguous(),
+      "mha_varlen_fwd on xpu: cu_seqlens must be contiguous");
+  TORCH_CHECK(
+      q.dim() == 3 && k.dim() == 3 && v.dim() == 3,
+      "mha_varlen_fwd on xpu requires query, key, value to be 3 dimensional");
+
+  const int batch_size = cu_seqlens_q.numel() - 1;
+  const int total_q = q.sizes()[0];
+  const int total_k = k.sizes()[0];
+  const int numhead_qo = q.sizes()[1];
+  const int numhead_kv = k.sizes()[1];
+  const int headsize_qk = q.sizes()[2];
+  const int headsize_vo = v.sizes()[2];
+
+  TORCH_CHECK(
+      batch_size > 0, "mha_varlen_fwd on xpu: batch size must be positive");
+  CHECK_SHAPE(q, total_q, numhead_qo, headsize_qk);
+  CHECK_SHAPE(k, total_k, numhead_kv, headsize_qk);
+  CHECK_SHAPE(v, total_k, numhead_kv, headsize_vo);
+  CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
+  CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
+  TORCH_CHECK(
+      numhead_qo % numhead_kv == 0,
+      "mha_varlen_fwd on xpu: numhead_qo must be divisible by numhead_kv");
+  TORCH_CHECK(
+      headsize_vo == headsize_qk,
+      "mha_varlen_fwd on xpu: only support headsize_qk equal to headsize_vo");
+  TORCH_CHECK(
+      headsize_qk <= 256,
+      "mha_varlen_fwd on xpu: only support head dimension at most 256");
+
+  // Causal can arrive as is_causal or as window (-1, 0), as in FA2.
+  if (is_causal) {
+    window_size_right = 0;
+  }
+  TORCH_CHECK(
+      window_size_left == -1 &&
+          (window_size_right == -1 || window_size_right == 0),
+      "mha_varlen_fwd on xpu only supports window_size (-1, -1), or (-1, 0) for causal");
+  is_causal = window_size_right == 0;
+  // With one query per sequence the bottom-right causal mask keeps every key.
+  if (max_seqlen_q == 1) {
+    is_causal = false;
+  }
+
+  const int headsize_padded = round_up_headdim(headsize_qk);
+  const bool needs_headsize_pad = headsize_padded > headsize_qk;
+
+  at::Tensor q_padded = q;
+  at::Tensor k_padded = k;
+  at::Tensor v_padded = v;
+  if (needs_headsize_pad) {
+    int pad = headsize_padded - headsize_qk;
+    q_padded = at::constant_pad_nd(q, {0, pad}, 0);
+    k_padded = at::constant_pad_nd(k, {0, pad}, 0);
+    v_padded = at::constant_pad_nd(v, {0, pad}, 0);
+  }
+
+  auto opts = q.options();
+  at::Tensor out;
+  if (out_.has_value()) {
+    out = out_.value();
+    TORCH_CHECK(
+        out.dtype() == dtype, "Output must have the same dtype as inputs");
+    CHECK_DEVICE(out);
+    TORCH_CHECK(
+        out.stride(-1) == 1,
+        "Output tensor must have contiguous last dimension");
+    CHECK_SHAPE(out, total_q, numhead_qo, headsize_vo);
+  } else {
+    out = at::empty_like(q);
+  }
+
+  at::Tensor out_padded = needs_headsize_pad
+      ? at::empty({total_q, numhead_qo, headsize_padded}, opts)
+      : out;
+
+  // Base pointers must be 64-byte aligned for block 2D load
+  q_padded = ensure_alignment_for_sdpa(q_padded);
+  k_padded = ensure_alignment_for_sdpa(k_padded);
+  v_padded = ensure_alignment_for_sdpa(v_padded);
+  out_padded = ensure_alignment_for_sdpa(out_padded);
+
+  at::Tensor logsumexp =
+      at::empty({numhead_qo, total_q}, opts.dtype(at::kFloat));
+
+  // A [1, total, heads, dim] view gives set_params_fprop the row stride in
+  // dim 1 and the head stride in dim 2, as for dense; the batch stride is
+  // unused because each document is located through cu_seqlens.
+  at::Tensor out_4d = out_padded.unsqueeze(0);
+  FLASH_FWD_params params;
+  set_params_fprop(
+      params,
+      batch_size,
+      numhead_qo,
+      numhead_kv,
+      max_seqlen_q,
+      max_seqlen_k,
+      headsize_padded,
+      headsize_padded,
+      0, // unused seqlen_qo_pad
+      0, // unused seqlen_kv_pad
+      q_padded.unsqueeze(0),
+      k_padded.unsqueeze(0),
+      v_padded.unsqueeze(0),
+      out_4d,
+      logsumexp,
+      std::nullopt,
+      softmax_scale,
+      p_dropout,
+      is_causal);
+  params.cu_seqlens_q = static_cast<int*>(cu_seqlens_q.data_ptr());
+  params.cu_seqlens_k = static_cast<int*>(cu_seqlens_k.data_ptr());
+  params.total_q = total_q;
+  params.is_varlen = true;
+
+  at::Tensor philox_seed =
+      at::empty({}, at::dtype(c10::kLong).device(at::kXPU));
+  at::Tensor philox_offset =
+      at::empty({}, at::dtype(c10::kLong).device(at::kXPU));
+
+  if (max_seqlen_q > 0 && max_seqlen_k > 0) {
+    cute::run_mha_fwd(sycl_queue, params);
+  } else {
+    // No keys: O = 0 and LSE = +inf, matching FA2's varlen path and the
+    // kernel's fully-masked rows.
+    out_padded.zero_();
+    logsumexp.fill_(std::numeric_limits<float>::infinity());
+  }
+
+  if (!out_padded.is_same(out)) {
+    out.copy_(out_padded.slice(/*dim=*/2, /*start=*/0, /*end=*/headsize_qk));
+  }
+
+  return {
+      std::move(out),
+      std::move(q_padded),
+      std::move(k_padded),
+      std::move(v_padded),
+      std::move(logsumexp),
+      std::move(philox_seed),
+      std::move(philox_offset),
+      at::empty({0}, opts)};
 }
 
 std::tuple<
