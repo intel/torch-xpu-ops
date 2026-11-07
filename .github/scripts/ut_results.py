@@ -303,6 +303,7 @@ class Report:
         self.ut_job = ut_job
         self.cases: list[Case] = []
         self.summaries: list[SuiteSummary] = []
+        self.suite_summaries: list[SuiteSummary] = []
 
     @property
     def failures(self) -> list[Case]:
@@ -391,6 +392,7 @@ class Report:
 
     def dedupe(self) -> None:
         """One result per case, the best one; junit counts are recounted from it."""
+        self.suite_summaries = list(self.summaries)
         best: dict[tuple[str, str, str, str], Case] = {}
         for case in self.cases:
             kept = best.get(case.key)
@@ -1117,8 +1119,10 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
               f"runner: {meta.runner or 'unknown'})", flush=True)
         # The UT job writes these too; rebuilding them keeps the check working
         # on an artifact whose job died before it reported.
+        suite_summaries: list[list[str]] = []
         if reports:
-            build_report(ut_job, reports, job_dir, dedupe=True)
+            test_report = build_report(ut_job, reports, job_dir, dedupe=True)
+            suite_summaries = [summary.row for summary in test_report.suite_summaries]
         else:
             warn(f"{ut_job} produced no junit report")
 
@@ -1128,7 +1132,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
         )
         verdict = {"ut_job": ut_job, "runner": meta.runner, "os": platform,
                    "attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT") or 0),
-                   "categories": []}
+                   "categories": [], "suite_summaries": suite_summaries}
         new_lines: list[tuple[str, str]] = []
         known_lines: list[tuple[str, str]] = []
         pass_lines: list[tuple[str, str]] = []
@@ -1186,7 +1190,10 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
     new_passes.csv.
     """
     # A rerun check merged every attempt's cases, so the latest one is final.
-    best: dict[tuple[str, str, str], tuple[tuple[int, int], list[str], Path]] = {}
+    best: dict[
+        tuple[str, str, str],
+        tuple[tuple[int, int], list[str], Path, list[list[str]]],
+    ] = {}
     for verdict_file in sorted(checks_dir.rglob("verdict.json")):
         verdict = json.loads(verdict_file.read_text(encoding="utf-8"))
         for entry in verdict["categories"]:
@@ -1201,14 +1208,20 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
             ]
             score = (-int(verdict.get("attempt") or 0), status_rank(result))
             if key not in best or score < best[key][0]:
-                best[key] = (score, row, verdict_file.parent)
+                suite_summaries = [
+                    suite for suite in verdict.get("suite_summaries", [])
+                    if suite[0] == entry["category"]
+                ]
+                best[key] = (score, row, verdict_file.parent, suite_summaries)
 
     rows: list[list[str]] = []
     new_rows: list[str] = []
     known_rows: list[str] = []
     pass_rows: list[str] = []
-    for (os_name, _, category), (_, row, job_dir) in best.items():
+    suite_rows: list[list[str]] = []
+    for (os_name, _, category), (_, row, job_dir, summaries) in best.items():
         rows.append(row)
+        suite_rows.extend(summaries)
         for name, table in ((NEW_FAILURES_CSV, new_rows),
                             (KNOWN_FAILURES_CSV, known_rows),
                             (NEW_PASSES_CSV, pass_rows)):
@@ -1235,6 +1248,10 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
 
     report = ["## UT Report", "", "### Summary", "",
               *md_table(SUMMARY_TABLE_HEADER, rows)]
+    if suite_rows:
+        suite_rows.sort(key=lambda row: (row[0], row[1]))
+        report += ["", "### Results Summary", "",
+                   *md_table(SUMMARY_HEADER, suite_rows)]
     report += fold("New failures", new_rows, ["OS", *FAILURE_HEADER])
     report += fold("Known failures", known_rows, ["OS", *FAILURE_HEADER, "Issue"])
     report += fold("New passes", pass_rows, ["OS", *PASS_HEADER, "Issue"])
