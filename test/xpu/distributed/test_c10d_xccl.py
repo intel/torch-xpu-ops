@@ -340,9 +340,10 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         t = torch.ones(1 << 20, device=device)
         # Blocking (async_op=False) collectives run on the current stream, here
         # a side stream; the default stream is not ordered after it.
+        default = torch.xpu.current_stream(device)
         side = torch.xpu.Stream(device=device)
         with torch.xpu.stream(side):
-            side.wait_stream(torch.xpu.current_stream(device))
+            side.wait_stream(default)
             for _ in range(10):
                 dist.all_reduce(t)
         dist.destroy_process_group()
