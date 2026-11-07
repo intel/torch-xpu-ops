@@ -174,6 +174,15 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   ~ProcessGroupXCCL() override;
 
+  // Destroys all oneCCL communicators owned by this process group. Called by
+  // destroy_process_group(). Comms are not destroyed in the destructor since
+  // it may run during process exit, after the SYCL runtime is torn down.
+  void shutdown() override;
+
+  // Only warns: without onecclCommAbort the comms cannot be released without
+  // waiting, so they leak until process exit.
+  void abort() override;
+
   uint64_t getUid() const noexcept {
     return static_cast<uint64_t>(local_id_);
   }
@@ -226,6 +235,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
  protected:
   int globalRankStart_;
   int globalRankStride_;
+
+  void shutdownImpl();
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
@@ -517,6 +528,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
   bool blockingWait_ = false;
+  // Set by shutdown(); guarded by mutex_.
+  bool terminated_ = false;
   std::atomic<bool> enableTiming_;
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
