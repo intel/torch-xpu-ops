@@ -205,6 +205,7 @@ class TestCompileOnOneRank(DTensorTestBase):
 
     @with_comms
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     def test_all_reduce_with_explicit_pg_input(self):
         pg = dist.distributed_c10d._get_default_group()
 
@@ -861,6 +862,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @unittest.skipIf(not torch.accelerator.is_available(), "requires an accelerator")
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     def test_mutating_custom_op_with_device_arg_under_coor(self):
         # decompose_auto_functionalized re-traces its replacement graph; with CooR
         # live that replays a current_device() node, which make_fx cannot handle.
@@ -2428,6 +2430,9 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
         self.assertEqual(out, ref)
 
     @requires_multigpu
+    @skipIfXpu(
+        msg="inductor cudagraphs is CUDA-only, https://github.com/intel/torch-xpu-ops/issues/5338"
+    )
     @compiler_config.patch(compile_on_one_rank=True)
     @parametrize("graph_partition", (False, True))
     def test_cudagraphs_reuses_artifact_across_devices(self, graph_partition):
