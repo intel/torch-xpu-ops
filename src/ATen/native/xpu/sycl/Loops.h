@@ -402,6 +402,10 @@ constexpr int compact_sub_group_size = 32;
 constexpr int strided_unary_work_group_size = 128;
 constexpr int strided_unary_sub_group_size = 32;
 
+constexpr int strided_binary_work_group_size = 128;
+constexpr int strided_binary_narrow_sub_group_size = 32;
+constexpr int strided_binary_wide_sub_group_size = 16;
+
 // Only the wide broadcast path fixes the subgroup size.
 constexpr int broadcast_work_group_size = 256;
 constexpr int broadcast_wide_work_group_size = 128;
@@ -534,6 +538,9 @@ static inline void launch_compact_unary_kernel(
 
 template <int vec_size, typename func_t, typename in_calc_t>
 class StridedUnaryElementwiseKernel;
+
+template <int vec_size, typename func_t, typename in_calc_t>
+class StridedBinaryElementwiseKernel;
 
 // Density is relative to TI's reordered/coalesced iteration dimensions, not
 // the tensor's logical memory format. Alignment remains path-specific.
@@ -1167,6 +1174,144 @@ static inline bool try_launch_broadcast_kernel(
                             : launch_broadcast_kernel<1>(iter, f, data);
 }
 
+// Read each binary input in its own type, independently of output packing.
+// The host requires complete, aligned rows, so vectors never cross a row.
+template <int vec_size, typename input_t>
+static inline auto load_strided_binary_row(
+    const input_t* input,
+    uint32_t offset,
+    bool broadcast) {
+  memory::aligned_vector<input_t, vec_size> values;
+  if (broadcast) {
+    const auto value = c10::load(input + offset);
+#pragma unroll
+    for (int i = 0; i < vec_size; ++i) {
+      values.val[i] = value;
+    }
+  } else {
+    values = memory::load_vector<vec_size>(input + offset, 0);
+  }
+  return values;
+}
+
+// Reuse packed strided output for two independently typed inputs.
+// TI-dense output and aligned complete input rows (or inner broadcasts) keep
+// vector accesses within a row; vec1, wide storage, and gathers use old paths.
+template <typename func_t, typename array_t>
+static inline bool try_launch_strided_input_binary_kernel(
+    TensorIteratorBase& iter,
+    const func_t& f,
+    const array_t& data) {
+  using traits = function_traits<func_t>;
+  static_assert(traits::arity == 2);
+  if constexpr (
+      !prefers_wide_vectors<func_t>::value || max_scalar_size<func_t>() > 4) {
+    return false;
+  } else {
+    using input0_t = std::decay_t<typename traits::template arg<0>::type>;
+    using input1_t = std::decay_t<typename traits::template arg<1>::type>;
+    using output_t = typename traits::result_type;
+    constexpr int max_vec_size = std::min(8, 16 / max_scalar_size<func_t>());
+    if (iter.ndim() == 0) {
+      return false;
+    }
+    const auto shape = iter.shape();
+    int vec_size = max_vec_size;
+    auto restrict_vector = [&](uint64_t alignment, int64_t element_size) {
+      while (vec_size > 1 && alignment % (element_size * vec_size) != 0) {
+        vec_size /= 2;
+      }
+    };
+    restrict_vector(shape[0], 1);
+    restrict_vector(reinterpret_cast<uintptr_t>(data[0]), sizeof(output_t));
+    if (!has_dense_output(iter, sizeof(output_t))) {
+      return false;
+    }
+    int broadcast_mask = 0;
+    for (int arg = 0; arg < 2; ++arg) {
+      const auto element_size = iter.element_size(arg + 1);
+      const auto in_strides = iter.strides(arg + 1);
+      if (in_strides[0] != 0 && in_strides[0] != element_size) {
+        return false;
+      }
+      const bool inner_broadcast = in_strides[0] == 0;
+      broadcast_mask |= int(inner_broadcast) << arg;
+      const auto begin = reinterpret_cast<uintptr_t>(data[arg + 1]);
+      auto end = begin + element_size;
+      bool broadcast = false;
+      if (!inner_broadcast) {
+        restrict_vector(begin, element_size);
+      }
+      for (int dim = 0; dim < iter.ndim(); ++dim) {
+        broadcast |= shape[dim] > 1 && in_strides[dim] == 0;
+        end += (shape[dim] - 1) * in_strides[dim];
+        if (!inner_broadcast && dim > 0) {
+          restrict_vector(in_strides[dim], element_size);
+        }
+      }
+      if (broadcast && overlaps_dense_output(iter, data[0], begin, end)) {
+        return false;
+      }
+    }
+    if (vec_size < 2) {
+      return false;
+    }
+    auto ic = make_input_offset_calculator<2>(iter);
+    using in_calc_t = decltype(ic);
+    const auto* input0 = reinterpret_cast<const input0_t*>(data[1]);
+    const auto* input1 = reinterpret_cast<const input1_t*>(data[2]);
+    auto* output = reinterpret_cast<output_t*>(data[0]);
+    auto launch = [&](auto vector_size) {
+      constexpr int vec = decltype(vector_size)::value;
+      constexpr int work_group_size =
+          launch_config::strided_binary_work_group_size;
+      constexpr int sub_group_size = vec == 2
+          ? launch_config::strided_binary_narrow_sub_group_size
+          : launch_config::strided_binary_wide_sub_group_size;
+      const int vectors = iter.numel() / vec;
+      const auto groups = ceil_div<int64_t>(vectors, work_group_size);
+      getCurrentSYCLQueue().submit([&](sycl::handler& handler) {
+        // SG32 improved measured vec2 throughput; wider vectors use SG16.
+        handler.parallel_for<
+            StridedBinaryElementwiseKernel<vec, func_t, in_calc_t>>(
+            sycl::nd_range<1>(groups * work_group_size, work_group_size),
+            [=](sycl::nd_item<1> item)
+                [[sycl::reqd_sub_group_size(sub_group_size)]] {
+                  const int64_t index =
+                      int64_t(item.get_group(0)) * work_group_size +
+                      item.get_local_id(0);
+                  if (index < vectors) {
+                    const auto offsets = ic.get(uint32_t(index) * vec);
+                    const auto a = load_strided_binary_row<vec>(
+                        input0, offsets[0], broadcast_mask & 1);
+                    const auto b = load_strided_binary_row<vec>(
+                        input1, offsets[1], broadcast_mask & 2);
+                    memory::aligned_vector<output_t, vec> results;
+#pragma unroll
+                    for (int j = 0; j < vec; ++j) {
+                      results.val[j] = f(a.val[j], b.val[j]);
+                    }
+                    reinterpret_cast<memory::aligned_vector<output_t, vec>*>(
+                        output)[index] = results;
+                  }
+                });
+      });
+    };
+    if constexpr (max_vec_size >= 8) {
+      if (vec_size == 8) {
+        launch(std::integral_constant<int, 8>{});
+        return true;
+      }
+    }
+    if (vec_size == 4) {
+      launch(std::integral_constant<int, 4>{});
+    } else {
+      launch(std::integral_constant<int, 2>{});
+    }
+    return true;
+  }
+}
+
 template <
     typename func_t,
     bool allow_legacy_strided = true,
@@ -1193,8 +1338,9 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
                                    at::xpu::getDeviceEUCountPerXeCore()) *
           4; /* on tuning for different data types */
 
-  // Try contiguous indexing, inner broadcasts and aligned-row vectors,
-  // then packed strided unary work before the general offset fallback.
+  // Prefer trivial contiguous indexing, then inner broadcasts and the existing
+  // aligned-row vector path. Packed strided paths handle their remaining legal
+  // layouts; unsupported types/layouts keep the general offset fallback.
   int vec_size;
   if (contiguous) {
     auto input_calc = TrivialOffsetCalculator<traits::arity>();
@@ -1219,6 +1365,13 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
     }
     if constexpr (compact_unary) {
       if (try_launch_strided_input_unary_kernel(iter, f, data)) {
+        return;
+      }
+    }
+    if constexpr (traits::arity == 2) {
+      // Keep the shared small-workload fallback: row packing has a setup cost.
+      if (!latency_case &&
+          try_launch_strided_input_binary_kernel(iter, f, data)) {
         return;
       }
     }
