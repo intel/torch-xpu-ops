@@ -393,7 +393,217 @@ constexpr static inline int max_scalar_size() {
   return std::max<int>(sizeof(return_t), size);
 }
 
-template <typename func_t, typename array_t, typename in_calc_t>
+// Keep launch and indexing geometry in sync within each path. Configurations
+// are independent even where their current values coincide.
+namespace launch_config {
+constexpr int compact_work_group_size = 128;
+constexpr int compact_sub_group_size = 32;
+} // namespace launch_config
+
+template <int vec_size, typename func_t, bool bounds>
+class CompactScalarElementwiseKernel;
+
+// A captured empty functor still occupies a padded by-value kernel argument
+// (e.g. 8 x 1 B between two pointers), which can push the payload past the
+// inline cross-thread data. Such functors are rebuilt inside the kernel.
+template <typename func_t>
+constexpr bool is_stateless_functor_v =
+    std::is_empty_v<func_t> && std::is_default_constructible_v<func_t>;
+
+template <int vec_size, typename func_t, typename input_t, typename output_t>
+static inline void compact_unary_apply(
+    const input_t* input,
+    const func_t& f,
+    output_t* output,
+    int index,
+    bool vectorized) {
+  if (vectorized) {
+    auto values = memory::load_vector<vec_size>(input, index);
+    memory::aligned_vector<output_t, vec_size> results;
+#pragma unroll
+    for (int i = 0; i < vec_size; ++i) {
+      results.val[i] = f(values.val[i]);
+    }
+    reinterpret_cast<memory::aligned_vector<output_t, vec_size>*>(
+        output)[index] = results;
+  } else {
+    output[index] = f(c10::load(input + index));
+  }
+}
+
+template <
+    typename input_t,
+    typename output_t,
+    typename func_t,
+    typename scalar_arg_t,
+    bool scalar_left>
+struct ScalarUnaryFunctor {
+  output_t operator()(input_t value) const {
+    if constexpr (scalar_left) {
+      return f(scalar, value);
+    } else {
+      return f(value, scalar);
+    }
+  }
+  ScalarUnaryFunctor(func_t f_, scalar_arg_t scalar_)
+      : scalar(scalar_), f(f_) {}
+
+  scalar_arg_t scalar;
+  func_t f;
+};
+
+// Pack contiguous unary and captured CPU-scalar work into WG128/SG32 tiles.
+// Full-tile specialization omits the bounds argument/check; partial tiles
+// retain scalar tails, and vec1 uses the caller's unrolled path.
+template <int vec_size, typename func_t, typename array_t>
+static inline void launch_compact_unary_kernel_impl(
+    int numel,
+    const func_t& f,
+    array_t data) {
+  using traits = function_traits<func_t>;
+  static_assert(traits::arity == 1);
+  using input_t = typename traits::template arg<0>::type;
+  using output_t = typename traits::result_type;
+  constexpr int work_group_size = launch_config::compact_work_group_size;
+  constexpr int group_work_size = work_group_size * vec_size;
+  const auto* input = reinterpret_cast<const input_t*>(data[1]);
+  auto* output = reinterpret_cast<output_t*>(data[0]);
+  auto compute = [=](int index, bool vectorized) {
+    // `f` is named only in the branch that is kept, so it is captured only
+    // when the functor has state. Captures are laid out in order of first
+    // use: `input` comes first so its pointer stays in the inline payload.
+    if constexpr (is_stateless_functor_v<func_t>) {
+      compact_unary_apply<vec_size>(input, func_t{}, output, index, vectorized);
+    } else {
+      compact_unary_apply<vec_size>(input, f, output, index, vectorized);
+    }
+  };
+  const size_t groups = ceil_div<int64_t>(numel, group_work_size);
+  const sycl::nd_range<1> range(groups * work_group_size, work_group_size);
+  auto& queue = getCurrentSYCLQueue();
+  if (numel % group_work_size == 0) {
+    // Full tiles omit the bounds argument from the cross-thread payload.
+    queue.submit([&](sycl::handler& handler) {
+      handler.parallel_for<
+          CompactScalarElementwiseKernel<vec_size, func_t, false>>(
+          range,
+          [=](sycl::nd_item<1> item) [[sycl::reqd_sub_group_size(
+              launch_config::compact_sub_group_size)]] {
+            const int index = int(item.get_group(0)) * work_group_size +
+                int(item.get_local_id(0));
+            compute(index, true);
+          });
+    });
+  } else {
+    queue.submit([&](sycl::handler& handler) {
+      handler
+          .parallel_for<CompactScalarElementwiseKernel<vec_size, func_t, true>>(
+              range,
+              [=](sycl::nd_item<1> item) [[sycl::reqd_sub_group_size(
+                  launch_config::compact_sub_group_size)]] {
+                const int group = int(item.get_group(0));
+                const int local = int(item.get_local_id(0));
+                const int index = group * work_group_size + local;
+                if (index < numel / vec_size) {
+                  compute(index, true);
+                }
+                if (group == numel / group_work_size &&
+                    local < numel % vec_size) {
+                  compute((numel / vec_size) * vec_size + local, false);
+                }
+              });
+    });
+  }
+}
+
+template <int vec_size, typename unary_t, bool bounds>
+struct CompactInplaceScalarKernel {
+  using scalar_t = typename function_traits<unary_t>::template arg<0>::type;
+
+  [[sycl::reqd_sub_group_size(launch_config::compact_sub_group_size)]] void
+  operator()(sycl::nd_item<1> item) const {
+    const uint32_t index =
+        uint32_t(item.get_group(0)) * launch_config::compact_work_group_size +
+        uint32_t(item.get_local_id(0));
+    if (bounds && index >= vector_count) {
+      return;
+    }
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;
+    auto* address =
+        reinterpret_cast<scalar_t*>(reinterpret_cast<vec_t*>(data) + index);
+    compact_unary_apply<vec_size>(
+        address, unary_t(f, scalar), address, 0, true);
+  }
+
+  scalar_t* data;
+  decltype(unary_t::scalar) scalar;
+  decltype(unary_t::f) f;
+  uint32_t vector_count;
+};
+
+template <int vec_size, typename func_t, typename array_t>
+static inline void launch_compact_unary_kernel(
+    int numel,
+    const func_t& f,
+    array_t data) {
+  launch_compact_unary_kernel_impl<vec_size>(numel, f, data);
+}
+
+// Exact inplace aliasing and small state fit inline kernel arguments; other
+// scalar functors retain the general compact unary launch below.
+template <
+    int vec_size,
+    typename input_t,
+    typename output_t,
+    typename func_t,
+    typename scalar_arg_t,
+    bool scalar_left,
+    typename array_t>
+static inline void launch_compact_unary_kernel(
+    int numel,
+    const ScalarUnaryFunctor<
+        input_t,
+        output_t,
+        func_t,
+        scalar_arg_t,
+        scalar_left>& f,
+    array_t data) {
+  if constexpr (
+      std::is_same_v<input_t, output_t> && !is_stateless_functor_v<func_t> &&
+      sizeof(func_t) <= 4 && sizeof(scalar_arg_t) <= 8) {
+    if (data[0] == data[1] && numel % vec_size == 0) {
+      const auto vectors = uint32_t(numel / vec_size);
+      auto launch = [&](auto bounds) {
+        using kernel_t = CompactInplaceScalarKernel<
+            vec_size,
+            std::decay_t<decltype(f)>,
+            decltype(bounds)::value>;
+        // Flatten the scalar and operation to keep kernel arguments inline.
+        static_assert(sizeof(kernel_t) <= 24);
+        sycl_kernel_submit(
+            ceil_div<int64_t>(vectors, launch_config::compact_work_group_size) *
+                launch_config::compact_work_group_size,
+            launch_config::compact_work_group_size,
+            getCurrentSYCLQueue(),
+            kernel_t{
+                reinterpret_cast<input_t*>(data[0]), f.scalar, f.f, vectors});
+      };
+      if (vectors % launch_config::compact_work_group_size == 0) {
+        launch(std::false_type{});
+      } else {
+        launch(std::true_type{});
+      }
+      return;
+    }
+  }
+  launch_compact_unary_kernel_impl<vec_size>(numel, f, data);
+}
+
+template <
+    bool compact_unary = false,
+    typename func_t,
+    typename array_t,
+    typename in_calc_t>
 static inline void launch_vectorized_kernel(
     int64_t N,
     const func_t& f,
@@ -406,16 +616,20 @@ static inline void launch_vectorized_kernel(
   int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
       at::xpu::getDeviceEUCountPerXeCore();
 
-#define VEC_KER(vec_size)                                                    \
-  {                                                                          \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
-      auto ker =                                                             \
-          VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
-              N, f, data, input_calc);                                       \
-      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
-      sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
-    }                                                                        \
+#define VEC_KER(vec_size)                                                      \
+  {                                                                            \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                             \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {                         \
+      if constexpr (compact_unary) {                                           \
+        launch_compact_unary_kernel<vec_size>(N, f, data);                     \
+      } else {                                                                 \
+        auto ker =                                                             \
+            VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
+                N, f, data, input_calc);                                       \
+        int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
+        sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
+      }                                                                        \
+    }                                                                          \
   }
 
   switch (vec_size) {
@@ -511,7 +725,10 @@ static inline bool can_vectorize_for_non_contigouous(
   return vec_size > 1;
 }
 
-template <typename func_t, bool enable_broadcast_vec = true>
+template <
+    typename func_t,
+    bool enable_broadcast_vec = true,
+    bool compact_unary = false>
 void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   using traits = function_traits<func_t>;
   using arg0_t = typename traits::result_type;
@@ -534,13 +751,17 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
                                    at::xpu::getDeviceEUCountPerXeCore()) *
           4; /* on tuning for different data types */
 
+  // Contiguous unary work uses compact tiles; strided work keeps its
+  // original aligned-row and general offset paths.
   int vec_size;
   if (contiguous) {
     auto input_calc = TrivialOffsetCalculator<traits::arity>();
     vec_size = memory::can_vectorize_up_to<func_t>(data);
-    launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
+    launch_vectorized_kernel<compact_unary>(
+        numel, f, data, input_calc, vec_size);
     return;
   } else {
+    // The legacy row-vector path remains disabled for split iterators.
     if constexpr (enable_broadcast_vec) {
       if (!latency_case &&
           can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
@@ -561,10 +782,14 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
           func_t>(data, offset_calc, f));
 }
 
-template <typename func_t, bool enable_broadcast_vec = true>
+template <
+    typename func_t,
+    bool enable_broadcast_vec = true,
+    bool compact_unary = false>
 void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
   if (!needs_dynamic_casting<func_t>::check(iter)) {
-    return gpu_kernel_impl_nocast<func_t, enable_broadcast_vec>(iter, f);
+    return gpu_kernel_impl_nocast<func_t, enable_broadcast_vec, compact_unary>(
+        iter, f);
   }
   using traits = function_traits<func_t>;
   using arg0_t = typename traits::result_type;
@@ -673,7 +898,12 @@ void gpu_kernel_nocast(TensorIteratorBase& iter, const func_t& f) {
   gpu_kernel_impl_nocast(iter, f);
 }
 
-template <typename func_t, bool enable_broadcast_vec = true>
+// Unary functors, including captured CPU scalars, use compact contiguous
+// tiles; strided inputs retain the original launchers.
+template <
+    typename func_t,
+    bool enable_broadcast_vec = true,
+    bool compact_unary = function_traits<func_t>::arity == 1>
 void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
   for (int arg = 0; arg < iter.ntensors(); arg++) {
     TORCH_INTERNAL_ASSERT(
@@ -690,43 +920,30 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
 
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
-      // Broadcasting vectorization is disabled for sub-iterators to prevent
-      // potential output offset calculation issues.
-      gpu_kernel<func_t, false>(sub_iter, f);
+      // Keep legacy row-vector restrictions for split iterators.
+      gpu_kernel<func_t, false, compact_unary>(sub_iter, f);
     }
     return;
   }
 
-  gpu_kernel_impl<func_t, enable_broadcast_vec>(iter, f);
+  gpu_kernel_impl<func_t, enable_broadcast_vec, compact_unary>(iter, f);
 }
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
-struct AUnaryFunctor {
-  using traits = function_traits<func_t>;
-  using opmath_arg1_t = typename traits::template arg<0>::type;
-  return_t operator()(arg2_t b) const {
-    return f(a, b);
-  }
-  AUnaryFunctor(func_t f_, opmath_arg1_t a_) : f(f_), a(a_) {}
-
- private:
-  func_t f;
-  opmath_arg1_t a;
-};
+using AUnaryFunctor = ScalarUnaryFunctor<
+    arg2_t,
+    return_t,
+    func_t,
+    typename function_traits<func_t>::template arg<0>::type,
+    true>;
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
-struct BUnaryFunctor {
-  using traits = function_traits<func_t>;
-  using opmath_arg2_t = typename traits::template arg<1>::type;
-  return_t operator()(arg1_t a) const {
-    return f(a, b);
-  }
-  BUnaryFunctor(func_t f_, opmath_arg2_t b_) : f(f_), b(b_) {}
-
- private:
-  func_t f;
-  opmath_arg2_t b;
-};
+using BUnaryFunctor = ScalarUnaryFunctor<
+    arg1_t,
+    return_t,
+    func_t,
+    typename function_traits<func_t>::template arg<1>::type,
+    false>;
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
 struct BinaryFunctor {
@@ -743,8 +960,12 @@ template <
     typename arg1_t,
     typename arg2_t = arg1_t,
     typename return_t = arg1_t,
-    typename func_t>
-void opmath_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
+    typename func_t,
+    bool compact_unary = true>
+void opmath_gpu_kernel_with_scalars(
+    TensorIteratorBase& iter,
+    const func_t& f,
+    std::bool_constant<compact_unary> = {}) {
   TORCH_INTERNAL_ASSERT(iter.ntensors() == 3);
 
   using traits = function_traits<func_t>;
@@ -759,12 +980,12 @@ void opmath_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
         f, iter.scalar_value<opmath_arg1_t>(1));
     iter.remove_operand(1);
     const OptionalDeviceGuard device_guard(iter.device(1));
-    gpu_kernel(iter, af);
+    gpu_kernel<decltype(af), true, compact_unary>(iter, af);
   } else if (iter.is_cpu_scalar(2)) {
     BUnaryFunctor<arg1_t, arg2_t, return_t, func_t> bf(
         f, iter.scalar_value<opmath_arg2_t>(2));
     iter.remove_operand(2);
-    gpu_kernel(iter, bf);
+    gpu_kernel<decltype(bf), true, compact_unary>(iter, bf);
   } else {
     gpu_kernel(iter, BinaryFunctor<arg1_t, arg2_t, return_t, func_t>(f));
   }
@@ -810,8 +1031,11 @@ void opmath_symmetric_gpu_kernel_with_scalars(
 
 // Legacy variant that assumes that func_t has the correct types
 // that we expect to load from memory
-template <typename func_t>
-void gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
+template <typename func_t, bool compact_unary = true>
+void gpu_kernel_with_scalars(
+    TensorIteratorBase& iter,
+    const func_t& f,
+    std::bool_constant<compact_unary> = {}) {
   using traits = function_traits<func_t>;
   static_assert(
       traits::arity == 2,
@@ -819,7 +1043,8 @@ void gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
   using arg1_t = typename traits::template arg<0>::type;
   using arg2_t = typename traits::template arg<1>::type;
   using return_t = typename traits::result_type;
-  opmath_gpu_kernel_with_scalars<arg1_t, arg2_t, return_t, func_t>(iter, f);
+  opmath_gpu_kernel_with_scalars<arg1_t, arg2_t, return_t, func_t>(
+      iter, f, std::bool_constant<compact_unary>{});
 }
 
 template <typename func_t>
