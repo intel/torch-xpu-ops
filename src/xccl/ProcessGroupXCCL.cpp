@@ -38,15 +38,18 @@ bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
 }
 
 // shutdown() nulls destroyed handles; fail loudly instead of passing a null
-// comm to oneCCL. Best effort only: a collective racing shutdown() on another
-// thread can still read the handle just before it is nulled.
-onecclComm_t& checkedXCCLComm(const std::shared_ptr<onecclComm_t>& comm) {
-  if (!comm || !*comm) {
+// comm to oneCCL. Returns a copy so the handle oneCCL gets is the one that was
+// checked. Best effort only: a collective racing shutdown() on another thread
+// can still read the handle just before it is nulled.
+onecclComm_t checkedXCCLComm(const std::shared_ptr<onecclComm_t>& comm) {
+  onecclComm_t handle = comm ? *comm : nullptr;
+  if (handle == nullptr) {
     C10_THROW_ERROR(
         DistBackendError,
-        "ProcessGroupXCCL has been shut down; its communicators were destroyed");
+        "ProcessGroupXCCL has been shut down or aborted; its communicators are "
+        "no longer usable");
   }
-  return *comm;
+  return handle;
 }
 
 // Comms still alive at process exit. ~ProcessGroupXCCL() does not run during
@@ -90,8 +93,12 @@ bool waitStreamUntil(
   }
 }
 
-// syncStreamsOnDevice() blocks, so it runs on a helper thread; on timeout the
-// thread is left to finish on its own and the comm is leaked.
+// syncStreamsOnDevice() blocks, so it runs on a helper thread. On timeout the
+// comm is leaked and the thread is abandoned inside the SYCL wait: it keeps
+// running into process exit, so a timeout here moves the exit-time hazard
+// rather than removing it. Best effort: the wait is device-wide only where
+// SYCL >= 2026.1 provides ext_oneapi_device_wait; otherwise it covers the
+// stream pools, not queues created outside them.
 bool syncDeviceUntil(
     c10::DeviceIndex device,
     std::chrono::steady_clock::time_point deadline) {
@@ -510,11 +517,22 @@ ProcessGroupXCCL::~ProcessGroupXCCL() {
 
 void ProcessGroupXCCL::abort() {
   // oneCCL has no comm abort (onecclCommAbort is not implemented), so the comms
-  // cannot be torn down without waiting for outstanding operations.
-  TORCH_WARN_ONCE(
-      "ProcessGroupXCCL cannot abort its oneCCL communicators; they stay alive "
-      "until process exit, which can crash with the libfabric cxi provider. "
-      "Use destroy_process_group() to release them.");
+  // cannot be torn down without waiting for outstanding operations. Like
+  // ProcessGroupNCCL, later use of the PG fails; the comms themselves leak.
+  // LOG rather than TORCH_WARN: _abort_process_group() has no try around this
+  // call, and a warnings-as-errors filter would mask the failure being handled.
+  static std::atomic<bool> warned{false};
+  if (!warned.exchange(true)) {
+    LOG(WARNING) << logPrefix()
+                 << "ProcessGroupXCCL cannot abort its oneCCL communicators; "
+                 << "they stay alive until process exit, which can crash with "
+                 << "the libfabric cxi provider. Use destroy_process_group() "
+                 << "to release them.";
+  }
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    terminated_ = true;
+  }
   // Upstream drops the PG after abort(); nothing is left to watch.
   heartbeatMonitor_->stop();
 }
@@ -524,6 +542,7 @@ void ProcessGroupXCCL::shutdown() {
     LOG(INFO) << logPrefix()
               << "TORCH_XCCL_DESTROY_COMMS=0: leaving the oneCCL communicators "
               << "alive.";
+    heartbeatMonitor_->stop();
     return;
   }
   // Failures are logged, never thrown: destroy_process_group() loops over all
@@ -605,9 +624,10 @@ void ProcessGroupXCCL::shutdownImpl() {
   }
 
   // Wait, with a deadline, on every stream the comm's ops ran on. A comm used
-  // during graph capture may be replayed on any stream, so wait for the whole
-  // device for it; oneCCL's finalize is a no-op for such comms.
+  // during graph capture may be replayed on any stream, so wait for its whole
+  // device (once per device); oneCCL's finalize is a no-op for such comms.
   const auto deadline = std::chrono::steady_clock::now() + options_->timeout;
+  std::unordered_map<c10::DeviceIndex, bool> deviceDrained;
   for (auto& c : comms) {
     if (!c.drained) {
       continue;
@@ -622,19 +642,31 @@ void ProcessGroupXCCL::shutdownImpl() {
         break;
       }
     }
-    if (c.drained && usedDuringCapture_.load() &&
-        !syncDeviceUntil(c.stream.device_index(), deadline)) {
-      c.drained = false;
-      LOG(ERROR) << logPrefix() << "Timed out or failed waiting for the "
-                 << "device of graph-captured comm key " << c.key;
+    if (c.drained && usedDuringCapture_.load()) {
+      const auto device = c.stream.device_index();
+      auto it = deviceDrained.find(device);
+      if (it == deviceDrained.end()) {
+        it = deviceDrained.emplace(device, syncDeviceUntil(device, deadline))
+                 .first;
+      }
+      if (!it->second) {
+        c.drained = false;
+        LOG(ERROR) << logPrefix() << "Timed out or failed waiting for the "
+                   << "device of graph-captured comm key " << c.key;
+      }
     }
   }
 
-  // ccl_comm::finalize() waits on the comm's events from all streams and on
-  // its own queue, with no barrier, so it is rank-local (verified on oneCCL
-  // ccde48f4f, deps/libccl/src/comm/comm.cpp); with the streams drained above
-  // it returns promptly. It is rejected inside a group, so unlike NCCL there
-  // is no onecclGroupStart/End.
+  // Not under the deadline: ccl_comm::finalize() (oneCCL ccde48f4f,
+  // deps/libccl/src/comm/comm.cpp) waits only on the events of this comm's
+  // ops on the streams drained above, and on a barrier of its own serializing
+  // queue whose work those events already depend on, so it has nothing left to
+  // wait for; it does no cross-rank communication. The same holds for
+  // onecclCommDestroy below. Running them on a helper thread would not bound
+  // them either (oneCCL keeps per-thread device state, and an abandoned thread
+  // inside oneCCL is the exit-time hazard this teardown exists to remove).
+  // Finalize is rejected inside a group, so unlike NCCL there is no
+  // onecclGroupStart/End.
   for (auto& c : comms) {
     if (c.drained && c.comm && *c.comm) {
       c10::DeviceGuard gpuGuard(c.stream.device());
@@ -827,7 +859,8 @@ std::shared_ptr<onecclComm_t> ProcessGroupXCCL::getXCCLComm(
   if (terminated_) {
     C10_THROW_ERROR(
         DistBackendError,
-        "ProcessGroupXCCL has been shut down; its communicators were destroyed");
+        "ProcessGroupXCCL has been shut down or aborted; its communicators are "
+        "no longer usable");
   }
   auto it = devXCCLCommMap_.find(deviceKey);
   if (it != devXCCLCommMap_.end()) {
@@ -855,7 +888,8 @@ std::shared_ptr<onecclComm_t> ProcessGroupXCCL::initXCCLComm(
     if (terminated_) {
       C10_THROW_ERROR(
           DistBackendError,
-          "ProcessGroupXCCL has been shut down; cannot create a new communicator");
+          "ProcessGroupXCCL has been shut down or aborted; cannot create a new "
+          "communicator");
     }
   }
 
@@ -1143,6 +1177,14 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     if (it == xcclStreamsMap_.end()) {
       LOG(INFO) << "Current stream id changed, register new xpu stream";
       std::lock_guard<std::mutex> lock(mutex_);
+      // A stream registered after shutdown() took its snapshot would never be
+      // waited on, and the comm would be destroyed under this op.
+      if (terminated_) {
+        C10_THROW_ERROR(
+            DistBackendError,
+            "ProcessGroupXCCL has been shut down or aborted; its communicators "
+            "are no longer usable");
+      }
       xcclStreamsMap_.emplace(StreamKey, at::xpu::XPUStream(stream));
     }
   }
@@ -1195,7 +1237,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   }
 
   for (const auto i : c10::irange(inputs.size())) {
-    fn(inputs[i], outputs[i], checkedXCCLComm(comm), stream);
+    onecclComm_t handle = checkedXCCLComm(comm);
+    fn(inputs[i], outputs[i], handle, stream);
   }
 
   post(stream, work);
@@ -1358,9 +1401,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
 
   if (!batchP2P) {
     OnecclGroupGuard group_guard;
-    fn(tensor, checkedXCCLComm(comm), stream, p2pTargetRank);
+    onecclComm_t handle = checkedXCCLComm(comm);
+    fn(tensor, handle, stream, p2pTargetRank);
   } else {
-    fn(tensor, checkedXCCLComm(comm), stream, p2pTargetRank);
+    onecclComm_t handle = checkedXCCLComm(comm);
+    fn(tensor, handle, stream, p2pTargetRank);
   }
 
   if (!coalescing_state_) {

@@ -341,6 +341,70 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_destroy_times_out_and_leaks_unfinished_comm(self):
+        # An async allreduce that depends on long GPU work on the current
+        # stream cannot complete within the short process group timeout, so
+        # teardown times out, leaks the comm, and later use raises. The comm is
+        # leaked on purpose, hence the MR cache monitor is disabled (the leak
+        # must not crash at exit with the cxi provider). A blocking collective
+        # would not do: oneCCL returns from it only once the work ahead of it
+        # has finished.
+        os.environ["FI_MR_CACHE_MONITOR"] = "disabled"
+        pg = self._create_process_group_xccl(timeout=timedelta(seconds=2))
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(10, device=device)
+        pg.allreduce(t).wait()  # creates the comm
+        a = torch.randn(8192, 8192, device=device)
+        for _ in range(400):  # several seconds of GPU work on any device
+            a = a @ a
+        work = pg.allreduce(t)  # noqa: F841  # queued behind the matmuls
+        start = time.monotonic()
+        dist.destroy_process_group()
+        elapsed = time.monotonic() - start
+        self.assertGreaterEqual(elapsed, 2.0)
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+        # The leaked comm still completes the queued op.
+        torch.xpu.synchronize(device)
+        self.assertEqual(t, torch.full_like(t, self.world_size**2))
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_destroy_after_graph_capture(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        t = torch.ones(10, device=device)
+        dist.all_reduce(t)  # warmup
+        torch.xpu.synchronize()
+        graph = torch.xpu.XPUGraph()
+        with torch.xpu.graph(graph):
+            dist.all_reduce(t)
+        t.fill_(1.0)
+        graph.replay()
+        # Finalize is a no-op for a comm used during capture; teardown waits for
+        # the device instead.
+        dist.destroy_process_group()
+        self.assertEqual(t, torch.full_like(t, self.world_size))
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_abort_process_group_rejects_later_use(self):
+        # abort() cannot release the comms (they leak, so the MR cache monitor
+        # is disabled), but the process group must reject later use.
+        os.environ["FI_MR_CACHE_MONITOR"] = "disabled"
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(10, device=device)
+        pg.allreduce(t).wait()
+        dist.distributed_c10d._abort_process_group()
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_destroy_flushes_pending_work(self):
         pg = self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]

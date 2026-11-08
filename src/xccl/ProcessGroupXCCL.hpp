@@ -60,9 +60,11 @@ static std::vector<std::string> TORCH_XCCL_ENABLE_TIMING = {
 
 static std::vector<std::string> TORCH_XCCL_NAN_CHECK = {"TORCH_XCCL_NAN_CHECK"};
 
-// Set to 0 to leave the oneCCL communicators alive at destroy_process_group(),
-// the pre-2.16 behavior. Escape hatch for oneCCL releases whose exit-time KVS
-// cleanup can hang after communicators are destroyed (before a766d7238).
+// Set to 0 to skip the backend teardown at destroy_process_group() entirely,
+// the pre-2.16 behavior: outstanding operations are not waited for, the
+// communicators stay alive (and leak), and the process group remains usable.
+// Escape hatch for oneCCL releases whose exit-time KVS cleanup can hang after
+// communicators are destroyed (before a766d7238).
 static std::vector<std::string> TORCH_XCCL_DESTROY_COMMS = {
     "TORCH_XCCL_DESTROY_COMMS"};
 
