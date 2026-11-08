@@ -827,7 +827,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* rstd_data) {
   const int n_vec = N / vec_size<T>;
 
-  // (XeCore count * EUs per XeCore) * HW threads per EU
+  // (XeCore count * XVEs per XeCore) * HW threads per XVE
   const int64_t total_hw_threads = at::xpu::getDeviceHWThreads();
 
   // `n_vec <= SIMD / 2` ensures `rows_per_wg >= 2` below, and
