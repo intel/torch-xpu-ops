@@ -788,7 +788,7 @@ int64_t layer_norm_wg_size_select(
   if (wg_size <= preferred_wg_size)
     return wg_size;
 
-  // (XeCore count * EUs per XeCore) * HW threads per EU
+  // (XeCore count * XVEs per XeCore) * XVE threads per XVE
   int64_t total_hw_threads = at::xpu::getDeviceHWThreads();
   // Only use preferred_wg_size when less than 50% HW threads would be left idle
   if (M * threads_per_wg > total_hw_threads / 2)
@@ -831,7 +831,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* rstd_data) {
   const int n_vec = N / vec_size<T>;
 
-  // (XeCore count * XVEs per XeCore) * HW threads per XVE
+  // (XeCore count * XVEs per XeCore) * XVE threads per XVE
   const int64_t total_hw_threads = at::xpu::getDeviceHWThreads();
 
   // `n_vec <= SIMD / 2` ensures `rows_per_wg >= 2` below, and
@@ -844,7 +844,7 @@ void launch_vectorized_layer_norm_kernel(
       lanes_per_row <<= 1;
     }
 
-    // Ensure that at least 50% HW threads would not be left idle
+    // Ensure that at least 50% XVE threads would not be left idle
     int rows_per_wg = SIMD / lanes_per_row;
     while (rows_per_wg > 2 &&
            (M + rows_per_wg - 1) / rows_per_wg <= total_hw_threads / 2) {
