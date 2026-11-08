@@ -700,8 +700,10 @@ struct VectorizedLayerNormKernelSmallFunctor {
       if (gamma_vec != nullptr) {
         gamma_data = gamma_vec[i];
       }
-      if (!rms_norm && beta_vec != nullptr) {
-        beta_data = beta_vec[i];
+      if constexpr (!rms_norm) {
+        if (beta_vec != nullptr) {
+          beta_data = beta_vec[i];
+        }
       }
       vec_t out;
       // Computation is performed in T_ACC, X is cast to T_ACC and result is
@@ -716,8 +718,10 @@ struct VectorizedLayerNormKernelSmallFunctor {
         if (gamma_vec != nullptr) {
           y = static_cast<T_ACC>(gamma_data.val[ii]) * y;
         }
-        if (!rms_norm && beta_vec != nullptr) {
-          y += static_cast<T_ACC>(beta_data.val[ii]);
+        if constexpr (!rms_norm) {
+          if (beta_vec != nullptr) {
+            y += static_cast<T_ACC>(beta_data.val[ii]);
+          }
         }
         out.val[ii] = y;
       }
