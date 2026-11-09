@@ -66,3 +66,16 @@
 #define DISABLE_RETURN_TYPE_WARNING_BEGIN
 #define DISABLE_RETURN_TYPE_WARNING_END
 #endif
+
+// Device assert with a message. With MSVC the message is dropped: a string
+// literal in the condition is tested against null at run time, and IGC for
+// Gen12 GPUs can emit relocations against the null symbol for such strings in
+// Windows builds, so valid inputs take the assert path and fault.
+// TODO: Keep the message on Windows too once this is fixed in IGC:
+// https://github.com/pytorch/pytorch/issues/201672
+#if defined(_MSC_VER)
+#define XPU_KERNEL_ASSERT_WORKAROUND(cond, msg) SYCL_KERNEL_ASSERT(cond)
+#else
+#define XPU_KERNEL_ASSERT_WORKAROUND(cond, msg) \
+  SYCL_KERNEL_ASSERT((cond) && (msg))
+#endif
