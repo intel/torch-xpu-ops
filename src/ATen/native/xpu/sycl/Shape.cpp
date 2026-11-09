@@ -228,12 +228,12 @@ void cat_array_batched_copy_contig_kernel_impl(
     const IndexType outputSliceSize = os.tensorSize[concatDim] * dimStride;
     const auto subgroup = item.get_sub_group();
     const IndexType subgroupSize = subgroup.get_local_range()[0];
-    
+
     if (sliceSize > subgroupSize &&
         (sliceSize % alignmentElements != 0 ||
          outputSliceSize % alignmentElements != 0 ||
          reinterpret_cast<uintptr_t>(output + dataOffset) % 4 != 0)) {
-      
+
       const IndexType lane = subgroup.get_local_id()[0];
       const IndexType logicalSubgroupsPerSlice =
           ceil_div(sliceSize, subgroupSize) + 1;
