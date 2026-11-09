@@ -15,6 +15,7 @@
 #include <ATen/native/xpu/sycl/Distributions.h>
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
+#include <comm/Macros.h>
 
 namespace at::native::xpu {
 
@@ -24,9 +25,8 @@ struct PoissonTensorApplyFunctor {
       sycl::nd_item<1> item,
       scalar_t& ret_val,
       const scalar_t& lambda) const {
-    SYCL_KERNEL_ASSERT(
-        lambda >= 0 &&
-        "invalid Poisson rate, expected rate to be non-negative");
+    XPU_KERNEL_ASSERT_WORKAROUND(
+        lambda >= 0, "invalid Poisson rate, expected rate to be non-negative");
     auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
     rand_init(
