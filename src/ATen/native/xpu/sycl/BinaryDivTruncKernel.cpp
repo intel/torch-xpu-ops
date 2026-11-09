@@ -19,6 +19,8 @@
 
 #include <comm/XPUMathCompat.h>
 
+#include <type_traits>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>
@@ -37,7 +39,15 @@ template <typename scalar_t>
 struct DivTruncFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    return sycl::trunc(static_cast<opmath_t>(c10::xpu::compat::div(a, b)));
+    if constexpr (std::is_same_v<scalar_t, c10::Half>) {
+      // For half-precision, use a volatile intermediate to materialize result
+      // before truncation
+      volatile opmath_t quotient =
+          static_cast<opmath_t>(c10::xpu::compat::div(a, b));
+      return sycl::trunc(quotient);
+    } else {
+      return sycl::trunc(static_cast<opmath_t>(c10::xpu::compat::div(a, b)));
+    }
   }
 };
 
