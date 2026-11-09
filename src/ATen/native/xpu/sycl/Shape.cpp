@@ -210,8 +210,10 @@ void cat_array_batched_copy_contig_kernel_impl(
       item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
   IndexType nElements = inputs.nElements[item.get_group(0)];
 
-  if (tid >= nElements)
-    return;
+  if constexpr (sizeof(T) != 1 && sizeof(T) != 2) {
+    if (tid >= nElements)
+      return;
+  }
 
   const T* data = inputs.input[item.get_group(0)];
   IndexType offset = inputs.offset[item.get_group(0)];
@@ -219,6 +221,55 @@ void cat_array_batched_copy_contig_kernel_impl(
   IndexType dataOffset = offset * dimStride;
 
   IndexType stride = item.get_group_range(1) * item.get_local_range(1);
+
+  if constexpr (sizeof(T) == 1 || sizeof(T) == 2) {
+    constexpr IndexType alignmentElements = 4 / sizeof(T);
+    const IndexType sliceSize = dimSize * dimStride;
+    const IndexType outputSliceSize = os.tensorSize[concatDim] * dimStride;
+    const auto subgroup = item.get_sub_group();
+    const IndexType subgroupSize = subgroup.get_local_range()[0];
+    
+    if (sliceSize > subgroupSize &&
+        (sliceSize % alignmentElements != 0 ||
+         outputSliceSize % alignmentElements != 0 ||
+         reinterpret_cast<uintptr_t>(output + dataOffset) % 4 != 0)) {
+      
+      const IndexType lane = subgroup.get_local_id()[0];
+      const IndexType logicalSubgroupsPerSlice =
+          ceil_div(sliceSize, subgroupSize) + 1;
+      const IndexType logicalSubgroupCount =
+          (nElements / sliceSize) * logicalSubgroupsPerSlice;
+      const IndexType launchedSubgroupCount =
+          item.get_group_range(1) * subgroup.get_group_range()[0];
+      IndexType logicalSubgroupIndex =
+          item.get_group(1) * subgroup.get_group_range()[0] +
+          subgroup.get_group_id()[0];
+      while (logicalSubgroupIndex < logicalSubgroupCount) {
+        const IndexType slice = logicalSubgroupIndex / logicalSubgroupsPerSlice;
+        const IndexType logicalSubgroupInSlice =
+            logicalSubgroupIndex - slice * logicalSubgroupsPerSlice;
+        const IndexType inputBase = slice * sliceSize;
+        const IndexType outputBase = dataOffset + slice * outputSliceSize;
+        const IndexType prefix =
+            ((4 - reinterpret_cast<uintptr_t>(output + outputBase) % 4) % 4) /
+            sizeof(T);
+        if (logicalSubgroupInSlice == 0) {
+          if (lane < prefix) {
+            output[outputBase + lane] = data[inputBase + lane];
+          }
+        } else {
+          const IndexType elementOffsetInSlice =
+              (logicalSubgroupInSlice - 1) * subgroupSize + lane + prefix;
+          if (elementOffsetInSlice < sliceSize) {
+            output[outputBase + elementOffsetInSlice] =
+                data[inputBase + elementOffsetInSlice];
+          }
+        }
+        logicalSubgroupIndex += launchedSubgroupCount;
+      }
+      return;
+    }
+  }
 
   while (tid < nElements) {
     IndexType elementOffset = CatArrIndexToOffset<IndexType, Dims>::compute(
