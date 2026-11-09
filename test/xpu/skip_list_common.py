@@ -366,6 +366,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
+    f"{PYTORCH_TEST_DIR}/profiler/test_execution_trace.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
     f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
     f"{PYTORCH_TEST_DIR}/custom_backend/test_custom_backend.py": {
