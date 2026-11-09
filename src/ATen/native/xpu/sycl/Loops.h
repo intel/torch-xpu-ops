@@ -19,6 +19,7 @@
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/DeviceGuard.h>
 
+#include <ATen/native/xpu/sycl/BinaryLayoutKernel.h>
 #include <ATen/native/xpu/sycl/ElementwiseInvoke.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
@@ -1377,6 +1378,9 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
       // Keep the shared small-workload fallback: row packing has a setup cost.
       if (!latency_case &&
           try_launch_strided_input_binary_kernel(iter, f, data)) {
+        return;
+      }
+      if (!latency_case && try_launch_layout_conflict_binary_kernel(iter, f)) {
         return;
       }
     }
