@@ -110,6 +110,8 @@ jobs:
       - name: Report usage cost
         if: always()
         uses: actions/github-script@v9
+        env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -136,7 +138,14 @@ jobs:
             const pr = '${{ github.event.inputs.pytorch_pr }}';
 
             const [costOwner, costRepo] = '${{ env.COST_TRACKING_REPO }}'.split('/');
-            await github.rest.issues.createComment({
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
               owner: costOwner, repo: costRepo,
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
               body: `\`${date}\` [\`ut-review\`](${jobUrl}) on **pytorch/pytorch[#${pr}]** — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
