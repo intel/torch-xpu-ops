@@ -9,22 +9,23 @@ The setup script detects host-specific values by default:
 - runner label from host OS/version/hostname, unless `--runner-label` is set
 - runner release from the runner label, unless `--runner-release` is set
 - max runner count from physical CPU cores and memory, unless `--max-runners` is set
-- cache root from the runner label, unless `--cache-root` is set
+- latest `actions/runner` release at build time
 
-Each runner pod defaults to `4` CPUs and `16Gi` memory. Override those with `--runner-cpu` and `--runner-memory`.
+Each runner pod defaults to `4` CPUs and `16Gi` memory. Override those with `--runner-cpu` and `--runner-memory`. The ARC chart version is pinned with `--arc-version` (default `0.15.1`).
 
 ## Files
 
 - [Dockerfile.arc-runner-ubuntu-24.04](Dockerfile.arc-runner-ubuntu-24.04) builds the Ubuntu 24.04 runner image with common build tools, GitHub CLI, `clang`, `clang-tidy`, and passwordless sudo for the `runner` user.
-- [arc-runner-entrypoint.sh](arc-runner-entrypoint.sh) aligns the container `runner` UID/GID with the host cache owner before starting the Actions runner.
-- [arc-runner-cleanup.sh](arc-runner-cleanup.sh) restores cache ownership on shutdown.
+- [arc-runner-entrypoint.sh](arc-runner-entrypoint.sh) starts the Actions runner as the pod UID/GID, with a root fallback that aligns the `runner` user first.
+- [arc-runner-cleanup.sh](arc-runner-cleanup.sh) restores cache ownership on shutdown for the root fallback.
 - [arc-xpu-ubuntu-24.04-values.yaml](arc-xpu-ubuntu-24.04-values.yaml) is the Helm values file for the runner scale set.
 - [setup-arc-runner.sh](setup-arc-runner.sh) installs and deploys everything on a stock Ubuntu host.
+- [update-arc-runner.sh](update-arc-runner.sh) keeps the image on the latest `actions/runner` and recovers an `Outdated` scale set.
 - [github-token.secret.example.yaml](github-token.secret.example.yaml) documents the Kubernetes secret shape only. Do not put a real token in git.
 
 ## Quick setup on stock Ubuntu
 
-Use this path on a fresh Ubuntu 24.04 node. The script installs base packages, Docker, a local Kubernetes runtime, Helm, ARC, the GitHub token secret, the local runner image, cache directories, and the runner scale set.
+Use this path on a fresh Ubuntu 24.04 node. The script installs base packages, Docker, a local Kubernetes runtime, Helm, ARC, the GitHub credential secret, the local runner image, and the runner scale set.
 
 ```bash
 cd .ci/arc
@@ -47,17 +48,32 @@ To recreate the current `intel/torch-xpu-ops` scale set and labels, pass those v
   --min-runners 0 \
   --runner-cpu 4 \
   --runner-memory 16Gi \
-  --reserve-cpu 4 \
-  --cache-root '/var/cache/arc/xpu-ubuntu-24.04'
+  --reserve-cpu 4
 ```
 
-The GitHub token must be able to register repository runners for the target repository.
+The GitHub token must be able to register repository runners for the target repository. A GitHub App avoids token expiry, which otherwise stops the listener with `401 Bad credentials`:
+
+```bash
+./setup-arc-runner.sh \
+  --github-app-id '<app-id>' \
+  --github-app-installation-id '<installation-id>' \
+  --github-app-private-key-file /path/to/app.private-key.pem \
+  ...
+```
+
+The app needs repository `Administration: Read and write` permission and must be installed on the repository.
 
 The `xpu-ubuntu-24.04` label comes from the ARC `runnerScaleSetName`. The `ubuntu-24.04` and `ubuntu-latest` labels are optional compatibility labels advertised through `scaleSetLabels`.
 
 This runner image is intentionally docker-less. Jobs that need Docker must use a Docker-capable runner label, such as `build`, instead of the generic Ubuntu labels routed to this ARC scale set.
 
-Jobs using `actions/setup-python` may populate `/opt/hostedtoolcache` on first use. Keep network egress to GitHub tool-cache manifests and downloads available, or prewarm the mounted tool cache before relying on those jobs.
+### Security model
+
+The generic `ubuntu-*` labels let any workflow in this public repository land here, including approved fork PRs, and jobs get root through passwordless sudo. Keep these controls in place:
+
+- Every job runs in a fresh ephemeral pod with an `emptyDir` cache; nothing writable is shared between jobs or with the host.
+- Fork PR workflows require approval (`Settings > Actions > General > Approval for running fork pull request workflows` set to all external contributors).
+- The pod is not privileged, drops all capabilities except those `apt`/`dpkg` need, and has no service account token.
 
 ## Manual setup
 
@@ -107,6 +123,7 @@ helm version
 ```bash
 helm upgrade --install arc \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
+  --version 0.15.1 \
   --namespace arc-systems \
   --create-namespace \
   --timeout 10m
@@ -131,8 +148,12 @@ unset GITHUB_TOKEN
 
 ```bash
 RUNNER_IMAGE='arc-xpu-runner:ubuntu-24.04-tools'
+RUNNER_VERSION=$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/actions/runner/releases/latest)
+RUNNER_VERSION=${RUNNER_VERSION##*/v}
 
 docker build \
+  --build-arg ACTIONS_RUNNER_VERSION="${RUNNER_VERSION}" \
+  --label arc.runner.version="${RUNNER_VERSION}" \
   -t "${RUNNER_IMAGE}" \
   -f Dockerfile.arc-runner-ubuntu-24.04 \
   .
@@ -142,24 +163,14 @@ sudo k3s ctr images import /tmp/arc-xpu-runner.tar
 rm -f /tmp/arc-xpu-runner.tar
 ```
 
-### 7. Prepare host cache directories
+Pass an explicit version: with the default `latest`, Docker reuses the cached runner layer and never picks up new releases.
 
-```bash
-CACHE_ROOT='/var/cache/arc/xpu-ubuntu-24.04'
-
-sudo mkdir -p \
-  "${CACHE_ROOT}/home-cache" \
-  "${CACHE_ROOT}/tool-cache"
-sudo chown -R "$(id -u):$(id -g)" "${CACHE_ROOT}"
-```
-
-The runner mounts these directories at `/home/runner/.cache` and `/opt/hostedtoolcache`.
-
-### 8. Deploy the runner scale set
+### 7. Deploy the runner scale set
 
 ```bash
 helm upgrade --install xpu-ubuntu-24-04 \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+  --version 0.15.1 \
   --namespace arc-runners \
   --create-namespace \
   -f arc-xpu-ubuntu-24.04-values.yaml \
@@ -168,7 +179,7 @@ helm upgrade --install xpu-ubuntu-24-04 \
   --timeout 10m
 ```
 
-### 9. Verify ARC state
+### 8. Verify ARC state
 
 These commands print only non-secret Kubernetes state.
 
@@ -192,14 +203,22 @@ The scale set also advertises `ubuntu-24.04` and `ubuntu-latest`, so jobs using 
 
 ## Updating the deployment
 
-After changing [Dockerfile.arc-runner-ubuntu-24.04](Dockerfile.arc-runner-ubuntu-24.04), [arc-runner-entrypoint.sh](arc-runner-entrypoint.sh), or [arc-runner-cleanup.sh](arc-runner-cleanup.sh), rebuild and import the image, then recycle any idle runner pods.
+### Runner version (automatic)
+
+GitHub rejects deprecated `actions/runner` versions. When that happens ARC marks the scale set `Outdated`, deletes the listener, and unregisters the scale set, so no runners start. [update-arc-runner.sh](update-arc-runner.sh) prevents and repairs this. It rebuilds and imports the image only when a newer runner exists, prunes superseded images, and recreates an `Outdated` scale set from the live Helm values.
 
 ```bash
-docker build -t arc-xpu-runner:ubuntu-24.04-tools -f Dockerfile.arc-runner-ubuntu-24.04 .
-docker save -o /tmp/arc-xpu-runner.tar arc-xpu-runner:ubuntu-24.04-tools
-sudo k3s ctr images import /tmp/arc-xpu-runner.tar
-rm -f /tmp/arc-xpu-runner.tar
-kubectl -n arc-runners delete pod -l actions.github.com/scale-set-name=xpu-ubuntu-24.04 --ignore-not-found
+./update-arc-runner.sh                  # one-off check/update
+./update-arc-runner.sh --install-timer  # install the hourly systemd timer
+journalctl -u arc-runner-update         # timer run logs
+```
+
+### Image or scripts
+
+After changing [Dockerfile.arc-runner-ubuntu-24.04](Dockerfile.arc-runner-ubuntu-24.04), [arc-runner-entrypoint.sh](arc-runner-entrypoint.sh), or [arc-runner-cleanup.sh](arc-runner-cleanup.sh), rebuild and import the image. New runner pods pick it up; running jobs are not interrupted.
+
+```bash
+./update-arc-runner.sh --force
 ```
 
 After changing [arc-xpu-ubuntu-24.04-values.yaml](arc-xpu-ubuntu-24.04-values.yaml), redeploy the scale set:
@@ -207,12 +226,24 @@ After changing [arc-xpu-ubuntu-24.04-values.yaml](arc-xpu-ubuntu-24.04-values.ya
 ```bash
 helm upgrade --install xpu-ubuntu-24-04 \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+  --version 0.15.1 \
   --namespace arc-runners \
   --create-namespace \
   -f arc-xpu-ubuntu-24.04-values.yaml \
   --set controllerServiceAccount.name=arc-gha-rs-controller \
   --set controllerServiceAccount.namespace=arc-systems \
   --timeout 10m
+```
+
+### ARC version
+
+Helm does not upgrade CRDs, so a new ARC chart version needs a reinstall. This interrupts running jobs; drain first by waiting until `kubectl -n arc-runners get pods` is empty.
+
+```bash
+helm uninstall xpu-ubuntu-24-04 -n arc-runners --wait
+helm uninstall arc -n arc-systems --wait
+kubectl get crd -o name | grep actions.github.com | xargs kubectl delete
+# Reinstall the controller (step 4) and the scale set (step 7) with the new --version.
 ```
 
 ## Removal
