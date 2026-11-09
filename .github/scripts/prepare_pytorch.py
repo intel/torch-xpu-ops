@@ -166,15 +166,15 @@ def main():
             if "GIT_REPOSITORY" in line or "GIT_TAG" in line:
                 print(f"  {line.strip()}")
 
-    # Patch CMakeLists.txt to skip torch-xpu-ops checkout
-    cmakelists = pytorch_dir / "caffe2" / "CMakeLists.txt"
-    text = cmakelists.read_text()
-    text = text.replace("checkout --quiet ${TORCH_XPU_OPS_COMMIT}", "log -n 1")
-    cmakelists.write_text(text)
+    # Keep CMake on the prepared checkout, including PR merge commits.
+    torch_xpu_ops_sha = subprocess.check_output(
+        ["git", "-C", str(third_party_dir), "rev-parse", "HEAD"], text=True
+    ).strip()
+    (pytorch_dir / "third_party" / "xpu.txt").write_text(torch_xpu_ops_sha + "\n")
 
     print(f"\nPyTorch source prepared at: {pytorch_dir}")
     print(f"  pytorch commit: {commit}")
-    print(f"  torch-xpu-ops: {torch_xpu_ops_commit}")
+    print(f"  torch-xpu-ops: {torch_xpu_ops_commit} -> {torch_xpu_ops_sha}")
 
 
 if __name__ == "__main__":
