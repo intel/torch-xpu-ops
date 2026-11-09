@@ -254,7 +254,6 @@ skip_dict = {
         "test_flip_xpu_float32",
     ),
     "test_sort_and_select_xpu.py": None,
-    "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": (
         # BMG hang (>10 min) taking down the xdist worker
         # https://github.com/intel/torch-xpu-ops/issues/4947
@@ -437,6 +436,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
     f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/test_sparse_csr.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
