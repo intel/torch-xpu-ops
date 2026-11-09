@@ -84,7 +84,7 @@ runs:
         echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
-      if: ${{ inputs.pytorch_artifact_run_id == '' && ! endsWith(inputs.pytorch, '_wheel') }}
+      if: ${{ inputs.pytorch_artifact_run_id == '' && ! endsWith(inputs.pytorch, '_wheel') && ! contains(inputs.pytorch, '+xpu') }}
       uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
@@ -108,6 +108,8 @@ runs:
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        elif [[ "${{ inputs.pytorch }}" == *"+xpu" ]];then
+          uv pip install --pre "torch==${{ inputs.pytorch }}" torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           uv pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
