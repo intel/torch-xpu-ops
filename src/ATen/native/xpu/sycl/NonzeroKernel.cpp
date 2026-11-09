@@ -148,8 +148,8 @@ void flatten_idx_to_real_idx_kernel_impl(
     int64_t* out_begin,
     int64_t* idx_flat_begin,
     DivisorSizes divisor_sizes) {
-  sycl::nd_item<1> item_id = syclext::this_work_item::get_nd_item<1>();
-  auto global_id = item_id.get_global_linear_id();
+  sycl::nd_item<1> item = syclext::this_work_item::get_nd_item<1>();
+  auto global_id = item.get_global_linear_id();
 
   if (global_id < N) {
     auto* divisor = divisor_sizes.divisor;
@@ -160,6 +160,7 @@ void flatten_idx_to_real_idx_kernel_impl(
     out_begin[global_id] = (idx_flat_begin[index] / divisor[dim]) % sizes[dim];
   }
 }
+
 template <typename scalar_t>
 void nonzero_template(const Tensor& self_, Tensor& out) {
   Tensor self = self_.contiguous();
@@ -197,25 +198,27 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
       int64_t* out_begin = out_.data_ptr<int64_t>();
 
       // preload sizes tensor for index calculation
-      struct DivisorSizes divisor_sizes;
+      DivisorSizes divisor_sizes;
       divisor_sizes.sizes[num_dim - 1] = self.size(num_dim - 1);
       divisor_sizes.divisor[num_dim - 1] = 1;
-      for (auto dim = num_dim - 2; dim >= 0; dim--) {
-        divisor_sizes.sizes[dim] = self.size(dim);
-        divisor_sizes.divisor[dim] =
-            divisor_sizes.sizes[dim + 1] * divisor_sizes.divisor[dim + 1];
+      for (auto d = num_dim - 2; d >= 0; d--) {
+        divisor_sizes.sizes[d] = self.size(d);
+        divisor_sizes.divisor[d] =
+            divisor_sizes.sizes[d + 1] * divisor_sizes.divisor[d + 1];
       }
 
       const int64_t total = num_nonzeros * num_dim;
 
-      const auto wg_sz = std::min(
-          syclMaxWorkGroupSize<flatten_idx_to_real_idx_kernel_impl>(), total);
+      const auto wg_sz = std::min<int64_t>(
+          at::xpu::getKernelMaxWorkGroupSize<
+              flatten_idx_to_real_idx_kernel_impl>(),
+          total);
       const auto num_wg = at::ceil_div(total, wg_sz);
 
       sycl_kernel_submit<flatten_idx_to_real_idx_kernel_impl>(
           wg_sz * num_wg,
           wg_sz,
-          getCurrentSYCLQueue(),
+          queue,
           0,
           total,
           num_dim,
@@ -237,8 +240,8 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
   const int64_t num_chunks = at::ceil_div(N, scatter_chunk_size);
 
   // ---- Pass 1: count nonzeros per chunk via work-group reduction ----
-  const int64_t count_wg_size =
-      syclMaxWorkGroupSize<count_nonzeros_kernel_impl<scalar_t>>();
+  const int64_t count_wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      count_nonzeros_kernel_impl<scalar_t>>();
 
   // Pre-allocate a single device buffer wide enough to hold every WG's partial
   // sum for every chunk. All count kernels are enqueued without blocking so
@@ -301,7 +304,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
   // Precompute per-dimension sizes and divisors for flat-to-multi-dim
   // conversion.
-  struct DivisorSizes divisor_sizes;
+  DivisorSizes divisor_sizes;
   if (num_dim > 0) {
     divisor_sizes.sizes[num_dim - 1] = self.size(num_dim - 1);
     divisor_sizes.divisor[num_dim - 1] = 1;
@@ -324,6 +327,12 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
       (num_nonzeros > 0 && num_dim > 0) ? out_.data_ptr<int64_t>() : nullptr;
 
   if (out_ptr != nullptr) {
+    const int64_t count_wg_size_is_nonzero =
+        at::xpu::getKernelMaxWorkGroupSize<is_nonzero_kernel_impl<scalar_t>>();
+
+    const int64_t count_wg_size_scatter =
+        at::xpu::getKernelMaxWorkGroupSize<scatter_to_out_kernel_impl>();
+
     for (int64_t ci = 0; ci < num_chunks; ci++) {
       if (chunk_counts[ci] == 0)
         continue;
@@ -333,13 +342,13 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
       // Fill global_mask[0..this_chunk): 1 where element is nonzero, 0
       // elsewhere.
-      const int64_t count_wg_size =
-          syclMaxWorkGroupSize<is_nonzero_kernel_impl<scalar_t>>();
-      const int64_t num_wgs = at::ceil_div(this_chunk, count_wg_size);
+
+      const int64_t num_wgs =
+          at::ceil_div(this_chunk, count_wg_size_is_nonzero);
 
       sycl_kernel_submit<is_nonzero_kernel_impl<scalar_t>>(
-          num_wgs * count_wg_size,
-          count_wg_size,
+          num_wgs * count_wg_size_is_nonzero,
+          count_wg_size_is_nonzero,
           queue,
           0,
           self_data + start,
@@ -356,13 +365,11 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           target_pos_ptr,
           int64_t(0));
 
-      const int64_t count_wg_size1 =
-          syclMaxWorkGroupSize<scatter_to_out_kernel_impl>();
-      const int64_t num_wgs1 = at::ceil_div(this_chunk, count_wg_size1);
+      const int64_t num_wgs1 = at::ceil_div(this_chunk, count_wg_size_scatter);
 
       sycl_kernel_submit<scatter_to_out_kernel_impl>(
-          num_wgs1 * count_wg_size1,
-          count_wg_size1,
+          num_wgs1 * count_wg_size_scatter,
+          count_wg_size_scatter,
           queue,
           0,
           global_mask_ptr,
