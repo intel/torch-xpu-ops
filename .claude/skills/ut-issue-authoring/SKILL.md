@@ -189,8 +189,10 @@ how CI ran that case, never from the failure text:
    `*_jobs` functions and `*_ENV` dicts of `.github/scripts/run_upstream_ut.py`
    it calls.
 2. From the workspace root (`${GITHUB_WORKSPACE}` is `$PWD`): `export` what
-   changes the test, `cd` where it ran, then that `python -m pytest` on the
-   file plus `::<class>::<test_name>` (a whole-module row: the file alone).
+   changes the test - every variable CI set for it, including the shared
+   ones (`COMMON_ENV` and the category's `*_ENV` for `upstream_*`) - `cd`
+   where it ran, then that `python -m pytest` on the file plus
+   `::<class>::<test_name>` (a whole-module row: the file alone).
 3. Leave out what only serves CI: junit, logs, `tee`, timeouts, xdist, reruns,
    `PATH`, `PYTEST_ADDOPTS`.
 
