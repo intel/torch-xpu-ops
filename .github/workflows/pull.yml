@@ -289,7 +289,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
+      runner: PVC-289937
       pytorch: nightly_wheel
       torch_xpu_ops: daisyden/distributed_2.16
       ut: ${{ matrix.ut_name }}
