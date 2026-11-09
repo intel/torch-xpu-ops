@@ -114,6 +114,13 @@ def main():
     git("-C", str(third_party_dir), "branch")
     git("-C", str(third_party_dir), "show", "-s")
 
+    # Keep CMake on the prepared checkout, including PR merge commits.
+    torch_xpu_ops_sha = subprocess.check_output(
+        ["git", "-C", str(third_party_dir), "rev-parse", "HEAD"], text=True
+    ).strip()
+    xpu_pin = pytorch_dir / "third_party" / "xpu.txt"
+    xpu_pin.write_text(torch_xpu_ops_sha + "\n")
+
     # Apply cherry-picks
     run([sys.executable, "-m", "pip", "install", "requests"])
     apply_script = third_party_dir / ".github" / "scripts" / "apply_torch_pr.py"
@@ -166,15 +173,9 @@ def main():
             if "GIT_REPOSITORY" in line or "GIT_TAG" in line:
                 print(f"  {line.strip()}")
 
-    # Keep CMake on the prepared checkout, including PR merge commits.
-    torch_xpu_ops_sha = subprocess.check_output(
-        ["git", "-C", str(third_party_dir), "rev-parse", "HEAD"], text=True
-    ).strip()
-    (pytorch_dir / "third_party" / "xpu.txt").write_text(torch_xpu_ops_sha + "\n")
-
     print(f"\nPyTorch source prepared at: {pytorch_dir}")
     print(f"  pytorch commit: {commit}")
-    print(f"  torch-xpu-ops: {torch_xpu_ops_commit} -> {torch_xpu_ops_sha}")
+    print(f"  torch-xpu-ops commit: {xpu_pin.read_text().strip()}")
 
 
 if __name__ == "__main__":
