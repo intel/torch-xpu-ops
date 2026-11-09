@@ -1538,7 +1538,7 @@ def _npref_block_addmm_addmv(c, a, b, alpha, beta):
     return alpha * (a @ b) + beta * c
 
 
-class TestSparseCSR(TestCase):
+class TestSparseCSRDevice(TestCase):
     def test_csr_stride(self):
         a = self.genSparseCSRTensor(
             (3, 3),
@@ -5956,7 +5956,7 @@ class TestSparseCompressedTritonKernels(TestCase):
 
 
 # e.g., TestSparseCSRCPU and TestSparseCSRCUDA
-instantiate_device_type_tests(TestSparseCSR, globals(), allow_xpu=True)
+instantiate_device_type_tests(TestSparseCSRDevice, globals(), allow_xpu=True)
 instantiate_device_type_tests(TestSparseCompressed, globals(), allow_xpu=True)
 instantiate_device_type_tests(
     TestSparseCompressedTritonKernels, globals(), allow_xpu=True
