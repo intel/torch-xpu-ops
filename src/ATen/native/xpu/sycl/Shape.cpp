@@ -233,7 +233,6 @@ void cat_array_batched_copy_contig_kernel_impl(
         (sliceSize % alignmentElements != 0 ||
          outputSliceSize % alignmentElements != 0 ||
          reinterpret_cast<uintptr_t>(output + dataOffset) % 4 != 0)) {
-
       const IndexType lane = subgroup.get_local_id()[0];
       const IndexType logicalSubgroupsPerSlice =
           ceil_div(sliceSize, subgroupSize) + 1;
