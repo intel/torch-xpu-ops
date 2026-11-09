@@ -371,7 +371,7 @@ void max_pool2d_backward_deterministic_kernel_impl(
           for (int pw = pwstart; pw < pwend; ++pw) {
             if (indices[offset + (ph * gradOutputSizeW + pw) * numPlane] ==
                 input_hw_index) {
-              grad += static_cast<scalar_t>(
+              grad += static_cast<accscalar_t>(
                   gradOutput[offset + (ph * gradOutputSizeW + pw) * numPlane]);
             }
           }
