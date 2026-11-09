@@ -1861,6 +1861,7 @@ jobs:
         env:
           DRY_RUN: ${{ needs.parse-command.outputs.dry_run }}
           APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          LABELS_MD: ${{ steps.apply.outputs.labels_md }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1870,6 +1871,18 @@ jobs:
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
             if (!result || result.is_error || !result.result) return;
+
+            // Post the on-disk labels.md verbatim, NOT the agent's final chat
+            // message (result.result). The model's reply varies run to run: it
+            // adds trailing commentary, or wraps the artifact in a ```markdown
+            // fence that stops the <details> from collapsing. The file is the
+            // exact artifact output_format.md defines, already wrapped in a
+            // collapsible <details>, so posting it keeps the comment hidden and
+            // free of stray prose.
+            const labelsMd = process.env.LABELS_MD;
+            if (!labelsMd || !fs.existsSync(labelsMd)) return;
+            const artifact = fs.readFileSync(labelsMd, 'utf8').trim();
+
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
             });
@@ -1916,7 +1929,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: header + result.result + alertBlock + footer
+              body: header + artifact + alertBlock + footer
             });
 
       - name: "Verify: AI labeling succeeded"
