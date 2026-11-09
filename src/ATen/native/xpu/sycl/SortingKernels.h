@@ -587,6 +587,21 @@ void segmented_sort_pairs_(
     value_t* values_out,
     int num_segments,
     int num_elements) {
+  // Keep medium wide pairs local without retuning other sizes or payloads.
+  if constexpr (
+      sizeof(key_t) == 8 && sizeof(value_t) == 8 && SUBGROUP_SIZE == 32) {
+    if (num_elements > 2048 && num_elements <= 4096) {
+      segmented_group_radix_sort_pairs_kernel<
+          key_t,
+          value_t,
+          IS_DESCENDING,
+          4,
+          1024,
+          SUBGROUP_SIZE>(
+          keys_in, keys_out, values_in, values_out, num_segments, num_elements);
+      return;
+    }
+  }
   constexpr int scaling_coef = sizeof(key_t) * sizeof(value_t) >= 64
       ? 2
       : 1; // Attempt to reduce register pressure for performance.
