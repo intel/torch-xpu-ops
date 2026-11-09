@@ -93,7 +93,6 @@ custom_headers:
       - "test/xpu/test_nestedtensor_xpu.py"
       - "test/xpu/test_nn_xpu.py"
       - "test/xpu/test_sort_and_select_xpu.py"
-      - "test/xpu/test_sparse_csr_xpu.py"
       - "test/xpu/test_sparse_xpu.py"
       - "test/xpu/test_tensor_creation_ops_xpu.py"
       - "test/xpu/test_torch_xpu.py"
