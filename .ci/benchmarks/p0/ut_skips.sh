@@ -139,4 +139,8 @@ PYTEST_DESELECTS=(
     "test/inductor/test_mkldnn_pattern_matcher.py::TestPatternMatcherGenericCPU::test_conv3d_binary_broadcast_shapes_cpu"
     # https://github.com/intel/torch-xpu-ops/issues/6013 (subprocess import failure)
     "test/inductor/test_aot_inductor_package.py::TestAOTInductorPackage_cpu::test_custom_output_type_missing_pytree_registration_error"
+    # https://github.com/intel/torch-xpu-ops/issues/6116 (intermittent 2.15 release-wheel P0 failures; independent causes)
+    "test/inductor/test_aot_inductor.py::AOTInductorTestABICompatibleGpu::test_aoti_debug_printer_codegen_xpu"
+    # https://github.com/intel/torch-xpu-ops/issues/6116 (intermittent conv3d backward tolerance failure; recurrence of closed #5953)
+    "test/xpu/test_ops_xpu.py::TestCompositeComplianceXPU::test_backward_nn_functional_conv3d_xpu_float32"
 )
