@@ -12,6 +12,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <algorithm>
+
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -21,13 +23,1287 @@
 #include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUContext.h>
+#ifdef USE_SYCLTLA
+#define CUTLASS_SYCL_BUILTIN_ENABLE
+// Keep dependency-header diagnostics separate from kernel diagnostics.
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-local-typedef"
+#endif
+#include <cute/tensor.hpp>
+
+#include <cute/atom/copy_traits_xe_2d.hpp>
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+#endif
+
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
 namespace at::native {
 namespace xpu {
+
+namespace avg_pool_backward {
+#ifdef USE_SYCLTLA
+bool can_use_tla_block_io() {
+  const auto arch =
+      c10::xpu::getCurrentXPUStream()
+          .queue()
+          .get_device()
+          .get_info<
+              sycl::ext::oneapi::experimental::info::device::architecture>();
+  using Architecture = sycl::ext::oneapi::experimental::architecture;
+  return arch == Architecture::intel_gpu_bmg_g21 ||
+      arch == Architecture::intel_gpu_bmg_g31;
+}
+#endif
+
+template <typename scalar_t, int V>
+void store(scalar_t* p, memory::aligned_vector<scalar_t, V> v) {
+  *reinterpret_cast<memory::aligned_vector<scalar_t, V>*>(p) = v;
+}
+template <typename scalar_t, int K, int S, int P, bool Include, int V>
+struct Tile {
+  const scalar_t* src;
+  scalar_t* dst;
+  int C, H, W, OH, OW, CS, tx, ty, count;
+  at::detail::IntDivider<uint32_t> dc, dx, dy;
+  void operator()(sycl::nd_item<1> it) const {
+    int id = it.get_global_linear_id();
+    if (id >= count)
+      return;
+    int q = dc.div(id), c = (id - q * dc.divisor) * V;
+    int r = dx.div(q), x = (q - r * dx.divisor) * 2;
+    int n = dy.div(r), y = (r - n * dy.divisor) * 2;
+    float acc[4][V]{};
+    constexpr int span = K == 3 ? (S == 1 ? 4 : 2) : 1;
+    int sy0 = (S == 1) ? y - P : y / S;
+    int sx0 = (S == 1) ? x - P : x / S;
+#pragma unroll
+    for (int ry = 0; ry < span; ++ry) {
+      int sy = sy0 + ry;
+#pragma unroll
+      for (int rx = 0; rx < span; ++rx) {
+        int sx = sx0 + rx;
+        if (sy >= 0 && sy < OH && sx >= 0 && sx < OW) {
+          float divisor;
+          if constexpr (Include) {
+            if constexpr (K == 3)
+              divisor = 9.f;
+            else
+              divisor = float(
+                  sycl::min(K, H + P - (sy * S - P)) *
+                  sycl::min(K, W + P - (sx * S - P)));
+          } else
+            divisor = float(
+                (sycl::min(sy * S - P + K, H) - sycl::max(sy * S - P, 0)) *
+                (sycl::min(sx * S - P + K, W) - sycl::max(sx * S - P, 0)));
+          memory::aligned_vector<scalar_t, V> v;
+          v = *reinterpret_cast<const decltype(v)*>(
+              src + ((n * OH + sy) * OW + sx) * CS + c);
+          float terms[V];
+#pragma unroll
+          for (int j = 0; j < V; ++j) {
+            if constexpr (std::is_same_v<scalar_t, c10::BFloat16>) {
+              const float inv = divisor == 4.f ? .25f
+                  : divisor == 6.f             ? 1.f / 6.f
+                  : divisor == 9.f             ? 1.f / 9.f
+                                               : 1.f / divisor;
+              terms[j] = float(scalar_t(float(v[j]) * inv));
+            } else {
+              terms[j] = float(scalar_t(float(v[j]) / divisor));
+            }
+          }
+#pragma unroll
+          for (int yy = 0; yy < 2; ++yy) {
+#pragma unroll
+            for (int xx = 0; xx < 2; ++xx) {
+              if (y + yy >= sy * S - P && y + yy < sy * S - P + K &&
+                  x + xx >= sx * S - P && x + xx < sx * S - P + K) {
+#pragma unroll
+                for (int j = 0; j < V; ++j)
+                  acc[yy * 2 + xx][j] += terms[j];
+              }
+            }
+          }
+        }
+      }
+    }
+#pragma unroll
+    for (int yy = 0; yy < 2; ++yy) {
+#pragma unroll
+      for (int xx = 0; xx < 2; ++xx) {
+        if (y + yy < H && x + xx < W) {
+          memory::aligned_vector<scalar_t, V> v;
+#pragma unroll
+          for (int j = 0; j < V; ++j)
+            v[j] = scalar_t(acc[yy * 2 + xx][j]);
+          store<scalar_t, V>(dst + ((n * H + y + yy) * W + x + xx) * C + c, v);
+        }
+      }
+    }
+  }
+};
+
+template <typename scalar_t, int K, int S, int P, bool Include, int V>
+struct Linear {
+  const scalar_t* src;
+  scalar_t* dst;
+  int C, H, W, OH, OW, CS, count;
+  at::detail::IntDivider<uint32_t> dc, dw, dh;
+  void operator()(sycl::nd_item<1> it) const {
+    int id = it.get_global_linear_id();
+    if (id >= count)
+      return;
+    int pix = dc.div(id), c = (id - pix * dc.divisor) * V;
+    int row = dw.div(pix), x = pix - row * W;
+    int n = dh.div(row), y = row - n * H;
+    float acc[V]{};
+    int sy0 = sycl::max(0, (y + P - K + S) / S),
+        sy1 = sycl::min(OH, (y + P) / S + 1);
+    int sx0 = sycl::max(0, (x + P - K + S) / S),
+        sx1 = sycl::min(OW, (x + P) / S + 1);
+    for (int sy = sy0; sy < sy1; ++sy)
+      for (int sx = sx0; sx < sx1; ++sx) {
+        float div;
+        if constexpr (Include && K == 3)
+          div = 9.f;
+        else if constexpr (K == 2)
+          div = 4.f;
+        else if constexpr (K == 1)
+          div = 1.f;
+        else
+          div = float(
+              (sycl::min(sy * S - P + K, H) - sycl::max(sy * S - P, 0)) *
+              (sycl::min(sx * S - P + K, W) - sycl::max(sx * S - P, 0)));
+        memory::aligned_vector<scalar_t, V> v;
+        v = *reinterpret_cast<const decltype(v)*>(
+            src + ((n * OH + sy) * OW + sx) * CS + c);
+#pragma unroll
+        for (int j = 0; j < V; ++j)
+          acc[j] += float(scalar_t(
+              float(v[j]) *
+              (div == 4.f       ? .25f
+                   : div == 6.f ? 1.f / 6.f
+                   : div == 9.f ? 1.f / 9.f
+                                : 1.f / div)));
+      }
+    memory::aligned_vector<scalar_t, V> out;
+#pragma unroll
+    for (int j = 0; j < V; ++j)
+      out[j] = scalar_t(acc[j]);
+    store<scalar_t, V>(dst + id * V, out);
+  }
+};
+template <typename scalar_t, int K, int S, int P, bool Include, int V>
+void launch(at::Tensor go, at::Tensor out) {
+  if (out.size(1) % 32 != 0) {
+    int C = out.size(1), H = out.size(2), W = out.size(3),
+        count = out.numel() / V;
+    c10::xpu::getCurrentXPUStream().queue().parallel_for(
+        sycl::nd_range<1>((count + 255) / 256 * 256, 256),
+        Linear<scalar_t, K, S, P, Include, V>{
+            reinterpret_cast<const scalar_t*>(go.data_ptr()),
+            reinterpret_cast<scalar_t*>(out.data_ptr()),
+            C,
+            H,
+            W,
+            int(go.size(2)),
+            int(go.size(3)),
+            int(go.stride(3)),
+            count,
+            at::detail::IntDivider<uint32_t>(C / V),
+            at::detail::IntDivider<uint32_t>(W),
+            at::detail::IntDivider<uint32_t>(H)});
+    return;
+  }
+  int C = out.size(1), H = out.size(2), W = out.size(3), tx = (W + 1) / 2,
+      ty = (H + 1) / 2;
+  int count = out.size(0) * tx * ty * (C / V);
+  auto& q = c10::xpu::getCurrentXPUStream().queue();
+  q.parallel_for(
+      sycl::nd_range<1>((count + 255) / 256 * 256, 256),
+      Tile<scalar_t, K, S, P, Include, V>{
+          reinterpret_cast<const scalar_t*>(go.data_ptr()),
+          reinterpret_cast<scalar_t*>(out.data_ptr()),
+          C,
+          H,
+          W,
+          int(go.size(2)),
+          int(go.size(3)),
+          int(go.stride(3)),
+          tx,
+          ty,
+          count,
+          at::detail::IntDivider<uint32_t>(C / V),
+          at::detail::IntDivider<uint32_t>(tx),
+          at::detail::IntDivider<uint32_t>(ty)});
+}
+template <typename scalar_t, int K, int S, int P, bool Include>
+struct Planar {
+  const scalar_t* src;
+  scalar_t* dst;
+  int H, W, OH, OW, total;
+  at::detail::IntDivider<uint32_t> dp, dw;
+  void operator()(sycl::nd_item<1> it) const {
+    int start = it.get_global_linear_id() * 8;
+    if (start >= total)
+      return;
+    memory::aligned_vector<scalar_t, 8> v;
+    if constexpr (K == 2) {
+      int nc = dp.div(start), pos = start - nc * H * W, y = dw.div(pos),
+          x = pos - y * W;
+#pragma unroll
+      for (int j = 0; j < 4; j++) {
+        scalar_t a = scalar_t(
+            float(src[nc * OH * OW + (y / 2) * OW + x / 2 + j]) * .25f);
+        v[j * 2] = a;
+        v[j * 2 + 1] = a;
+      }
+      store<scalar_t, 8>(dst + start, v);
+      return;
+    }
+
+#pragma unroll
+    for (int j = 0; j < 8; j++) {
+      int index = start + j, nc = dp.div(index), pos = index - nc * H * W,
+          y = dw.div(pos), x = pos - y * W;
+      float acc = 0;
+      int sy0 = sycl::max(0, (y + P - K + S) / S),
+          sy1 = sycl::min(OH, (y + P) / S + 1),
+          sx0 = sycl::max(0, (x + P - K + S) / S),
+          sx1 = sycl::min(OW, (x + P) / S + 1);
+      for (int sy = sy0; sy < sy1; sy++)
+        for (int sx = sx0; sx < sx1; sx++) {
+          float div;
+          if constexpr (Include)
+            div = float(K * K);
+          else
+            div = float(
+                (sycl::min(sy * S - P + K, H) - sycl::max(sy * S - P, 0)) *
+                (sycl::min(sx * S - P + K, W) - sycl::max(sx * S - P, 0)));
+          acc += float(scalar_t(
+              float(src[nc * OH * OW + sy * OW + sx]) *
+              (div == 4.f       ? .25f
+                   : div == 6.f ? 1.f / 6.f
+                                : 1.f / 9.f)));
+        }
+      v[j] = scalar_t(acc);
+    }
+    store<scalar_t, 8>(dst + start, v);
+  }
+};
+template <typename scalar_t, int K, int S, int P, bool Include>
+void planar_launch(at::Tensor go, at::Tensor out) {
+  int H = out.size(2), W = out.size(3), n = out.numel();
+  c10::xpu::getCurrentXPUStream().queue().parallel_for(
+      sycl::nd_range<1>((n + 2047) / 2048 * 256, 256),
+      Planar<scalar_t, K, S, P, Include>{
+          reinterpret_cast<const scalar_t*>(go.data_ptr()),
+          reinterpret_cast<scalar_t*>(out.data_ptr()),
+          H,
+          W,
+          int(go.size(2)),
+          int(go.size(3)),
+          n,
+          at::detail::IntDivider<uint32_t>(H * W),
+          at::detail::IntDivider<uint32_t>(W)});
+}
+
+template <typename scalar_t, int K, int S, int P, bool Include>
+struct PackedLinear {
+  const scalar_t* src;
+  scalar_t* dst;
+  int C, H, W, OH, OW, CS, total;
+  at::detail::IntDivider<uint32_t> dc, dw, dh;
+  void operator()(sycl::nd_item<1> it) const {
+    int start = it.get_global_linear_id() * 8;
+    if (start >= total)
+      return;
+    int pixel = dc.div(start), c = start - pixel * C, row = dw.div(pixel),
+        x = pixel - row * W, n = dh.div(row), y = row - n * H;
+    memory::aligned_vector<scalar_t, 8> result;
+#pragma unroll
+    for (int pair = 0; pair < 4; pair++) {
+      int ch = c + pair * 2, xx = x, yy = y, nn = n;
+      if (ch >= C) {
+        ch -= C;
+        if (++xx == W) {
+          xx = 0;
+          if (++yy == H) {
+            yy = 0;
+            ++nn;
+          }
+        }
+      }
+      float a = 0, b = 0;
+      int sy0 = sycl::max(0, (yy + P - K + S) / S),
+          sy1 = sycl::min(OH, (yy + P) / S + 1),
+          sx0 = sycl::max(0, (xx + P - K + S) / S),
+          sx1 = sycl::min(OW, (xx + P) / S + 1);
+      for (int sy = sy0; sy < sy1; sy++)
+        for (int sx = sx0; sx < sx1; sx++) {
+          float inv;
+          if constexpr (K == 3 && Include)
+            inv = 1.f / 9.f;
+          else if constexpr (K == 2)
+            inv = .25f;
+          else if constexpr (K == 1)
+            inv = 1.f;
+          else {
+            int d = (sycl::min(sy * S - P + K, H) - sycl::max(sy * S - P, 0)) *
+                (sycl::min(sx * S - P + K, W) - sycl::max(sx * S - P, 0));
+            inv = d == 4 ? .25f : d == 6 ? 1.f / 6.f : 1.f / 9.f;
+          }
+          memory::aligned_vector<scalar_t, 2> v;
+          v = *reinterpret_cast<const decltype(v)*>(
+              src + ((nn * OH + sy) * OW + sx) * CS + ch);
+          a += float(scalar_t(float(v[0]) * inv));
+          b += float(scalar_t(float(v[1]) * inv));
+        }
+      result[pair * 2] = scalar_t(a);
+      result[pair * 2 + 1] = scalar_t(b);
+    }
+    store<scalar_t, 8>(dst + start, result);
+  }
+};
+template <typename scalar_t, int K, int S, int P, bool Include>
+void packed_launch(at::Tensor go, at::Tensor out) {
+  int n = out.numel(), C = out.size(1), H = out.size(2), W = out.size(3);
+  c10::xpu::getCurrentXPUStream().queue().parallel_for(
+      sycl::nd_range<1>((n + 2047) / 2048 * 256, 256),
+      PackedLinear<scalar_t, K, S, P, Include>{
+          reinterpret_cast<const scalar_t*>(go.data_ptr()),
+          reinterpret_cast<scalar_t*>(out.data_ptr()),
+          C,
+          H,
+          W,
+          int(go.size(2)),
+          int(go.size(3)),
+          int(go.stride(3)),
+          n,
+          at::detail::IntDivider<uint32_t>(C),
+          at::detail::IntDivider<uint32_t>(W),
+          at::detail::IntDivider<uint32_t>(H)});
+}
+
+template <typename scalar_t, int K, int S, int P, bool Include, int V>
+struct WideTile {
+  const scalar_t* src;
+  scalar_t* dst;
+  int C, H, W, OH, OW, CS, tx, ty, count;
+  at::detail::IntDivider<uint32_t> dc, dx, dy;
+  void operator()(sycl::nd_item<1> it) const {
+    int id = it.get_global_linear_id();
+    if (id >= count)
+      return;
+    int q = dc.div(id), c = (id - q * dc.divisor) * V;
+    int r = dx.div(q), x = (q - r * dx.divisor) * 4;
+    int n = dy.div(r), y = (r - n * dy.divisor) * 2;
+    float acc[8][V]{};
+    constexpr int span = K == 3 ? (S == 1 ? 4 : 2) : 1;
+    int sy0 = (S == 1) ? y - P : y / S;
+    int sx0 = (S == 1) ? x - P : x / S;
+#pragma unroll
+    for (int ry = 0; ry < span; ++ry) {
+      int sy = sy0 + ry;
+#pragma unroll
+      for (int rx = 0; rx < 6; ++rx) {
+        int sx = sx0 + rx;
+        if (sy >= 0 && sy < OH && sx >= 0 && sx < OW) {
+          float divisor;
+          if constexpr (Include) {
+            if constexpr (K == 3)
+              divisor = 9.f;
+            else
+              divisor = float(
+                  sycl::min(K, H + P - (sy * S - P)) *
+                  sycl::min(K, W + P - (sx * S - P)));
+          } else
+            divisor = float(
+                (sycl::min(sy * S - P + K, H) - sycl::max(sy * S - P, 0)) *
+                (sycl::min(sx * S - P + K, W) - sycl::max(sx * S - P, 0)));
+          memory::aligned_vector<scalar_t, V> v;
+          v = *reinterpret_cast<const decltype(v)*>(
+              src + ((n * OH + sy) * OW + sx) * CS + c);
+          float terms[V];
+#pragma unroll
+          for (int j = 0; j < V; ++j) {
+            if constexpr (std::is_same_v<scalar_t, c10::BFloat16>) {
+              const float inv = divisor == 4.f ? .25f
+                  : divisor == 6.f             ? 1.f / 6.f
+                  : divisor == 9.f             ? 1.f / 9.f
+                                               : 1.f / divisor;
+              terms[j] = float(scalar_t(float(v[j]) * inv));
+            } else {
+              terms[j] = float(scalar_t(float(v[j]) / divisor));
+            }
+          }
+#pragma unroll
+          for (int yy = 0; yy < 2; ++yy) {
+#pragma unroll
+            for (int xx = 0; xx < 4; ++xx) {
+              if (y + yy >= sy * S - P && y + yy < sy * S - P + K &&
+                  x + xx >= sx * S - P && x + xx < sx * S - P + K) {
+#pragma unroll
+                for (int j = 0; j < V; ++j)
+                  acc[yy * 4 + xx][j] += terms[j];
+              }
+            }
+          }
+        }
+      }
+    }
+#pragma unroll
+    for (int yy = 0; yy < 2; ++yy) {
+#pragma unroll
+      for (int xx = 0; xx < 4; ++xx) {
+        if (y + yy < H && x + xx < W) {
+          memory::aligned_vector<scalar_t, V> v;
+#pragma unroll
+          for (int j = 0; j < V; ++j)
+            v[j] = scalar_t(acc[yy * 4 + xx][j]);
+          store<scalar_t, V>(dst + ((n * H + y + yy) * W + x + xx) * C + c, v);
+        }
+      }
+    }
+  }
+};
+
+template <typename scalar_t, int K, int S, int P, bool Include>
+void wide_launch(at::Tensor go, at::Tensor out) {
+  int C = out.size(1), H = out.size(2), W = out.size(3), tx = (W + 3) / 4,
+      ty = (H + 1) / 2;
+  int count = out.size(0) * tx * ty * (C / 4);
+  c10::xpu::getCurrentXPUStream().queue().parallel_for(
+      sycl::nd_range<1>((count + 255) / 256 * 256, 256),
+      WideTile<scalar_t, K, S, P, Include, 4>{
+          reinterpret_cast<const scalar_t*>(go.data_ptr()),
+          reinterpret_cast<scalar_t*>(out.data_ptr()),
+          C,
+          H,
+          W,
+          int(go.size(2)),
+          int(go.size(3)),
+          int(go.stride(3)),
+          tx,
+          ty,
+          count,
+          at::detail::IntDivider<uint32_t>(C / 4),
+          at::detail::IntDivider<uint32_t>(tx),
+          at::detail::IntDivider<uint32_t>(ty)});
+}
+template <typename scalar_t, int V>
+struct StrideTwo {
+  const scalar_t* src;
+  scalar_t* dst;
+  int C, H, W, OH, OW, CS, count;
+  at::detail::IntDivider<uint32_t> dc, dw, dh;
+  memory::aligned_vector<float, V> get(int n, int y, int x, int c) const {
+    memory::aligned_vector<scalar_t, V> h;
+    h = *reinterpret_cast<const decltype(h)*>(
+        src + ((n * OH + y) * OW + x) * CS + c);
+    memory::aligned_vector<float, V> f;
+#pragma unroll
+    for (int j = 0; j < V; j++)
+      f[j] = float(scalar_t(float(h[j]) * (1.f / 9.f)));
+    return f;
+  }
+  void operator()(sycl::nd_item<1> it) const {
+    int id = it.get_global_linear_id();
+    if (id >= count)
+      return;
+    int pix = dc.div(id), c = (id - pix * dc.divisor) * V, row = dw.div(pix),
+        x = pix - row * W, n = dh.div(row), y = row - n * H, sy = y / 2,
+        sx = x / 2;
+    auto sum = get(n, sy, sx, c);
+    bool right = (x % 2) && sx + 1 < OW, bottom = (y % 2) && sy + 1 < OH;
+    if (right)
+      sum += get(n, sy, sx + 1, c);
+    if (bottom) {
+      sum += get(n, sy + 1, sx, c);
+      if (right)
+        sum += get(n, sy + 1, sx + 1, c);
+    }
+    memory::aligned_vector<scalar_t, V> out;
+#pragma unroll
+    for (int j = 0; j < V; j++)
+      out[j] = scalar_t(sum[j]);
+    store<scalar_t, V>(dst + id * V, out);
+  }
+};
+template <typename scalar_t, int V>
+void stride_two_launch(at::Tensor go, at::Tensor out) {
+  int C = out.size(1), H = out.size(2), W = out.size(3),
+      count = out.numel() / V;
+  c10::xpu::getCurrentXPUStream().queue().parallel_for(
+      sycl::nd_range<1>((count + 255) / 256 * 256, 256),
+      StrideTwo<scalar_t, V>{
+          reinterpret_cast<const scalar_t*>(go.data_ptr()),
+          reinterpret_cast<scalar_t*>(out.data_ptr()),
+          C,
+          H,
+          W,
+          int(go.size(2)),
+          int(go.size(3)),
+          int(go.stride(3)),
+          count,
+          at::detail::IntDivider<uint32_t>(C / V),
+          at::detail::IntDivider<uint32_t>(W),
+          at::detail::IntDivider<uint32_t>(H)});
+}
+
+#ifdef USE_SYCLTLA
+template <typename scalar_t, int W, int S, int Rows = 4, int Channels = 64>
+struct AvgPoolMixedBlockTile {
+  const scalar_t* src;
+  scalar_t* dst;
+  int C;
+  at::detail::IntDivider<uint32_t> dc, dy;
+  sycl::local_accessor<uint32_t, 1> tile;
+  static constexpr int OH = W / S;
+  static constexpr int InputRows = Rows / S + (S == 1 ? 2 : 1);
+  static constexpr int InputSize = (InputRows * OH + 15) / 16 * 16;
+  static constexpr int Plane = Rows * W / 2 + 1;
+  [[sycl::reqd_sub_group_size(16)]] void operator()(sycl::nd_item<1> it) const {
+    const int lid = it.get_local_linear_id(), g = it.get_group_linear_id();
+    const int row = dc.div(g), cb = (g - row * dc.divisor) * Channels;
+    const int n = dy.div(row), y0 = (row - n * dy.divisor) * Rows;
+    const int sy0 = y0 / S - (S == 1 ? 1 : 0);
+    using Term = std::conditional_t<S == 1, scalar_t, uint32_t>;
+    Term normalized[S == 1 ? InputSize : InputSize / 2];
+#pragma unroll
+    for (int b = 0; b < InputSize / 16; ++b) {
+      if constexpr (S == 1) {
+        memory::aligned_vector<scalar_t, 16> input;
+        cute::XE_2D_U16x16x16_LD_N::copy(
+            src + n * OH * OH * C,
+            C * 2,
+            OH * OH,
+            C * 2,
+            cute::intel::coord_t{cb + lid / 16 * 16, sy0 * OH + b * 16},
+            input.val);
+#pragma unroll
+        for (int j = 0; j < 16; ++j) {
+          const int sy = sy0 + (b * 16 + j) / OH, sx = (b * 16 + j) % OH;
+          const int d = (sy == 0 || sy == OH - 1 ? 2 : 3) *
+              (sx == 0 || sx == OH - 1 ? 2 : 3);
+          const float inv = d == 4 ? .25f : d == 6 ? 1.f / 6.f : 1.f / 9.f;
+          normalized[b * 16 + j] = sy >= 0 && sy < OH
+              ? scalar_t(float(input[j]) * inv)
+              : scalar_t(0);
+        }
+      } else {
+        memory::aligned_vector<uint32_t, 8> input;
+        cute::XE_2D_U16x16x16_LD_V::copy(
+            src + n * OH * OH * C,
+            C * 2,
+            OH * OH,
+            C * 2,
+            cute::intel::coord_t{cb + lid / 16 * 16, sy0 * OH + b * 16},
+            reinterpret_cast<scalar_t*>(input.val));
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          auto pair =
+              sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(input[j]);
+#pragma unroll
+          for (int q = 0; q < 2; ++q)
+            pair[q] = sy0 * OH + b * 16 + j * 2 + q < OH * OH
+                ? scalar_t(float(pair[q]) * (1.f / 9.f))
+                : scalar_t(0);
+          normalized[b * 8 + j] = sycl::bit_cast<uint32_t>(pair);
+        }
+      }
+    }
+    auto value = [&](int index) {
+      if constexpr (S == 1)
+        return float(normalized[index]);
+      else
+        return float(sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+            normalized[index / 2])[index % 2]);
+    };
+    float vertical[Rows * W];
+    if constexpr (S == 1) {
+#pragma unroll
+      for (int y = 0; y < Rows; ++y) {
+#pragma unroll
+        for (int x = 0; x < W; ++x)
+          vertical[y * W + x] = (value(y * W + x) + value((y + 1) * W + x)) +
+              value((y + 2) * W + x);
+      }
+    }
+#pragma unroll
+    for (int y = 0; y < Rows; ++y) {
+#pragma unroll
+      for (int x = 0; x < W; x += 2) {
+        memory::aligned_vector<scalar_t, 2> result;
+#pragma unroll
+        for (int j = 0; j < 2; ++j) {
+          float sum = 0;
+          if constexpr (S == 1) {
+            sum = (x + j > 0 ? vertical[y * W + x + j - 1] : 0.f) +
+                vertical[y * W + x + j] +
+                (x + j + 1 < W ? vertical[y * W + x + j + 1] : 0.f);
+          } else {
+            const int sy = y / 2, sx = (x + j) / 2;
+            sum = value(sy * OH + sx);
+            if (j && sx + 1 < OH)
+              sum += value(sy * OH + sx + 1);
+            if (y % 2) {
+              sum += value((sy + 1) * OH + sx);
+              if (j && sx + 1 < OH)
+                sum += value((sy + 1) * OH + sx + 1);
+            }
+          }
+          result[j] = scalar_t(sum);
+        }
+        tile[lid * Plane + (y * W + x) / 2] = sycl::bit_cast<uint32_t>(result);
+      }
+    }
+    if constexpr (S == 1)
+      it.barrier(sycl::access::fence_space::local_space);
+    else
+      sycl::group_barrier(it.get_sub_group());
+    constexpr int StoreThreads = S == 1 ? Channels : 16;
+    const int lane = S == 1 ? lid : lid % 16;
+    const int channel_base = S == 1 ? 0 : lid / 16 * 16;
+    if constexpr (Rows == W) {
+      for (int i = lane; i < StoreThreads * W * W / 8; i += StoreThreads) {
+        const int pos = i * 4;
+        memory::aligned_vector<uint32_t, 4> packed;
+#pragma unroll
+        for (int j = 0; j < 4; ++j)
+          packed[j] = tile
+              [(channel_base + (pos + j) / (W * W / 2)) * Plane +
+               (pos + j) % (W * W / 2)];
+        *reinterpret_cast<decltype(packed)*>(
+            dst + (n * C + cb + channel_base) * W * W + pos * 2) = packed;
+      }
+      return;
+    }
+    constexpr int Pack = Rows * W % 8 == 0 ? 4 : 2;
+    constexpr int Vectors = Rows * W / (2 * Pack);
+    for (int i = lane; i < StoreThreads * Vectors; i += StoreThreads) {
+      const int ch = channel_base + i / Vectors, pos = i % Vectors * (2 * Pack);
+      if (cb + ch < C && y0 * W + pos < W * W) {
+        memory::aligned_vector<uint32_t, Pack> packed;
+#pragma unroll
+        for (int j = 0; j < Pack; ++j)
+          packed[j] = tile[ch * Plane + pos / 2 + j];
+        *reinterpret_cast<decltype(packed)*>(
+            dst + (n * C + cb + ch) * W * W + y0 * W + pos) = packed;
+      }
+    }
+  }
+};
+template <typename scalar_t, int W, int S>
+void mixed_block_launch(const Tensor& go, const Tensor& out) {
+  constexpr int Rows = S == 1
+      ? (W <= 16 ? W : (W >= 56 ? 2 : 4))
+      : (W == 14 ? 14 : (W == 28 ? 8 : (W == 64 ? 2 : 4)));
+  constexpr int Channels = S == 1 || W == 14 ? 32 : 64;
+  using Kernel = AvgPoolMixedBlockTile<scalar_t, W, S, Rows, Channels>;
+  const int C = out.size(1), ct = (C + Channels - 1) / Channels,
+            yt = (W + Rows - 1) / Rows;
+  const int groups = out.size(0) * ct * yt;
+  c10::xpu::getCurrentXPUStream().queue().submit([&](sycl::handler& h) {
+    sycl::local_accessor<uint32_t, 1> tile(Channels * Kernel::Plane, h);
+    h.parallel_for(
+        sycl::nd_range<1>(groups * Channels, Channels),
+        Kernel{
+            reinterpret_cast<const scalar_t*>(go.data_ptr()),
+            reinterpret_cast<scalar_t*>(out.data_ptr()),
+            C,
+            at::detail::IntDivider<uint32_t>(ct),
+            at::detail::IntDivider<uint32_t>(yt),
+            tile});
+  });
+}
+#endif
+template <typename scalar_t, int W, int S, int Rows = 8, int Channels = 32>
+struct AvgPoolMixedTile {
+  const scalar_t* src;
+  scalar_t* dst;
+  int C;
+  at::detail::IntDivider<uint32_t> channel_tiles, row_tiles;
+  sycl::local_accessor<uint32_t, 1> normalized;
+  static constexpr int OH = (W + S - 1) / S;
+  static constexpr int InputRows = Rows / S + (S == 1 ? 2 : 1);
+  static constexpr int Plane = InputRows * OH + 1;
+  void operator()(sycl::nd_item<1> it) const {
+    const int lid = it.get_local_linear_id();
+    const int group = it.get_group_linear_id();
+    const int nc = row_tiles.div(group);
+    const int y0 = (group - nc * row_tiles.divisor) * Rows;
+    const int n = channel_tiles.div(nc);
+    const int c0 = (nc - n * channel_tiles.divisor) * Channels;
+    const int sy0 = y0 / S - (S == 1 ? 1 : 0);
+    for (int i = lid; i < InputRows * OH * Channels / 4; i += 256) {
+      const int c = i % (Channels / 4) * 4;
+      const int pos = i / (Channels / 4);
+      const int sy = sy0 + pos / OH, sx = pos % OH;
+      memory::aligned_vector<scalar_t, 4> v{};
+      if (sy >= 0 && sy < OH) {
+        v = *reinterpret_cast<const decltype(v)*>(
+            src + ((n * OH + sy) * OH + sx) * C + c0 + c);
+        float inv = 1.f / 9.f;
+        if constexpr (S == 1) {
+          const int d = (sy == 0 || sy == W - 1 ? 2 : 3) *
+              (sx == 0 || sx == W - 1 ? 2 : 3);
+          inv = d == 4 ? .25f : d == 6 ? 1.f / 6.f : 1.f / 9.f;
+        }
+#pragma unroll
+        for (int j = 0; j < 4; ++j)
+          v[j] = scalar_t(float(v[j]) * inv);
+      }
+#pragma unroll
+      for (int j = 0; j < 2; ++j) {
+        memory::aligned_vector<scalar_t, 2> pair{{v[j * 2], v[j * 2 + 1]}};
+        normalized[(c / 2 + j) * Plane + pos] = sycl::bit_cast<uint32_t>(pair);
+      }
+    }
+    it.barrier(sycl::access::fence_space::local_space);
+    constexpr int OutputPairs = Rows * W / 2;
+    for (int i = lid; i < Channels * OutputPairs; i += 256) {
+      const int c = i / OutputPairs, pos = i % OutputPairs * 2;
+      const int y = y0 + pos / W, x = pos % W;
+      if (y < W) {
+        memory::aligned_vector<scalar_t, 2> result;
+#pragma unroll
+        for (int j = 0; j < 2; ++j) {
+          float sum = 0.f;
+          if constexpr (S == 1) {
+#pragma unroll
+            for (int dy = 0; dy < 3; ++dy) {
+#pragma unroll
+              for (int dx = -1; dx <= 1; ++dx) {
+                const int sx = x + j + dx;
+                if (sx >= 0 && sx < W)
+                  sum +=
+                      float(sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+                          normalized[(c / 2) * Plane + (pos / W + dy) * W + sx])
+                                [c % 2]);
+              }
+            }
+          } else {
+            const int sy = y / 2 - sy0, sx = (x + j) / 2;
+            sum = float(sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+                normalized[(c / 2) * Plane + sy * OH + sx])[c % 2]);
+            if ((x + j) % 2 && sx + 1 < OH)
+              sum += float(sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+                  normalized[(c / 2) * Plane + sy * OH + sx + 1])[c % 2]);
+            if (y % 2 && y / 2 + 1 < OH) {
+              sum += float(sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+                  normalized[(c / 2) * Plane + (sy + 1) * OH + sx])[c % 2]);
+              if ((x + j) % 2 && sx + 1 < OH)
+                sum +=
+                    float(sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+                        normalized[(c / 2) * Plane + (sy + 1) * OH + sx + 1])
+                              [c % 2]);
+            }
+          }
+          result[j] = scalar_t(sum);
+        }
+        *reinterpret_cast<decltype(result)*>(
+            dst + ((n * C + c0 + c) * W + y) * W + x) = result;
+      }
+    }
+  }
+};
+template <typename scalar_t, int W, int S>
+void mixed_tile_launch(const Tensor& go, const Tensor& out) {
+#ifdef USE_SYCLTLA
+  if (reinterpret_cast<uintptr_t>(go.data_ptr()) % 64 == 0 &&
+      can_use_tla_block_io()) {
+    mixed_block_launch<scalar_t, W, S>(go, out);
+    return;
+  }
+#endif
+  using Kernel = AvgPoolMixedTile<scalar_t, W, S>;
+  const int C = out.size(1), rows = (W + 7) / 8,
+            groups = out.size(0) * (C / 32) * rows;
+  c10::xpu::getCurrentXPUStream().queue().submit([&](sycl::handler& h) {
+    sycl::local_accessor<uint32_t, 1> normalized(16 * Kernel::Plane, h);
+    h.parallel_for(
+        sycl::nd_range<1>(groups * 256, 256),
+        Kernel{
+            reinterpret_cast<const scalar_t*>(go.data_ptr()),
+            reinterpret_cast<scalar_t*>(out.data_ptr()),
+            C,
+            at::detail::IntDivider<uint32_t>(C / 32),
+            at::detail::IntDivider<uint32_t>(rows),
+            normalized});
+  });
+}
+#ifdef USE_SYCLTLA
+template <typename scalar_t>
+struct AvgPoolPlanarBlock7 {
+  const scalar_t* src;
+  scalar_t* dst;
+  int pairs;
+  sycl::local_accessor<uint32_t, 1> tile;
+  template <int Part>
+  void compute(sycl::nd_item<1> it) const {
+    const int lane = it.get_local_linear_id() % 16;
+    const int row = it.get_group_linear_id() * 16;
+    uint32_t words[56];
+#pragma unroll
+    for (int b = 0; b < 7; ++b) {
+      memory::aligned_vector<uint32_t, 8> raw;
+      using Copy = cute::XE_LOAD_2D_TRANSPOSE<32, 16, 8>;
+      auto source = cute::make_tensor(
+          cute::make_gmem_ptr(reinterpret_cast<const uint32_t*>(src)),
+          cute::make_layout(
+              cute::make_shape(196, pairs / 4),
+              cute::make_stride(cute::_1{}, 196)));
+      cute::Copy_Traits<
+          Copy,
+          cute::_0,
+          cute::_1,
+          uint32_t,
+          cute::Stride<cute::_0, cute::_0>>
+          copy(source);
+      copy.template update_payload<32>(
+          cute::make_coord(Part * 49 / 8 * 8 + b * 8, row));
+      Copy::copy(copy.payload, raw.val);
+#pragma unroll
+      for (int j = 0; j < 8; ++j)
+        words[b * 8 + j] = raw[j];
+    }
+    scalar_t normalized[98];
+#pragma unroll
+    for (int p = 0; p < 49; ++p) {
+      auto input = sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+          words[p + Part * 49 % 8]);
+#pragma unroll
+      for (int j = 0; j < 2; ++j) {
+        const int pos = (p * 2 + j) % 49, y = pos / 7, x = pos % 7;
+        const int d = (y == 0 || y == 6 ? 2 : 3) * (x == 0 || x == 6 ? 2 : 3);
+        normalized[p * 2 + j] = scalar_t(
+            float(input[j]) *
+            (d == 4       ? .25f
+                 : d == 6 ? 1.f / 6.f
+                          : 1.f / 9.f));
+      }
+    }
+    float horizontal[98];
+#pragma unroll
+    for (int i = 0; i < 98; ++i) {
+      constexpr int W = 7;
+      const int x = i % W;
+      horizontal[i] = (x > 0 ? float(normalized[i - 1]) : 0.f) +
+          float(normalized[i]) + (x + 1 < W ? float(normalized[i + 1]) : 0.f);
+    }
+#pragma unroll
+    for (int p = 0; p < 49; ++p) {
+      memory::aligned_vector<scalar_t, 2> result;
+#pragma unroll
+      for (int j = 0; j < 2; ++j) {
+        const int index = p * 2 + j, pos = index % 49, y = pos / 7;
+        float sum = (y > 0 ? horizontal[index - 7] : 0.f) + horizontal[index] +
+            (y < 6 ? horizontal[index + 7] : 0.f);
+        result[j] = scalar_t(sum);
+      }
+      tile[(lane * 4 + Part) * 51 + p] = sycl::bit_cast<uint32_t>(result);
+    }
+  }
+  [[sycl::reqd_sub_group_size(16)]] void operator()(sycl::nd_item<1> it) const {
+    const int lid = it.get_local_linear_id(),
+              base = it.get_group_linear_id() * 64;
+    switch (lid / 16) {
+      case 0:
+        compute<0>(it);
+        break;
+      case 1:
+        compute<1>(it);
+        break;
+      case 2:
+        compute<2>(it);
+        break;
+      case 3:
+        compute<3>(it);
+        break;
+    }
+    it.barrier(sycl::access::fence_space::local_space);
+    for (int i = lid; i < 64 * 49 / 4; i += 64) {
+      const int pos = i * 4;
+      if (base * 49 + pos < pairs * 49) {
+        memory::aligned_vector<uint32_t, 4> out;
+#pragma unroll
+        for (int j = 0; j < 4; ++j)
+          out[j] = tile[(pos + j) / 49 * 51 + (pos + j) % 49];
+        *reinterpret_cast<decltype(out)*>(
+            reinterpret_cast<uint32_t*>(dst) + base * 49 + pos) = out;
+      }
+    }
+  }
+};
+template <typename scalar_t>
+void planar_block7_launch(const Tensor& go, const Tensor& out) {
+  const int pairs = out.numel() / 98;
+  c10::xpu::getCurrentXPUStream().queue().submit([&](sycl::handler& h) {
+    sycl::local_accessor<uint32_t, 1> tile(64 * 51, h);
+    h.parallel_for(
+        sycl::nd_range<1>((pairs + 63) / 64 * 64, 64),
+        AvgPoolPlanarBlock7<scalar_t>{
+            reinterpret_cast<const scalar_t*>(go.data_ptr()),
+            reinterpret_cast<scalar_t*>(out.data_ptr()),
+            pairs,
+            tile});
+  });
+}
+#endif
+
+template <typename scalar_t>
+struct AvgPoolPlanar7 {
+  const scalar_t* src;
+  scalar_t* dst;
+  int total;
+  [[sycl::reqd_sub_group_size(16)]] void operator()(sycl::nd_item<1> it) const {
+    const auto sg = it.get_sub_group();
+    const int lane = sg.get_local_linear_id();
+    const int start = (it.get_global_linear_id() / 16) * 256;
+    if (start >= total)
+      return;
+    memory::aligned_vector<scalar_t, 16> input{};
+#pragma unroll
+    for (int j = 0; j < 16; ++j)
+      if (start + lane + j * 16 < total)
+        input[j] = src[start + lane + j * 16];
+    float v[18], h[18];
+#pragma unroll
+    for (int j = 0; j < 18; ++j) {
+      const int index = start + lane + (j - 1) * 16;
+      scalar_t value;
+      if (j == 0 || j == 17)
+        value = index >= 0 && index < total ? src[index] : scalar_t(0);
+      else
+        value = input[j - 1];
+      const int p = index % 49, y = p / 7, x = p % 7;
+      const int d = (y == 0 || y == 6 ? 2 : 3) * (x == 0 || x == 6 ? 2 : 3);
+      v[j] = float(scalar_t(
+          float(value) *
+          (d == 4       ? .25f
+               : d == 6 ? 1.f / 6.f
+                        : 1.f / 9.f)));
+    }
+#pragma unroll
+    for (int j = 0; j < 18; ++j) {
+      float left_src = lane == 15 ? (j == 0 ? 0.f : v[j - 1]) : v[j];
+      float right_src = lane == 0 ? (j == 17 ? 0.f : v[j + 1]) : v[j];
+      float left = sycl::select_from_group(sg, left_src, (lane + 15) % 16);
+      float right = sycl::select_from_group(sg, right_src, (lane + 1) % 16);
+      const int x = (start + lane + (j - 1) * 16) % 7;
+      h[j] = (x > 0 ? left : 0.f) + v[j] + (x < 6 ? right : 0.f);
+    }
+    memory::aligned_vector<scalar_t, 16> output;
+#pragma unroll
+    for (int j = 1; j <= 16; ++j) {
+      float up = sycl::select_from_group(
+          sg, lane >= 9 ? h[j - 1] : h[j], (lane + 9) % 16);
+      float down = sycl::select_from_group(
+          sg, lane < 7 ? h[j + 1] : h[j], (lane + 7) % 16);
+      const int y = (start + lane + (j - 1) * 16) % 49 / 7;
+      output[j - 1] =
+          scalar_t((y == 0 ? 0.f : up) + h[j] + (y == 6 ? 0.f : down));
+    }
+#pragma unroll
+    for (int j = 0; j < 16; ++j)
+      if (start + lane + j * 16 < total)
+        dst[start + lane + j * 16] = output[j];
+  }
+};
+template <typename scalar_t>
+void planar7_launch(const Tensor& go, const Tensor& out) {
+#ifdef USE_SYCLTLA
+  if (reinterpret_cast<uintptr_t>(go.data_ptr()) % 64 == 0 &&
+      can_use_tla_block_io()) {
+    planar_block7_launch<scalar_t>(go, out);
+    return;
+  }
+#endif
+  const int count = out.numel();
+  c10::xpu::getCurrentXPUStream().queue().parallel_for(
+      sycl::nd_range<1>((count + 2047) / 2048 * 128, 128),
+      AvgPoolPlanar7<scalar_t>{
+          reinterpret_cast<const scalar_t*>(go.data_ptr()),
+          reinterpret_cast<scalar_t*>(out.data_ptr()),
+          count});
+}
+struct ZeroInsert {
+  const uint32_t* src;
+  uint32_t* dst;
+  int CP, H, W, OH, OW, total;
+  at::detail::IntDivider<uint32_t> dc, dw, dh;
+  void operator()(sycl::nd_item<1> it) const {
+    int step = it.get_global_range(0) * 4;
+    for (int start = it.get_global_linear_id() * 4; start < total;
+         start += step) {
+      int pix = dc.div(start), ch = start - pix * CP, row = dw.div(pix),
+          x = pix - row * W, n = dh.div(row), y = row - n * H;
+      memory::aligned_vector<uint32_t, 4> v{};
+      if (ch + 4 <= CP && CP % 4 == 0) {
+        if (!(x % 2) && !(y % 2))
+          v = *reinterpret_cast<const decltype(v)*>(
+              src + ((n * OH + y / 2) * OW + x / 2) * CP + ch);
+      } else {
+#pragma unroll
+        for (int j = 0; j < 4; j++) {
+          int cc = ch + j, xx = x, yy = y, nn = n;
+          if (cc >= CP) {
+            cc -= CP;
+            if (++xx == W) {
+              xx = 0;
+              if (++yy == H) {
+                yy = 0;
+                ++nn;
+              }
+            }
+          }
+          if (start + j < total && !(xx % 2) && !(yy % 2))
+            v[j] = src[((nn * OH + yy / 2) * OW + xx / 2) * CP + cc];
+        }
+      }
+      if (start + 4 <= total)
+        *reinterpret_cast<decltype(v)*>(dst + start) = v;
+      else {
+#pragma unroll
+        for (int j = 0; j < 4; j++)
+          if (start + j < total)
+            dst[start + j] = v[j];
+      }
+    }
+  }
+};
+struct ZeroInsertSg16 : ZeroInsert {
+  [[sycl::reqd_sub_group_size(16)]] void operator()(sycl::nd_item<1> it) const {
+    ZeroInsert::operator()(it);
+  }
+};
+void zero_launch(at::Tensor go, at::Tensor out, int groups) {
+  int C = out.size(1), H = out.size(2), W = out.size(3),
+      total = out.numel() / 2;
+  groups = std::min(groups, (total + 1023) / 1024);
+  if (C == 1080 && H == 42 && W == 42) {
+    int groups16 = std::min(5120, (total + 511) / 512);
+    c10::xpu::getCurrentXPUStream().queue().parallel_for(
+        sycl::nd_range<1>(groups16 * 128, 128),
+        ZeroInsertSg16{ZeroInsert{
+            reinterpret_cast<const uint32_t*>(go.data_ptr()),
+            reinterpret_cast<uint32_t*>(out.data_ptr()),
+            C / 2,
+            H,
+            W,
+            int(go.size(2)),
+            int(go.size(3)),
+            total,
+            at::detail::IntDivider<uint32_t>(C / 2),
+            at::detail::IntDivider<uint32_t>(W),
+            at::detail::IntDivider<uint32_t>(H)}});
+    return;
+  }
+  c10::xpu::getCurrentXPUStream().queue().parallel_for(
+      sycl::nd_range<1>(groups * 256, 256),
+      ZeroInsert{
+          reinterpret_cast<const uint32_t*>(go.data_ptr()),
+          reinterpret_cast<uint32_t*>(out.data_ptr()),
+          C / 2,
+          H,
+          W,
+          int(go.size(2)),
+          int(go.size(3)),
+          total,
+          at::detail::IntDivider<uint32_t>(C / 2),
+          at::detail::IntDivider<uint32_t>(W),
+          at::detail::IntDivider<uint32_t>(H)});
+}
+
+template <typename scalar_t, int K, int S, int P, bool Include>
+void merged_launch(const Tensor& go, const Tensor& out) {
+  const int C = out.size(1), W = out.size(3);
+  if (out.stride(1) != 1) {
+    if (go.stride(1) != 1) {
+      if constexpr (K == 3 && S == 1 && !Include)
+        planar7_launch<scalar_t>(go, out);
+      else
+        planar_launch<scalar_t, K, S, P, Include>(go, out);
+    } else {
+      switch (W) {
+        case 14:
+          mixed_tile_launch<scalar_t, 14, S>(go, out);
+          break;
+        case 16:
+          mixed_tile_launch<scalar_t, 16, S>(go, out);
+          break;
+        case 28:
+          mixed_tile_launch<scalar_t, 28, S>(go, out);
+          break;
+        case 32:
+          mixed_tile_launch<scalar_t, 32, S>(go, out);
+          break;
+        case 56:
+          mixed_tile_launch<scalar_t, 56, S>(go, out);
+          break;
+        case 64:
+          mixed_tile_launch<scalar_t, 64, S>(go, out);
+          break;
+        default:
+          TORCH_INTERNAL_ASSERT(false);
+      }
+    }
+    return;
+  }
+  if constexpr (K == 3 && S == 2 && Include) {
+    if (C % 32 != 0 && go.stride(3) % 4 == 0) {
+      if (C % 8 == 0 && go.stride(3) % 8 == 0)
+        stride_two_launch<scalar_t, 8>(go, out);
+      else
+        stride_two_launch<scalar_t, 4>(go, out);
+      return;
+    }
+  }
+  if constexpr (K == 3 && S == 1 && Include) {
+    if (go.stride(3) == C && C % 32 == 0 && W <= 17) {
+      wide_launch<scalar_t, K, S, P, Include>(go, out);
+      return;
+    }
+  }
+  if constexpr (K == 1) {
+    if (C % 32 != 0) {
+      zero_launch(go, out, 2560);
+      return;
+    }
+  }
+  if (C % 8 != 0 || go.stride(3) % 8 != 0) {
+    packed_launch<scalar_t, K, S, P, Include>(go, out);
+    return;
+  }
+  launch<scalar_t, K, S, P, Include, 8>(go, out);
+}
+template <typename scalar_t>
+void dispatch_backward(
+    const Tensor& go,
+    const Tensor& out,
+    bool pool3,
+    bool pool2,
+    int sh,
+    bool include) {
+  if (pool3 && sh == 1) {
+    if (include)
+      merged_launch<scalar_t, 3, 1, 1, true>(go, out);
+    else
+      merged_launch<scalar_t, 3, 1, 1, false>(go, out);
+  } else if (pool3) {
+    merged_launch<scalar_t, 3, 2, 1, true>(go, out);
+  } else if (pool2) {
+    if (include)
+      merged_launch<scalar_t, 2, 2, 0, true>(go, out);
+    else
+      merged_launch<scalar_t, 2, 2, 0, false>(go, out);
+  } else {
+    merged_launch<scalar_t, 1, 2, 0, false>(go, out);
+  }
+}
+inline bool try_backward(
+    const Tensor& go,
+    const Tensor& input,
+    const Tensor& out,
+    int kh,
+    int kw,
+    int sh,
+    int sw,
+    int ph,
+    int pw,
+    bool ceil_mode,
+    bool include,
+    std::optional<int64_t> divisor) {
+  if (input.dim() != 4 || go.dim() != 4 || out.dim() != 4 ||
+      (input.scalar_type() != kHalf && input.scalar_type() != kBFloat16) ||
+      go.scalar_type() != input.scalar_type() ||
+      out.scalar_type() != input.scalar_type() || divisor ||
+      input.numel() == 0 || kh != kw || sh != sw || ph != pw ||
+      !canUse32BitIndexMath(input) || !canUse32BitIndexMath(go) ||
+      !canUse32BitIndexMath(out) || out.sizes() != input.sizes()) {
+    return false;
+  }
+  const int C = input.size(1), H = input.size(2), W = input.size(3);
+  // Leave room for launch rounding and the planar kernel's halo indices.
+  if (out.numel() > INT_MAX - 2048) {
+    return false;
+  }
+  const bool cl = input.suggest_memory_format() == MemoryFormat::ChannelsLast;
+  if (!out.is_contiguous(
+          cl ? MemoryFormat::ChannelsLast : MemoryFormat::Contiguous) ||
+      reinterpret_cast<uintptr_t>(go.data_ptr()) % 16 ||
+      reinterpret_cast<uintptr_t>(out.data_ptr()) % 16) {
+    return false;
+  }
+  const bool pool3 = kh == 3 && ph == 1 && !ceil_mode &&
+      (sh == 1 || (sh == 2 && include)) && (include || (H > 1 && W > 1));
+  const bool pool2 = kh == 2 && ph == 0 && sh == 2 && H % 2 == 0 && W % 2 == 0;
+  const bool pool1 = kh == 1 && ph == 0 && sh == 2 && !ceil_mode;
+  if (!pool3 && !pool2 && !pool1) {
+    return false;
+  }
+  const bool go_cl = go.stride(1) == 1 && go.stride(3) >= C &&
+      go.stride(3) % 2 == 0 && go.stride(2) == go.size(3) * go.stride(3) &&
+      go.stride(0) == go.size(2) * go.stride(2);
+  if (cl) {
+    if (!go_cl || C < 8 || C % 2 || out.numel() % 8 ||
+        (pool3 && sh == 2 && C % 4) ||
+        (pool1 && !go.is_contiguous(MemoryFormat::ChannelsLast))) {
+      return false;
+    }
+    if (pool3 && sh == 2 && H == 28 && W == 28 && C == 104 &&
+        go.stride(3) % 8) {
+      return false;
+    }
+    if (pool3 && sh == 2 && H == 14 && W == 14 && (C == 112 || C == 208) &&
+        go.stride(3) % 8) {
+      return false;
+    }
+  } else if (go.is_contiguous()) {
+    if (!(pool3 && sh == 1 && !include && H == 7 && W == 7 &&
+          (input.size(0) * C) % 8 == 0) &&
+        !(pool2 && W % 8 == 0)) {
+      return false;
+    }
+  } else {
+    if (!go.is_contiguous(MemoryFormat::ChannelsLast) || H != W || C % 32 ||
+        reinterpret_cast<uintptr_t>(go.data_ptr()) % 64 ||
+        !(pool3 &&
+          ((sh == 1 && !include && (W == 14 || W == 28 || W == 56)) ||
+           (sh == 2 &&
+            (W == 14 || W == 16 || W == 28 || W == 32 || W == 56 ||
+             W == 64))))) {
+      return false;
+    }
+  }
+  const auto device = c10::xpu::getCurrentXPUStream().queue().get_device();
+  const auto subgroup_sizes =
+      device.get_info<sycl::info::device::sub_group_sizes>();
+  // The largest supported portable mixed tile is W=56, S=1: 35904 bytes.
+  constexpr size_t local_memory_bytes =
+      16 * AvgPoolMixedTile<sycl::half, 56, 1>::Plane * sizeof(uint32_t);
+  if (device.get_info<sycl::info::device::max_work_group_size>() < 256 ||
+      device.get_info<sycl::info::device::local_mem_size>() <
+          local_memory_bytes ||
+      std::find(subgroup_sizes.begin(), subgroup_sizes.end(), 16) ==
+          subgroup_sizes.end()) {
+    return false;
+  }
+  if (input.scalar_type() == kHalf)
+    dispatch_backward<sycl::half>(go, out, pool3, pool2, sh, include);
+  else
+    dispatch_backward<c10::BFloat16>(go, out, pool3, pool2, sh, include);
+  return true;
+}
+} // namespace avg_pool_backward
 
 // Grid-stride cap for the vectorized channels-last kernels (VEC/WTILE/HWTILE).
 // Bounding the launch to a large-but-finite multiple of the device's resident
@@ -1543,6 +2819,22 @@ void avg_pool2d_backward_kernel(
   const int padH = safe_downcast<int, int64_t>(padding[0]);
   const int padW =
       padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
+
+  if (avg_pool_backward::try_backward(
+          gradOutput_,
+          input_,
+          gradInput,
+          kH,
+          kW,
+          dH,
+          dW,
+          padH,
+          padW,
+          ceil_mode,
+          count_include_pad,
+          divisor_override)) {
+    return;
+  }
 
   const auto memory_format = input_.suggest_memory_format();
   const Tensor input = input_.contiguous(memory_format);
