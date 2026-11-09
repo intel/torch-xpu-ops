@@ -292,9 +292,13 @@ jobs:
     needs: [Conditions-Filter, Windows-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [basic, op_ut]
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: 'op_extended,test_xpu,op_ut'
+      ut: ${{ matrix.ut_name }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       runner: windows-test
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
