@@ -79,11 +79,43 @@ jobs:
       - name: Inputs check
         id: inputs-check
         run: |
+          # Build and test each check out torch_xpu_ops on their own, hours apart, so a
+          # branch name can land them on different commits. Hand them one SHA instead.
+          resolve_torch_xpu_ops() {
+            local value="$1" repo="https://github.com/intel/torch-xpu-ops.git" ref prefix="" refs sha
+            if [ "${value}" == "pinned" ];then
+              echo "${value}"
+              return
+            fi
+            if [[ "${value}" == *"https://"* ]];then
+              repo="${value%%@*}"
+              ref="main"
+              [[ "${value}" != *"@"* ]] || ref="${value#*@}"
+              prefix="${repo}@"
+            else
+              ref="${value}"
+            fi
+            if [[ "${ref}" =~ ^[0-9a-f]{7,40}$ ]];then
+              echo "${prefix}${ref}"
+              return
+            fi
+            # A ref, not a commit: build and test clone the repo, so only branches and tags reach them.
+            refs="$(git ls-remote "${repo}" "refs/heads/${ref}" "refs/tags/${ref}" "refs/tags/${ref}^{}")"
+            # An annotated tag lists the tag object first; its ^{} line is the commit.
+            sha="$(awk -v r="refs/heads/${ref}" '$2 == r {print $1}' <<< "${refs}")"
+            [ -n "${sha}" ] || sha="$(awk -v r="refs/tags/${ref}^{}" '$2 == r {print $1}' <<< "${refs}")"
+            [ -n "${sha}" ] || sha="$(awk -v r="refs/tags/${ref}" '$2 == r {print $1}' <<< "${refs}")"
+            if [ -z "${sha}" ];then
+              return 1
+            fi
+            echo "${prefix}${sha}"
+          }
           if [ "${{ github.event_name }}" == "schedule" ];then
             if [ "${{ github.event.schedule }}" == "10 13 * * 0-4" ];then
               test_type="build-nightly"
               pytorch="main"
-              torch_xpu_ops="main"
+              # The commit this run was triggered on, i.e. main at trigger time.
+              torch_xpu_ops="${{ github.sha }}"
             elif [ "${{ github.event.schedule }}" == "30 13 * * 0-4" ];then
               test_type="wheel-nightly"
               pytorch="nightly_wheel"
@@ -91,7 +123,7 @@ jobs:
             elif [ "${{ github.event.schedule }}" == "10 16 * * 5" ];then
               test_type="build-weekly"
               pytorch="main"
-              torch_xpu_ops="main"
+              torch_xpu_ops="${{ github.sha }}"
             elif [ "${{ github.event.schedule }}" == "30 16 * * 5" ];then
               test_type="wheel-weekly"
               pytorch="nightly_wheel"
@@ -111,10 +143,14 @@ jobs:
             python=''
           else
             pytorch="${{ inputs.pytorch }}"
-            if [ -z ${{ inputs.torch_xpu_ops }} ];then
-              torch_xpu_ops="${{ github.ref_name }}"
+            if [ -z "${{ inputs.torch_xpu_ops }}" ];then
+              # The commit of the branch this run was dispatched on.
+              torch_xpu_ops="${{ github.sha }}"
             else
-              torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
+              torch_xpu_ops="$(resolve_torch_xpu_ops "${{ inputs.torch_xpu_ops }}")" || {
+                echo "::error::torch_xpu_ops '${{ inputs.torch_xpu_ops }}' names no branch, tag or commit"
+                exit 1
+              }
             fi
             if [[ "${{ inputs.pytorch }}" == *"_wheel" ]];then
               test_type="wheel-ondemand"
