@@ -15,17 +15,10 @@ import argparse
 import os
 import re
 import shutil
-import stat
 import subprocess
 from pathlib import Path
 
-from checkout_torch_xpu_ops import place as place_torch_xpu_ops
-
-
-def _force_remove_readonly(func, path, _exc_info):
-    """Handle read-only files on Windows during rmtree."""
-    os.chmod(path, stat.S_IWRITE)
-    func(path)
+from checkout_torch_xpu_ops import force_remove_readonly, place as place_torch_xpu_ops
 
 
 def run(cmd, **kwargs):
@@ -78,7 +71,7 @@ def main():
 
     # Clone PyTorch
     if pytorch_dir.exists():
-        shutil.rmtree(pytorch_dir, onerror=_force_remove_readonly)
+        shutil.rmtree(pytorch_dir, onerror=force_remove_readonly)
     git("clone", args.pytorch_repo, str(pytorch_dir))
     os.chdir(pytorch_dir)
     git("checkout", args.pytorch_commit)
@@ -91,7 +84,8 @@ def main():
     # Place torch-xpu-ops into third_party/: the PR merge checkout as-is,
     # otherwise the requested ref (``pinned`` reads third_party/xpu.txt).
     xpu_pin = pytorch_dir / "third_party" / "xpu.txt"
-    xpu_pin_ref = xpu_pin.read_text().strip()
+    # Original selector, for the log only; refs predating XPU may lack it.
+    xpu_pin_ref = xpu_pin.read_text().strip() if xpu_pin.is_file() else "<none>"
     source = workspace / "torch-xpu-ops" if github_event == "pull_request" else None
     torch_xpu_ops_sha = place_torch_xpu_ops(
         pytorch_dir,
@@ -100,13 +94,7 @@ def main():
         source=source,
     )
 
-    # Extra PyTorch cherry-picks are not needed for now (re-add `import sys`).
-    # run([sys.executable, "-m", "pip", "install", "requests"])
-    # apply_script = (
-    #     pytorch_dir / "third_party" / "torch-xpu-ops" / ".github" / "scripts"
-    #     / "apply_torch_pr.py"
-    # )
-    # run([sys.executable, str(apply_script)])
+    # Extra PyTorch cherry-picks via apply_torch_pr.py are disabled for now.
 
     # Init submodules
     git("submodule", "sync")
@@ -128,7 +116,7 @@ def main():
         # branch and build from that clone instead.
         onednn_dir = workspace / "onednn"
         if onednn_dir.exists():
-            shutil.rmtree(onednn_dir, onerror=_force_remove_readonly)
+            shutil.rmtree(onednn_dir, onerror=force_remove_readonly)
         git("clone", repo_url, str(onednn_dir))
         fetched = subprocess.run(
             ["git", "-C", str(onednn_dir), "fetch", "--no-tags", "origin", ref],
@@ -155,9 +143,12 @@ def main():
             if "GIT_REPOSITORY" in line or "GIT_TAG" in line:
                 print(f"  {line.strip()}")
 
-    # Pin CMake to the prepared checkout, including PR merge commits. Done last
-    # so nothing above sees a modified PyTorch tree.
+    # Pin CMake to the prepared checkout, including PR merge commits, so it
+    # neither fetches nor checks out another commit. Written after `pinned`
+    # has been resolved from the original file; LF keeps CMake's comparison
+    # exact on Windows. build.sh checks the wheel against torch-xpu-ops.commit.
     xpu_pin.write_bytes((torch_xpu_ops_sha + "\n").encode())
+    (workspace / "torch-xpu-ops.commit").write_text(torch_xpu_ops_sha + "\n")
 
     print(f"\nPyTorch source prepared at: {pytorch_dir}")
     print(f"  pytorch commit: {commit}")

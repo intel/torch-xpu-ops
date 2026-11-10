@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
+# Copyright 2026 Intel Corporation
+# Licensed under the Apache License, Version 2.0
+
 """Place torch-xpu-ops into a PyTorch source tree.
 
 Shared by prepare_pytorch.py (source builds) and the test environment
 actions (wheel tests) so every CI flow resolves refs the same way.
 
 Ref handling:
-  * ``pinned`` resolves to the commit PyTorch pins. When ``--prefer-wheel``
-    is given, the SHA recorded in the installed wheel (``torch/xpu.txt``)
-    wins, because the source ``third_party/xpu.txt`` may name a release
-    branch whose head has moved since the wheel was built.
-  * Any branch, tag or SHA reachable in the given repo, including commits
-    that only live under ``refs/pull/*``.
-  * A commit that only exists in a fork fails with an explicit error; pass
-    the fork as ``<repo-url>@<ref>`` instead.
+  * ``--source``: copy that checkout as-is (PR merge commit); the requested
+    ref is ignored, including ``pinned`` passed for disable_build runs.
+  * ``pinned`` resolves to the commit PyTorch pins. With ``--prefer-wheel``
+    the SHA recorded in the installed wheel (``torch/xpu.txt``) wins, since
+    the source ``third_party/xpu.txt`` may name a release branch whose head
+    has moved since the wheel was built.
+  * Any branch, tag or SHA in the given repo, including commits that only
+    live under ``refs/pull/*``.
+  * A ref missing from the repo fails; a fork must be passed as
+    ``<repo-url>@<ref>``.
 
 Usage:
     python checkout_torch_xpu_ops.py --pytorch-dir DIR --ref REF
@@ -25,20 +30,23 @@ import shutil
 import stat
 import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
 DEFAULT_REPO = "https://github.com/intel/torch-xpu-ops.git"
 
 
-def _force_remove_readonly(func, path, _exc_info):
+def force_remove_readonly(func, path, _exc_info):
     """Handle read-only files on Windows during rmtree."""
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
 
-def run(cmd, check=True):
+def run(cmd, check=True, quiet=False):
     print(f"+ {' '.join(cmd)}", flush=True)
-    return subprocess.run(cmd, check=check)
+    return subprocess.run(
+        cmd, check=check, stderr=subprocess.DEVNULL if quiet else None
+    )
 
 
 def git_out(*args):
@@ -49,10 +57,6 @@ def git_out(*args):
 
 def wheel_pin():
     """Return the torch-xpu-ops SHA recorded in the installed torch wheel."""
-    try:
-        from importlib.metadata import PackageNotFoundError, distribution
-    except ImportError:
-        return ""
     try:
         path = Path(distribution("torch").locate_file("torch/xpu.txt"))
     except PackageNotFoundError:
@@ -66,40 +70,51 @@ def resolve_pinned(pytorch_dir, prefer_wheel):
         if sha:
             print(f"Using torch-xpu-ops pin from installed wheel: {sha}")
             return sha
+        # TODO: make this an error once nightly XPU wheels ship torch/xpu.txt
+        # (pytorch/pytorch#202608); falling back can drift on release branches.
         print("Installed wheel has no torch/xpu.txt; using source pin")
     ref = (Path(pytorch_dir) / "third_party" / "xpu.txt").read_text().strip()
     print(f"Using torch-xpu-ops pin from source: {ref}")
     return ref
 
 
+def resolve_local(dest, ref):
+    """Return the commit for ref if the clone already has it, else ''."""
+    for candidate in (ref, f"origin/{ref}"):
+        res = subprocess.run(
+            ["git", "-C", dest, "rev-parse", "--verify", "--quiet",
+             f"{candidate}^{{commit}}"],
+            capture_output=True, text=True,
+        )
+        if res.returncode == 0:
+            return res.stdout.strip()
+    return ""
+
+
 def checkout_ref(repo, ref, dest):
     """Clone repo into dest and detach at ref."""
     dest = str(dest)
     run(["git", "clone", repo, dest])
-    if run(["git", "-C", dest, "checkout", "--detach", ref], check=False).returncode == 0:
-        return
-    # Not a local branch/tag/SHA after clone: try fetching it directly, then
-    # PR refs, which a plain clone never fetches.
-    fetched = run(
-        ["git", "-C", dest, "fetch", "--no-tags", "origin", ref], check=False
-    )
-    if fetched.returncode == 0:
-        run(["git", "-C", dest, "checkout", "--detach", "FETCH_HEAD"])
-        return
-    run(
-        [
-            "git", "-C", dest, "fetch", "--no-tags", "origin",
-            "+refs/pull/*/head:refs/remotes/origin/pull/*/head",
-            "+refs/pull/*/merge:refs/remotes/origin/pull/*/merge",
-        ],
-        check=False,
-    )
-    if run(["git", "-C", dest, "checkout", "--detach", ref], check=False).returncode == 0:
-        return
-    sys.exit(
-        f"error: torch-xpu-ops ref '{ref}' not found in {repo}. "
-        "If it only exists in a fork, pass '<fork-repo-url>@<ref>'."
-    )
+    sha = resolve_local(dest, ref)
+    if not sha:
+        # Not reachable from the clone: fetch it directly (SHA or full ref),
+        # then fall back to PR refs, which a plain clone never fetches.
+        fetch = ["git", "-C", dest, "fetch", "--no-tags", "origin"]
+        if run([*fetch, ref], check=False, quiet=True).returncode == 0:
+            sha = git_out("-C", dest, "rev-parse", "FETCH_HEAD")
+        else:
+            run(
+                [*fetch, "+refs/pull/*/head:refs/pull/*/head",
+                 "+refs/pull/*/merge:refs/pull/*/merge"],
+                check=False,
+            )
+            sha = resolve_local(dest, ref)
+    if not sha:
+        sys.exit(
+            f"error: torch-xpu-ops ref '{ref}' not found in {repo}. "
+            "If it only exists in a fork, pass '<fork-repo-url>@<ref>'."
+        )
+    run(["git", "-C", dest, "checkout", "--quiet", "--detach", sha])
 
 
 def place(pytorch_dir, repo, ref, source=None, prefer_wheel=False):
@@ -107,11 +122,9 @@ def place(pytorch_dir, repo, ref, source=None, prefer_wheel=False):
     pytorch_dir = Path(pytorch_dir)
     dest = pytorch_dir / "third_party" / "torch-xpu-ops"
     if dest.exists():
-        shutil.rmtree(dest, onerror=_force_remove_readonly)
+        shutil.rmtree(dest, onerror=force_remove_readonly)
 
     if source:
-        # PR: always test the merge commit prepared by actions/checkout, even
-        # when pull.yml passes `pinned` for disable_build (nightly wheel).
         print(f"Using PR checkout {source}; ignoring requested ref '{ref}'")
         shutil.copytree(source, dest, symlinks=True)
     else:
@@ -122,6 +135,7 @@ def place(pytorch_dir, repo, ref, source=None, prefer_wheel=False):
 
     run(["git", "-C", str(dest), "remote", "-v"])
     run(["git", "-C", str(dest), "show", "-s"])
+    run(["git", "-C", str(dest), "status", "--porcelain"])
     return git_out("-C", str(dest), "rev-parse", "HEAD")
 
 
