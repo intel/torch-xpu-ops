@@ -87,7 +87,6 @@ struct fft_descriptor {
   double bwd_scale;
   int which_dir; // 0 for forward, 1 for backward, 2 for both
   bool external_workspace = false;
-  bool is_inplace = false;
   std::int64_t external_workspace_size = 0;
   std::int64_t fwd_dist_cache_batch = 0;
   std::int64_t bwd_dist_cache_batch = 0;
@@ -534,10 +533,6 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
     bytes_per_transform *= desc.fft_len[dim];
   }
   desc.num_batch_in_cache = cache_size_bytes / bytes_per_transform;
-  // For out-of-place transforms, both input and output need to fit in the
-  // cache.
-  if (!desc.is_inplace)
-    desc.num_batch_in_cache /= 2;
   if (desc.num_batch_in_cache == 0)
     desc.num_batch_in_cache = 1;
   desc.rem_batch_in_cache = desc.batch % desc.num_batch_in_cache;
@@ -849,7 +844,6 @@ void _fft_with_size_sycl(
   desc.fwd_scale = 1.0;
   desc.bwd_scale = 1.0;
   desc.external_workspace = true;
-  desc.is_inplace = (input.const_data_ptr() == output.const_data_ptr());
 
   if (!inverse) {
     desc.which_dir = 0;
