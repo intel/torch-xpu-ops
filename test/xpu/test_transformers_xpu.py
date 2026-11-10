@@ -7347,10 +7347,7 @@ class TestTransformBiasRescaleQkvXpuOnly(NNTestCase):
 
         self.assertEqual(
             query,
-            reshape(
-                (query_ref + bias[:embed_dim])
-                / math.sqrt(embed_dim // num_heads)
-            ),
+            reshape((query_ref + bias[:embed_dim]) / math.sqrt(embed_dim // num_heads)),
         )
         self.assertEqual(key, reshape(key_ref + bias[embed_dim : 2 * embed_dim]))
         self.assertEqual(value, reshape(value_ref + bias[2 * embed_dim :]))
