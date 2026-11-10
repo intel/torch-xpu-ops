@@ -22,63 +22,8 @@
 namespace at::native {
 namespace xpu {
 
-namespace nearest_optimized {
-
-template <int SH, int SW>
-struct NearestVector {
-  const uint32_t* in;
-  uint32_t* out;
-  int h, w, oh, ow, count;
-  at::detail::IntDivider<uint32_t> dc, dw, dh;
-  void operator()(sycl::nd_item<1> it) const {
-    int step = it.get_global_range(0) * 4;
-    for (int i = it.get_global_linear_id() * 4; i < count; i += step) {
-      memory::aligned_vector<uint32_t, 4> values;
-      uint32_t pixel = dc.div(i), channel = i - pixel * dc.divisor;
-      uint32_t ny = dw.div(pixel), x = pixel - ny * dw.divisor;
-      uint32_t n = dh.div(ny), y = ny - n * dh.divisor;
-      uint32_t s = ((n * h + y / SH) * w + x / SW) * dc.divisor + channel;
-      int delta = x == ow - 1 ? ((y % SH == SH - 1) ? 0 : -w * int(dc.divisor))
-                              : ((x % SW == SW - 1) ? 0 : -int(dc.divisor));
-#pragma unroll
-      for (int j = 0; j < 4; ++j) {
-        int index = s + j + (channel + j >= dc.divisor ? delta : 0);
-        values[j] = i + j < count ? in[index] : 0;
-      }
-      if (i + 4 <= count)
-        *reinterpret_cast<memory::aligned_vector<uint32_t, 4>*>(out + i) =
-            values;
-      else {
-#pragma unroll
-        for (int j = 0; j < 4; ++j)
-          if (i + j < count)
-            out[i + j] = values[j];
-      }
-    }
-  }
-};
-
-template <int SH, int SW>
-void vector_launch(const at::Tensor& x, const at::Tensor& y) {
-  int count = y.numel() / 2, c = x.size(1) / 2;
-  int groups = std::min((count + 1023) / 1024, 1280);
-  c10::xpu::getCurrentXPUStream().queue().parallel_for(
-      sycl::nd_range<1>(groups * 256, 256),
-      NearestVector<SH, SW>{
-          reinterpret_cast<const uint32_t*>(x.data_ptr()),
-          reinterpret_cast<uint32_t*>(y.data_ptr()),
-          int(x.size(2)),
-          int(x.size(3)),
-          int(y.size(2)),
-          int(y.size(3)),
-          count,
-          at::detail::IntDivider<uint32_t>(c),
-          at::detail::IntDivider<uint32_t>(y.size(3)),
-          at::detail::IntDivider<uint32_t>(y.size(2))});
-}
-
 // Packed accesses require dense channels-last tensors with pairs of channels.
-inline bool can_use_packed(
+inline bool can_use_upsample_nearest2d_channels_last_packed(
     const Tensor& input,
     const Tensor& output,
     bool is_exact) {
@@ -100,123 +45,24 @@ inline bool can_use_packed(
 }
 
 // Explicit scales must agree with the integer replication implied by the sizes.
-inline int packed_scale(
-    const Tensor& small,
-    const Tensor& large,
+inline int upsample_nearest2d_packed_scale(
+    const Tensor& input,
+    const Tensor& output,
     std::optional<double> scales_h,
     std::optional<double> scales_w) {
-  if (large.size(2) % small.size(2) || large.size(3) % small.size(3)) {
+  if (output.size(2) % input.size(2) || output.size(3) % input.size(3)) {
     return 0;
   }
-  const int sh = large.size(2) / small.size(2);
-  const int sw = large.size(3) / small.size(3);
-  if (sh != sw || (sh != 2 && sh != 4 && sh != 8) ||
-      (scales_h && *scales_h != sh) || (scales_w && *scales_w != sw)) {
+  const int height_scale = output.size(2) / input.size(2);
+  const int width_scale = output.size(3) / input.size(3);
+  if (height_scale != width_scale ||
+      (height_scale != 2 && height_scale != 4 && height_scale != 8) ||
+      (scales_h && *scales_h != height_scale) ||
+      (scales_w && *scales_w != width_scale)) {
     return 0;
   }
-  return sh;
+  return height_scale;
 }
-
-inline bool try_forward(
-    const Tensor& input,
-    const Tensor& output,
-    std::optional<double> scales_h,
-    std::optional<double> scales_w,
-    bool is_exact) {
-  if (!can_use_packed(input, output, is_exact) ||
-      reinterpret_cast<uintptr_t>(input.data_ptr()) % 4 ||
-      reinterpret_cast<uintptr_t>(output.data_ptr()) % 16) {
-    return false;
-  }
-  const int sh = packed_scale(input, output, scales_h, scales_w);
-  if (sh == 0) {
-    return false;
-  }
-  if (sh == 2)
-    vector_launch<2, 2>(input, output);
-  else if (sh == 4)
-    vector_launch<4, 4>(input, output);
-  else
-    vector_launch<8, 8>(input, output);
-  return true;
-}
-
-template <typename scalar_t, int S>
-struct NearestBackwardVector {
-  const uint32_t* x;
-  uint32_t* y;
-  int count;
-  at::detail::IntDivider<uint32_t> dc, dw;
-  void operator()(sycl::nd_item<1> it) const {
-    for (int i = it.get_global_linear_id(); i < count;
-         i += it.get_global_range(0)) {
-      uint32_t p = dc.div(i), c = i - p * dc.divisor, nh = dw.div(p),
-               w = p - nh * dw.divisor;
-      uint32_t base = (nh * S * dw.divisor + w) * S * dc.divisor + c;
-      memory::aligned_vector<float, 2> acc{{0.f, 0.f}};
-#pragma unroll
-      for (int h = 0; h < S; ++h) {
-#pragma unroll
-        for (int w = 0; w < S; ++w) {
-          auto v = sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
-              x[base + (h * dw.divisor * S + w) * dc.divisor]);
-#pragma unroll
-          for (int j = 0; j < 2; ++j)
-            acc[j] += float(v[j]);
-        }
-      }
-      memory::aligned_vector<scalar_t, 2> value{
-          {scalar_t(acc[0]), scalar_t(acc[1])}};
-      y[i] = sycl::bit_cast<uint32_t>(value);
-    }
-  }
-};
-template <typename scalar_t, int S>
-void backward_launch(const at::Tensor& x, const at::Tensor& y) {
-  int count = y.numel() / 2;
-  int groups = std::min((count + 255) / 256, 1280);
-  c10::xpu::getCurrentXPUStream().queue().parallel_for(
-      sycl::nd_range<1>(groups * 256, 256),
-      NearestBackwardVector<scalar_t, S>{
-          reinterpret_cast<const uint32_t*>(x.data_ptr()),
-          reinterpret_cast<uint32_t*>(y.data_ptr()),
-          count,
-          at::detail::IntDivider<uint32_t>(y.size(1) / 2),
-          at::detail::IntDivider<uint32_t>(y.size(3))});
-}
-
-template <typename scalar_t>
-void dispatch_backward(const Tensor& input, const Tensor& output, int sh) {
-  if (sh == 2)
-    backward_launch<scalar_t, 2>(input, output);
-  else if (sh == 4)
-    backward_launch<scalar_t, 4>(input, output);
-  else
-    backward_launch<scalar_t, 8>(input, output);
-}
-
-inline bool try_backward(
-    const Tensor& input,
-    const Tensor& output,
-    std::optional<double> scales_h,
-    std::optional<double> scales_w,
-    bool is_exact) {
-  if (!can_use_packed(input, output, is_exact) ||
-      reinterpret_cast<uintptr_t>(input.data_ptr()) % 4 ||
-      reinterpret_cast<uintptr_t>(output.data_ptr()) % 4) {
-    return false;
-  }
-  const int sh = packed_scale(output, input, scales_h, scales_w);
-  if (sh == 0) {
-    return false;
-  }
-  if (input.scalar_type() == kHalf)
-    dispatch_backward<c10::Half>(input, output, sh);
-  else
-    dispatch_backward<c10::BFloat16>(input, output, sh);
-  return true;
-}
-} // namespace nearest_optimized
 
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 struct UpsampleNearest2dBackwardKernelFunctor {
@@ -332,6 +178,95 @@ void upsample_nearest2d_backward_frame(
       width_scale,
       index_bw_op);
   sycl_kernel_submit(global_range, work_group_size, queue, caller);
+}
+
+template <typename scalar_t, int scale>
+struct UpsampleNearest2dBackwardChannelsLastPackedKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    for (int index = item.get_global_linear_id(); index < gi_numel_;
+         index += item.get_global_range(0)) {
+      const uint32_t pixel = channels_divider_.div(index);
+      const uint32_t channel = index - pixel * channels_divider_.divisor;
+      const uint32_t batch_height = width_divider_.div(pixel);
+      const uint32_t width2 = pixel - batch_height * width_divider_.divisor;
+      const uint32_t input_index =
+          (batch_height * scale * width_divider_.divisor + width2) * scale *
+              channels_divider_.divisor +
+          channel;
+      memory::aligned_vector<float, 2> grad{{0.f, 0.f}};
+#pragma unroll
+      for (int height_offset = 0; height_offset < scale; ++height_offset) {
+#pragma unroll
+        for (int width_offset = 0; width_offset < scale; ++width_offset) {
+          const auto values =
+              sycl::bit_cast<memory::aligned_vector<scalar_t, 2>>(
+                  go_[input_index +
+                      (height_offset * width_divider_.divisor * scale +
+                       width_offset) *
+                          channels_divider_.divisor]);
+#pragma unroll
+          for (int lane = 0; lane < 2; ++lane)
+            grad[lane] += static_cast<float>(values[lane]);
+        }
+      }
+      const memory::aligned_vector<scalar_t, 2> values{
+          {static_cast<scalar_t>(grad[0]), static_cast<scalar_t>(grad[1])}};
+      gi_[index] = sycl::bit_cast<uint32_t>(values);
+    }
+  }
+
+  UpsampleNearest2dBackwardChannelsLastPackedKernelFunctor(
+      const uint32_t* go,
+      uint32_t* gi,
+      int channels,
+      int width2,
+      int gi_numel)
+      : go_(go),
+        gi_(gi),
+        gi_numel_(gi_numel),
+        channels_divider_(channels),
+        width_divider_(width2) {}
+
+ private:
+  const uint32_t* go_;
+  uint32_t* gi_;
+  int gi_numel_;
+  at::detail::IntDivider<uint32_t> channels_divider_;
+  at::detail::IntDivider<uint32_t> width_divider_;
+};
+
+template <typename scalar_t>
+void upsample_nearest2d_backward_channels_last_packed_frame(
+    const scalar_t* go,
+    scalar_t* gi,
+    int channels,
+    int width2,
+    int gi_numel,
+    int scale) {
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  constexpr int work_group_size = 256;
+  const int groups = std::min<int>(
+      (gi_numel + work_group_size - 1) / work_group_size,
+      at::xpu::getDeviceHWThreads());
+  const auto* packed_go = reinterpret_cast<const uint32_t*>(go);
+  auto* packed_gi = reinterpret_cast<uint32_t*>(gi);
+  auto launch = [&](auto caller) {
+    sycl_kernel_submit(
+        groups * work_group_size, work_group_size, queue, caller);
+  };
+  if (scale == 2) {
+    launch(
+        UpsampleNearest2dBackwardChannelsLastPackedKernelFunctor<scalar_t, 2>(
+            packed_go, packed_gi, channels, width2, gi_numel));
+  } else if (scale == 4) {
+    launch(
+        UpsampleNearest2dBackwardChannelsLastPackedKernelFunctor<scalar_t, 4>(
+            packed_go, packed_gi, channels, width2, gi_numel));
+  } else {
+    launch(
+        UpsampleNearest2dBackwardChannelsLastPackedKernelFunctor<scalar_t, 8>(
+            packed_go, packed_gi, channels, width2, gi_numel));
+  }
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
@@ -450,12 +385,6 @@ void upsample_nearest2d_backward_kernel(
     return;
   }
 
-  if (nearest_optimized::try_backward(
-          grad_output_, grad_input, scales_h, scales_w, is_exact)) {
-    return;
-  }
-  grad_input.zero_();
-
   int output_height = output_size[0];
   int output_width = output_size[1];
 
@@ -499,6 +428,29 @@ void upsample_nearest2d_backward_kernel(
 
           const scalar_t* go = grad_output.const_data_ptr<scalar_t>();
           scalar_t* gi = grad_input.mutable_data_ptr<scalar_t>();
+          if constexpr (
+              std::is_same_v<scalar_t, c10::Half> ||
+              std::is_same_v<scalar_t, c10::BFloat16>) {
+            if (can_use_upsample_nearest2d_channels_last_packed(
+                    grad_output_, grad_input, is_exact) &&
+                reinterpret_cast<uintptr_t>(go) % sizeof(uint32_t) == 0 &&
+                reinterpret_cast<uintptr_t>(gi) % sizeof(uint32_t) == 0) {
+              const int scale = upsample_nearest2d_packed_scale(
+                  grad_input, grad_output, scales_h, scales_w);
+              if (scale != 0) {
+                upsample_nearest2d_backward_channels_last_packed_frame<
+                    scalar_t>(
+                    go,
+                    gi,
+                    channels / 2,
+                    input_width,
+                    static_cast<int>(grad_input.numel() / 2),
+                    scale);
+                return;
+              }
+            }
+          }
+          grad_input.zero_();
           if (is_exact) {
             upsample_nearest2d_backward_channels_last_frame<
                 scalar_t,
@@ -533,6 +485,7 @@ void upsample_nearest2d_backward_kernel(
         });
   } else {
     // This is needed for non-contiguous tensors.
+    grad_input.zero_();
     Tensor grad_input_c = grad_input.is_contiguous()
         ? grad_input
         : at::empty(grad_input.sizes(), grad_input.options());
@@ -699,6 +652,119 @@ void upsample_nearest2d_frame(
       kfn);
 }
 
+template <int scale>
+struct UpsampleNearest2dChannelsLastPackedKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const int stride = item.get_global_range(0) * kPackedValues;
+    for (int index = item.get_global_linear_id() * kPackedValues;
+         index < out_numel_;
+         index += stride) {
+      memory::aligned_vector<uint32_t, kPackedValues> values;
+      const uint32_t pixel = channels_divider_.div(index);
+      const uint32_t channel = index - pixel * channels_divider_.divisor;
+      const uint32_t batch_height = width_divider_.div(pixel);
+      const uint32_t width2 = pixel - batch_height * width_divider_.divisor;
+      const uint32_t batch = height_divider_.div(batch_height);
+      const uint32_t height2 = batch_height - batch * height_divider_.divisor;
+      const uint32_t input_index =
+          ((batch * height1_ + height2 / scale) * width1_ + width2 / scale) *
+              channels_divider_.divisor +
+          channel;
+      // A four-word store can cross one channel boundary. If that next output
+      // pixel repeats the same input column (or row), rewind by one input
+      // pixel (or row); otherwise consecutive input words are already correct.
+      const int delta = width2 == width2_ - 1
+          ? ((height2 % scale == scale - 1)
+                 ? 0
+                 : -width1_ * static_cast<int>(channels_divider_.divisor))
+          : ((width2 % scale == scale - 1)
+                 ? 0
+                 : -static_cast<int>(channels_divider_.divisor));
+#pragma unroll
+      for (int lane = 0; lane < kPackedValues; ++lane) {
+        const int source_index = input_index + lane +
+            (channel + lane >= channels_divider_.divisor ? delta : 0);
+        values[lane] = index + lane < out_numel_ ? idata_[source_index] : 0;
+      }
+      if (index + kPackedValues <= out_numel_) {
+        *reinterpret_cast<memory::aligned_vector<uint32_t, kPackedValues>*>(
+            odata_ + index) = values;
+      } else {
+#pragma unroll
+        for (int lane = 0; lane < kPackedValues; ++lane) {
+          if (index + lane < out_numel_)
+            odata_[index + lane] = values[lane];
+        }
+      }
+    }
+  }
+
+  UpsampleNearest2dChannelsLastPackedKernelFunctor(
+      const uint32_t* idata,
+      uint32_t* odata,
+      int channels,
+      int height1,
+      int width1,
+      int height2,
+      int width2,
+      int out_numel)
+      : idata_(idata),
+        odata_(odata),
+        height1_(height1),
+        width1_(width1),
+        width2_(width2),
+        out_numel_(out_numel),
+        channels_divider_(channels),
+        width_divider_(width2),
+        height_divider_(height2) {}
+
+ private:
+  static constexpr int kPackedValues = 4;
+  const uint32_t* idata_;
+  uint32_t* odata_;
+  int height1_;
+  int width1_;
+  int width2_;
+  int out_numel_;
+  at::detail::IntDivider<uint32_t> channels_divider_;
+  at::detail::IntDivider<uint32_t> width_divider_;
+  at::detail::IntDivider<uint32_t> height_divider_;
+};
+
+void upsample_nearest2d_channels_last_packed_frame(
+    const uint32_t* idata,
+    uint32_t* odata,
+    int channels,
+    int height1,
+    int width1,
+    int height2,
+    int width2,
+    int out_numel,
+    int scale) {
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  constexpr int work_group_size = 256;
+  constexpr int packed_values_per_item = 4;
+  const int items =
+      (out_numel + packed_values_per_item - 1) / packed_values_per_item;
+  const int groups = std::min<int>(
+      (items + work_group_size - 1) / work_group_size,
+      at::xpu::getDeviceHWThreads());
+  auto launch = [&](auto caller) {
+    sycl_kernel_submit(
+        groups * work_group_size, work_group_size, queue, caller);
+  };
+  if (scale == 2) {
+    launch(UpsampleNearest2dChannelsLastPackedKernelFunctor<2>(
+        idata, odata, channels, height1, width1, height2, width2, out_numel));
+  } else if (scale == 4) {
+    launch(UpsampleNearest2dChannelsLastPackedKernelFunctor<4>(
+        idata, odata, channels, height1, width1, height2, width2, out_numel));
+  } else {
+    launch(UpsampleNearest2dChannelsLastPackedKernelFunctor<8>(
+        idata, odata, channels, height1, width1, height2, width2, out_numel));
+  }
+}
+
 template <typename scalar_t, typename index_op_t>
 struct UpsampleNearest2dChannelsLastKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
@@ -811,11 +877,6 @@ void upsample_nearest2d_kernel(
     return;
   }
 
-  if (nearest_optimized::try_forward(
-          input_, output, scales_h, scales_w, is_exact)) {
-    return;
-  }
-
   int output_height = output_size[0];
   int output_width = output_size[1];
 
@@ -857,6 +918,28 @@ void upsample_nearest2d_kernel(
         [&] {
           const scalar_t* idata = input.const_data_ptr<scalar_t>();
           scalar_t* odata = output.mutable_data_ptr<scalar_t>();
+          if (can_use_upsample_nearest2d_channels_last_packed(
+                  input_, output, is_exact) &&
+              reinterpret_cast<uintptr_t>(idata) % sizeof(uint32_t) == 0 &&
+              reinterpret_cast<uintptr_t>(odata) %
+                      alignof(memory::aligned_vector<uint32_t, 4>) ==
+                  0) {
+            const int scale = upsample_nearest2d_packed_scale(
+                input, output, scales_h, scales_w);
+            if (scale != 0) {
+              upsample_nearest2d_channels_last_packed_frame(
+                  reinterpret_cast<const uint32_t*>(idata),
+                  reinterpret_cast<uint32_t*>(odata),
+                  channels / 2,
+                  input_height,
+                  input_width,
+                  output_height,
+                  output_width,
+                  static_cast<int>(output.numel() / 2),
+                  scale);
+              return;
+            }
+          }
           if (is_exact) {
             upsample_nearest2d_channels_last_frame<scalar_t>(
                 idata,

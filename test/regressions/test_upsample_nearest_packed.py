@@ -43,45 +43,31 @@ class TestUpsampleNearestPacked(TestCase):
                 expected_grad += grad[:, :, h::scale, w::scale].float()
         self.assertEqual(actual_grad.cpu(), expected_grad.to(dtype), atol=0, rtol=0)
 
-    @dtypes(torch.float16, torch.bfloat16)
-    @parametrize("mode", ["nearest", "nearest-exact"])
-    @parametrize(
-        "case",
-        [
-            "odd_channels",
-            "small_channels",
-            "contiguous",
-            "strided",
-            "input_offset",
-            "output_offset",
-            "fractional_scale",
-            "mismatched_scale",
-            "unequal_scales",
-        ],
-    )
-    def test_fallbacks(self, device, dtype, mode, case):
-        channels = {"odd_channels": 17, "small_channels": 14}.get(case, 18)
+    def _check_fallback(
+        self,
+        device,
+        dtype,
+        mode,
+        channels=18,
+        output_size=(14, 18),
+        scales=(2.0, 2.0),
+        memory_format=torch.channels_last,
+        stride_multiplier=1,
+        input_offset=0,
+        output_offset=0,
+    ):
         shape = (2, channels, 7, 9)
-        output_size, scales = [14, 18], (2.0, 2.0)
-        if case == "fractional_scale":
-            output_size, scales = [10, 13], (1.5, 1.5)
-        elif case == "mismatched_scale":
-            # CPU nearest_idx ignores explicit scales for exactly 2x sizes.
-            # Use 4x sizes so the CPU reference honors the mismatched scale.
-            output_size, scales = [28, 36], (4.1, 4.1)
-        elif case == "unequal_scales":
-            output_size, scales = [14, 36], (2.0, 4.0)
-        layout = case if case in ("contiguous", "strided") else "channels_last"
 
         def allocate(size, offset=0):
-            n, c, h, w = size
-            if layout == "contiguous":
-                strides = (c * h * w, h * w, w, 1)
-            else:
-                strides = (h * w * c, 1, w * c, c)
-            if layout == "strided":
-                strides = tuple(s * 2 for s in strides)
-            storage_size = 1 + sum((d - 1) * s for d, s in zip(size, strides))
+            strides = (
+                torch.empty(size, device="meta")
+                .contiguous(memory_format=memory_format)
+                .stride()
+            )
+            strides = tuple(stride * stride_multiplier for stride in strides)
+            storage_size = 1 + sum(
+                (dim - 1) * stride for dim, stride in zip(size, strides)
+            )
             storage = torch.empty(storage_size + offset, device=device, dtype=dtype)
             return storage.as_strided(size, strides, offset)
 
@@ -96,22 +82,69 @@ class TestUpsampleNearestPacked(TestCase):
             else torch.ops.aten._upsample_nearest_exact2d_backward
         )
         x = torch.randn(shape, dtype=dtype)
-        x_device = allocate(shape, int(case == "input_offset")).copy_(x)
+        x_device = allocate(shape, input_offset).copy_(x)
         output_shape = (shape[0], shape[1], *output_size)
-        out = allocate(output_shape, int(case == "output_offset"))
+        out = allocate(output_shape, output_offset)
         forward.out(x_device, output_size, *scales, out=out)
         expected = forward(x.float(), output_size, *scales).to(dtype)
         self.assertEqual(out.cpu(), expected, atol=0, rtol=0)
 
         # Integer gradients make all reference accumulation orders exact in FP32.
         grad = torch.randint(-4, 5, output_shape).to(dtype)
-        grad_device = allocate(output_shape, int(case == "input_offset")).copy_(grad)
-        grad_input = allocate(shape, int(case == "output_offset"))
+        grad_device = allocate(output_shape, input_offset).copy_(grad)
+        grad_input = allocate(shape, output_offset)
         backward.grad_input(
             grad_device, output_size, list(shape), *scales, grad_input=grad_input
         )
         expected_grad = backward(grad.float(), output_size, list(shape), *scales)
         self.assertEqual(grad_input.cpu(), expected_grad.to(dtype), atol=0, rtol=0)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("mode", ["nearest", "nearest-exact"])
+    @parametrize("channels", [17, 14])
+    def test_channel_fallback(self, device, dtype, mode, channels):
+        self._check_fallback(device, dtype, mode, channels=channels)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("mode", ["nearest", "nearest-exact"])
+    def test_contiguous_fallback(self, device, dtype, mode):
+        self._check_fallback(device, dtype, mode, memory_format=torch.contiguous_format)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("mode", ["nearest", "nearest-exact"])
+    def test_strided_fallback(self, device, dtype, mode):
+        self._check_fallback(device, dtype, mode, stride_multiplier=2)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("mode", ["nearest", "nearest-exact"])
+    @parametrize("input_offset,output_offset", [(1, 0), (0, 1)])
+    def test_alignment_fallback(self, device, dtype, mode, input_offset, output_offset):
+        self._check_fallback(
+            device, dtype, mode, input_offset=input_offset, output_offset=output_offset
+        )
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("mode", ["nearest", "nearest-exact"])
+    def test_fractional_scale_fallback(self, device, dtype, mode):
+        self._check_fallback(
+            device, dtype, mode, output_size=(10, 13), scales=(1.5, 1.5)
+        )
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("mode", ["nearest", "nearest-exact"])
+    def test_mismatched_scale_fallback(self, device, dtype, mode):
+        # CPU nearest_idx ignores explicit scales for exactly 2x sizes.
+        # Use 4x sizes so the CPU reference honors the mismatched scale.
+        self._check_fallback(
+            device, dtype, mode, output_size=(28, 36), scales=(4.1, 4.1)
+        )
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("mode", ["nearest", "nearest-exact"])
+    def test_unequal_scales_fallback(self, device, dtype, mode):
+        self._check_fallback(
+            device, dtype, mode, output_size=(14, 36), scales=(2.0, 4.0)
+        )
 
     @dtypes(torch.float16, torch.bfloat16)
     def test_packed_channel_boundary(self, device, dtype):
