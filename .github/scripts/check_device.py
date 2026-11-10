@@ -7,8 +7,9 @@ compute runtime packages, tools (xpu-smi, clinfo, lspci, ocloc), GPU visible to
 clinfo/xpu-smi, / size > 800 GB plus disk bandwidth, user jenkins with UID 1001.
 
 NET: download speed of pytorch/pytorch git, intel/omix docker image, torch XPU
-wheel, Hugging Face model and torch weights. Unreachable => FAIL, speed is
-reference only.
+wheel, Hugging Face model and torch weights. Unreachable => FAIL, slow => WARN.
+
+Summary lists every ERROR, FAIL and WARN item (colored on a terminal).
 
 BW: H2D/D2H copy bandwidth per device, with pageable and pinned host memory.
 Needs torch with XPU. Reported for reference only.
@@ -50,6 +51,26 @@ PACKAGES = (
 )
 NET_LIMIT_MIB = 256
 NET_TIMEOUT = 60
+# Below these speeds the check still passes but is flagged as a warning.
+NET_WARN_MBPS = 10
+DISK_WARN_MBPS = 500
+
+# (level, name, detail) of every FAIL/WARN/ERROR, listed again in the summary.
+ISSUES = []
+_COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+_STYLE = {"PASS": "32", "WARN": "33", "FAIL": "31", "ERROR": "1;31"}
+
+
+def tag(level):
+    return f"\033[{_STYLE[level]}m{level}\033[0m" if _COLOR else level
+
+
+def note(level, name, detail):
+    """Print one check line; record anything that is not PASS for the summary."""
+    print(f"{name:<10}: {tag(level)} - {detail}")
+    if level != "PASS":
+        ISSUES.append((level, name, detail))
+
 
 def run(cmd, timeout=600):
     """Run cmd, return (returncode, stdout+stderr). Missing binary => rc 127."""
@@ -63,7 +84,7 @@ def run(cmd, timeout=600):
 
 
 def report(name, ok, detail):
-    print(f"{name:<10}: {'PASS' if ok else 'FAIL'} - {detail}")
+    note("PASS" if ok else "FAIL", name, detail)
     return ok
 
 
@@ -115,19 +136,20 @@ def disk_bw(path, mib=2048):
 def check_sys():
     print("-" * 60 + "\nSystem Acceptance Check\n" + "-" * 60)
     if platform.system() != "Linux":
-        print("SYS       : ERROR - Linux only")
+        note("ERROR", "SYS", "Linux only")
         return 2
     results = []
 
     missing = [t for t in TOOLS if not shutil.which(t)]
     results.append(report("Tools", not missing, f"missing {missing}" if missing else ", ".join(TOOLS)))
 
-    gpus = detect_gpus()
+    # Only BMG/PVC are CI GPUs; other Intel display devices (iGPU) are ignored.
+    all_gpus = detect_gpus()
+    gpus = [g for g in all_gpus if g[1]]
     families = {g[1] for g in gpus}
-    results.append(report("GPU", bool(gpus) and None not in families,
-                          f"{len(gpus)} x {sorted(f or '?' for f in families)}"))
-    for gpu in gpus:
-        print(f"            {gpu[3]}")
+    results.append(report("GPU", bool(gpus), f"{len(gpus)} x {sorted(families)}"))
+    for gpu in all_gpus:
+        print(f"            {gpu[3]}{'' if gpu[1] else '  (ignored)'}")
     family = next(iter(families)) if len(families) == 1 else None
     if len(families) > 1:
         results.append(report("GPU mix", False, "mixed GPU families"))
@@ -157,13 +179,18 @@ def check_sys():
         n_smi = len(json.loads(out).get("device_list", [])) if rc == 0 else 0
     except ValueError:
         n_smi = 0
-    results.append(report("Visible", n_cl > 0 and n_smi > 0, f"clinfo {n_cl}, xpu-smi {n_smi}, lspci {len(gpus)}"))
+    detail = f"clinfo {n_cl}, xpu-smi {n_smi}, lspci {len(gpus)}"
+    results.append(report("Visible", n_cl > 0 and n_smi > 0, detail))
+    if n_cl > 0 and n_smi > 0 and len({n_smi, len(gpus)}) > 1:
+        note("WARN", "Visible", f"device count mismatch: {detail}")
 
     total_gb = shutil.disk_usage("/").total / 1e9
     results.append(report("Disk /", total_gb > MIN_DISK_GB, f"{total_gb:.0f} GB (want > {MIN_DISK_GB} GB)"))
     try:
         w, r = disk_bw("/var/tmp")
-        print(f"Disk BW   : write {w:.0f} MB/s, read {r:.0f} MB/s (reference only)")
+        slow = min(w, r) < DISK_WARN_MBPS
+        note("WARN" if slow else "PASS", "Disk BW",
+             f"write {w:.0f} MB/s, read {r:.0f} MB/s" + (f" (< {DISK_WARN_MBPS} MB/s)" if slow else ""))
     except Exception as e:
         results.append(report("Disk BW", False, str(e)))
 
@@ -249,7 +276,7 @@ NET_TARGETS = (
 
 
 def check_net():
-    print("-" * 60 + f"\nNetwork Bandwidth (MB/s, reference only, <= {NET_LIMIT_MIB} MiB each)\n" + "-" * 60)
+    print("-" * 60 + f"\nNetwork Bandwidth (<= {NET_LIMIT_MIB} MiB each, WARN < {NET_WARN_MBPS} MB/s)\n" + "-" * 60)
     # Force every target through the proxy; also inherited by the git subprocess.
     for var in ("no_proxy", "NO_PROXY"):
         os.environ.pop(var, None)
@@ -258,7 +285,12 @@ def check_net():
         try:
             size, secs = fn()
             mb = size / 1e6
-            results.append(report(name, size > 0, f"{mb:8.1f} MB in {secs:6.1f} s = {mb / secs:8.1f} MB/s"))
+            slow = mb / secs < NET_WARN_MBPS
+            detail = f"{mb:8.1f} MB in {secs:6.1f} s = {mb / secs:8.1f} MB/s"
+            if size == 0:
+                results.append(report(name, False, detail))
+            else:
+                note("WARN" if slow else "PASS", name, detail + (f" (< {NET_WARN_MBPS} MB/s)" if slow else ""))
         except Exception as e:
             msg = str(e).strip().splitlines()
             results.append(report(name, False, f"{type(e).__name__}: {msg[0] if msg else ''}"))
@@ -292,10 +324,10 @@ def check_bw():
     try:
         import torch
     except ImportError:
-        print("BW        : ERROR - torch not installed")
+        note("ERROR", "BW", "torch not installed")
         return 2
     if not torch.xpu.is_available():
-        print("BW        : ERROR - XPU not available")
+        note("ERROR", "BW", "XPU not available")
         return 2
     print(f"{'Device':<8}{'Pageable H2D':>14}{'D2H':>8}{'Pinned H2D':>14}{'D2H':>8}")
     try:
@@ -306,7 +338,7 @@ def check_bw():
             print(f"{'xpu:' + str(k):<8}{ph2d:>14.1f}{pd2h:>8.1f}{nh2d:>14.1f}{nd2h:>8.1f}")
     except Exception as e:
         msg = str(e).strip().splitlines()
-        print(f"BW        : ERROR - {type(e).__name__}: {msg[0] if msg else ''}")
+        note("ERROR", "BW", f"{type(e).__name__}: {msg[0] if msg else ''}")
         return 2
     print("BW        : DONE")
     return 0
@@ -327,9 +359,15 @@ def main():
     code = max(codes.values())
     print("=" * 60 + "\nSummary\n" + "-" * 60)
     for name, c in codes.items():
-        print(f"{name:<10}: {('PASS', 'FAIL', 'ERROR')[c]}")
+        print(f"{name:<10}: {tag(('PASS', 'FAIL', 'ERROR')[c])}")
+    for level, title in (("ERROR", "Errors"), ("FAIL", "Failures"), ("WARN", "Warnings")):
+        items = [(n, d) for lv, n, d in ISSUES if lv == level]
+        if items:
+            print("-" * 60 + f"\n{tag(level)} {title} ({len(items)})")
+            for n, d in items:
+                print(f"  {n:<10}: {d.strip()}")
     print("-" * 60)
-    print(f"RESULT    : {('PASS', 'FAIL', 'ERROR')[code]}")
+    print(f"RESULT    : {tag(('PASS', 'FAIL', 'ERROR')[code])}")
     print("=" * 60)
     return code
 
