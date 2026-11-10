@@ -526,19 +526,23 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
       src_bundle;
 
   // Compute the number of batches that fit in the cache and related parameters.
-  auto cache_size_bytes = q.get_device().get_info<sycl::info::device::global_mem_cache_size>();
+  auto cache_size_bytes =
+      q.get_device().get_info<sycl::info::device::global_mem_cache_size>();
   auto bytes_per_element = 2 * sizeof(T); // cmplx has 2 fp components
   auto bytes_per_transform = bytes_per_element;
   for (size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
     bytes_per_transform *= desc.fft_len[dim];
   }
   desc.num_batch_in_cache = cache_size_bytes / bytes_per_transform;
-  // For out-of-place transforms, both input and output need to fit in the cache.
-  if (!desc.is_inplace) desc.num_batch_in_cache /= 2;
+  // For out-of-place transforms, both input and output need to fit in the
+  // cache.
+  if (!desc.is_inplace)
+    desc.num_batch_in_cache /= 2;
   if (desc.num_batch_in_cache == 0)
     desc.num_batch_in_cache = 1;
   desc.rem_batch_in_cache = desc.batch % desc.num_batch_in_cache;
-  desc.num_cache_batches = (desc.batch + desc.num_batch_in_cache - 1) / desc.num_batch_in_cache;
+  desc.num_cache_batches =
+      (desc.batch + desc.num_batch_in_cache - 1) / desc.num_batch_in_cache;
   desc.fwd_dist_cache_batch = desc.fwd_dist * desc.num_batch_in_cache * 2;
   desc.bwd_dist_cache_batch = desc.bwd_dist * desc.num_batch_in_cache * 2;
 
@@ -568,8 +572,10 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
     desc.local_work_size[dim][0] = fact1;
     if (fact0 % fact1 != 0)
       desc.local_work_size[dim][0] = std::max(fact0, fact1);
-    desc.global_work_size_cache_batch[dim][0] = desc.local_work_size[dim][0] * desc.num_batch_in_cache;
-    desc.global_work_size_last_cache_batch[dim][0] = desc.local_work_size[dim][0] * desc.rem_batch_in_cache;
+    desc.global_work_size_cache_batch[dim][0] =
+        desc.local_work_size[dim][0] * desc.num_batch_in_cache;
+    desc.global_work_size_last_cache_batch[dim][0] =
+        desc.local_work_size[dim][0] * desc.rem_batch_in_cache;
 
     // Kernel build parameters
     std::string kernel_prec;
@@ -592,9 +598,11 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
         fwd_dist = desc.fwd_strides[0] * desc.fft_len[0];
         bwd_dist = desc.bwd_strides[0] * desc.fft_len[0];
         desc.global_work_size_cache_batch[dim][0] =
-            desc.local_work_size[dim][0] * desc.num_batch_in_cache * desc.fft_len[1];
+            desc.local_work_size[dim][0] * desc.num_batch_in_cache *
+            desc.fft_len[1];
         desc.global_work_size_last_cache_batch[dim][0] =
-            desc.local_work_size[dim][0] * desc.rem_batch_in_cache * desc.fft_len[1];
+            desc.local_work_size[dim][0] * desc.rem_batch_in_cache *
+            desc.fft_len[1];
       } else if (dim == 1) {
         fwd_dist = desc.fwd_strides[0];
         bwd_dist = desc.bwd_strides[0];
@@ -606,7 +614,8 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
         desc.global_work_size_last_cache_batch[dim][0] =
             desc.global_work_size_cache_batch[dim][0];
         desc.global_work_size_cache_batch[dim][1] = desc.num_batch_in_cache;
-        desc.global_work_size_last_cache_batch[dim][1] = desc.rem_batch_in_cache;
+        desc.global_work_size_last_cache_batch[dim][1] =
+            desc.rem_batch_in_cache;
 
         if (desc.fft_len.size() == 3) {
           outer_batch_fwd_dist = desc.fwd_dist;
@@ -615,7 +624,8 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
           desc.global_work_size_last_cache_batch[dim][1] =
               desc.global_work_size_cache_batch[dim][1];
           desc.global_work_size_cache_batch[dim][2] = desc.num_batch_in_cache;
-          desc.global_work_size_last_cache_batch[dim][2] = desc.rem_batch_in_cache;
+          desc.global_work_size_last_cache_batch[dim][2] =
+              desc.rem_batch_in_cache;
         }
       } else {
         fwd_dist = desc.fwd_strides[0];
@@ -625,11 +635,13 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
         outer_batch_fwd_dist = desc.fwd_dist;
         outer_batch_bwd_dist = desc.bwd_dist;
         dist_to_next_work_item = desc.fwd_strides[2];
-        desc.global_work_size_cache_batch[dim][1] = desc.fft_len[1] * desc.fft_len[2];
+        desc.global_work_size_cache_batch[dim][1] =
+            desc.fft_len[1] * desc.fft_len[2];
         desc.global_work_size_last_cache_batch[dim][1] =
             desc.global_work_size_cache_batch[dim][1];
         desc.global_work_size_cache_batch[dim][2] = desc.num_batch_in_cache;
-        desc.global_work_size_last_cache_batch[dim][2] = desc.rem_batch_in_cache;
+        desc.global_work_size_last_cache_batch[dim][2] =
+            desc.rem_batch_in_cache;
       }
     }
 
@@ -737,7 +749,8 @@ static sycl::event compute(
   auto ndims = desc.fft_len.size();
   sycl::event prev_ev;
 
-  for(auto cache_batch = 0; cache_batch < desc.num_cache_batches; ++cache_batch) {
+  for (auto cache_batch = 0; cache_batch < desc.num_cache_batches;
+       ++cache_batch) {
     for (auto dim = 0; dim < ndims; ++dim) {
       TORCH_CHECK(
           !desc.external_workspace || desc.twidl_table[dim][dir] != nullptr,
@@ -748,7 +761,8 @@ static sycl::event compute(
       auto kernel = bundle.ext_oneapi_get_kernel(kernel_name);
 
       sycl::range<3> global_range;
-      if(desc.rem_batch_in_cache && cache_batch == desc.num_cache_batches - 1) {
+      if (desc.rem_batch_in_cache &&
+          cache_batch == desc.num_cache_batches - 1) {
         global_range = sycl::range<3>{
             desc.global_work_size_last_cache_batch[dim][0],
             desc.global_work_size_last_cache_batch[dim][1],
@@ -766,7 +780,8 @@ static sycl::event compute(
       sycl::nd_range<3> ndrange(global_range, local_range);
 
       const T* input = (dim == 0) ? in : out;
-      auto out_dist_moved = (dir == 0) ? desc.bwd_dist_cache_batch : desc.fwd_dist_cache_batch;
+      auto out_dist_moved =
+          (dir == 0) ? desc.bwd_dist_cache_batch : desc.fwd_dist_cache_batch;
       auto in_dist_moved = (dim == 0)
           ? ((dir == 0) ? desc.fwd_dist_cache_batch : desc.bwd_dist_cache_batch)
           : out_dist_moved;
