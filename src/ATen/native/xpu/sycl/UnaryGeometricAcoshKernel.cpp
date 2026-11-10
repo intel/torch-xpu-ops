@@ -12,6 +12,7 @@
 #include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/native/xpu/sycl/ComplexInverseTrig.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
 #include <ATen/native/xpu/sycl/UnaryGeometricAcoshKernel.h>
@@ -22,7 +23,7 @@ template <typename scalar_t, typename acc_t = at::opmath_type<scalar_t>>
 struct AcoshFunctor {
   scalar_t operator()(scalar_t a) const {
     if constexpr (c10::is_complex<acc_t>::value) {
-      return std::acosh(static_cast<acc_t>(a));
+      return acosh_complex(static_cast<acc_t>(a));
     } else {
       return sycl::acosh(static_cast<acc_t>(a));
     }

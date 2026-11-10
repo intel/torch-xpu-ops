@@ -71,7 +71,10 @@ void trigamma_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct PolygammaFunctor {
   scalar_t operator()(scalar_t a) const {
-    return calc_polygamma<scalar_t, true>(a, static_cast<int>(n_));
+    // Half intermediates can overflow even when the result is representable.
+    using opmath_t = at::opmath_type<scalar_t>;
+    return calc_polygamma<opmath_t, true>(
+        static_cast<opmath_t>(a), static_cast<int>(n_));
   }
   PolygammaFunctor(const int64_t n) : n_(n) {}
 

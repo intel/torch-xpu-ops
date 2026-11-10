@@ -12,6 +12,7 @@
 #include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 
+#include <ATen/native/xpu/sycl/ComplexInverseTrig.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
 #include <ATen/native/xpu/sycl/UnaryGeometricAsinhKernel.h>
@@ -22,7 +23,7 @@ template <typename scalar_t>
 struct AsinhComplexFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(const scalar_t a) const {
-    return std::asinh(static_cast<opmath_t>(a));
+    return asinh_complex(static_cast<opmath_t>(a));
   }
 };
 
