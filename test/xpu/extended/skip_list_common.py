@@ -213,4 +213,5 @@ skip_dict = {
         "test_backward_nn_functional_interpolate_trilinear_xpu_float32",
         "test_cow_input_nn_functional_interpolate_trilinear_xpu_float32",
     ),
+    "test_linalg_int_mm_xpu.py": None,
 }
