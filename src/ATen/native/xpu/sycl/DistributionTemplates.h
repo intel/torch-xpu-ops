@@ -105,7 +105,7 @@ void distribution_elementwise_kernel(
   }
 }
 
-// Vectorized variant for contiguous, aligned nullary output. Each thread
+// Vectorized variant for contiguous, aligned nullary output. Each work-item
 // consumes a full dist_func result (unroll_factor elements) and writes them
 // as one vectorized store. This both uses every generated random (the
 // strided kernel drops unroll_factor - 1 of them when the tile exceeds numel)
@@ -137,7 +137,9 @@ void distribution_elementwise_vector_kernel(
   using vec_t = at::native::memory::aligned_vector<scalar_t, unroll_factor>;
 
   // The caller only launches this for 32-bit indexable tensors, so the
-  // index_t (uint32_t) math cannot overflow.
+  // index_t (uint32_t) math cannot overflow: numel <= INT32_MAX and
+  // elems_per_iter <= max work-items * unroll_factor, so `base +=
+  // elems_per_iter` stays below numel + elems_per_iter < UINT32_MAX.
   const index_t numel_u = static_cast<index_t>(numel);
 
   // No barrier in the loop, so work-items may stop as soon as they pass
@@ -192,6 +194,8 @@ void distribution_nullary_kernel(
 
   char* out_data = (char*)iter.data_ptr(0);
 
+  // Limited to the dtypes this path was benchmarked on; other dtypes keep
+  // the strided kernel.
   if constexpr (
       std::same_as<scalar_t, float> || std::same_as<scalar_t, at::Half> ||
       std::same_as<scalar_t, at::BFloat16>) {
