@@ -119,17 +119,10 @@ runs:
         git checkout %TORCH_COMMIT_ID% || exit /b 1
         git show -s
 
-        if /i "%TORCH_XPU_OPS_COMMIT%" == "pinned" set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
-        if /i "%TORCH_XPU_OPS_COMMIT%" == "pinned" set /p TORCH_XPU_OPS_COMMIT=<third_party\xpu.txt
-        if exist third_party\torch-xpu-ops rmdir /s /q third_party\torch-xpu-ops
-        if "%GITHUB_EVENT_NAME%" == "pull_request" goto :copy_pr
-        git clone %TORCH_XPU_OPS_REPO% third_party\torch-xpu-ops || exit /b 1
-        git -C third_party\torch-xpu-ops checkout %TORCH_XPU_OPS_COMMIT% || exit /b 1
-        goto :xpu_ops_done
-        :copy_pr
-        xcopy "%GITHUB_WORKSPACE%" third_party\torch-xpu-ops /E /H /Y /I /Q || exit /b 1
-        :xpu_ops_done
-        git -C third_party\torch-xpu-ops show -s
+        REM `pinned` prefers the SHA recorded in the installed wheel (torch/xpu.txt)
+        set SOURCE_ARG=
+        if "%GITHUB_EVENT_NAME%" == "pull_request" set SOURCE_ARG=--source "%GITHUB_WORKSPACE%"
+        python "%GITHUB_WORKSPACE%\.github\scripts\checkout_torch_xpu_ops.py" --pytorch-dir . --repo %TORCH_XPU_OPS_REPO% --ref %TORCH_XPU_OPS_COMMIT% --prefer-wheel %SOURCE_ARG% || exit /b 1
 
         python -m pip install -r .ci\docker\requirements-ci.txt || exit /b 1
         REM Leave the source tree, or `import torch` picks up pytorch\torch instead of the wheel.

@@ -17,8 +17,9 @@ import re
 import shutil
 import stat
 import subprocess
-import sys
 from pathlib import Path
+
+from checkout_torch_xpu_ops import place as place_torch_xpu_ops
 
 
 def _force_remove_readonly(func, path, _exc_info):
@@ -87,44 +88,25 @@ def main():
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     (workspace / "pytorch.commit").write_text(commit + "\n")
 
-    # Resolve pinned torch-xpu-ops
-    torch_xpu_ops_repo = args.torch_xpu_ops_repo
-    torch_xpu_ops_commit = args.torch_xpu_ops_commit
-    if torch_xpu_ops_commit.lower() == "pinned":
-        torch_xpu_ops_repo = "https://github.com/intel/torch-xpu-ops.git"
-        torch_xpu_ops_commit = (
-            (pytorch_dir / "third_party" / "xpu.txt").read_text().strip()
-        )
-
-    # Place torch-xpu-ops into third_party/
-    third_party_dir = pytorch_dir / "third_party" / "torch-xpu-ops"
-    if third_party_dir.exists():
-        shutil.rmtree(third_party_dir, onerror=_force_remove_readonly)
-
-    if github_event == "pull_request":
-        # Copy the checked-out PR source
-        src = workspace / "torch-xpu-ops"
-        shutil.copytree(src, third_party_dir, symlinks=True)
-    else:
-        git("clone", torch_xpu_ops_repo, str(third_party_dir))
-        git("-C", str(third_party_dir), "checkout", torch_xpu_ops_commit)
-
-    # Show torch-xpu-ops info
-    git("-C", str(third_party_dir), "remote", "-v")
-    git("-C", str(third_party_dir), "branch")
-    git("-C", str(third_party_dir), "show", "-s")
-
-    # Keep CMake on the prepared checkout, including PR merge commits.
-    torch_xpu_ops_sha = subprocess.check_output(
-        ["git", "-C", str(third_party_dir), "rev-parse", "HEAD"], text=True
-    ).strip()
+    # Place torch-xpu-ops into third_party/: the PR merge checkout as-is,
+    # otherwise the requested ref (``pinned`` reads third_party/xpu.txt).
     xpu_pin = pytorch_dir / "third_party" / "xpu.txt"
-    xpu_pin.write_text(torch_xpu_ops_sha + "\n")
+    xpu_pin_ref = xpu_pin.read_text().strip()
+    source = workspace / "torch-xpu-ops" if github_event == "pull_request" else None
+    torch_xpu_ops_sha = place_torch_xpu_ops(
+        pytorch_dir,
+        args.torch_xpu_ops_repo,
+        args.torch_xpu_ops_commit,
+        source=source,
+    )
 
-    # Apply cherry-picks
-    run([sys.executable, "-m", "pip", "install", "requests"])
-    apply_script = third_party_dir / ".github" / "scripts" / "apply_torch_pr.py"
-    run([sys.executable, str(apply_script)])
+    # Extra PyTorch cherry-picks are not needed for now (re-add `import sys`).
+    # run([sys.executable, "-m", "pip", "install", "requests"])
+    # apply_script = (
+    #     pytorch_dir / "third_party" / "torch-xpu-ops" / ".github" / "scripts"
+    #     / "apply_torch_pr.py"
+    # )
+    # run([sys.executable, str(apply_script)])
 
     # Init submodules
     git("submodule", "sync")
@@ -173,9 +155,13 @@ def main():
             if "GIT_REPOSITORY" in line or "GIT_TAG" in line:
                 print(f"  {line.strip()}")
 
+    # Pin CMake to the prepared checkout, including PR merge commits. Done last
+    # so nothing above sees a modified PyTorch tree.
+    xpu_pin.write_bytes((torch_xpu_ops_sha + "\n").encode())
+
     print(f"\nPyTorch source prepared at: {pytorch_dir}")
     print(f"  pytorch commit: {commit}")
-    print(f"  torch-xpu-ops commit: {xpu_pin.read_text().strip()}")
+    print(f"  torch-xpu-ops pin: {xpu_pin_ref} -> {torch_xpu_ops_sha}")
 
 
 if __name__ == "__main__":

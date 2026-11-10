@@ -90,36 +90,31 @@ runs:
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
         git checkout ${TORCH_COMMIT_ID}
-        # apply extra PRs for stock pytorch
-        uv pip install requests
-        python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+        # Extra PyTorch cherry-picks are not needed for now.
+        # uv pip install requests
+        # python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
-        cd pytorch
-        rm -rf third_party/torch-xpu-ops
         if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
           TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
           TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
         else
           TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-          if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
-            TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
-          else
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
-          fi
+          TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
         fi
+        SOURCE_ARG=()
         if [ "${{ github.event_name }}" == "pull_request" ];then
-          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-        else
-          git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
+          SOURCE_ARG=(--source "${{ github.workspace }}/torch-xpu-ops")
         fi
-        git status && git diff && git show -s
+        # `pinned` prefers the SHA recorded in the installed wheel (torch/xpu.txt)
+        python torch-xpu-ops/.github/scripts/checkout_torch_xpu_ops.py \
+          --pytorch-dir pytorch \
+          --repo "${TORCH_XPU_OPS_REPO}" \
+          --ref "${TORCH_XPU_OPS_COMMIT}" \
+          --prefer-wheel "${SOURCE_ARG[@]}"
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
