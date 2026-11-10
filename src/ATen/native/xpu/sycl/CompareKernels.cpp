@@ -157,6 +157,23 @@ void lt_kernel(TensorIteratorBase& iter) {
   compare_kernel_with_scalars(iter, OpType::LT);
 }
 
+template <typename scalar_t>
+struct IsInfFunctor {
+  bool operator()(scalar_t a) const {
+    // Same predicate as the composite abs(a) == inf; NaN is not infinite.
+    const auto v = static_cast<at::opmath_type<scalar_t>>(a);
+    return v == std::numeric_limits<decltype(v)>::infinity() ||
+        v == -std::numeric_limits<decltype(v)>::infinity();
+  }
+};
+
+void isinf_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf, kBFloat16, iter.input_dtype(), "isinf_xpu", [&]() {
+        gpu_kernel(iter, IsInfFunctor<scalar_t>());
+      });
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
