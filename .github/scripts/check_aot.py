@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Check whether torch XPU AOT is effective, based on the NEO compiler cache.
+"""Check torch XPU AOT effectiveness.
 
-AOT kernels are loaded as native binaries; any JIT compile goes through the driver
-and leaves an entry in the NEO cache. So: empty NEO cache after the run => AOT PASS.
-Elapsed time is shown for reference only.
+AOT: AOT kernels are loaded as native binaries; any JIT compile goes through the
+driver and leaves an entry in the NEO cache. So: empty NEO cache after the run =>
+AOT PASS. Elapsed time is shown for reference only.
 
-Usage: python check_aot.py [N]   N = reference seconds (default 60)
-Exit:  0 PASS, 1 FAIL, 2 error
+Usage: python check_aot.py [N]
+       N    = reference seconds (default 60)
+Exit:  0 PASS, 1 FAIL
 """
 
 import os
@@ -50,15 +51,8 @@ class Model(torch.nn.Module):
         return self.fc(torch.relu(y).flatten(1))
 
 
-def main():
-    print("=" * 60 + "\nXPU AOT Check\n" + "=" * 60)
-    print(f"PyTorch   : {torch.__version__}")
-    print(f"OS        : {platform.system()} {platform.release()} ({platform.machine()})")
-    print(f"AOT archs : {', '.join(torch.xpu.get_arch_list()) or 'none'}")
-    if not torch.xpu.is_available():
-        print("RESULT    : ERROR - XPU not available")
-        return 2
-    print(f"Device    : {torch.xpu.get_device_name(0)}")
+def check_aot():
+    print("-" * 60 + "\nAOT Check\n" + "-" * 60)
     print(f"NEO cache : {NEO_DIR}\n")
 
     # 2. Prepare model and inputs on CPU.
@@ -80,7 +74,7 @@ def main():
             print(f"Run {name:<5} : {elapsed:8.2f} s")
     except Exception as e:
         msg = str(e).strip().splitlines()
-        print(f"RESULT    : ERROR - {type(e).__name__}: {msg[0] if msg else ''}")
+        print(f"AOT       : ERROR - {type(e).__name__}: {msg[0] if msg else ''}")
         return 2
 
     # 4. Check NEO cache and conclude.
@@ -91,10 +85,27 @@ def main():
     for f in files[:5]:
         print(f"            {f.relative_to(NEO_DIR).as_posix()}")
     passed = not files
-    print("=" * 60)
-    print(f"RESULT    : {'PASS - AOT effective' if passed else 'FAIL - JIT occurred'}")
-    print("=" * 60)
+    print(f"AOT       : {'PASS - AOT effective' if passed else 'FAIL - JIT occurred'}")
     return 0 if passed else 1
+
+
+def main():
+    print("=" * 60 + "\nXPU AOT Check\n" + "=" * 60)
+    print(f"PyTorch   : {torch.__version__}")
+    print(f"OS        : {platform.system()} {platform.release()} ({platform.machine()})")
+    print(f"AOT archs : {', '.join(torch.xpu.get_arch_list()) or 'none'}")
+    if not torch.xpu.is_available():
+        code = 1
+        print("AOT       : FAIL - XPU not available")
+    else:
+        for k in range(torch.xpu.device_count()):
+            print(f"Device {k}  : {torch.xpu.get_device_name(k)}")
+        # AOT is a plain verdict: anything other than an empty NEO cache fails.
+        code = min(check_aot(), 1)
+    print("=" * 60)
+    print(f"RESULT    : {('PASS', 'FAIL')[code]}")
+    print("=" * 60)
+    return code
 
 
 if __name__ == "__main__":
