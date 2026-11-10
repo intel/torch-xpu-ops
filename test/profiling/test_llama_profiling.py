@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from profiling_test_utils import assert_common, kernel_summary, load_script_module
 
-EXPECTED_GEMM_CALLS = int(os.environ.get("LLAMA_EXPECTED_GEMM_CALLS", "226"))
+# transformers>=5.19 computes Llama RoPE elementwise, dropping one GEMM (226 -> 225).
+EXPECTED_GEMM_CALLS = int(os.environ.get("LLAMA_EXPECTED_GEMM_CALLS", "225"))
 GEMM_KERNEL_PATTERN = os.environ.get("LLAMA_GEMM_KERNEL_PATTERN", "gemm_kernel")
 
 

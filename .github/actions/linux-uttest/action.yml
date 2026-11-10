@@ -136,7 +136,7 @@ runs:
           tee ${UT_LOG_DIR}/test_profiler_use_cases.log
 
         # llama case for calls number test
-        uv pip install transformers
+        uv pip install "transformers>=5.19"
         python -m pytest -s -v \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_llama.xml \
           test/profiling/test_llama_profiling.py | \

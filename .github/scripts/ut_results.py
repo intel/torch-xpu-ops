@@ -863,7 +863,11 @@ class Checker:
         print("\n📈 Final Summary:")
         print(f"   Reports: {report_count}, Tests: {total_tests}, "
               f"Failed: {total_failures}, Errors: {total_errors}")
-        ok = total_failures == 0 and total_errors == 0 and total_tests > 0
+        print(f"   New failures: {len(new)}, Known failures: {len(failed) - len(new)}")
+        # Known failures are not news; failures with no case log cannot be
+        # matched against known issues, so they still fail the check.
+        unmatched = (total_failures or total_errors) and not failed
+        ok = total_tests > 0 and not new and not unmatched
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: xpu_profiling")
         return CheckResult(category="xpu_profiling", passed=ok, total=total_tests,
                            new_failures=new, new_passes=new_passes, failures=failed)
