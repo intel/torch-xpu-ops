@@ -8,8 +8,6 @@ on:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
       - '.github/scripts/test_bot_*.py'
-      - '.github/scripts/checkout_torch_xpu_ops.py'
-      - '.github/scripts/test_checkout_torch_xpu_ops.py'
       - '.github/scripts/fold_details.js'
       - '.github/scripts/test_fold_details.js'
 
@@ -2269,7 +2267,7 @@ jobs:
       - name: Run bot script tests
         run: |
           pip install pytest
-          python -m pytest .github/scripts/test_bot_*.py .github/scripts/test_checkout_torch_xpu_ops.py -v
+          python -m pytest .github/scripts/test_bot_*.py -v
           node .github/scripts/test_fold_details.js
 
   token-permission-test:
