@@ -26,7 +26,7 @@ on:
         description: "pr-vs-base | nightly-vs-reference | nightly-xpu-ops-vs-pytorch | ondemand"
       runner:
         type: string
-        default: 'bmg-test'
+        default: 'bmg-b60'
         description: Runner label of the BMG machines; a job uses the cards of its ZE_AFFINITY_MASK
       python:
         type: string
