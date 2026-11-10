@@ -63,7 +63,12 @@ macro(set_build_flags)
   # -- Host flags (SYCL_CXX_FLAGS)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
-    list(APPEND SYCL_HOST_FLAGS /MD)
+    # Follow the config: an unconditional /MD would override Debug's /MDd.
+    set(_sycl_crt_flag $<IF:$<CONFIG:Debug>,/MDd,/MD>)
+    list(APPEND SYCL_HOST_FLAGS ${_sycl_crt_flag})
+    # Also give it to the icx driver, so the device pass gets the same CRT
+    # (and _DEBUG) as the host pass.
+    list(APPEND SYCL_HOST_FLAGS_DIRECT_TO_SYCL ${_sycl_crt_flag})
     list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
     # SYCL headers warnings
     list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
