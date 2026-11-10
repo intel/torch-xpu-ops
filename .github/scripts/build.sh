@@ -83,7 +83,7 @@ if [ -n "${built_xpu_ops}" ] && \
     echo "torch-xpu-ops mismatch: wheel built ${built_xpu_ops}, prepared ${expected_xpu_ops}"
     exit 1
 fi
-echo "torch-xpu-ops: prepared ${expected_xpu_ops:-<unknown>}, wheel ${built_xpu_ops:-<not recorded>}"
+echo "torch-xpu-ops: prepared ${expected_xpu_ops}, wheel ${built_xpu_ops:-<not recorded>}"
 python -c "import torch; print(torch.__config__.show())"
 python -c "import torch; print(torch.__config__.parallel_info())"
 xpu_is_compiled="$(python -c 'import torch; print(torch.xpu._is_compiled())')"
