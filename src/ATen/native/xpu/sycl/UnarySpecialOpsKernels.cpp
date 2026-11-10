@@ -48,6 +48,13 @@ struct SigmoidFunctor {
       const syclex::complex<value_t> z(a_.real(), a_.imag());
       const auto e = syclex::exp(-z);
       return one / (one + opmath_t(e.real(), e.imag()));
+    } else if constexpr (
+        std::is_same_v<scalar_t, at::Half> ||
+        std::is_same_v<scalar_t, at::BFloat16>) {
+      // Native exp and reciprocal replace the two-instruction exp and the
+      // IEEE division sequence. On the tested B70 build, all 65,536 inputs
+      // of each 16-bit type rounded bitwise identically to the precise form.
+      return sycl::native::recip(one + sycl::native::exp(-a_));
     } else {
       return one / (one + sycl::exp(-a_));
     }
