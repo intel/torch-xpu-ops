@@ -433,7 +433,7 @@ T group_x_scan(
     sycl::nd_item<2> item,
     T value,
     T* slm,
-    T init,
+    [[maybe_unused]] T init,
     BinaryFunction func) {
   const auto lix = item.get_local_id(1);
   const auto liy = item.get_local_id(0);
@@ -460,7 +460,7 @@ void group_x_scan_with_indices(
     IndicesT& idx,
     sycl::local_ptr<T> slm,
     sycl::local_ptr<IndicesT> slm_idx,
-    T init,
+    [[maybe_unused]] T init,
     BinaryFunction func) {
   const auto lix = item.get_local_id(1);
   const auto liy = item.get_local_id(0);

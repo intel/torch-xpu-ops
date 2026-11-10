@@ -32,7 +32,7 @@ void remove_padding_fn(
     const int* input_sizes,
     const int* output_sizes,
     int output_dim,
-    const int batch_size) {
+    [[maybe_unused]] const int batch_size) {
   auto item = syclext::this_work_item::get_nd_item<2>();
   const int batch_id = item.get_group(1);
   const int grid_id = item.get_group(0);
@@ -73,7 +73,7 @@ void remove_padding2_fn(
     const int* input_sizes,
     const int* output_sizes,
     int output_dim,
-    const int batch_size) {
+    [[maybe_unused]] const int batch_size) {
   auto item = syclext::this_work_item::get_nd_item<2>();
   const int batch_id = item.get_group(1);
   const int grid_id = item.get_group(0);
@@ -109,7 +109,7 @@ void remove_padding_transform0213_fn(
     const int* input_sizes,
     const int* output_sizes,
     int output_dim,
-    const int batch_size) {
+    [[maybe_unused]] const int batch_size) {
   auto item = syclext::this_work_item::get_nd_item<2>();
   const int batch_id = item.get_group(1);
   const int grid_id = item.get_group(0);
