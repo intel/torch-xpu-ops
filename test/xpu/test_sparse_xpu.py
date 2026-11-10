@@ -13,32 +13,21 @@
 # Owner(s): ["module: intel"]
 # ruff: noqa: F401, F841
 
-import itertools
 import os
 import unittest
 
 import torch
-from torch.testing._internal.common_cuda import SM80OrLater
 from torch.testing._internal.common_device_type import (
     dtypes,
     dtypesIfMPS,
-    dtypesIfXPU,
     instantiate_device_type_tests,
     largeTensorTest,
     onlyCPU,
     onlyNativeDeviceTypes,
     onlyOn,
-    skipCUDAIf,
-    tol,
-    toleranceOverride,
-)
-from torch.testing._internal.common_dtype import (
-    all_types_and_complex_and,
-    floating_types_and,
 )
 from torch.testing._internal.common_utils import (
     coalescedonoff,
-    DeterministicGuard,
     instantiate_parametrized_tests,
     IS_LINUX,
     IS_MACOS,
@@ -53,17 +42,9 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from xpu_test_utils import (
-        ensure_pytorch_test_path,
-        retarget_outermost_onlycuda_to_onlyon,
-        XPUImportCtx,
-    )
+    from xpu_test_utils import ensure_pytorch_test_path, XPUImportCtx
 except Exception:
-    from .xpu_test_utils import (
-        ensure_pytorch_test_path,
-        retarget_outermost_onlycuda_to_onlyon,
-        XPUImportCtx,
-    )
+    from .xpu_test_utils import ensure_pytorch_test_path, XPUImportCtx
 
 with XPUImportCtx(False) as patcher:
     from test_sparse import (
@@ -85,68 +66,13 @@ ensure_pytorch_test_path(os.path.abspath(patcher.test_package[0]))
 
 
 # ======================================================================
-# Module-level XPU additions
-# ======================================================================
-
-TEST_MULTIACCELERATOR = torch.accelerator.device_count() >= 2
-
-device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
-
-
-# ======================================================================
-# Class-level utility patches
-# ======================================================================
-
-# Local expect-file fallback for XPU print tests.
-# When upstreaming, copy over:
-# - TestSparseXPU.test_print_coalesced_xpu_float64.expect
-# - TestSparseXPU.test_print_uncoalesced_xpu_float64.expect
-_orig_assert_expected = TestSparse.assertExpected
-
-
-def _assert_expected_with_local_xpu_fallback(self, output, *args, **kwargs):
-    if self.__class__.__name__ == "TestSparseXPU" and self._testMethodName in {
-        "test_print_coalesced_xpu_float64",
-        "test_print_uncoalesced_xpu_float64",
-    }:
-        local_expect = os.path.join(
-            os.path.dirname(__file__),
-            "expect",
-            f"{self.__class__.__name__}.{self._testMethodName}.expect",
-        )
-        with open(local_expect) as f:
-            expected = f.read()
-        self.assertEqual(output, expected)
-        return
-
-    return _orig_assert_expected(self, output, *args, **kwargs)
-
-
-TestSparse.assertExpected = _assert_expected_with_local_xpu_fallback
-
-
-# ======================================================================
-# Retargeting @onlyCUDA -> @onlyOn(["cuda", "xpu"])  (no body change)
+# Missing largeTensorTest decorators
 # ======================================================================
 
 
-TestSparse.test_storage_not_null = retarget_outermost_onlycuda_to_onlyon(
-    TestSparse.test_storage_not_null
+TestSparse.test_coalesce_accepts_large_tensor = largeTensorTest("30GB", "xpu")(
+    TestSparse.test_coalesce_accepts_large_tensor
 )
-
-TestSparse.test_bmm_oob = retarget_outermost_onlycuda_to_onlyon(TestSparse.test_bmm_oob)
-
-# ======================================================================
-# Decorator additions (no body change)
-# ======================================================================
-
-TestSparse.test_sparse_matmul = dtypesIfXPU(
-    *floating_types_and(torch.half, torch.bfloat16, torch.complex64, torch.complex128)
-)(TestSparse.test_sparse_matmul)
-
-TestSparse.test_sparse_addmm = toleranceOverride(
-    {torch.double: tol(atol=2e-6, rtol=1e-6)}
-)(TestSparse.test_sparse_addmm)
 
 
 # ======================================================================
@@ -154,228 +80,6 @@ TestSparse.test_sparse_addmm = toleranceOverride(
 # ======================================================================
 
 # TestSparse
-
-
-@onlyOn(["cuda", "xpu"])
-@largeTensorTest("30GB", "cuda")
-@largeTensorTest("30GB", "xpu")
-@skipCUDAIf(
-    not SM80OrLater and not TEST_WITH_ROCM, "CUDA capability < SM80 and not ROCM"
-)
-@dtypes(torch.float)
-def _test_coalesce_accepts_large_tensor(self, device, dtype):
-    N = 22500000
-    NNZ = 272500000
-    rows = torch.randint(0, N, (NNZ,), dtype=torch.int64, device=device)
-    cols = torch.randint(0, N, (NNZ,), dtype=torch.int64, device=device)
-    indices = torch.stack([rows, cols], dim=0)
-    values = torch.randn(NNZ, dtype=dtype, device=device)
-    sparse_matrix = torch.sparse_coo_tensor(
-        indices, values, size=(N, N), dtype=torch.float32, device=device
-    )
-    sparse_matrix = sparse_matrix.coalesce()
-
-
-TestSparse.test_coalesce_accepts_large_tensor = _test_coalesce_accepts_large_tensor
-
-
-@onlyCPU  # not really, but we only really want to run this once
-@dtypes(torch.float64, torch.float32, torch.float16, torch.cfloat, torch.cdouble)
-def _test_factory(self, device, dtype):
-    for test_empty_tensor in [True, False]:
-        if test_empty_tensor:
-            default_size = torch.Size([1, 3, 0])
-            size = torch.Size([3, 3, 0])
-        else:
-            default_size = torch.Size([1, 3])
-            size = torch.Size([3, 3])
-        for include_size in [True, False]:
-            for use_tensor_idx in [True, False]:
-                for use_tensor_val in [True, False]:
-                    for use_accelerator in (
-                        [False]
-                        if not torch.accelerator.is_available()
-                        else [True, False]
-                    ):
-                        # have to include size with cuda sparse tensors
-                        include_size = include_size or use_accelerator
-                        long_dtype = torch.int64
-                        device = (
-                            torch.device("cpu")
-                            if not use_accelerator
-                            else torch.device(torch.accelerator.device_count() - 1)
-                        )
-                        indices = (
-                            torch.tensor(([0], [2]), dtype=long_dtype)
-                            if use_tensor_idx
-                            else ([0], [2])
-                        )
-                        if test_empty_tensor:
-                            values = torch.empty(1, 0).to(dtype)
-                        else:
-                            if use_tensor_val:
-                                values = torch.tensor([1.0], dtype=dtype)
-                            else:
-                                values = 1.0
-                        if include_size:
-                            sparse_tensor = torch.sparse_coo_tensor(
-                                indices,
-                                values,
-                                size,
-                                dtype=dtype,
-                                device=device,
-                                requires_grad=True,
-                            )
-                        else:
-                            sparse_tensor = torch.sparse_coo_tensor(
-                                indices,
-                                values,
-                                dtype=dtype,
-                                device=device,
-                                requires_grad=True,
-                            )
-                        self.assertEqual(indices, sparse_tensor._indices())
-                        self.assertEqual(values, sparse_tensor._values())
-                        self.assertEqual(
-                            size if include_size else default_size, sparse_tensor.size()
-                        )
-                        self.assertEqual(dtype, sparse_tensor.dtype)
-                        if use_accelerator:
-                            self.assertEqual(device, sparse_tensor._values().device)
-                        self.assertEqual(True, sparse_tensor.requires_grad)
-
-
-TestSparse.test_factory = _test_factory
-
-
-@onlyOn(["cuda", "xpu"])
-def _test_factory_device_type_inference(self, device):
-    # both indices/values are CUDA/XPU
-    device_type = torch.device(device).type
-
-    cpu_gpu = ("cpu", device_type)
-    cpu_gpu_none = cpu_gpu + (None,)
-    for indices_device, values_device, _device in itertools.product(
-        cpu_gpu, cpu_gpu, cpu_gpu_none
-    ):
-        indices = torch.tensor(([0], [2]), device=indices_device)
-        values = torch.tensor([1.0], device=values_device)
-        empty_values = torch.empty(1, 0).to(values_device)
-        shape = (1, 3)
-        empty_shape = (1, 3, 0)
-        if _device is None and indices_device != values_device:
-            with self.assertRaises(RuntimeError):
-                torch.sparse_coo_tensor(indices, values, shape, device=_device)
-            with self.assertRaises(RuntimeError):
-                torch.sparse_coo_tensor(
-                    indices, empty_values, empty_shape, device=_device
-                )
-        else:
-            t = torch.sparse_coo_tensor(indices, values, shape, device=_device)
-            t_empty = torch.sparse_coo_tensor(
-                indices, empty_values, empty_shape, device=_device
-            )
-            should_be_gpu = _device == device_type or (
-                _device is None and values_device == device_type
-            )
-            self.assertEqual(should_be_gpu, t.device.type == device_type)
-            self.assertEqual(
-                t.device.type == device_type, t_empty.device.type == device_type
-            )
-
-
-TestSparse.test_factory_device_type_inference = _test_factory_device_type_inference
-
-
-@onlyOn(["cuda", "xpu"])
-def _test_legacy_new_device(self, device):
-    device_type = torch.device(device).type
-
-    i = torch.tensor([[0, 1, 1], [2, 0, 2]])
-    v = torch.tensor([3.0, 4.0, 5.0])
-    size = torch.Size([2, 3])
-
-    x = torch.sparse_coo_tensor(i, v, size, device="cpu")
-    self.assertRaises(RuntimeError, lambda: x.new(device=device_type))
-    self.assertRaises(RuntimeError, lambda: x.new(i, v, device=device_type))
-    self.assertRaises(RuntimeError, lambda: x.new(i, v, size, device=device_type))
-    self.assertRaises(
-        RuntimeError, lambda: x.new(torch.Size([2, 3, 4]), device=device_type)
-    )
-
-    x = torch.sparse_coo_tensor(i, v, size, device=device_type)
-    self.assertRaises(RuntimeError, lambda: x.new(device="cpu"))
-    self.assertRaises(RuntimeError, lambda: x.new(i, v, device="cpu"))
-    self.assertRaises(RuntimeError, lambda: x.new(i, v, size, device="cpu"))
-    self.assertRaises(RuntimeError, lambda: x.new(torch.Size([2, 3, 4]), device="cpu"))
-
-
-TestSparse.test_legacy_new_device = _test_legacy_new_device
-
-
-@onlyCPU  # not really, but we only really want to run this once
-def _test_dtypes(self, device):
-    from torch.testing._internal.common_dtype import all_types_and_complex_and
-    from torch.testing._internal.common_utils import do_test_dtypes
-
-    all_sparse_dtypes = all_types_and_complex_and(
-        torch.half, torch.bool, torch.bfloat16
-    )
-    do_test_dtypes(self, all_sparse_dtypes, torch.sparse_coo, torch.device("cpu"))
-    if TEST_CUDA or TEST_XPU:
-        do_test_dtypes(
-            self,
-            all_sparse_dtypes,
-            torch.sparse_coo,
-            torch.device(f"{device_type}:0"),
-        )
-
-
-TestSparse.test_dtypes = _test_dtypes
-
-
-@onlyOn(["cuda", "xpu"])
-@coalescedonoff
-@dtypes(torch.double)
-def _test_bmm_deterministic(self, device, dtype, coalesced):
-    device_type = torch.device(device).type
-
-    def test_shape(num_mats, dim_i, dim_j, dim_k, nnz):
-        a_list = []
-        b_list = []
-        for _ in range(num_mats):
-            a_list.append(
-                self._gen_sparse(2, nnz, [dim_i, dim_j], dtype, device, coalesced)[0]
-            )
-            b_list.append(torch.randn([dim_j, dim_k], dtype=dtype, device=device))
-
-        a = torch.stack(a_list).to(device_type)
-        b = torch.stack(b_list).to(device_type)
-        with DeterministicGuard(torch.are_deterministic_algorithms_enabled()):
-            torch.use_deterministic_algorithms(False)
-            ab_nondeterministic = torch.bmm(a, b)
-            torch.use_deterministic_algorithms(True)
-            ab_deterministic = torch.bmm(a, b)
-        diff_abs = (ab_deterministic - ab_nondeterministic).abs()
-        diff_rel = diff_abs / ab_deterministic.abs()
-        diff_rel[torch.isnan(diff_rel)] = 0
-
-        # deterministic and non-deterministic results should either be
-        # equal or within a small relative difference
-        equal_abs_or_rel = diff_abs.eq(0).logical_or(diff_rel.lt(0.001))
-        self.assertTrue(equal_abs_or_rel.all())
-
-    test_shape(10, 10, 100, 99, 20)
-    test_shape(10, 100, 1000, 200, 20)
-    test_shape(10, 64, 10000, 300, 20)
-    test_shape(10, 0, 100, 99, 0)
-    test_shape(10, 10, 0, 100, 0)
-    test_shape(10, 10, 100, 0, 0)
-    test_shape(10, 10, 100, 0, 20)
-    test_shape(10, 10, 100, 0, 20)
-
-
-TestSparse.test_bmm_deterministic = _test_bmm_deterministic
 
 
 # Modify the skipIf - test works on XPU
@@ -430,191 +134,6 @@ def _test_sparse_mul(self, device, dtype, coalesced, gradcheck):
 
 
 TestSparse.test_sparse_mul = _test_sparse_mul
-
-
-# Widen backend regex to include XPU.
-def _test_empty_like(self, sparse_tensor, dtype, device, coalesced):
-    result = torch.empty_like(sparse_tensor)
-    self.assertTrue(result.is_sparse)
-    self._assert_sparse_invars(result)
-    self.assertEqual(result.shape, sparse_tensor.shape)
-    self.assertEqual(result.dtype, sparse_tensor.dtype)
-    self.assertEqual(result.device, sparse_tensor.device)
-    self.assertEqual(result.sparse_dim(), sparse_tensor.sparse_dim())
-    self.assertEqual(result.dense_dim(), sparse_tensor.dense_dim())
-
-    sparse_tensor, _, _ = self._gen_sparse(
-        len([2, 3]), 9, [2, 3] + [5, 6], dtype, device, coalesced
-    )
-    data = (sparse_tensor, sparse_tensor, sparse_tensor, sparse_tensor.unsqueeze(0))
-    mem_formats = [
-        torch.channels_last,
-        torch.contiguous_format,
-        torch.preserve_format,
-        torch.channels_last_3d,
-    ]
-    for x, mem_format in zip(data, mem_formats):
-        with self.assertRaisesRegex(
-            RuntimeError, "memory format option is only supported by strided tensors"
-        ):
-            result = torch.empty_like(x, memory_format=mem_format)
-
-        result = torch.empty_like(x, layout=torch.strided, memory_format=mem_format)
-        self.assertTrue(result.layout == torch.strided)
-
-    with self.assertRaisesRegex(
-        RuntimeError,
-        r"Could not run 'aten::empty_strided' with arguments from the 'Sparse(CPU|CUDA|MPS|XPU)' backend",
-    ):
-        dense_tensor = sparse_tensor.to_dense()
-        result = torch.empty_like(dense_tensor, layout=torch.sparse_coo)
-
-
-TestSparse._test_empty_like = _test_empty_like
-
-
-@onlyOn(["cuda", "xpu"])
-@dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
-@parametrize("requires_grad", (True, False))
-def _test_empty_full(self, device, dtype, requires_grad):
-    if requires_grad and not (dtype.is_floating_point or dtype.is_complex):
-        self.skipTest(
-            f"requires_grad==True requires float or complex dtype, got {dtype}"
-        )
-
-    self._test_empty_full(torch.device("cpu"), dtype, requires_grad)
-    self._test_empty_full(None, dtype, requires_grad)
-    self._test_empty_full(torch.device(device), dtype, requires_grad)
-
-
-TestSparse.test_empty_full = _test_empty_full
-
-
-def __test_empty_full(self, device, dtype, requires_grad):
-    shape = (2, 3)
-    layout = torch.sparse_coo
-
-    def check_value(tensor, value=None, dtype=dtype, requires_grad=requires_grad):
-        self.assertEqual(shape, tensor.shape)
-        self.assertIs(dtype, tensor.dtype)
-        self.assertIs(layout, tensor.layout)
-        self.assertEqual(tensor.requires_grad, requires_grad)
-        if tensor.device.type != "cpu" and device is not None:
-            self.assertEqual(device, tensor.device)
-        if value is not None:
-            fill = tensor.empty(shape, dtype=dtype).fill_(value)
-            self.assertEqual(tensor, fill)
-
-    v = torch.sparse_coo_tensor(
-        shape, dtype=dtype, device=device, requires_grad=requires_grad
-    )
-    check_value(v)
-
-    out = v.new()
-    check_value(torch.zeros(shape, out=out, device=device, requires_grad=requires_grad))
-
-    int64_dtype = torch.int64
-    check_value(v.new_empty(shape), requires_grad=False)
-    check_value(
-        v.new_empty(shape, dtype=int64_dtype, device=device, requires_grad=False),
-        dtype=int64_dtype,
-        requires_grad=False,
-    )
-    check_value(torch.empty_like(v), requires_grad=False)
-    check_value(
-        torch.empty_like(
-            v, dtype=int64_dtype, layout=layout, device=device, requires_grad=False
-        ),
-        dtype=int64_dtype,
-        requires_grad=False,
-    )
-
-
-TestSparse._test_empty_full = __test_empty_full
-
-
-# TestSparseOneOff
-
-
-@unittest.skipIf(not TEST_CUDA and not TEST_XPU, "CUDA/XPU not available")
-def _test_cuda_from_cpu(self):
-    with self.assertRaisesRegex(
-        RuntimeError, "Expected all tensors to be on the same device"
-    ):
-        torch.sparse_coo_tensor(
-            torch.zeros(1, 4).long().to(device_type),
-            torch.randn(4, 4, 4),
-            [3, 4, 4],
-        )
-
-    with self.assertRaisesRegex(
-        RuntimeError, "Expected all tensors to be on the same device"
-    ):
-        torch.sparse_coo_tensor(
-            torch.zeros(1, 4).long().to(device_type),
-            torch.randn(4, 4, 4, 0),
-            [3, 4, 4, 0],
-        )
-
-    with self.assertRaisesRegex(
-        RuntimeError, "Expected all tensors to be on the same device"
-    ):
-        torch.sparse_coo_tensor(
-            torch.empty(1, 0).long().to(device_type),
-            torch.randn(0, 4, 4, 0),
-            [0, 4, 4, 0],
-        )
-
-
-TestSparseOneOff.test_cuda_from_cpu = _test_cuda_from_cpu
-
-
-@unittest.skipIf(not TEST_CUDA and not TEST_XPU, "CUDA/XPU not available")
-def _test_cuda_sparse_cpu_dense_add(self):
-    x = torch.zeros(3, 4, 4)
-    sparse_y = torch.sparse_coo_tensor(
-        torch.zeros(1, 4).long().to(device_type),
-        torch.randn(4, 4, 4).to(device_type),
-        [3, 4, 4],
-    )
-    with self.assertRaisesRegex(
-        RuntimeError,
-        "add: expected 'self' to be a "
-        + device_type.upper()
-        + " tensor, but got a CPU tensor",
-    ):
-        x + sparse_y
-
-    x = torch.zeros(3, 4, 4, 0)
-    sparse_y = torch.sparse_coo_tensor(
-        torch.zeros(1, 4).long().to(device_type),
-        torch.randn(4, 4, 4, 0).to(device_type),
-        [3, 4, 4, 0],
-    )
-    with self.assertRaisesRegex(
-        RuntimeError,
-        "add: expected 'self' to be a "
-        + device_type.upper()
-        + " tensor, but got a CPU tensor",
-    ):
-        x + sparse_y
-
-    x = torch.zeros(0, 4, 4, 0)
-    sparse_y = torch.sparse_coo_tensor(
-        torch.empty(1, 0).long().to(device_type),
-        torch.randn(0, 4, 4, 0).to(device_type),
-        [0, 4, 4, 0],
-    )
-    with self.assertRaisesRegex(
-        RuntimeError,
-        "add: expected 'self' to be a "
-        + device_type.upper()
-        + " tensor, but got a CPU tensor",
-    ):
-        x + sparse_y
-
-
-TestSparseOneOff.test_cuda_sparse_cpu_dense_add = _test_cuda_sparse_cpu_dense_add
 
 
 # TestSparseAny
@@ -917,6 +436,10 @@ instantiate_device_type_tests(
 
 instantiate_device_type_tests(
     TestSparseAny, globals(), allow_xpu=True, except_for="meta"
+)
+
+instantiate_device_type_tests(
+    TestSparseOneOff, globals(), only_for="xpu", allow_xpu=True
 )
 
 instantiate_parametrized_tests(TestSparseMeta)
