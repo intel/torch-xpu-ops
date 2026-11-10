@@ -197,7 +197,22 @@ macro(set_build_flags)
   #   Only effective in Debug/RelWithDebInfo builds.
   # DEBUG=1 alone: does NOT affect device code (same as CUDA).
   if(DEFINED ENV{XPU_DEVICE_DEBUG} AND "$ENV{XPU_DEVICE_DEBUG}" STREQUAL "1")
-    list(APPEND SYCL_COMPILE_FLAGS -g -O0 -Rno-debug-disables-optimization)
+    if(WIN32)
+      # Large SYCL translation units exhaust Clang's source locations with full
+      # debug info, so trim it with -fno-system-debug where supported. Apply the
+      # flags to the device pass only, so host code keeps /Od;/Z7 from its
+      # config. -gline-tables-only is ignored for SPIR-V, hence -g.
+      # There is no device -O0: Debug's /Od reaches the device pass. If it stops
+      # doing so, add a per-triple -Xsycl-target-frontend=<triple> -O0.
+      list(APPEND SYCL_COMPILE_FLAGS /clang:-Xarch_device /clang:-g)
+      CHECK_SYCL_FLAG("-fno-system-debug" SUPPORTS_FNO_SYSTEM_DEBUG)
+      if(SUPPORTS_FNO_SYSTEM_DEBUG)
+        list(APPEND SYCL_COMPILE_FLAGS /clang:-Xarch_device /clang:-fno-system-debug)
+      endif()
+      list(APPEND SYCL_COMPILE_FLAGS -Rno-debug-disables-optimization)
+    else()
+      list(APPEND SYCL_COMPILE_FLAGS -g -O0 -Rno-debug-disables-optimization)
+    endif()
   elseif(DEFINED ENV{DEBUG_XPU} AND "$ENV{DEBUG_XPU}" STREQUAL "1")
     list(APPEND SYCL_COMPILE_FLAGS
       $<$<CONFIG:Debug,RelWithDebInfo>:-gline-tables-only;-O2>)
