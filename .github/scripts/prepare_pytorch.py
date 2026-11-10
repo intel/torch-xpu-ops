@@ -16,9 +16,10 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
-from checkout_torch_xpu_ops import force_remove_readonly, place as place_torch_xpu_ops
+from checkout_torch_xpu_ops import force_remove_readonly, prepare_checkout
 
 
 def run(cmd, **kwargs):
@@ -84,17 +85,21 @@ def main():
     # Place torch-xpu-ops into third_party/: the PR merge checkout as-is,
     # otherwise the requested ref (``pinned`` reads third_party/xpu.txt).
     xpu_pin = pytorch_dir / "third_party" / "xpu.txt"
-    # Original selector, for the log only; refs predating XPU may lack it.
-    xpu_pin_ref = xpu_pin.read_text().strip() if xpu_pin.is_file() else "<none>"
     source = workspace / "torch-xpu-ops" if github_event == "pull_request" else None
-    torch_xpu_ops_sha = place_torch_xpu_ops(
+    torch_xpu_ops_sha = prepare_checkout(
         pytorch_dir,
         args.torch_xpu_ops_repo,
         args.torch_xpu_ops_commit,
         source=source,
     )
 
-    # Extra PyTorch cherry-picks via apply_torch_pr.py are disabled for now.
+    # Apply cherry-picks
+    run([sys.executable, "-m", "pip", "install", "requests"])
+    apply_script = pytorch_dir / "third_party" / "torch-xpu-ops" / ".github" / "scripts" / "apply_torch_pr.py"
+    run([sys.executable, str(apply_script)])
+
+    # Keep CMake on the prepared checkout, including PR merge commits.
+    xpu_pin.write_bytes((torch_xpu_ops_sha + "\n").encode())
 
     # Init submodules
     git("submodule", "sync")
@@ -143,16 +148,9 @@ def main():
             if "GIT_REPOSITORY" in line or "GIT_TAG" in line:
                 print(f"  {line.strip()}")
 
-    # Pin CMake to the prepared checkout, including PR merge commits, so it
-    # neither fetches nor checks out another commit. Written after `pinned`
-    # has been resolved from the original file; LF keeps CMake's comparison
-    # exact on Windows. build.sh checks the wheel against torch-xpu-ops.commit.
-    xpu_pin.write_bytes((torch_xpu_ops_sha + "\n").encode())
-    (workspace / "torch-xpu-ops.commit").write_text(torch_xpu_ops_sha + "\n")
-
     print(f"\nPyTorch source prepared at: {pytorch_dir}")
     print(f"  pytorch commit: {commit}")
-    print(f"  torch-xpu-ops pin: {xpu_pin_ref} -> {torch_xpu_ops_sha}")
+    print(f"  torch-xpu-ops commit: {xpu_pin.read_text().strip()}")
 
 
 if __name__ == "__main__":

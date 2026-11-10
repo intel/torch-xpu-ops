@@ -7,7 +7,7 @@ inputs:
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
-    default: 'main'
+    default: 'pinned'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
@@ -90,7 +90,9 @@ runs:
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
         git checkout ${TORCH_COMMIT_ID}
-        # Extra PyTorch cherry-picks via apply_torch_pr.py are disabled for now.
+        # apply extra PRs for stock pytorch
+        uv pip install requests
+        python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops

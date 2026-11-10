@@ -235,6 +235,7 @@ jobs:
       runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       suite: ${{ matrix.suite }}
       dt: ${{ github.event_name == 'schedule' && '' || inputs.dt }}
@@ -272,6 +273,7 @@ jobs:
     with:
       runner: pvc
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Windows-Nightly-Ondemand-Build:

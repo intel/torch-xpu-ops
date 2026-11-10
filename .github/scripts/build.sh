@@ -15,6 +15,7 @@ done
 install_test=${INSTALL_TEST:-0}
 WORKSPACE=$(realpath "${WORKSPACE:-/tmp}")
 cd "${WORKSPACE}/pytorch"
+expected_xpu_ops="$(cat third_party/xpu.txt)"
 PYTORCH_WHEEL_LINUX_SCRIPT_PATH="./.ci/wheel/linux"
 
 # Build using PyTorch's upstream build pipeline
@@ -71,16 +72,13 @@ python -m pip install --force-reinstall dist/torch*.whl
 cd "${WORKSPACE}"
 python "${WORKSPACE}/pytorch/torch/utils/collect_env.py"
 
-# The wheel must contain the torch-xpu-ops prepared by prepare_pytorch.py, not
-# a commit CMake fetched itself. Wheels record it as torch/xpu.txt since
-# pytorch/pytorch#202608; older PyTorch has no record to compare.
-expected_xpu_ops="$(cat "${WORKSPACE}/torch-xpu-ops.commit" 2>/dev/null || true)"
+# Compare against the pin captured before building; older wheels have no record.
 built_xpu_ops="$(python -c '
 from importlib.metadata import distribution
 p = distribution("torch").locate_file("torch/xpu.txt")
 print(open(p).read().strip() if p.is_file() else "")
 ')"
-if [ -n "${expected_xpu_ops}" ] && [ -n "${built_xpu_ops}" ] && \
+if [ -n "${built_xpu_ops}" ] && \
         [ "${built_xpu_ops}" != "${expected_xpu_ops}" ];then
     echo "torch-xpu-ops mismatch: wheel built ${built_xpu_ops}, prepared ${expected_xpu_ops}"
     exit 1

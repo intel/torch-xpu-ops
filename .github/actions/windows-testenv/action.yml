@@ -6,8 +6,8 @@ inputs:
     default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch', or '*_wheel'
   torch_xpu_ops:
-    default: 'main'
-    description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+    default: 'pinned'
+    description: Torch-xpu-ops defaults to the wheel/source pin, or 'commit/branch', or 'repo@commit/repo@branch'
   python:
     default: ''
     description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
@@ -109,7 +109,7 @@ runs:
         set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
         set TORCH_XPU_OPS_COMMIT=%XPU_OPS_INPUT%
         echo %XPU_OPS_INPUT% | findstr /C:"https://" >nul && for /f "tokens=1,2 delims=@" %%a in ("%XPU_OPS_INPUT%") do (set "TORCH_XPU_OPS_REPO=%%a" & set "TORCH_XPU_OPS_COMMIT=%%b")
-        if "%TORCH_XPU_OPS_COMMIT%" == "" set TORCH_XPU_OPS_COMMIT=main
+        if "%TORCH_XPU_OPS_COMMIT%" == "" set TORCH_XPU_OPS_COMMIT=pinned
 
         cd /d "%GITHUB_WORKSPACE%\.."
         if exist pytorch rmdir /s /q pytorch
