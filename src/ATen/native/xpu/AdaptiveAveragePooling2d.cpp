@@ -16,6 +16,7 @@
 
 #include <ATen/ops/_adaptive_avg_pool2d_backward_native.h>
 #include <ATen/ops/_adaptive_avg_pool2d_native.h>
+#include <ATen/ops/empty.h>
 #include <ATen/ops/mean.h>
 #include <ATen/ops/zeros_like.h>
 
@@ -29,25 +30,18 @@ Tensor adaptive_avg_pool2d_backward_xpu(
   TensorArg grad_output_arg{grad_output, "grad_output", 1},
       input_arg{input, "input", 2};
 
-  native::adaptive_pool_empty_output_check(
-      grad_output, "adaptive_avg_pool2d_backward");
-  TORCH_CHECK(
-      input.dim() == grad_output.dim(),
-      __func__,
-      ": Expected dimensions ",
-      input.dim(),
-      " for `gradOutput_` but got dimensions ",
-      grad_output.dim());
+  Tensor grad_input = at::empty({0}, input.options());
+  native::adaptive_avg_pool_backward_check(
+      grad_input,
+      grad_output,
+      input,
+      /*pooling_dims=*/2,
+      "adaptive_avg_pool2d_backward()");
 
   checkAllSameGPU(__func__, {grad_output_arg, input_arg});
 
-  TORCH_CHECK(
-      (input.ndimension() == 3 || input.ndimension() == 4),
-      "non-empty 3D or 4D (batch mode) tensor expected for input");
-
   globalContext().alertNotDeterministic("adaptive_avg_pool2d_backward_xpu");
 
-  Tensor grad_input;
   if (input.numel() != 0) {
     native::xpu::adaptive_avg_pool2d_backward_kernel(
         grad_input, grad_output, input);
