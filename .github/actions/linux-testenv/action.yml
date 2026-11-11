@@ -243,3 +243,17 @@ runs:
           echo "Torch is re-installed when installing deps, please check"
           exit 1
         fi
+    - name: Download Pytorch wheel
+      uses: actions/download-artifact@v8
+      with:
+        name: Torch-XPU-Wheel-0b063e2a49be2b3d34692ad5e4580a067425fc9b-42967344856-2
+        github-token: ${{ github.token }}
+        repository: mengfei25/torch-xpu-ops
+        run-id: 42967344856
+        path: ${{ github.workspace }}/wheels
+    - name: Install test target
+      shell: bash -xe {0}
+      run: |
+        pip uninstall -y torch && pip uninstall -y torch
+        pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps
+        pip list |grep -E 'intel|torch|triton'
