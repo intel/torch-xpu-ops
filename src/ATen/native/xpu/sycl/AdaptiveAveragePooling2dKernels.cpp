@@ -41,16 +41,14 @@ void adaptive_avg_pool2d_bwd_kernel_impl(
     PackedTensorAccessor64<const scalar_t, 4> gyacc,
     PackedTensorAccessor64<scalar_t, 4> gxacc,
     int64_t numel,
-    int global_range,
-    int local_range) {
+    int64_t global_range,
+    int ic,
+    int ih,
+    int iw,
+    int oh,
+    int ow) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int64_t gi = item.get_global_linear_id();
-
-  int ic = gxacc.size(1);
-  int ih = gxacc.size(2);
-  int iw = gxacc.size(3);
-  int oh = gyacc.size(2);
-  int ow = gyacc.size(3);
 
   for (int64_t i = gi; i < numel; i += global_range) {
     int64_t _iw, _ih, _ic, _ib;
@@ -92,123 +90,47 @@ void adaptive_avg_pool2d_bwd_kernel_impl(
 }
 
 template <typename scalar_t, typename opmath_t>
-struct AdaptiveAvgPool2dBwdKernelFunctor {
-  AdaptiveAvgPool2dBwdKernelFunctor(
-      PackedTensorAccessor64<const scalar_t, 4> gyacc,
-      PackedTensorAccessor64<scalar_t, 4> gxacc)
-      : ib_(gxacc.size(0)),
-        ic_(gxacc.size(1)),
-        ih_(gxacc.size(2)),
-        iw_(gxacc.size(3)),
-        oh_(gyacc.size(2)),
-        ow_(gyacc.size(3)),
-        gyacc_(gyacc),
-        gxacc_(gxacc),
-        numel(static_cast<int64_t>(ib_) * ic_ * ih_ * iw_),
-        local_range(
-            at::xpu::getDeviceMaxSubGroupSize() *
-            at::xpu::getDeviceEUCountPerXeCore()) {
-    int total_item = std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
-    global_range = total_item < local_range
-        ? local_range
-        : (total_item / local_range) * local_range;
-  }
-
- private:
-  int ib_;
-  int ic_;
-  int ih_;
-  int iw_;
-  int oh_;
-  int ow_;
-  PackedTensorAccessor64<const scalar_t, 4> gyacc_;
-  PackedTensorAccessor64<scalar_t, 4> gxacc_;
-
- public:
-  int64_t numel;
-  int global_range;
-  int local_range;
-};
-
-template <typename scalar_t, typename opmath_t>
-struct AdaptiveAvgPool2dBwdSLMKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  AdaptiveAvgPool2dBwdSLMKernelFunctor(
-      int max_work_group_size,
-      PackedTensorAccessor64<const scalar_t, 4> gyacc,
-      PackedTensorAccessor64<scalar_t, 4> gxacc)
-      : ib(gxacc.size(0)),
-        ic(gxacc.size(1)),
-        ih(gxacc.size(2)),
-        iw(gxacc.size(3)),
-        oh(gyacc.size(2)),
-        ow(gyacc.size(3)),
-        numel(static_cast<int64_t>(ib) * ic * ih * iw),
-        local_range(max_work_group_size) {
-    int total_item = std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
-
-    global_range = total_item < local_range
-        ? local_range
-        : (total_item / local_range) * local_range;
-  }
-
- private:
-  int ib;
-  int ic;
-  int ih;
-  int iw;
-  int oh;
-  int ow;
-
- public:
-  int64_t numel;
-  int local_range;
-  int global_range;
-};
-
-template <typename scalar_t, typename opmath_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void adaptive_avg_pool2d_bwd_slm_kernel_impl(
     PackedTensorAccessor64<const scalar_t, 4> gyacc,
     PackedTensorAccessor64<scalar_t, 4> gxacc,
     int64_t numel,
-    int global_range,
-    int local_range) {
+    int64_t global_range,
+    int64_t local_range,
+    int ic,
+    int ih,
+    int iw,
+    int oh,
+    int ow) {
   auto item = syclext::this_work_item::get_nd_item<1>();
 
-  int ic = gxacc.size(1);
-  int ih = gxacc.size(2);
-  int iw = gxacc.size(3);
-  int oh = gyacc.size(2);
-  int ow = gyacc.size(3);
-
   int* lsm = static_cast<int*>(syclexp::get_work_group_scratch_memory());
-  int* _oh0_cached = reinterpret_cast<int*>(lsm);
-  int* _oh1_cached = reinterpret_cast<int*>(_oh0_cached + ih);
-  int* _ow0_cached = reinterpret_cast<int*>(_oh1_cached + ih);
-  int* _ow1_cached = reinterpret_cast<int*>(_ow0_cached + iw);
+  int* _oh0_cached = lsm;
+  int* _oh1_cached = _oh0_cached + ih;
+  int* _ow0_cached = _oh1_cached + ih;
+  int* _ow1_cached = _ow0_cached + iw;
   opmath_t* _ikh_cached = reinterpret_cast<opmath_t*>(_ow1_cached + iw);
-  opmath_t* _ikw_cached = reinterpret_cast<opmath_t*>(_ikh_cached + oh);
+  opmath_t* _ikw_cached = _ikh_cached + oh;
 
   int64_t gi = item.get_global_linear_id();
   int64_t li = item.get_local_id(0);
 
   // for-loop order: oh*ow->ih->iw
   // reuse oh*ow(oh0, oh1, ow0, ow1), ih(ikh), iw(ikw) in inner loop.
-  for (int _ih = li; _ih < ih; _ih += local_range) {
+  for (int64_t _ih = li; _ih < ih; _ih += local_range) {
     _oh0_cached[_ih] = (int)native::start_index(_ih, ih, oh);
     _oh1_cached[_ih] = (int)native::end_index(_ih, ih, oh);
   }
-  for (int _iw = li; _iw < iw; _iw += local_range) {
+  for (int64_t _iw = li; _iw < iw; _iw += local_range) {
     _ow0_cached[_iw] = (int)native::start_index(_iw, iw, ow);
     _ow1_cached[_iw] = (int)native::end_index(_iw, iw, ow);
   }
-  for (int _oh = li; _oh < oh; _oh += local_range) {
+  for (int64_t _oh = li; _oh < oh; _oh += local_range) {
     _ikh_cached[_oh] = opmath_t(1.0) /
         (opmath_t)(native::end_index(_oh, oh, ih) -
                    native::start_index(_oh, oh, ih));
   }
-  for (int _ow = li; _ow < ow; _ow += local_range) {
+  for (int64_t _ow = li; _ow < ow; _ow += local_range) {
     _ikw_cached[_ow] = opmath_t(1.0) /
         (opmath_t)(native::end_index(_ow, ow, iw) -
                    native::start_index(_ow, ow, iw));
@@ -217,14 +139,13 @@ void adaptive_avg_pool2d_bwd_slm_kernel_impl(
   sycl::group_barrier(item.get_group());
 
   for (int64_t i = gi; i < numel; i += global_range) {
-    int64_t _iw, _ih, _ic, _ib;
+    int64_t _iw, _ih, _ic, _ib, _oh0, _oh1, _ow0, _ow1;
 
     _iw = i % iw;
     _ih = i / iw % ih;
     _ic = i / iw / ih % ic;
     _ib = i / iw / ih / ic;
 
-    int64_t _oh0, _oh1, _ow0, _ow1;
     _oh0 = _oh0_cached[_ih];
     _oh1 = _oh1_cached[_ih];
     _ow0 = _ow0_cached[_iw];
@@ -234,9 +155,9 @@ void adaptive_avg_pool2d_bwd_slm_kernel_impl(
 
     opmath_t gx = 0;
     opmath_t _ikh, _ikw;
-    for (int _oh = _oh0; _oh < _oh1; _oh++) {
+    for (int64_t _oh = _oh0; _oh < _oh1; _oh++) {
       _ikh = _ikh_cached[_oh];
-      for (int _ow = _ow0; _ow < _ow1; _ow++) {
+      for (int64_t _ow = _ow0; _ow < _ow1; _ow++) {
         _ikw = _ikw_cached[_ow];
         gx += gyacc[_ob][_oc][_oh][_ow] * _ikh * _ikw;
       }
@@ -459,8 +380,8 @@ void adaptive_avg_pool2d_backward_kernel(
           input.scalar_type(),
           "adaptive_avg_pool2d_backward_nhwc_xpu",
           [&] {
-            size_t shmem_size = (kernel_size_C * group_x * group_y * group_z +
-                                 osizeH + osizeW) *
+            int shmem_size = (kernel_size_C * group_x * group_y * group_z +
+                              osizeH + osizeW) *
                     sizeof(scalar_t) +
                 2 * isizeW * sizeof(int32_t);
             if (shmem_size <= sharedMemPerGroup) {
@@ -507,44 +428,71 @@ void adaptive_avg_pool2d_backward_kernel(
           auto gyacc = grad_output.packed_accessor64<const scalar_t, 4>();
           auto gxacc = grad_input.packed_accessor64<scalar_t, 4>();
 
-          int64_t ohw01_shared_size = ((isizeH + isizeW) * 2) * sizeof(int);
-          int64_t ikhw_shared_size = (osizeH + osizeW) * sizeof(opmath_t);
-          int64_t total_shared_size = ohw01_shared_size + ikhw_shared_size;
+          int ohw01_shared_size = ((isizeH + isizeW) * 2) * sizeof(int);
+          int ikhw_shared_size = (osizeH + osizeW) * sizeof(opmath_t);
+          int total_shared_size = ohw01_shared_size + ikhw_shared_size;
           bool using_shared =
               at::xpu::getDeviceLocalMemSize() >= total_shared_size;
 
           auto& q = getCurrentSYCLQueue();
+          int ib = gxacc.size(0);
+          int ic = gxacc.size(1);
+          int ih = gxacc.size(2);
+          int iw = gxacc.size(3);
+          int oh = gyacc.size(2);
+          int ow = gyacc.size(3);
           if (using_shared) {
-            int max_work_group_size = syclMaxWorkGroupSize<
-                adaptive_avg_pool2d_bwd_slm_kernel_impl<scalar_t, opmath_t>>();
-            AdaptiveAvgPool2dBwdSLMKernelFunctor<scalar_t, opmath_t> kfn(
-                max_work_group_size, gyacc, gxacc);
+            static constexpr auto kptr =
+                adaptive_avg_pool2d_bwd_slm_kernel_impl<scalar_t, opmath_t>;
+            int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<kptr>();
+            int64_t numel(static_cast<int64_t>(ib) * ic * ih * iw);
 
-            sycl_kernel_submit<
-                adaptive_avg_pool2d_bwd_slm_kernel_impl<scalar_t, opmath_t>>(
-                kfn.global_range,
-                kfn.local_range,
+            int64_t total_item =
+                std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
+
+            int64_t global_range = total_item < local_range
+                ? local_range
+                : (total_item / local_range) * local_range;
+            sycl_kernel_submit<kptr>(
+                global_range,
+                local_range,
                 q,
                 total_shared_size,
                 gyacc,
                 gxacc,
-                kfn.numel,
-                kfn.global_range,
-                kfn.local_range);
+                numel,
+                global_range,
+                local_range,
+                ic,
+                ih,
+                iw,
+                oh,
+                ow);
           } else {
-            AdaptiveAvgPool2dBwdKernelFunctor<scalar_t, opmath_t> kfn(
-                gyacc, gxacc);
+            int64_t numel = static_cast<int64_t>(ib) * ic * ih * iw;
+            int64_t local_range = at::xpu::getDeviceMaxSubGroupSize() *
+                at::xpu::getDeviceEUCountPerXeCore();
+            int64_t total_item =
+                std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
+            int64_t global_range = total_item < local_range
+                ? local_range
+                : (total_item / local_range) * local_range;
+
             sycl_kernel_submit<
                 adaptive_avg_pool2d_bwd_kernel_impl<scalar_t, opmath_t>>(
-                kfn.global_range,
-                kfn.local_range,
+                global_range,
+                local_range,
                 q,
                 0,
                 gyacc,
                 gxacc,
-                kfn.numel,
-                kfn.global_range,
-                kfn.local_range);
+                numel,
+                global_range,
+                ic,
+                ih,
+                iw,
+                oh,
+                ow);
           }
         });
   }
@@ -664,7 +612,7 @@ void adaptive_avg_pool2d_cl_kernel_impl(
     }
     output[index] = output_value;
   }
-};
+}
 
 #define LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(                                  \
     scalar_t,                                                             \
