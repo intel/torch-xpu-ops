@@ -28,43 +28,73 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 
 namespace at::native::xpu {
 
-constexpr int kBicubicTileRows = 7;
-constexpr int kBicubicBatchPartitions = 8;
+constexpr int kBicubicInterpolationTaps = 4;
+// Seven consecutive output centers share ten source rows instead of 28.
+// This tile improved the measured 240-to-224 resize; it is not a shape guard.
+constexpr int kBicubicOutputRowsPerThread = 7;
+constexpr int kBicubicReusedInputRows =
+    kBicubicOutputRowsPerThread + kBicubicInterpolationTaps - 1;
+// Cap repeated geometry work while exposing independent batches. Eight is the
+// current measured-workload tuning choice, not a hardware or correctness limit.
+constexpr int kBicubicMaxBatchPartitions = 8;
+
+template <typename scalar_t, typename accscalar_t, typename index_t>
+inline accscalar_t bicubic_interpolate_row(
+    const scalar_t* source_row,
+    const index_t* column_offsets,
+    const accscalar_t* weights) {
+  return static_cast<accscalar_t>(source_row[column_offsets[0]]) * weights[0] +
+      static_cast<accscalar_t>(source_row[column_offsets[1]]) * weights[1] +
+      static_cast<accscalar_t>(source_row[column_offsets[2]]) * weights[2] +
+      static_cast<accscalar_t>(source_row[column_offsets[3]]) * weights[3];
+}
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
-void upsample_bicubic2d_rows_kernel(
+void upsample_bicubic2d_kernel(
     GenericPackedTensorAccessor<scalar_t, 4, DefaultPtrTraits, index_t> output,
     GenericPackedTensorAccessor<const scalar_t, 4, DefaultPtrTraits, index_t>
         input,
+    bool channels_last,
     bool align_corners,
     accscalar_t height_scale,
     accscalar_t width_scale) {
-  const index_t lane = sycl::ext::oneapi::this_work_item::get_nd_item<1>()
-                           .get_global_linear_id();
+  const int64_t work_item = sycl::ext::oneapi::this_work_item::get_nd_item<1>()
+                                .get_global_linear_id();
   const index_t row_width = output.size(3) * output.size(1);
-  const index_t tile_count =
-      at::ceil_div(output.size(2), index_t(kBicubicTileRows));
+  const index_t tile_count = at::ceil_div(
+      int64_t(output.size(2)), int64_t(kBicubicOutputRowsPerThread));
   const index_t partition_size = tile_count * row_width;
-  const int batch_start = lane / partition_size;
-  const int batch_step =
-      sycl::min(static_cast<int>(input.size(0)), kBicubicBatchPartitions);
-  if (batch_start >= batch_step) {
+  const index_t batch_step =
+      sycl::min(input.size(0), index_t(kBicubicMaxBatchPartitions));
+  if (work_item >= int64_t(partition_size) * batch_step) {
     return;
   }
-  const index_t tile_lane = lane % partition_size;
-  const int output_y = tile_lane / row_width * kBicubicTileRows;
-  const int output_x = (tile_lane % row_width) / output.size(1);
-  const int channel = tile_lane % output.size(1);
+  const index_t batch_start = work_item / partition_size;
+  const index_t tile_lane = work_item % partition_size;
+  // Match adjacent lanes to the faster output dimension, without requiring
+  // either input or output to be dense.
+  const index_t output_y =
+      (channels_last ? tile_lane / row_width
+                     : (tile_lane / output.size(3)) % tile_count) *
+      kBicubicOutputRowsPerThread;
+  const index_t output_x = channels_last
+      ? (tile_lane % row_width) / output.size(1)
+      : tile_lane % output.size(3);
+  const index_t channel = channels_last
+      ? tile_lane % output.size(1)
+      : tile_lane / (tile_count * output.size(3));
+  const int valid_rows = sycl::min(
+      index_t(kBicubicOutputRowsPerThread), output.size(2) - output_y);
   const accscalar_t real_x = area_pixel_compute_source_index(
       width_scale, output_x, align_corners, true);
   const int input_x = floorf(real_x);
-  accscalar_t width_weights[4];
+  accscalar_t width_weights[kBicubicInterpolationTaps];
   get_cubic_upsampling_coefficients(width_weights, real_x - input_x);
-  index_t column_offsets[4];
+  index_t column_offsets[kBicubicInterpolationTaps];
 #pragma unroll
-  for (int column = 0; column < 4; ++column) {
+  for (int column = 0; column < kBicubicInterpolationTaps; ++column) {
     column_offsets[column] =
         sycl::clamp(
             input_x - 1 + column, 0, static_cast<int>(input.size(3)) - 1) *
@@ -74,40 +104,35 @@ void upsample_bicubic2d_rows_kernel(
       height_scale, output_y, align_corners, true));
   bool consecutive = true;
 #pragma unroll
-  for (int row = 1; row < kBicubicTileRows; ++row) {
-    const int center = floorf(area_pixel_compute_source_index(
-        height_scale, output_y + row, align_corners, true));
-    consecutive = consecutive && center == first_center + row;
+  for (int row = 1; row < kBicubicOutputRowsPerThread; ++row) {
+    if (row < valid_rows) {
+      const int center = floorf(area_pixel_compute_source_index(
+          height_scale, output_y + row, align_corners, true));
+      consecutive = consecutive && center == first_center + row;
+    }
   }
   if (!consecutive) {
 #pragma unroll 1
-    for (int row = 0; row < kBicubicTileRows; ++row) {
-      if (output_y + row < output.size(2)) {
+    for (int row = 0; row < kBicubicOutputRowsPerThread; ++row) {
+      if (row < valid_rows) {
         const accscalar_t real_y = area_pixel_compute_source_index(
             height_scale, output_y + row, align_corners, true);
         const int center = floorf(real_y);
-        accscalar_t weights[4];
+        accscalar_t weights[kBicubicInterpolationTaps];
         get_cubic_upsampling_coefficients(weights, real_y - center);
-        for (int batch = batch_start; batch < input.size(0);
+        for (index_t batch = batch_start; batch < input.size(0);
              batch += batch_step) {
-          const scalar_t* source =
-              input.data() + batch * input.stride(0) + channel;
-          accscalar_t horizontal[4];
+          const scalar_t* source = input.data() + batch * input.stride(0) +
+              channel * input.stride(1);
+          accscalar_t horizontal[kBicubicInterpolationTaps];
 #pragma unroll
-          for (int tap = 0; tap < 4; ++tap) {
+          for (int tap = 0; tap < kBicubicInterpolationTaps; ++tap) {
             const scalar_t* source_row = source +
                 sycl::clamp(
                     center - 1 + tap, 0, static_cast<int>(input.size(2)) - 1) *
                     input.stride(2);
-            horizontal[tap] =
-                static_cast<accscalar_t>(source_row[column_offsets[0]]) *
-                    width_weights[0] +
-                static_cast<accscalar_t>(source_row[column_offsets[1]]) *
-                    width_weights[1] +
-                static_cast<accscalar_t>(source_row[column_offsets[2]]) *
-                    width_weights[2] +
-                static_cast<accscalar_t>(source_row[column_offsets[3]]) *
-                    width_weights[3];
+            horizontal[tap] = bicubic_interpolate_row<scalar_t, accscalar_t>(
+                source_row, column_offsets, width_weights);
           }
           output[batch][channel][output_y + row][output_x] =
               static_cast<scalar_t>(
@@ -118,38 +143,36 @@ void upsample_bicubic2d_rows_kernel(
     }
     return;
   }
-  accscalar_t height_weights[kBicubicTileRows][4];
+  accscalar_t height_weights[kBicubicOutputRowsPerThread]
+                            [kBicubicInterpolationTaps];
 #pragma unroll
-  for (int row = 0; row < kBicubicTileRows; ++row) {
+  for (int row = 0; row < kBicubicOutputRowsPerThread; ++row) {
+    const int valid_row = sycl::min(row, valid_rows - 1);
     const accscalar_t real_y = area_pixel_compute_source_index(
-        height_scale, output_y + row, align_corners, true);
+        height_scale, output_y + valid_row, align_corners, true);
     get_cubic_upsampling_coefficients(
-        height_weights[row], real_y - (first_center + row));
+        height_weights[row], real_y - (first_center + valid_row));
   }
-  for (int batch = batch_start; batch < input.size(0); batch += batch_step) {
-    const scalar_t* source = input.data() + batch * input.stride(0) + channel;
+  for (index_t batch = batch_start; batch < input.size(0);
+       batch += batch_step) {
+    const scalar_t* source =
+        input.data() + batch * input.stride(0) + channel * input.stride(1);
     scalar_t* destination = output.data() + batch * output.stride(0) +
-        output_y * output.stride(2) + output_x * output.stride(3) + channel;
-    accscalar_t horizontal[kBicubicTileRows + 3];
+        output_y * output.stride(2) + output_x * output.stride(3) +
+        channel * output.stride(1);
+    accscalar_t horizontal[kBicubicReusedInputRows];
 #pragma unroll
-    for (int row = 0; row < kBicubicTileRows + 3; ++row) {
+    for (int row = 0; row < kBicubicReusedInputRows; ++row) {
       const scalar_t* source_row = source +
           sycl::clamp(
               first_center - 1 + row, 0, static_cast<int>(input.size(2)) - 1) *
               input.stride(2);
-      horizontal[row] =
-          static_cast<accscalar_t>(source_row[column_offsets[0]]) *
-              width_weights[0] +
-          static_cast<accscalar_t>(source_row[column_offsets[1]]) *
-              width_weights[1] +
-          static_cast<accscalar_t>(source_row[column_offsets[2]]) *
-              width_weights[2] +
-          static_cast<accscalar_t>(source_row[column_offsets[3]]) *
-              width_weights[3];
+      horizontal[row] = bicubic_interpolate_row<scalar_t, accscalar_t>(
+          source_row, column_offsets, width_weights);
     }
 #pragma unroll
-    for (int row = 0; row < kBicubicTileRows; ++row) {
-      if (output_y + row < output.size(2)) {
+    for (int row = 0; row < kBicubicOutputRowsPerThread; ++row) {
+      if (row < valid_rows) {
         destination[row * output.stride(2)] = static_cast<scalar_t>(
             horizontal[row] * height_weights[row][0] +
             horizontal[row + 1] * height_weights[row][1] +
@@ -160,120 +183,30 @@ void upsample_bicubic2d_rows_kernel(
   }
 }
 
-template <typename scalar_t, typename accscalar_t>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
-    (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
-void upsample_bicubic2d_kernel(
-    PackedTensorAccessor64<scalar_t, 4> out_data,
-    const PackedTensorAccessor64<const scalar_t, 4> in_data,
-    int64_t onum,
-    bool align_corners,
-    accscalar_t height_scale,
-    accscalar_t width_scale) {
-  sycl::nd_item<1> item = sycl::ext::oneapi::this_work_item::get_nd_item<1>();
-  int global_id = item.get_global_linear_id();
-  const int nbatch = in_data.size(0);
-  const int channels = in_data.size(1);
-  const int input_height = in_data.size(2);
-  const int input_width = in_data.size(3);
-  const int output_height = out_data.size(2);
-  const int output_width = out_data.size(3);
-  if (global_id < output_height * output_width) {
-    const int output_x = global_id % output_width;
-    const int output_y = global_id / output_width;
-    if (input_height == output_height && input_width == output_width) {
-      for (int n = 0; n < nbatch; n++) {
-        for (int c = 0; c < channels; c++) {
-          auto val = in_data[n][c][output_y][output_x];
-          out_data[n][c][output_y][output_x] = val;
-        }
-      }
-      return;
-    }
-
-    // Interpolation kernel
-    accscalar_t real_x = area_pixel_compute_source_index(
-        width_scale, output_x, align_corners, /*cubic=*/true);
-    int in_x = floorf(real_x);
-    accscalar_t t_x = real_x - in_x;
-
-    accscalar_t real_y = area_pixel_compute_source_index(
-        height_scale, output_y, align_corners, /*cubic=*/true);
-    int in_y = floorf(real_y);
-    accscalar_t t_y = real_y - in_y;
-    for (int n = 0; n < nbatch; n++) {
-      for (int c = 0; c < channels; c++) {
-        accscalar_t coefficients[4];
-        for (int k = 0; k < 4; k++) {
-          coefficients[k] = cubic_interp1d<scalar_t, accscalar_t>(
-              upsample_get_value_bounded<scalar_t>(
-                  in_data,
-                  n,
-                  c,
-                  input_width,
-                  input_height,
-                  in_x - 1,
-                  in_y - 1 + k),
-              upsample_get_value_bounded<scalar_t>(
-                  in_data,
-                  n,
-                  c,
-                  input_width,
-                  input_height,
-                  in_x + 0,
-                  in_y - 1 + k),
-              upsample_get_value_bounded<scalar_t>(
-                  in_data,
-                  n,
-                  c,
-                  input_width,
-                  input_height,
-                  in_x + 1,
-                  in_y - 1 + k),
-              upsample_get_value_bounded<scalar_t>(
-                  in_data,
-                  n,
-                  c,
-                  input_width,
-                  input_height,
-                  in_x + 2,
-                  in_y - 1 + k),
-              t_x);
-        }
-
-        out_data[n][c][output_y][output_x] =
-            static_cast<scalar_t>(cubic_interp1d<scalar_t, accscalar_t>(
-                coefficients[0],
-                coefficients[1],
-                coefficients[2],
-                coefficients[3],
-                t_y));
-      }
-    }
-  }
-}
-
-template <typename scalar_t, typename accscalar_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 static void launch_upsample_bicubic2d_out_kernel(
-    PackedTensorAccessor64<scalar_t, 4> odata,
-    const PackedTensorAccessor64<const scalar_t, 4> idata,
-    int64_t onum,
+    GenericPackedTensorAccessor<scalar_t, 4, DefaultPtrTraits, index_t> output,
+    GenericPackedTensorAccessor<const scalar_t, 4, DefaultPtrTraits, index_t>
+        input,
     bool align_corners,
     const accscalar_t height_scale,
     const accscalar_t width_scale) {
-  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
-      upsample_bicubic2d_kernel<scalar_t, accscalar_t>>();
-  int64_t num_wg = at::ceil_div(onum, wg_size);
-  auto queue = getCurrentSYCLQueue();
-
-  sycl_kernel_submit<upsample_bicubic2d_kernel<scalar_t, accscalar_t>>(
-      num_wg * wg_size,
-      wg_size,
-      queue,
+  const int64_t work_items =
+      at::ceil_div(
+          int64_t(output.size(2)), int64_t(kBicubicOutputRowsPerThread)) *
+      output.size(3) * output.size(1) *
+      std::min<int64_t>(input.size(0), kBicubicMaxBatchPartitions);
+  const int64_t group_size = at::xpu::getKernelMaxWorkGroupSize<
+      upsample_bicubic2d_kernel<scalar_t, accscalar_t, index_t>>();
+  const bool channels_last = output.stride(1) < output.stride(3);
+  sycl_kernel_submit<upsample_bicubic2d_kernel<scalar_t, accscalar_t, index_t>>(
+      at::ceil_div(work_items, group_size) * group_size,
+      group_size,
+      getCurrentSYCLQueue(),
       0,
-      odata,
-      idata,
-      onum,
+      output,
+      input,
+      channels_last,
       align_corners,
       height_scale,
       width_scale);
@@ -298,8 +231,10 @@ void upsample_bicubic2d_kernel(
   if (output.numel() == 0) {
     return;
   }
-
-  const int num_output_elements = output_height * output_width;
+  if (input_height == output_height && input_width == output_width) {
+    output.copy_(input);
+    return;
+  }
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -307,9 +242,6 @@ void upsample_bicubic2d_kernel(
       input.scalar_type(),
       "upsample_bicubic2d_xpu",
       [&] {
-        auto idata = input.packed_accessor64<const scalar_t, 4>();
-        auto odata = output.packed_accessor64<scalar_t, 4>();
-
         // Get scaling factors
         using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         const accscalar_t rheight = area_pixel_compute_scale<accscalar_t>(
@@ -317,54 +249,30 @@ void upsample_bicubic2d_kernel(
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales_w);
 
-        if (input.stride(1) == 1 && output.stride(1) == 1 &&
-            input.stride(3) == input.size(1) &&
-            output.stride(3) == output.size(1) && rheight >= 1 && rheight < 2 &&
-            (input_height != output_height || input_width != output_width)) {
-          AT_DISPATCH_INDEX_TYPES(
-              canUse32BitIndexMath(input) && canUse32BitIndexMath(output)
-                  ? ScalarType::Int
-                  : ScalarType::Long,
-              "upsample_bicubic2d_rows_index",
-              [&] {
-                const int64_t work_items =
-                    at::ceil_div(
-                        int64_t(output_height), int64_t(kBicubicTileRows)) *
-                    output_width * input.size(1) *
-                    std::min<int64_t>(input.size(0), kBicubicBatchPartitions);
-                const int64_t group_size = at::xpu::getKernelMaxWorkGroupSize<
-                    upsample_bicubic2d_rows_kernel<
-                        scalar_t,
-                        accscalar_t,
-                        index_t>>();
-                sycl_kernel_submit<upsample_bicubic2d_rows_kernel<
-                    scalar_t,
-                    accscalar_t,
-                    index_t>>(
-                    at::ceil_div(work_items, group_size) * group_size,
-                    group_size,
-                    getCurrentSYCLQueue(),
-                    0,
-                    output.generic_packed_accessor<
-                        scalar_t,
-                        4,
-                        DefaultPtrTraits,
-                        index_t>(),
-                    input.generic_packed_accessor<
-                        const scalar_t,
-                        4,
-                        DefaultPtrTraits,
-                        index_t>(),
-                    align_corners,
-                    rheight,
-                    rwidth);
-              });
-          return;
-        }
-
-        output.zero_();
-        launch_upsample_bicubic2d_out_kernel<scalar_t, accscalar_t>(
-            odata, idata, num_output_elements, align_corners, rheight, rwidth);
+        AT_DISPATCH_INDEX_TYPES(
+            canUse32BitIndexMath(input) && canUse32BitIndexMath(output)
+                ? ScalarType::Int
+                : ScalarType::Long,
+            "upsample_bicubic2d_index",
+            [&] {
+              launch_upsample_bicubic2d_out_kernel<
+                  scalar_t,
+                  accscalar_t,
+                  index_t>(
+                  output.generic_packed_accessor<
+                      scalar_t,
+                      4,
+                      DefaultPtrTraits,
+                      index_t>(),
+                  input.generic_packed_accessor<
+                      const scalar_t,
+                      4,
+                      DefaultPtrTraits,
+                      index_t>(),
+                  align_corners,
+                  rheight,
+                  rwidth);
+            });
       });
 }
 
