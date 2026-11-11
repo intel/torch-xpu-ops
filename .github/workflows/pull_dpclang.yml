@@ -152,6 +152,7 @@ jobs:
       category: dpclang
       runner: build
       pytorch: ${{ github.base_ref || github.ref_name }}
+      torch_xpu_ops: ${{ github.sha }}
 
   linux-ut:
     needs: build-wheels

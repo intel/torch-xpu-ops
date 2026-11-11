@@ -78,7 +78,8 @@ from importlib.metadata import distribution
 p = distribution("torch").locate_file("torch/xpu.txt")
 print(open(p).read().strip() if p.is_file() else "")
 ')"
-if [ -n "${built_xpu_ops}" ] && \
+# Only a prepared tree holds a full SHA; skip trees still naming release/X.Y.
+if [[ "${expected_xpu_ops}" =~ ^[0-9a-f]{40}$ ]] && [ -n "${built_xpu_ops}" ] && \
         [ "${built_xpu_ops}" != "${expected_xpu_ops}" ];then
     echo "torch-xpu-ops mismatch: wheel built ${built_xpu_ops}, prepared ${expected_xpu_ops}"
     exit 1

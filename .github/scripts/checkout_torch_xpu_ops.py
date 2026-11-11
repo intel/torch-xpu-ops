@@ -6,8 +6,10 @@
 
 --source preserves the PR checkout and verifies --ref when it is a full SHA.
 Otherwise, use --repo and --ref; pinned selects the PyTorch source pin.
---prefer-wheel uses installed torch/xpu.txt first, since a source release
-branch may have advanced since the wheel was built. For fork commits, supply
+--prefer-wheel uses installed torch/xpu.txt first for pinned, since a source
+release branch may have advanced since the wheel was built. --built-wheel
+uses that record for any ref: the wheel was built earlier in the same run, so
+re-resolving a branch could test a newer commit than the one compiled. For fork commits, supply
 the fork URL with --repo and its branch or commit with --ref.
 """
 
@@ -38,17 +40,21 @@ def git(*args, check=True):
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def wheel_pin():
+    """Return the torch-xpu-ops SHA recorded in the installed torch wheel."""
+    try:
+        path = Path(distribution("torch").locate_file("torch/xpu.txt"))
+    except PackageNotFoundError:
+        return ""
+    return path.read_text().strip() if path.is_file() else ""
+
+
 def resolve_pinned(pytorch_dir, prefer_wheel):
     if prefer_wheel:
-        try:
-            path = Path(distribution("torch").locate_file("torch/xpu.txt"))
-        except PackageNotFoundError:
-            pass
-        else:
-            sha = path.read_text().strip() if path.is_file() else ""
-            if sha:
-                print(f"Using torch-xpu-ops pin from installed wheel: {sha}")
-                return sha
+        sha = wheel_pin()
+        if sha:
+            print(f"Using torch-xpu-ops pin from installed wheel: {sha}")
+            return sha
         # Older wheels lack this record; a source branch cannot recover their exact SHA.
         print("Installed wheel has no torch/xpu.txt; using source pin (may be a moving branch)")
     ref = (Path(pytorch_dir) / "third_party" / "xpu.txt").read_text().strip()
@@ -56,7 +62,8 @@ def resolve_pinned(pytorch_dir, prefer_wheel):
     return ref
 
 
-def prepare_checkout(pytorch_dir, repo, ref, source=None, prefer_wheel=False):
+def prepare_checkout(pytorch_dir, repo, ref, source=None, prefer_wheel=False,
+                     built_wheel=False):
     """Populate <pytorch_dir>/third_party/torch-xpu-ops and return its HEAD SHA."""
     repo = repo or DEFAULT_REPO
     ref = ref or ("pinned" if prefer_wheel else "main")
@@ -69,7 +76,14 @@ def prepare_checkout(pytorch_dir, repo, ref, source=None, prefer_wheel=False):
         print(f"Using PR checkout {source}")
         shutil.copytree(source, dest, symlinks=True)
     else:
-        if ref.lower() == "pinned":
+        recorded = wheel_pin() if built_wheel else ""
+        if recorded:
+            # Keep the requested repo: a fork build records a fork commit.
+            print(f"Using torch-xpu-ops commit built into the wheel: {recorded} (requested '{ref}')")
+            if ref.lower() == "pinned":
+                repo = DEFAULT_REPO
+            ref = recorded
+        elif ref.lower() == "pinned":
             repo = DEFAULT_REPO
             ref = resolve_pinned(pytorch_dir, prefer_wheel)
         git("clone", "--no-checkout", repo, str(dest))
@@ -105,10 +119,13 @@ def main():
     parser.add_argument("--ref", default="")
     parser.add_argument("--source", default="", help="Copy this checkout (PR)")
     parser.add_argument("--prefer-wheel", action="store_true")
+    parser.add_argument("--built-wheel", action="store_true",
+                        help="Installed wheel was built in this run; use its record for any ref")
     args = parser.parse_args()
     sha = prepare_checkout(
         args.pytorch_dir, args.repo, args.ref,
         source=args.source or None, prefer_wheel=args.prefer_wheel,
+        built_wheel=args.built_wheel,
     )
     print(f"torch-xpu-ops commit: {sha}")
 

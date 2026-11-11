@@ -119,10 +119,13 @@ runs:
         git checkout %TORCH_COMMIT_ID% || exit /b 1
         git show -s
 
-        REM `pinned` prefers the SHA recorded in the installed wheel (torch/xpu.txt)
+        REM A wheel built in this run records its exact commit (torch/xpu.txt);
+        REM use it for any ref. Published wheels only consult it for `pinned`.
+        set BUILT_ARG=--built-wheel
+        echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul && set BUILT_ARG=
         set SOURCE_ARG=
         if "%GITHUB_EVENT_NAME%" == "pull_request" set SOURCE_ARG=--source "%GITHUB_WORKSPACE%"
-        python "%GITHUB_WORKSPACE%\.github\scripts\checkout_torch_xpu_ops.py" --pytorch-dir . --repo %TORCH_XPU_OPS_REPO% --ref %TORCH_XPU_OPS_COMMIT% --prefer-wheel %SOURCE_ARG% || exit /b 1
+        python "%GITHUB_WORKSPACE%\.github\scripts\checkout_torch_xpu_ops.py" --pytorch-dir . --repo %TORCH_XPU_OPS_REPO% --ref %TORCH_XPU_OPS_COMMIT% --prefer-wheel %BUILT_ARG% %SOURCE_ARG% || exit /b 1
 
         python -m pip install -r .ci\docker\requirements-ci.txt || exit /b 1
         REM Leave the source tree, or `import torch` picks up pytorch\torch instead of the wheel.

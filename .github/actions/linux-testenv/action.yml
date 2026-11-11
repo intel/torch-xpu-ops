@@ -109,7 +109,12 @@ runs:
         if [ "${{ github.event_name }}" == "pull_request" ];then
           SOURCE_ARG=(--source "${{ github.workspace }}/torch-xpu-ops")
         fi
-        # `pinned` prefers the SHA recorded in the installed wheel (torch/xpu.txt)
+        # A wheel built in this run records the exact commit it compiled
+        # (torch/xpu.txt); use it for any ref so tests cannot drift from it.
+        # Published wheels only consult it for `pinned`.
+        if [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
+          SOURCE_ARG+=(--built-wheel)
+        fi
         python torch-xpu-ops/.github/scripts/checkout_torch_xpu_ops.py \
           --pytorch-dir pytorch \
           --repo "${TORCH_XPU_OPS_REPO}" \

@@ -16,7 +16,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 from checkout_torch_xpu_ops import force_remove_readonly, prepare_checkout
@@ -93,10 +92,7 @@ def main():
         source=source,
     )
 
-    # Apply cherry-picks
-    run([sys.executable, "-m", "pip", "install", "requests"])
-    apply_script = pytorch_dir / "third_party" / "torch-xpu-ops" / ".github" / "scripts" / "apply_torch_pr.py"
-    run([sys.executable, str(apply_script)])
+    # Extra PyTorch cherry-picks via apply_torch_pr.py are disabled for now.
 
     # Keep CMake on the prepared checkout, including PR merge commits.
     xpu_pin.write_bytes((torch_xpu_ops_sha + "\n").encode())
