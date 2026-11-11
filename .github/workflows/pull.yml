@@ -44,11 +44,20 @@ jobs:
       skip_distributed: ${{ steps.live-labels.outputs.skip_distributed }}
       skip_win: ${{ steps.live-labels.outputs.skip_win }}
       force_win_ut: ${{ steps.live-labels.outputs.force_win_ut }}
+      runner_ut: ${{ steps.ci-config.outputs.ut }}
+      image_ut: ${{ steps.ci-config.outputs.ut_image }}
+      runner_accuracy: ${{ steps.ci-config.outputs.accuracy }}
+      image_accuracy: ${{ steps.ci-config.outputs.accuracy_image }}
+      runner_performance: ${{ steps.ci-config.outputs.performance }}
+      image_performance: ${{ steps.ci-config.outputs.performance_image }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
+      - name: Select runners
+        id: ci-config
+        uses: ./torch-xpu-ops/.github/actions/ci-config
       - name: Run lint check
         id: lint-python
         continue-on-error: true
@@ -271,7 +280,8 @@ jobs:
         ut_name: [op_ut,basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: bmg-test
+      runner: ${{ needs.preci-lint-check.outputs.runner_ut }}
+      image: ${{ needs.preci-lint-check.outputs.image_ut }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -291,24 +301,11 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
+      runner: ${{ needs.preci-lint-check.outputs.runner_ut }}
+      image: ${{ needs.preci-lint-check.outputs.image_ut }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
-
-  ut-report:
-    name: ut-report
-    needs: [linux-ut, linux-distributed, windows-ut, preci-lint-check]
-    if: >-
-      ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true'
-      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.linux-distributed.result, 'ed')
-      || !endsWith(needs.windows-ut.result, 'ed')) }}
-    secrets: inherit
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: write
-    uses: ./.github/workflows/_ut_report.yml
 
   linux-e2e:
     name: linux-e2e
@@ -322,23 +319,12 @@ jobs:
         scenario: [accuracy, performance]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
+      runner: ${{ needs.preci-lint-check.outputs[format('runner_{0}', matrix.scenario)] }}
+      image: ${{ needs.preci-lint-check.outputs[format('image_{0}', matrix.scenario)] }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}
       scenario: ${{ matrix.scenario }}
-  linux-e2e-summary:
-    name: linux-e2e-summary
-    needs: [linux-e2e, preci-lint-check]
-    if: ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true' && !endsWith(needs.linux-e2e.result, 'ed') }}
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-      pull-requests: write
-    uses: ./.github/workflows/_linux_e2e_summary.yml
-    with:
-      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
 
   windows-build:
     name: windows-build
@@ -374,3 +360,30 @@ jobs:
       runner: windows-test
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+
+  ut-report:
+    name: ut-report
+    needs: [linux-ut, linux-distributed, windows-ut, preci-lint-check]
+    if: >-
+      ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true'
+      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.linux-distributed.result, 'ed')
+      || !endsWith(needs.windows-ut.result, 'ed')) }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/_ut_report.yml
+
+  linux-e2e-summary:
+    name: linux-e2e-summary
+    needs: [linux-e2e, preci-lint-check]
+    if: ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true' && !endsWith(needs.linux-e2e.result, 'ed') }}
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}

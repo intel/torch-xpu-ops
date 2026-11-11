@@ -47,7 +47,8 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  biisect-search:
+  bisect-search:
+    name: bisect-search
     runs-on: ${{ inputs.runner }}
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
@@ -65,6 +66,11 @@ jobs:
         USE_XCCL: 0
         USE_KINETO: 0
     steps:
+      # linux-testenv resolves its nested actions from ./.github
+      - name: Checkout CI actions
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
@@ -204,7 +210,8 @@ jobs:
         if: ${{ always() }}
         run: |
           bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh unlock
-          chown 1000:1000 /__w /github ./ -R
+          # Runner user's uid differs per node; /__e is its read-only externals mount.
+          chown "$(stat -c %u:%g /__e)" /__w /github ./ -R
       - name: Upload Logs
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7

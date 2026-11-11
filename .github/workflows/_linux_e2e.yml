@@ -7,6 +7,10 @@ on:
         required: true
         type: string
         description: Runner label
+      image:
+        required: true
+        type: string
+        description: Test container image, the `<type>_image` output of .github/actions/ci-config
       test_type:
         type: string
         default: "build-cicd"
@@ -61,12 +65,13 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
     container:
-      image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+      image: ${{ inputs.image }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
         - /opt/xpu-test/_dataset:/opt/_dataset/:rw
-      options: --device=/dev/mem --device=/dev/dri
+      # --entrypoint= skips the OMIX entrypoint, which activates oneAPI
+      options: --entrypoint= --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
       env:
@@ -96,7 +101,7 @@ jobs:
           scenario: ${{ inputs.scenario }}
           test_scope: p0
 
-      # Nihglty launch
+      # Nightly launch
       - name: Nightly Test (p0, p1)
         if: ${{ contains(inputs.test_type, 'nightly') && (contains(inputs.suite, 'huggingface') || contains(inputs.suite, 'timm_models') || contains(inputs.suite, 'torchbench')) }}
         uses: ./.github/actions/linux-e2etest
@@ -170,7 +175,8 @@ jobs:
         if: ${{ always() }}
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock
-          chown 1000:1000 /__w /github ./ -R
+          # Runner user's uid differs per node; /__e is its read-only externals mount.
+          chown "$(stat -c %u:%g /__e)" /__w /github ./ -R
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7

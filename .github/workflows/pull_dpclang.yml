@@ -24,7 +24,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  config:
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      runner_ut: ${{ steps.ci-config.outputs.ut }}
+      image_ut: ${{ steps.ci-config.outputs.ut_image }}
+      gcc: ${{ steps.ci-config.outputs.gcc }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - name: Select runners
+        id: ci-config
+        uses: ./.github/actions/ci-config
+
   build-prereq:
+    needs: config
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: build
     container:
@@ -32,6 +50,7 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
+        GCC_VERSION: ${{ needs.config.outputs.gcc }}
         INSTALL_PREFIX: ${{ github.workspace }}/_install
         PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
@@ -68,7 +87,7 @@ jobs:
           echo "$INSTALL_PREFIX/bin" >> $GITHUB_PATH
       - name: Build level-zero
         run: |
-          source /opt/rh/gcc-toolset-13/enable
+          source /opt/rh/gcc-toolset-${GCC_VERSION}/enable
           cmake -B _build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
@@ -86,7 +105,7 @@ jobs:
         working-directory: ./intel-llvm
       - name: Build intel-llvm
         run: |
-          source /opt/rh/gcc-toolset-13/enable
+          source /opt/rh/gcc-toolset-${GCC_VERSION}/enable
           cmake -B _build -S llvm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
@@ -123,7 +142,7 @@ jobs:
           CC: dpclang
           CXX: dpclang++
         run: |
-          source /opt/rh/gcc-toolset-13/enable
+          source /opt/rh/gcc-toolset-${GCC_VERSION}/enable
           cmake -B _build -S sdk -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
@@ -154,7 +173,7 @@ jobs:
       pytorch: ${{ github.base_ref || github.ref_name }}
 
   linux-ut:
-    needs: build-wheels
+    needs: [config, build-wheels]
     secrets: inherit
     permissions:
       actions: read
@@ -168,7 +187,8 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       category: dpclang
-      runner: bmg-test
+      runner: ${{ needs.config.outputs.runner_ut }}
+      image: ${{ needs.config.outputs.image_ut }}
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}

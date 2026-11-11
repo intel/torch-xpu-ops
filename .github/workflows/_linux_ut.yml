@@ -7,6 +7,10 @@ on:
         required: true
         type: string
         description: Runner label
+      image:
+        required: true
+        type: string
+        description: Test container image, the `<type>_image` output of .github/actions/ci-config
       pytorch:
         type: string
         default: 'main'
@@ -48,11 +52,12 @@ jobs:
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+      image: ${{ inputs.image }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
-      options: --device=/dev/mem --device=/dev/dri
+      # --entrypoint= skips the OMIX entrypoint, which activates oneAPI
+      options: --entrypoint= --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
     steps:
@@ -90,7 +95,8 @@ jobs:
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
-          chown 1000:1000 /__w /github ./ -R
+          # Runner user's uid differs per node; /__e is its read-only externals mount.
+          chown "$(stat -c %u:%g /__e)" /__w /github ./ -R
 
   test-in-baremetal:
     timeout-minutes: 600

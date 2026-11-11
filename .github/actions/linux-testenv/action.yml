@@ -1,24 +1,20 @@
 name: Setup Test Environment
+description: Install python, gcc, PyTorch and torch-xpu-ops for Linux XPU tests
 
 inputs:
   pytorch:
-    type: string
     default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
-    type: string
     default: 'main'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
-    type: string
     default: ''
     description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
   suite:
-    type: string
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
   category:
-    type: string
     default: ''
     description: 'Optional tag (e.g. target/baseline) used to select the matching wheel artifact'
 
@@ -39,6 +35,11 @@ runs:
       uses: ./.github/actions/setup-python
       with:
         python: ${{ inputs.python }}
+    - name: Setup gcc
+      uses: ./.github/actions/ci-config
+      with:
+        python: ${{ inputs.python }}
+        setup_gcc: 'true'
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v7
       with:
