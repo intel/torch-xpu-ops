@@ -194,7 +194,7 @@ runs:
           cd ../pytorch
         elif [[ "${{ inputs.suite }}" != *"huggingface"* && "${{ inputs.suite }}" != *"timm_models"* ]];then
           # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
-          sed -i '/mkl/d' .ci/docker/requirements-ci.txt
+          sed -i '/mkl/d; s/^intel-openmp[<>=!~][^ ;]*/intel-openmp==2026.2.0/' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
           uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
         fi
