@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytest-xpu-worker-restart"
+version = "0.1.0"
+description = "Pytest-xdist plugin that restarts an XPU worker when a fatal (crash/OOM) failure is detected."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "Intel torch-xpu-ops" }]
+keywords = ["pytest", "xdist", "xpu", "worker", "restart"]
+classifiers = [
+    "Framework :: Pytest",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = ["pytest>=6.0", "pytest-xdist>=2.0"]
+
+[project.entry-points.pytest11]
+xpu_worker_restart = "pytest_xpu_worker_restart.plugin"
+
+[project.urls]
+Homepage = "https://github.com/intel/torch-xpu-ops"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -56,7 +56,7 @@ if((ONEMKL_INCLUDE_DIR STREQUAL "ONEMKL_INCLUDE_DIR-NOTFOUND")
 endif()
 
 set(MKL_LIB_NAMES "mkl_sycl_blas" "mkl_sycl_dft" "mkl_sycl_lapack"
-                  "mkl_intel_lp64" "mkl_core")
+                  "mkl_sycl_sparse" "mkl_intel_lp64" "mkl_core")
 
 if(WIN32)
   list(APPEND MKL_LIB_NAMES "mkl_intel_thread")

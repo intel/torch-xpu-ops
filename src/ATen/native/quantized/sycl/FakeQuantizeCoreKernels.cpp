@@ -10,7 +10,6 @@
 
 #include <ATen/Dispatch.h>
 #include <ATen/TensorIterator.h>
-#include <cmath>
 
 #include <ATen/native/quantized/sycl/FakeQuantizeCoreKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -232,7 +231,7 @@ void _fake_quantize_grad_learnable_tensor_kernel(
 
 template <typename scalar_t>
 inline long int lrint_impl(scalar_t num) {
-  return static_cast<long int>(std::round(num));
+  return static_cast<long int>(sycl::rint(num));
 }
 
 template <typename SelfType, typename scalar_t>

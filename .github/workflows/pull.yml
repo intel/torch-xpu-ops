@@ -149,9 +149,12 @@ jobs:
             fi
           fi
 
-          # Check if PR description contains pytest commands (lines starting with "pytest")
+          # Check if PR description contains pytest commands. A leading
+          # VAR=value prefix is kept: the reproducer step evals the line, so
+          # "ZE_AFFINITY_MASK=0,1 pytest ..." runs as written.
           PR_BODY=$(gh pr view ${{ github.event.pull_request.number }} --json body -q '.body' 2>/dev/null || true)
-          PR_CMD=$(echo "$PR_BODY" | tr -d '\r' | grep -E '^pytest ' || true)
+          PR_CMD=$(echo "$PR_BODY" | tr -d '\r' \
+            | grep -E '^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]* +)*pytest ' || true)
           if [ -n "$PR_CMD" ]; then
             HAS_PR_CMD=true
             echo "Found reproducer commands in PR description:"
@@ -168,7 +171,7 @@ jobs:
 
           # Fail only if neither source is available
           if [ "$HAS_REPRO_FILES" = false ] && [ "$HAS_PR_CMD" = false ] && [ -z "$FAIL_MSG" ]; then
-            FAIL_MSG="No reproducer found. AI-generated PRs must include either reproducer files in \`test/repro/test_*.py\` or pytest commands in the PR description (lines starting with \`pytest\`)."
+            FAIL_MSG="No reproducer found. AI-generated PRs must include either reproducer files in \`test/repro/test_*.py\` or pytest commands in the PR description (lines starting with \`pytest\`, optionally preceded by \`VAR=value\` assignments)."
           fi
 
           if [ -n "$FAIL_MSG" ]; then
@@ -178,7 +181,7 @@ jobs:
               "" \
               "Please provide a reproducer using one of these methods:" \
               "- Add reproducer files: \`test/repro/test_<description>.py\` (pytest format)" \
-              "- Add pytest commands in the PR description (lines starting with \`pytest\`, e.g. \`pytest test/xpu/test_ops.py -k test_foo -v\`)"
+              "- Add pytest commands in the PR description (lines starting with \`pytest\`, optionally preceded by \`VAR=value\` assignments, e.g. \`pytest test/xpu/test_ops.py -k test_foo -v\` or \`ZE_AFFINITY_MASK=0,1 pytest test/xpu/distributed/test_foo.py\`)"
             gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
             echo "::error::${FAIL_MSG}"
             exit 1
@@ -222,6 +225,8 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
+              - '.github/actions/windows-testenv/**'
+              - '.github/actions/windows-uttest/**'
 
   linux-build:
     needs: preci-lint-check
@@ -256,6 +261,7 @@ jobs:
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_ut != 'true' }}
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
@@ -275,6 +281,7 @@ jobs:
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_distributed != 'true' }}
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
@@ -288,6 +295,20 @@ jobs:
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
+
+  ut-report:
+    name: ut-report
+    needs: [linux-ut, linux-distributed, windows-ut, preci-lint-check]
+    if: >-
+      ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true'
+      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.linux-distributed.result, 'ed')
+      || !endsWith(needs.windows-ut.result, 'ed')) }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/_ut_report.yml
 
   linux-e2e:
     name: linux-e2e
@@ -343,9 +364,13 @@ jobs:
       || (needs.preci-lint-check.outputs.skip_ut != 'true'
       && needs.conditions-filter-win.outputs.src_changed == 'true')) }}
     secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [basic]
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: op_extended,test_xpu
+      ut: ${{ matrix.ut_name }}
       runner: windows-test
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}

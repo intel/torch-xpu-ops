@@ -109,9 +109,9 @@ Skip decorators for a failing test live wherever that test lives: the
 pytorch test tree for upstream tests, `test/xpu/` inside torch-xpu-ops
 for its own tests.
 
-**The skip must live inside `target_repo_dir`.** This skill only ever
-produces a single-repo diff, and the orchestrator commits (or reads)
-only `target_repo_dir`. If the skip would have to be added to a file
+**The skip must live inside `target_repo_dir`.** One invocation produces
+one repo's diff (a two-repo fix is two invocations), and the orchestrator
+commits (or reads) only `target_repo_dir`. If the skip would have to be added to a file
 outside `target_repo_dir` — e.g. `target_repo == "torch-xpu-ops"` but
 the failing test is in pytorch's `test/` tree — do NOT edit it: that
 change would be left uncommitted and then wiped by the orchestrator's
@@ -130,8 +130,9 @@ first so the skip has a follow-up owner, then edit:
 # 1. Create the tracking issue and capture the URL.
 issue_url=$(gh issue create \
   --repo intel/torch-xpu-ops \
-  --title "[skip-added] <test_id> on XPU" \
-  --body "Auto-added by fix-implement (allow_skip=true).
+  --title "[upstream_ut] <test name>: <one-line symptom>" \
+  --body "Auto-added by fix-implement (allow_skip=true) while handling
+  intel/torch-xpu-ops#<the issue number this run was triggered on>.
 
   Test: <test_id>
   Original failure: <one-line failure summary from triage_result>
@@ -139,7 +140,7 @@ issue_url=$(gh issue create \
   Reason for skip: <why the actual fix requires human follow-up>
   Base analyzed: <target_repo>@<short_sha from analyzed_sha>
   " \
-  --label "agent-added,module: xpu" \
+  --label "test: ut" \
   | tail -1)
 
 # 2. Add the decorator with a comment citing $issue_url so a human
@@ -154,8 +155,11 @@ issue_url=$(gh issue create \
 ```
 
 Emit the resulting `issue_url` as `tracking_issue` in the JSON output
-(see Output section). `skip_added` becomes `true`. The issue label
-`agent-added` lets a human filter for automated-triage tracking issues.
+(see Output section). `skip_added` becomes `true`.
+
+Keep the title prefix, the label, and the bare `intel/torch-xpu-ops#<N>`
+exactly as above: a label this repo does not have fails the call, and
+backticking the issue number kills the cross-reference back to it.
 
 ## Step 3: Stage changes
 
@@ -251,20 +255,25 @@ markdown block so a downstream caller can locate its own previous
 implement comment (if any) and update it in place. Comment location and
 update is the **caller's** responsibility.
 
-```
+````markdown
 <!-- agent:implement -->
 
 ## Implement Result
 
 - **Target repo:** <pytorch | torch-xpu-ops>
 - **Analyzed at:** <target_repo>@<short_sha>
-- **What I changed:** <bullet list of files and what changed in each>
+- **What I changed:** <per file: what changed in it, with the line count>
 - **Why:** <one sentence connecting each change to the triage root cause; must cite file:line for every upstream/CUDA comparison — see the hard rule below>
 - **Skip added:** <yes (tracking: intel/torch-xpu-ops#N, url: <url>) | no>
 - **Ready for verify:** <yes | no>
 
-*Automated by fix-implement.*
+```diff
+<git diff --cached, or the key hunks when the full diff would blow the
+65000-char comment limit>
 ```
+
+*Automated by fix-implement.*
+````
 
 ```json
 {

@@ -29,7 +29,6 @@ import sys
 import threading
 import time
 import unittest
-import warnings
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -402,10 +401,6 @@ class TestProfiler(TestCase):
     @serialTest()
     @parametrize("work_in_main_thread", [True, False])
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
-    @unittest.skipIf(
-        torch.xpu.is_available(),
-        "XPU multithreaded Python source attribution is incorrect",
-    )
     def test_source_multithreaded(self, name, thread_spec, work_in_main_thread):
         """Test various threading configurations.
 
@@ -1277,37 +1272,54 @@ class TestProfiler(TestCase):
                     raise AssertionError("Invalid stacks record")
 
     def test_experimental_config_pickle(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", BytesWarning)
+        # Test with default values
+        config = _ExperimentalConfig()
+        pickled = pickle.dumps(config)
+        unpickled = pickle.loads(pickled)
+        self.assertIsInstance(unpickled, _ExperimentalConfig)
 
-            # Test with default values
-            config = _ExperimentalConfig()
-            pickled = pickle.dumps(config)
-            unpickled = pickle.loads(pickled)
-            self.assertIsInstance(unpickled, _ExperimentalConfig)
+        # Alternate the flags in pickled order so that a flag read from a
+        # neighboring slot gets the wrong value.
+        config = _ExperimentalConfig(
+            verbose=True,
+            performance_events=["event1", "event2"],
+            enable_cuda_sync_events=False,
+            disable_external_correlation=True,
+            profile_all_threads=False,
+            capture_overload_names=True,
+            record_python_gc_info=False,
+            expose_kineto_event_metadata=True,
+            custom_profiler_config="custom_config",
+            adjust_timestamps=False,
+            trace_only=True,
+        )
+        pickled = pickle.dumps(config)
+        unpickled = pickle.loads(pickled)
+        self.assertIsInstance(unpickled, _ExperimentalConfig)
+        self.assertEqual(unpickled.__getstate__(), config.__getstate__())
 
-            # Test with non-default values
-            config = _ExperimentalConfig(
-                profiler_metrics=["metric1", "metric2"],
-                profiler_measure_per_kernel=True,
-                verbose=True,
-                performance_events=["event1", "event2"],
-                enable_cuda_sync_events=True,
-                adjust_profiler_step=True,
-                disable_external_correlation=True,
-                profile_all_threads=True,
-                capture_overload_names=True,
-                record_python_gc_info=True,
-                expose_kineto_event_metadata=True,
-                custom_profiler_config="custom_config",
-            )
-            pickled = pickle.dumps(config)
-            unpickled = pickle.loads(pickled)
-            self.assertIsInstance(unpickled, _ExperimentalConfig)
+        # Test deepcopy (which uses pickle internally)
+        copied = copy.deepcopy(config)
+        self.assertIsInstance(copied, _ExperimentalConfig)
+        self.assertEqual(copied.__getstate__(), config.__getstate__())
 
-            # Test deepcopy (which uses pickle internally)
-            copied = copy.deepcopy(config)
-            self.assertIsInstance(copied, _ExperimentalConfig)
+    def test_experimental_config_rejects_old_pickle_state(self):
+        # Pickles from before PyTorch 2.16 use a different layout, with more,
+        # fewer, or the same number of values as the current state.
+        state = _ExperimentalConfig().__getstate__()
+        old_states = [
+            state + (False,),
+            state[:-1],
+            (False, [], False, False, False, False, False, False, False, "", False),
+        ]
+        for old_state in old_states:
+            # Unpickling calls __setstate__ on an object made by __new__. pybind
+            # ignores __setstate__ on an already initialized object, so this
+            # test can't use _ExperimentalConfig().
+            config = _ExperimentalConfig.__new__(_ExperimentalConfig)
+            with self.subTest(old_state=old_state):
+                with self.assertRaisesRegex(RuntimeError, "older PyTorch versions"):
+                    config.__setstate__(old_state)
 
     @unittest.skipIf(not kineto_available(), "Kineto is required")
     def test_tensorboard_trace_handler(self):
@@ -2300,55 +2312,6 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
             self._schedule_helper(warmup=10, active=10, repeat=4, acc_events=False), 10
         )
 
-    def _step_helper_func(self, prof):
-        time.sleep(0.1)
-        torch.randn(1, 3, 224, 224)
-        prof.step()
-
-    def _partial_overlap(self, prof_step, step_helper_func):
-        p_start = prof_step["ts"]
-        p_end = prof_step["ts"] + prof_step["dur"]
-        h_start = step_helper_func["ts"]
-        h_end = step_helper_func["ts"] + step_helper_func["dur"]
-
-        if p_start < h_start and p_end < h_end and p_end > h_start:
-            return True
-        if p_start > h_start and p_start < h_end and p_end > h_end:
-            return True
-        return False
-
-    @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
-    def test_cpu_annotation_overlap(self):
-        with torch.profiler.profile(
-            activities=supported_activities(),
-            record_shapes=True,
-            with_stack=True,
-            schedule=torch.profiler.schedule(wait=0, warmup=0, active=5, repeat=1),
-            experimental_config=torch._C._profiler._ExperimentalConfig(
-                adjust_profiler_step=True
-            ),
-        ) as prof:
-            for _ in range(5):
-                self._step_helper_func(prof)
-        with TemporaryFileName(mode="w+") as fname:
-            prof.export_chrome_trace(fname)
-            prof_steps = []
-            step_helper_funcs = []
-            with open(fname) as f:
-                report = json.load(f)
-                for event in report["traceEvents"]:
-                    if "ProfilerStep" in event["name"]:
-                        prof_steps.append(event)
-                    if "step_helper_func" in event["name"]:
-                        step_helper_funcs.append(event)
-            self.assertEqual(len(prof_steps), 5)
-            self.assertEqual(len(step_helper_funcs), 5)
-            for i in range(len(step_helper_funcs)):
-                for j in range(len(step_helper_funcs)):
-                    self.assertTrue(
-                        not self._partial_overlap(prof_steps[i], step_helper_funcs[j])
-                    )
-
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
     def test_user_annotation(self):
         use_cuda = torch.profiler.ProfilerActivity.CUDA in supported_activities()
@@ -3191,18 +3154,6 @@ class TestExperimentalUtils(TestCase):
                         raise AssertionError(
                             f"Could not find op '{op_name}' in Chrome trace."
                         )
-                found_op = False
-                for event in prof.events():
-                    if event.name == op_name:
-                        if metadata_key not in event.metadata_json:
-                            raise AssertionError(
-                                f"Metadata for '{op_name}' in FunctionEvent did not contain '{metadata_key}'."
-                            )
-                        found_op = True
-                if not found_op:
-                    raise AssertionError(
-                        f"Could not find op '{op_name}' in prof.events()."
-                    )
 
         experimental_config = torch._C._profiler._ExperimentalConfig(
             expose_kineto_event_metadata=True

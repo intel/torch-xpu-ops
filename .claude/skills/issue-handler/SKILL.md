@@ -22,7 +22,11 @@ reach its stage.
 Every agent-produced diff is a **proposal**. This skill commits the
 staged fix onto a dedicated local branch `agent/fix-issue-<N>` (single
 bug) or `agent/fix-issue-<N>-<seq>-<slug>` (per batch sub-item) and
-records it in a `fix_result*.json`. It never
+records it in a `fix_result*.json`. When the bug is owned by an upstream
+issue — a mirrored `pytorch/pytorch#<M>` DISABLED test, or a command
+pointing at an upstream issue — the branch is named after **that**
+number instead: `agent/fix-pytorch-issue-<M>[-<slug>]` (see
+[Branch naming](#branch-naming)). It never
 pushes, tags, or opens a PR — the invoking workflow reads each
 `fix_result*.json`, exports `base_sha..branch` as a patch, and a human
 applies it. The leaves themselves only stage (they never commit).
@@ -32,6 +36,7 @@ applies it. The leaves themselves only stage (they never commit).
 - [Pipeline overview](#pipeline-overview)
 - [Inputs](#inputs)
 - [Execution modes](#execution-modes)
+- [Branch naming](#branch-naming)
 - Stage 0: [Re-run gate](#stage-0--re-run-gate-first-run-vs-re-run)
 - Stage 1: [Triage](#stage-1--triage-issue-triage)
 - Stage 2: [Reproduce](#stage-2--reproduce-fix-reproduce)
@@ -61,7 +66,7 @@ triage → [preflight: install nightly wheel once]
        → for each sub-item:
              reset + reproduce
                ├─ NOT_REPRODUCED → heterogeneous: ALREADY_FIXED · skip-list: STALE_SKIP (+follow-up)
-               └─ REPRODUCED → branch agent/fix-issue-<N>-<seq>-<slug>
+               └─ REPRODUCED → branch per [Branch naming](#branch-naming)
                                → root-cause → implement → verify
              (any failure marks the sub-item and continues the batch)
        → fan-out report
@@ -105,6 +110,40 @@ the full contract.
   issue's `agent:status` marker, update stage labels, let leaf
   skills leave their `<!-- agent:<name> -->` comments, and stop when
   the pipeline settles on a terminal verdict.
+
+## Branch naming
+
+One rule for both paths: **the branch is named after the issue that owns
+the bug**, so a human reading a branch or a patch directory knows which
+issue a PR closes.
+
+| The bug is filed as | Branch |
+|---|---|
+| an `intel/torch-xpu-ops` issue `#N` | `agent/fix-issue-<N>` (batch sub-item: `agent/fix-issue-<N>-<seq>-<slug>`) |
+| an upstream `pytorch/pytorch#<M>` (mirrored DISABLED test, or a command naming an upstream issue) | `agent/fix-pytorch-issue-<M>` (batch sub-item: `agent/fix-pytorch-issue-<M>-<slug>`) |
+
+The upstream form applies whenever the sub-item's own identity is an
+upstream issue — the common case on the CI DISABLED tracking issue,
+where `#N` is only a queue and `#M` is the bug. `#M` is already unique
+and stable, so the upstream form carries no `seq`. When one fix covers
+several sub-items, the branch is named after the sub-item that was fixed;
+the rest are recorded in `covers`.
+
+`M` is the upstream issue the sub-item resolves to: the
+`pytorch/pytorch#<M>` reference on its checklist line, its linked child
+reference, or the upstream issue named in the invoking comment. If a
+sub-item has no upstream number, use the `agent/fix-issue-<N>-…` form.
+
+**A fix spanning both repos** ([two units](#machine-readable-outputs))
+carries this **same name in both checkouts** — one bug, one name; do not
+suffix the branch with the repo. The repo shows up in the patch directory
+instead, which the export step names `<branch minus agent/>-<target_repo>`:
+`agent/fix-pytorch-issue-197521` in each repo lands in
+`fix-pytorch-issue-197521-pytorch` and
+`fix-pytorch-issue-197521-torch-xpu-ops`. Two `fix_result` records naming
+the same branch *and* the same `target_repo` are a naming bug, and the
+export step fails there rather than overwrite one half (`format-patch`
+restarts at 0001 in every directory).
 
 ## Stage 0 — Re-run gate (first-run vs re-run)
 
@@ -272,7 +311,7 @@ pull timeout, a full disk or a missing device is not a test failure and
 will not reproduce. Record these as `NEEDS_HUMAN(infra)` and report
 them; they never enter the loop.
 
-Give each sub-item two identifiers used for branch naming:
+Give each sub-item three identifiers used for branch naming:
 
 - **`seq`** — 1-based position in the body checklist order. Readable and
   maps a branch back to its body line. Not the stable identity (editing
@@ -282,12 +321,17 @@ Give each sub-item two identifiers used for branch naming:
   `_cuda` / `_meta`) and any dtype suffix, lowercase, keep `[a-z0-9._-]`,
   truncate to 40 chars. If two sub-items produce the same slug, append
   `-2`, `-3`, … in body order so every slug is unique within the issue.
+- **`upstream`** — the `pytorch/pytorch#<M>` number this sub-item is
+  filed as, from its checklist line or its linked child reference; empty
+  when there is none.
 
-Branch name is `agent/fix-issue-<N>-<seq>-<slug>` (N = parent issue
-number). On a **re-run**, match a sub-item to its prior branch by slug —
-look for an existing `agent/fix-issue-<N>-*-<slug>` (any seq); if found,
-that is the same sub-item (rename to the current seq if it moved, never
-create a duplicate). Skip headers, prose, and empty lines.
+Name the branch per [Branch naming](#branch-naming): an `upstream`
+sub-item gets `agent/fix-pytorch-issue-<M>-<slug>`, otherwise
+`agent/fix-issue-<N>-<seq>-<slug>` (N = parent issue number). On a
+**re-run**, match a sub-item to its prior branch by slug — look for an
+existing `agent/fix-*-<slug>` branch; if found, that is the same
+sub-item (rename it if its seq moved, never create a duplicate). Skip
+headers, prose, and empty lines.
 
 ### Preflight (many entries): install nightly wheel once
 
@@ -375,10 +419,12 @@ For each sub-item:
      rewrite internally; the orchestrator only creates the branch.
 
    Create the isolated fix branch on `target_repo_dir` off its base so
-   the diff is pushable on its own:
+   the diff is pushable on its own ([Branch naming](#branch-naming)):
 
    ```bash
-   git -C "$target_repo_dir" checkout -B "agent/fix-issue-${N}-${seq}-${slug}" "$base"
+   # upstream sub-item: branch="agent/fix-pytorch-issue-${M}-${slug}"
+   branch="agent/fix-issue-${N}-${seq}-${slug}"
+   git -C "$target_repo_dir" checkout -B "$branch" "$base"
    ```
 
    Then run **Stage 4 → 5** (same contract and 3-attempt bound as the
@@ -425,7 +471,7 @@ Base: <torch nightly version or base sha>
 | Sub-item | Outcome | Branch / Reason |
 |---|---|---|
 | test_bar_xpu_float32 | FIXED | agent/fix-issue-4321-1-test_bar |
-| test_baz | NEEDS_HUMAN | cross_repo_coordinated |
+| test_baz | NEEDS_HUMAN | needs a oneDNN change (`dependency component: oneDNN`) |
 | test_qux | NEEDS_HUMAN | attempts_exhausted |
 | test_new | ALREADY_FIXED | no longer reproduces on latest nightly |
 | test_old | STALE_SKIP | follow-up: remove skip decorator |
@@ -490,9 +536,11 @@ mkdir -p "$agent_space"
         "branch": "agent/fix-issue-4321-1-test_bar",
         "target_repo": "torch-xpu-ops",
         "fix_result": "fix_result-test_bar.json",
+        "companion": "fix_result-test_bar-pytorch.json",
         "summary": "one-line what/why" },
       { "seq": 2, "slug": "test_baz", "outcome": "NEEDS_HUMAN",
-        "branch": null, "reason": "cross_repo_coordinated" },
+        "branch": null, "reason": "other",
+        "reason_detail": "needs a oneDNN change (dependency component: oneDNN)" },
       { "seq": 3, "slug": "test_new", "outcome": "ALREADY_FIXED",
         "branch": null, "reason": "no longer reproduces on latest nightly" }
     ]
@@ -511,11 +559,23 @@ mkdir -p "$agent_space"
     `base_sha` accurate even on a non-PASSED record.
   - `target_repo` — `torch-xpu-ops` | `pytorch`,
   - `fix_repo_dir` — absolute path of the git repo holding the fix commit,
-  - `branch` — `agent/fix-issue-<N>-<seq>-<slug>` (single bug: `agent/fix-issue-<N>`),
+  - `branch` — per [Branch naming](#branch-naming),
   - `base_sha` — the commit the fix branch was started from,
   - `changed_files` — list of the files the fix touched,
+  - `depends_on` — the fix_result file that must land BEFORE this one,
+    or absent. It is the only record of the order (see below).
   plus `needs_build`, `refined_command`, `notes`. Suffixed by slug so each
   sub-item can be exported / re-verified independently.
+
+**A fix spanning both repos** (`fix-root-cause` returned a
+`companion_repo`) is two units:
+
+- one branch per repo, named after the issue as usual,
+- one fix_result per repo, the companion's being the primary's name plus
+  `-<target_repo>` (`fix_result-grid_sample-pytorch.json`),
+- `depends_on` on the companion, naming the primary's file,
+- one verdict for both, and `notes` saying the pair was verified together,
+- `batch_summary`'s sub-item points at the unit that fixes the test.
 
 The patch-export step iterates every `fix_result*.json` and emits one
 patch series per unit from `base_sha..branch` (the branches are not
@@ -538,13 +598,16 @@ Branch on its `verdict`:
   did this in its own step 3, with its own branch name):
 
   ```bash
-  git -C "$target_repo_dir" checkout -B "agent/fix-issue-${N}" "$base"
+  # upstream-filed bug: branch="agent/fix-pytorch-issue-${M}"
+  branch="agent/fix-issue-${N}"
+  git -C "$target_repo_dir" checkout -B "$branch" "$base"
   ```
-- `NEEDS_HUMAN` → Stage 6 Report with the specific
-  `reason` (`task_or_feature` / `feature_gap` / `hardware_specific` /
-  `cross_repo_coordinated` / `no_registered_domain` / etc.). Each
-  reason maps to a different final `agent:status` value; see
-  [execution-modes.md](references/execution-modes.md).
+- `NEEDS_HUMAN` → Stage 6 Report, carrying the leaf's one-line
+  `reason_detail` as the justification — that is what a maintainer
+  reads. Every reason lands on the same terminal status
+  (`NEEDS_HUMAN` / `agent:needs-human`), so do not shop for a code:
+  the two worth branching on are `no_registered_domain` (do not retry,
+  see Retry policy) and `invalid_reproduction` (re-run Stage 2 first).
 
 ## Stage 4 — Implement (`fix-implement`)
 
@@ -584,9 +647,15 @@ Branch on the verdict:
   lets the workflow salvage the commit as an `unverified/` patch if
   verification never finishes — without it, a crash after this point
   loses the work outright.
-- `NEEDS_HUMAN` → Stage 6 Report. The specific `reason`
-  (`skip_outside_target_repo` / `skip_guard_rejected` /
-  `no_fix_possible` / etc.) drives the final label.
+
+  **With a `companion_repo`**, do this twice, `target_repo` first: call
+  `fix-implement` again with `target_repo_dir` set to the companion
+  checkout, branch off that repo's HEAD, commit, and write its record per
+  "Machine-readable outputs".
+- `NEEDS_HUMAN` → Stage 6 Report, carrying the leaf's `reason_detail`
+  as the justification. The label is `agent:needs-human` whatever the
+  `reason` (`skip_outside_target_repo` / `skip_guard_rejected` /
+  `no_fix_possible` / etc.).
 
 ## Stage 5 — Verify (`fix-verify`)
 
@@ -594,6 +663,9 @@ Call `fix-verify` with `refined_command` (from Stage 2),
 `target_repo_dir`, and `changed_files` (from Stage 4). `fix-verify`
 unconditionally produces the FAIL->PASS before/after table and runs
 `spin fixlint` on a passing result — no flags to pass.
+
+A two-repo fix is verified **once, as a pair** — one tree, one build.
+Both records take that verdict.
 
 Branch on the verdict:
 
@@ -644,26 +716,95 @@ Always include in the summary:
   `STALE_SKIP` follow-ups when `batch_kind=skip-list`.
 
 If the outcome is `IMPLEMENTING(fix_verified)`, the fix is committed on
-its `agent/fix-issue-<N>` branch and recorded in `fix_result.json`. The
-invoking workflow reads that, exports `base_sha..branch` as a patch
+its fix branch ([Branch naming](#branch-naming)) and recorded in
+`fix_result.json`. The invoking workflow reads that, exports
+`base_sha..branch` as a patch
 artifact, and a human applies it. **Do not push or open the PR from this
 skill.**
 
+### `batch-fanout` and `summary` block templates
+
+Both are this skill's own blocks, so write them collapsed as shown —
+there is no `##` heading to strip, unlike the leaf blocks this skill
+wraps.
+
+Batch runs only:
+
+```markdown
+<!-- agent:batch-fanout -->
+
+<details>
+<summary><b>Batch fan-out results</b></summary>
+
+Base: `torch-xpu-ops@<short_sha>`, pytorch `origin/main@<short_sha>`
+(reproduce base: nightly `<wheel version>`)
+
+| Sub-item | Outcome | Branch / Reason |
+|---|---|---|
+| 4. `test_foo_xpu_float8_e4m3fn` | FIXED | `agent/fix-pytorch-issue-197334-test_foo` |
+| 5. `test_foo_xpu_float8_e5m2` | COVERED | by sub-item 4's fix, same branch |
+
+- **FIXED:** <n> sub-items — <what a human should do with the branches>
+- **COVERED:** <n> sub-items — <why no separate branch>
+- **NEEDS_HUMAN / STALE_SKIP / INVALID_ENTRY / UNVERIFIED:** none.
+
+*Automated by issue-handler.*
+
+</details>
+```
+
+Every run. The sign-off is **outside** `</details>` — it is the comment's
+footer, not part of the summary:
+
+```markdown
+<!-- agent:summary -->
+
+<details>
+<summary><b>Summary</b></summary>
+
+<2-4 sentences: the one bug behind the sub-items, the fix in one clause,
+and what verification showed. No bullets.>
+
+- **Branch:** `agent/fix-issue-<N>[-<seq>-<slug>]`, or
+  `agent/fix-pytorch-issue-<M>[-<slug>]` for an upstream-filed bug
+- **Base:** `<full 40-char sha>`
+- **Changed files:** `path/to/file.cpp`
+- **Nothing was pushed.** The patch is exported as a workflow artifact for
+  a human to review and apply.
+
+</details>
+
+_Generated by [fix job](<run url>)._
+```
+
+**A two-repo fix needs the order spelled out**, or whoever opens the PRs
+gets it wrong and breaks CI. At the top of the Summary body:
+
+```markdown
+> [!IMPORTANT]
+> **Two PRs, in this order.**
+> 1. `<lands-first repo>` — patch dir `<branch>-<repo>`.
+> 2. `<companion repo>` — patch dir `<branch>-<repo>`, after <what it waits
+>    on, e.g. the `xpu.txt` pin bump carrying step 1>.
+>
+> **No closing keyword in either PR** (`Fixes` / `Closes` / `Resolves`):
+> merging one would close the issue with the other half still out. Reference
+> the issue plainly; a human closes it once both have landed.
+```
+
+and one line **outside** `</details>`, above the `_Generated by_` footer,
+since that block renders collapsed:
+
+```markdown
+**Two patches, and the order matters — see Summary.**
+```
+
 ### Review request block
 
-When the job ends, the `fix` workflow appends a template to the session
-comment for a human to review the fix. Do not write it yourself:
-
-```
-**strong-accepted** <!-- review: strong-accepted -->
-**weak-accepted** <!-- review: weak-accepted -->
-**weak-rejected** <!-- review: weak-rejected -->
-**strong-rejected** <!-- review: strong-rejected -->
-
-notes:
-```
-
-A reviewer copies it into a new comment, keeps one line, and says why.
+When the job ends, the `fix` workflow appends the `<!-- agent:review -->`
+block itself — the verdict menu a reviewer copies into a new comment.
+**Do not write it yourself**, and do not restate it here: the template
+lives in `bot.yml` and a second copy only drifts from it.
 
 ## Iterative loop bounds
 

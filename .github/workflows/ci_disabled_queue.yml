@@ -1,0 +1,74 @@
+name: CI DISABLED Queue
+
+on:
+  # Hourly over 17:00-08:00 Beijing, the window where the xpu-agent runners are
+  # otherwise idle. Live since 2026-09-22, when the CI report issue moved into
+  # this repo (#5490) and MERGE_TOKEN could finally read it.
+  #
+  # Known gap, accepted for now: a `fix` run that never reaches a working GPU
+  # still counts as queued, so a dead card silently spends the entry. The cause is
+  # #5432 -- a Level Zero DEVICE_LOST / OUT_OF_RESOURCES state whose driver fix is
+  # not due before 2026.3 -- and in it `torch.xpu.is_available()` still returns
+  # True and xpu-smi still reports every device normal, so bot.yml's preflight does
+  # not catch it and the run either fails for hours or hangs into its 300min
+  # timeout. Until a preflight that runs a real kernel plus a requeue lands, watch
+  # #5272: a trigger whose run died early or timed out has to be re-posted by hand,
+  # because dedup counts it as answered.
+  schedule:
+    - cron: '0 0,9-23 * * *'
+  #
+  # Left out on purpose: this would chain the next trigger onto the run that just
+  # answered, rather than waiting for the next tick above.
+  #
+  #   workflow_run:
+  #     workflows: [bot]
+  #     types: [completed]
+  #
+  # The cron already bounds the idle gap at an hour against a 1-5h `fix`, and this
+  # fires on every bot.yml completion -- dozens a day, most with nothing to queue.
+  # Add it if the hour turns out to matter. It would not replace the script's own
+  # `fix_in_flight` gate either: a human can start a `fix` on any issue at any
+  # time, and that run is not on the chain.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print the trigger instead of posting it'
+        type: boolean
+        default: true
+
+  pull_request:
+    paths:
+      - '.github/workflows/ci_disabled_queue.yml'
+      - '.github/scripts/ci_disabled_queue.py'
+
+permissions:
+  contents: read
+
+# One queue keeper at a time: overlapping runs could mirror the same batch twice.
+concurrency:
+  group: ci-disabled-queue
+  cancel-in-progress: false
+
+jobs:
+  queue:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Queue the next DISABLED batch
+        # The input goes through the environment, never through the `run` string:
+        # a workflow_dispatch input interpolated into a shell command is an
+        # injection vector.
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          # Only the exact string "false" posts, so a restored cron has to say so
+          # outright instead of inheriting an empty input.
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+        run: python3 .github/scripts/ci_disabled_queue.py
+
+  self-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 .github/scripts/ci_disabled_queue.py --self-test

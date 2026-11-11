@@ -5,9 +5,16 @@ usage() {
     cat <<'USAGE'
 Usage:
   setup-arc-runner.sh --github-token TOKEN [options]
+  setup-arc-runner.sh --github-app-id ID --github-app-installation-id ID \
+      --github-app-private-key-file PEM [options]
 
-Required:
+Credentials (one of):
   --github-token TOKEN        GitHub token with permission to register repo runners.
+  --github-app-id ID          GitHub App ID. App credentials do not expire like tokens.
+  --github-app-installation-id ID
+                              GitHub App installation ID for the repository.
+  --github-app-private-key-file PEM
+                              Path to the GitHub App private key.
 
 Options:
     --repo-url URL              GitHub repository URL. Default: detected from git remote
@@ -24,7 +31,7 @@ Options:
     --runner-cpu N              CPU request and limit per runner. Default: 4
     --runner-memory SIZE        Memory request and limit per runner. Default: 16Gi
     --reserve-cpu N             Physical CPU cores reserved for host/controller. Default: 4
-    --cache-root PATH           Host cache root. Default: /var/cache/arc/<runner-label>
+    --arc-version VER           ARC Helm chart version. Default: 0.15.1
   --skip-k8s-install          Do not install local Kubernetes if kubectl is already configured.
   --help                      Show this help.
 
@@ -58,9 +65,12 @@ RUNNER_IMAGE="arc-runner:${OS_ID}-${OS_VERSION_ID}-tools"
 RUNNER_CPU="4"
 RUNNER_MEMORY="16Gi"
 RESERVE_CPU="4"
-CACHE_ROOT=""
+ARC_CHART_VERSION="0.15.1"
 EXTRA_LABELS=""
 GITHUB_TOKEN=""
+GITHUB_APP_ID=""
+GITHUB_APP_INSTALLATION_ID=""
+GITHUB_APP_PRIVATE_KEY_FILE=""
 SKIP_K8S_INSTALL="false"
 
 require_value() {
@@ -76,6 +86,21 @@ while [[ $# -gt 0 ]]; do
         --github-token)
             require_value "$@"
             GITHUB_TOKEN=$2
+            shift 2
+            ;;
+        --github-app-id)
+            require_value "$@"
+            GITHUB_APP_ID=$2
+            shift 2
+            ;;
+        --github-app-installation-id)
+            require_value "$@"
+            GITHUB_APP_INSTALLATION_ID=$2
+            shift 2
+            ;;
+        --github-app-private-key-file)
+            require_value "$@"
+            GITHUB_APP_PRIVATE_KEY_FILE=$2
             shift 2
             ;;
         --repo-url)
@@ -148,9 +173,9 @@ while [[ $# -gt 0 ]]; do
             RESERVE_CPU=$2
             shift 2
             ;;
-        --cache-root)
+        --arc-version)
             require_value "$@"
-            CACHE_ROOT=$2
+            ARC_CHART_VERSION=$2
             shift 2
             ;;
         --skip-k8s-install)
@@ -169,8 +194,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "${GITHUB_TOKEN}" ]]; then
-    echo "Missing required --github-token argument." >&2
+if [[ -n "${GITHUB_APP_ID}${GITHUB_APP_INSTALLATION_ID}${GITHUB_APP_PRIVATE_KEY_FILE}" ]]; then
+    if [[ -z "${GITHUB_APP_ID}" || -z "${GITHUB_APP_INSTALLATION_ID}" || ! -r "${GITHUB_APP_PRIVATE_KEY_FILE}" ]]; then
+        echo "GitHub App auth needs --github-app-id, --github-app-installation-id and a readable --github-app-private-key-file." >&2
+        exit 2
+    fi
+    if [[ -n "${GITHUB_TOKEN}" ]]; then
+        echo "Pass either --github-token or GitHub App options, not both." >&2
+        exit 2
+    fi
+elif [[ -z "${GITHUB_TOKEN}" ]]; then
+    echo "Missing credentials: pass --github-token or the GitHub App options." >&2
     usage >&2
     exit 2
 fi
@@ -281,10 +315,6 @@ detect_capacity_defaults() {
         RUNNER_RELEASE=$(sanitize_name "${RUNNER_LABEL}")
     fi
 
-    if [[ -z "${CACHE_ROOT}" ]]; then
-        CACHE_ROOT="/var/cache/arc/${RUNNER_LABEL}"
-    fi
-
     if [[ -z "${EXTRA_LABELS}" ]]; then
         EXTRA_LABELS="${OS_ID}-${OS_VERSION_ID}"
         if [[ "${OS_ID}" == "ubuntu" ]]; then
@@ -378,18 +408,6 @@ wait_for_kubernetes() {
     exit 1
 }
 
-prepare_cache_dirs() {
-    local host_uid host_gid
-    host_uid=$(id -u)
-    host_gid=$(id -g)
-
-    log "Preparing host cache directories"
-    "${SUDO[@]}" mkdir -p \
-        "${CACHE_ROOT}/home-cache" \
-        "${CACHE_ROOT}/tool-cache"
-    "${SUDO[@]}" chown -R "${host_uid}:${host_gid}" "${CACHE_ROOT}"
-}
-
 render_values() {
     local values_file=$1
     local label labels_yaml=""
@@ -452,11 +470,17 @@ template:
           capabilities:
             drop:
               - ALL
+            # DAC_OVERRIDE lets root enter apt's _apt-owned 0700 partial dirs;
+            # FSETID/SETFCAP keep dpkg setuid bits and file capabilities intact.
             add:
               - CHOWN
+              - DAC_OVERRIDE
               - FOWNER
+              - FSETID
+              - SETFCAP
               - SETGID
               - SETUID
+              - AUDIT_WRITE
         resources:
           requests:
             cpu: "${RUNNER_CPU}"
@@ -467,23 +491,22 @@ template:
         volumeMounts:
           - name: runner-home-cache
             mountPath: /home/runner/.cache
-          - name: runner-tool-cache
-            mountPath: /opt/hostedtoolcache
     volumes:
+      # Per-pod cache: public ubuntu-* labels admit external jobs, so no writable state is shared between jobs.
       - name: runner-home-cache
-        hostPath:
-          path: ${CACHE_ROOT}/home-cache
-          type: DirectoryOrCreate
-      - name: runner-tool-cache
-        hostPath:
-          path: ${CACHE_ROOT}/tool-cache
-          type: DirectoryOrCreate
+        emptyDir: {}
 EOF
 }
 
 build_and_import_image() {
-    log "Building runner image"
+    local runner_version
+    runner_version=$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/actions/runner/releases/latest)
+    runner_version=${runner_version##*/v}
+
+    log "Building runner image with actions/runner ${runner_version}"
     "${DOCKER[@]}" build \
+        --build-arg ACTIONS_RUNNER_VERSION="${runner_version}" \
+        --label arc.runner.version="${runner_version}" \
         -t "${RUNNER_IMAGE}" \
         -f "${SCRIPT_DIR}/Dockerfile.arc-runner-ubuntu-24.04" \
         "${SCRIPT_DIR}"
@@ -508,18 +531,28 @@ install_arc_controller() {
     log "Installing or updating ARC controller"
     helm upgrade --install "${CONTROLLER_RELEASE}" \
         oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
+        --version "${ARC_CHART_VERSION}" \
         --namespace "${CONTROLLER_NAMESPACE}" \
         --create-namespace \
         --timeout 10m
 }
 
 create_runner_secret() {
-    log "Creating ARC GitHub token secret"
+    log "Creating ARC GitHub credential secret"
     kubectl create namespace "${RUNNER_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-    kubectl create secret generic github-token \
-        --namespace "${RUNNER_NAMESPACE}" \
-        --from-literal=github_token="${GITHUB_TOKEN}" \
-        --dry-run=client -o yaml | kubectl apply -f -
+    if [[ -n "${GITHUB_APP_ID}" ]]; then
+        kubectl create secret generic github-token \
+            --namespace "${RUNNER_NAMESPACE}" \
+            --from-literal=github_app_id="${GITHUB_APP_ID}" \
+            --from-literal=github_app_installation_id="${GITHUB_APP_INSTALLATION_ID}" \
+            --from-file=github_app_private_key="${GITHUB_APP_PRIVATE_KEY_FILE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+    else
+        kubectl create secret generic github-token \
+            --namespace "${RUNNER_NAMESPACE}" \
+            --from-literal=github_token="${GITHUB_TOKEN}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+    fi
     unset GITHUB_TOKEN
 }
 
@@ -539,6 +572,7 @@ install_runner_scale_set() {
     log "Installing or updating ARC runner scale set"
     helm upgrade --install "${RUNNER_RELEASE}" \
         oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+        --version "${ARC_CHART_VERSION}" \
         --namespace "${RUNNER_NAMESPACE}" \
         --create-namespace \
         -f "${values_file}" \
@@ -567,7 +601,6 @@ main() {
     wait_for_kubernetes
     detect_node_name
     detect_capacity_defaults
-    prepare_cache_dirs
     configure_docker_command
     build_and_import_image
     install_arc_controller

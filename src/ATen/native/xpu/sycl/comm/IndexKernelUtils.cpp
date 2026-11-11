@@ -9,6 +9,8 @@
  */
 
 #include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
+#include <ATen/xpu/XPUContext.h>
+#include <comm/Macros.h>
 
 namespace at::native::xpu {
 
@@ -19,8 +21,8 @@ struct VectorizedGatherKernel {
     if (allow_neg_indices_) {
       ind = (ind < 0) ? ind + ind_dim_size_ : ind;
     }
-    SYCL_KERNEL_ASSERT(
-        ind >= 0 && ind < ind_dim_size_ &&
+    XPU_KERNEL_ASSERT_WORKAROUND(
+        ind >= 0 && ind < ind_dim_size_,
         "vectorized gather kernel index out of bounds");
     int32_t off =
         (item.get_local_range(1) * item.get_group(0) + item.get_local_id(1)) *
@@ -76,7 +78,8 @@ void vectorized_gather_kernel_launch(
     int64_t inp_stride_bytes,
     int64_t out_stride_bytes,
     bool allow_neg_indices) {
-  int64_t max_num_threads = syclMaxWorkItemsPerSubSlice();
+  int64_t max_num_threads = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   auto num_threads = at::round_up(
       at::ceil_div(slice_size_in_bytes, Alignment), static_cast<int64_t>(SIMD));
   auto wg_size = std::min(max_num_threads, num_threads);

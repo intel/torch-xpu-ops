@@ -13,6 +13,8 @@
 #include <ATen/native/TensorIterator.h>
 
 namespace at {
+struct PhiloxXpuState;
+
 namespace native {
 namespace xpu {
 
@@ -28,6 +30,11 @@ TORCH_XPU_API std::tuple<Tensor, Tensor> fused_dropout_kernel(
     const Tensor& self,
     double p,
     const std::optional<Generator>& gen_);
+
+TORCH_XPU_API Tensor mem_eff_attention_dropout_mask_kernel(
+    const Tensor& self,
+    double dropout_p,
+    PhiloxXpuState philox_state);
 
 TORCH_XPU_API Tensor
 masked_scale_kernel(const Tensor& self, const Tensor& mask, double scale);
