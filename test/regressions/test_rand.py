@@ -49,7 +49,7 @@ class TestNNMethod(TestCase):
 class TestNullaryDistribution(TestCase):
     # Contiguous, aligned fp32/fp16/bf16 outputs take the vectorized nullary
     # kernel (4 outputs per Philox block per work-item); non-contiguous or
-    # misaligned outputs take the strided kernel.
+    # misaligned outputs take the strided kernel with the same mapping.
 
     def _assert_standard_normal(self, x):
         x = x.float().cpu()
@@ -104,6 +104,28 @@ class TestNullaryDistribution(TestCase):
         b = torch.empty(numel, device=xpu_device).normal_()
         rows = torch.cat([a, b]).view(-1, 4).cpu()
         self.assertEqual(torch.unique(rows, dim=0).shape[0], rows.shape[0])
+
+    @parametrize("numel", [7, 231, 640001, 1 << 22])
+    @parametrize("dtype", [torch.float, torch.half, torch.bfloat16])
+    @parametrize("op", ["normal", "uniform", "exponential", "random_wide"])
+    def test_vectorized_matches_strided(self, numel, dtype, op):
+        # Same seed must give the same values on the vectorized (contiguous)
+        # and strided (non-contiguous) paths, as upstream OpInfo tests assume.
+        if op == "random_wide" and dtype == torch.half:
+            self.skipTest("2**30 is out of range for float16")
+
+        def draw(x):
+            torch.manual_seed(7)
+            if op == "random_wide":
+                # A range >= 2^28 takes the unroll_factor == 2 instantiation.
+                x.random_(0, 2**30)
+            else:
+                getattr(x, op + "_")()
+            return x
+
+        contig = draw(torch.empty(numel, dtype=dtype, device=xpu_device))
+        strided = draw(torch.empty(numel, 2, dtype=dtype, device=xpu_device)[:, 0])
+        self.assertEqual(contig, strided, atol=0, rtol=0)
 
     @parametrize("start", [0, 1])
     @parametrize("numel", [7, 231, 640001])
