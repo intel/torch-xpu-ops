@@ -47,7 +47,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 - If modifying `_linux_build.yml` or build-related actions/scripts → keep linux-build running, disable others: `disable_ut,disable_e2e,disable_distributed,disable_win`
 - If modifying `_linux_ut.yml` or UT-related actions/scripts → keep linux-ut running: `disable_e2e,disable_distributed,disable_win`
 - If modifying `_linux_e2e.yml` or e2e-related actions/scripts → keep linux-e2e running: `disable_ut,disable_distributed,disable_win`
-- If modifying `_windows_*.yml` → keep windows jobs running, add `windows_ci`: `disable_ut,disable_e2e,disable_distributed`
+- If modifying `_windows_*.yml` or `.github/actions/windows-*` → keep windows jobs running, add `windows_ci`: `disable_ut,disable_e2e,disable_distributed`
 - If modifying `pull.yml` only (trigger/condition/concurrency changes) → `disable_all`
 - If modifying only non-functional workflows (`auto_label.yml`, `auto_merge_by_comment.yml`, `issue_operator.yml`, `bot.yml`) or bot scripts (`.github/scripts/bot_*.py`) → `disable_all`
 - If modifying MULTIPLE workflow areas or unclear scope → run full CI: `none`

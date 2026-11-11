@@ -18,7 +18,7 @@ on:
       python:
         type: string
         default: ''
-        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
       suite:
         type: string
         default: 'huggingface'
@@ -88,94 +88,31 @@ jobs:
           rm -rf ${{ github.workspace }}/pytorch/inductor_log
 
       # CICD launch
-      - name: CICD Huggingface BF16 & FP16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'huggingface') }}
+      - name: CICD Test (p0)
+        if: ${{ contains(github.event_name, 'pull_request') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: huggingface
-          dt: bfloat16,float16
-          mode: training
+          suite: ${{ inputs.suite }}
           scenario: ${{ inputs.scenario }}
-      - name: CICD Timm_models BF16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: timm_models
-          dt: bfloat16
-          mode: training
-          scenario: ${{ inputs.scenario }}
-      - name: CICD Torchbench BF16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: torchbench
-          dt: bfloat16
-          mode: training
-          scenario: ${{ inputs.scenario }}
+          test_scope: p0
 
       # Nihglty launch
-      - name: Nightly Huggingface Full Test
-        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'huggingface') }}
+      - name: Nightly Test (p0, p1)
+        if: ${{ contains(inputs.test_type, 'nightly') && (contains(inputs.suite, 'huggingface') || contains(inputs.suite, 'timm_models') || contains(inputs.suite, 'torchbench')) }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: huggingface
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
+          suite: ${{ inputs.suite }}
           scenario: ${{ inputs.scenario }}
-      - name: Nightly Timm_models FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: timm_models
-          dt: float16,bfloat16
-          mode: training
-          scenario: ${{ inputs.scenario }}
-      - name: Nightly Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: torchbench
-          dt: float16,bfloat16
-          mode: training
-          scenario: ${{ inputs.scenario }}
-      - name: Nightly PT2E Full Test
-        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
-        uses: ./.github/actions/pt2e
-        with:
-          dt: float32,int8
-          scenario: ${{ inputs.scenario }}
+          test_scope: p0,p1
 
       # Weekly launch
-      - name: Weekly Huggingface Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'huggingface') }}
+      - name: Weekly Test (full)
+        if: ${{ contains(inputs.test_type, 'weekly') && (contains(inputs.suite, 'huggingface') || contains(inputs.suite, 'timm_models') || contains(inputs.suite, 'torchbench')) }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: huggingface
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
+          suite: ${{ inputs.suite }}
           scenario: ${{ inputs.scenario }}
-      - name: Weekly Timm_models Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: timm_models
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
-          scenario: ${{ inputs.scenario }}
-      - name: Weekly Torchbench Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: torchbench
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
-          scenario: ${{ inputs.scenario }}
-      - name: Weekly PT2E Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
-        uses: ./.github/actions/pt2e
-        with:
-          dt: float32,int8
-          scenario: ${{ inputs.scenario }}
+          test_scope: full
 
       # On-demand launch
       - name: Get test data types
@@ -187,30 +124,15 @@ jobs:
                   sed -E 's/,(bfloat16|float16|amp_bf16|amp_fp16)//g;s/(bfloat16|float16|amp_bf16|amp_fp16),//g')"
           echo "e2e_dtypes=${e2e_dtypes}" >> ${GITHUB_OUTPUT}
           echo "pt2e_dtypes=${pt2e_dtypes}" >> ${GITHUB_OUTPUT}
-      - name: OnDemand Test (huggingface)
-        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'huggingface') }}
+      - name: OnDemand Test (filtered from full)
+        if: ${{ contains(inputs.test_type, 'ondemand') && (contains(inputs.suite, 'huggingface') || contains(inputs.suite, 'timm_models') || contains(inputs.suite, 'torchbench')) }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: huggingface
+          suite: ${{ inputs.suite }}
           dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-      - name: OnDemand Test (timm_models)
-        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'timm_models') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: timm_models
-          dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
-          mode: ${{ inputs.mode }}
-          scenario: ${{ inputs.scenario }}
-      - name: OnDemand Test (torchbench)
-        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'torchbench') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: torchbench
-          dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
-          mode: ${{ inputs.mode }}
-          scenario: ${{ inputs.scenario }}
+          test_scope: full
       - name: OnDemand PT2E Test (pt2e)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
@@ -218,23 +140,14 @@ jobs:
           dt: ${{ steps.dtypes.outputs.pt2e_dtypes }}
           scenario: ${{ inputs.scenario }}
 
-      # Acceptance test launch (fixed scope: training amp_fp16 + inference bfloat16, accuracy+performance)
-      - name: Acceptance Test - training (${{ inputs.suite }})
+      # Acceptance test launch
+      - name: Acceptance Test (p0, ${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}
-          dt: amp_fp16
-          mode: training
           scenario: ${{ inputs.scenario }}
-      - name: Acceptance Test - inference (${{ inputs.suite }})
-        if: ${{ contains(inputs.test_type, 'acceptance') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          suite: ${{ inputs.suite }}
-          dt: bfloat16
-          mode: inference
-          scenario: ${{ inputs.scenario }}
+          test_scope: p0
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}
