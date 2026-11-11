@@ -197,12 +197,14 @@ runs:
       run: |
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
-        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" inductor non-inductor profiling \
+        run_status=0
+        python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" inductor non-inductor profiling \
           2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
-          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
+          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || run_status=$?
         find . -name "xpu_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
+        exit "${run_status}"
 
     - name: xpu_p0_distributed
       shell: timeout 72000 bash -xe -o pipefail {0}
@@ -216,12 +218,14 @@ runs:
       run: |
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
-        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" distributed \
+        run_status=0
+        python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" distributed \
           2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
-          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
+          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || run_status=$?
         find . -name "xpu_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
+        exit "${run_status}"
 
     - name: upstream_ut
       shell: timeout 172800 bash -e -o pipefail {0}

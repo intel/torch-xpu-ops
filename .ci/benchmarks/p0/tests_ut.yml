@@ -1,0 +1,241 @@
+# Copyright 2020-2026 Intel Corporation
+# Licensed under the Apache License, Version 2.0
+#
+# P0 scope and known failures, shared by all platforms.
+# Paths are relative to the selected repository root. runner defaults to pytest.
+# {} runs the file without deselections; removing the file removes it from P0.
+# Class::test_case entries under skip use pytest deselection semantics.
+groups:
+  inductor:
+    pytorch:
+      test/inductor/test_aot_inductor.py:
+        skip:
+          - "AOTInductorTestDualWrapper::test_update_user_managed_buffer_xpu"
+          - "AOTInductorTestABICompatibleGpu::test_update_user_managed_buffer_xpu"
+          # https://github.com/intel/torch-xpu-ops/issues/6116 (intermittent 2.15 release-wheel P0 failures; independent causes)
+          - "AOTInductorTestABICompatibleGpu::test_aoti_debug_printer_codegen_xpu"
+      test/inductor/test_aot_inductor_package.py:
+        skip:
+          - "TestAOTInductorPackageCpp_cpu::test_compile_with_exporter"
+          - "TestAOTInductorPackageCpp_cpu::test_compile_with_exporter_weights"
+          - "TestAOTInductorPackageCpp_xpu::test_compile_with_exporter"
+          - "TestAOTInductorPackageCpp_xpu::test_compile_with_exporter_weights"
+          - "TestAOTInductorPackageCpp_cpu::test_compile_after_package"
+          - "TestAOTInductorPackageCpp_cpu::test_compile_after_package_static"
+          - "TestAOTInductorPackageCpp_cpu::test_compile_standalone_cos"
+          - "TestAOTInductorPackageCpp_xpu::test_compile_after_package_static"
+          - "TestAOTInductorPackageCpp_xpu::test_compile_standalone_cos"
+          - "TestAOTInductorPackageCpp_xpu::test_compile_after_package"
+          - "TestAOTInductorPackageCpp_xpu::test_compile_after_package_multi_arch"
+          # https://github.com/intel/torch-xpu-ops/issues/6013 (subprocess import failure)
+          - "TestAOTInductorPackage_cpu::test_custom_output_type_missing_pytree_registration_error"
+      test/inductor/test_kernel_benchmark.py: {}
+      test/inductor/test_mkldnn_pattern_matcher.py:
+        skip:
+          # https://github.com/intel/torch-xpu-ops/issues/6012 (CPU accuracy)
+          - "TestPatternMatcherGenericCPU::test_conv2d_binary_broadcast_shapes_cpu"
+          - "TestPatternMatcherGenericCPU::test_conv3d_binary_broadcast_shapes_cpu"
+      test/inductor/test_torchinductor.py:
+        skip:
+          - "GPUTests::test_topk_xpu"
+          # Additional failures observed in the 2.15 BMG CI run 40892572474.
+          # https://github.com/intel/torch-xpu-ops/issues/5860
+          - "TritonCodeGenTests::test_indirect_device_assert"
+      test/inductor/test_torchinductor_opinfo.py:
+        skip:
+          - "TestInductorOpInfoXPU::test_comprehensive_combinations_xpu_float16"
+          - "TestInductorOpInfoXPU::test_comprehensive_nn_functional_max_pool3d_xpu_float32"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_float32"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_int32"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_int64"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_int32"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_int64"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_float16"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_float16"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_float32"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool2d_cpu_float64"
+          - "TestInductorOpInfoXPU::test_comprehensive_nn_functional_max_pool3d_xpu_float64"
+          - "TestInductorOpInfoCPU::test_comprehensive_nn_functional_max_pool3d_cpu_float64"
+          # https://github.com/intel/torch-xpu-ops/issues/5860
+          - "TestInductorOpInfoXPU::test_comprehensive_nn_functional_interpolate_bicubic_xpu_float16"
+          # https://github.com/intel/torch-xpu-ops/issues/6011
+          - "TestInductorNextafterXPU::test_nextafter_noncontiguous_False_xpu_float32"
+          - "TestInductorNextafterXPU::test_nextafter_noncontiguous_False_xpu_float64"
+          - "TestInductorNextafterXPU::test_nextafter_noncontiguous_True_xpu_float32"
+          - "TestInductorNextafterXPU::test_nextafter_noncontiguous_True_xpu_float64"
+      test/inductor/test_triton_heuristics.py: {}
+      test/inductor/test_triton_kernels.py: {}
+      test/inductor/test_triton_syntax.py: {}
+      test/inductor/test_triton_wrapper.py: {}
+
+  non-inductor:
+    pytorch:
+      test/test_view_ops.py: {}
+      test/xpu/test_conv.py: {}
+      test/xpu/test_fusion.py: {}
+      test/xpu/test_gemm.py: {}
+    xpu_ops:
+      test/xpu/test_binary_ufuncs_xpu.py: {}
+      test/xpu/test_masked_xpu.py: {}
+      test/xpu/test_ops_xpu.py:
+        skip:
+          - "TestFakeTensorXPU::test_fake_crossref_backward_amp_torch_ops_aten__efficient_attention_forward_xpu_float32"
+          - "TestCommonXPU::test_out_ormqr_xpu_float32"
+          - "TestCommonXPU::test_noncontiguous_samples_histogramdd_xpu_float32"
+          - "TestCompositeComplianceXPU::test_view_replay_histogramdd_xpu_float32"
+          - "TestCommonXPU::test_compare_cpu_topk_xpu_float32"
+          - "TestCompositeComplianceXPU::test_cow_input_nn_functional_conv1d_xpu_float32"
+          - "TestCompositeComplianceXPU::test_cow_input_nn_functional_conv2d_xpu_float32"
+          - "TestCompositeComplianceXPU::test_cow_input_nn_functional_conv3d_xpu_float32"
+          - "TestCompositeComplianceXPU::test_cow_input_nn_functional_conv_transpose1d_xpu_float32"
+          - "TestCompositeComplianceXPU::test_cow_input_nn_functional_conv_transpose2d_xpu_float32"
+          - "TestCompositeComplianceXPU::test_cow_input_nn_functional_conv_transpose3d_xpu_float32"
+          - "TestCompositeComplianceXPU::test_view_replay_torch_ops_aten__efficient_attention_forward_xpu_float32"
+          - "TestCommonXPU::test_out_torch_ops_aten__efficient_attention_forward_xpu_float32"
+          - "TestCommonXPU::test_out_torch_ops_aten__flash_attention_forward_xpu_float16"
+          - "TestCommonXPU::test_variant_consistency_eager_histogramdd_xpu_float32"
+          - "TestCommonXPU::test_out_triangular_solve_xpu_float32"
+          - "TestCompositeComplianceXPU::test_cow_input_torch_ops_aten__efficient_attention_forward_xpu_float32"
+          - "TestMathBitsXPU::test_neg_view_histogramdd_xpu_float64"
+          - "TestCommonXPU::test_out_warning_histogramdd_xpu"
+          - "TestCommonXPU::test_variant_consistency_eager_torch_ops_aten__efficient_attention_forward_xpu_float32"
+          - "TestCommonXPU::test_out_warning_torch_ops_aten__efficient_attention_forward_xpu"
+          - "TestCommonXPU::test_out_warning_torch_ops_aten__flash_attention_forward_xpu"
+          - "TestCommonXPU::test_python_ref__refs_true_divide_xpu_complex32"
+          - "TestCommonXPU::test_out_cholesky_inverse_xpu_float32"
+          - "TestCommonXPU::test_out_geqrf_xpu_float32"
+          - "TestCommonXPU::test_out_histogramdd_xpu_float32"
+          - "TestFakeTensorXPU::test_fake_crossref_backward_no_amp_torch_ops_aten__efficient_attention_forward_xpu_float32"
+          - "TestCompositeComplianceXPU::test_operator_histogramdd_xpu_float32"
+          - "TestCommonXPU::test_dtypes_histogramdd_xpu"
+          - "TestCommonXPU::test_dtypes_torch_ops_aten__efficient_attention_forward_xpu"
+          - "TestCommonXPU::test_dtypes_torch_ops_aten__flash_attention_forward_xpu"
+          # https://github.com/intel/torch-xpu-ops/issues/5452 (feature: #5542)
+          - "TestCompositeComplianceXPU::test_cow_input_nn_functional_grid_sample_xpu_float32"
+          - "TestCompositeComplianceXPU::test_forward_ad_nn_functional_grid_sample_xpu_float32"
+          # https://github.com/intel/torch-xpu-ops/issues/5847 (closed; failure in this wheel)
+          - "TestCommonXPU::test_out_histc_xpu_float32"
+          # https://github.com/intel/torch-xpu-ops/issues/5453 (unexpected success)
+          - "TestCommonXPU::test_numpy_ref_linalg_tensorinv_xpu_float64"
+          # https://github.com/intel/torch-xpu-ops/issues/6116 (intermittent conv3d backward tolerance failure; recurrence of closed #5953)
+          - "TestCompositeComplianceXPU::test_backward_nn_functional_conv3d_xpu_float32"
+      test/xpu/test_optim_xpu.py:
+        skip:
+          - "TestOptimRenewedXPU::test_state_dict_with_cuda_params_Muon_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_hook_skips_existing_state_amsgrad_True_Adam_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_numerics_AdamW_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_numerics_Adam_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_hook_skips_existing_state_amsgrad_False_AdamW_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_hook_skips_existing_state_amsgrad_False_Adam_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_hook_skips_existing_state_amsgrad_True_AdamW_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_False_AdamW_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_False_Adam_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_True_AdamW_xpu_float32"
+          - "TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_True_Adam_xpu_float32"
+          - "TestOptimRenewedXPU::test_state_dict_cross_device_Muon_xpu_float32"
+      test/xpu/test_shape_ops_xpu.py:
+        skip:
+          - "TestShapeOpsXPU::test_flip_xpu_float32"
+      test/xpu/test_unary_ufuncs_xpu.py:
+        skip:
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_tan_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_tanh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal_acosh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal_asin_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal_asinh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal_asinh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal_round_decimals_3_xpu_bfloat16"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal_tan_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal_tanh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_large__refs_acosh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_large__refs_asinh_xpu_complex128"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_large__refs_asinh_xpu_complex32"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_large__refs_asinh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal__refs_asinh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal_polygamma_polygamma_n_1_xpu_float16"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal_polygamma_polygamma_n_2_xpu_float16"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal_polygamma_polygamma_n_3_xpu_float16"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal_polygamma_polygamma_n_4_xpu_float16"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_acos_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_acosh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_asin_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal_round_decimals_3_xpu_bfloat16"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_asinh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_large_acosh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_large_asinh_xpu_complex128"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_large_asinh_xpu_complex32"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_large_asinh_xpu_complex64"
+          - "TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64"
+
+  profiling:
+    pytorch:
+      test/profiler/test_cpp_thread.py: {}
+      test/profiler/test_execution_trace.py: {}
+      test/profiler/test_memory_profiler.py: {}
+      test/profiler/test_profiler_tree.py:
+        skip:
+          - "TestProfilerTree::test_profiler_experimental_tree_with_stack_and_torch_dispatch"
+          - "TestProfilerTree::test_profiler_experimental_tree_with_stack_and_torch_function"
+          - "TestProfilerTree::test_profiler_experimental_tree_with_stack_and_modules"
+    xpu_ops:
+      test/profiling/correlation_id_mixed.py:
+        runner: python
+      test/profiling/profile_partial_runtime_ops.py:
+        runner: python
+      test/profiling/reproducer.missing.gpu.kernel.time.py:
+        runner: python
+      test/profiling/time_precision_in_profile.py:
+        runner: python
+      test/profiling/triton_xpu_ops_time.py:
+        runner: python
+      test/profiling/rn50.py:
+        runner: python
+      test/profiling/llama.py:
+        runner: python
+
+  distributed:
+    pytorch:
+      test/distributed/_composable/fsdp/test_fully_shard_state_dict.py: {}
+      test/distributed/_composable/fsdp/test_fully_shard_frozen.py: {}
+      test/distributed/_composable/test_checkpoint.py: {}
+      test/distributed/_composable/test_contract.py: {}
+      test/distributed/_tools/test_fsdp2_mem_tracker.py: {}
+      test/distributed/_tools/test_mem_tracker.py: {}
+      test/distributed/_tools/test_memory_tracker.py: {}
+      test/distributed/fsdp/test_fsdp_apply.py: {}
+      test/distributed/fsdp/test_fsdp_checkpoint.py: {}
+      test/distributed/fsdp/test_fsdp_clip_grad_norm.py: {}
+      test/distributed/fsdp/test_fsdp_comm.py: {}
+      test/distributed/fsdp/test_fsdp_comm_hooks.py: {}
+      test/distributed/fsdp/test_fsdp_exec_order.py: {}
+      test/distributed/fsdp/test_fsdp_fine_tune.py: {}
+      test/distributed/fsdp/test_fsdp_flatten_params.py: {}
+      test/distributed/fsdp/test_fsdp_fx.py: {}
+      test/distributed/fsdp/test_fsdp_input.py: {}
+      test/distributed/fsdp/test_fsdp_misc.py:
+        skip:
+          - "TestFSDPMiscWorldSize1::test_training_device_mismatch_errors"
+      test/distributed/fsdp/test_fsdp_multiple_forward.py: {}
+      test/distributed/fsdp/test_fsdp_multiple_wrapping.py: {}
+      test/distributed/fsdp/test_fsdp_sharded_grad_scaler.py: {}
+      test/distributed/fsdp/test_fsdp_uneven.py: {}
+      test/distributed/fsdp/test_fsdp_unshard_params.py: {}
+      test/distributed/fsdp/test_utils.py: {}
+      test/distributed/fsdp/test_wrap.py: {}
+      test/distributed/pipelining/test_backward.py: {}
+      test/distributed/pipelining/test_microbatch.py: {}
+      test/distributed/tensor/test_math_ops.py: {}
+      test/distributed/test_functional_api.py: {}
+    xpu_ops:
+      test/xpu/distributed/test_c10d_ops_xccl.py: {}
+      test/xpu/distributed/test_c10d_xccl.py:
+        skip:
+          - "ProcessGroupXCCLTest::test_nan_assert_float64"
+          - "ProcessGroupXCCLTest::test_nan_assert_float16"
+          - "ProcessGroupXCCLTest::test_nan_assert_float8_e5m2"
+          - "ProcessGroupXCCLTest::test_nan_assert_float32"
+          - "ProcessGroupXCCLTest::test_nan_assert_bfloat16"
+          - "ProcessGroupXCCLTest::test_nan_assert_float8_e4m3fn"
