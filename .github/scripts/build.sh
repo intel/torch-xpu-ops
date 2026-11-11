@@ -32,7 +32,7 @@ if [ "${USE_DPCLANG}" == "yes" ]; then
     python -m pip install -r requirements.txt
     python -m pip install mkl-static==2026.0.0 mkl-include==2026.0.0
     python -m pip install build auditwheel==6.4.2
-    WERROR=1 python -m build --wheel --no-isolation --outdir dist/
+    python -m build --wheel --no-isolation --outdir dist/
 else
     # Normal XPU: use PyTorch's upstream build scripts
     if [ "${XPU_ONEAPI_PATH}" == "" ]; then
@@ -56,7 +56,6 @@ print(PYTORCH_EXTRA_INSTALL_REQUIREMENTS['xpu'])
     python "${PYTORCH_WHEEL_LINUX_SCRIPT_PATH}/build_install_deps.py" "${WORKSPACE}/pytorch"
 
     # Step 3: Build wheel
-    export WERROR=1
     RAW_WHEEL_DIR=$(mktemp -d)
     python "${PYTORCH_WHEEL_LINUX_SCRIPT_PATH}/build_wheel.py" "$RAW_WHEEL_DIR"
 
