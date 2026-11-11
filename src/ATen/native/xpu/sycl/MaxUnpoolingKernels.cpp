@@ -38,7 +38,7 @@ void max_unpooling_2d_forward_kernel_impl(
     scalar_t* output_data) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int64_t outputImageSize = outputHeight * outputWidth;
-  XPU_KERNEL_LOOP(item, linearIndex, numInputElements) {
+  XPU_KERNEL_LOOP_INDEX(item, linearIndex, numInputElements, index_t) {
     int c = is_channels_last
         ? linearIndex % numChannels
         : (linearIndex / inputWidth / inputHeight) % numChannels;
@@ -131,6 +131,11 @@ Tensor& max_unpooling2d_forward_kernel(
 
   auto count = self.numel();
   if (count != 0 && oheight != 0 && owidth != 0) {
+    int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
+        at::xpu::getDeviceEUCountPerXeCore();
+    int64_t num_groups = xpuKernelLoopGroupRange(count, group_size);
+    bool use_32bit_index = at::native::canUse32BitIndexMath(output, INT_MAX) &&
+        xpuKernelLoopFitsIndex<int>(count, num_groups * group_size);
     AT_DISPATCH_ALL_TYPES_AND2(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
@@ -138,16 +143,10 @@ Tensor& max_unpooling2d_forward_kernel(
         "max_unpooling2d_forward_xpu",
         ([&] {
           AT_DISPATCH_INDEX_TYPES(
-              at::native::canUse32BitIndexMath(output, INT_MAX)
-                  ? ScalarType::Int
-                  : ScalarType::Long,
+              use_32bit_index ? ScalarType::Int : ScalarType::Long,
               "max_unpooling2d_forward_xpu",
               [&] {
                 if (is_channels_last(memory_format)) {
-                  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
-                      at::xpu::getDeviceEUCountPerXeCore();
-                  int64_t num_groups =
-                      xpuKernelLoopGroupRange(count, group_size);
                   sycl_kernel_submit<max_unpooling_2d_forward_kernel_impl<
                       scalar_t,
                       index_t,
@@ -166,11 +165,6 @@ Tensor& max_unpooling2d_forward_kernel(
                       owidth,
                       output.mutable_data_ptr<scalar_t>());
                 } else {
-                  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
-                      at::xpu::getDeviceEUCountPerXeCore();
-                  int64_t num_groups =
-                      xpuKernelLoopGroupRange(count, group_size);
-
                   sycl_kernel_submit<max_unpooling_2d_forward_kernel_impl<
                       scalar_t,
                       index_t,
