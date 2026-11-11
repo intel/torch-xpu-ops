@@ -11,6 +11,14 @@ on:
         type: string
         default: ''
         description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
+      suites:
+        type: string
+        default: ''
+        description: Suites expected to have run accuracy (JSON list or comma separated). Any without a complete result fails the check
+      driver:
+        type: string
+        default: 'rolling'
+        description: Reference CSV directory under .github/ci_expected_accuracy, rolling or lts
 
 permissions:
   contents: read
@@ -49,6 +57,11 @@ jobs:
           gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "Inductor-*-XPU-E2E-*"
           find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
                   while read line; do rsync -az $line/ $(basename $line)/; done
+          # Every artifact has its own run_e2e.log at its root; keep them apart for the completeness check
+          mkdir -p run_e2e
+          for log in Inductor-*-XPU-E2E-*/run_e2e.log; do
+            [ -f "${log}" ] && cp "${log}" "run_e2e/$(dirname ${log}).log"
+          done
           rm -rf Inductor-*-XPU-E2E-* || true
       - name: Download Baseline Artifact
         run: |
@@ -70,13 +83,16 @@ jobs:
       - name: Get summary
         id: summary
         if: ${{ ! cancelled() }}
+        env:
+          E2E_SUITES: ${{ inputs.suites }}
+          E2E_DRIVER: ${{ inputs.driver }}
         run: |
           acc_failed=0
           e2e_result=0
           e2e_summary_csv="$(find ./target/ -name "inductor-*.csv" |head -n 1)"
-          if [ -f "${e2e_summary_csv}" ];then
+          if [ -f "${e2e_summary_csv}" ] || [ -n "${E2E_SUITES}" ];then
             bash -e ./.github/scripts/e2e_summary.sh ./target ./baseline
-            if [ -e e2e-test-result.html ];then
+            if [ -e e2e-test-result.html ] && [ -f "${e2e_summary_csv}" ];then
               cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
               e2e_result=1
             fi
@@ -117,6 +133,15 @@ jobs:
       - name: Result check
         if: ${{ ! cancelled() }}
         run: |
+          # Not judged is not green: a crashed summary or an incomplete suite fails the check
+          if [ "${{ steps.summary.outcome }}" != "success" ];then
+            echo "::error::Accuracy not judged: the summary step failed"
+            exit 1
+          fi
+          if [ -s e2e-incomplete.txt ];then
+            sed 's/^/::error::Accuracy not judged: /' e2e-incomplete.txt
+            exit 1
+          fi
           if [ ${acc_failed} -ne 0 ];then
             grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
             echo "🔴 Accuracy regression, please check!"
