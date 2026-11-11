@@ -47,7 +47,6 @@ TORCH_IMPL_FUNC(upsample_nearest2d_backward_out_xpu)
  std::optional<double> scales_h,
  std::optional<double> scales_w,
  const Tensor& grad_input) {
-  grad_input.zero_();
   xpu::upsample_nearest2d_backward_kernel(
       grad_input,
       grad_output,
@@ -65,7 +64,6 @@ TORCH_IMPL_FUNC(_upsample_nearest_exact2d_backward_out_xpu)
  std::optional<double> scales_h,
  std::optional<double> scales_w,
  const Tensor& grad_input) {
-  grad_input.zero_();
   xpu::upsample_nearest2d_backward_kernel(
       grad_input,
       grad_output,
