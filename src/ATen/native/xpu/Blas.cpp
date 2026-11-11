@@ -449,6 +449,15 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
     return at::_efficientzerotensor({}, self.options());
   }
 
+  // oneMKL BLAS has no integral dot, while CPU dot covers every integral
+  // type. Reducing the elementwise products in the wider accumulator and
+  // truncating back to scalar_t is congruent mod 2^N with the CPU loop,
+  // which accumulates in opmath_type (identity for integers), so XPU and
+  // CPU agree exactly.
+  if (at::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.mul(other).sum(self.scalar_type());
+  }
+
 #if defined(USE_ONEMKL_XPU)
   return at::native::xpu::dot_xpu_mkl(self, other);
 #else
