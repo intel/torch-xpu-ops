@@ -177,6 +177,53 @@ void prod_kernel(TensorIterator& iter) {
   reduce_dispatch<prod_functor>(iter, general_dispatcher);
 }
 
+// XOR reduction used by hash_tensor (mode=0, XOR_SUM).
+// The accumulator is uint64_t for integral/bool inputs, and double for
+// floating point inputs (where the XOR is performed on the bit pattern).
+struct XorSumOps {
+  inline uint64_t operator()(uint64_t a, uint64_t b) const {
+    return a ^ b;
+  }
+};
+
+// Named functor (not a lambda): torch-xpu-ops builds with
+// -fno-sycl-unnamed-lambda.
+struct XorSumDoubleOps {
+  inline double operator()(double a, double b) const {
+    union {
+      double d;
+      uint64_t u;
+    } a_converter, b_converter, result_converter;
+
+    a_converter.d = a;
+    b_converter.d = b;
+    result_converter.u = a_converter.u ^ b_converter.u;
+    // return a double, otherwise uint64_t will be cast to double
+    // when accumulating and the result will be wrong
+    return result_converter.d;
+  }
+};
+
+void xor_sum_kernel(TensorIterator& iter) {
+  // Use iter.dtype(1) to dispatch based on the type of the input tensor
+  AT_DISPATCH_ALL_TYPES_AND3(
+      kBFloat16, kHalf, kBool, iter.dtype(1), "xor_sum_xpu", [&]() {
+        if constexpr (std::is_same_v<scalar_t, bool>) {
+          gpu_reduce_kernel<bool, uint64_t>(
+              iter, func_wrapper<uint64_t>(XorSumOps()));
+        } else if constexpr (std::is_integral_v<scalar_t>) {
+          gpu_reduce_kernel<scalar_t, uint64_t>(
+              iter, func_wrapper<uint64_t>(XorSumOps()));
+        } else {
+          // Floating point inputs are hashed via their bit pattern.
+          // The input value is implicitly upcast to double, then bit-cast to
+          // uint64_t before XORing.
+          gpu_reduce_kernel<scalar_t, double>(
+              iter, func_wrapper<double>(XorSumDoubleOps()));
+        }
+      });
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at

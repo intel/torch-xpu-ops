@@ -30,6 +30,8 @@ TORCH_XPU_API void prod_kernel(TensorIterator& iter);
 
 TORCH_XPU_API void nansum_kernel(TensorIterator& iter);
 
+TORCH_XPU_API void xor_sum_kernel(TensorIterator& iter);
+
 TORCH_XPU_API void std_var_kernel(
     TensorIterator& iter,
     double correction,
