@@ -28,16 +28,28 @@ with open(sys.argv[1], encoding="utf-8") as f:
 
 if not isinstance(config, dict) or set(config) != {"pytest_deselects"}:
     sys.exit("ERROR: P0 skip config must contain only pytest_deselects")
-nodes = config["pytest_deselects"]
-if not isinstance(nodes, list):
-    sys.exit("ERROR: pytest_deselects must be a list")
-for node in nodes:
+files = config["pytest_deselects"]
+if not isinstance(files, dict):
+    sys.exit("ERROR: pytest_deselects must map test files to case lists")
+nodes = []
+for test_file, cases in files.items():
     if (
-        not isinstance(node, str)
-        or not node.strip()
-        or any(c in node for c in "\r\n\0")
+        not isinstance(test_file, str)
+        or not test_file.endswith(".py")
+        or "::" in test_file
+        or any(c in test_file for c in "\r\n\0")
     ):
-        sys.exit(f"ERROR: Invalid P0 deselection: {node!r}")
+        sys.exit(f"ERROR: Invalid P0 test file: {test_file!r}")
+    if not isinstance(cases, list):
+        sys.exit(f"ERROR: Cases for {test_file!r} must be a list")
+    for case in cases:
+        if (
+            not isinstance(case, str)
+            or not case.strip()
+            or any(c in case for c in "\r\n\0")
+        ):
+            sys.exit(f"ERROR: Invalid P0 test case: {case!r}")
+        nodes.append(f"{test_file}::{case}")
 for node in nodes:
     print(node)
 PY

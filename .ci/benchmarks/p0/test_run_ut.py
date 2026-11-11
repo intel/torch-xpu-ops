@@ -34,11 +34,12 @@ def runner(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             "import pytest\n"
-            f"@pytest.mark.parametrize('value', [1], ids=[{_PARAMETER!r}])\n"
-            "def test_skip(value):\n"
-            "    assert False, 'configured deselection did not match'\n"
-            "def test_keep():\n"
-            "    pass\n"
+            "class TestCases:\n"
+            f"    @pytest.mark.parametrize('value', [1], ids=[{_PARAMETER!r}])\n"
+            "    def test_skip(self, value):\n"
+            "        assert False, 'configured deselection did not match'\n"
+            "    def test_keep(self):\n"
+            "        pass\n"
         )
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -74,9 +75,11 @@ def runner(tmp_path):
 
 def test_deselects_match_upstream_and_nested_tests(runner):
     script_dir, root, env = runner
-    nodes = [f"{name}::test_skip[{_PARAMETER}]" for name in _SELECTED_FILES]
+    nodes = [f"{name}::TestCases::test_skip[{_PARAMETER}]" for name in _SELECTED_FILES]
     (script_dir / "ut_skips.yaml").write_text(
-        yaml.safe_dump({"pytest_deselects": nodes})
+        yaml.safe_dump(
+            {"pytest_deselects": {name: [f"TestCases::test_skip[{_PARAMETER}]"] for name in _SELECTED_FILES}}
+        )
     )
     result = subprocess.run(
         ["bash", str(script_dir / "run_ut.sh"), "inductor", "non-inductor", "distributed"],
@@ -102,14 +105,22 @@ def test_deselects_match_upstream_and_nested_tests(runner):
         None,
         "",
         "pytest_deselects: [",
-        "other_key: []",
+        "other_key: {}",
         "pytest_deselects: null",
         "pytest_deselects: a-string",
+        "pytest_deselects: []",
         "pytest_deselects: [123]",
-        "pytest_deselects: ['']",
-        "pytest_deselects: ['   ']",
-        'pytest_deselects: ["test/a.py::test_a\\ntest/b.py::test_b"]',
-        'pytest_deselects: ["test/a.py::test_a\\0"]',
+        "pytest_deselects: {123: []}",
+        "pytest_deselects: {test/a: []}",
+        "pytest_deselects: {'test/a.py::test_a': []}",
+        'pytest_deselects: {"test/a\\n.py": []}',
+        "pytest_deselects: {test/a.py: null}",
+        "pytest_deselects: {test/a.py: a-string}",
+        "pytest_deselects: {test/a.py: [123]}",
+        "pytest_deselects: {test/a.py: ['']}",
+        "pytest_deselects: {test/a.py: ['   ']}",
+        'pytest_deselects: {test/a.py: ["test_a\\ntest_b"]}',
+        'pytest_deselects: {test/a.py: ["test_a\\0"]}',
     ],
 )
 def test_invalid_config_stops_runner(runner, content):
@@ -129,9 +140,10 @@ def test_invalid_config_stops_runner(runner, content):
     assert not Path(env["INVOCATIONS"]).exists()
 
 
-def test_empty_list_loads_as_empty_array(runner):
+@pytest.mark.parametrize("files", [{}, {"test/a.py": []}])
+def test_empty_config_loads_as_empty_array(runner, files):
     script_dir, _, env = runner
-    (script_dir / "ut_skips.yaml").write_text("pytest_deselects: []\n")
+    (script_dir / "ut_skips.yaml").write_text(yaml.safe_dump({"pytest_deselects": files}))
     result = subprocess.run(
         ["bash", str(script_dir / "run_ut.sh"), "--help"],
         cwd=script_dir.parent,
@@ -148,7 +160,7 @@ def test_empty_list_loads_as_empty_array(runner):
 
 def test_missing_yaml_dependency_stops_runner(runner):
     script_dir, _, env = runner
-    (script_dir / "ut_skips.yaml").write_text("pytest_deselects: []\n")
+    (script_dir / "ut_skips.yaml").write_text("pytest_deselects: {}\n")
     python = Path(env["PATH"].split(os.pathsep)[0]) / "python"
     python.unlink()
     python.write_text(f'#!/bin/sh\nexec "{sys.executable}" -S "$@"\n')
