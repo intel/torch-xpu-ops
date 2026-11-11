@@ -266,6 +266,8 @@ class TestCompositeCompliance(TestCase):
             skip("empty"),  # uninitialized output is not comparable
             skip("resize_"),  # "resize is not composite compliant"
             skip("resize_as_"),  # "resize_as is not composite compliant"
+            # too slow (>25 min on BMG); upstream test_ops.py skips this OpInfo
+            # for test_operator on every device (pytorch/pytorch#100153)
             skip("nn.functional.multi_head_attention_forward"),
         }
     )
@@ -309,6 +311,8 @@ class TestCompositeCompliance(TestCase):
         {
             skip("nn.functional.max_unpool2d"),
             skip("nn.functional.max_unpool3d"),
+            # too slow (>25 min on BMG); upstream test_ops.py skips this OpInfo
+            # for test_forward_ad on every device (pytorch/pytorch#184354)
             skip("nn.functional.multi_head_attention_forward"),
         }
     )

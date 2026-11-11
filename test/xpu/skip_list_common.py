@@ -420,11 +420,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
     f"{PYTORCH_TEST_DIR}/test_gpu_trace.py": None,
     f"{PYTORCH_TEST_DIR}/test_hub.py": None,
-    f"{PYTORCH_TEST_DIR}/test_indexing.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_index_add_fast_path_xpu_float64",
-    ),
+    f"{PYTORCH_TEST_DIR}/test_indexing.py": None,
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn_fusion.py": None,
