@@ -69,6 +69,13 @@ jobs:
           gh --version
           # cleanup files
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
+          rpm --import https://repositories.intel.com/gpu/intel-graphics.key
+          . /etc/os-release
+          echo "Installing online network repository for ${VERSION_ID}"
+          dnf config-manager --add-repo https://repositories.intel.com/gpu/rhel/${VERSION_ID}/intel-omix/0.5/unified/intel-gpu-${VERSION_ID}.repo
+
+          rm -rf /opt/intel/oneapi
+          dnf install -y intel-omix-devel
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
