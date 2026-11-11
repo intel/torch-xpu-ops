@@ -7,11 +7,13 @@ AOT PASS. Elapsed time is shown for reference only.
 
 Usage: python check_aot.py [N]
        N    = reference seconds (default 60)
-Exit:  0 PASS, 1 FAIL
+Exit:  0 PASS, 1 FAIL, 2 usage error
 """
 
+import atexit
 import os
 import platform
+import shutil
 import sys
 import tempfile
 import time
@@ -27,6 +29,7 @@ except ValueError:
 # NEO reads NEO_CACHE_* the same way on Linux and Windows; mkdtemp uses /tmp or %TEMP%.
 NEO_DIR = Path(tempfile.mkdtemp(prefix="check_aot_")) / "neo"
 NEO_DIR.mkdir()
+atexit.register(shutil.rmtree, NEO_DIR.parent, ignore_errors=True)
 os.environ.update({
     "NEO_CACHE_PERSISTENT": "1",
     "NEO_CACHE_DIR": str(NEO_DIR),
