@@ -257,8 +257,11 @@ def list_artifacts(run_id: int) -> list[tuple[str, bool]]:
 
 
 def pick_artifact(names: list[tuple[str, bool]], prefix: str, ut_job: str):
-    """Highest run attempt of `<prefix>-<platform>-<ut_job>-<attempt>`."""
-    pat = re.compile(rf"^{re.escape(prefix)}-[a-z]+-{re.escape(ut_job)}-(\d+)$")
+    """Highest run attempt of `<prefix>-linux-<ut_job>-<attempt>`.
+
+    Linux only: Windows UT jobs share scope names such as op_ut.
+    """
+    pat = re.compile(rf"^{re.escape(prefix)}-linux-{re.escape(ut_job)}-(\d+)$")
     best, best_attempt = None, -1
     for name, expired in names:
         m = pat.match(name)
@@ -416,7 +419,8 @@ def resolve_jobs(run_id: int) -> list[tuple[int, str, str, str]]:
 def jobs_for(jobs: list[tuple[int, str, str, str]], ut_job: str) -> list[tuple]:
     """The workflow jobs of one UT job: ones that ran before skipped ones (a
     distributed job skips its container half), then the container one first."""
-    cands = [j for j in jobs if f"({ut_job})" in j[1]]
+    cands = [j for j in jobs
+             if f"({ut_job})" in j[1] and not j[1].startswith("windows")]
     return sorted(cands, key=lambda j: (j[2] == "skipped",
                                         not j[1].endswith("test-in-container"), j[0]))
 

@@ -1,0 +1,156 @@
+name: Windows Test Environment
+description: Install oneAPI, a fresh conda env, the torch wheel and the pytorch / torch-xpu-ops sources for Windows UT
+
+inputs:
+  pytorch:
+    default: 'main'
+    description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch', or '*_wheel'
+  torch_xpu_ops:
+    default: 'main'
+    description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+  python:
+    default: ''
+    description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
+  xpu_version:
+    default: '2026.1'
+    description: XPU version
+
+runs:
+  using: composite
+  steps:
+    - name: Clean compile caches
+      shell: cmd
+      run: |
+        REM Same as linux-testenv's rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*:
+        REM the machine is reused across jobs, so caches would carry over.
+        if exist "%USERPROFILE%\.triton" rmdir /s /q "%USERPROFILE%\.triton"
+        for /d %%d in ("%TEMP%\*inductor*" "%TEMP%\tmp*") do rmdir /s /q "%%~d"
+        del /f /q "%TEMP%\tmp*" 2>nul
+        REM A file another process still holds is not worth failing the job.
+        exit /b 0
+    - name: Resolve python version
+      uses: ./.github/actions/ci-config
+      with:
+        python: ${{ inputs.python }}
+    - name: Clean old wheel artifacts
+      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
+      shell: cmd
+      run: |
+        if exist "%GITHUB_WORKSPACE%\wheel_artifact" rmdir /s /q "%GITHUB_WORKSPACE%\wheel_artifact"
+    - name: Download Torch Wheel
+      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
+      uses: actions/download-artifact@v8
+      with:
+        pattern: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-*
+        path: ${{ github.workspace }}/wheel_artifact
+    - name: Install oneAPI (for UT runtime)
+      shell: cmd
+      run: |
+        set XPU_VERSION=${{ inputs.xpu_version }}
+        call .github\scripts\install_xpu.bat
+        if errorlevel 1 exit /b 1
+    - name: Setup Python Environment
+      shell: cmd
+      run: |
+        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+        rmdir /s /q "C:\ProgramData\miniforge3\envs\windows_ut"
+        call conda clean -ay
+        call conda remove --all -y -n windows_ut
+        call conda create -n windows_ut python=%PYTHON_VERSION% -y
+        if errorlevel 1 exit /b 1
+        call conda activate windows_ut
+        REM Without this, a failed activate leaves base active and everything below lands there.
+        if /i not "%CONDA_DEFAULT_ENV%" == "windows_ut" echo ::error::conda env windows_ut is not active
+        if /i not "%CONDA_DEFAULT_ENV%" == "windows_ut" exit /b 1
+        python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist || exit /b 1
+        call conda install -y libuv
+        if errorlevel 1 exit /b 1
+        call conda install -y rust
+        if errorlevel 1 exit /b 1
+    - name: Install PyTorch Wheel
+      shell: cmd
+      run: |
+        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+        call conda activate windows_ut
+        set PYTORCH_INPUT=${{ inputs.pytorch }}
+        echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul
+        if errorlevel 1 goto :install_built
+        python -m pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu || exit /b 1
+        goto :installed
+        :install_built
+        REM A rerun of the build adds one artifact per attempt, each in its own folder;
+        REM take the latest attempt, as linux-testenv does. A lone artifact lands in the root.
+        set WHEEL_DIR=%GITHUB_WORKSPACE%\wheel_artifact
+        for /f "delims=" %%d in ('powershell -NoProfile -Command "Get-ChildItem -Directory '%WHEEL_DIR%' | Sort-Object { [int]($_.Name -split '-')[-1] } | Select-Object -Last 1 -ExpandProperty FullName"') do set "WHEEL_DIR=%%d"
+        echo Installing wheels from %WHEEL_DIR%
+        if not exist "%WHEEL_DIR%\torch-*.whl" echo ::error::no torch wheel in %WHEEL_DIR%
+        if not exist "%WHEEL_DIR%\torch-*.whl" exit /b 1
+        for %%f in ("%WHEEL_DIR%\*.whl") do python -m pip install --force-reinstall "%%f"
+        :installed
+        python -c "import torch" || exit /b 1
+    # Keep the steps below free of %VAR% reads inside ( ) blocks: cmd expands
+    # them when the block is parsed, before a set inside the block has run.
+    - name: Prepare PyTorch and torch-xpu-ops Source
+      shell: cmd
+      run: |
+        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+        call conda activate windows_ut
+        REM Test sources must match the installed torch, whether it is a nightly
+        REM wheel or the wheel windows-build made from an earlier main.
+        for /f "delims=" %%v in ('python -c "import torch; print(torch.version.git_version)"') do set TORCH_COMMIT_ID=%%v
+        if "%TORCH_COMMIT_ID%" == "" exit /b 1
+        echo Installed torch commit: %TORCH_COMMIT_ID%
+
+        set PYTORCH_INPUT=${{ inputs.pytorch }}
+        set PYTORCH_REPO=https://github.com/pytorch/pytorch.git
+        echo %PYTORCH_INPUT% | findstr /C:"https://" >nul && for /f "tokens=1 delims=@" %%a in ("%PYTORCH_INPUT%") do set "PYTORCH_REPO=%%a"
+
+        set XPU_OPS_INPUT=${{ inputs.torch_xpu_ops }}
+        set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
+        set TORCH_XPU_OPS_COMMIT=%XPU_OPS_INPUT%
+        echo %XPU_OPS_INPUT% | findstr /C:"https://" >nul && for /f "tokens=1,2 delims=@" %%a in ("%XPU_OPS_INPUT%") do (set "TORCH_XPU_OPS_REPO=%%a" & set "TORCH_XPU_OPS_COMMIT=%%b")
+        if "%TORCH_XPU_OPS_COMMIT%" == "" set TORCH_XPU_OPS_COMMIT=main
+
+        cd /d "%GITHUB_WORKSPACE%\.."
+        if exist pytorch rmdir /s /q pytorch
+        REM Some pytorch test files exceed MAX_PATH; without long paths the checkout is partial.
+        git clone -c core.longpaths=true %PYTORCH_REPO% pytorch || exit /b 1
+        cd pytorch
+        git checkout %TORCH_COMMIT_ID% || exit /b 1
+        git show -s
+
+        if /i "%TORCH_XPU_OPS_COMMIT%" == "pinned" set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
+        if /i "%TORCH_XPU_OPS_COMMIT%" == "pinned" set /p TORCH_XPU_OPS_COMMIT=<third_party\xpu.txt
+        if exist third_party\torch-xpu-ops rmdir /s /q third_party\torch-xpu-ops
+        if "%GITHUB_EVENT_NAME%" == "pull_request" goto :copy_pr
+        git clone %TORCH_XPU_OPS_REPO% third_party\torch-xpu-ops || exit /b 1
+        git -C third_party\torch-xpu-ops checkout %TORCH_XPU_OPS_COMMIT% || exit /b 1
+        goto :xpu_ops_done
+        :copy_pr
+        xcopy "%GITHUB_WORKSPACE%" third_party\torch-xpu-ops /E /H /Y /I /Q || exit /b 1
+        :xpu_ops_done
+        git -C third_party\torch-xpu-ops show -s
+
+        python -m pip install -r .ci\docker\requirements-ci.txt || exit /b 1
+        REM Leave the source tree, or `import torch` picks up pytorch\torch instead of the wheel.
+        cd /d "%TEMP%"
+        for /f "delims=" %%v in ('python -c "import torch; print(torch.version.git_version)"') do set TORCH_CHECK_ID=%%v
+        if not "%TORCH_CHECK_ID%" == "%TORCH_COMMIT_ID%" echo ::error::torch was reinstalled while installing requirements: %TORCH_CHECK_ID% != %TORCH_COMMIT_ID%
+        if not "%TORCH_CHECK_ID%" == "%TORCH_COMMIT_ID%" exit /b 1
+    - name: Install XPU worker restart pytest plugin
+      shell: cmd
+      run: |
+        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+        call conda activate windows_ut
+        REM Global pytest plugin: auto-registered via pytest11 entry point,
+        REM restarts an xdist worker on fatal XPU failures (device lost/OOM/crash).
+        python -m pip install "%GITHUB_WORKSPACE%\.github\scripts\pytest_custom_config" || exit /b 1
+    - name: Torch Config Check
+      shell: cmd
+      run: |
+        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+        call conda activate windows_ut
+        python -c "import torch; print(torch.__config__.show())"
+        python -c "import torch; print(torch.__config__.parallel_info())"
+        python -c "import torch; print(torch.xpu.device_count())"
+        python -c "import importlib.util as u; print('triton', __import__('triton').__version__ if u.find_spec('triton') else 'not installed')"
