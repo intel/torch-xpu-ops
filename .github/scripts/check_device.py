@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
 """Check an XPU CI machine: system acceptance, network and H2D/D2H bandwidth.
 
-SYS: new machine acceptance (Linux only). Intel GPU on PCI, OS version per GPU
-(BMG: Ubuntu 26.04, PVC: Ubuntu 24.04), kernel driver (BMG: xe, PVC: i915) and
-compute runtime packages, tools (xpu-smi, clinfo, lspci, ocloc), GPU visible to
-clinfo/xpu-smi, / size > 800 GB plus disk bandwidth, user jenkins with UID 1001.
+SYS  New machine acceptance (Linux only): Intel GPU on PCI, OS version and kernel
+     driver per GPU family (BMG: Ubuntu 26.04 + xe, PVC: Ubuntu 24.04 + i915),
+     compute runtime packages, tools, GPU visible to clinfo/xpu-smi, / > 800 GB
+     plus disk bandwidth, user jenkins with UID 1001.
+NET  Download speed of pytorch/pytorch git, intel/omix docker layer, torch XPU
+     wheel, Hugging Face model and torch weights, all forced through the proxy.
+BW   H2D/D2H copy bandwidth per device, pageable and pinned (reference only).
+     Uses the current Python if its torch sees XPU (probe only, never modified);
+     otherwise a temporary uv venv with torch XPU nightly, always removed.
 
-NET: download speed of pytorch/pytorch git, intel/omix docker image, torch XPU
-wheel, Hugging Face model and torch weights. Unreachable => FAIL, slow => WARN.
-
-Summary lists every ERROR, FAIL and WARN item (colored on a terminal).
-
-BW: H2D/D2H copy bandwidth per device, with pageable and pinned host memory.
-Needs torch with XPU. Reported for reference only.
-
-Usage: python check_device.py [MODE]
-       MODE = all | sys | net | bw (default all)
-Exit:  0 PASS, 1 FAIL, 2 error
+Levels: PASS, WARN (works but slow), FAIL, ERROR (check could not run).
+Exit:   0 PASS/WARN, 1 FAIL, 2 ERROR.
 """
 
+import argparse
 import json
 import os
 import platform
@@ -29,13 +26,8 @@ import sys
 import tempfile
 import time
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
-
-MODES = ("all", "sys", "net", "bw")
-MODE = sys.argv[1] if len(sys.argv) > 1 else "all"
-if MODE not in MODES:
-    print(f"Usage: python {Path(sys.argv[0]).name} [{'|'.join(MODES)}]")
-    sys.exit(2)
 
 MIN_DISK_GB = 800
 JENKINS_UID = 1001
@@ -54,38 +46,61 @@ NET_TIMEOUT = 60
 # Below these speeds the check still passes but is flagged as a warning.
 NET_WARN_MBPS = 10
 DISK_WARN_MBPS = 500
+UV_INSTALLER = "https://astral.sh/uv/install.sh"
+UV_PYTHON = "3.12"
+TORCH_INDEX = "https://download.pytorch.org/whl/nightly/xpu"
+BW_TAG = "CHECK_DEVICE_BW "
+# Kept out of the temporary venv so an active venv/conda cannot leak in.
+SCRUB_ENV = ("VIRTUAL_ENV", "CONDA_PREFIX", "PYTHONPATH", "PYTHONHOME")
 
-# (level, name, detail) of every FAIL/WARN/ERROR, listed again in the summary.
-ISSUES = []
+LEVELS = ("PASS", "WARN", "FAIL", "ERROR")
+EXIT = {"PASS": 0, "WARN": 0, "FAIL": 1, "ERROR": 2}
+RULE = "-" * 60
 _COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ
 _STYLE = {"PASS": "32", "WARN": "33", "FAIL": "31", "ERROR": "1;31"}
+# Every recorded check as {"section", "name", "level", "detail"}.
+CHECKS = []
+_SECTION = "-"
 
 
 def tag(level):
     return f"\033[{_STYLE[level]}m{level}\033[0m" if _COLOR else level
 
 
-def note(level, name, detail):
-    """Print one check line; record anything that is not PASS for the summary."""
-    print(f"{name:<10}: {tag(level)} - {detail}")
-    if level != "PASS":
-        ISSUES.append((level, name, detail))
+def worst(levels):
+    return max(levels, key=LEVELS.index, default="PASS")
 
 
-def run(cmd, timeout=600):
+def line(text, i=0):
+    """Line i of text (-1 for last), '' if empty."""
+    lines = str(text).strip().splitlines()
+    return lines[i] if lines else ""
+
+
+def note(level, name, detail=""):
+    print(f"{name:<10}: {tag(level)}" + (f" - {detail}" if detail else ""))
+    CHECKS.append({"section": _SECTION, "name": name, "level": level, "detail": detail})
+
+
+def check(name, ok, detail):
+    note("PASS" if ok else "FAIL", name, detail)
+
+
+def speed(name, detail, value, floor, unit):
+    """PASS, or WARN when value is below floor (working but slow)."""
+    slow = value < floor
+    note("WARN" if slow else "PASS", name, detail + (f" (< {floor} {unit})" if slow else ""))
+
+
+def run(cmd, timeout=600, env=None):
     """Run cmd, return (returncode, stdout+stderr). Missing binary => rc 127."""
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         return p.returncode, p.stdout + p.stderr
     except FileNotFoundError:
         return 127, f"{cmd[0]}: not found"
     except subprocess.TimeoutExpired:
         return 124, f"{cmd[0]}: timeout"
-
-
-def report(name, ok, detail):
-    note("PASS" if ok else "FAIL", name, detail)
-    return ok
 
 
 def detect_gpus():
@@ -114,6 +129,24 @@ def os_release():
     return dict(re.findall(r'^(\w+)="?([^"\n]*)"?$', text, re.M))
 
 
+def installed_packages(pkgs):
+    """Subset of pkgs installed per dpkg, in one query."""
+    _, out = run(["dpkg-query", "-W", "-f=${Package} ${db:Status-Abbrev}\n", *pkgs])
+    return {f[0] for f in map(str.split, out.splitlines()) if f[1:2] == ["ii"]}
+
+
+def clinfo_gpus():
+    """Devices on Intel OpenCL GPU platforms; CPU OpenCL runtimes are not counted."""
+    _, out = run(["clinfo", "-l"])
+    n, gpu_platform = 0, False
+    for ln in out.splitlines():
+        if ln.startswith("Platform #"):
+            gpu_platform = "Intel" in ln and "Graphics" in ln
+        elif gpu_platform and re.search(r"Device #\d+:", ln):
+            n += 1
+    return n
+
+
 def disk_bw(path, mib=2048):
     """Sequential direct-IO write/read MB/s via dd, bypassing page cache."""
     f = Path(path) / f"check_device_{os.getpid()}.bin"
@@ -126,7 +159,7 @@ def disk_bw(path, mib=2048):
             start = time.perf_counter()
             rc, out = run(cmd)
             if rc:
-                raise RuntimeError(out.strip().splitlines()[-1])
+                raise RuntimeError(line(out, -1))
             rates.append(mib * 2**20 / (time.perf_counter() - start) / 1e6)
     finally:
         f.unlink(missing_ok=True)
@@ -134,91 +167,89 @@ def disk_bw(path, mib=2048):
 
 
 def check_sys():
-    print("-" * 60 + "\nSystem Acceptance Check\n" + "-" * 60)
     if platform.system() != "Linux":
-        note("ERROR", "SYS", "Linux only")
-        return 2
-    results = []
+        return note("ERROR", "SYS", "Linux only")
 
     missing = [t for t in TOOLS if not shutil.which(t)]
-    results.append(report("Tools", not missing, f"missing {missing}" if missing else ", ".join(TOOLS)))
+    check("Tools", not missing, f"missing {missing}" if missing else ", ".join(TOOLS))
 
     # Only BMG/PVC are CI GPUs; other Intel display devices (iGPU) are ignored.
     all_gpus = detect_gpus()
     gpus = [g for g in all_gpus if g[1]]
-    families = {g[1] for g in gpus}
-    results.append(report("GPU", bool(gpus), f"{len(gpus)} x {sorted(families)}"))
-    for gpu in all_gpus:
-        print(f"            {gpu[3]}{'' if gpu[1] else '  (ignored)'}")
-    family = next(iter(families)) if len(families) == 1 else None
+    families = sorted({g[1] for g in gpus})
+    check("GPU", bool(gpus), f"{len(gpus)} x {families}")
+    for g in all_gpus:
+        print(f"{'':<12}{g[3]}{'' if g[1] else '  (ignored)'}")
     if len(families) > 1:
-        results.append(report("GPU mix", False, "mixed GPU families"))
+        check("GPU mix", False, "mixed GPU families")
 
     osr = os_release()
     os_desc = f"{osr.get('NAME', '?')} {osr.get('VERSION_ID', '?')}, kernel {platform.release()}"
-    if family in GPU_SPEC:
-        want_os, want_drv = GPU_SPEC[family]
-        results.append(report("OS", osr.get("ID") == "ubuntu" and osr.get("VERSION_ID") == want_os,
-                              f"{os_desc} (want Ubuntu {want_os})"))
-        drivers = {g[2] for g in gpus}
-        results.append(report("Driver", drivers == {want_drv},
-                              f"kernel driver {sorted(map(str, drivers))} (want {want_drv})"))
+    spec = GPU_SPEC.get(families[0]) if len(families) == 1 else None
+    if spec:
+        want_os, want_drv = spec
+        check("OS", osr.get("ID") == "ubuntu" and osr.get("VERSION_ID") == want_os,
+              f"{os_desc} (want Ubuntu {want_os})")
+        drivers = sorted({str(g[2]) for g in gpus})
+        check("Driver", drivers == [want_drv], f"kernel driver {drivers} (want {want_drv})")
     else:
-        results.append(report("OS", False, f"{os_desc} (unknown GPU family)"))
+        # Family unknown: accept any supported OS so the GPU failure is not reported twice.
+        known = sorted({v for v, _ in GPU_SPEC.values()})
+        check("OS", osr.get("ID") == "ubuntu" and osr.get("VERSION_ID") in known,
+              f"{os_desc} (GPU family unknown, want Ubuntu {'/'.join(known)})")
 
-    bad = []
-    for alts in PACKAGES:
-        if not any(run(["dpkg-query", "-W", "-f=${Status}", p])[1].startswith("install ok installed") for p in alts):
-            bad.append("|".join(alts))
-    results.append(report("Packages", not bad, f"missing {bad}" if bad else "compute runtime installed"))
+    have = installed_packages([p for alts in PACKAGES for p in alts])
+    bad = ["|".join(alts) for alts in PACKAGES if not have.intersection(alts)]
+    check("Packages", not bad, f"missing {bad}" if bad else "compute runtime installed")
 
-    _, out = run(["clinfo", "-l"])
-    n_cl = len(re.findall(r"Device #\d+:.*Intel", out))
+    n_cl = clinfo_gpus()
     rc, out = run(["xpu-smi", "discovery", "-j"])
     try:
         n_smi = len(json.loads(out).get("device_list", [])) if rc == 0 else 0
     except ValueError:
         n_smi = 0
     detail = f"clinfo {n_cl}, xpu-smi {n_smi}, lspci {len(gpus)}"
-    results.append(report("Visible", n_cl > 0 and n_smi > 0, detail))
-    if n_cl > 0 and n_smi > 0 and len({n_smi, len(gpus)}) > 1:
+    check("Visible", n_cl > 0 and n_smi > 0, detail)
+    if n_cl and n_smi and len({n_cl, n_smi, len(gpus)}) > 1:
         note("WARN", "Visible", f"device count mismatch: {detail}")
 
     total_gb = shutil.disk_usage("/").total / 1e9
-    results.append(report("Disk /", total_gb > MIN_DISK_GB, f"{total_gb:.0f} GB (want > {MIN_DISK_GB} GB)"))
+    check("Disk /", total_gb > MIN_DISK_GB, f"{total_gb:.0f} GB (want > {MIN_DISK_GB} GB)")
     try:
         w, r = disk_bw("/var/tmp")
-        slow = min(w, r) < DISK_WARN_MBPS
-        note("WARN" if slow else "PASS", "Disk BW",
-             f"write {w:.0f} MB/s, read {r:.0f} MB/s" + (f" (< {DISK_WARN_MBPS} MB/s)" if slow else ""))
+        speed("Disk BW", f"write {w:.0f} MB/s, read {r:.0f} MB/s", min(w, r), DISK_WARN_MBPS, "MB/s")
     except Exception as e:
-        results.append(report("Disk BW", False, str(e)))
+        check("Disk BW", False, line(e))
 
-    import pwd
+    import pwd  # Unix only; imported here so net/bw still run elsewhere.
 
     try:
         uid = pwd.getpwnam("jenkins").pw_uid
-        results.append(report("User", uid == JENKINS_UID, f"jenkins uid {uid} (want {JENKINS_UID})"))
+        check("User", uid == JENKINS_UID, f"jenkins uid {uid} (want {JENKINS_UID})")
     except KeyError:
-        results.append(report("User", False, "jenkins not found"))
+        check("User", False, "jenkins not found")
 
-    return 0 if all(results) else 1
+
+def http_open(url, headers=None):
+    # Unredirected so the registry token is not forwarded to the blob CDN.
+    req = urllib.request.Request(url, headers={"User-Agent": "check_device"})
+    for k, v in (headers or {}).items():
+        req.add_unredirected_header(k, v)
+    return urllib.request.urlopen(req, timeout=NET_TIMEOUT)
 
 
 def http_get(url, headers=None, limit_mib=NET_LIMIT_MIB):
     """Stream up to limit_mib from url, return (bytes, seconds). Honors *_proxy env."""
-    req = urllib.request.Request(url, headers={"User-Agent": "check_device", **(headers or {})})
     limit, got = limit_mib * 2**20, 0
     start = time.perf_counter()
-    with urllib.request.urlopen(req, timeout=NET_TIMEOUT) as resp:
+    with http_open(url, headers) as resp:
         while got < limit and (chunk := resp.read(min(2**20, limit - got))):
             got += len(chunk)
     return got, time.perf_counter() - start
 
 
 def http_json(url, headers=None):
-    req = urllib.request.Request(url, headers={"User-Agent": "check_device", **(headers or {})})
-    with urllib.request.urlopen(req, timeout=NET_TIMEOUT) as resp:
+    with http_open(url, headers) as resp:
         return json.load(resp)
 
 
@@ -226,9 +257,11 @@ def net_git():
     d = tempfile.mkdtemp(prefix="check_device_git_")
     try:
         start = time.perf_counter()
-        rc, out = run(["git", "clone", "-q", "--depth", "1", "https://github.com/pytorch/pytorch", d])
+        # --no-checkout: time only the transfer, not writing the work tree.
+        rc, out = run(["git", "clone", "-q", "--depth", "1", "--no-checkout",
+                       "https://github.com/pytorch/pytorch", d])
         if rc:
-            raise RuntimeError(out.strip().splitlines()[-1])
+            raise RuntimeError(line(out, -1))
         size = sum(f.stat().st_size for f in Path(d, ".git").rglob("*") if f.is_file())
         return size, time.perf_counter() - start
     finally:
@@ -237,8 +270,8 @@ def net_git():
 
 def net_docker(repo="intel/omix"):
     """Pull the largest layer blob of the newest tag straight from the registry."""
-    tag = http_json(f"https://hub.docker.com/v2/repositories/{repo}/tags?page_size=1&ordering=last_updated")
-    tag = tag["results"][0]["name"]
+    tags = http_json(f"https://hub.docker.com/v2/repositories/{repo}/tags?page_size=1&ordering=last_updated")
+    name = tags["results"][0]["name"]
     token = http_json(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull")
     auth = {"Authorization": f"Bearer {token['token']}"}
     accept = ", ".join([
@@ -248,17 +281,19 @@ def net_docker(repo="intel/omix"):
         "application/vnd.docker.distribution.manifest.v2+json",
     ])
     base = f"https://registry-1.docker.io/v2/{repo}"
-    manifest = http_json(f"{base}/manifests/{tag}", {**auth, "Accept": accept})
+    manifest = http_json(f"{base}/manifests/{name}", {**auth, "Accept": accept})
     if "manifests" in manifest:
-        digest = next(m["digest"] for m in manifest["manifests"]
-                      if m.get("platform", {}).get("architecture") == "amd64")
+        digest = next((m["digest"] for m in manifest["manifests"]
+                       if m.get("platform", {}).get("architecture") == "amd64"), None)
+        if not digest:
+            raise RuntimeError(f"no amd64 image for {repo}:{name}")
         manifest = http_json(f"{base}/manifests/{digest}", {**auth, "Accept": accept})
     layer = max(manifest["layers"], key=lambda x: x["size"])
     return http_get(f"{base}/blobs/{layer['digest']}", auth)
 
 
 def net_pypi(index="https://download.pytorch.org/whl/xpu/torch/"):
-    with urllib.request.urlopen(index, timeout=NET_TIMEOUT) as resp:
+    with http_open(index) as resp:
         links = re.findall(r'href="([^"]+linux_x86_64\.whl[^"]*)"', resp.read().decode())
     if not links:
         raise RuntimeError(f"no linux wheel in {index}")
@@ -275,26 +310,30 @@ NET_TARGETS = (
 )
 
 
+@contextmanager
+def proxy_only():
+    """Drop no_proxy for the block so every target (git subprocess too) uses the proxy."""
+    saved = {k: os.environ.pop(k) for k in ("no_proxy", "NO_PROXY") if k in os.environ}
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
+
+
 def check_net():
-    print("-" * 60 + f"\nNetwork Bandwidth (<= {NET_LIMIT_MIB} MiB each, WARN < {NET_WARN_MBPS} MB/s)\n" + "-" * 60)
-    # Force every target through the proxy; also inherited by the git subprocess.
-    for var in ("no_proxy", "NO_PROXY"):
-        os.environ.pop(var, None)
-    results = []
-    for name, fn in NET_TARGETS:
-        try:
-            size, secs = fn()
+    with proxy_only():
+        for name, fn in NET_TARGETS:
+            try:
+                size, secs = fn()
+            except Exception as e:
+                check(name, False, f"{type(e).__name__}: {line(e)}")
+                continue
             mb = size / 1e6
-            slow = mb / secs < NET_WARN_MBPS
             detail = f"{mb:8.1f} MB in {secs:6.1f} s = {mb / secs:8.1f} MB/s"
-            if size == 0:
-                results.append(report(name, False, detail))
+            if size:
+                speed(name, detail, mb / secs, NET_WARN_MBPS, "MB/s")
             else:
-                note("WARN" if slow else "PASS", name, detail + (f" (< {NET_WARN_MBPS} MB/s)" if slow else ""))
-        except Exception as e:
-            msg = str(e).strip().splitlines()
-            results.append(report(name, False, f"{type(e).__name__}: {msg[0] if msg else ''}"))
-    return 0 if all(results) else 1
+                check(name, False, detail)
 
 
 def bench_bw(k, pinned, mib=256, iters=20):
@@ -319,58 +358,159 @@ def bench_bw(k, pinned, mib=256, iters=20):
     return rates
 
 
-def check_bw():
-    print("-" * 60 + "\nMemory Bandwidth (GB/s, reference only)\n" + "-" * 60)
-    try:
-        import torch
-    except ImportError:
-        note("ERROR", "BW", "torch not installed")
-        return 2
-    if not torch.xpu.is_available():
-        note("ERROR", "BW", "XPU not available")
-        return 2
-    print(f"{'Device':<8}{'Pageable H2D':>14}{'D2H':>8}{'Pinned H2D':>14}{'D2H':>8}")
-    try:
+def bw_child():
+    """Internal `_bw` mode: bench in this interpreter, print one tagged JSON line."""
+    import torch
+
+    res = {"torch": torch.__version__, "python": sys.executable, "devices": []}
+    if torch.xpu.is_available():
         for k in range(torch.xpu.device_count()):
             torch.xpu.set_device(k)
-            ph2d, pd2h = bench_bw(k, pinned=False)
-            nh2d, nd2h = bench_bw(k, pinned=True)
-            print(f"{'xpu:' + str(k):<8}{ph2d:>14.1f}{pd2h:>8.1f}{nh2d:>14.1f}{nd2h:>8.1f}")
-    except Exception as e:
-        msg = str(e).strip().splitlines()
-        note("ERROR", "BW", f"{type(e).__name__}: {msg[0] if msg else ''}")
-        return 2
-    print("BW        : DONE")
+            res["devices"].append([torch.xpu.get_device_name(k), *bench_bw(k, False), *bench_bw(k, True)])
+    print(BW_TAG + json.dumps(res), flush=True)
     return 0
 
 
-def main():
-    print("=" * 60 + "\nXPU Machine Check\n" + "=" * 60)
-    print(f"Mode      : {MODE}")
-    print(f"OS        : {platform.system()} {platform.release()} ({platform.machine()})")
+def bench_in(py, env=None):
+    """Run the bench with interpreter py in a subprocess, return its JSON result."""
+    rc, out = run([str(py), os.path.abspath(__file__), "_bw"], env=env)
+    m = re.search(rf"^{re.escape(BW_TAG)}(.*)$", out, re.M)
+    if rc or not m:
+        raise RuntimeError(f"bench: {line(out, -1)}")
+    return json.loads(m.group(1))
 
-    codes = {}
-    if MODE in ("all", "sys"):
-        codes["SYS"] = check_sys()
-    if MODE in ("all", "net"):
-        codes["NET"] = check_net()
-    if MODE in ("all", "bw"):
-        codes["BW"] = check_bw()
-    code = max(codes.values())
-    print("=" * 60 + "\nSummary\n" + "-" * 60)
-    for name, c in codes.items():
-        print(f"{name:<10}: {tag(('PASS', 'FAIL', 'ERROR')[c])}")
-    for level, title in (("ERROR", "Errors"), ("FAIL", "Failures"), ("WARN", "Warnings")):
-        items = [(n, d) for lv, n, d in ISSUES if lv == level]
+
+def find_uv(tmp, env):
+    uv = shutil.which("uv")
+    if uv:
+        return uv
+    installer = tmp / "uv-install.sh"
+    with http_open(UV_INSTALLER) as resp:
+        installer.write_bytes(resp.read())
+    # Unmanaged install: no shell profile or PATH changes.
+    rc, out = run(["sh", str(installer)], env={**env, "UV_UNMANAGED_INSTALL": str(tmp / "uv")})
+    uv = next((str(p) for p in (tmp / "uv" / "uv", tmp / "uv" / "bin" / "uv") if p.exists()), None)
+    if rc or not uv:
+        raise RuntimeError(f"uv install: {line(out, -1)}")
+    return uv
+
+
+def venv_bench(tmp):
+    """Bench in a fresh uv venv with torch XPU nightly; uv, cache, Python and venv stay in tmp."""
+    # Drop user UV_* settings (e.g. UV_EXTRA_INDEX_URL) so only TORCH_INDEX is used.
+    env = {k: v for k, v in os.environ.items() if k not in SCRUB_ENV and not k.startswith("UV_")}
+    env.update(UV_CACHE_DIR=str(tmp / "cache"), UV_PYTHON_INSTALL_DIR=str(tmp / "python"))
+    uv = find_uv(tmp, env)
+    note("PASS", "uv", uv)
+    py = tmp / "venv" / "bin" / "python"
+    for step, cmd in (
+        ("venv", [uv, "venv", "-q", "--no-config", "--python", UV_PYTHON, str(py.parent.parent)]),
+        ("torch", [uv, "pip", "install", "-q", "--no-config", "--python", str(py), "--pre", "torch",
+                   "--index-url", TORCH_INDEX]),
+    ):
+        start = time.perf_counter()
+        rc, out = run(cmd, timeout=3600, env=env)
+        if rc:
+            raise RuntimeError(f"{step}: {line(out, -1)}")
+        print(f"{'Setup':<10}: {step} done in {time.perf_counter() - start:.0f} s")
+    return bench_in(py, env)
+
+
+def bw_result():
+    """Bench in the current env if its torch sees XPU (probe only), else in a temporary venv."""
+    import importlib.util
+
+    reason = "torch not installed"
+    if importlib.util.find_spec("torch"):
+        try:
+            res = bench_in(sys.executable)
+            if res["devices"]:
+                print(f"{'Setup':<10}: current env {sys.executable}")
+                return res
+            reason = f"torch {res['torch']} sees no XPU"
+        except Exception as e:
+            reason = line(e)
+    print(f"{'Setup':<10}: current env unusable ({reason}), using temporary uv venv")
+    tmp = Path(tempfile.mkdtemp(prefix="check_device_bw_", dir="/var/tmp"))
+    try:
+        return venv_bench(tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print(f"{'Setup':<10}: removed {tmp}")
+
+
+def check_bw():
+    res = bw_result()
+    note("PASS", "Torch", f"{res['torch']} ({res['python']})")
+    if not res["devices"]:
+        return note("ERROR", "BW", "torch sees no XPU")
+    for k, (name, ph2d, pd2h, nh2d, nd2h) in enumerate(res["devices"]):
+        note("PASS", f"xpu:{k}", f"H2D/D2H pageable {ph2d:5.1f}/{pd2h:5.1f}, "
+                                 f"pinned {nh2d:5.1f}/{nd2h:5.1f} GB/s  {name}")
+
+
+SECTIONS = {
+    "sys": ("SYS", "System Acceptance", check_sys),
+    "net": ("NET", f"Network Bandwidth (<= {NET_LIMIT_MIB} MiB each, WARN < {NET_WARN_MBPS} MB/s)", check_net),
+    "bw": ("BW", "H2D/D2H Bandwidth (reference only)", check_bw),
+}
+
+
+def run_section(key, title, fn):
+    """Run one section; any uncaught exception becomes an ERROR. Return (level, seconds)."""
+    global _SECTION
+    _SECTION = key
+    print(f"{RULE}\n{title}\n{RULE}")
+    start = time.perf_counter()
+    try:
+        fn()
+    except Exception as e:
+        note("ERROR", key, f"{type(e).__name__}: {line(e)}")
+    return worst(c["level"] for c in CHECKS if c["section"] == key), time.perf_counter() - start
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("modes", nargs="*", metavar="MODE", help="all, sys, net, bw (default: all)")
+    ap.add_argument("--json", metavar="FILE", help="also write all results to FILE as JSON")
+    args = ap.parse_args(argv)
+    unknown = sorted(set(args.modes) - {"all", *SECTIONS})
+    if unknown:
+        ap.error(f"unknown MODE {unknown}")
+    picked = [m for m in SECTIONS if not args.modes or "all" in args.modes or m in args.modes]
+
+    print(f"{'=' * 60}\nXPU Machine Check\n{'=' * 60}")
+    print(f"{'Host':<10}: {platform.node()}")
+    print(f"{'OS':<10}: {platform.system()} {platform.release()} ({platform.machine()})")
+    print(f"{'Python':<10}: {platform.python_version()} ({sys.executable})")
+    print(f"{'Modes':<10}: {', '.join(picked)}")
+
+    sections = {}
+    for m in picked:
+        key, title, fn = SECTIONS[m]
+        sections[key] = run_section(key, title, fn)
+    result = worst(lv for lv, _ in sections.values())
+
+    print(f"{'=' * 60}\nSummary\n{RULE}")
+    for key, (lv, secs) in sections.items():
+        print(f"{key:<10}: {tag(lv)} ({secs:.0f} s)")
+    for level in ("ERROR", "FAIL", "WARN"):
+        items = [c for c in CHECKS if c["level"] == level]
         if items:
-            print("-" * 60 + f"\n{tag(level)} {title} ({len(items)})")
-            for n, d in items:
-                print(f"  {n:<10}: {d.strip()}")
-    print("-" * 60)
-    print(f"RESULT    : {tag(('PASS', 'FAIL', 'ERROR')[code])}")
-    print("=" * 60)
-    return code
+            print(f"{RULE}\n{tag(level)} ({len(items)})")
+            for c in items:
+                print(f"  {c['section']:<4} {c['name']:<10}: {c['detail'].strip()}")
+    print(f"{RULE}\n{'RESULT':<10}: {tag(result)}\n{'=' * 60}")
+
+    if args.json:
+        Path(args.json).write_text(json.dumps({
+            "host": platform.node(),
+            "result": result,
+            "sections": {k: {"level": lv, "seconds": round(s, 1)} for k, (lv, s) in sections.items()},
+            "checks": CHECKS,
+        }, indent=2))
+    return EXIT[result]
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(bw_child() if sys.argv[1:2] == ["_bw"] else main())
