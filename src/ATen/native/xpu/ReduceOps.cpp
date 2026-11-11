@@ -48,6 +48,7 @@ REGISTER_XPU_DISPATCH(std_var_stub, &xpu::std_var_kernel);
 REGISTER_XPU_DISPATCH(cumsum_stub, &xpu::cumsum_kernel);
 REGISTER_XPU_DISPATCH(cumprod_stub, &xpu::cumprod_kernel);
 REGISTER_XPU_DISPATCH(nansum_stub, &xpu::nansum_kernel);
+REGISTER_XPU_DISPATCH(xor_sum_stub, &xpu::xor_sum_kernel);
 
 void cummax_helper_xpu(
     const Tensor& self,
