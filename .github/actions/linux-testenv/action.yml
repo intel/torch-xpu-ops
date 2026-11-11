@@ -193,8 +193,8 @@ runs:
           uv pip uninstall fbgemm_gpu_nightly-cpu
           cd ../pytorch
         elif [[ "${{ inputs.suite }}" != *"huggingface"* && "${{ inputs.suite }}" != *"timm_models"* ]];then
-          # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
-          sed -i '/mkl/d' .ci/docker/requirements-ci.txt
+          # Remove mkl pins; keep intel-openmp at 2026.2 so UR/UMF match the torch xpu wheel's sycl runtime
+          sed -i '/mkl/d; s/^intel-openmp[<>=!~][^ ;]*/intel-openmp==2026.2.0/' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
           uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
         fi
