@@ -44,6 +44,11 @@ def get_github_issues(repo_owner, repo_name, labels, state='open'):
 def fast_extract_table_rows(issue_body):
     """
     Fast table extraction using pre-compiled regex patterns.
+
+    Any line with a `|` and a lowercase letter but no `Suite` is a row, code
+    blocks included. check_expected.py mutes a model only from a row that keeps
+    at least 6 cells after empty ones are dropped, `suite | dtype | mode |
+    model | value | message`, and only when row[4] equals that night's value.
     """
     # Pre-compile regex patterns for better performance
     TABLE_ROW_PATTERN = re.compile(r'^(?=.*\|)(?!.*Suite)(?=.*[a-z]).+$', re.MULTILINE)

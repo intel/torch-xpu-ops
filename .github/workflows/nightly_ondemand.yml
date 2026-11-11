@@ -54,6 +54,10 @@ on:
         type: boolean
         default: false
         description: Analyse this run's UT failures. Evidence only - an on-demand run files no issues
+      e2e_accuracy_auto_issue:
+        type: boolean
+        default: false
+        description: Run the E2E accuracy auto-issue flow, deep triage included, on this run. Dry run - an on-demand run files no issues
 
 permissions: read-all
 
@@ -254,6 +258,31 @@ jobs:
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      suites: ${{ contains(needs.Conditions-Filter.outputs.scenario, 'accuracy') && needs.Conditions-Filter.outputs.suite || '' }}
+
+  Linux-Nightly-Ondemand-E2E-Accuracy-Auto-Issue:
+    name: linux-e2e-accuracy-auto-issue
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests-Summary]
+    # Only when the summary failed: it fails exactly when a row turned the gate red or a suite
+    # was not judged, so a green night starts nothing. Build lines only.
+    if: >-
+      ${{ !cancelled()
+          && (github.event_name == 'schedule' || inputs.e2e_accuracy_auto_issue)
+          && needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel'
+          && needs.Linux-Nightly-Ondemand-E2E-Tests-Summary.result == 'failure' }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_e2e_accuracy_auto_issue.yml
+    with:
+      run_id: ${{ github.run_id }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      # Off unless the repo variable says otherwise, so filing can stop without a PR. Never on for an
+      # on-demand run: its torch commit is arbitrary, so it only shows what would be filed.
+      create_issues: ${{ github.event_name == 'schedule' && vars.E2E_ACCURACY_AUTO_ISSUE_ENABLED == 'true' }}
+      deep_triage: ${{ github.event_name != 'schedule' || vars.E2E_ACCURACY_TRIAGE_ENABLED == 'true' }}
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     name: linux-microbench
