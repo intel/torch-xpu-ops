@@ -9,8 +9,10 @@
 
 #include <xccl/ProcessGroupXCCL.hpp>
 
+#include <ATen/Context.h>
 #include <ATen/ceil_div.h>
 #include <ATen/xpu/XPUContext.h>
+#include <ATen/xpu/level_zero_stub/ATenLevelZero.h>
 #include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
@@ -439,6 +441,22 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
         reinterpret_cast<const std::byte*>(payload.data()),
         reinterpret_cast<const std::byte*>(payload.data()) + payload.size());
     void* remote_base = syclexp::ipc_memory::open(peer_bytes, ctx, dev);
+    // L0 does not make an imported IPC allocation resident on this device
+    // until a kernel takes it as a direct argument. The signal kernels only
+    // reach peer memory through pointers loaded from signal_pads_dev_, so
+    // without this their first access page-faults and the device is lost.
+    ze_result_t ze_status =
+        at::globalContext().getLevelZero().zeContextMakeMemoryResident(
+            sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx),
+            sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev),
+            remote_base,
+            block->block_size);
+    TORCH_CHECK(
+        ze_status == ZE_RESULT_SUCCESS,
+        "zeContextMakeMemoryResident failed for peer ",
+        r,
+        " with error ",
+        ze_status);
 
     handles[r] = remote_base;
     buffers[r] = remote_base;
