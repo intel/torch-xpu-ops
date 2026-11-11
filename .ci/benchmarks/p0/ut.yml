@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 #
 # P0 scope and known failures, shared by all platforms.
-# Paths are relative to the selected repository root. runner defaults to pytest.
+# Paths are relative to the selected repository root. All files run with pytest.
 # {} runs the file without deselections; removing the file removes it from P0.
 # Class::test_case entries under skip use pytest deselection semantics.
 groups:
@@ -181,20 +181,9 @@ groups:
           - "TestProfilerTree::test_profiler_experimental_tree_with_stack_and_torch_function"
           - "TestProfilerTree::test_profiler_experimental_tree_with_stack_and_modules"
     xpu_ops:
-      test/profiling/correlation_id_mixed.py:
-        runner: python
-      test/profiling/profile_partial_runtime_ops.py:
-        runner: python
-      test/profiling/reproducer.missing.gpu.kernel.time.py:
-        runner: python
-      test/profiling/time_precision_in_profile.py:
-        runner: python
-      test/profiling/triton_xpu_ops_time.py:
-        runner: python
-      test/profiling/rn50.py:
-        runner: python
-      test/profiling/llama.py:
-        runner: python
+      test/profiling/test_issue_reproducers.py: {}
+      test/profiling/test_rn50_profiling.py: {}
+      test/profiling/test_llama_profiling.py: {}
 
   distributed:
     pytorch:

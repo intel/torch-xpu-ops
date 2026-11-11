@@ -42,11 +42,10 @@ class Task:
     group: str
     repo: str
     path: str
-    runner: str
     cwd: Path
     command: list[str]
     log: Path
-    junit: Path | None
+    junit: Path
 
 
 def require_mapping(value, label):
@@ -81,14 +80,9 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                 ):
                     raise ValueError(f"Invalid test path: {path!r}")
                 require_mapping(options, path)
-                if set(options) - {"runner", "skip"}:
+                if set(options) - {"skip"}:
                     raise ValueError(f"Unknown options for {path}: {set(options)}")
-                runner = options.get("runner", "pytest")
-                if runner not in ("pytest", "python"):
-                    raise ValueError(f"Unknown runner for {path}: {runner!r}")
                 cases = options.get("skip", [])
-                if runner == "python" and "skip" in options:
-                    raise ValueError(f"Python script {path} cannot use pytest skips")
                 if not isinstance(cases, list) or any(
                     not isinstance(case, str) or not case.strip() or any(c in case for c in "\r\n\0") for case in cases
                 ):
@@ -98,19 +92,15 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                 if not (root / path).is_file():
                     raise ValueError(f"Test file does not exist: {root / path}")
                 name = f"{prefix}{group}__{repo}__{path.replace('/', '__')}_{run_id}"
-                junit = output / f"{name}.xml" if runner == "pytest" else None
-                command = (
-                    ["pytest", path, f"--rootdir={root}", f"--junit-xml={junit}"]
-                    + [f"--deselect={path}::{case}" for case in cases]
-                    if runner == "pytest"
-                    else [sys.executable, path]
-                )
+                junit = output / f"{name}.xml"
+                command = ["pytest", path, f"--rootdir={root}", f"--junit-xml={junit}"] + [
+                    f"--deselect={path}::{case}" for case in cases
+                ]
                 tasks.append(
                     Task(
                         group,
                         repo,
                         path,
-                        runner,
                         root,
                         command,
                         output / f"{name}.log",
@@ -155,22 +145,20 @@ def run_task(task, timeout):
         except OSError as error:
             result["error"] = str(error)
             log.write(f"ERROR: {error}\n")
-    if task.junit is not None:
-        try:
-            tree = ET.parse(task.junit).getroot()
-            suites = [tree] if tree.tag == "testsuite" else tree.findall("testsuite")
-            result["counts"] = {
-                key: sum(int(suite.get(key, "0")) for suite in suites)
-                for key in ("tests", "failures", "errors", "skipped")
-            }
-            if result["status"] == "passed" and (
-                not result["counts"]["tests"] or result["counts"]["failures"] or result["counts"]["errors"]
-            ):
-                result["status"] = "failed"
-        except (OSError, ET.ParseError, ValueError) as error:
-            result["error"] = f"JUnit report unavailable or invalid: {error}"
-            if result["status"] == "passed":
-                result["status"] = "failed"
+    try:
+        tree = ET.parse(task.junit).getroot()
+        suites = [tree] if tree.tag == "testsuite" else tree.findall("testsuite")
+        result["counts"] = {
+            key: sum(int(suite.get(key, "0")) for suite in suites) for key in ("tests", "failures", "errors", "skipped")
+        }
+        if result["status"] == "passed" and (
+            not result["counts"]["tests"] or result["counts"]["failures"] or result["counts"]["errors"]
+        ):
+            result["status"] = "failed"
+    except (OSError, ET.ParseError, ValueError) as error:
+        result["error"] = f"JUnit report unavailable or invalid: {error}"
+        if result["status"] == "passed":
+            result["status"] = "failed"
     result["seconds"] = round(time.monotonic() - started, 3)
     print(
         f"{result['status'].upper()} ({result['seconds']}s, exit={result['returncode']})",
@@ -189,8 +177,8 @@ def write_summary(path, results, total):
         + "\n"
     )
     rows = [
-        "| Group | Repo | File | Runner | Status | Exit | Seconds |",
-        "|---|---|---|---|---|---:|---:|",
+        "| Group | Repo | File | Status | Exit | Seconds |",
+        "|---|---|---|---|---:|---:|",
     ]
     for result in results:
         rows.append(
@@ -201,7 +189,6 @@ def write_summary(path, results, total):
                     "group",
                     "repo",
                     "path",
-                    "runner",
                     "status",
                     "returncode",
                     "seconds",
