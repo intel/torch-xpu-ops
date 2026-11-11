@@ -55,7 +55,8 @@ Key consequences:
 ```bash
 # libiga64.so: shipped with oneAPI debugger component
 # Detect oneAPI root: check env vars first, then common install locations
-ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*}}}
+# (CMPLR_ROOT is <oneapi_root>/compiler/<version>, so strip two levels)
+ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*/*}}}
 if [ -z "$ONEAPI" ]; then
   for d in /opt/intel/oneapi ~/intel/oneapi /usr/local/oneapi; do
     [ -d "$d" ] && ONEAPI="$d" && break
@@ -87,28 +88,55 @@ export IGA_LIB
    oneDNN `.bin` files are raw ISA bytes (not ELF). Use `libiga64.so` via
    Python ctypes to disassemble. No separate script needed — run inline:
 
-   ```bash
-   for bin in dnnl_dump_gpu_*.bin; do
-     name=$(basename "$bin" .bin)
-     python3 -c "
-import ctypes, sys, pathlib
-iga = ctypes.CDLL('$IGA_LIB')
-raw = pathlib.Path('$bin').read_bytes()
-buf = ctypes.create_string_buffer(1 << 20)  # 1MB output buffer
-# Platform IDs: BMG/Xe2=0x2000000, PVC=0x30000, DG2=0x30004
-iga.iga_disassemble(0x2000000, raw, len(raw), buf, len(buf))
-sys.stdout.write(buf.value.decode())
-" > "${name}.asm"
-   done
-   ```
+```bash
+PLATFORM=0x2000000  # iga_gen_t value, see the list below
+for bin in dnnl_dump_gpu_*.bin; do
+  name=$(basename "$bin" .bin)
+  python3 - "$IGA_LIB" "$PLATFORM" "$bin" > "${name}.asm" <<'EOF'
+import ctypes, pathlib, sys
 
-   **Platform ID selection:**
-   - BMG / Xe2 / LNL: `0x2000000`
-   - PVC (Ponte Vecchio): `0x30000`
-   - DG2 (Alchemist): `0x30004`
+lib, platform, path = sys.argv[1], int(sys.argv[2], 0), sys.argv[3]
+iga = ctypes.CDLL(lib)
 
-   If `iga_disassemble` returns 0 bytes, the platform ID likely doesn't
-   match. Try the next one in the list above.
+class ContextOptions(ctypes.Structure):  # iga_context_options_t
+    _fields_ = [("cb", ctypes.c_size_t), ("gen", ctypes.c_int)]
+
+class DisassembleOptions(ctypes.Structure):  # iga_disassemble_options_t
+    _fields_ = [(f, ctypes.c_uint32) for f in (
+        "cb", "formatting_opts", "_reserved0", "_reserved1",
+        "decoder_opts", "base_pc_offset")]
+
+ctx = ctypes.c_void_p()
+copts = ContextOptions(ctypes.sizeof(ContextOptions), platform)
+status = iga.iga_context_create(ctypes.byref(copts), ctypes.byref(ctx))
+if status != 0:
+    sys.exit(f"iga_context_create failed with status {status}")
+raw = pathlib.Path(path).read_bytes()
+dopts = DisassembleOptions(cb=ctypes.sizeof(DisassembleOptions))
+text = ctypes.c_char_p()
+status = iga.iga_context_disassemble(
+    ctx, ctypes.byref(dopts), raw, len(raw), None, None, ctypes.byref(text))
+sys.stdout.write((text.value or b"").decode())
+iga.iga_context_release(ctx)
+if status != 0:
+    sys.exit(f"iga_context_disassemble failed with status {status}")
+EOF
+done
+```
+
+   **Platform ID selection** (`iga_gen_t` in `iga/iga.h`,
+   `XE_VER(major, minor) = (major << 24) | minor`):
+   - BMG / LNL (Xe2): `0x2000000`
+   - PTL (Xe3): `0x3000000`
+   - PVC (Xe-HPC): `0x1000004`
+   - DG2 / MTL (Xe-HPG): `0x1000002`
+
+   A non-zero status means the platform ID is unsupported (context
+   creation) or does not match the bytes (decode error). Try the next one
+   in the list above.
+
+   If the `iga64` CLI is on PATH, `iga64 -d -p bmg "$bin" > "${name}.asm"`
+   produces the same output (`iga64 -h=p` lists the platform names).
 
 3. **Pin the actually-invoked kernel.**
 
