@@ -37,7 +37,7 @@ Branch must follow: `agent/<slug>` (lowercase, hyphens, max 50 chars).
 
 ## Step 2: Write a reproducer test (mandatory)
 
-Every PR must include a pytest-compatible test under `test/repro/` if it is newly introduced. If the test is in PyTorch or torch-xpu-ops tests, you should explicitly write the run command in the PR body (see Step 3).:
+Every PR must include a pytest-compatible test under `test/repro/` if it is newly introduced. If the test is in PyTorch or torch-xpu-ops tests, you should explicitly write the run command in the PR body (see Step 3):
 
 Note: For now, if the test is in PyTorch, explicitly point it out in PR message with bold font!
 
@@ -80,6 +80,11 @@ Test: <one of the three forms below>
    ```
 
 The `Test:` line is required in every PR body. CI reviewers look for it.
+
+From the PR body, CI only picks up lines that start with `pytest ` (reproducer
+check in `.github/workflows/pull.yml`, run from the torch-xpu-ops root). When an
+existing test covers the change (form 2), also put its run command on its own
+line, e.g. `pytest test/xpu/test_bar_xpu.py -k <test_name>`.
 
 ---
 
@@ -142,7 +147,7 @@ Test: <test line>
 ## Checklist before handing off
 
 - [ ] pre-commit / lintrunner passed (or not configured — noted in summary)
-- [ ] `src/`, and `test/` are consistent (if any were touched)
+- [ ] `src/` and `test/` are consistent (if any were touched)
 - [ ] Test file added to `test/repro/` or `Test: none (reason)` written
 - [ ] No unrelated files changed
 - [ ] Commit message is imperative, max 72 chars

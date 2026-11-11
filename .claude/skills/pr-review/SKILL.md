@@ -156,7 +156,7 @@ Use `gh api` or spawn a sub-agent to fetch the upstream file content. Do NOT pro
 
 Go through **every changed line** in the diff and evaluate against the review checklist in [review-checklist.md](references/review-checklist.md).
 
-If the diff adds or modifies any agent instruction files (`SKILL.md`, `AGENTS.md`, `claude.md`, `copilot-instructions.md`, or files under `.claude/` / `.github/`), load the skill-writer skill and evaluate those changes against its guidelines. Do NOT skip this — treat it as a blocking gate for those files.
+If the diff adds or modifies any agent instruction files (`SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `copilot-instructions.md`, or files under `.claude/` / `.github/`), load the skill-writer skill and evaluate those changes against its guidelines. Do NOT skip this — treat it as a blocking gate for those files.
 
 Pay special attention to XPU-specific risks:
 - **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
@@ -380,9 +380,9 @@ for (int offset = 1; offset < sg_size; offset <<= 1) {
 When reviewing, consult these for context:
 - `src/ATen/native/xpu/` — XPU operator implementations
 - `src/ATen/native/xpu/sycl/` — SYCL kernel implementations
-- `src/ATen/native/xpu/XPUFallback.template` — Fallback logic
+- `src/ATen/native/xpu/XPUFallback.cpp` — Fallback logic
 - `test/xpu/` — XPU-specific tests
-- `test/test_ops_xpu.py` — OpInfo-based XPU operator tests
+- `test/xpu/test_ops_xpu.py` — OpInfo-based XPU operator tests
 
 If a calling workflow explicitly requires a skill marker, append this exact literal final line:
 Custom skills applied: pr-review.

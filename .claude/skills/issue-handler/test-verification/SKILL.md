@@ -114,7 +114,7 @@ cd $PYTORCH_DIR && pytest --collect-only -q "<file>" -k "<filter>" 2>&1 | tail -
 ```
 If `0 items / no tests collected` → the filter matches nothing → `CANNOT_VERIFY`.
 
-### Run
+### Step 4: Run
 
 Activate the environment (see
 [../references/environment-setup.md](../references/environment-setup.md)), then
@@ -135,12 +135,12 @@ Timeout: 10 minutes.
 - pytest exit code 1 with test failures
 - unittest with `FAILED` or `ERROR`
 - Any actual test failure output
+- All tests xfailed (expected failure = bug still present)
 
 ### CANNOT_VERIFY
 - `collected 0 items` / `no tests ran` — test selector matches nothing
 - File not found on disk
 - All tests skipped (can't confirm either way)
-- All tests xfailed (expected failure = bug still present, report as FAILED)
 - Timeout
 
 **`@skipIfXpu` / `@xfailIfXpu` decorators.** If ALL tests are skipped because of

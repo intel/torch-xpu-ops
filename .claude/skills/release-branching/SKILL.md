@@ -12,7 +12,7 @@ Set up torch-xpu-ops for a new PyTorch release cycle: create the release
 branch, open the tracker issue, submit the workflow-defaults PR, and post
 the initial tracker comment.
 
-**Invocation:** `/xpu-release-branching release/X.Y`
+**Invocation:** `/release-branching release/X.Y`
 
 ## Terminology
 
@@ -49,10 +49,10 @@ torch-xpu-ops branch from it. If the branch already exists (e.g. retrying
 after a partial failure), skip this step and verify the branch directly.
 
 ```bash
-# Get the pinned torch-xpu-ops commit on the pytorch release branch
-PINNED=$(gh api repos/pytorch/pytorch/contents/third_party/xpu.txt \
-  --jq '.content' -H 'Accept: application/vnd.github.v3+json' \
-  -f ref=release/MAJOR_MINOR | base64 -d | tr -d '[:space:]')
+# Get the pinned torch-xpu-ops commit on the pytorch release branch.
+# Pass ref in the query string: -f would turn the request into a POST (404).
+PINNED=$(gh api "repos/pytorch/pytorch/contents/third_party/xpu.txt?ref=release/MAJOR_MINOR" \
+  --jq '.content' | base64 -d | tr -d '[:space:]')
 
 # Create the release branch at that commit
 gh api repos/intel/torch-xpu-ops/git/refs -f ref=refs/heads/release/MAJOR_MINOR -f sha=$PINNED
@@ -68,8 +68,11 @@ gh api repos/intel/torch-xpu-ops/branches/release/MAJOR_MINOR --jq '.name'
 Create a milestone `PTMAJOR_MINOR` in torch-xpu-ops if it does not exist yet:
 
 ```bash
-# Check if milestone exists; create if not
-gh api repos/intel/torch-xpu-ops/milestones --jq '.[] | select(.title == "PTMAJOR_MINOR") | .title' \
+# Check if milestone exists (open or closed); create if not.
+# jq exits 0 on an empty result, so test the output instead of chaining with ||.
+EXISTING=$(gh api "repos/intel/torch-xpu-ops/milestones?state=all&per_page=100" \
+  --jq '.[] | select(.title == "PTMAJOR_MINOR") | .title')
+[ -n "$EXISTING" ] \
   || gh api repos/intel/torch-xpu-ops/milestones -f title="PTMAJOR_MINOR" -f state=open
 ```
 

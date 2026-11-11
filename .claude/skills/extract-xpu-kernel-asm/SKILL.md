@@ -72,7 +72,8 @@ Key tools are NOT always on PATH. Probe before proceeding:
 
 ```bash
 # Detect oneAPI root: check env vars first, then common install locations
-ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*}}}
+# (CMPLR_ROOT is <oneapi_root>/compiler/<version>, so strip two levels)
+ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*/*}}}
 if [ -z "$ONEAPI" ]; then
   for d in /opt/intel/oneapi ~/intel/oneapi /usr/local/oneapi; do
     [ -d "$d" ] && ONEAPI="$d" && break
@@ -142,9 +143,10 @@ IGC is only invoked at runtime for JIT compilation. If IGC dump files appear,
 the kernel was JIT-compiled:
 
 ```bash
-# Quick test: if IGC produces dump files, JIT path is active
+# Quick test: if IGC produces dump files, JIT path is active.
+# NEO_CACHE_PERSISTENT=0 keeps a cached binary from skipping IGC (no dump).
 rm -rf /tmp/igc_probe && mkdir -p /tmp/igc_probe
-IGC_ShaderDumpEnable=1 IGC_ShaderDumpPidDisable=1 IGC_DumpToCustomDir=/tmp/igc_probe <repro_cmd> 2>/dev/null
+NEO_CACHE_PERSISTENT=0 IGC_ShaderDumpEnable=1 IGC_ShaderDumpPidDisable=1 IGC_DumpToCustomDir=/tmp/igc_probe <repro_cmd> 2>/dev/null
 if ls /tmp/igc_probe/*.asm 2>/dev/null | grep -q .; then
   SCENARIO=sycl-jit
 else

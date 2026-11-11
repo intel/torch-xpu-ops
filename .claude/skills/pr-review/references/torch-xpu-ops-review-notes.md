@@ -17,9 +17,9 @@ Inspect these first when the change touches operator wiring, kernels, or tests:
 
 - `src/ATen/native/xpu/`
 - `src/ATen/native/xpu/sycl/`
-- `src/ATen/native/xpu/XPUFallback.template`
+- `src/ATen/native/xpu/XPUFallback.cpp`
 - `test/xpu/`
-- `test/test_ops_xpu.py`
+- `test/xpu/test_ops_xpu.py`
 - `.github/workflows/` when the PR changes CI, packaging, or platform coverage
 
 ## Upstream Parity Source Of Truth

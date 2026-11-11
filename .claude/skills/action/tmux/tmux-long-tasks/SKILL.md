@@ -42,10 +42,10 @@ tmux new-session -d -s <session>
 
 ```bash
 tmux new-window -d -n <job_name> -t <session>
-tmux send-keys -t <session>:<job_name> 'cd /work/dir || exit 1; CMD 2>&1 | tee run.log' Enter
+tmux send-keys -t <session>:<job_name> 'cd /work/dir && CMD 2>&1 | tee run.log' Enter
 ```
 
-Use `cd <dir> || exit 1` (not `&&`) so failures are visible in pane output.
+Use `cd <dir> && CMD` (not `cd <dir> || exit 1; CMD`): `exit` closes the window, so a failed `cd` would leave no pane output to inspect.
 
 If a window with the same name already exists, append a suffix (e.g., `_2`).
 

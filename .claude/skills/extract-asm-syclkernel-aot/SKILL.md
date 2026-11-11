@@ -43,8 +43,10 @@ command -v ocloc >/dev/null || { echo "ocloc not found; source oneapi-vars.sh"; 
 
 ### Step 2: Dump zebin ELFs via NEO driver
 
-Run the workload with NEO debug keys. Only kernels **actually dispatched** to
-the GPU will be dumped — no unused kernels appear.
+Run the workload with NEO debug keys. Only modules **actually loaded** at
+runtime are dumped. A dumped module can still contain kernels that were never
+launched (e.g. both `_ZTS<Kernel>` and its `__pf_kernel_wrapper` variant), so
+pick yours in Step 4.
 
 ```bash
 OUT="<workdir>/aot_$(date +%Y%m%d_%H%M%S)"
@@ -57,13 +59,10 @@ ls *.elf
 ### Step 3: Disassemble
 
 ```bash
-# Detect device name (bmg, dg2, pvc, etc.)
-DEVICE=$(sycl-ls 2>/dev/null | grep -oP '(?<=\[)[^]]+' | head -1 | awk '{print tolower($NF)}')
-DEVICE=${DEVICE:-bmg}  # fallback
-
+# -device is optional for ocloc disasm: the zebin records its own target.
 for elf in *.elf; do
   name=$(basename "$elf" .elf)
-  ocloc disasm -file "$elf" -dump "${name}_dump" -device "$DEVICE"
+  ocloc disasm -file "$elf" -dump "${name}_dump"
 done
 ```
 

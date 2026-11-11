@@ -76,6 +76,7 @@ The back half (SPIR-V → IGC → zebin) is IDENTICAL.
    OUT="<workdir>/triton_$(date +%Y%m%d_%H%M%S)"
    mkdir -p "$OUT/igc"
 
+   NEO_CACHE_PERSISTENT=0 \
    IGC_ShaderDumpEnable=1 \
    IGC_DumpToCustomDir="$OUT/igc" \
    ONEAPI_DEVICE_SELECTOR=level_zero:0 \
