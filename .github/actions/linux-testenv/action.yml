@@ -147,6 +147,9 @@ runs:
           git clone https://github.com/pytorch/benchmark benchmark
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
+          # newer PyTorch drops torch.jit.interface; fall back to a no-op decorator
+          grep -rlE '^\s*@torch\.jit\.interface\s*$' torchbenchmark | xargs -r sed -i -E \
+            's/^(\s*)@torch\.jit\.interface\s*$/\1@getattr(torch.jit, "interface", lambda c: c)/'
           # torchbench carries its own transformers/timm pins, drop them for the pytorch ones
           sed -i -E '/^[[:space:]]*(pynvml|transformers|timm)([[:space:]]*[<>=!~;[].*)?[[:space:]]*$/d' requirements.txt
           # Work around legacy deps (e.g. visdom) that still import
