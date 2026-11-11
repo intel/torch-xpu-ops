@@ -17,28 +17,38 @@ mkdir -p "$XML_OUTPUT_DIR"
 
 # Keep skip policy separate from test execution; resolve it independently of cwd.
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 1
-if ! skip_nodes=$(python - "$SCRIPT_DIR/ut_skips.yml" <<'PY'
+SKIP_CONFIG="$SCRIPT_DIR/ut_skips.yaml"
+if ! deselect_text="$(python - "$SKIP_CONFIG" <<'PY'
 import sys
 
 import yaml
 
-with open(sys.argv[1], encoding="utf-8") as file:
-    config = yaml.safe_load(file)
-if not isinstance(config, dict) or set(config) != {"deselect"}:
-    sys.exit("ERROR: P0 skip config must contain only a 'deselect' list")
-nodes = config["deselect"]
-if (not isinstance(nodes, list) or not nodes
-        or any(not isinstance(node, str) or not node.startswith("test/")
-               or "::" not in node or "\n" in node for node in nodes)
-        or len(nodes) != len(set(nodes))):
-    sys.exit("ERROR: P0 deselect entries must be unique pytest node IDs")
-print("\n".join(nodes))
+with open(sys.argv[1], encoding="utf-8") as f:
+    config = yaml.safe_load(f)
+
+if not isinstance(config, dict) or set(config) != {"pytest_deselects"}:
+    sys.exit("ERROR: P0 skip config must contain only pytest_deselects")
+nodes = config["pytest_deselects"]
+if not isinstance(nodes, list):
+    sys.exit("ERROR: pytest_deselects must be a list")
+for node in nodes:
+    if (
+        not isinstance(node, str)
+        or not node.strip()
+        or any(c in node for c in "\r\n\0")
+    ):
+        sys.exit(f"ERROR: Invalid P0 deselection: {node!r}")
+for node in nodes:
+    print(node)
 PY
-); then
-    echo "ERROR: Could not load P0 skip config: $SCRIPT_DIR/ut_skips.yml" >&2
+)"; then
+    echo "ERROR: Could not load P0 skip config: $SKIP_CONFIG" >&2
     exit 1
 fi
-mapfile -t PYTEST_DESELECTS <<< "$skip_nodes"
+PYTEST_DESELECTS=()
+if [[ -n "$deselect_text" ]]; then
+    mapfile -t PYTEST_DESELECTS <<< "$deselect_text"
+fi
 
 # -------------------- Helper Functions --------------------
 # Run pytest with a unique JUnit XML filename
@@ -154,7 +164,7 @@ if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
     echo "Usage: $0 [group1 group2 ...]"
     echo "Available groups: inductor, non-inductor, profiling, distributed"
     echo "If no groups given, all groups are run."
-    echo "All groups use the platform-independent skip list: $SCRIPT_DIR/ut_skips.yml"
+    echo "All groups use the platform-independent skip config: $SKIP_CONFIG"
     exit 0
 fi
 

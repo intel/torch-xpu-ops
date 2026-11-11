@@ -1,9 +1,12 @@
-# Exact pytest nodes deselected by run_ut.sh for every P0 group, on all platforms.
+# Copyright 2020-2026 Intel Corporation
+# Licensed under the Apache License, Version 2.0
+#
+# Used by run_ut.sh for every P0 group, on all platforms.
 # Maintain exact node IDs relative to each test group's working directory.
 # Add related issue links when updating this list; device/version detection
 # belongs outside this policy. BMG CI is the observation, not a platform gate.
 
-deselect:
+pytest_deselects:
   - "test/distributed/fsdp/test_fsdp_misc.py::TestFSDPMiscWorldSize1::test_training_device_mismatch_errors"
   - "test/inductor/test_aot_inductor.py::AOTInductorTestDualWrapper::test_update_user_managed_buffer_xpu"
   - "test/inductor/test_aot_inductor.py::AOTInductorTestABICompatibleGpu::test_update_user_managed_buffer_xpu"
