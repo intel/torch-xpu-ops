@@ -1,7 +1,7 @@
 # Copyright 2020-2026 Intel Corporation
 # Licensed under the Apache License, Version 2.0
 
-"""Run P0 UT groups from tests_ut.yml in an already prepared environment.
+"""Run P0 UT groups from ut.yml in an already prepared environment.
 
 Example: python run_ut.py --pytorch-root /work/pytorch inductor non-inductor
 Use --dry-run to inspect commands. Child output is written directly to per-file
@@ -215,7 +215,7 @@ def write_summary(path, results, total):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("groups", nargs="*", help="Groups to run; default: all groups in YAML order")
-    parser.add_argument("--config", type=Path, default=Path(__file__).with_name("tests_ut.yml"))
+    parser.add_argument("--config", type=Path, default=Path(__file__).with_name("ut.yml"))
     parser.add_argument("--pytorch-root", type=Path, default=os.environ.get("PYTORCH_ROOT_DIR"))
     parser.add_argument(
         "--xpu-ops-root",
