@@ -13,14 +13,17 @@ Environment variables (set by caller):
 """
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+from zipfile import ZipFile
 
 
 def main():
     workspace = Path(os.environ["WORKSPACE"])
     pytorch_root = workspace / "pytorch"
+    expected_xpu_ops = (pytorch_root / "third_party" / "xpu.txt").read_text().strip()
     os.chdir(pytorch_root)
 
     win_wheel_dir = pytorch_root / ".ci" / "wheel" / "windows"
@@ -103,6 +106,23 @@ def main():
         check=True,
     )
     print("build_wheel complete", flush=True)
+    wheels = list(dist_dir.glob("torch-*.whl"))
+    if not wheels:
+        raise RuntimeError(f"No PyTorch wheel found in {dist_dir}")
+    for wheel in wheels:
+        with ZipFile(wheel) as archive:
+            try:
+                built_xpu_ops = archive.read("torch/xpu.txt").decode().strip()
+            except KeyError:
+                # Compatibility with PyTorch versions before pytorch/pytorch#202608.
+                print(f"{wheel.name}: no XPU SHA record; skipping comparison", flush=True)
+                continue
+        if not re.fullmatch(r"[0-9a-f]{40}", expected_xpu_ops):
+            print(f"Source pin {expected_xpu_ops} is not a SHA; skipping comparison", flush=True)
+            continue
+        if built_xpu_ops != expected_xpu_ops:
+            raise RuntimeError(f"XPU SHA mismatch: wheel {built_xpu_ops}, prepared {expected_xpu_ops}")
+        print(f"{wheel.name}: verified XPU SHA {built_xpu_ops}", flush=True)
     print("Build completed successfully", flush=True)
 
 

@@ -7,7 +7,7 @@ inputs:
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
-    default: 'main'
+    default: 'pinned'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
@@ -98,28 +98,28 @@ runs:
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
-        cd pytorch
-        rm -rf third_party/torch-xpu-ops
         if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
           TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
           TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
         else
           TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-          if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
-            TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
-          else
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
-          fi
+          TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
         fi
+        SOURCE_ARG=()
         if [ "${{ github.event_name }}" == "pull_request" ];then
-          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-        else
-          git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
+          SOURCE_ARG=(--source "${{ github.workspace }}/torch-xpu-ops")
         fi
-        git status && git diff && git show -s
+        # A wheel built in this run records the exact commit it compiled
+        # (torch/xpu.txt); use it for any ref so tests cannot drift from it.
+        # Published wheels only consult it for `pinned`.
+        if [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
+          SOURCE_ARG+=(--built-wheel)
+        fi
+        python torch-xpu-ops/.github/scripts/checkout_torch_xpu_ops.py \
+          --pytorch-dir pytorch \
+          --repo "${TORCH_XPU_OPS_REPO}" \
+          --ref "${TORCH_XPU_OPS_COMMIT}" \
+          --prefer-wheel "${SOURCE_ARG[@]}"
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
