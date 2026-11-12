@@ -33,6 +33,8 @@ Tensor roll_xpu(const Tensor& self, IntArrayRef shifts, IntArrayRef dims) {
   if (out.numel() == 0 || xpu::roll_kernel(self, out, shifts, dims)) {
     return out;
   }
+  // Free the unused output before the fallback allocates its own.
+  out.reset();
   return at::native::roll(self, shifts, dims);
 }
 
