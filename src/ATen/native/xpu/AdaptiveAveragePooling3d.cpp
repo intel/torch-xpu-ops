@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/Context.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/AdaptivePooling.h>
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling3dKernels.h>

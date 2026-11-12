@@ -36,15 +36,19 @@ void complex_kernel(TensorIterator& iter) {
 template <typename scalar_t>
 struct PolarFunctor {
   c10::complex<scalar_t> operator()(scalar_t a, scalar_t b) const {
-    return c10::complex<scalar_t>(a * sycl::cos(b), a * sycl::sin(b));
+    using opmath_t = at::opmath_type<scalar_t>;
+    return c10::complex<scalar_t>(
+        static_cast<scalar_t>(opmath_t(a) * sycl::cos(opmath_t(b))),
+        static_cast<scalar_t>(opmath_t(a) * sycl::sin(opmath_t(b))));
   }
 };
 
 void polar_kernel(TensorIterator& iter) {
-  AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(0), "polar_xpu", [&]() {
-    PolarFunctor<scalar_t> f;
-    gpu_kernel(iter, f);
-  });
+  AT_DISPATCH_FLOATING_TYPES_AND(
+      kHalf, iter.input_dtype(0), "polar_xpu", [&]() {
+        PolarFunctor<scalar_t> f;
+        gpu_kernel(iter, f);
+      });
 }
 
 } // namespace at::native::xpu

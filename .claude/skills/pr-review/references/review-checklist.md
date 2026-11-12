@@ -136,7 +136,9 @@ Also flag during review:
   - [ ] Loads use reinterpret cast + index: `const vec_t* RESTRICT input_vec = reinterpret_cast<const vec_t*>(input);` then `vec_t data = input_vec[i]`
   - [ ] Computation operates on the loaded `vec_t` local, not on raw pointer arithmetic
 - [ ] **No shift_group_left + reduction combiner** — Any `sycl::shift_group_left` combined with a reduction op (add, min, max, mean, product, etc.) must use `sycl::reduce_over_group` instead; the shift pattern generates excessive integer ALU instructions causing pipeline stalls. The loop may be at a different call site or inside a functor — trace callers if needed
-
+- [ ] **Pointwise kernel iteration and launch range**
+  - [ ] Internal grid-stride loops use `XPU_KERNEL_LOOP(item, index, bound)` rather than hand-written `get_global_id`/`get_global_range` iteration, unless a documented custom mapping is required
+  - [ ] Grid-stride pointwise launches bound `global_range` by resident capacity with `xpuKernelLoopGroupRange(static_cast<int64_t>(tensor.numel()), work_group_size)`, rather than calculating one work-item per element with `ceil_div(numel, work_group_size)`
 ## Dispatch, Fallback, And Generated Wiring
 
 - [ ] Relevant yaml, native implementation, backward logic, and generated expectations move together

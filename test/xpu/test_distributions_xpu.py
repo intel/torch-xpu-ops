@@ -13,8 +13,11 @@
 # Owner(s): ["module: intel"]
 
 
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_utils import parametrize, run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -156,6 +159,127 @@ def _test_poisson_gpu_sample(self):
         )
 
 
+def _chi2(counts, expected):
+    keep = expected > 50
+    return (((counts[keep] - expected[keep]) ** 2) / expected[keep]).sum().item()
+
+
+def _test_gamma_poisson_gpu_large_sample_independence(self):
+    # Regression test for https://github.com/pytorch/pytorch/issues/194926
+    #
+    # These kernels used to cap the launch far below the element count and walk a
+    # global-range-strided loop, re-seeding Philox from the work item id on every
+    # element. Every element handled by a given work item therefore replayed the
+    # same stream, leaving the sample periodic with the work item count. The
+    # launch is now one work item per element block, seeded from that index.
+    #
+    # The chi-square checks key off the collapse in effective sample size that
+    # the old scheme caused, so their power scales with n / work_items. Grow n if
+    # a device is ever wider than the ~115k work items this was checked against.
+    set_rng_seed(0)
+    n = 10000000
+
+    alpha = 2.3335
+    concentration = torch.tensor(alpha, device="xpu", dtype=torch.float64)
+    rate = torch.tensor(1.0, device="xpu", dtype=torch.float64)
+    x = Gamma(concentration, rate).sample((n,)).cpu()
+
+    # Gamma(alpha, 1) has mean == variance == alpha.
+    mean_se = (alpha / n) ** 0.5
+    # Var(S^2) = (mu4 - sigma^4) / n = (2 * alpha^2 + 6 * alpha) / n.
+    var_se = ((2 * alpha**2 + 6 * alpha) / n) ** 0.5
+    self.assertLess(abs(x.mean().item() - alpha) / mean_se, 5.0)
+    self.assertEqual(x.var().item(), alpha, atol=5 * var_se, rtol=0)
+    self.assertGreater(x.unique().numel(), n // 2)
+
+    lam = 4.0
+    p = torch.poisson(torch.full((n,), lam, device="xpu", dtype=torch.float64)).cpu()
+    self.assertEqual(p.mean().item(), lam, atol=10 * (lam / n) ** 0.5, rtol=0)
+    k = torch.arange(16, dtype=torch.float64, device="cpu")
+    expected = (
+        n
+        * Poisson(torch.tensor(lam, dtype=torch.float64, device="cpu"))
+        .log_prob(k)
+        .exp()
+    )
+    counts = torch.bincount(p.long(), minlength=16)[:16].double()
+    # ~14 once fixed, ~4000 under the bug at 40,960 work items.
+    self.assertLess(_chi2(counts, expected), 100.0)
+
+    # bernoulli_ with a tensor p is the only step=4 caller of tensor_apply2.
+    b = (
+        torch.empty(n, device="xpu")
+        .bernoulli_(torch.full((n,), 0.5, device="xpu"))
+        .cpu()
+    )
+    self.assertEqual(b.mean().item(), 0.5, atol=5 * (0.25 / n) ** 0.5, rtol=0)
+    # Histogram of consecutive draws packed 8 to a byte: flat once fixed, skewed
+    # by the repeated period under the bug.
+    codes = (b.view(-1, 8).long() * (2 ** torch.arange(8, device="cpu"))).sum(1)
+    byte_counts = torch.bincount(codes, minlength=256).double()
+    byte_expected = torch.full(
+        (256,), codes.numel() / 256, dtype=torch.float64, device="cpu"
+    )
+    # ~256 once fixed, ~62,000 under the bug at 40,960 work items.
+    self.assertLess(_chi2(byte_counts, byte_expected), 500.0)
+
+
+@dtypes(torch.float32, torch.float64)
+@parametrize("rate", [4.0, 63.0, 64.0])
+@parametrize("numel", [0, 257, 4097])
+def _test_poisson_rng_reservation(self, device, dtype, rate, numel):
+    generator = torch.Generator(device=device).manual_seed(1234)
+    values = torch.full((numel,), rate, device=device, dtype=dtype)
+
+    first = torch.poisson(values, generator=generator)
+    self.assertEqual(generator.get_offset(), 256)
+    second = torch.poisson(values, generator=generator)
+    self.assertEqual(generator.get_offset(), 512)
+
+    generator.manual_seed(1234)
+    generator.set_offset(256)
+    self.assertEqual(torch.poisson(values, generator=generator), second)
+
+    generator.manual_seed(1234)
+    self.assertEqual(torch.poisson(values, generator=generator), first)
+    self.assertEqual(torch.poisson(values, generator=generator), second)
+    self.assertEqual(generator.get_offset(), 512)
+
+
+@dtypes(torch.float32, torch.float64)
+@parametrize("numel", [0, 1, 3, 4, 5, 2049])
+@parametrize("strided", [False, True])
+def _test_bernoulli_tensor_rng_reservation(self, device, dtype, numel, strided):
+    generator = torch.Generator(device=device).manual_seed(1234)
+    storage_size = 2 * numel if strided else numel
+    probabilities = torch.full((storage_size,), 0.5, device=device, dtype=dtype)
+    storage = torch.full_like(probabilities, -1)
+    if strided:
+        probabilities = probabilities[::2]
+        output = storage[::2]
+    else:
+        output = storage
+    offset = 4 if numel else 0
+
+    first = output.bernoulli_(probabilities, generator=generator).clone()
+    self.assertEqual(generator.get_offset(), offset)
+    second = output.bernoulli_(probabilities, generator=generator).clone()
+    self.assertEqual(generator.get_offset(), 2 * offset)
+    self.assertTrue(((first == 0) | (first == 1)).all().item())
+    self.assertTrue(((second == 0) | (second == 1)).all().item())
+
+    generator.manual_seed(1234)
+    generator.set_offset(offset)
+    self.assertEqual(output.bernoulli_(probabilities, generator=generator), second)
+
+    generator.manual_seed(1234)
+    self.assertEqual(output.bernoulli_(probabilities, generator=generator), first)
+    self.assertEqual(output.bernoulli_(probabilities, generator=generator), second)
+    self.assertEqual(generator.get_offset(), 2 * offset)
+    if strided:
+        self.assertEqual(storage[1::2], torch.full_like(storage[1::2], -1))
+
+
 def _test_torch_binomial_dtype_errors(self):
     dtypes = [torch.int, torch.long, torch.short]
     devices = ["cpu", "xpu"]
@@ -182,12 +306,39 @@ def _test_torch_binomial_dtype_errors(self):
                 torch.binomial(total_count, total_prob)
 
 
+def _test_lowrank_multivariate_normal_moments(self):
+    # XPU override of the upstream moments test with a larger sample count.
+    #
+    # More samples shrink the 3-sigma mean spread (std error ~ sigma/sqrt(N)):
+    # 100k -> 500k brings it from ~0.0168 to ~0.0075, under atol=0.01
+    set_rng_seed(0)
+    mean = torch.randn(5)
+    cov_factor = torch.randn(5, 2)
+    cov_diag = torch.randn(5).abs()
+    d = LowRankMultivariateNormal(mean, cov_factor, cov_diag)
+    samples = d.rsample((500000,))
+    empirical_mean = samples.mean(0)
+    self.assertEqual(d.mean, empirical_mean, atol=0.01, rtol=0)
+    empirical_var = samples.var(0)
+    self.assertEqual(d.variance, empirical_var, atol=0.02, rtol=0)
+
+
 TestDistributions.test_beta_underflow_gpu = _test_beta_underflow_gpu
 TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
 TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
 TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
 TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
+TestDistributions.test_gamma_poisson_gpu_large_sample_independence = (
+    _test_gamma_poisson_gpu_large_sample_independence
+)
+TestDistributions.test_poisson_rng_reservation = _test_poisson_rng_reservation
+TestDistributions.test_bernoulli_tensor_rng_reservation = (
+    _test_bernoulli_tensor_rng_reservation
+)
 TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_errors
+TestDistributions.test_lowrank_multivariate_normal_moments = (
+    _test_lowrank_multivariate_normal_moments
+)
 instantiate_device_type_tests(
     TestDistributions, globals(), only_for="xpu", allow_xpu=True
 )

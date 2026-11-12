@@ -178,7 +178,13 @@ struct AbsMaxOps {
 // of a set of numbers.
 // `scalar_t` is the type of the input and `acc_t` is the type of the
 // accumulated value. These types differ for complex number input support.
-template <typename scalar_t, typename acc_t = scalar_t, typename out_t = acc_t>
+// `apply_root` controls whether to apply the final root: if true, returns
+// (sum(|x|^p))^(1/p); if false, returns sum(|x|^p) (used by linalg._powsum).
+template <
+    typename scalar_t,
+    typename acc_t = scalar_t,
+    typename out_t = acc_t,
+    bool apply_root = true>
 struct NormOps {
   acc_t norm_;
 
@@ -191,7 +197,11 @@ struct NormOps {
   }
 
   inline out_t project(acc_t a) const {
-    return sycl::pow(a, static_cast<acc_t>(1.0) / norm_);
+    if constexpr (apply_root) {
+      return sycl::pow(a, static_cast<acc_t>(1.0) / norm_);
+    } else {
+      return a;
+    }
   }
 
   static acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {
@@ -271,7 +281,13 @@ inline acc_t abs_if_complex(c10::complex<scalar_t> data, AbsSwitch<acc_t>) {
 // absolute value of a set of numbers.
 // `scalar_t` is the type of the input and `acc_t` is the type of the
 // accumulated value. These types differ for complex number input support.
-template <typename scalar_t, typename acc_t = scalar_t, typename out_t = acc_t>
+// `apply_root` controls whether to apply the final sqrt: if true, returns
+// sqrt(sum(|x|^2)); if false, returns sum(|x|^2) (used by linalg._powsum).
+template <
+    typename scalar_t,
+    typename acc_t = scalar_t,
+    typename out_t = acc_t,
+    bool apply_root = true>
 struct NormTwoOps {
   inline acc_t reduce(acc_t acc, scalar_t data, int64_t /*idx*/) const {
     acc_t data_ = abs_if_complex(data, AbsSwitch<acc_t>());
@@ -283,7 +299,11 @@ struct NormTwoOps {
   }
 
   inline out_t project(acc_t a) const {
-    return sycl::sqrt(a);
+    if constexpr (apply_root) {
+      return sycl::sqrt(a);
+    } else {
+      return a;
+    }
   }
 
   static acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {
@@ -340,7 +360,23 @@ struct GreaterOrNan {
   }
 };
 
-template <typename comp_t>
+// Like LessOrNan / GreaterOrNan, but ties (including two NaNs) keep b without
+// comparing indices. Only valid when b's index is smaller than a's.
+template <typename scalar_t>
+struct LessOrNanNoIdx {
+  bool operator()(scalar_t a, scalar_t b) const {
+    return at::_isnan(a) ? !at::_isnan(b) : (a < b);
+  }
+};
+
+template <typename scalar_t>
+struct GreaterOrNanNoIdx {
+  bool operator()(scalar_t a, scalar_t b) const {
+    return at::_isnan(a) ? !at::_isnan(b) : (a > b);
+  }
+};
+
+template <typename comp_t, typename reduce_comp_t>
 struct MinMaxReductionOps {
   using scalar_t = typename binary_function_traits<comp_t>::arg1_t;
   using index_t = int64_t;
@@ -350,8 +386,12 @@ struct MinMaxReductionOps {
     return arg;
   }
 
+  // Reduce.h feeds each accumulator strictly increasing indices, so reduce()
+  // needs no index compare and one accumulator per output suffices.
+  static constexpr bool single_accumulator = true;
+
   static arg_t reduce(arg_t arg, scalar_t val, int64_t idx) {
-    return comp_t{}(arg.first, val, arg.second, idx) ? arg : arg_t(val, idx);
+    return reduce_comp_t{}(val, arg.first) ? arg_t(val, idx) : arg;
   }
 
   static arg_t combine(arg_t a, arg_t b) {
@@ -363,11 +403,12 @@ struct MinMaxReductionOps {
   }
 };
 
-template <typename comp_t>
-struct ArgReductionOps : public MinMaxReductionOps<comp_t> {
-  using typename MinMaxReductionOps<comp_t>::scalar_t;
-  using typename MinMaxReductionOps<comp_t>::index_t;
-  using typename MinMaxReductionOps<comp_t>::arg_t;
+template <typename comp_t, typename reduce_comp_t>
+struct ArgReductionOps : public MinMaxReductionOps<comp_t, reduce_comp_t> {
+  using base_t = MinMaxReductionOps<comp_t, reduce_comp_t>;
+  using typename base_t::arg_t;
+  using typename base_t::index_t;
+  using typename base_t::scalar_t;
 
   static index_t project(arg_t arg) {
     return arg.second;
@@ -377,20 +418,24 @@ struct ArgReductionOps : public MinMaxReductionOps<comp_t> {
 } // namespace detail
 
 template <typename scalar_t>
-struct ArgMaxOps
-    : public detail::ArgReductionOps<detail::GreaterOrNan<scalar_t>> {};
+struct ArgMaxOps : public detail::ArgReductionOps<
+                       detail::GreaterOrNan<scalar_t>,
+                       detail::GreaterOrNanNoIdx<scalar_t>> {};
 
 template <typename scalar_t>
-struct ArgMinOps : public detail::ArgReductionOps<detail::LessOrNan<scalar_t>> {
-};
+struct ArgMinOps : public detail::ArgReductionOps<
+                       detail::LessOrNan<scalar_t>,
+                       detail::LessOrNanNoIdx<scalar_t>> {};
 
 template <typename scalar_t>
-struct MinOps : public detail::MinMaxReductionOps<detail::LessOrNan<scalar_t>> {
-};
+struct MinOps : public detail::MinMaxReductionOps<
+                    detail::LessOrNan<scalar_t>,
+                    detail::LessOrNanNoIdx<scalar_t>> {};
 
 template <typename scalar_t>
-struct MaxOps
-    : public detail::MinMaxReductionOps<detail::GreaterOrNan<scalar_t>> {};
+struct MaxOps : public detail::MinMaxReductionOps<
+                    detail::GreaterOrNan<scalar_t>,
+                    detail::GreaterOrNanNoIdx<scalar_t>> {};
 
 template <typename scalar_t, typename acc_scalar_t, typename index_t>
 struct MinMaxOps {

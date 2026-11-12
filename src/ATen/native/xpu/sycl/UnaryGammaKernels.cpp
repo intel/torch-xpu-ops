@@ -16,6 +16,7 @@
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MathExtensions.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/core/ScalarType.h>
 #include <comm/SYCLContext.h>
 
@@ -42,7 +43,7 @@ void digamma_kernel(TensorIteratorBase& iter) {
       iter.common_dtype(),
       "digamma_xpu",
       [&]() {
-        if (syclHasFloat64()) {
+        if (at::xpu::getCurrentDeviceProperties()->has_fp64) {
           gpu_kernel(iter, DigammaFunctor<scalar_t, true>());
         } else {
           gpu_kernel(iter, DigammaFunctor<scalar_t, false>());
@@ -53,7 +54,8 @@ void digamma_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct TrigammaFunctor {
   scalar_t operator()(scalar_t a) const {
-    return calc_trigamma(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return static_cast<scalar_t>(trigamma(static_cast<opmath_t>(a)));
   }
 };
 

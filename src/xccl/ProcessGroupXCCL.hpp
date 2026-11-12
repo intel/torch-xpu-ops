@@ -25,6 +25,7 @@
 #include <future>
 #include <list>
 #include <mutex>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -199,7 +200,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     options_->timeout = timeout;
   }
 
-  bool isInitialized();
+  bool isInitialized() override;
 
   void setEnableNanCheck(bool enableNanCheck);
 
@@ -495,6 +496,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
+  // Both counters advance inside collective() / pointToPoint(), after the
+  // record is taken, so a record has to predict the id its own op will use.
+  // The flag is the isP2P half of the pair RECORD_PARAM_COMMS_DATA expects.
+  std::tuple<int64_t, bool> predictNextCollectiveSeqId() const;
+  std::tuple<int64_t, bool> predictNextP2PSeqId() const;
+
   std::unordered_map<std::string, at::xpu::XPUStream> xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<onecclComm_t>>
@@ -547,44 +554,42 @@ namespace {
 // Since the current profiler trace support for XCCL is unclear, wrap
 // `RECORD_PARAM_COMMS_DATA` and output parameters as debug logs.
 // export TORCH_CPP_LOG_LEVEL=INFO
-#define RECORD_PARAM_COMMS_DATA_WITH_LOG(                                   \
-    seq,                                                                    \
-    pg_name_tuple,                                                          \
-    inputTensors,                                                           \
-    outputTensors,                                                          \
-    rank,                                                                   \
-    collective_name,                                                        \
-    inNelems,                                                               \
-    outNelems,                                                              \
-    dType,                                                                  \
-    inSplitSizes,                                                           \
-    outSplitSizes,                                                          \
-    globalRankStart,                                                        \
-    globalRankStride,                                                       \
-    worldSize,                                                              \
-    async_op,                                                               \
-    reduce_op)                                                              \
-  do {                                                                      \
-    LOG(INFO) << std::boolalpha << "collective_name: " << collective_name   \
-              << ", inNelems: " << inNelems << ", outNelems: " << outNelems \
-              << ", dType: " << dType << ", root/src rank: " << rank        \
-              << ", worldSize: " << worldSize << ", async_op: " << async_op \
-              << ", reduction op: " << reduce_op;                           \
-    RECORD_PARAM_COMMS_DATA(                                                \
-        seq,                                                                \
-        pg_name_tuple,                                                      \
-        inputTensors,                                                       \
-        outputTensors,                                                      \
-        rank,                                                               \
-        collective_name,                                                    \
-        inNelems,                                                           \
-        outNelems,                                                          \
-        dType,                                                              \
-        inSplitSizes,                                                       \
-        outSplitSizes,                                                      \
-        globalRankStart,                                                    \
-        globalRankStride,                                                   \
-        worldSize);                                                         \
-  } while (0)
+#define RECORD_PARAM_COMMS_DATA_WITH_LOG(                                 \
+    seq,                                                                  \
+    pg_name_tuple,                                                        \
+    inputTensors,                                                         \
+    outputTensors,                                                        \
+    rank,                                                                 \
+    collective_name,                                                      \
+    inNelems,                                                             \
+    outNelems,                                                            \
+    dType,                                                                \
+    inSplitSizes,                                                         \
+    outSplitSizes,                                                        \
+    globalRankStart,                                                      \
+    globalRankStride,                                                     \
+    worldSize,                                                            \
+    async_op,                                                             \
+    reduce_op)                                                            \
+  LOG(INFO) << std::boolalpha << "collective_name: " << collective_name   \
+            << ", inNelems: " << inNelems << ", outNelems: " << outNelems \
+            << ", dType: " << dType << ", root/src rank: " << rank        \
+            << ", worldSize: " << worldSize << ", async_op: " << async_op \
+            << ", reduction op: " << reduce_op;                           \
+  RECORD_PARAM_COMMS_DATA(                                                \
+      seq,                                                                \
+      pg_name_tuple,                                                      \
+      inputTensors,                                                       \
+      outputTensors,                                                      \
+      rank,                                                               \
+      collective_name,                                                    \
+      inNelems,                                                           \
+      outNelems,                                                          \
+      dType,                                                              \
+      inSplitSizes,                                                       \
+      outSplitSizes,                                                      \
+      globalRankStart,                                                    \
+      globalRankStride,                                                   \
+      worldSize);
 } // namespace
 #endif // USE_C10D_XCCL

@@ -16,4 +16,6 @@ namespace at::native::xpu {
 
 TORCH_XPU_API void norm_kernel(TensorIterator& iter, const Scalar& val);
 
+TORCH_XPU_API void powsum_kernel(TensorIterator& iter, const Scalar& val);
+
 } // namespace at::native::xpu

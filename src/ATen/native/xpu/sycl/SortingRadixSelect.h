@@ -64,6 +64,8 @@
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
+#include <bit>
+#include <type_traits>
 
 namespace at::native::xpu {
 
@@ -85,14 +87,14 @@ struct TopKTypeConfig<float> {
   // pos nan: signbit=0 exp=ff fraction>0 --> radix = 1 ff x>0
   // neg nan: signbit=1 exp=ff fraction>0 --> radix = 0 00 x<ff...
   static inline RadixType convert(float v) {
-    RadixType x = *((uint32_t*)&v);
+    RadixType x = std::bit_cast<uint32_t>(v);
     RadixType mask = (x & 0x80000000) ? 0xffffffff : 0x80000000;
     return (v == v) ? (x ^ mask) : 0xffffffff;
   }
 
   static inline float deconvert(RadixType v) {
     RadixType mask = (v & 0x80000000) ? 0x80000000 : 0xffffffff;
-    return __int_as_float(v ^ mask);
+    return std::bit_cast<float>(v ^ mask);
   }
 };
 
@@ -166,14 +168,14 @@ struct TopKTypeConfig<double> {
   using RadixType = uint64_t;
 
   static inline RadixType convert(double v) {
-    RadixType x = *((uint64_t*)&v);
+    RadixType x = std::bit_cast<uint64_t>(v);
     RadixType mask = -((x >> 63)) | 0x8000000000000000;
     return (v == v) ? (x ^ mask) : 0xffffffffffffffff;
   }
 
   static inline double deconvert(RadixType v) {
     RadixType mask = ((v >> 63) - 1) | 0x8000000000000000;
-    return __long_long_as_double(v ^ mask);
+    return std::bit_cast<double>(v ^ mask);
   }
 };
 
@@ -182,14 +184,14 @@ struct TopKTypeConfig<at::Half> {
   using RadixType = uint32_t;
 
   static inline RadixType convert(at::Half v) {
-    RadixType x = *((uint16_t*)&v);
+    RadixType x = std::bit_cast<uint16_t>(v);
     RadixType mask = (x & 0x00008000) ? 0x0000ffff : 0x00008000;
     return (v == v) ? (x ^ mask) : 0xffff;
   }
 
   static inline at::Half deconvert(RadixType v) {
     RadixType mask = (v & 0x00008000) ? 0x00008000 : 0x0000ffff;
-    return __ushort_as_half(v ^ mask);
+    return std::bit_cast<at::Half>(static_cast<uint16_t>(v ^ mask));
   }
 };
 
@@ -211,58 +213,45 @@ struct TopKTypeConfig<at::BFloat16> {
   }
 };
 
-template <typename T>
-struct Bitfield {};
+// The field width is a class template parameter, so it is checked once at
+// instantiation instead of being masked to 8 bits on every call. `pos` stays an
+// unchecked runtime value, so shifting past the width of T remains the caller's
+// responsibility. A full-width field is rejected because no radix needs one.
+template <typename T, int len>
+struct Bitfield {
+  static_assert(std::is_unsigned_v<T>, "Bitfield requires an unsigned T.");
+  static_assert(
+      len > 0 && len < static_cast<int>(sizeof(T) * 8),
+      "Bitfield width must be positive and narrower than T.");
 
-template <>
-struct Bitfield<unsigned int> {
-  static inline unsigned int getBitfield(unsigned int val, int pos, int len) {
-    pos &= 0xff;
-    len &= 0xff;
-    unsigned int m = (1u << len) - 1u;
-    return (val >> pos) & m;
+  static constexpr T getBitfield(T val, int pos) {
+    return (val >> pos) & kMask;
   }
 
-  static inline unsigned int setBitfield(
-      unsigned int val,
-      unsigned int toInsert,
-      int pos,
-      int len) {
-    pos &= 0xff;
-    len &= 0xff;
-    unsigned int m = (1u << len) - 1u;
+  static constexpr T setBitfield(T val, T toInsert, int pos) {
+    T m = kMask;
     toInsert &= m;
     toInsert <<= pos;
     m <<= pos;
     return (val & ~m) | toInsert;
   }
+
+ private:
+  static constexpr T kMask = (T{1} << len) - 1;
 };
 
-template <>
-struct Bitfield<uint64_t> {
-  static inline uint64_t getBitfield(uint64_t val, int pos, int len) {
-    pos &= 0xff;
-    len &= 0xff;
-
-    uint64_t m = (1u << len) - 1u;
-    return (val >> pos) & m;
-  }
-
-  static inline uint64_t setBitfield(
-      uint64_t val,
-      uint64_t toInsert,
-      int pos,
-      int len) {
-    pos &= 0xff;
-    len &= 0xff;
-
-    uint64_t m = (1u << len) - 1u;
-    toInsert &= m;
-    toInsert <<= pos;
-    m <<= pos;
-    return (val & ~m) | toInsert;
-  }
-};
+// The replaced uint64_t specialization built its mask as (1u << len) - 1u,
+// which truncated to 0xff once len reached 32. Widths 2 and 4 are the ones
+// radix select instantiates.
+static_assert(
+    Bitfield<uint64_t, 40>::getBitfield(~uint64_t{0}, 8) ==
+    (uint64_t{1} << 40) - 1);
+static_assert(
+    Bitfield<uint64_t, 40>::setBitfield(0, ~uint64_t{0}, 8) ==
+    ((uint64_t{1} << 40) - 1) << 8);
+static_assert(Bitfield<uint64_t, 2>::getBitfield(~uint64_t{0}, 62) == 0x3);
+static_assert(Bitfield<uint32_t, 4>::getBitfield(~uint32_t{0}, 28) == 0xf);
+static_assert(Bitfield<uint32_t, 2>::setBitfield(0, 0x3, 30) == 0xc0000000u);
 
 // This function counts the distribution of all input values in a
 // slice we are selecting by radix digit at `radixDigitPos`, but only
@@ -278,7 +267,7 @@ template <
     int RadixBits>
 void countRadixUsingMask(
     CountType counts[RadixSize],
-    const sycl_local_acc_t<int>& smem,
+    int* smem,
     bitwise_t desired,
     bitwise_t desiredMask,
     int radixDigitPos,
@@ -305,14 +294,12 @@ void countRadixUsingMask(
 
     bool hasVal = ((val & desiredMask) == desired);
     bitwise_t digitInRadix =
-        Bitfield<bitwise_t>::getBitfield(val, radixDigitPos, RadixBits);
+        Bitfield<bitwise_t, RadixBits>::getBitfield(val, radixDigitPos);
     if (hasVal)
       counts[digitInRadix]++;
   }
 
-  auto smem_ptr = (sycl_local_ptr<int>)(smem.template get_multi_ptr<
-                                                sycl::access::decorated::no>()
-                                            .get());
+  auto smem_ptr = (sycl_local_ptr<int>)smem;
   for (uint32_t i = 0; i < RadixSize; ++i) {
     atomicAdd(smem_ptr + i, counts[i]);
   }
@@ -336,7 +323,7 @@ constexpr int RADIX_MASK = (RADIX_SIZE - 1);
 // ((v & desired) == desiredMask) in our sorted int format
 template <typename scalar_t, typename bitwise_t, typename index_t>
 scalar_t findPattern(
-    const sycl_local_acc_t<int>& smem,
+    int* smem,
     const scalar_t* data,
     index_t sliceSize,
     index_t withinSliceStride,
@@ -344,8 +331,7 @@ scalar_t findPattern(
     bitwise_t desiredMask,
     sycl::nd_item<1>& item_id) {
   auto local_id = item_id.get_local_id(0);
-  auto smem_ptr = static_cast<scalar_t*>(static_cast<void*>(
-      smem.template get_multi_ptr<sycl::access::decorated::no>().get()));
+  auto smem_ptr = reinterpret_cast<scalar_t*>(smem);
   // Zero slots 0/1 (found-flag, value); else stale from countRadixUsingMask.
   if (local_id < 2) {
     smem_ptr[local_id] = static_cast<scalar_t>(0);
@@ -395,7 +381,7 @@ void radixSelect(
     index_t k,
     index_t sliceSize,
     index_t withinSliceStride,
-    const sycl_local_acc_t<int>& smem,
+    int* smem,
     scalar_t* topK,
     sycl::nd_item<1>& item_id) {
   // Per-thread buckets into which we accumulate digit counts in our
@@ -442,9 +428,9 @@ void radixSelect(
       if (count == 1 && kToFind == 1) {
         /* There is a unique answer. */
         desired =
-            Bitfield<bitwise_t>::setBitfield(desired, i, digitPos, RADIX_BITS);
-        desiredMask = Bitfield<bitwise_t>::setBitfield(
-            desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
+            Bitfield<bitwise_t, RADIX_BITS>::setBitfield(desired, i, digitPos);
+        desiredMask = Bitfield<bitwise_t, RADIX_BITS>::setBitfield(
+            desiredMask, RADIX_MASK, digitPos);
 
         /* The answer is now the unique element v such that: */
         /* (v & desiredMask) == desired */
@@ -466,9 +452,9 @@ void radixSelect(
     auto found_non_unique = [&](int i, int count) -> bool {
       if (count >= kToFind) {
         desired =
-            Bitfield<bitwise_t>::setBitfield(desired, i, digitPos, RADIX_BITS);
-        desiredMask = Bitfield<bitwise_t>::setBitfield(
-            desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
+            Bitfield<bitwise_t, RADIX_BITS>::setBitfield(desired, i, digitPos);
+        desiredMask = Bitfield<bitwise_t, RADIX_BITS>::setBitfield(
+            desiredMask, RADIX_MASK, digitPos);
 
         /* The top-Kth element v must now be one such that: */
         /* (v & desiredMask == desired) */

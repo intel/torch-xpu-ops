@@ -84,7 +84,7 @@ mha_fwd(
     int window_size_right,
     const float softcap,
     const bool return_softmax,
-    std::optional<at::Generator> gen_) {
+    const std::optional<at::Generator>& gen_) {
   TORCH_CHECK(
       alibi_slopes_.has_value() == false,
       "mha_fwd on xpu does not support alibi_slopes yet");
@@ -236,13 +236,6 @@ mha_fwd(
   k_padded = ensure_alignment_for_sdpa(k_padded);
   v_padded = ensure_alignment_for_sdpa(v_padded);
   out_padded = ensure_alignment_for_sdpa(out_padded);
-
-  if (seqlen_qo > seqlen_kv && is_causal) {
-    // When seqlen_qo is greater than seqlen_kv and is_causal(lower_right causal
-    // mask) is true, some output positions will skip computation for better
-    // performance.
-    out_padded.zero_();
-  }
 
   at::Tensor logsumexp =
       at::empty({batch_size, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));

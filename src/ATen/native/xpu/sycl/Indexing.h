@@ -11,9 +11,11 @@
 #pragma once
 
 #include <ATen/native/xpu/sycl/BatchKernel.h>
-#include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
+#include <ATen/xpu/XPUContext.h>
+#include <comm/Macros.h>
 #include <comm/TensorInfo.h>
 
 using namespace at::xpu::detail;
@@ -66,7 +68,8 @@ class IndexKernelConfig : public BatchKernelConfig {
             problem_batch,
             problem_along_x,
             Policy::pSegment,
-            syclMaxWorkItemsPerSubSlice()),
+            at::xpu::getDeviceMaxSubGroupSize() *
+                at::xpu::getDeviceEUCountPerXeCore()),
         sinfo_(sinfo),
         dinfo_(dinfo),
         iinfo_(iinfo),
@@ -384,9 +387,8 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         if (indice_size_bytes_ == 4) {
           int32_t index =
               *(int32_t*)(index_ptrs_[i] + local_index * indice_size_bytes_);
-          SYCL_KERNEL_ASSERT(
-              index >= -sizes_[i] && index < sizes_[i] &&
-              "index out of bounds");
+          XPU_KERNEL_ASSERT_WORKAROUND(
+              index >= -sizes_[i] && index < sizes_[i], "index out of bounds");
           if (index < 0) {
             index += sizes_[i];
           }
@@ -394,9 +396,8 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         } else {
           int64_t index =
               *(int64_t*)(index_ptrs_[i] + local_index * indice_size_bytes_);
-          SYCL_KERNEL_ASSERT(
-              index >= -sizes_[i] && index < sizes_[i] &&
-              "index out of bounds");
+          XPU_KERNEL_ASSERT_WORKAROUND(
+              index >= -sizes_[i] && index < sizes_[i], "index out of bounds");
           if (index < 0) {
             index += sizes_[i];
           }
@@ -508,7 +509,7 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 // SYCL suggests: it’s possible (and even desirable) to oversubscribe tasks to
 // device;
-constexpr int OVER_SUBSCRIBE_DSS_FACTOR = 16;
+constexpr int OVER_SUBSCRIBE_XECORE_FACTOR = 16;
 
 template <typename func_t>
 void small_index_kernel(
@@ -524,7 +525,8 @@ void small_index_kernel(
   auto numel = iter.numel();
   auto indices_size = iter.tensor(2).size(-1);
   auto& queue = getCurrentSYCLQueue();
-  int64_t max_group_num = syclMaxDSSNum() * OVER_SUBSCRIBE_DSS_FACTOR;
+  int64_t max_group_num =
+      at::xpu::getDeviceXeCoreCount() * OVER_SUBSCRIBE_XECORE_FACTOR;
 
   auto total_index_iter = numel / indices_size;
   max_group_num = std::min(int64_t(total_index_iter / 2), max_group_num);
@@ -537,7 +539,7 @@ void small_index_kernel(
   auto group_numel = group_index_iter * indices_size;
   auto group_numel_tail = (group_index_iter - 1) * indices_size;
 
-  auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+  int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   wgroup_size = std::min(decltype(wgroup_size)(group_numel), wgroup_size);
   auto global_size = max_group_num * wgroup_size;
 
@@ -610,16 +612,16 @@ struct IndexKernelFunctor {
       // with numbers of input datatypes.
       if (indice_size_bytes_ == 4) {
         int32_t index = *(int32_t*)(index_ptrs_[i] + offsets[2]);
-        SYCL_KERNEL_ASSERT(
-            index >= -sizes_[i] && index < sizes_[i] && "index out of bounds");
+        XPU_KERNEL_ASSERT_WORKAROUND(
+            index >= -sizes_[i] && index < sizes_[i], "index out of bounds");
         if (index < 0) {
           index += sizes_[i];
         }
         offset += index * strides_[i];
       } else {
         int64_t index = *(int64_t*)(index_ptrs_[i] + offsets[2]);
-        SYCL_KERNEL_ASSERT(
-            index >= -sizes_[i] && index < sizes_[i] && "index out of bounds");
+        XPU_KERNEL_ASSERT_WORKAROUND(
+            index >= -sizes_[i] && index < sizes_[i], "index out of bounds");
         if (index < 0) {
           index += sizes_[i];
         }
@@ -730,7 +732,7 @@ void _index_kernel(
   //   input[idx0,idx1,idx2], input[idx0,idx1,:], input[idx0,:,idx2],
   //   input[idx0,:,:], input[:,idx1,:]
   // 2.the common indices numel should larger than 2 times of the
-  // syclMaxComputeUnitSize (then we can get memory access benifit) 3.the
+  // getDeviceXeCoreCount (then we can get memory access benifit) 3.the
   // workloads in each group should larger than the maximum number of
   // workitem (ensure all the workitem activate) 4.the indices_table size
   // should satisfied the SLM limit condition
@@ -739,7 +741,7 @@ void _index_kernel(
   // for 3-dims input:
   // Taking input[idx0,:,idx2] for example, the indices_sizes=[sz,1,sz]
   // While the satified case is input[:,idx1,idx2], indices_sizes=[1,sz,sz]
-  bool small_index = non_index_size.size() != 0 && iter.tensor(1).dim() == 3 &&
+  bool small_index = !non_index_size.empty() && iter.tensor(1).dim() == 3 &&
       non_index_size.size() + index_size.size() == 3;
   auto indices_sizes = iter.tensor(2).sizes();
   for (size_t i = 1; i < iter.tensor(2).dim(); ++i) {
@@ -752,15 +754,15 @@ void _index_kernel(
     using index_buf_type = char*;
     using KernelClass = SmallIndexKernelFunctor<func_t, index_buf_type>;
 
-    int64_t max_group_num = syclMaxDSSNum();
-    auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+    int64_t max_group_num = at::xpu::getDeviceXeCoreCount();
+    int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     auto indices_size = iter.tensor(2).size(-1);
     auto total_index_iter = numel / indices_size;
     auto local_index = numel / max_group_num;
 
     // the max_local_mem_size = 65536B (64KB)
     // TODO: Is this right?
-    auto max_local_mem_size = syclLocalMemSize();
+    int64_t max_local_mem_size = at::xpu::getDeviceLocalMemSize();
     auto indice_table_size = indices_size * sizeof(int64_t);
 
     // check whether the current case satisfying conditions 2,3,4
@@ -1023,7 +1025,8 @@ static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
   if (N == 0) {
     return;
   }
-  int wg_sz = syclMaxWorkItemsPerSubSlice();
+  int wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int num_wg = (N + wg_sz * vt - 1) / (wg_sz * vt);
   auto ker = IndexElementwiseKernelFunctor<vt, func_t>(N, f);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);

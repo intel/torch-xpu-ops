@@ -20,64 +20,12 @@
 #include <c10/util/Half.h>
 #include <sycl/sycl.hpp>
 
+#include <cmath>
 #include <limits>
 #include <numbers>
 #include <type_traits>
 
 namespace at::native::xpu {
-
-/*
- * For licensing information, please refer to the cpu implementation located in
- * "ATen/native/Math.h".
- */
-template <typename T>
-  requires std::is_floating_point_v<T>
-inline T calc_erfinv(T y) {
-  /* Function to calculate inverse error function. Rational approximation is
-   * used to generate an initial approximation, which is then improved to full
-   * accuracy by two steps of Newton's method.
-   */
-  constexpr T CENTRAL_RANGE = T(0.7);
-  T x, z, num, dem;
-  T a[4] = {T(0.886226899), T(-1.645349621), T(0.914624893), T(-0.140543331)};
-  T b[4] = {T(-2.118377725), T(1.442710462), T(-0.329097515), T(0.012229801)};
-  T c[4] = {T(-1.970840454), T(-1.624906493), T(3.429567803), T(1.641345311)};
-  T d[2] = {T(3.543889200), T(1.637067800)};
-  T y_abs = sycl::fabs(y);
-  if (y_abs > T(1)) {
-    return std::numeric_limits<T>::quiet_NaN();
-  }
-  if (y_abs == T(1)) {
-    return sycl::copysign(std::numeric_limits<T>::infinity(), y);
-  }
-  if (y_abs <= CENTRAL_RANGE) {
-    z = y * y;
-    num = (((a[3] * z + a[2]) * z + a[1]) * z + a[0]);
-    dem = ((((b[3] * z + b[2]) * z + b[1]) * z + b[0]) * z + T(1));
-    x = y * num / dem;
-  } else {
-    z = sycl::sqrt(-sycl::log((T(1) - y_abs) / T(2)));
-    num = ((c[3] * z + c[2]) * z + c[1]) * z + c[0];
-    dem = (d[1] * z + d[0]) * z + T(1);
-    x = sycl::copysign(num, y) / dem;
-  }
-  /* Two steps of Newton-Raphson correction */
-  x = x -
-      (sycl::erf(x) - y) /
-          ((T(2) * std::numbers::inv_sqrtpi_v<T>)*sycl::exp(-x * x));
-  x = x -
-      (sycl::erf(x) - y) /
-          ((T(2) * std::numbers::inv_sqrtpi_v<T>)*sycl::exp(-x * x));
-  return x;
-}
-
-inline c10::BFloat16 calc_erfinv(c10::BFloat16 a) {
-  return calc_erfinv(float(a));
-}
-
-inline c10::Half calc_erfinv(c10::Half a) {
-  return calc_erfinv(float(a));
-}
 
 /*
  * For licensing information, please refer to the cpu implementation located in
@@ -148,34 +96,6 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
 
   return static_cast<scalar_t>(
       sycl::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
-}
-
-template <typename scalar_t>
-static inline C10_HOST_DEVICE scalar_t calc_trigamma(scalar_t in) {
-  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-  const accscalar_t PI = 3.14159265358979323846;
-  accscalar_t x = static_cast<accscalar_t>(in);
-  accscalar_t sign = +1;
-  accscalar_t result = 0;
-  if (x < accscalar_t(0.5)) {
-    sign = -1;
-    accscalar_t sin_pi_x = std::sin(PI * x);
-    result -= (PI * PI) / (sin_pi_x * sin_pi_x);
-    x = accscalar_t(1) - x;
-  }
-  for (int i = 0; i < 6; ++i) {
-    result += accscalar_t(1) / (x * x);
-    x += accscalar_t(1);
-  }
-  const accscalar_t one = accscalar_t(1);
-  const accscalar_t ixx = accscalar_t(1) / (x * x);
-  result +=
-      (accscalar_t(1) + accscalar_t(1) / (accscalar_t(2) * x) +
-       ixx *
-           (one / accscalar_t(6) -
-            ixx * (one / accscalar_t(30) - ixx * (one / accscalar_t(42))))) /
-      x;
-  return static_cast<scalar_t>(sign * result);
 }
 
 // regularized lower incomplete gamma
@@ -310,7 +230,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
 
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   accscalar_t ax, fac, res, num, numfac;
-  static const accscalar_t MAXLOG = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MAXLOG = std::is_same_v<accscalar_t, double>
       ? 7.09782712893383996843E2
       : 88.72283905206835;
   static const accscalar_t EXP1 = 2.718281828459045;
@@ -342,7 +262,7 @@ template <typename scalar_t>
 static scalar_t _igam_helper_series(scalar_t a, scalar_t x) {
   // Compute igam using DLMF 8.11.4. [igam1]
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
   static const int MAXITER = 2000;
@@ -382,7 +302,7 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
   accscalar_t sum = 0;
   accscalar_t term, logx;
   static const int MAXITER = 2000;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
 
@@ -652,7 +572,7 @@ static const scalar_t _igam_helper_asymptotic_series(
 
   int k, n, sgn;
   int maxpow = 0;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
   accscalar_t lambda = x / a;
@@ -717,13 +637,12 @@ static scalar_t _igamc_helper_continued_fraction(scalar_t a, scalar_t x) {
   accscalar_t ans, ax, c, yc, r, t, y, z;
   accscalar_t pk, pkm1, pkm2, qk, qkm1, qkm2;
   int MAXITER = 2000;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
-  static const accscalar_t BIG = std::is_same<accscalar_t, double>::value
-      ? 4.503599627370496e15
-      : 16777216.;
-  static const accscalar_t BIGINV = std::is_same<accscalar_t, double>::value
+  static const accscalar_t BIG =
+      std::is_same_v<accscalar_t, double> ? 4.503599627370496e15 : 16777216.;
+  static const accscalar_t BIGINV = std::is_same_v<accscalar_t, double>
       ? 2.22044604925031308085e-16
       : 5.9604644775390625E-8;
 
@@ -910,257 +829,6 @@ inline scalar_t calc_igamma(scalar_t a, scalar_t x) {
  * For licensing information and documentation, please refer to the cpu
  * implementation located in "ATen/native/Math.h".
  */
-template <typename scalar_t>
-static inline C10_HOST_DEVICE scalar_t
-chbevl(scalar_t _x, const scalar_t array[], size_t len) {
-  static_assert(
-      !std::is_same<scalar_t, Half>() && !std::is_same<scalar_t, BFloat16>(),
-      "don't instantiate with low precision type");
-
-  scalar_t b0, b1, b2;
-
-  b0 = array[0];
-  b1 = 0;
-
-  for (size_t i = 1; i < len; ++i) {
-    b2 = b1;
-    b1 = b0;
-    b0 = _x * b1 - b2 + array[i];
-  }
-
-  return (scalar_t(0.5) * (b0 - b2));
-}
-
-/*
- * For licensing information and documentation, please refer to the cpu
- * implementation located in "ATen/native/Math.h".
- */
-template <typename T>
-C10_HOST_DEVICE inline std::tuple<const T*, size_t>
-chebyshev_coefficients_i0e_A() {
-  /* Chebyshev coefficients for exp(-x) I0(x)
-   * in the interval [0,8].
-   *
-   * lim(x->0){ exp(-x) I0(x) } = 1.
-   */
-  static const T coefficients[] = {
-      -4.41534164647933937950E-18, 3.33079451882223809783E-17,
-      -2.43127984654795469359E-16, 1.71539128555513303061E-15,
-      -1.16853328779934516808E-14, 7.67618549860493561688E-14,
-      -4.85644678311192946090E-13, 2.95505266312963983461E-12,
-      -1.72682629144155570723E-11, 9.67580903537323691224E-11,
-      -5.18979560163526290666E-10, 2.65982372468238665035E-9,
-      -1.30002500998624804212E-8,  6.04699502254191894932E-8,
-      -2.67079385394061173391E-7,  1.11738753912010371815E-6,
-      -4.41673835845875056359E-6,  1.64484480707288970893E-5,
-      -5.75419501008210370398E-5,  1.88502885095841655729E-4,
-      -5.76375574538582365885E-4,  1.63947561694133579842E-3,
-      -4.32430999505057594430E-3,  1.05464603945949983183E-2,
-      -2.37374148058994688156E-2,  4.93052842396707084878E-2,
-      -9.49010970480476444210E-2,  1.71620901522208775349E-1,
-      -3.04682672343198398683E-1,  6.76795274409476084995E-1};
-
-  return std::make_tuple(coefficients, 30);
-}
-
-template <typename T>
-C10_HOST_DEVICE inline std::tuple<const T*, size_t>
-chebyshev_coefficients_i0e_B() {
-  /* Chebyshev coefficients for exp(-x) sqrt(x) I0(x)
-   * in the inverted interval [8,infinity].
-   *
-   * lim(x->inf){ exp(-x) sqrt(x) I0(x) } = 1/sqrt(2pi).
-   */
-  static const T coefficients[] = {
-      -7.23318048787475395456E-18, -4.83050448594418207126E-18,
-      4.46562142029675999901E-17,  3.46122286769746109310E-17,
-      -2.82762398051658348494E-16, -3.42548561967721913462E-16,
-      1.77256013305652638360E-15,  3.81168066935262242075E-15,
-      -9.55484669882830764870E-15, -4.15056934728722208663E-14,
-      1.54008621752140982691E-14,  3.85277838274214270114E-13,
-      7.18012445138366623367E-13,  -1.79417853150680611778E-12,
-      -1.32158118404477131188E-11, -3.14991652796324136454E-11,
-      1.18891471078464383424E-11,  4.94060238822496958910E-10,
-      3.39623202570838634515E-9,   2.26666899049817806459E-8,
-      2.04891858946906374183E-7,   2.89137052083475648297E-6,
-      6.88975834691682398426E-5,   3.36911647825569408990E-3,
-      8.04490411014108831608E-1};
-
-  return std::make_tuple(coefficients, 25);
-}
-
-template <typename scalar_t>
-static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
-  static_assert(
-      !std::is_same<scalar_t, Half>() && !std::is_same<scalar_t, BFloat16>(),
-      "don't instantiate with low precision type");
-  // Upcast input for numerical accuracy purposes
-  // Needed for accurate results if input is bfloat16 or float16
-  scalar_t x = sycl::fabs(_x);
-
-  if (x <= scalar_t{8.0}) {
-    auto coeff_pair = chebyshev_coefficients_i0e_A<scalar_t>();
-    auto A = std::get<0>(coeff_pair);
-    auto len = std::get<1>(coeff_pair);
-    scalar_t y = (x / scalar_t{2.0}) - scalar_t{2.0};
-    return (sycl::exp(x) * chbevl(y, A, len));
-  }
-
-  auto coeff_pair = chebyshev_coefficients_i0e_B<scalar_t>();
-  auto B = std::get<0>(coeff_pair);
-  auto len = std::get<1>(coeff_pair);
-  return (
-      sycl::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
-      sycl::sqrt(x));
-}
-
-template <typename T>
-  requires std::is_same_v<double, T>
-C10_HOST_DEVICE inline std::tuple<const T*, size_t>
-chebyshev_coefficients_i1e_A() {
-  /* Chebyshev coefficients for exp(-x) I1(x)
-   * in the interval [0,8].
-   *
-   * lim(x->0){ exp(-x) I1(x) / x } = 1/2.
-   */
-  static const T coefficients[] = {
-      2.77791411276104639959E-18, -2.11142121435816608115E-17,
-      1.55363195773620046921E-16, -1.10559694773538630805E-15,
-      7.60068429473540693410E-15, -5.04218550472791168711E-14,
-      3.22379336594557470981E-13, -1.98397439776494371520E-12,
-      1.17361862988909016308E-11, -6.66348972350202774223E-11,
-      3.62559028155211703701E-10, -1.88724975172282928790E-9,
-      9.38153738649577178388E-9,  -4.44505912879632808065E-8,
-      2.00329475355213526229E-7,  -8.56872026469545474066E-7,
-      3.47025130813767847674E-6,  -1.32731636560394358279E-5,
-      4.78156510755005422638E-5,  -1.61760815825896745588E-4,
-      5.12285956168575772895E-4,  -1.51357245063125314899E-3,
-      4.15642294431288815669E-3,  -1.05640848946261981558E-2,
-      2.47264490306265168283E-2,  -5.29459812080949914269E-2,
-      1.02643658689847095384E-1,  -1.76416518357834055153E-1,
-      2.52587186443633654823E-1};
-
-  return std::make_tuple(coefficients, 29);
-}
-
-template <typename T>
-  requires std::is_same_v<float, T>
-C10_HOST_DEVICE inline std::tuple<const T*, size_t>
-chebyshev_coefficients_i1e_A() {
-  /* Chebyshev coefficients for exp(-x) I1(x)
-   * in the interval [0,8].
-   *
-   * lim(x->0){ exp(-x) I1(x) / x } = 1/2.
-   */
-  static const T coeff[] = {
-      9.38153738649577178388E-9f,
-      -4.44505912879632808065E-8f,
-      2.00329475355213526229E-7f,
-      -8.56872026469545474066E-7f,
-      3.47025130813767847674E-6f,
-      -1.32731636560394358279E-5f,
-      4.78156510755005422638E-5f,
-      -1.61760815825896745588E-4f,
-      5.12285956168575772895E-4f,
-      -1.51357245063125314899E-3f,
-      4.15642294431288815669E-3f,
-      -1.05640848946261981558E-2f,
-      2.47264490306265168283E-2f,
-      -5.29459812080949914269E-2f,
-      1.02643658689847095384E-1f,
-      -1.76416518357834055153E-1f,
-      2.52587186443633654823E-1f};
-  return std::make_tuple(coeff, 17);
-};
-
-template <typename T>
-  requires std::is_same_v<double, T>
-C10_HOST_DEVICE inline std::tuple<const T*, size_t>
-chebyshev_coefficients_i1e_B() {
-  /* Chebyshev coefficients for exp(-x) sqrt(x) I1(x)
-   * in the inverted interval [8,infinity].
-   *
-   * lim(x->inf){ exp(-x) sqrt(x) I1(x) } = 1/sqrt(2pi).
-   */
-  static const T coefficients[] = {
-      7.51729631084210481353E-18,  4.41434832307170791151E-18,
-      -4.65030536848935832153E-17, -3.20952592199342395980E-17,
-      2.96262899764595013876E-16,  3.30820231092092828324E-16,
-      -1.88035477551078244854E-15, -3.81440307243700780478E-15,
-      1.04202769841288027642E-14,  4.27244001671195135429E-14,
-      -2.10154184277266431302E-14, -4.08355111109219731823E-13,
-      -7.19855177624590851209E-13, 2.03562854414708950722E-12,
-      1.41258074366137813316E-11,  3.25260358301548823856E-11,
-      -1.89749581235054123450E-11, -5.58974346219658380687E-10,
-      -3.83538038596423702205E-9,  -2.63146884688951950684E-8,
-      -2.51223623787020892529E-7,  -3.88256480887769039346E-6,
-      -1.10588938762623716291E-4,  -9.76109749136146840777E-3,
-      7.78576235018280120474E-1};
-
-  return std::make_tuple(coefficients, 25);
-}
-
-template <typename T>
-  requires std::is_same_v<float, T>
-C10_HOST_DEVICE inline std::tuple<const T*, size_t>
-chebyshev_coefficients_i1e_B() {
-  /* Chebyshev coefficients for exp(-x) sqrt(x) I1(x)
-   * in the inverted interval [8,infinity].
-   *
-   * lim(x->inf){ exp(-x) sqrt(x) I1(x) } = 1/sqrt(2pi).
-   */
-  static const T coeff[] = {
-      -3.83538038596423702205E-9f,
-      -2.63146884688951950684E-8f,
-      -2.51223623787020892529E-7f,
-      -3.88256480887769039346E-6f,
-      -1.10588938762623716291E-4f,
-      -9.76109749136146840777E-3f,
-      7.78576235018280120474E-1f};
-
-  return std::make_tuple(coeff, 7);
-};
-
-template <typename scalar_t>
-static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
-  const auto x = sycl::fabs(_x);
-  if (x <= scalar_t{8.0}) {
-    auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
-    auto A = std::get<0>(coeff_pair);
-    auto len = std::get<1>(coeff_pair);
-    scalar_t y = x / scalar_t{2.0} - scalar_t{2.0};
-    const scalar_t out = sycl::exp(x) * x * chbevl(y, A, len);
-    return (_x < scalar_t{0.0}) ? -out : out;
-  }
-
-  auto coeff_pair = chebyshev_coefficients_i1e_B<scalar_t>();
-  auto B = std::get<0>(coeff_pair);
-  auto len = std::get<1>(coeff_pair);
-  const scalar_t out =
-      (sycl::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
-      sycl::sqrt(x);
-  return (_x < scalar_t{0.0}) ? -out : out;
-}
-
-template <typename scalar_t>
-static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
-  const auto x = sycl::fabs(_x);
-  if (x <= scalar_t{8.0}) {
-    auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
-    auto A = std::get<0>(coeff_pair);
-    auto len = std::get<1>(coeff_pair);
-    const scalar_t y = x / scalar_t{2.0} - scalar_t{2.0};
-    const scalar_t out = chbevl(y, A, len) * x;
-    return (_x < scalar_t{0.0}) ? -out : out;
-  }
-
-  auto coeff_pair = chebyshev_coefficients_i1e_B<scalar_t>();
-  auto B = std::get<0>(coeff_pair);
-  auto len = std::get<1>(coeff_pair);
-  const scalar_t out =
-      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / sycl::sqrt(x);
-  return (_x < scalar_t{0.0}) ? -out : out;
-}
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
@@ -1223,6 +891,11 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
       +5.32278620332680085395e+18,
   };
 
+  // J1 is odd. Fold the sign out so the branches below only ever see |x|;
+  // upstream reflects by recursing, which SYCL device code forbids.
+  const scalar_t sign = (x < scalar_t(0.0)) ? scalar_t(-1.0) : scalar_t(1.0);
+  x = sign * x;
+
   if (x <= scalar_t(5.0)) {
     scalar_t rp = 0.0;
 
@@ -1236,7 +909,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
       rq = rq * (x * x) + RQ[index];
     }
 
-    return rp / rq * x * (x * x - scalar_t(1.46819706421238932572e+01)) *
+    return sign * rp / rq * x * (x * x - scalar_t(1.46819706421238932572e+01)) *
         (x * x - scalar_t(4.92184563216946036703e+01));
   }
 
@@ -1264,10 +937,11 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
     qq = qq * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + QQ[index];
   }
 
-  return (pp / pq *
-              std::cos(x - scalar_t(2.356194490192344928846982537459627163)) -
-          scalar_t(5.0) / x * (qp / qq) *
-              std::sin(x - scalar_t(2.356194490192344928846982537459627163))) *
+  return sign *
+      (pp / pq *
+           std::cos(x - scalar_t(2.356194490192344928846982537459627163)) -
+       scalar_t(5.0) / x * (qp / qq) *
+           std::sin(x - scalar_t(2.356194490192344928846982537459627163))) *
       scalar_t(0.797884560802865355879892119868763737) / sycl::sqrt(x);
 } // bessel_j1_forward(scalar_t x)
 
@@ -1390,188 +1064,5 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
               std::cos(x - scalar_t(2.356194490192344928846982537459627163))) *
       scalar_t(0.797884560802865355879892119868763737) / sycl::sqrt(x);
 } // bessel_y1_forward(scalar_t x)
-
-template <typename T>
-static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
-  static const T AN[] = {
-      +3.46538101525629032477e-01f,
-      +1.20075952739645805542e+01f,
-      +7.62796053615234516538e+01f,
-      +1.68089224934630576269e+02f,
-      +1.59756391350164413639e+02f,
-      +7.05360906840444183113e+01f,
-      +1.40264691163389668864e+01f,
-      +9.99999999999999995305e-01f,
-  };
-
-  static const T AD[] = {
-      +5.67594532638770212846e-01f,
-      +1.47562562584847203173e+01f,
-      +8.45138970141474626562e+01f,
-      +1.77318088145400459522e+02f,
-      +1.64234692871529701831e+02f,
-      +7.14778400825575695274e+01f,
-      +1.40959135607834029598e+01f,
-      +1.00000000000000000470e+00f,
-  };
-
-  static const T AFN[] = {
-      -1.31696323418331795333e-01f,
-      -6.26456544431912369773e-01f,
-      -6.93158036036933542233e-01f,
-      -2.79779981545119124951e-01f,
-      -4.91900132609500318020e-02f,
-      -4.06265923594885404393e-03f,
-      -1.59276496239262096340e-04f,
-      -2.77649108155232920844e-06f,
-      -1.67787698489114633780e-08f,
-  };
-
-  static const T AFD[] = {
-      +1.33560420706553243746e+01f,
-      +3.26825032795224613948e+01f,
-      +2.67367040941499554804e+01f,
-      +9.18707402907259625840e+00f,
-      +1.47529146771666414581e+00f,
-      +1.15687173795188044134e-01f,
-      +4.40291641615211203805e-03f,
-      +7.54720348287414296618e-05f,
-      +4.51850092970580378464e-07f,
-  };
-
-  static const T AGN[] = {
-      +1.97339932091685679179e-02f,
-      +3.91103029615688277255e-01f,
-      +1.06579897599595591108e+00f,
-      +9.39169229816650230044e-01f,
-      +3.51465656105547619242e-01f,
-      +6.33888919628925490927e-02f,
-      +5.85804113048388458567e-03f,
-      +2.82851600836737019778e-04f,
-      +6.98793669997260967291e-06f,
-      +8.11789239554389293311e-08f,
-      +3.41551784765923618484e-10f,
-  };
-
-  static const T AGD[] = {
-      +9.30892908077441974853e+00f,
-      +1.98352928718312140417e+01f,
-      +1.55646628932864612953e+01f,
-      +5.47686069422975497931e+00f,
-      +9.54293611618961883998e-01f,
-      +8.64580826352392193095e-02f,
-      +4.12656523824222607191e-03f,
-      +1.01259085116509135510e-04f,
-      +1.17166733214413521882e-06f,
-      +4.91834570062930015649e-09f,
-  };
-
-  int domain_flag = 0;
-
-  T ai;
-
-  if (sycl::isinf(x)) {
-    return std::numeric_limits<T>::quiet_NaN();
-  }
-
-  if (x > T(103.892f)) {
-    return T(0.0f);
-  }
-
-  T f;
-  T g;
-  T k;
-
-  if (x < T(-2.09f)) {
-    T z = T(1.0f) / (T(-2.0f) * x * sycl::sqrt(-x) / T(3.0f));
-
-    T afn = 0.0f;
-
-    for (uint8_t index = 0; index <= 8; index++) {
-      afn = afn * (z * z) + AFN[index];
-    }
-
-    T afd = 0.0f;
-
-    for (uint8_t index = 0; index <= 8; index++) {
-      afd = afd * (z * z) + AFD[index];
-    }
-
-    T agn = 0.0f;
-
-    for (uint8_t index = 0; index <= 10 + 0; index++) {
-      agn = agn * (z * z) + AGN[index];
-    }
-
-    T agd = 0.0f;
-
-    for (uint8_t index = 0; index <= 10 - 1; index++) {
-      agd = agd * (z * z) + AGD[index];
-    }
-
-    T t = T(-2.0f) * x * sycl::sqrt(-x) / T(3.0f) +
-        T(0.25f) * T(3.14159265358979323846f);
-
-    return T(5.64189583547756286948e-01f) / sycl::sqrt(sycl::sqrt(-x)) *
-        (std::sin(t) * (T(1.0f) + z * z * afn / afd) -
-         std::cos(t) * (z * agn / agd));
-  }
-
-  if (x >= T(2.09f)) {
-    domain_flag = 5;
-
-    T zeta = T(2.0f) * x * sycl::sqrt(x) / T(3.0f);
-
-    T an = 0.0f;
-
-    for (uint8_t index = 0; index <= 7; index++) {
-      an = an * (T(1.0f) / zeta) + AN[index];
-    }
-
-    T ad = 0.0f;
-
-    for (uint8_t index = 0; index <= 7; index++) {
-      ad = ad * (T(1.0f) / zeta) + AD[index];
-    }
-
-    ai = T(5.64189583547756286948e-01f) * (an / ad) /
-        (T(2.0f) * sycl::sqrt(sycl::sqrt(x)) * sycl::exp(zeta));
-
-    if (x > T(8.3203353f)) {
-      return ai;
-    }
-  }
-
-  f = 1.0f;
-  g = x;
-  k = 1.0f;
-
-  T m = 1.0f;
-  T n = x;
-  T t = 1.0f;
-  T z = x * x * x;
-
-  while (t > std::numeric_limits<T>::epsilon()) {
-    m *= z;
-    k += T(1.0f);
-    m /= k;
-    n *= z;
-    k += T(1.0f);
-    n /= k;
-    m /= k;
-    f += m;
-    k += T(1.0f);
-    n /= k;
-    g += n;
-
-    t = sycl::fabs(m / f);
-  }
-
-  if ((domain_flag & 1) == 0) {
-    return T(0.355028053887817239260f) * f - T(0.258819403792806798405f) * g;
-  }
-
-  return ai;
-} // T airy_ai(T x)
 
 } // namespace at::native::xpu

@@ -14,6 +14,6 @@
 
 namespace sdp {
 
-bool can_use_mem_efficient_attention(sdp::sdp_params params, bool debug);
+bool can_use_mem_efficient_attention(const sdp::sdp_params& params, bool debug);
 
 } // namespace sdp

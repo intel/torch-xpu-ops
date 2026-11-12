@@ -109,10 +109,19 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
   b_indices.push_back(std::optional<Tensor>(col.reshape({-1})));
   auto b_sub = mat2.transpose(-1, -2).index(b_indices); // (Total_NNZ, K)
 
-  // dot product (Total_NNZ)
-  auto dot_products = (a_sub * b_sub).sum(-1);
+  // For half-precision types, upcast to float32 for accumulation precision
+  // to match the behavior of matmul (a @ b) used in the reference computation.
+  auto orig_dtype = a_sub.scalar_type();
+  bool needs_upcast = (orig_dtype == at::kBFloat16 || orig_dtype == at::kHalf);
+  auto a_compute = needs_upcast ? a_sub.to(at::kFloat) : a_sub;
+  auto b_compute = needs_upcast ? b_sub.to(at::kFloat) : b_sub;
 
-  auto new_values = (dot_products * alpha) + (values.reshape({-1}) * beta);
+  // dot product (Total_NNZ)
+  auto dot_products = (a_compute * b_compute).sum(-1);
+
+  auto vals_flat = values.reshape({-1});
+  auto vals_compute = needs_upcast ? vals_flat.to(at::kFloat) : vals_flat;
+  auto new_values = (dot_products * alpha) + (vals_compute * beta);
 
   result.values().copy_(new_values.view_as(values));
 

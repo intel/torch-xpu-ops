@@ -18,9 +18,9 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/core/Allocator.h>
 #include <c10/macros/Macros.h>
-#include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUPair.h>
 #include <comm/xpu_aten.h>
@@ -100,8 +100,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   int sg_gid = sg.get_group_linear_id();
   int sg_range = sg.get_group_range()[0];
   // group reduce requests workgroup size is multiple of subgroup size
-  SYCL_KERNEL_ASSERT(
-      wg_size % sg_size == 0 && "unsupported workgroup size for group reduce");
+  SYCL_KERNEL_ASSERT(wg_size % sg_size == 0);
 
   // tree reduce in subgroup
   subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
@@ -289,14 +288,15 @@ struct ReduceConfig {
 
   template <typename T, class KernelClass>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
-    auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
+    int64_t max_wg_sz = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     // Bypass reduction on SLM by sparing workload to other SGs. As the
     // result, reduction of small shape input only requires some shift
     // operations in side of SG. It is functional WA. We got case failures on
     // some platforms supporting SIMD8.
     // https://github.com/intel/torch-xpu-ops/issues/698
-    auto max_sg_sz = syclMinSubGroupSize() == 8 ? syclMinSubGroupSize()
-                                                : syclMaxSubGroupSize();
+    int64_t max_sg_sz = at::xpu::getDeviceMinSubGroupSize() == 8
+        ? at::xpu::getDeviceMinSubGroupSize()
+        : at::xpu::getDeviceMaxSubGroupSize();
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
@@ -509,6 +509,19 @@ func_wrapper_t<out_scalar_t, func_t> func_wrapper(const func_t& op) {
   return func_wrapper_t<out_scalar_t, func_t>{op};
 }
 
+// Optional constexpr bool ops_t::single_accumulator defaults to false. When
+// true, each work-item shares one accumulator per output across vector/unrolled
+// elements; this must preserve the op's semantics. reduce() receives strictly
+// increasing indices per accumulator; combine() must handle unordered partials.
+template <typename ops_t, typename = void>
+struct single_accumulator : std::false_type {};
+
+template <typename ops_t>
+struct single_accumulator<
+    ops_t,
+    std::void_t<decltype(ops_t::single_accumulator)>>
+    : std::bool_constant<ops_t::single_accumulator> {};
+
 template <
     typename scalar_t,
     typename ops_t,
@@ -530,6 +543,9 @@ struct ReduceOp {
   static constexpr bool can_accumulate_in_output =
       std::is_convertible_v<arg_t, out_scalar_t> &&
       std::is_convertible_v<out_scalar_t, arg_t>;
+
+  static constexpr bool use_single_accumulator =
+      single_accumulator<ops_t>::value;
 
   static constexpr float acc_buffer_multiplier =
       (float)sizeof(arg_t) / sizeof(out_scalar_t);
@@ -607,7 +623,7 @@ struct ReduceOp {
       value = item_reduce<output_vec_size>(pos, input_slice);
     }
 
-    auto combine = [=, this](arg1_t value, arg2_t other) -> arg1_t {
+    auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
       return ops.combine(value, other);
     };
 
@@ -740,6 +756,8 @@ struct ReduceOp {
   arg_t input_vectorized_item_reduce_impl(
       sycl::nd_item<2> pos,
       const scalar_t* data) const {
+    // Keep reduce() indices strictly increasing per accumulator through the
+    // head, vectorized body, and tail; index-free min/max relies on this.
     index_t end = config.num_inputs;
     // Handle the head of input slice where data is not aligned
     arg_t value = ident;
@@ -770,11 +788,13 @@ struct ReduceOp {
     const index_t stride = config.step_input;
 
     // multiple registers
-    arg_t value_list[input_vec_size];
+    constexpr int num_accumulators =
+        use_single_accumulator ? 1 : input_vec_size;
+    arg_t value_list[num_accumulators];
     value_list[0] = value;
 
 #pragma unroll
-    for (int i = 1; i < input_vec_size; ++i) {
+    for (int i = 1; i < num_accumulators; ++i) {
       value_list[i] = ident;
     }
 
@@ -782,8 +802,8 @@ struct ReduceOp {
       const auto values_vec = memory::load_vector<input_vec_size>(data, idx);
 #pragma unroll
       for (index_t i = 0; i < input_vec_size; ++i) {
-        value_list[i] = ops.reduce(
-            value_list[i], values_vec[i], shift + idx * input_vec_size + i);
+        auto& acc = value_list[use_single_accumulator ? 0 : i];
+        acc = ops.reduce(acc, values_vec[i], shift + idx * input_vec_size + i);
       }
       idx += stride;
     }
@@ -800,7 +820,7 @@ struct ReduceOp {
 
     // registers accumulation
 #pragma unroll
-    for (int i = 1; i < input_vec_size; ++i) {
+    for (int i = 1; i < num_accumulators; ++i) {
       value_list[0] = ops.combine(value_list[0], value_list[i]);
     }
     return value_list[0];
@@ -811,6 +831,8 @@ struct ReduceOp {
       sycl::nd_item<2> pos,
       const scalar_t* data_,
       offset_calc_t calc) const {
+    // Keep reduce() indices strictly increasing per accumulator through the
+    // unrolled body and tail; index-free min/max relies on this.
     index_t idx = config.input_idx(pos);
     const index_t end = config.num_inputs;
     const index_t stride = config.step_input;
@@ -819,10 +841,11 @@ struct ReduceOp {
     using load_t =
         at::native::memory::aligned_vector<scalar_t, output_vec_size>;
 
-    arg_vec_t value_list[vt0];
+    constexpr int num_accumulators = use_single_accumulator ? 1 : vt0;
+    arg_vec_t value_list[num_accumulators];
 
-#pragma unroll(vt0)
-    for (int i = 0; i < vt0; i++) {
+#pragma unroll
+    for (int i = 0; i < num_accumulators; i++) {
 #pragma unroll(output_vec_size)
       for (int j = 0; j < output_vec_size; ++j) {
         value_list[i][j] = ident;
@@ -841,8 +864,8 @@ struct ReduceOp {
       for (index_t i = 0; i < vt0; ++i) {
 #pragma unroll(output_vec_size)
         for (index_t j = 0; j < output_vec_size; ++j) {
-          value_list[i][j] =
-              ops.reduce(value_list[i][j], values[i][j], idx + i * stride);
+          auto& acc = value_list[use_single_accumulator ? 0 : i][j];
+          acc = ops.reduce(acc, values[i][j], idx + i * stride);
         }
       }
       idx += stride * vt0;
@@ -867,14 +890,15 @@ struct ReduceOp {
       }
 #pragma unroll(output_vec_size)
       for (index_t j = 0; j < output_vec_size; ++j) {
-        value_list[i][j] = ops.reduce(value_list[i][j], values[i][j], idx);
+        auto& acc = value_list[use_single_accumulator ? 0 : i][j];
+        acc = ops.reduce(acc, values[i][j], idx);
       }
       idx += stride;
     }
 
     // combine accumulators
-#pragma unroll(vt0)
-    for (int i = 1; i < vt0; ++i) {
+#pragma unroll
+    for (int i = 1; i < num_accumulators; ++i) {
 #pragma unroll(output_vec_size)
       for (index_t j = 0; j < output_vec_size; ++j) {
         value_list[0][j] = ops.combine(value_list[0][j], value_list[i][j]);
@@ -1033,7 +1057,7 @@ struct ReduceOp {
         }
       }
 
-      auto combine = [=, this](arg1_t value, arg2_t other) -> arg1_t {
+      auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
         return ops.combine(value, other);
       };
 
@@ -1123,8 +1147,8 @@ class AccumulationBuffer {
       size_t acc_t_size,
       size_t out_t_size,
       char* out_ptr,
-      int64_t size) {
-    out_ptr_ = out_ptr;
+      int64_t size)
+      : out_ptr_(out_ptr) {
     if (out_t_size >= acc_t_size) {
       // reusing output buffer for accumulation.
       acc_ptr_ = out_ptr;
@@ -1408,8 +1432,8 @@ inline void gpu_reduce_kernel(
   constexpr int min_values_per_item = 16;
   constexpr int max_values_per_item = 256;
 
-  const auto target_group_range =
-      syclMaxWorkItemsPerTile() / (group_height * group_width);
+  const int64_t target_group_range =
+      at::xpu::getDeviceMaxWorkItems() / (group_height * group_width);
   // outputs after spliting to work group
   int reset_output = config.n_groups()[1];
   if (config.input_mult[1] != 0 &&

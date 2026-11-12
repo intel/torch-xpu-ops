@@ -144,7 +144,7 @@ std::tuple<Tensor, Tensor> roi_pool_kernel(
 
   auto output_size = num_rois * pooled_height * pooled_width * channels;
   int64_t global_range =
-      ceil_div(static_cast<int64_t>(output_size), static_cast<int64_t>(512));
+      xpuKernelLoopGroupRange(static_cast<int64_t>(output_size), 512);
   int64_t local_range = 512;
 
   if (output.numel() == 0) {
@@ -157,14 +157,14 @@ std::tuple<Tensor, Tensor> roi_pool_kernel(
       input.scalar_type(), "roi_pool_forward_kernel_xpu", [&] {
         auto kfn = RoiPoolForwardKernel<scalar_t>(
             output_size,
-            input_.data_ptr<scalar_t>(),
+            input_.const_data_ptr<scalar_t>(),
             spatial_scale,
             channels,
             height,
             width,
             pooled_height,
             pooled_width,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
             argmax.data_ptr<int>());
         sycl_kernel_submit(
@@ -269,9 +269,8 @@ Tensor roi_pool_backward_kernel(
     int64_t width) {
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
-  int64_t global_range = std::min(
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512)),
-      static_cast<int64_t>(4096));
+  int64_t global_range =
+      xpuKernelLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
   int64_t local_range = 512;
 
   // handle possibly empty gradients
@@ -291,8 +290,8 @@ Tensor roi_pool_backward_kernel(
       grad.scalar_type(), "roi_pool_backward_kernel_xpu", [&] {
         auto kfn = RoiPoolBackwardKernel<scalar_t>(
             grad.numel(),
-            grad.data_ptr<scalar_t>(),
-            argmax_.data_ptr<int>(),
+            grad.const_data_ptr<scalar_t>(),
+            argmax_.const_data_ptr<int>(),
             num_rois,
             spatial_scale,
             channels,
@@ -301,7 +300,7 @@ Tensor roi_pool_backward_kernel(
             pooled_height,
             pooled_width,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             n_stride,
             c_stride,
             h_stride,

@@ -31,7 +31,7 @@ struct CheckBytePack {
 #pragma unroll 8
     for (int i = 0; i < EltPerPack; i++) {
       if (at::_isnan(data[i]))
-        assert(0);
+        SYCL_KERNEL_ASSERT(0);
     }
   }
 };
@@ -41,7 +41,7 @@ struct CheckBytePack<T, /*EltPerPack*/ 2> {
   static void check(BytePack* tmp) {
     T* data = (T*)tmp;
     if (at::_isnan(data[0]) || at::_isnan(data[1]))
-      assert(0);
+      SYCL_KERNEL_ASSERT(0);
   }
 };
 
@@ -51,7 +51,7 @@ struct CheckBytePack<T, /*EltPerPack*/ 4> {
     T* data = (T*)tmp;
     if (at::_isnan(data[0]) || at::_isnan(data[1]) || at::_isnan(data[2]) ||
         at::_isnan(data[3]))
-      assert(0);
+      SYCL_KERNEL_ASSERT(0);
   }
 };
 
@@ -62,7 +62,7 @@ struct CheckBytePack<T, /*EltPerPack*/ 8> {
     if (at::_isnan(data[0]) || at::_isnan(data[1]) || at::_isnan(data[2]) ||
         at::_isnan(data[3]) || at::_isnan(data[4]) || at::_isnan(data[5]) ||
         at::_isnan(data[6]) || at::_isnan(data[7])) {
-      assert(0);
+      SYCL_KERNEL_ASSERT(0);
     }
   }
 };
@@ -109,7 +109,7 @@ struct CheckBytePack<T, /*EltPerPack*/ 16> {
   static void check(BytePack* tmp) {
     if (HasNanFP8x8<T>::check(tmp->val[0]) ||
         HasNanFP8x8<T>::check(tmp->val[1]))
-      assert(0);
+      SYCL_KERNEL_ASSERT(0);
   }
 };
 
@@ -136,56 +136,52 @@ void checkChunk(BytePack* ptr, int nWorkers) {
   (((uintptr_t)ptr + sizeof(T) - 1) / sizeof(T) * sizeof(T))
 
 template <typename T>
-struct checkForNaN {
-  void operator()(sycl::nd_item<1> item) const {
-    constexpr int EltPerPack = sizeof(BytePack) / sizeof(T);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void check_for_nan_kernel(T* data, size_t size) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  constexpr int EltPerPack = sizeof(BytePack) / sizeof(T);
 
-    size_t offset = item.get_global_id(0);
+  size_t offset = item.get_global_id(0);
 
-    // Align input address up to BytePack in case it is not
-    T* ptrAlign = (T*)ALIGN_UP(data, BytePack);
-    size_t preProcElts =
-        std::min<size_t>(static_cast<size_t>(ptrAlign - data), size);
+  // Align input address up to BytePack in case it is not
+  T* ptrAlign = (T*)ALIGN_UP(data, BytePack);
+  size_t preProcElts =
+      std::min<size_t>(static_cast<size_t>(ptrAlign - data), size);
 
-    size_t size_left = size;
+  size_t size_left = size;
 
-    if (offset < preProcElts) {
-      if (at::_isnan(data[offset]))
-        assert(0);
-    }
-    size_left -= preProcElts;
-
-    BytePack* ptr = (BytePack*)ptrAlign;
-    size_t sizeInBP = size_left * sizeof(T) / sizeof(BytePack);
-    size_t loopSize = item.get_global_range(0) * UNROLL;
-
-    for (; offset + loopSize <= sizeInBP; offset += loopSize) {
-      checkChunk<T>(ptr + offset, item.get_global_range(0));
-    }
-
-    for (; offset < sizeInBP; offset += item.get_global_range(0)) {
-      BytePack tmp = ptr[offset];
-      CheckBytePack<T, EltPerPack>::check(&tmp);
-    }
-
-    if (item.get_local_id(0) < size_left % EltPerPack) {
-      T* tailPtr = (T*)(ptr + sizeInBP);
-      if (at::_isnan(tailPtr[item.get_local_id(0)]))
-        assert(0);
-    }
+  if (offset < preProcElts) {
+    if (at::_isnan(data[offset]))
+      SYCL_KERNEL_ASSERT(0);
   }
-  checkForNaN(T* data, size_t size) : data(data), size(size) {}
+  size_left -= preProcElts;
 
- private:
-  T* data;
-  size_t size;
-};
+  BytePack* ptr = (BytePack*)ptrAlign;
+  size_t sizeInBP = size_left * sizeof(T) / sizeof(BytePack);
+  size_t loopSize = item.get_global_range(0) * UNROLL;
+
+  for (; offset + loopSize <= sizeInBP; offset += loopSize) {
+    checkChunk<T>(ptr + offset, item.get_global_range(0));
+  }
+
+  for (; offset < sizeInBP; offset += item.get_global_range(0)) {
+    BytePack tmp = ptr[offset];
+    CheckBytePack<T, EltPerPack>::check(&tmp);
+  }
+
+  if (item.get_local_id(0) < size_left % EltPerPack) {
+    T* tailPtr = (T*)(ptr + sizeInBP);
+    if (at::_isnan(tailPtr[item.get_local_id(0)]))
+      SYCL_KERNEL_ASSERT(0);
+  }
+}
 
 template <typename T>
 void checkfornan_impl_xpu(
     const at::Tensor& tensor,
     at::xpu::XPUStream& stream) {
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<checkForNaN<T>>();
+  int64_t maxNumThreadsPerBlock =
+      at::xpu::getKernelMaxWorkGroupSize<check_for_nan_kernel<T>>();
 
   constexpr int64_t maxNumBlocks = 24;
 
@@ -202,15 +198,24 @@ void checkfornan_impl_xpu(
   auto global_range{numBlocks * numThreadsPerBlock};
   auto local_range{numThreadsPerBlock};
 
-  using Kernel = checkForNaN<T>;
-  auto kfn = Kernel(tensor.data_ptr<T>(), tensor.numel());
-
-  sycl_kernel_submit(global_range, local_range, stream.queue(), kfn);
+  sycl_kernel_submit<check_for_nan_kernel<T>>(
+      global_range,
+      local_range,
+      stream.queue(),
+      0,
+      tensor.data_ptr<T>(),
+      static_cast<size_t>(tensor.numel()));
 }
 
 // CHECK if a Tensor contains NAN in any of its element
 void checkForNan(const at::Tensor& tensor, at::xpu::XPUStream& stream) {
   if (!tensor.is_floating_point()) {
+    return;
+  }
+  // Both report as floating point but are moved as opaque bytes: fp4 has no
+  // NaN encoding at all, and e8m0 is absent from the dispatch below.
+  if (tensor.scalar_type() == at::kFloat4_e2m1fn_x2 ||
+      tensor.scalar_type() == at::kFloat8_e8m0fnu) {
     return;
   }
   if (tensor.numel() == 0) {

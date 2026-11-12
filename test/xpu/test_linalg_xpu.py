@@ -26,6 +26,7 @@ from torch.testing._internal.common_cuda import tf32_on_and_off
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
+    onlyCUDA,
     precisionOverride,
 )
 from torch.testing._internal.common_dtype import (
@@ -327,8 +328,6 @@ def _int4_mm(self, device, m, k, n):
 
         if self.device_type == "cpu":
             b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
-        elif self.device_type == "xpu":
-            b_int4pack = b_tmp.view(torch.int32)
         else:
             b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
 
@@ -342,9 +341,7 @@ def _int4_mm(self, device, m, k, n):
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
         elif self.device_type == "xpu":
-            self.assertTrue(
-                b_int4pack.dtype is torch.int32
-            )  # or b_int4pack.dtype is torch.uint8)
+            self.assertTrue(b_int4pack.dtype is torch.int32)
             self.assertTrue(b_int4pack.dim() == 2)
             return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
         else:
@@ -357,9 +354,7 @@ def _int4_mm(self, device, m, k, n):
 
     torch.manual_seed(1)
     a_bf16 = torch.rand((m, k), dtype=torch.bfloat16, device=device)
-    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device) * torch.rand(
-        (k, 1), dtype=torch.bfloat16, device=device
-    )
+    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device)
 
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
     for dtype in [torch.bfloat16] + (
@@ -374,6 +369,7 @@ def _int4_mm(self, device, m, k, n):
         b_scales_and_zeros = b_scales_and_zeros_bf16.to(dtype=dtype)
         ref = torch.mm(a, b)
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
+
         mean_err = ((res - ref).abs() / ref).mean()
         self.assertTrue(mean_err < 0.05)
 
@@ -947,6 +943,15 @@ TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
+TestLinalg.test_addmm_out_distinct_c_and_d_float_out_reduced_input = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_float_out_reduced_input
+)
+TestLinalg.test_addmm_out_distinct_c_and_d_is_selected = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_is_selected
+)
+TestLinalg.test_addmm_out_distinct_c_and_d_not_selected_for_fp32 = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_not_selected_for_fp32
+)
 TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
 TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings

@@ -50,6 +50,24 @@ on:
         default: 'true'
         description: 'Whether to run the p0 UT job.'
 
+      caller:
+        type: string
+        default: ''
+        description: 'Caller id (e.g. onednn-pr-2) for concurrency grouping; a new run cancels the previous one with the same caller.'
+
+      callback_repo:
+        type: string
+        default: ''
+        description: 'owner/name to post the result commit status back to (empty = no callback).'
+      callback_sha:
+        type: string
+        default: ''
+        description: 'Commit SHA in callback_repo to attach the result status to.'
+      callback_context:
+        type: string
+        default: ''
+        description: 'Commit status context to set in callback_repo on completion.'
+
 permissions: read-all
 
 run-name: P0-Scope / ${{ inputs.pytorch }}${{ inputs.pytorch_version != '' && format(' {0}', inputs.pytorch_version) || '' }}
@@ -108,7 +126,7 @@ jobs:
       pytorch_version: ${{ inputs.pytorch_version }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
-      ut: p0
+      ut: xpu_p0
 
   Linux-Ondemand-E2E-Tests:
     name: linux-e2e

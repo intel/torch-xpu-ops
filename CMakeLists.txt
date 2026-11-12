@@ -65,10 +65,17 @@ if(USE_XCCL)
   endif()
 endif()
 
-set(USE_SYCLTLA ON)
-if(WIN32 OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
-  set(USE_SYCLTLA OFF)
-  message(WARNING "SYCL-TLA is not build as it only supports GCC >= 13.0 as CXX Compiler on Linux Platform!")
+option(USE_SYCLTLA "Build with SYCL-TLA support" ON)
+if(WIN32 OR
+   (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0) OR
+   (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.0) OR
+   NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  set(USE_SYCLTLA OFF CACHE BOOL "Build with SYCL-TLA support" FORCE)
+  message(WARNING "SYCL-TLA is not built as it only supports GCC >= 13.0 or Clang >= 19.0 as CXX Compiler on Linux Platform!")
+elseif(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
+  # Before the include below, so SYCLTLA.cmake is skipped in debug builds.
+  set(USE_SYCLTLA OFF CACHE BOOL "Build with SYCL-TLA support" FORCE)
+  message(STATUS "SYCL-TLA disabled in ${CMAKE_BUILD_TYPE} build (excessive memory usage with debug info)")
 endif()
 
 if(USE_SYCLTLA)
@@ -94,11 +101,10 @@ if(TORCH_XPU_OPS_PYTORCH_DEPS)
 endif()
 
 # Only for debugging. Save building time by shrinking translation unit scope.
+# Keys off CMAKE_BUILD_TYPE (pytorch's multi-config VS flow exports it).
 set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
-if(CMAKE_BUILD_TYPE MATCHES "(Debug|RelWithDebInfo)")
+if(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
   set(BUILD_SEPARATE_OPS TRUE)
-  set(USE_SYCLTLA OFF)
-  message(STATUS "SYCL-TLA disabled in ${CMAKE_BUILD_TYPE} build (excessive memory usage with debug info)")
 endif()
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
