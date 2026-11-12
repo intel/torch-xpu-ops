@@ -115,7 +115,7 @@ std::tuple<Tensor, Tensor> roi_pool_kernel(
       {num_rois, channels, pooled_height, pooled_width},
       input.options().dtype(at::kInt));
 
-  auto output_size = num_rois * pooled_height * pooled_width * channels;
+  int output_size = num_rois * pooled_height * pooled_width * channels;
   int64_t global_range =
       xpuKernelLoopGroupRange(static_cast<int64_t>(output_size), 512);
   int64_t local_range = 512;
@@ -136,12 +136,12 @@ std::tuple<Tensor, Tensor> roi_pool_kernel(
             0,
             output_size,
             input_.const_data_ptr<scalar_t>(),
-            static_cast<scalar_t>(spatial_scale),
-            static_cast<int>(channels),
-            static_cast<int>(height),
-            static_cast<int>(width),
-            static_cast<int>(pooled_height),
-            static_cast<int>(pooled_width),
+            spatial_scale,
+            channels,
+            height,
+            width,
+            pooled_height,
+            pooled_width,
             rois_.const_data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
             argmax.data_ptr<int>());
@@ -232,16 +232,16 @@ Tensor roi_pool_backward_kernel(
             local_range,
             at::xpu::getCurrentSYCLQueue(),
             0,
-            static_cast<int>(grad.numel()),
+            grad.numel(),
             grad.const_data_ptr<scalar_t>(),
             argmax_.const_data_ptr<int>(),
-            static_cast<int>(num_rois),
-            static_cast<scalar_t>(spatial_scale),
-            static_cast<int>(channels),
-            static_cast<int>(height),
-            static_cast<int>(width),
-            static_cast<int>(pooled_height),
-            static_cast<int>(pooled_width),
+            num_rois,
+            spatial_scale,
+            channels,
+            height,
+            width,
+            pooled_height,
+            pooled_width,
             grad_input.data_ptr<scalar_t>(),
             rois_.const_data_ptr<scalar_t>(),
             n_stride,
