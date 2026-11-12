@@ -15,7 +15,7 @@ from skip_list_win_bmg import skip_dict as skip_dict_win_bmg
 
 IS_WINDOWS = sys.platform == "win32"
 
-fail_test = []
+fail_test: list[str] = []
 for key in skip_dict:
     skip_list = list(skip_dict[key] or ())
     if IS_WINDOWS:

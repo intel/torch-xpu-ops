@@ -16,7 +16,7 @@ from skip_list_win_arc import skip_dict as skip_dict_win_arc
 
 IS_WINDOWS = sys.platform == "win32"
 
-fail_test = []
+fail_test: list[str] = []
 for key in skip_dict:
     skip_list = list(skip_dict[key] or ())
     skip_list += skip_dict_arc.get(key, ())
