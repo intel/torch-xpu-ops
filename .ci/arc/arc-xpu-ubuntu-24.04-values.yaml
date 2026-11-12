@@ -65,14 +65,7 @@ template:
         volumeMounts:
           - name: runner-home-cache
             mountPath: /home/runner/.cache
-          - name: runner-tool-cache
-            mountPath: /opt/hostedtoolcache
     volumes:
+      # Per-pod cache: public ubuntu-* labels admit external jobs, so no writable state is shared between jobs.
       - name: runner-home-cache
-        hostPath:
-          path: /var/cache/arc/xpu-ubuntu-24.04/home-cache
-          type: DirectoryOrCreate
-      - name: runner-tool-cache
-        hostPath:
-          path: /var/cache/arc/xpu-ubuntu-24.04/tool-cache
-          type: DirectoryOrCreate
+        emptyDir: {}
