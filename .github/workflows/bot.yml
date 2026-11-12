@@ -48,6 +48,7 @@ jobs:
       fixes: ${{ steps.parse.outputs.fixes }}
       fix_runner: ${{ steps.parse.outputs.fix_runner }}
       fix_image: ${{ steps.parse.outputs.fix_image }}
+      omix_note: ${{ steps.parse.outputs.omix_note }}
       dry_run: ${{ steps.parse.outputs.dry_run }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
       issue_number: ${{ steps.parse.outputs.issue_number }}
@@ -156,6 +157,7 @@ jobs:
             let fixes = '';
             let fixRunner = '';
             let fixImage = '';
+            let omixNote = '';
 
             if (command === 'merge') {
               if (args.includes('-f')) {
@@ -254,6 +256,13 @@ jobs:
               }
               fixRunner = runner;
               fixImage = `intel/omix:${tag}`;
+              // Report the real version behind `latest` and how it compares with PyTorch CI's pin.
+              const digest = (await res.json()).digest;
+              const hub = await fetch('https://hub.docker.com/v2/repositories/intel/omix/tags?page_size=100').then(r => r.json()).then(d => d.results, () => []);
+              const ver = hub.find(t => t.digest === digest && /^\d+\.\d+\.\d+-/.test(t.name))?.name.split('-')[0] || omix;
+              const ci = await github.rest.repos.getContent({ owner: 'pytorch', repo: 'pytorch', path: '.ci/docker/build.sh' })
+                .then(r => Buffer.from(r.data.content, 'base64').toString().match(/OMIX_VERSION=(\d+\.\d+\.\d+)/)?.[1], () => undefined) || 'unknown';
+              omixNote = `OMIX ${ver}${omix === 'latest' ? ' (`latest`)' : ''} · PyTorch CI: OMIX ${ci} · ${ver === ci ? 'same as CI' : '**differs from CI**'}`;
             }
 
             core.setOutput('command', normalizedCommand);
@@ -267,6 +276,7 @@ jobs:
             core.setOutput('fixes', fixes);
             core.setOutput('fix_runner', fixRunner);
             core.setOutput('fix_image', fixImage);
+            core.setOutput('omix_note', omixNote);
             core.setOutput('authorized', String(authorized));
 
   invalid-command:
@@ -1240,6 +1250,8 @@ jobs:
               --shm-size=8g --privileged -e ZE_AFFINITY_MASK
     env:
       ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+      OMIX_NOTE: ${{ needs.parse-command.outputs.omix_note }}
+      FIX_IMAGE: ${{ needs.parse-command.outputs.fix_image }}
       GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -1278,7 +1290,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: `Starting automated fix on this issue. Follow progress in the [workflow run](${runUrl}).`
+              body: `Starting automated fix on this issue. Follow progress in the [workflow run](${runUrl}).\n\n> **Environment:** ${process.env.OMIX_NOTE} · \`${process.env.FIX_IMAGE}\``
             });
             // Handed to the agent as SESSION_COMMENT_ID: the pipeline edits this
             // same comment at every stage, so a run leaves exactly one comment.
@@ -1563,6 +1575,8 @@ jobs:
           C="/repos/${{ github.repository }}/issues/comments/$ID"
           gh api "$C" --jq .body > body.md
           grep -q '<!-- agent:review -->' body.md && exit 0
+          # Stage 1 replaces the starting text, so restate the environment here.
+          printf '\n\n> **Environment:** %s · `%s`\n' "$OMIX_NOTE" "$FIX_IMAGE" >> body.md
           cat >> body.md <<'EOF'
 
           <!-- agent:review -->
@@ -1673,7 +1687,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot fix\` failed: ${reason}\n\nSee the [\`fix\` job](${jobUrl}) for details.`
+              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot fix\` failed: ${reason}\n\n> **Environment:** ${process.env.OMIX_NOTE} · \`${process.env.FIX_IMAGE}\`\n\nSee the [\`fix\` job](${jobUrl}) for details.`
             });
             if (outcome !== 'cancelled') {
               core.setFailed(`AI fix failed: ${reason}`);
