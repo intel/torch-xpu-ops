@@ -224,7 +224,8 @@ class BatchKernelConfig {
         wg_range_x_(0),
         wg_range_y_(0) {}
 
-  void build(int64_t max_work_group_size) {
+ private:
+  void _build(size_t max_work_group_size) {
     size_t wg_size;
     size_t sg_size = at::xpu::getDeviceMaxSubGroupSize();
     // Caller takes responsibility of if work group size is valid or compatible.
@@ -324,14 +325,15 @@ class BatchKernelConfig {
         : (problem_batch_ + glb_range_x_ - 1) / glb_range_x_ * glb_range_x_;
   }
 
+ public:
   template <class KernelClass>
   void build() {
-    build(at::xpu::getKernelMaxWorkGroupSize<KernelClass>());
+    _build(at::xpu::getKernelMaxWorkGroupSize<KernelClass>());
   }
 
   template <auto* kptr>
   void build() {
-    build(at::xpu::getKernelMaxWorkGroupSize<kptr>());
+    _build(at::xpu::getKernelMaxWorkGroupSize<kptr>());
   }
 
   BatchKernelConfig(

@@ -40,13 +40,12 @@ void adaptive_max_pool2d_kernel_impl(
     int64_t istrideP,
     int64_t istrideH,
     int64_t istrideW,
+    int64_t ostrideH,
+    int64_t ostrideP,
+    int64_t ostrideB,
     BatchKernelConfig cfg) {
   auto item = syclext::this_work_item::get_nd_item<2>();
   auto desc = cfg.get_item_desc(item);
-
-  auto ostrideH = osizeW;
-  auto ostrideP = osizeW * osizeH;
-  auto ostrideB = ostrideP * sizeP;
 
   do {
     if (desc.glb_problem >= cfg.problem_)
@@ -99,13 +98,17 @@ void launch_adaptive_max_pool2d_kernel(
     int64_t istrideH,
     int64_t istrideW) {
   int64_t output_size = batch * plane * osizeH * osizeW;
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<
-      adaptive_max_pool2d_kernel_impl<scalar_t, index_t>>(
+  static constexpr auto kptr =
+      adaptive_max_pool2d_kernel_impl<scalar_t, index_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<kptr>(
       1, output_size, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
 
-  cfg.build<adaptive_max_pool2d_kernel_impl<scalar_t, index_t>>();
+  // assume output tensor is in contiguous format
+  int64_t ostrideH = osizeW;
+  int64_t ostrideP = osizeW * osizeH;
+  int64_t ostrideB = ostrideP * plane;
 
-  sycl_kernel_submit<adaptive_max_pool2d_kernel_impl<scalar_t, index_t>>(
+  sycl_kernel_submit<kptr>(
       cfg.global_size(),
       cfg.group_size(),
       getCurrentSYCLQueue(),
@@ -122,6 +125,9 @@ void launch_adaptive_max_pool2d_kernel(
       istrideP,
       istrideH,
       istrideW,
+      ostrideH,
+      ostrideP,
+      ostrideB,
       cfg);
 }
 
@@ -254,14 +260,12 @@ void launch_adaptive_max_pool2d_backward_kernel(
     int64_t ostrideB,
     int64_t ostrideP,
     int64_t sizeP) {
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<
-      adaptive_max_pool2d_backward_kernel_impl<scalar_t, index_t>>(
+  static constexpr auto kptr =
+      adaptive_max_pool2d_backward_kernel_impl<scalar_t, index_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<kptr>(
       1, osize, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
 
-  cfg.build<adaptive_max_pool2d_backward_kernel_impl<scalar_t, index_t>>();
-
-  sycl_kernel_submit<
-      adaptive_max_pool2d_backward_kernel_impl<scalar_t, index_t>>(
+  sycl_kernel_submit<kptr>(
       cfg.global_size(),
       cfg.group_size(),
       getCurrentSYCLQueue(),
