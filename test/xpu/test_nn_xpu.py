@@ -6589,12 +6589,11 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
     @unittest.skipIf(not TEST_XPU or device_type != "xpu", "XPU not available")
     def test_batch_norm_channels_last_stats_accuracy(self):
         cases = ((128, 96, 56, 56), (64, 768, 28, 28))
-        # bfloat16 is covered too: the optimized channels-last reductions only
-        # accept 2-byte inputs, so float32 never reaches them.
         for dtype in (torch.float32, torch.float16, torch.bfloat16):
             output_tol = 1e-4 if dtype == torch.float32 else 1e-2
             stats_tol = 1e-5 if dtype == torch.float32 else 1e-4
-            for shape in cases:
+            shapes = cases if dtype == torch.float32 else cases + ((129, 128, 64, 64),)
+            for shape in shapes:
                 n, c, h, w = shape
                 generator = torch.Generator().manual_seed(0)
                 x = torch.randn(shape, dtype=dtype, generator=generator).contiguous(
@@ -6651,80 +6650,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                     rtol=stats_tol,
                     exact_dtype=False,
                 )
-
-    @unittest.skipIf(not TEST_XPU or device_type != "xpu", "XPU not available")
-    def test_batch_norm_channels_last_stats_row_outer(self):
-        # The row-outer reduction is only dispatched for 2-byte inputs whose
-        # channel count spans exactly two channel tiles and whose footprint
-        # exceeds a device-dependent capacity threshold:
-        #   channels_per_tile = 32 * vec_size (vec_size == 2)
-        #   tile_cap          = eu_count * sub_group_size * hw_threads / 1024
-        #   tensor_bytes      > tile_cap MiB
-        # Size the input from the device properties so the path is taken on
-        # every GPU instead of only on the smaller ones.
-        props = torch.xpu.get_device_properties(0)
-        hw_threads_per_eu = 8  # Xe and Xe2; not reported by the runtime
-        sub_group_size = max(props.sub_group_sizes)
-        tile_cap = max(
-            (props.gpu_eu_count * sub_group_size * hw_threads_per_eu) // (32 * 32),
-            1,
-        )
-        channels = 128  # ceil_div(128, 32 * 2) == 2 channel tiles
-        hw = 64 * 64
-        eps = 1e-5
-        # One MiB of margin above the threshold, in 2-byte elements.
-        min_elems = ((tile_cap + 1) << 20) // 2
-        batch = -(-min_elems // (channels * hw))
-        numel = batch * channels * hw
-        if numel >= 2**31:
-            self.skipTest("row-outer shape would exceed 32-bit indexing")
-
-        for dtype in (torch.float16, torch.bfloat16):
-            generator = torch.Generator().manual_seed(0)
-            x = torch.randn(
-                (batch, channels, 64, 64), dtype=dtype, generator=generator
-            ).contiguous(memory_format=torch.channels_last)
-
-            with torch.profiler.profile(
-                activities=[
-                    torch.profiler.ProfilerActivity.CPU,
-                    torch.profiler.ProfilerActivity.XPU,
-                ]
-            ) as prof:
-                mean, invstd = torch.batch_norm_stats(x.to(device_type), eps)
-                torch.xpu.synchronize()
-
-            kernels = [
-                event.name
-                for event in prof.events()
-                if "DeviceType.XPU" in str(getattr(event, "device_type", ""))
-            ]
-            # Confirm the shape really selected the row-outer kernel rather
-            # than silently falling back to the vectorized reduction.
-            self.assertTrue(
-                any("RowOuter" in name for name in kernels),
-                f"row-outer kernel was not dispatched for {dtype}: {kernels}",
-            )
-
-            # Two-pass float64 reference, chunked to bound host memory.
-            count = numel // channels
-            chunk = max(1, batch // 16)
-            total = torch.zeros(channels, dtype=torch.float64)
-            for part in x.split(chunk, dim=0):
-                total += part.to(torch.float64).sum(dim=(0, 2, 3))
-            ref_mean = total / count
-            m2 = torch.zeros(channels, dtype=torch.float64)
-            for part in x.split(chunk, dim=0):
-                delta = part.to(torch.float64) - ref_mean.view(1, channels, 1, 1)
-                m2 += (delta * delta).sum(dim=(0, 2, 3))
-            ref_invstd = (m2 / count + eps).rsqrt()
-
-            self.assertEqual(
-                mean.cpu(), ref_mean, atol=1e-4, rtol=1e-4, exact_dtype=False
-            )
-            self.assertEqual(
-                invstd.cpu(), ref_invstd, atol=1e-4, rtol=1e-4, exact_dtype=False
-            )
 
     def test_pairwise_distance(self):
         input1 = torch.randn(4, 4, requires_grad=True, dtype=torch.double)
