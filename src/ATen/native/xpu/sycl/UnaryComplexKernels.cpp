@@ -13,6 +13,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
@@ -134,8 +135,10 @@ struct AngleWrapper {
     if (at::_isnan(v)) {
       return v;
     }
-    return v < 0 ? static_cast<scalar_t>(std::numbers::pi_v<double>)
-                 : scalar_t(0);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::signbit(static_cast<opmath_t>(v))
+        ? static_cast<scalar_t>(std::numbers::pi_v<double>)
+        : scalar_t(0);
   }
 };
 
