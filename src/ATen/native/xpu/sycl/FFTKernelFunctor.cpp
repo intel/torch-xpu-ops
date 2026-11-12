@@ -781,7 +781,6 @@ static sycl::event compute(
           ? ((dir == 0) ? desc.fwd_dist_cache_batch : desc.bwd_dist_cache_batch)
           : out_dist_moved;
       prev_ev = q.submit([&](sycl::handler& h) {
-        h.depends_on(prev_ev);
         h.set_arg(0, input + cache_batch * in_dist_moved);
         h.set_arg(1, out + cache_batch * out_dist_moved);
         h.set_arg(2, sycl::local_accessor<T, 1>(desc.slm_size[dim], h));
