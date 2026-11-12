@@ -11,6 +11,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -194,8 +195,8 @@ static inline void get_wgroup_size_spatial(
 
   // set the GroupSize smaller to ensure larger group number
   // smaller GroupSize is friendly to the tail case
-  int64_t group_size = (inner_size + vec_size - 1) / vec_size;
-  GroupSize = int(std::min<int64_t>(group_size, SIMD32));
+  int64_t group_size = at::ceil_div<int64_t>(inner_size, vec_size);
+  GroupSize = static_cast<int>(std::min<int64_t>(group_size, SIMD32));
   auto local_group_num = (inner_size + GroupSize - 1) / GroupSize;
 
   // enlarge the GroupRow to occupy all the computation resource
@@ -206,7 +207,7 @@ static inline void get_wgroup_size_spatial(
     if (GroupRow * SIMD32 == maxWGSize)
       break;
   }
-  GroupRow = int(std::min<int64_t>(GroupRow, dim_size));
+  GroupRow = static_cast<int>(std::min<int64_t>(GroupRow, dim_size));
 }
 
 template <
@@ -934,7 +935,7 @@ void spatial_softmax_forward(
   get_wgroup_size_spatial<vec_size, KernelClass>(
       outer_size, dim_size, inner_size, local_size, block_row);
   int64_t group_num =
-      (inner_size + local_size * vec_size - 1) / (local_size * vec_size);
+      at::ceil_div<int64_t>(inner_size, local_size * vec_size);
   sycl::range<3> global_range{
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
   sycl::range<3> local_range{(size_t)1, (size_t)block_row, (size_t)local_size};
@@ -1409,8 +1410,8 @@ struct SpatialSoftmaxBackwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<3> item) const {
     IndexType global_col = item.get_global_id(2);
-    auto local_row_id = item.get_local_id(1);
-    auto local_col_id = item.get_local_id(2);
+    IndexType local_row_id = item.get_local_id(1);
+    IndexType local_col_id = item.get_local_id(2);
 
     IndexType group_offset = item.get_global_id(0) * dim_size_ * inner_size_;
     auto gradin_ptr = gradInput_ + group_offset;
@@ -1552,7 +1553,7 @@ void spatial_softmax_backward_kernel(
   get_wgroup_size_spatial<vec_size, KernelClass>(
       outer_size, dim_size, inner_size, local_size, block_row);
   int64_t group_num =
-      (inner_size + local_size * vec_size - 1) / (local_size * vec_size);
+      at::ceil_div<int64_t>(inner_size, local_size * vec_size);
   sycl::range<3> global_range{
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
   sycl::range<3> local_range{(size_t)1, (size_t)block_row, (size_t)local_size};
