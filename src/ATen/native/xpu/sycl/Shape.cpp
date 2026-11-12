@@ -211,6 +211,7 @@ void cat_array_batched_copy_contig_kernel_impl(
       item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
   IndexType nElements = inputs.nElements[item.get_group(0)];
 
+  // Limit slice copy to large 1-/2-byte inputs on CRI.
   constexpr IndexType minElementsForSliceCopy = 1 << 20;
   bool mayUseSliceCopy = (sizeof(T) == 1 || sizeof(T) == 2) &&
       enableCriSliceCopy && nElements >= minElementsForSliceCopy;
@@ -237,19 +238,20 @@ void cat_array_batched_copy_contig_kernel_impl(
   }
 
   IndexType stride = item.get_group_range(1) * item.get_local_range(1);
-  // Optimize path for sub-dword aligned shapes: handle the sub-dword prefix separately.
+  // Optimize path for sub-dword aligned shapes: handle the sub-dword prefix
+  // separately.
   if constexpr (sizeof(T) == 1 || sizeof(T) == 2) {
     if (mayUseSliceCopy) {
       constexpr int minSliceUtilizationPercent = 95;
       const auto subgroup = item.get_sub_group();
       const IndexType subgroupSize = subgroup.get_local_range()[0];
       const IndexType logicalSubgroupsPerSlice =
-        ceil_div(sliceSize, subgroupSize) + 1;
-
+          ceil_div(sliceSize, subgroupSize) + 1;
+      // Require more than one subgroup of data and at least 95% utilization.
       if (sliceSize > subgroupSize &&
           static_cast<int64_t>(sliceSize) * 100 >=
-            static_cast<int64_t>(logicalSubgroupsPerSlice) * subgroupSize *
-              minSliceUtilizationPercent) {
+              static_cast<int64_t>(logicalSubgroupsPerSlice) * subgroupSize *
+                  minSliceUtilizationPercent) {
         const IndexType lane = subgroup.get_local_id()[0];
         const IndexType logicalSubgroupCount =
             (nElements / sliceSize) * logicalSubgroupsPerSlice;
@@ -259,7 +261,8 @@ void cat_array_batched_copy_contig_kernel_impl(
             item.get_group(1) * subgroup.get_group_range()[0] +
             subgroup.get_group_id()[0];
         while (logicalSubgroupIndex < logicalSubgroupCount) {
-          const IndexType slice = logicalSubgroupIndex / logicalSubgroupsPerSlice;
+          const IndexType slice =
+              logicalSubgroupIndex / logicalSubgroupsPerSlice;
           const IndexType logicalSubgroupInSlice =
               logicalSubgroupIndex - slice * logicalSubgroupsPerSlice;
           const IndexType inputBase = slice * sliceSize;
