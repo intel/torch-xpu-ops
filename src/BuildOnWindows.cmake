@@ -19,33 +19,129 @@ add_library(
 target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
 
 if(BUILD_SEPARATE_OPS)
-  target_link_libraries(torch_xpu_ops PUBLIC torch_xpu torch_cpu c10)
-  setup_common_libraries()
+  # Every SYCL kernel source becomes its own DLL, mirroring Linux
+  # configuration. On Windows however, a DLL must resolve all its symbols
+  # when linked, but torch_xpu.dll and the kernel DLLs call each other
+  # (torch_xpu <-> kernels, kernel <-> kernel), so none of them can be linked
+  # first. An import library needs only the exported names, which the object
+  # files already carry, so create all of them up front with lib /DEF
+  # ("pre-link import libraries"). The build then runs:
+  #   1. compile all objects
+  #   2. pre_implib/<dll>.lib for torch_xpu and every kernel DLL
+  #   3. link the kernel DLLs against those
+  #   4. link torch_xpu.dll against the kernel DLLs' import libraries
+  # Kernel DLLs depend on the pre-link import library files only, never on
+  # another DLL target (not even Comm): that would wait for its link and
+  # recreate the cycle. Only Ninja supports such file-level dependencies.
+  if(NOT CMAKE_GENERATOR MATCHES "Ninja")
+    message(FATAL_ERROR
+      "Windows separate-ops builds (BUILD_SEPARATE_OPS, Debug/RelWithDebInfo) "
+      "require a Ninja generator, got '${CMAKE_GENERATOR}'.")
+  endif()
+  if(NOT TARGET torch_xpu)
+    message(FATAL_ERROR
+      "Windows separate-ops builds need the torch_xpu target to be defined "
+      "before torch-xpu-ops is added.")
+  endif()
+
+  # torch_xpu_ops is whole-archived into torch_xpu itself, so linking
+  # torch_xpu here would make a cycle, linking only torch_cpu here.
+  target_link_libraries(torch_xpu_ops PUBLIC torch_cpu c10)
+
+  set(_pre_implib_dir "${CMAKE_CURRENT_BINARY_DIR}/pre_implib")
+  set(_pre_implib_rsp_suffix "")
+  if(CMAKE_CONFIGURATION_TYPES)
+    string(APPEND _pre_implib_dir "/$<CONFIG>")
+    set(_pre_implib_rsp_suffix ".$<CONFIG>")
+  endif()
+
+  # Import library of <dll_target> from its object files. /Brepro and
+  # copy_if_different keep it unchanged unless the exports change, so DLLs
+  # linking it are not relinked needlessly.
+  function(_torch_xpu_ops_add_pre_implib out_var dll_target)
+    set(_lib "${_pre_implib_dir}/${dll_target}.lib")
+    set(_tmp_lib "${_pre_implib_dir}/tmp/${dll_target}.lib")
+    set(_rsp "${CMAKE_CURRENT_BINARY_DIR}/pre_implib/${dll_target}${_pre_implib_rsp_suffix}.rsp")
+    file(GENERATE
+      OUTPUT "${_rsp}"
+      CONTENT "\"$<JOIN:${ARGN},\"\n\">\"\n")
+    add_custom_command(
+      OUTPUT "${_lib}"
+      COMMAND "${CMAKE_COMMAND}" -E make_directory "${_pre_implib_dir}/tmp"
+      COMMAND "${CMAKE_AR}" /nologo /Brepro /DEF
+        "/NAME:$<TARGET_FILE_NAME:${dll_target}>" "/OUT:${_tmp_lib}" "@${_rsp}"
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_tmp_lib}" "${_lib}"
+      DEPENDS ${ARGN} "${_rsp}"
+      COMMENT "Generating pre-link import library for ${dll_target}"
+      VERBATIM)
+    set(${out_var} "${_lib}" PARENT_SCOPE)
+  endfunction()
+
+  # torch_python imports at::xpu::sleep from torch_xpu.dll.
+  set(_sycl_srcs_in_torch_xpu_regex "^Sleep$")
+
   # torch-xpu-ops-sycl-Comm-kernels includes SYCL kernels shared in different other SYCL kernels.
   # SYCL free func: These SYCL kernels are moved from headers into torch-xpu-ops-sycl-Comm-kernels to resolve 'redefinition issue'.
+  set(sycl_comm_lib torch-xpu-ops-sycl-Comm-kernels)
   sycl_add_library(
-      torch-xpu-ops-sycl-Comm-kernels
+      ${sycl_comm_lib}
       SHARED
       SYCL_SOURCES ${ATen_XPU_SYCL_COMM_SRCS})
-  list(APPEND TORCH_XPU_OPS_LIBRARIES torch-xpu-ops-sycl-Comm-kernels)
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS torch-xpu-ops-sycl-Comm-kernels DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  set(_sycl_dlls ${sycl_comm_lib})
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_comm_lib})
 
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     cmake_path(GET sycl_src STEM LAST_ONLY name)
     set(sycl_lib torch-xpu-ops-sycl-${name})
-    sycl_add_library(
-      ${sycl_lib}
-      SHARED
-      SYCL_SOURCES ${sycl_src})
-    target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_lib})
-    target_link_libraries(${sycl_lib} PUBLIC torch-xpu-ops-sycl-Comm-kernels)
+    if(name MATCHES "${_sycl_srcs_in_torch_xpu_regex}")
+      sycl_add_library(
+        ${sycl_lib}
+        STATIC
+        SYCL_SOURCES ${sycl_src})
+      target_compile_definitions(${sycl_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+      target_link_libraries(torch_xpu_ops PUBLIC
+          "$<LINK_LIBRARY:WHOLE_ARCHIVE,${sycl_lib}>")
+    else()
+      sycl_add_library(
+        ${sycl_lib}
+        SHARED
+        SYCL_SOURCES ${sycl_src})
+      target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+      list(APPEND _sycl_dlls ${sycl_lib})
+    endif()
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
-
-    # Decouple with PyTorch cmake definition.
-    install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
+
+  _torch_xpu_ops_add_pre_implib(_torch_xpu_pre_implib torch_xpu
+      "$<TARGET_OBJECTS:torch_xpu>")
+  # Only emits the command; nothing depends on this target.
+  add_custom_target(torch_xpu_pre_implib DEPENDS ${_torch_xpu_pre_implib})
+  set(_pre_implibs ${_torch_xpu_pre_implib})
+  foreach(_dll ${_sycl_dlls})
+    get_target_property(_dll_srcs ${_dll} SOURCES)
+    list(FILTER _dll_srcs INCLUDE REGEX "\\.obj$")
+    _torch_xpu_ops_add_pre_implib(_dll_pre_implib ${_dll} ${_dll_srcs})
+    # On any other target it would drag in the DLL's SYCL compile commands.
+    target_sources(${_dll} PRIVATE ${_dll_pre_implib})
+    set(_pre_implib_of_${_dll} ${_dll_pre_implib})
+    list(APPEND _pre_implibs ${_dll_pre_implib})
+  endforeach()
+
+  foreach(_dll ${_sycl_dlls})
+    # Export the TORCH_XPU_API kernel entry points from the DLL.
+    target_compile_definitions(${_dll} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+    set(_dll_pre_implibs ${_pre_implibs})
+    list(REMOVE_ITEM _dll_pre_implibs ${_pre_implib_of_${_dll}})
+    target_link_libraries(${_dll} PRIVATE ${_dll_pre_implibs})
+
+    # Decouple with PyTorch cmake definition.
+    install(TARGETS ${_dll} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+    if(MSVC)
+      install(FILES $<TARGET_PDB_FILE:${_dll}>
+          DESTINATION "${TORCH_INSTALL_LIB_DIR}" OPTIONAL)
+    endif()
+  endforeach()
 
 else()
   # On Windows the SYCL kernel objects cannot be combined into a single static

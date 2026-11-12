@@ -63,7 +63,12 @@ macro(set_build_flags)
   # -- Host flags (SYCL_CXX_FLAGS)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
-    list(APPEND SYCL_HOST_FLAGS /MD)
+    # Follow the config: an unconditional /MD would override Debug's /MDd.
+    set(_sycl_crt_flag $<IF:$<CONFIG:Debug>,/MDd,/MD>)
+    list(APPEND SYCL_HOST_FLAGS ${_sycl_crt_flag})
+    # Also give it to the icx driver, so the device pass gets the same CRT
+    # (and _DEBUG) as the host pass.
+    list(APPEND SYCL_HOST_FLAGS_DIRECT_TO_SYCL ${_sycl_crt_flag})
     list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
     # SYCL headers warnings
     list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
@@ -192,7 +197,22 @@ macro(set_build_flags)
   #   Only effective in Debug/RelWithDebInfo builds.
   # DEBUG=1 alone: does NOT affect device code (same as CUDA).
   if(DEFINED ENV{XPU_DEVICE_DEBUG} AND "$ENV{XPU_DEVICE_DEBUG}" STREQUAL "1")
-    list(APPEND SYCL_COMPILE_FLAGS -g -O0 -Rno-debug-disables-optimization)
+    if(WIN32)
+      # Large SYCL translation units exhaust Clang's source locations with full
+      # debug info, so trim it with -fno-system-debug where supported. Apply the
+      # flags to the device pass only, so host code keeps /Od;/Z7 from its
+      # config. -gline-tables-only is ignored for SPIR-V, hence -g.
+      # There is no device -O0: Debug's /Od reaches the device pass. If it stops
+      # doing so, add a per-triple -Xsycl-target-frontend=<triple> -O0.
+      list(APPEND SYCL_COMPILE_FLAGS /clang:-Xarch_device /clang:-g)
+      CHECK_SYCL_FLAG("-fno-system-debug" SUPPORTS_FNO_SYSTEM_DEBUG)
+      if(SUPPORTS_FNO_SYSTEM_DEBUG)
+        list(APPEND SYCL_COMPILE_FLAGS /clang:-Xarch_device /clang:-fno-system-debug)
+      endif()
+      list(APPEND SYCL_COMPILE_FLAGS -Rno-debug-disables-optimization)
+    else()
+      list(APPEND SYCL_COMPILE_FLAGS -g -O0 -Rno-debug-disables-optimization)
+    endif()
   elseif(DEFINED ENV{DEBUG_XPU} AND "$ENV{DEBUG_XPU}" STREQUAL "1")
     list(APPEND SYCL_COMPILE_FLAGS
       $<$<CONFIG:Debug,RelWithDebInfo>:-gline-tables-only;-O2>)
