@@ -443,11 +443,11 @@ struct MaskedScatterElementwiseFunctor {
 
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void masked_scatter_size_check_kernel_impl(
-    const int64_t* const mask_exclusive_sum_,
-    const bool* const mask_,
-    const int64_t srcSize_) {
-  const auto totalElements = *mask_exclusive_sum_ + *mask_;
-  SYCL_KERNEL_ASSERT(totalElements <= srcSize_);
+    const int64_t* const mask_exclusive_sum,
+    const bool* const mask,
+    const int64_t srcSize) {
+  const auto totalElements = *mask_exclusive_sum + (c10::load(mask) ? 1 : 0);
+  SYCL_KERNEL_ASSERT(totalElements <= srcSize);
 }
 
 void masked_scatter_kernel(
@@ -715,8 +715,8 @@ struct TakePutLoopFunctor {
     const auto offsets = offset_calc_.get(i);
     auto& iterated = *reinterpret_cast<scalar_t*>(iterated_ptr_ + offsets[0]);
     const auto idx = *reinterpret_cast<int64_t*>(idx_ptr_ + offsets[1]);
-    SYCL_KERNEL_ASSERT(
-        idx < numel_ && idx >= -numel_ &&
+    XPU_KERNEL_ASSERT_WORKAROUND(
+        idx < numel_ && idx >= -numel_,
         "take_put_kernel_template() index out of bounds");
     index_t offset = static_cast<index_t>(idx);
     if (offset < 0) {
@@ -2223,8 +2223,8 @@ Tensor& index_select_kernel(
 template <typename index_t>
 struct IndexSelectSparse1Functor {
   index_t operator()(index_t idx) const {
-    SYCL_KERNEL_ASSERT(
-        idx >= -size_ && idx < size_ && "index_select(): index out of bounds");
+    XPU_KERNEL_ASSERT_WORKAROUND(
+        idx >= -size_ && idx < size_, "index_select(): index out of bounds");
     return idx < 0 ? idx + size_ : idx;
   }
   IndexSelectSparse1Functor(index_t size) : size_(size) {}

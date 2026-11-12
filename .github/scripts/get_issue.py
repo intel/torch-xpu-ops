@@ -34,6 +34,7 @@ def get_github_issues(repo_owner, repo_name, labels, state='open'):
             issues_data.append({
                 'issue_number': issue.number,
                 'issue_title': issue.title,
+                'labels': [label.name for label in issue.labels],
                 'table_rows': table_rows
             })
 

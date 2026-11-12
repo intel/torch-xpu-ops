@@ -15,6 +15,7 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <ATen/xpu/XPUContext.h>
+#include <comm/Macros.h>
 #include <comm/TensorInfo.h>
 
 using namespace at::xpu::detail;
@@ -479,8 +480,8 @@ void small_index_kernel_impl(
       if (indice_size_bytes == 4) {
         int32_t index =
             *(int32_t*)(index_ptrs[i] + local_index * indice_size_bytes);
-        SYCL_KERNEL_ASSERT(
-            index >= -sizes[i] && index < sizes[i] && "index out of bounds");
+        XPU_KERNEL_ASSERT_WORKAROUND(
+            index >= -sizes[i] && index < sizes[i], "index out of bounds");
         if (index < 0) {
           index += sizes[i];
         }
@@ -488,8 +489,8 @@ void small_index_kernel_impl(
       } else {
         int64_t index =
             *(int64_t*)(index_ptrs[i] + local_index * indice_size_bytes);
-        SYCL_KERNEL_ASSERT(
-            index >= -sizes[i] && index < sizes[i] && "index out of bounds");
+        XPU_KERNEL_ASSERT_WORKAROUND(
+            index >= -sizes[i] && index < sizes[i], "index out of bounds");
         if (index < 0) {
           index += sizes[i];
         }
@@ -650,16 +651,16 @@ void index_functor_kernel_impl(
     // with numbers of input datatypes.
     if (indice_size_bytes == 4) {
       int32_t index = *(int32_t*)(index_ptrs[i] + offsets[2]);
-      SYCL_KERNEL_ASSERT(
-          index >= -sizes[i] && index < sizes[i] && "index out of bounds");
+      XPU_KERNEL_ASSERT_WORKAROUND(
+          index >= -sizes[i] && index < sizes[i], "index out of bounds");
       if (index < 0) {
         index += sizes[i];
       }
       offset += index * strides[i];
     } else {
       int64_t index = *(int64_t*)(index_ptrs[i] + offsets[2]);
-      SYCL_KERNEL_ASSERT(
-          index >= -sizes[i] && index < sizes[i] && "index out of bounds");
+      XPU_KERNEL_ASSERT_WORKAROUND(
+          index >= -sizes[i] && index < sizes[i], "index out of bounds");
       if (index < 0) {
         index += sizes[i];
       }
