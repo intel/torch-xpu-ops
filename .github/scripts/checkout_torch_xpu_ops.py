@@ -6,7 +6,8 @@
 
 --source preserves the PR checkout and verifies --ref when it is a full SHA.
 Otherwise, use --repo and --ref; pinned selects the PyTorch source pin.
---prefer-wheel uses torch.version.xpu_ops_commit first for pinned, since a source
+--prefer-wheel first uses the xpu_ops_commit constant recorded in the installed
+torch/version.py for pinned, since a source
 release branch may have advanced since the wheel was built. --built-wheel
 uses that record for any ref: the wheel was built earlier in the same run, so
 re-resolving a branch could test a newer commit than the one compiled. For fork commits, supply
@@ -43,7 +44,11 @@ def git(*args, check=True):
 
 def xpu_ops_commit_from_version(source):
     """Read the constant XPU dependency SHA without importing torch."""
-    for node in ast.parse(source).body:
+    try:
+        nodes = ast.parse(source).body
+    except SyntaxError:
+        return ""
+    for node in nodes:
         if isinstance(node, ast.AnnAssign):
             targets = [node.target]
         elif isinstance(node, ast.Assign):
@@ -51,7 +56,13 @@ def xpu_ops_commit_from_version(source):
         else:
             continue
         if any(isinstance(target, ast.Name) and target.id == "xpu_ops_commit" for target in targets):
-            return ast.literal_eval(node.value) or ""
+            if node.value is None:
+                return ""
+            try:
+                value = ast.literal_eval(node.value)
+            except ValueError:
+                return ""
+            return value if isinstance(value, str) else ""
     return ""
 
 
@@ -92,6 +103,12 @@ def prepare_checkout(pytorch_dir, repo, ref, source=None, prefer_wheel=False,
         shutil.copytree(source, dest, symlinks=True)
     else:
         recorded = wheel_pin() if built_wheel else ""
+        if built_wheel and not recorded:
+            print(
+                "Warning: built wheel has no xpu_ops_commit; "
+                f"re-resolving '{ref}' may test a different XPU commit",
+                flush=True,
+            )
         if recorded:
             # Keep the requested repo: a fork build records a fork commit.
             print(f"Using torch-xpu-ops commit built into the wheel: {recorded} (requested '{ref}')")
