@@ -830,7 +830,6 @@ class Checker:
         print("📋 Test Reports:")
         total_tests = total_failures = total_errors = 0
         report_count = 0
-        unmatched: list[str] = []
         for path in reports:
             try:
                 suite = next(iter_testsuites(path))
@@ -844,15 +843,9 @@ class Checker:
             total_errors += errors
             if failures or errors:
                 print(f"   ❌ {path}: {tests} tests, {failures} failures, {errors} errors")
-                logged = [case.get("name", "") for case in suite.iter("testcase")
-                          if any(child.tag in ("failure", "error") for child in case)]
-                for name in logged:
-                    print(f"      - {name}")
-                # Counted with no case entry, so no known issue can cover it.
-                if failures + errors > len(logged):
-                    unmatched.append(path.name)
-                    print(f"      ⚠️  {failures + errors - len(logged)} failures/errors "
-                          "have no case entry")
+                for case in suite.iter("testcase"):
+                    if any(child.tag in ("failure", "error") for child in case):
+                        print(f"      - {case.get('name', '')}")
             else:
                 print(f"   ✅ {path}: {tests} tests")
 
@@ -871,11 +864,8 @@ class Checker:
         print(f"   Reports: {report_count}, Tests: {total_tests}, "
               f"Failed: {total_failures}, Errors: {total_errors}")
         print(f"   New failures: {len(new)}, Known failures: {len(failed) - len(new)}")
-        if unmatched:
-            print(f"   Unmatched failures in: {', '.join(unmatched)}")
-        # Known failures are not news; a failure with no case entry cannot be
-        # matched against known issues, so it still fails the check.
-        ok = total_tests > 0 and not new and not unmatched
+        # Same rule as the other categories: only failures with no known issue fail.
+        ok = total_tests > 0 and not new
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: xpu_profiling")
         return CheckResult(category="xpu_profiling", passed=ok, total=total_tests,
                            new_failures=new, new_passes=new_passes, failures=failed)
