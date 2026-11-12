@@ -6544,6 +6544,17 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             ):
                 for size in [(256, 1280, 7, 7), (1024, 256, 16, 16)]:
                     _train(memory_format, ref_backend, mixed, dtype, size)
+            if (
+                device_type == "xpu"
+                and dims == 2
+                and memory_format == "NCHW"
+                and ref_backend == "cpu"
+                and dtype in (torch.float, torch.half)
+            ):
+                # Channel-tile layouts: odd C with a partial tile, odd HW,
+                # few channels, and rows wider than one work-group.
+                for size in [(8, 33, 7, 7), (5, 30, 6, 6), (3, 8, 33, 33)]:
+                    _train(memory_format, ref_backend, mixed, dtype, size)
         else:
             _inference(memory_format, ref_backend, mixed, dtype)
 
