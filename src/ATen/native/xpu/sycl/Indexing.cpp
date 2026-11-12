@@ -1685,7 +1685,7 @@ void index_reduce_func_xpu_template(
                                   func_t>);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
-                          (uint64_t)(ssc * 8));
+                          (uint64_t)(xecore_count * 8));
                       size_t wg_size =
                           (sourceTotalSize < defaultMaxGroupThreads)
                           ? sourceTotalSize
