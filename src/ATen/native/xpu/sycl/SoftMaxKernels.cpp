@@ -934,8 +934,7 @@ void spatial_softmax_forward(
   int local_size, block_row;
   get_wgroup_size_spatial<vec_size, KernelClass>(
       outer_size, dim_size, inner_size, local_size, block_row);
-  int64_t group_num =
-      at::ceil_div<int64_t>(inner_size, local_size * vec_size);
+  int64_t group_num = at::ceil_div<int64_t>(inner_size, local_size * vec_size);
   sycl::range<3> global_range{
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
   sycl::range<3> local_range{(size_t)1, (size_t)block_row, (size_t)local_size};
@@ -1552,8 +1551,7 @@ void spatial_softmax_backward_kernel(
   int local_size, block_row;
   get_wgroup_size_spatial<vec_size, KernelClass>(
       outer_size, dim_size, inner_size, local_size, block_row);
-  int64_t group_num =
-      at::ceil_div<int64_t>(inner_size, local_size * vec_size);
+  int64_t group_num = at::ceil_div<int64_t>(inner_size, local_size * vec_size);
   sycl::range<3> global_range{
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
   sycl::range<3> local_range{(size_t)1, (size_t)block_row, (size_t)local_size};
