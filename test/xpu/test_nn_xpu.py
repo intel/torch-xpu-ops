@@ -6593,11 +6593,13 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             output_tol = 1e-4 if dtype == torch.float32 else 1e-2
             stats_tol = 1e-5 if dtype == torch.float32 else 1e-4
             shapes = cases if dtype == torch.float32 else cases + ((129, 128, 64, 64),)
-            for shape in shapes:
+            for shape, offset in product(shapes, (0.0, 100.0)):
                 n, c, h, w = shape
                 generator = torch.Generator().manual_seed(0)
-                x = torch.randn(shape, dtype=dtype, generator=generator).contiguous(
-                    memory_format=torch.channels_last
+                x = (
+                    (torch.randn(shape, generator=generator) + offset)
+                    .to(dtype)
+                    .contiguous(memory_format=torch.channels_last)
                 )
                 weight = torch.randn(c, dtype=torch.float32, generator=generator)
                 bias = torch.randn(c, dtype=torch.float32, generator=generator)
@@ -6646,6 +6648,26 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 self.assertEqual(
                     out_var.cpu(),
                     ref_var,
+                    atol=stats_tol,
+                    rtol=stats_tol,
+                    exact_dtype=False,
+                )
+
+                # Standalone stats API returns invstd instead of var.
+                x_ref = x.double()
+                batch_mean = x_ref.mean(dim=(0, 2, 3))
+                batch_var = x_ref.var(dim=(0, 2, 3), unbiased=False)
+                mean, invstd = torch.batch_norm_stats(x.to(device_type), 1e-5)
+                self.assertEqual(
+                    mean.cpu(),
+                    batch_mean,
+                    atol=stats_tol,
+                    rtol=stats_tol,
+                    exact_dtype=False,
+                )
+                self.assertEqual(
+                    invstd.cpu(),
+                    (batch_var + 1e-5).rsqrt(),
                     atol=stats_tol,
                     rtol=stats_tol,
                     exact_dtype=False,
