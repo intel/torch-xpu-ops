@@ -6,8 +6,8 @@ inputs:
     default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch', or '*_wheel'
   torch_xpu_ops:
-    default: 'main'
-    description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+    default: 'pinned'
+    description: Torch-xpu-ops defaults to the wheel/source pin, or 'commit/branch', or 'repo@commit/repo@branch'
   python:
     default: ''
     description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
@@ -109,7 +109,7 @@ runs:
         set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
         set TORCH_XPU_OPS_COMMIT=%XPU_OPS_INPUT%
         echo %XPU_OPS_INPUT% | findstr /C:"https://" >nul && for /f "tokens=1,2 delims=@" %%a in ("%XPU_OPS_INPUT%") do (set "TORCH_XPU_OPS_REPO=%%a" & set "TORCH_XPU_OPS_COMMIT=%%b")
-        if "%TORCH_XPU_OPS_COMMIT%" == "" set TORCH_XPU_OPS_COMMIT=main
+        if "%TORCH_XPU_OPS_COMMIT%" == "" set TORCH_XPU_OPS_COMMIT=pinned
 
         cd /d "%GITHUB_WORKSPACE%\.."
         if exist pytorch rmdir /s /q pytorch
@@ -119,17 +119,13 @@ runs:
         git checkout %TORCH_COMMIT_ID% || exit /b 1
         git show -s
 
-        if /i "%TORCH_XPU_OPS_COMMIT%" == "pinned" set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
-        if /i "%TORCH_XPU_OPS_COMMIT%" == "pinned" set /p TORCH_XPU_OPS_COMMIT=<third_party\xpu.txt
-        if exist third_party\torch-xpu-ops rmdir /s /q third_party\torch-xpu-ops
-        if "%GITHUB_EVENT_NAME%" == "pull_request" goto :copy_pr
-        git clone %TORCH_XPU_OPS_REPO% third_party\torch-xpu-ops || exit /b 1
-        git -C third_party\torch-xpu-ops checkout %TORCH_XPU_OPS_COMMIT% || exit /b 1
-        goto :xpu_ops_done
-        :copy_pr
-        xcopy "%GITHUB_WORKSPACE%" third_party\torch-xpu-ops /E /H /Y /I /Q || exit /b 1
-        :xpu_ops_done
-        git -C third_party\torch-xpu-ops show -s
+        REM A wheel built in this run records its exact commit (torch/xpu.txt);
+        REM use it for any ref. Published wheels only consult it for `pinned`.
+        set BUILT_ARG=--built-wheel
+        echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul && set BUILT_ARG=
+        set SOURCE_ARG=
+        if "%GITHUB_EVENT_NAME%" == "pull_request" set SOURCE_ARG=--source "%GITHUB_WORKSPACE%"
+        python "%GITHUB_WORKSPACE%\.github\scripts\checkout_torch_xpu_ops.py" --pytorch-dir . --repo %TORCH_XPU_OPS_REPO% --ref %TORCH_XPU_OPS_COMMIT% --prefer-wheel %BUILT_ARG% %SOURCE_ARG% || exit /b 1
 
         python -m pip install -r .ci\docker\requirements-ci.txt || exit /b 1
         REM Leave the source tree, or `import torch` picks up pytorch\torch instead of the wheel.
