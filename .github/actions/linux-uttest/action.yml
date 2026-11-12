@@ -198,12 +198,12 @@ runs:
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
         run_status=0
+        # JUnit XMLs and per-file logs go straight to XML_OUTPUT_DIR (ut_log);
+        # failing files have their log tail echoed here. Any failure fails the step.
         python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" inductor non-inductor profiling \
+          --reproduce-log "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log" \
           2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
           | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || run_status=$?
-        find . -name "xpu_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
-        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
-          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
         exit "${run_status}"
 
     - name: xpu_p0_distributed
@@ -218,13 +218,14 @@ runs:
       run: |
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
+        xpu-smi topology -m || true
         run_status=0
+        # JUnit XMLs and per-file logs go straight to XML_OUTPUT_DIR (ut_log);
+        # failing files have their log tail echoed here. Any failure fails the step.
         python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" distributed \
+          --reproduce-log "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log" \
           2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
           | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || run_status=$?
-        find . -name "xpu_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
-        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
-          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log"
         exit "${run_status}"
 
     - name: upstream_ut

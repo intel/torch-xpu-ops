@@ -5,6 +5,8 @@
 # Paths are relative to the selected repository root. All files run with pytest.
 # {} runs the file without deselections; removing the file removes it from P0.
 # Class::test_case entries under skip use pytest deselection semantics.
+# A file that runs no tests (e.g. every case skipped) is reported as failed;
+# remove the file instead.
 groups:
   inductor:
     pytorch:

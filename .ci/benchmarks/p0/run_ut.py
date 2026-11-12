@@ -93,7 +93,7 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                     raise ValueError(f"Test file does not exist: {root / path}")
                 name = f"{prefix}{group}__{repo}__{path.replace('/', '__')}_{run_id}"
                 junit = output / f"{name}.xml"
-                command = ["pytest", path, f"--rootdir={root}", f"--junit-xml={junit}"] + [
+                command = [sys.executable, "-m", "pytest", path, f"--rootdir={root}", f"--junit-xml={junit}"] + [
                     f"--deselect={path}::{case}" for case in cases
                 ]
                 tasks.append(
@@ -167,6 +167,27 @@ def run_task(task, timeout):
     return result
 
 
+def show_tail(log, lines=50):
+    """Echo the end of a failing file's log so CI consoles show the cause."""
+    try:
+        tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
+    except OSError:
+        return
+    print(f"----- last {len(tail)} lines of {log} -----", *tail, "-----", sep="\n", flush=True)
+
+
+def write_reproduce(path, tasks):
+    """Reproduce hints; node IDs are relative to each task's repository root.
+
+    The first root uses the File Path/Reproduce Command lines that
+    ut_collect_evidence.py parses; every root is also listed explicitly.
+    """
+    roots = list(dict.fromkeys(task.cwd for task in tasks))
+    lines = [f"File Path: {roots[0]}", "Reproduce Command: pytest -sv failed_case"]
+    lines += [f"Root for {task.repo} tests: {task.cwd}" for task in {t.repo: t for t in tasks}.values()]
+    path.write_text("\n".join(lines) + "\n")
+
+
 def write_summary(path, results, total):
     path.with_suffix(".json").write_text(
         json.dumps(
@@ -222,6 +243,11 @@ def main():
         help="Per-file timeout in seconds; 0 disables it",
     )
     parser.add_argument(
+        "--reproduce-log",
+        type=Path,
+        help="Write per-repository reproduce commands to this file",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate and print the plan without executing",
@@ -263,12 +289,25 @@ def main():
     }
     (output / f"manifest_{run_id}.json").write_text(json.dumps(manifest, indent=2, default=str) + "\n")
     summary = output / f"summary_{run_id}"
+    if args.reproduce_log:
+        write_reproduce(args.reproduce_log, tasks)
     results = []
     write_summary(summary, results, len(tasks))
+    try:
+        return run_all(tasks, summary, results, args.timeout)
+    except KeyboardInterrupt:
+        # A signal outside a running test (e.g. while writing reports).
+        print("Interrupted", flush=True)
+        return 130
+
+
+def run_all(tasks, summary, results, timeout):
     for task in tasks:
-        result = run_task(task, args.timeout)
+        result = run_task(task, timeout)
         results.append(result)
         write_summary(summary, results, len(tasks))
+        if result["status"] != "passed":
+            show_tail(task.log)
         if result["status"] == "interrupted":
             return 130
     print(
