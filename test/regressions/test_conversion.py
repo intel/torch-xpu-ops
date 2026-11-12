@@ -24,7 +24,11 @@ class TestSimpleConversion(TestCase):
         src_xpu = src_cpu.to(xpu_device)
         dst_cpu = src_cpu.to(dtype)
         dst_xpu = src_xpu.to(dtype)
-        self.assertEqual(dst_xpu.to(cpu_device), dst_cpu)
+        # Compare raw bytes instead of values: -0.0 and +0.0 compare equal as
+        # floats, so a value comparison cannot see a lost sign of zero.
+        self.assertEqual(
+            dst_xpu.to(cpu_device).view(torch.uint8), dst_cpu.view(torch.uint8)
+        )
 
     @dtypes(*float8_types())
     def test_half_zero(self, dtype):
