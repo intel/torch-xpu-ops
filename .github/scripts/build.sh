@@ -74,9 +74,8 @@ python "${WORKSPACE}/pytorch/torch/utils/collect_env.py"
 
 # Compare against the pin captured before building; older wheels have no record.
 built_xpu_ops="$(python -c '
-from importlib.metadata import distribution
-p = distribution("torch").locate_file("torch/xpu.txt")
-print(open(p).read().strip() if p.is_file() else "")
+import torch
+print(getattr(torch.version, "xpu_ops_commit", None) or "")
 ')"
 # Only a prepared tree holds a full SHA; skip trees still naming release/X.Y.
 if [[ "${expected_xpu_ops}" =~ ^[0-9a-f]{40}$ ]] && [ -n "${built_xpu_ops}" ] && \
