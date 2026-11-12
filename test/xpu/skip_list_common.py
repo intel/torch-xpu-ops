@@ -436,16 +436,10 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
     f"{PYTORCH_TEST_DIR}/test_ops_fwd_gradients.py": (
         # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/5930
-        "test_fn_fwgrad_bwgrad_stft_xpu_complex128",
         # https://github.com/intel/torch-xpu-ops/issues/4996
         "test_fn_fwgrad_bwgrad_stft_xpu_float64",
     ),
-    f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/5930
-        "test_fn_gradgrad_stft_xpu_complex128",
-    ),
+    f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": None,
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,

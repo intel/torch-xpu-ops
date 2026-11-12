@@ -20,7 +20,6 @@ skip_dict = {
         "test_compare_cpu_cumsum_xpu_bfloat16",
         "test_compare_cpu_cumsum_xpu_float16",
         "test_compare_cpu_logcumsumexp_xpu_bfloat16",
-        "test_compare_cpu_logcumsumexp_xpu_complex128",
         "test_compare_cpu_log_xpu_complex64",
         "test_compare_cpu_log10_xpu_complex64",
         "test_compare_cpu_log1p_xpu_complex64",
@@ -197,7 +196,10 @@ skip_dict = {
         # Greatest absolute difference: 0.0625 at index (1,) (up to 0.001 allowed)
         #  Greatest relative difference: 0.00640869140625 at index (1,) (up to 0.001 allowed)
         "test_compare_cpu_xlogy_xpu_bfloat16",
-        "test_compare_cpu_div_trunc_rounding_xpu_float64",
+        # Measured on B580: with a multi-element fp16 tensor divisor,
+        # 3.18359375 / 1.0615234375 (= 2.9991) gives 3 on CPU, which rounds
+        # the quotient to fp16 before truncating, and 2 on XPU. With a
+        # single-element divisor both give 2. bf16 matches CPU and passes.
         "test_compare_cpu_div_trunc_rounding_xpu_float16",
         "test_compare_cpu_div_floor_rounding_xpu_float16",
         "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
