@@ -73,6 +73,7 @@ jobs:
         uses: ./gs-scripts/.github/actions/linux-testenv
         with:
           pytorch: nightly_wheel
+          torch_xpu_ops: main
           python: ${{ inputs.python }}
       - name: Fixed frequency
         run: |

@@ -496,14 +496,12 @@ void adaptive_avg_pool3d_backward_kernel(
   TensorArg grad_output_arg{gradOutput_, "gradOutput_", 2};
   TensorArg input_arg{input, "input", 3};
 
-  adaptive_pool_empty_output_check(gradOutput_, "adaptive_avg_pool3d_backward");
-  TORCH_CHECK(
-      input.dim() == gradOutput_.dim(),
-      __func__,
-      ": Expected dimensions ",
-      input.dim(),
-      " for `gradOutput_` but got dimensions ",
-      gradOutput_.dim());
+  adaptive_avg_pool_backward_check(
+      gradInput,
+      gradOutput_,
+      input,
+      /*pooling_dims=*/3,
+      "adaptive_avg_pool3d_backward()");
 
   checkAllSameGPU(
       "adaptive_avg_pool3d_backward_xpu",
