@@ -971,6 +971,58 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl::local_accessor<uint8_t, 1> slm_table_;
 };
 
+// Stack along the last dim: K inputs each give one unit per output row of K
+// units (cat_dim 0, size[0] == K). A work-item writes R rows (16 bytes) with
+// one R-unit load per input, interleaved in registers; the gather kernel
+// would load unit by unit.
+template <int U, int R, int K>
+struct CatInterleaveFunctor {
+  using T = OpaqueType<U>;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const uint32_t vid = item.get_global_linear_id();
+    if (vid >= p_.nvec) {
+      return;
+    }
+    uint32_t c[kCatMaxDims];
+    cat_decompose(p_, vid * (R * K), c);
+    memory::aligned_vector<T, R * K> v;
+#pragma unroll
+    for (int k = 0; k < K; ++k) {
+      const CatInputMeta& m = p_.in[k];
+      int32_t off = 0;
+#pragma unroll
+      for (int d = 1; d < kCatMaxDims; ++d) {
+        if (d < p_.ndim) {
+          off += static_cast<int32_t>(c[d]) * m.stride[d];
+        }
+      }
+      const T* src = reinterpret_cast<const T*>(m.ptr) + off;
+      memory::aligned_vector<T, R> r;
+      if (m.vec_ok) {
+        r = *reinterpret_cast<const memory::aligned_vector<T, R>*>(src);
+      } else {
+#pragma unroll
+        for (int j = 0; j < R; ++j) {
+          r[j] = src[j * m.stride[1]];
+        }
+      }
+#pragma unroll
+      for (int j = 0; j < R; ++j) {
+        v[j * K + k] = r[j];
+      }
+    }
+    reinterpret_cast<decltype(v)*>(out_)[vid] = v;
+  }
+
+  CatInterleaveFunctor(void* out, const CatParams<K>& p)
+      : out_(static_cast<T*>(out)), p_(p) {}
+
+ private:
+  T* out_;
+  CatParams<K> p_;
+};
+
 inline int64_t cat_addr(const Tensor& t) {
   return static_cast<int64_t>(reinterpret_cast<uintptr_t>(t.const_data_ptr()));
 }
@@ -1160,6 +1212,63 @@ void cat_fill_params(
   }
 }
 
+template <int U, int R, int K>
+void launch_cat_interleave(const Tensor& out, const CatLayout& layout) {
+  CatParams<K> p{};
+  p.ndim = layout.nd;
+  p.nvec = static_cast<uint32_t>(out.numel() / (R * K));
+  for (int d = 0; d < layout.nd; ++d) {
+    p.size[d] = at::detail::IntDivider<uint32_t>(layout.size[d]);
+  }
+  for (int k = 0; k < K; ++k) {
+    CatInputMeta& m = p.in[k];
+    m = CatInputMeta{};
+    m.ptr = static_cast<uint64_t>(cat_addr(*layout.in[k]));
+    m.vec_ok = layout.stride[k][1] == 1 && m.ptr % (R * U) == 0;
+    for (int d = 0; d < layout.nd; ++d) {
+      m.stride[d] = static_cast<int32_t>(layout.stride[k][d]);
+      m.vec_ok &= d < 2 || layout.stride[k][d] % R == 0;
+    }
+  }
+  CatInterleaveFunctor<U, R, K> kfn(out.mutable_data_ptr(), p);
+  sycl_kernel_submit(
+      sycl::range<1>(ceil_div<int64_t>(p.nvec, kCatGroupSize) * kCatGroupSize),
+      sycl::range<1>(kCatGroupSize),
+      getCurrentSYCLQueue(),
+      kfn);
+}
+
+// Interleave: every input gives one unit per row (e.g. stack along the last
+// dim). Launches CatInterleaveFunctor and returns true if it applies.
+bool cat_try_interleave(const Tensor& out, const CatLayout& layout) {
+  const int nin = layout.nin;
+  const int64_t u = layout.u;
+  const int64_t rows = 16 / (nin * u);
+  if (layout.cat_dim != 0 || layout.size[0] != nin || layout.nd < 2 ||
+      (nin != 2 && nin != 4) || rows * nin * u != 16 || rows < 2 ||
+      layout.size[1] % rows != 0 || layout.out_addr % 16 != 0) {
+    return false;
+  }
+  switch (u * 8 + nin) {
+    case 1 * 8 + 2:
+      launch_cat_interleave<1, 8, 2>(out, layout);
+      return true;
+    case 1 * 8 + 4:
+      launch_cat_interleave<1, 4, 4>(out, layout);
+      return true;
+    case 2 * 8 + 2:
+      launch_cat_interleave<2, 4, 2>(out, layout);
+      return true;
+    case 2 * 8 + 4:
+      launch_cat_interleave<2, 2, 4>(out, layout);
+      return true;
+    case 4 * 8 + 2:
+      launch_cat_interleave<4, 2, 2>(out, layout);
+      return true;
+  }
+  return false;
+}
+
 template <int U, int V, bool kWrap, int kRegInputs>
 void launch_cat_gather(
     const Tensor& out,
@@ -1245,7 +1354,7 @@ bool cat_dispatch_gather(
 }
 
 // Cat of same-dtype `inputs` along `dim` into the dense `out` with
-// CatGatherFunctor. Returns false if unsupported.
+// CatInterleaveFunctor or CatGatherFunctor. Returns false if unsupported.
 bool cat_output_driven(
     const MaterializedITensorListRef& inputs,
     int64_t dim,
@@ -1256,6 +1365,9 @@ bool cat_output_driven(
     return false;
   }
   cat_to_units(out, layout);
+  if (cat_try_interleave(out, layout)) {
+    return true;
+  }
   return cat_dispatch_gather(out, layout, cat_pick_vector(layout));
 }
 
