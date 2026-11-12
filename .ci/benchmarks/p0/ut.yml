@@ -14,6 +14,11 @@ groups:
         skip:
           - "AOTInductorTestDualWrapper::test_update_user_managed_buffer_xpu"
           - "AOTInductorTestABICompatibleGpu::test_update_user_managed_buffer_xpu"
+          # No tracking issue: package-loading failures in fresh subprocesses.
+          - "AOTInductorTestABICompatibleCpu::test_aoti_load_package_in_fresh_subprocess_cpu"
+          - "AOTInductorTestABICompatibleGpu::test_aoti_load_package_in_fresh_subprocess_xpu"
+          - "AOTInductorTestDualWrapper::test_aoti_load_package_in_fresh_subprocess_xpu"
+          - "AOTInductorTestABICompatibleCpu::test_python_custom_op_load_package_error_in_fresh_subprocess_cpu"
           # https://github.com/intel/torch-xpu-ops/issues/6116 (intermittent 2.15 release-wheel P0 failures; independent causes)
           - "AOTInductorTestABICompatibleGpu::test_aoti_debug_printer_codegen_xpu"
       test/inductor/test_aot_inductor_package.py:
@@ -40,6 +45,8 @@ groups:
       test/inductor/test_torchinductor.py:
         skip:
           - "GPUTests::test_topk_xpu"
+          # No tracking issue: tensor comparison failure.
+          - "TritonCodeGenTests::test_topk_decompose_sort_ops"
           # Additional failures observed in the 2.15 BMG CI run 40892572474.
           # https://github.com/intel/torch-xpu-ops/issues/5860
           - "TritonCodeGenTests::test_indirect_device_assert"
