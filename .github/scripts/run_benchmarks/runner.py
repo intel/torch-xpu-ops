@@ -59,6 +59,8 @@ def _write_scenario_summaries(base_log_dir: Path) -> None:
             with open(csv_file, newline="", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
+                    row.pop(None, None)  # cells beyond the header from malformed lines
+                    row = {k: (v if v not in (None, "") else "0") for k, v in row.items()}
                     scenario = row.get("scenario", "")
                     if scenario not in grouped:
                         continue
@@ -74,7 +76,7 @@ def _write_scenario_summaries(base_log_dir: Path) -> None:
             continue
         out_path = summary_paths[scenario]
         with open(out_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames[scenario], restval="")
+            writer = csv.DictWriter(f, fieldnames=fieldnames[scenario], restval="0", extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)
         log(f"Wrote {scenario} summary: {out_path} ({len(rows)} rows)")
@@ -241,10 +243,10 @@ def run_all(
     tasks: list[TestTask],
     workers: list[tuple[int, str, dict]],
     device: str,
-    backend: str = "default",
     dataset_dir: str = "",
-) -> None:
-    """Dispatch tasks across workers and print a summary."""
+    base_log_dir: Path | None = None,
+) -> int:
+    """Dispatch tasks across workers, print a summary, and return the failed task count."""
     total = len(tasks)
     task_queue: queue.Queue[TestTask] = queue.Queue()
     for t in tasks:
@@ -253,7 +255,7 @@ def run_all(
     results: queue.Queue[tuple[TestTask, bool, str, str | None]] = queue.Queue()
     completed = 0
     completed_lock = threading.Lock()
-    base_log_dir = Path.cwd().resolve() / "inductor_log"
+    base_log_dir = base_log_dir or Path.cwd().resolve() / "inductor_log"
     wall_start = time.monotonic()
 
     all_threads: list[threading.Thread] = []
@@ -277,11 +279,15 @@ def run_all(
 
             task_start = time.monotonic()
             log_dir = base_log_dir / task.suite / task.dt / task.mode / task.scenario
+            if task.backend != "default":
+                log_dir = log_dir / task.backend
+            if task.quant:
+                log_dir = log_dir / task.quant
             try:
                 exit_code, success, test_result, kill_reason = run_single(
                     task=task, card=card, cmd_prefix=cmd_prefix, env_vars=env_vars,
                     log_dir=log_dir, worker_id=worker_id, device=device,
-                    backend=backend, dataset_dir=dataset_dir,
+                    backend=task.backend, dataset_dir=dataset_dir,
                 )
             except Exception as e:
                 log(f"Exception running {task.model}: {e}", level="ERROR", worker=worker_id)
@@ -362,6 +368,4 @@ def run_all(
         print(flush=True)
         log("All tasks completed successfully.")
 
-    if failed:
-        import sys
-        sys.exit(1)
+    return len(failed)

@@ -1,166 +1,101 @@
 #!/usr/bin/env python3
-"""Check if AOT (Ahead-Of-Time) compilation is effective on the current platform.
+"""Check whether torch XPU AOT is effective, based on the NEO compiler cache.
 
-Steps:
-1. Print the AOT platform list supported by the installed wheel.
-2. Detect the current platform type.
-3. Clean the NEO compiler cache, run a simple XPU case, then check if the
-   cache folder remains empty (empty means AOT is effective).
+AOT kernels are loaded as native binaries; any JIT compile goes through the driver
+and leaves an entry in the NEO cache. So: empty NEO cache after the run => AOT PASS.
+Elapsed time is shown for reference only.
+
+Usage: python check_aot.py [N]   N = reference seconds (default 60)
+Exit:  0 PASS, 1 FAIL, 2 error
 """
 
 import os
 import platform
-import shutil
 import sys
+import tempfile
+import time
+from pathlib import Path
+
+try:
+    ELAPSED_REF = float(sys.argv[1]) if len(sys.argv) > 1 else 60.0
+except ValueError:
+    print(f"Usage: python {Path(sys.argv[0]).name} [N]")
+    sys.exit(2)
+
+# 1. Env and fresh cache dir (before torch import so the driver picks it up).
+# NEO reads NEO_CACHE_* the same way on Linux and Windows; mkdtemp uses /tmp or %TEMP%.
+NEO_DIR = Path(tempfile.mkdtemp(prefix="check_aot_")) / "neo"
+NEO_DIR.mkdir()
+os.environ.update({
+    "NEO_CACHE_PERSISTENT": "1",
+    "NEO_CACHE_DIR": str(NEO_DIR),
+    # A warm SYCL program cache would bypass the driver and hide JIT.
+    "SYCL_CACHE_PERSISTENT": "0",
+})
+os.environ.pop("NEO_CACHE_MAX_SIZE", None)
+
+import torch  # noqa: E402
 
 
-def get_aot_platforms():
-    """Print AOT platforms supported by the installed torch wheel."""
-    print("=" * 60)
-    print("Step 1: Query AOT platforms supported by installed wheel")
-    print("=" * 60)
-    try:
-        import torch
+class Model(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = torch.nn.Conv2d(3, 4, 3, padding=1)
+        self.fc = torch.nn.Linear(4 * 8 * 8, 10)
 
-        # The AOT target list is embedded in the torch XPU build info
-        if hasattr(torch, "xpu") and hasattr(torch.xpu, "get_arch_list"):
-            arch_list = torch.xpu.get_arch_list()
-            print(f"Supported AOT platforms: {arch_list}")
-            return arch_list
-        else:
-            # Fallback: try to get from _C
-            if hasattr(torch._C, "_xpu_getArchList"):
-                arch_list = torch._C._xpu_getArchList()
-                print(f"Supported AOT platforms: {arch_list}")
-                return arch_list
-            print("WARNING: Cannot query AOT platform list from this torch build.")
-            print("torch.xpu.get_arch_list() is not available.")
-            return []
-    except Exception as e:
-        print(f"ERROR: Failed to get AOT platforms: {e}")
-        return []
-
-
-def get_current_platform():
-    """Detect and print the current platform type."""
-    print("\n" + "=" * 60)
-    print("Step 2: Detect current platform")
-    print("=" * 60)
-    system = platform.system()
-    print(f"OS: {system}")
-    print(f"Platform: {platform.platform()}")
-    print(f"Machine: {platform.machine()}")
-
-    # Try to get XPU device info
-    try:
-        import torch
-
-        if torch.xpu.is_available():
-            device_name = torch.xpu.get_device_name(0)
-            print(f"XPU Device: {device_name}")
-            cap = torch.xpu.get_device_capability(0)
-            device_id = cap["device_id"]
-            ip_version = cap["version"]
-            # Reference: https://dgpu-docs.intel.com/devices/hardware-table.html#gpus-with-supported-drivers
-            print(f"Device ID: {hex(device_id)}")
-            print(f"IP Version: {ip_version}")
-    except Exception as e:
-        print(f"Cannot get XPU device info: {e}")
-
-    return system
-
-
-def get_cache_dir(system):
-    """Return the NEO compiler cache directory for the given OS."""
-    if system == "Linux":
-        return os.path.expanduser("~/.cache/neo_compiler_cache")
-    elif system == "Windows":
-        local_app_data = os.environ.get(
-            "LOCALAPPDATA", os.path.join(os.path.expanduser("~"), "AppData", "Local")
-        )
-        return os.path.join(local_app_data, "NEO", "neo_compiler_cache")
-    else:
-        print(f"WARNING: Unsupported OS '{system}', using Linux path as fallback.")
-        return os.path.expanduser("~/.cache/neo_compiler_cache")
-
-
-def clean_cache(cache_dir):
-    """Remove the NEO compiler cache directory."""
-    print(f"\nCleaning cache directory: {cache_dir}")
-    if os.path.exists(cache_dir):
-        shutil.rmtree(cache_dir)
-        print("  Cache directory removed.")
-    else:
-        print("  Cache directory does not exist (already clean).")
-
-
-def is_cache_empty(cache_dir):
-    """Check if the cache directory is empty or does not exist."""
-    if not os.path.exists(cache_dir):
-        return True
-    # Check if directory has any files (recursively)
-    for _, _, files in os.walk(cache_dir):
-        if files:
-            return False
-    return True
-
-
-def run_xpu_workload():
-    """Run a simple XPU workload: check availability and add two random tensors."""
-    print("\n" + "=" * 60)
-    print("Step 3: Run simple XPU workload and check AOT effectiveness")
-    print("=" * 60)
-
-    import torch
-
-    # Check XPU availability
-    if not torch.xpu.is_available():
-        print("ERROR: XPU is not available on this system.")
-        sys.exit(1)
-    print(f"XPU is available. Device count: {torch.xpu.device_count()}")
-
-    # Run a simple computation
-    print("Running: random tensor addition on XPU...")
-    a = torch.randn(1024, 1024, device="xpu")
-    b = torch.randn(1024, 1024, device="xpu")
-    c = a + b
-    torch.xpu.synchronize()
-    print("  Computation completed successfully.")
-
-
-def check_aot_effective(cache_dir):
-    """Check if AOT is effective by inspecting the cache directory."""
-    print(f"\nChecking cache directory: {cache_dir}")
-    if is_cache_empty(cache_dir):
-        print("  Cache directory is EMPTY.")
-        print("\n>>> RESULT: AOT is EFFECTIVE. No JIT compilation occurred. <<<")
-        return True
-    else:
-        # List some files for debugging
-        file_count = 0
-        for root, dirs, files in os.walk(cache_dir):
-            file_count += len(files)
-        print(f"  Cache directory is NOT empty ({file_count} file(s) found).")
-        print("\n>>> RESULT: AOT is NOT effective. JIT compilation occurred. <<<")
-        return False
+    def forward(self, x):
+        y = self.conv(x)
+        y = (y + x.mean()) - 0.5
+        y = y * y / (y.abs() + 1.0)
+        return self.fc(torch.relu(y).flatten(1))
 
 
 def main():
-    # Step 1: Print supported AOT platforms
-    aot_platforms = get_aot_platforms()
+    print("=" * 60 + "\nXPU AOT Check\n" + "=" * 60)
+    print(f"PyTorch   : {torch.__version__}")
+    print(f"OS        : {platform.system()} {platform.release()} ({platform.machine()})")
+    print(f"AOT archs : {', '.join(torch.xpu.get_arch_list()) or 'none'}")
+    if not torch.xpu.is_available():
+        print("RESULT    : ERROR - XPU not available")
+        return 2
+    print(f"Device    : {torch.xpu.get_device_name(0)}")
+    print(f"NEO cache : {NEO_DIR}\n")
 
-    # Step 2: Detect current platform
-    system = get_current_platform()
+    # 2. Prepare model and inputs on CPU.
+    model, inputs = Model().eval(), torch.randn(2, 3, 8, 8)
+    dtypes = {"fp32": torch.float32, "fp16": torch.float16}
+    if torch.xpu.is_bf16_supported():
+        dtypes["bf16"] = torch.bfloat16
 
-    # Step 3: Clean cache, run workload, check AOT
-    cache_dir = get_cache_dir(system)
-    clean_cache(cache_dir)
-    run_xpu_workload()
-    effective = check_aot_effective(cache_dir)
+    # 3. Run and time each dtype.
+    total = 0.0
+    try:
+        for name, dtype in dtypes.items():
+            start = time.perf_counter()
+            with torch.no_grad():
+                model.to("xpu", dtype)(inputs.to("xpu", dtype))
+            torch.xpu.synchronize()
+            elapsed = time.perf_counter() - start
+            total += elapsed
+            print(f"Run {name:<5} : {elapsed:8.2f} s")
+    except Exception as e:
+        msg = str(e).strip().splitlines()
+        print(f"RESULT    : ERROR - {type(e).__name__}: {msg[0] if msg else ''}")
+        return 2
 
-    print("\n" + "=" * 60)
-    sys.exit(0 if effective else 1)
+    # 4. Check NEO cache and conclude.
+    files = [p for p in NEO_DIR.rglob("*") if p.is_file() and p.name != "config.file"]
+    hint = "JIT likely" if total > ELAPSED_REF else "OK"
+    print(f"\nElapsed   : {total:8.2f} s (ref {ELAPSED_REF:g} s, {hint}; reference only)")
+    print(f"JIT files : {len(files)}")
+    for f in files[:5]:
+        print(f"            {f.relative_to(NEO_DIR).as_posix()}")
+    passed = not files
+    print("=" * 60)
+    print(f"RESULT    : {'PASS - AOT effective' if passed else 'FAIL - JIT occurred'}")
+    print("=" * 60)
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
