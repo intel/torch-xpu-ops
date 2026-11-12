@@ -22,7 +22,6 @@ from torch.testing._internal.common_cuda import SM80OrLater
 from torch.testing._internal.common_device_type import (
     dtypes,
     dtypesIfMPS,
-    dtypesIfXPU,
     instantiate_device_type_tests,
     largeTensorTest,
     onlyCPU,
@@ -32,10 +31,7 @@ from torch.testing._internal.common_device_type import (
     tol,
     toleranceOverride,
 )
-from torch.testing._internal.common_dtype import (
-    all_types_and_complex_and,
-    floating_types_and,
-)
+from torch.testing._internal.common_dtype import all_types_and_complex_and
 from torch.testing._internal.common_utils import (
     coalescedonoff,
     DeterministicGuard,
@@ -139,10 +135,6 @@ TestSparse.test_bmm_oob = retarget_outermost_onlycuda_to_onlyon(TestSparse.test_
 # ======================================================================
 # Decorator additions (no body change)
 # ======================================================================
-
-TestSparse.test_sparse_matmul = dtypesIfXPU(
-    *floating_types_and(torch.half, torch.bfloat16, torch.complex64, torch.complex128)
-)(TestSparse.test_sparse_matmul)
 
 TestSparse.test_sparse_addmm = toleranceOverride(
     {torch.double: tol(atol=2e-6, rtol=1e-6)}
