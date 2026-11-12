@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Intel Corporation
+# Licensed under the Apache License, Version 2.0
+
 """Check an XPU CI machine: system acceptance, network and H2D/D2H bandwidth.
 
 SYS  New machine acceptance (Linux only): Intel GPU on PCI, OS version and kernel
@@ -6,10 +9,13 @@ SYS  New machine acceptance (Linux only): Intel GPU on PCI, OS version and kerne
      compute runtime packages, tools, GPU visible to clinfo/xpu-smi, / > 800 GB
      plus disk bandwidth, user jenkins with UID 1001.
 NET  Download speed of pytorch/pytorch git, intel/omix docker layer, torch XPU
-     wheel, Hugging Face model and torch weights, all forced through the proxy.
+     wheel, Hugging Face model and torch weights, all forced through the proxy
+     (https_proxy must be set; no_proxy is ignored). Each download is capped at
+     NET_LIMIT_MIB and NET_DEADLINE seconds, so a stalled link cannot hang it.
 BW   H2D/D2H copy bandwidth per device, pageable and pinned (reference only).
-     Uses the current Python if its torch sees XPU (probe only, never modified);
-     otherwise a temporary uv venv with torch XPU nightly, always removed.
+     Uses --python (default: the current Python) if its torch sees XPU (probe
+     only, never modified). With --install-torch, falls back to a temporary uv
+     venv with torch XPU nightly (pinned uv installer), always removed.
 
 Levels: PASS, WARN (works but slow), FAIL, ERROR (check could not run).
 Exit:   0 PASS/WARN, 1 FAIL, 2 ERROR.
@@ -42,11 +48,14 @@ PACKAGES = (
     ("intel-ocloc", "libigc-tools"),
 )
 NET_LIMIT_MIB = 256
-NET_TIMEOUT = 60
+NET_TIMEOUT = 60  # per socket operation
+NET_DEADLINE = 60  # whole download; speed is computed from what arrived
+GIT_TIMEOUT = 600
 # Below these speeds the check still passes but is flagged as a warning.
 NET_WARN_MBPS = 10
 DISK_WARN_MBPS = 500
-UV_INSTALLER = "https://astral.sh/uv/install.sh"
+UV_VERSION = "0.13.7"
+UV_INSTALLER = f"https://astral.sh/uv/{UV_VERSION}/install.sh"
 UV_PYTHON = "3.12"
 TORCH_INDEX = "https://download.pytorch.org/whl/nightly/xpu"
 BW_TAG = "CHECK_DEVICE_BW "
@@ -239,11 +248,19 @@ def http_open(url, headers=None):
 
 
 def http_get(url, headers=None, limit_mib=NET_LIMIT_MIB):
-    """Stream up to limit_mib from url, return (bytes, seconds). Honors *_proxy env."""
+    """Stream up to limit_mib or NET_DEADLINE s from url, return (bytes, seconds).
+
+    Honors *_proxy env. The deadline bounds the whole transfer; NET_TIMEOUT only
+    bounds a single socket read, so a trickling link would otherwise run on.
+    """
     limit, got = limit_mib * 2**20, 0
     start = time.perf_counter()
     with http_open(url, headers) as resp:
-        while got < limit and (chunk := resp.read(min(2**20, limit - got))):
+        while got < limit and time.perf_counter() - start < NET_DEADLINE:
+            # read1 returns what is available instead of blocking for a full chunk.
+            chunk = resp.read1(min(2**20, limit - got))
+            if not chunk:
+                break
             got += len(chunk)
     return got, time.perf_counter() - start
 
@@ -259,7 +276,7 @@ def net_git():
         start = time.perf_counter()
         # --no-checkout: time only the transfer, not writing the work tree.
         rc, out = run(["git", "clone", "-q", "--depth", "1", "--no-checkout",
-                       "https://github.com/pytorch/pytorch", d])
+                       "https://github.com/pytorch/pytorch", d], timeout=GIT_TIMEOUT)
         if rc:
             raise RuntimeError(line(out, -1))
         size = sum(f.stat().st_size for f in Path(d, ".git").rglob("*") if f.is_file())
@@ -320,7 +337,13 @@ def proxy_only():
         os.environ.update(saved)
 
 
+def proxy_url():
+    return next((os.environ[k] for k in ("https_proxy", "HTTPS_PROXY") if os.environ.get(k)), "")
+
+
 def check_net():
+    proxy = proxy_url()
+    check("Proxy", bool(proxy), proxy or "https_proxy not set; downloads would go direct")
     with proxy_only():
         for name, fn in NET_TARGETS:
             try:
@@ -416,21 +439,19 @@ def venv_bench(tmp):
     return bench_in(py, env)
 
 
-def bw_result():
-    """Bench in the current env if its torch sees XPU (probe only), else in a temporary venv."""
-    import importlib.util
-
-    reason = "torch not installed"
-    if importlib.util.find_spec("torch"):
-        try:
-            res = bench_in(sys.executable)
-            if res["devices"]:
-                print(f"{'Setup':<10}: current env {sys.executable}")
-                return res
-            reason = f"torch {res['torch']} sees no XPU"
-        except Exception as e:
-            reason = line(e)
-    print(f"{'Setup':<10}: current env unusable ({reason}), using temporary uv venv")
+def bw_result(python, install):
+    """Bench with python if its torch sees XPU (probe only); else, with install, in a temporary venv."""
+    try:
+        res = bench_in(python)
+        if res["devices"]:
+            print(f"{'Setup':<10}: using {python}")
+            return res
+        reason = f"torch {res['torch']} sees no XPU"
+    except Exception as e:
+        reason = line(e)
+    if not install:
+        raise RuntimeError(f"{python} unusable ({reason}); pass --python or --install-torch")
+    print(f"{'Setup':<10}: {python} unusable ({reason}), using temporary uv venv")
     tmp = Path(tempfile.mkdtemp(prefix="check_device_bw_", dir="/var/tmp"))
     try:
         return venv_bench(tmp)
@@ -439,8 +460,11 @@ def bw_result():
         print(f"{'Setup':<10}: removed {tmp}")
 
 
+BW_OPTS = {"python": sys.executable, "install": False}
+
+
 def check_bw():
-    res = bw_result()
+    res = bw_result(BW_OPTS["python"], BW_OPTS["install"])
     note("PASS", "Torch", f"{res['torch']} ({res['python']})")
     if not res["devices"]:
         return note("ERROR", "BW", "torch sees no XPU")
@@ -473,7 +497,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("modes", nargs="*", metavar="MODE", help="all, sys, net, bw (default: all)")
     ap.add_argument("--json", metavar="FILE", help="also write all results to FILE as JSON")
+    ap.add_argument("--python", default=sys.executable,
+                    help="interpreter with torch XPU for bw (default: current)")
+    ap.add_argument("--install-torch", action="store_true",
+                    help=f"bw: if --python is unusable, install torch XPU nightly into a temporary "
+                         f"uv venv (uv {UV_VERSION} installer from astral.sh)")
     args = ap.parse_args(argv)
+    BW_OPTS.update(python=args.python, install=args.install_torch)
     unknown = sorted(set(args.modes) - {"all", *SECTIONS})
     if unknown:
         ap.error(f"unknown MODE {unknown}")

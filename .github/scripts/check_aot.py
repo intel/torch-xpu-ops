@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Intel Corporation
+# Licensed under the Apache License, Version 2.0
+
 """Check torch XPU AOT effectiveness.
 
 AOT: AOT kernels are loaded as native binaries; any JIT compile goes through the
