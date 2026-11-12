@@ -167,12 +167,15 @@ runs:
       run: |
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
-        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" \
+        rc=0
+        python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" \
+          --reproduce-log "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log" \
           2> "${LOG_BASE}/p0_with_skip_test_error.log" \
-          | tee "${LOG_BASE}/p0_with_skip_test.log" || true
-        find . -name "p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
-        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
-          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log"
+          | tee "${LOG_BASE}/p0_with_skip_test.log" || rc=$?
+        if [ "${rc}" -gt 1 ]; then
+          echo "P0 runner error (exit ${rc}), see ${LOG_BASE}/p0_with_skip_test_error.log"
+          exit "${rc}"
+        fi
 
     # Summary
     - name: UT Test Results Summary
