@@ -6,76 +6,50 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+"""Run the torch-xpu-ops distributed unit tests on the largest XeLink GPU group."""
+
 import os
 import subprocess
 import sys
 
 from skip_list_dist import skip_dict
-from xpu_test_utils import launch_test
+from ut_launcher import main, merge_skip_dicts
 
-res = 0
-res2 = 0
-fail_test = []
-
-# -rA prints PASSED lines, which the UT check needs to collect passing cases.
-os.environ.setdefault("PYTEST_ADDOPTS", "-rA")
-os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
-# Get the xelink group card affinity
-ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
-if ret == 0:
-    gpu_dict = {}
-    with open("topology.log") as file:
-        lines = file.readlines()
-        for line in lines:
-            if "CPU Affinity" in line:
-                continue
-            line = line.strip()
-            if line.startswith("GPU "):
-                items = line.split(" ")
-                items = [x for x in items if x]
-                gpu_id = items[1]
-                i = gpu_id.split("/")[0]
-                affinity = ""
-                for j, item in enumerate(items):
-                    if "SYS" not in item and ("XL" in item or "S" in item):
-                        if len(affinity) == 0:
-                            affinity = str(j - 2)
-                        else:
-                            affinity = affinity + "," + str(j - 2)
-                gpu_dict[i] = affinity
-
-    max_affinity = ""
-    for key, value in gpu_dict.items():
-        if len(value) > len(max_affinity):
-            max_affinity = value
-
-    os.environ["ZE_AFFINITY_MASK"] = str(max_affinity)
-    print(str("ZE_AFFINITY_MASK=" + os.environ.get("ZE_AFFINITY_MASK")))
-
-else:
-    print("xpu-smi topology failed")
-    sys.exit(255)
+PIPELINING_TEST_DIR = "../../../../test/distributed/pipelining"
 
 
-# run python test
-def run(test_command):
-    result = subprocess.run(test_command, capture_output=True, text=True)
-    print(result.stdout)
-    print(result.stderr)
-    if "FAILED" in result.stdout or "FAILED" in result.stderr:
-        fail_test.append(" ".join(test_command))
-    return result.returncode
+def xelink_group():
+    """GPU ids of the largest XeLink group in `xpu-smi topology -m`, or None."""
+    proc = subprocess.run(["xpu-smi", "topology", "-m"], capture_output=True, text=True)
+    print(proc.stdout + proc.stderr)
+    if proc.returncode != 0:
+        return None
+    largest = ""
+    for line in proc.stdout.splitlines():
+        items = line.split()
+        if not items or items[0] != "GPU" or "CPU Affinity" in line:
+            continue
+        # Link columns start at index 2, one per GPU
+        group = ",".join(
+            str(j - 2)
+            for j, item in enumerate(items)
+            if "SYS" not in item and ("XL" in item or "S" in item)
+        )
+        if len(group) > len(largest):
+            largest = group
+    return largest
 
 
-# run pytest with skiplist
-for key in skip_dict:
-    skip_list = skip_dict[key]
-    fail = launch_test(key, skip_list, xml_prefix="xpu_distributed")
-    res2 += fail
-    if fail:
-        fail_test.append(key)
-
-if fail_test:
-    print(",".join(fail_test) + " have failures")
-
-sys.exit(res)
+if __name__ == "__main__":
+    group = xelink_group()
+    if group is None:
+        print("xpu-smi topology failed")
+        sys.exit(255)
+    os.environ["ZE_AFFINITY_MASK"] = group
+    print(f"ZE_AFFINITY_MASK={group}")
+    # -rA prints PASSED lines, which the UT check needs to collect passing cases.
+    os.environ.setdefault("PYTEST_ADDOPTS", "-rA")
+    os.environ["PYTHONPATH"] = os.pathsep.join(
+        filter(None, [os.environ.get("PYTHONPATH"), PIPELINING_TEST_DIR])
+    )
+    sys.exit(main(merge_skip_dicts(skip_dict), __doc__, xml_prefix="xpu_distributed"))

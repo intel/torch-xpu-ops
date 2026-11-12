@@ -6,27 +6,15 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-import os
+"""Run the torch-xpu-ops unit tests on BMG, one pytest process per file."""
+
 import sys
 
 from skip_list_common import skip_dict
 from skip_list_win import skip_dict as skip_dict_win
 from skip_list_win_bmg import skip_dict as skip_dict_win_bmg
-from xpu_test_utils import launch_test
+from ut_launcher import main, merge_skip_dicts
 
-res = 0
-IS_WINDOWS = sys.platform == "win32"
-
-for key in skip_dict:
-    skip_list = list(skip_dict[key] or ())
-    if IS_WINDOWS and key in skip_dict_win:
-        skip_list += skip_dict_win[key]
-    if IS_WINDOWS and key in skip_dict_win_bmg:
-        skip_list += skip_dict_win_bmg[key]
-    res += launch_test(key, skip_list)
-
-if os.name == "nt":
-    sys.exit(res)
-else:
-    exit_code = os.WEXITSTATUS(res)
-    sys.exit(exit_code)
+if __name__ == "__main__":
+    overlays = [skip_dict_win, skip_dict_win_bmg] if sys.platform == "win32" else []
+    sys.exit(main(merge_skip_dicts(skip_dict, *overlays), __doc__))
