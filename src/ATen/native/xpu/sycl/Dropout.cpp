@@ -143,13 +143,12 @@ void fused_dropout_unroll_kernel(
   randStatePhilox4_32_10_t state;
   rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
   accscalar_t scale = 1.0 / p;
-  // Same element mapping as fused_dropout_vec_kernel<VecSize=4> and the
-  // nullary distribution kernels: component ii of a work-item's draw goes to
-  // element linearIndex + ii, so dropout and bernoulli_ masks agree.
-  IndexType full_tile_work_size =
-      item.get_group_range(0) * item.get_local_range(0) * UNROLL;
+  IndexType group_work_size = item.get_group_range(0) * item.get_local_range(0);
+  IndexType full_tile_work_size = group_work_size * UNROLL;
+  IndexType rounded_size =
+      ((total_elements - 1) / full_tile_work_size + 1) * full_tile_work_size;
 
-  for (IndexType linearIndex = idx * UNROLL; linearIndex < total_elements;
+  for (IndexType linearIndex = idx; linearIndex < rounded_size;
        linearIndex += full_tile_work_size) {
     // rand_uniform_double was pure evil anyway, not doing what it promises,
     // and there's nothing for halfs, so generate float for everything
@@ -160,7 +159,7 @@ void fused_dropout_unroll_kernel(
     rand.z = rand.z < p;
     rand.w = rand.w < p;
     for (int ii = 0; ii < UNROLL; ii++) {
-      IndexType li = linearIndex + ii;
+      IndexType li = linearIndex + group_work_size * ii;
       if (li < total_elements) {
         // Convert `linearIndex` into an offset of `a`
         const IndexType aOffset =
@@ -169,7 +168,7 @@ void fused_dropout_unroll_kernel(
       }
     }
     for (int ii = 0; ii < UNROLL; ii++) {
-      IndexType li = linearIndex + ii;
+      IndexType li = linearIndex + group_work_size * ii;
       if (li < total_elements) {
         // Convert `linearIndex` into an offset of `b`
         const IndexType bOffset =

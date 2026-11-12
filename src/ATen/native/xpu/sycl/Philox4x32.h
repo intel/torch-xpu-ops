@@ -373,12 +373,9 @@ static inline float2 _rand_box_muller(unsigned int x, unsigned int y) {
   float2 result;
   float u = _rand_uniform(x);
   float v = y * RAND_2POW32_INV_2PI + RAND_2POW32_INV_2PI / 2;
-  // Keep log/sqrt precise (as curand does): native::log has no relative-error
-  // guarantee near u -> 1, where a slightly positive result would make the
-  // sqrt argument negative. Only sin/cos use the fast path.
   float s = sycl::sqrt(-2.0f * sycl::log(u));
-  result.x = sycl::native::sin(v);
-  result.y = sycl::native::cos(v);
+  result.x = sycl::sin(v);
+  result.y = sycl::cos(v);
   result.x *= s;
   result.y *= s;
   return result;
