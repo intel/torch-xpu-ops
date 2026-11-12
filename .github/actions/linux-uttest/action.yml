@@ -197,14 +197,18 @@ runs:
       run: |
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
-        run_status=0
-        # JUnit XMLs and per-file logs go straight to XML_OUTPUT_DIR (ut_log);
-        # failing files have their log tail echoed here. Any failure fails the step.
+        # Like other categories: run everything, then the UT summary and
+        # ut_result_check.sh decide pass/fail from the JUnit XMLs in ut_log.
+        # Only a runner error (bad config, interrupted) fails this step.
+        rc=0
         python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" inductor non-inductor profiling \
           --reproduce-log "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log" \
           2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
-          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || run_status=$?
-        exit "${run_status}"
+          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || rc=$?
+        if [ "${rc}" -gt 1 ];then
+          echo "P0 runner error (exit ${rc}), see ${LOG_BASE}/xpu_p0_with_skip_test_error.log"
+          exit "${rc}"
+        fi
 
     - name: xpu_p0_distributed
       shell: timeout 72000 bash -xe -o pipefail {0}
@@ -219,14 +223,18 @@ runs:
         mkdir -p "${LOG_BASE}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
         xpu-smi topology -m || true
-        run_status=0
-        # JUnit XMLs and per-file logs go straight to XML_OUTPUT_DIR (ut_log);
-        # failing files have their log tail echoed here. Any failure fails the step.
+        # Like other categories: run everything, then the UT summary and
+        # ut_result_check.sh decide pass/fail from the JUnit XMLs in ut_log.
+        # Only a runner error (bad config, interrupted) fails this step.
+        rc=0
         python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" distributed \
-          --reproduce-log "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0.log" \
+          --reproduce-log "${GITHUB_WORKSPACE}/ut_log/reproduce_xpu_p0_distributed.log" \
           2> "${LOG_BASE}/xpu_p0_with_skip_test_error.log" \
-          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || run_status=$?
-        exit "${run_status}"
+          | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || rc=$?
+        if [ "${rc}" -gt 1 ];then
+          echo "P0 runner error (exit ${rc}), see ${LOG_BASE}/xpu_p0_with_skip_test_error.log"
+          exit "${rc}"
+        fi
 
     - name: upstream_ut
       shell: timeout 172800 bash -e -o pipefail {0}

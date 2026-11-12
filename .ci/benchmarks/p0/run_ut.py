@@ -6,6 +6,8 @@
 Example: python run_ut.py --pytorch-root /work/pytorch inductor non-inductor
 Use --dry-run to inspect commands. Child output is written directly to per-file
 logs; follow a log with tail -f. PYTEST_ADDOPTS is inherited without modification.
+There is no per-file timeout; bound the whole run from the caller (CI step).
+Exit codes: 0 all passed, 1 test failures, 2 usage/config error, 130 interrupted.
 """
 
 import argparse
@@ -13,7 +15,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 import json
-import math
 import os
 from pathlib import Path
 import shlex
@@ -114,7 +115,7 @@ def build_plan(config, selected, roots, output, prefix, run_id):
     return tasks
 
 
-def run_task(task, timeout):
+def run_task(task):
     started = time.monotonic()
     result = {**asdict(task), "status": "failed", "returncode": None}
     print(
@@ -133,15 +134,15 @@ def run_task(task, timeout):
                 start_new_session=True,
             ) as process:
                 try:
-                    result["returncode"] = process.wait(timeout=timeout or None)
+                    result["returncode"] = process.wait()
                     result["status"] = "passed" if process.returncode == 0 else "failed"
-                except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
+                except KeyboardInterrupt:
                     try:
                         os.killpg(process.pid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
                     result["returncode"] = process.wait()
-                    result["status"] = "timeout" if isinstance(error, subprocess.TimeoutExpired) else "interrupted"
+                    result["status"] = "interrupted"
         except OSError as error:
             result["error"] = str(error)
             log.write(f"ERROR: {error}\n")
@@ -151,6 +152,7 @@ def run_task(task, timeout):
         result["counts"] = {
             key: sum(int(suite.get(key, "0")) for suite in suites) for key in ("tests", "failures", "errors", "skipped")
         }
+        result["failed_cases"] = failed_cases(tree, task.path)
         if result["status"] == "passed" and (
             not result["counts"]["tests"] or result["counts"]["failures"] or result["counts"]["errors"]
         ):
@@ -176,15 +178,53 @@ def show_tail(log, lines=50):
     print(f"----- last {len(tail)} lines of {log} -----", *tail, "-----", sep="\n", flush=True)
 
 
-def write_reproduce(path, tasks):
-    """Reproduce hints; node IDs are relative to each task's repository root.
+def failed_cases(tree, path):
+    """Pytest node IDs (relative to the task root) of failed/errored cases."""
+    nodes = []
+    for case in tree.iter("testcase"):
+        if case.find("failure") is None and case.find("error") is None:
+            continue
+        name = case.get("name", "")
+        cls = case.get("classname", "").rsplit(".", 1)[-1]
+        # A module-level collection error has no class; rerun the whole file.
+        nodes.append(f"{path}::{cls}::{name}" if cls and name else path)
+    return list(dict.fromkeys(nodes))
 
-    The first root uses the File Path/Reproduce Command lines that
-    ut_collect_evidence.py parses; every root is also listed explicitly.
+
+def display_root(root):
+    """Root relative to the CI workspace, like other categories' hints."""
+    base = os.environ.get("GITHUB_WORKSPACE")
+    if base:
+        try:
+            return str(Path(root).relative_to(Path(base).resolve()))
+        except ValueError:
+            pass
+    return str(root)
+
+
+def write_reproduce(path, tasks, results):
+    """Reproduce hints, rewritten after every file.
+
+    The File Path/Reproduce Command header is what ut_collect_evidence.py
+    parses. Node IDs are relative to each repository root, so every root is
+    listed and each failed case gets a ready-to-run command in its own root.
     """
-    roots = list(dict.fromkeys(task.cwd for task in tasks))
-    lines = [f"File Path: {roots[0]}", "Reproduce Command: pytest -sv failed_case"]
-    lines += [f"Root for {task.repo} tests: {task.cwd}" for task in {t.repo: t for t in tasks}.values()]
+    roots = {t.repo: t.cwd for t in tasks}
+    env = " ".join(f"{k}={shlex.quote(os.environ[k])}" for k in ("PYTORCH_TEST_WITH_SLOW",) if k in os.environ)
+    prefix = f"{env} " if env else ""
+    lines = [
+        f"File Path: cd {display_root(next(iter(roots.values())))}",
+        "Reproduce Command: pytest -sv failed_case",
+    ]
+    lines += [f"Root ({repo}): cd {display_root(root)}" for repo, root in roots.items()]
+    failed = [(r, node) for r in results for node in r.get("failed_cases", [])]
+    failed += [(r, r["path"]) for r in results if r["status"] != "passed" and not r.get("failed_cases")]
+    if failed:
+        lines.append("Failed cases:")
+        lines += [
+            f"cd {display_root(r['cwd'])} && {prefix}python -m pytest -sv {shlex.quote(node)}"
+            for r, node in failed
+        ]
     path.write_text("\n".join(lines) + "\n")
 
 
@@ -237,12 +277,6 @@ def main():
     )
     parser.add_argument("--xml-prefix", default=os.environ.get("XML_PREFIX", "op_p0_with_"))
     parser.add_argument(
-        "--timeout",
-        type=float,
-        default=0,
-        help="Per-file timeout in seconds; 0 disables it",
-    )
-    parser.add_argument(
         "--reproduce-log",
         type=Path,
         help="Write per-repository reproduce commands to this file",
@@ -255,8 +289,6 @@ def main():
     args = parser.parse_args()
     if args.pytorch_root is None:
         parser.error("--pytorch-root or PYTORCH_ROOT_DIR is required")
-    if not math.isfinite(args.timeout) or args.timeout < 0:
-        parser.error("--timeout must be finite and nonnegative")
     if any(c in args.xml_prefix for c in "/\\\r\n\0"):
         parser.error("--xml-prefix must be a filename prefix")
     roots = {
@@ -290,20 +322,22 @@ def main():
     (output / f"manifest_{run_id}.json").write_text(json.dumps(manifest, indent=2, default=str) + "\n")
     summary = output / f"summary_{run_id}"
     if args.reproduce_log:
-        write_reproduce(args.reproduce_log, tasks)
+        write_reproduce(args.reproduce_log, tasks, [])
     results = []
     write_summary(summary, results, len(tasks))
     try:
-        return run_all(tasks, summary, results, args.timeout)
+        return run_all(tasks, summary, results, args.reproduce_log)
     except KeyboardInterrupt:
         # A signal outside a running test (e.g. while writing reports).
         print("Interrupted", flush=True)
         return 130
 
 
-def run_all(tasks, summary, results, timeout):
+def run_all(tasks, summary, results, reproduce_log):
     for task in tasks:
-        result = run_task(task, timeout)
+        result = run_task(task)
+        if reproduce_log:
+            write_reproduce(reproduce_log, tasks, results + [result])
         results.append(result)
         write_summary(summary, results, len(tasks))
         if result["status"] != "passed":
