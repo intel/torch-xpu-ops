@@ -402,6 +402,17 @@ class TestTorchMethod(TestCase):
                 res_xpu = torch.stack([x.to(xpu_device) for x in xs], -1)
                 self.assertEqual(res_xpu.cpu(), res_cpu, atol=0, rtol=0)
 
+    def test_cat_interleave_out_bounds(self):
+        # Each input gives 2 fp16 per row: one 4 B unit, so the kernel must not
+        # count vectors in elements and write past the end of out.
+        buf = torch.full((1024,), 7, dtype=torch.float16, device=xpu_device)
+        out = buf[:256].view(64, 4)
+        a = torch.randn(64, 2, dtype=torch.float16)
+        b = torch.randn(64, 2, dtype=torch.float16)
+        torch.cat([a.to(xpu_device), b.to(xpu_device)], 1, out=out)
+        self.assertEqual(out.cpu(), torch.cat([a, b], 1), atol=0, rtol=0)
+        self.assertTrue(bool((buf[256:] == 7).all()))
+
 
 instantiate_device_type_tests(
     TestTorchMethod, globals(), only_for="xpu", allow_xpu=True

@@ -1216,7 +1216,7 @@ template <int U, int R, int K>
 void launch_cat_interleave(const Tensor& out, const CatLayout& layout) {
   CatParams<K> p{};
   p.ndim = layout.nd;
-  p.nvec = static_cast<uint32_t>(out.numel() / (R * K));
+  p.nvec = static_cast<uint32_t>(layout.total_bytes / (U * R * K));
   for (int d = 0; d < layout.nd; ++d) {
     p.size[d] = at::detail::IntDivider<uint32_t>(layout.size[d]);
   }
