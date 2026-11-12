@@ -3089,10 +3089,17 @@ template <
     int VEC_SIZE,
     bool USE_SLM,
     bool USE_COUNTS,
+    bool HAS_TAIL,
     typename index_t>
 struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   using local_acc_t = sycl_local_acc_t<accscalar_t, 1>;
+  // Use the fast 32-bit divider only on the int32 index path; the int64 path
+  // must divide in 64 bits so linear indices > UINT32_MAX are not truncated.
+  using div_t = std::conditional_t<
+      sizeof(index_t) <= sizeof(uint32_t),
+      unsigned int,
+      uint64_t>;
 
   void operator()(sycl::nd_item<1> item) const {
     accscalar_t norm_fct;
@@ -3130,8 +3137,8 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
     if constexpr (VEC_SIZE == 1) {
       for (index_t idx = item.get_global_id(0); idx < total_elems;
            idx += global_stride) {
-        const int c = static_cast<int>(
-            divider_.divmod(static_cast<unsigned int>(idx)).mod);
+        const int c =
+            static_cast<int>(divider_.divmod(static_cast<div_t>(idx)).mod);
         grad_input_[idx] = compute(c, grad_output_[idx], input_[idx], norm_fct);
       }
     } else {
@@ -3141,7 +3148,7 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
            id += global_stride) {
         const index_t flat_pos = id * 2;
         const int c0 = static_cast<int>(
-            divider_.divmod(static_cast<unsigned int>(flat_pos)).mod);
+            divider_.divmod(static_cast<div_t>(flat_pos)).mod);
         const int c1 = (c0 + 1 < stride_) ? c0 + 1 : 0;
 
         const vec2_t go_vec =
@@ -3154,12 +3161,14 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
         *reinterpret_cast<vec2_t*>(&grad_input_[flat_pos]) = gi_vec;
       }
 
-      // Scalar tail when the total element count is odd.
-      if ((total_elems & 1) && item.get_global_id(0) == 0) {
-        const index_t fp = total_elems - 1;
-        const int c = static_cast<int>(
-            divider_.divmod(static_cast<unsigned int>(fp)).mod);
-        grad_input_[fp] = compute(c, grad_output_[fp], input_[fp], norm_fct);
+      // Scalar tail when the total element count is odd (decided on host).
+      if constexpr (HAS_TAIL) {
+        if (item.get_global_id(0) == 0) {
+          const index_t fp = total_elems - 1;
+          const int c =
+              static_cast<int>(divider_.divmod(static_cast<div_t>(fp)).mod);
+          grad_input_[fp] = compute(c, grad_output_[fp], input_[fp], norm_fct);
+        }
       }
     }
   }
@@ -3183,7 +3192,7 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
       const accscalar_t* RESTRICT sum_dy_xmu,
       scalar_t* RESTRICT grad_input,
       const accscalar_t norm_fct,
-      const int reduction_size,
+      const int64_t reduction_size,
       const int stride,
       const int* RESTRICT numel = nullptr,
       const int64_t world_size = 0)
@@ -3200,7 +3209,7 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
         stride_(stride),
         numel_(numel),
         world_size_(world_size),
-        divider_(static_cast<unsigned int>(stride)) {}
+        divider_(static_cast<div_t>(stride)) {}
 
  private:
   inline scalar_t compute(int c, scalar_t go, scalar_t x, accscalar_t norm_fct)
@@ -3235,11 +3244,11 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
   const accscalar_t* RESTRICT sum_dy_xmu_;
   scalar_t* RESTRICT grad_input_;
   const accscalar_t norm_fct_;
-  const int reduction_size_;
+  const int64_t reduction_size_;
   const int stride_;
   const int* RESTRICT numel_;
   const int64_t world_size_;
-  const at::detail::IntDivider<unsigned int> divider_;
+  const at::detail::IntDivider<div_t> divider_;
   local_acc_t slm_mean_;
   local_acc_t slm_m_dy_;
   local_acc_t slm_factor1_;
@@ -3253,6 +3262,7 @@ template <
     int VEC_SIZE,
     bool USE_SLM,
     bool USE_COUNTS,
+    bool HAS_TAIL,
     typename index_t>
 static void launch_batch_norm_backward_elemt_channels_last_1d(
     const scalar_t* grad_output,
@@ -3276,6 +3286,7 @@ static void launch_batch_norm_backward_elemt_channels_last_1d(
       VEC_SIZE,
       USE_SLM,
       USE_COUNTS,
+      HAS_TAIL,
       index_t>(
       grad_output,
       input,
@@ -3286,7 +3297,7 @@ static void launch_batch_norm_backward_elemt_channels_last_1d(
       sum_dy_xmu,
       grad_input,
       norm_fct,
-      static_cast<int>(reduction_size),
+      reduction_size,
       static_cast<int>(stride),
       numel,
       world_size);
@@ -3306,8 +3317,11 @@ static void launch_batch_norm_backward_elemt_channels_last_1d(
 // pass, mirroring batch_norm_transform_channels_last_1d:
 //   - vec2 is used only for 2-byte types when grad_output/input/grad_input are
 //     2-element aligned (an odd storage_offset view falls back to scalar).
-//   - SLM path (vec2 only): C < 1024 and 4 * C * sizeof(accscalar_t) fits in
-//     device local memory. Handles odd C via channel wrap-around.
+//   - SLM path (vec2 only): C < 1024 and the SLM footprint
+//     4 * C * sizeof(accscalar_t) of all work-groups that can be co-resident
+//     on a sub-slice fits in local memory, so SLM does not cap occupancy.
+//     Handles odd C via channel wrap-around; the odd-total scalar tail is
+//     selected on host via HAS_TAIL.
 //   - Non-SLM vec2 path additionally requires even C to keep the parameter
 //     gather monotone; otherwise scalar.
 template <
@@ -3332,7 +3346,7 @@ static void batch_norm_backward_elemt_channels_last_1d(
     int64_t world_size = 0) {
   constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 2 : 1;
 
-#define LAUNCH_BN_BWD_CL_1D(VEC, SLM)                \
+#define LAUNCH_BN_BWD_CL_1D(VEC, SLM, TAIL)          \
   launch_batch_norm_backward_elemt_channels_last_1d< \
       scalar_t,                                      \
       accscalar_t,                                   \
@@ -3340,6 +3354,7 @@ static void batch_norm_backward_elemt_channels_last_1d(
       VEC,                                           \
       SLM,                                           \
       USE_COUNTS,                                    \
+      TAIL,                                          \
       index_t>(                                      \
       grad_output_ptr,                               \
       input_ptr,                                     \
@@ -3362,19 +3377,35 @@ static void batch_norm_backward_elemt_channels_last_1d(
         memory::can_vectorize_up_to<scalar_t>((char*)grad_output_ptr) >= 2 &&
         memory::can_vectorize_up_to<scalar_t>((char*)input_ptr) >= 2 &&
         memory::can_vectorize_up_to<scalar_t>((char*)grad_input_ptr) >= 2;
+    // SLM is only worthwhile if it does not limit occupancy: require that the
+    // SLM footprint of all work-groups that can be resident on one sub-slice
+    // (bounded by HW threads) fits in the sub-slice local memory.
+    const int64_t slm_bytes_per_wg =
+        4 * stride * static_cast<int64_t>(sizeof(accscalar_t));
+    const int64_t wg_size =
+        std::min<int64_t>(1024, syclDeviceMaxWorkGroupSize());
+    const int64_t max_items_per_ss =
+        syclGpuEUCountPerSubslice() * syclMaxWorkItemsPerEU();
+    const int64_t active_wgs_per_ss =
+        std::max<int64_t>(1, max_items_per_ss / wg_size);
     const bool use_slm = stride < 1024 &&
-        4 * stride * static_cast<int64_t>(sizeof(accscalar_t)) <=
-            syclLocalMemSize();
+        slm_bytes_per_wg * active_wgs_per_ss <= syclLocalMemSize();
+    const bool has_tail = (reduction_size * stride) % 2 != 0;
     if (can_vec && use_slm) {
-      LAUNCH_BN_BWD_CL_1D(2, true);
+      if (has_tail) {
+        LAUNCH_BN_BWD_CL_1D(2, true, true);
+      } else {
+        LAUNCH_BN_BWD_CL_1D(2, true, false);
+      }
       return;
     }
+    // Even C implies an even total element count, so no tail here.
     if (can_vec && stride % 2 == 0) {
-      LAUNCH_BN_BWD_CL_1D(2, false);
+      LAUNCH_BN_BWD_CL_1D(2, false, false);
       return;
     }
   }
-  LAUNCH_BN_BWD_CL_1D(1, false);
+  LAUNCH_BN_BWD_CL_1D(1, false, false);
 #undef LAUNCH_BN_BWD_CL_1D
 }
 
