@@ -88,7 +88,7 @@ sub-item is labeled; the loop is identical.
 
 - A GitHub issue on `intel/torch-xpu-ops` or `pytorch/pytorch` (URL,
   number, or raw body).
-- `pytorch_dir` — path to a local pytorch checkout, resolved as
+- `PYTORCH_DIR` — path to a local pytorch checkout, resolved as
   described in `fix-reproduce` Prepare. If absent, this skill lets
   `fix-reproduce` / `fix-root-cause` clone it into
   `$XPU_OPS_ROOT/agent_space_xpu/pytorch/`.
@@ -410,10 +410,10 @@ For each sub-item:
 3. **Root-cause, then branch.** Run **Stage 3** (`fix-root-cause`)
    first — it returns `target_repo`, which decides *which* checkout the
    fix (and thus the branch) lives in:
-   - `target_repo=pytorch` → `target_repo_dir = pytorch_dir`, base is
+   - `target_repo=pytorch` → `target_repo_dir = PYTORCH_DIR`, base is
      the reproduce `base` on the pytorch tree.
    - `target_repo=torch-xpu-ops` →
-     `target_repo_dir = pytorch_dir/third_party/torch-xpu-ops`, base is
+     `target_repo_dir = PYTORCH_DIR/third_party/torch-xpu-ops`, base is
      `xpu_ops_base` (the submodule's pinned commit from the shared
      recipe). `fix-implement` / `fix-verify` handle the `xpu.txt` pin
      rewrite internally; the orchestrator only creates the branch.
@@ -611,7 +611,7 @@ Branch on its `verdict`:
 
 ## Stage 4 — Implement (`fix-implement`)
 
-Call `fix-implement` with `triage_result`, `pytorch_dir`,
+Call `fix-implement` with `triage_result`, `PYTORCH_DIR`,
 `target_repo_dir` (derived from `target_repo`), and `allow_skip`:
 
 `allow_skip` follows the issue:
