@@ -7,7 +7,9 @@ Example: python run_ut.py --pytorch-root /work/pytorch inductor non-inductor
 Use --dry-run to inspect commands. Child output is written directly to per-file
 logs; follow a log with tail -f. PYTEST_ADDOPTS is inherited without modification.
 There is no per-file timeout; bound the whole run from the caller (CI step).
-Exit codes: 0 all passed, 1 test failures, 2 usage/config error, 130 interrupted.
+Exit codes: 0 all passed, 1 test failures, 2 usage/config error, 3 runner
+error, 130 interrupted. A file that fails without a failing case in its JUnit
+(crash, interrupt, no tests) gets a <name>_runner.xml error record.
 """
 
 import argparse
@@ -22,6 +24,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 import xml.etree.ElementTree as ET
 
 import yaml
@@ -162,6 +165,8 @@ def run_task(task):
         if result["status"] == "passed":
             result["status"] = "failed"
     result["seconds"] = round(time.monotonic() - started, 3)
+    if result["status"] != "passed" and not result.get("failed_cases"):
+        write_file_error(task, result)
     print(
         f"{result['status'].upper()} ({result['seconds']}s, exit={result['returncode']})",
         flush=True,
@@ -186,9 +191,35 @@ def failed_cases(tree, path):
             continue
         name = case.get("name", "")
         cls = case.get("classname", "").rsplit(".", 1)[-1]
-        # A module-level collection error has no class; rerun the whole file.
-        nodes.append(f"{path}::{cls}::{name}" if cls and name else path)
+        if not cls or not name:
+            # Collection error (empty classname): rerun the whole file.
+            nodes.append(path)
+        elif cls == Path(path).stem:
+            # Module-level test function: classname is the module path.
+            nodes.append(f"{path}::{name}")
+        else:
+            nodes.append(f"{path}::{cls}::{name}")
     return list(dict.fromkeys(nodes))
+
+
+def write_file_error(task, result):
+    """Record a file that failed without any failed case in its JUnit.
+
+    A crash, an interrupt, an internal pytest error or an empty run leaves no
+    failing <testcase>, so check-ut.py and ut_result_check.sh, which only read
+    JUnit, would not see it. Emit the shape pytest uses for a collection error
+    (empty classname, dotted module name) so it is reported against the file.
+    """
+    module = task.path[:-3].replace("/", ".")
+    reason = f"pytest exited {result['returncode']} ({result['status']})"
+    if not task.junit.is_file():
+        reason += ", no JUnit report (crashed or killed)"
+    suite = ET.Element("testsuite", name="p0-runner", tests="1", errors="1", failures="0", skipped="0")
+    case = ET.SubElement(suite, "testcase", classname="", name=module, time=str(result["seconds"]))
+    ET.SubElement(case, "error", message=f"{reason}; see {task.log.name}").text = reason
+    ET.ElementTree(suite).write(
+        task.junit.with_name(task.junit.stem + "_runner.xml"), encoding="utf-8", xml_declaration=True
+    )
 
 
 def display_root(root):
@@ -331,6 +362,10 @@ def main():
         # A signal outside a running test (e.g. while writing reports).
         print("Interrupted", flush=True)
         return 130
+    except Exception:
+        # Exit 1 means test failures; a runner bug must not look like one.
+        traceback.print_exc()
+        return 3
 
 
 def run_all(tasks, summary, results, reproduce_log):
