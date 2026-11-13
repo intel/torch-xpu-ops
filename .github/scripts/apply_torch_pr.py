@@ -16,19 +16,12 @@ parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
 args = parser.parse_args()
 
 
-# The merged/reverted checks grep `git log`; a shallow checkout (actions/checkout)
-# has no history before HEAD, so deepen it first. Only runs when PRs are listed.
-UNSHALLOW = ("{ [ \"$(git rev-parse --is-shallow-repository)\" != true ] || "
-             "git fetch --unshallow origin > /dev/null 2>&1 || true; } && ")
-
-
 # check reverted PR is in current code base or not
 def check_reverted_reopen(pr_info):
     git_cmd = "((git log -n 1 2>&1 |grep 'nightly release' |head -1 |sed 's/.*(//;s/).*//' || true) && git rev-parse HEAD) |head -n 1"
     git_info = subprocess.Popen(git_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     main_commit = git_info.communicate()[0].decode("utf-8").replace("\n", "")
-    revert_cmd = "cur_cmt=$(git rev-parse HEAD) && " + UNSHALLOW + \
-                 "git fetch origin main > /dev/null 2>&1 && " + \
+    revert_cmd = "cur_cmt=$(git rev-parse HEAD) && git fetch origin main > /dev/null 2>&1 && " + \
                  "git checkout " + main_commit + " > /dev/null 2>&1 && " + \
                  "git log |grep 'Reverted " + pr_info["html_url"] + " ' || true && " + \
                  "git checkout $cur_cmt > /dev/null 2>&1"
@@ -44,8 +37,7 @@ def check_merged(pr_info):
     git_cmd = "((git log -n 1 2>&1 |grep 'nightly release' |head -1 |sed 's/.*(//;s/).*//' || true) && git rev-parse HEAD) |head -n 1"
     git_info = subprocess.Popen(git_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     main_commit = git_info.communicate()[0].decode("utf-8").replace("\n", "")
-    merge_cmd = "cur_cmt=$(git rev-parse HEAD) && " + UNSHALLOW + \
-                 "git fetch origin main > /dev/null 2>&1 && " + \
+    merge_cmd = "cur_cmt=$(git rev-parse HEAD) && git fetch origin main > /dev/null 2>&1 && " + \
                  "git checkout " + main_commit + " > /dev/null 2>&1 && " + \
                  "git log |grep 'resolved: " + pr_info["html_url"] + "' || true && " + \
                  "git checkout $cur_cmt > /dev/null 2>&1"
