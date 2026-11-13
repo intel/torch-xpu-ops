@@ -307,6 +307,236 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         dist.destroy_process_group()
 
     @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_collective_after_destroy_raises(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        backend = pg._get_backend(torch.device(device))
+        t = torch.rand(10, 10, device=device)
+        pg.allreduce(t).wait()
+        dist.destroy_process_group()
+        # Comm map entries are kept, matching ProcessGroupNCCL.
+        self.assertTrue(backend._is_initialized())
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.send([t], 1 - self.rank, 0)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_destroy_comms_opt_out(self):
+        # Rank processes only (MultiProcessTestCase); later tests spawn fresh
+        # ranks. The comms are leaked on purpose, so disable the libfabric MR
+        # cache monitor whose hooks crash at exit with the cxi provider.
+        os.environ["TORCH_XCCL_DESTROY_COMMS"] = "0"
+        os.environ["FI_MR_CACHE_MONITOR"] = "disabled"
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(10, device=device)
+        pg.allreduce(t).wait()
+        dist.destroy_process_group()
+        # The backend teardown was skipped, so the comm is still usable.
+        pg.allreduce(t).wait()
+        self.assertEqual(t, torch.full_like(t, self.world_size**2))
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_destroy_times_out_and_leaks_unfinished_comm(self):
+        # An async allreduce that depends on long GPU work on the current
+        # stream cannot complete within the short process group timeout, so
+        # teardown times out, leaks the comm, and later use raises. The comm is
+        # leaked on purpose, hence the MR cache monitor is disabled (the leak
+        # must not crash at exit with the cxi provider). A blocking collective
+        # would not do: oneCCL returns from it only once the work ahead of it
+        # has finished.
+        os.environ["FI_MR_CACHE_MONITOR"] = "disabled"
+        pg = self._create_process_group_xccl(timeout=timedelta(seconds=2))
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(10, device=device)
+        pg.allreduce(t).wait()  # creates the comm
+        a = torch.randn(8192, 8192, device=device)
+        for _ in range(400):  # several seconds of GPU work on any device
+            a = a @ a
+        work = pg.allreduce(t)  # noqa: F841  # queued behind the matmuls
+        start = time.monotonic()
+        dist.destroy_process_group()
+        elapsed = time.monotonic() - start
+        self.assertGreaterEqual(elapsed, 2.0)
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+        # The leaked comm still completes the queued op.
+        torch.xpu.synchronize(device)
+        self.assertEqual(t, torch.full_like(t, self.world_size**2))
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_destroy_after_graph_capture(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        t = torch.ones(10, device=device)
+        dist.all_reduce(t)  # warmup
+        torch.xpu.synchronize()
+        graph = torch.xpu.XPUGraph()
+        with torch.xpu.graph(graph):
+            dist.all_reduce(t)
+        t.fill_(1.0)
+        graph.replay()
+        # Finalize is a no-op for a comm used during capture; teardown waits for
+        # the device instead.
+        dist.destroy_process_group()
+        self.assertEqual(t, torch.full_like(t, self.world_size))
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_abort_process_group_rejects_later_use(self):
+        # abort() cannot release the comms (they leak, so the MR cache monitor
+        # is disabled), but the process group must reject later use.
+        os.environ["FI_MR_CACHE_MONITOR"] = "disabled"
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(10, device=device)
+        pg.allreduce(t).wait()
+        dist.distributed_c10d._abort_process_group()
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_destroy_flushes_pending_work(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(1 << 20, device=device)
+        works = [pg.allreduce(t) for _ in range(10)]  # noqa: F841
+        dist.destroy_process_group()
+        self.assertEqual(t, torch.full_like(t, self.world_size**10))
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_destroy_flushes_blocking_collectives_on_side_stream(self):
+        self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.ones(1 << 20, device=device)
+        # Blocking (async_op=False) collectives run on the current stream, here
+        # a side stream; the default stream is not ordered after it.
+        default = torch.xpu.current_stream(device)
+        side = torch.xpu.Stream(device=device)
+        with torch.xpu.stream(side):
+            side.wait_stream(default)
+            for _ in range(10):
+                dist.all_reduce(t)
+        dist.destroy_process_group()
+        # Read on the default stream: correct only if teardown waited.
+        self.assertEqual(t, torch.full_like(t, self.world_size**10))
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_destroy_with_p2p_and_collective_comms(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        t = torch.full((10, 10), float(self.rank + 1), device=device)
+        # Lazily creates the 2-rank P2P comm keyed "0:1".
+        if self.rank == 0:
+            dist.send(t, dst=1)
+        else:
+            dist.recv(t, src=0)
+            self.assertEqual(t, torch.ones_like(t))
+        dist.all_reduce(t)
+        self.assertEqual(t, torch.full_like(t, self.world_size))
+        dist.destroy_process_group()
+        # Both the collective comm and the P2P comm were torn down.
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.send([t], 1 - self.rank, 0)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_destroy_subgroup_keeps_default_group(self):
+        self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        subgroup = c10d.new_group([0, 1])
+        t = torch.ones(10, device=device)
+        dist.all_reduce(t, group=subgroup)
+        self.assertEqual(t, torch.full_like(t, self.world_size))
+        dist.destroy_process_group(subgroup)
+        # Tearing down the subgroup's comms leaves the default group usable.
+        t = torch.ones(10, device=device)
+        dist.all_reduce(t)
+        self.assertEqual(t, torch.full_like(t, self.world_size))
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_shutdown_flushes_queued_coalesced_ops(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        backend = pg._get_backend(torch.device(device))
+        pg.allreduce(torch.ones(10, device=device)).wait()
+        t = torch.ones(10, device=device)
+        backend._start_coalescing()
+        pg.allreduce([t])  # queued in the open oneCCL group
+        # Teardown submits the queued op on the live comm before destroying it.
+        backend.shutdown()
+        # The flushed op's Work; teardown already waited for it.
+        backend._end_coalescing().wait()
+        self.assertEqual(t, torch.full_like(t, self.world_size))
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_shutdown_inside_empty_coalescing_block(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        backend = pg._get_backend(torch.device(device))
+        t = torch.ones(1 << 20, device=device)
+        # Un-waited async ops issued before the block, on the PG's own stream.
+        works = [pg.allreduce(t) for _ in range(10)]  # noqa: F841
+        # An empty block, e.g. one left open by an exception, must not block
+        # teardown, and shutdown() must still wait for the ops above.
+        backend._start_coalescing()
+        backend.shutdown()
+        backend._end_coalescing()
+        self.assertEqual(t, torch.full_like(t, self.world_size**10))
+        with self.assertRaisesRegex(dist.DistBackendError, "has been shut down"):
+            pg.allreduce([t])
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_shutdown_idempotent(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        backend = pg._get_backend(torch.device(device))
+        pg.allreduce(torch.ones(10, device=device)).wait()
+        backend.shutdown()
+        backend.shutdown()
+        # Calls shutdown() a third time.
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    @skip_but_pass_in_sandcastle_if(
+        not os.path.exists("/dev/cxi0"), "Requires the libfabric cxi provider"
+    )
+    def test_destroy_exits_cleanly_with_cxi(self):
+        # Before the fix, workers exited with SIGSEGV after teardown: oneCCL
+        # dlclose()d libfabric with the cxi MR cache memhooks still installed.
+        # MultiProcessTestCase checks that each rank exits with code 0.
+        # Rank processes only (MultiProcessTestCase); later tests spawn fresh ranks.
+        if "cxi" not in os.environ.get("FI_PROVIDER", ""):
+            os.environ["FI_PROVIDER"] = "cxi,tcp;ofi_rxm"
+        os.environ.pop("FI_MR_CACHE_MONITOR", None)
+        self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        dist.all_reduce(torch.ones(10, device=device))
+        dist.destroy_process_group()
+
+    @requires_xccl()
     @skip_but_pass_in_sandcastle_if(
         torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs"
     )
