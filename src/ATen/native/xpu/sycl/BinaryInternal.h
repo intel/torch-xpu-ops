@@ -16,6 +16,8 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct DivFunctor {
+  static constexpr bool prefer_wide_vectors = true;
+
   scalar_t operator()(scalar_t a, scalar_t b) const {
     return c10::xpu::compat::div(a, b);
   }
@@ -23,6 +25,8 @@ struct DivFunctor {
 
 template <typename scalar_t>
 struct MulFunctor {
+  static constexpr bool prefer_wide_vectors = true;
+
   scalar_t operator()(scalar_t a, scalar_t b) const {
     return a * b;
   }
@@ -32,6 +36,8 @@ struct MulFunctor {
 // [-Werror=int-in-bool-context]
 template <>
 struct MulFunctor<bool> {
+  static constexpr bool prefer_wide_vectors = true;
+
   bool operator()(bool a, bool b) const {
     return a && b;
   }
