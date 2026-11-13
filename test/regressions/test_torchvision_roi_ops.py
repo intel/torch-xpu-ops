@@ -176,7 +176,9 @@ class RoIOpTester(ABC):
     @pytest.mark.parametrize("seed", range(10))
     @pytest.mark.parametrize("device", ("xpu",))
     @pytest.mark.parametrize("contiguous", (True, False))
-    def test_backward(self, seed, device, contiguous, deterministic=False):
+    def test_backward(
+        self, seed, device, contiguous, deterministic=False, sampling_ratio=1
+    ):
         atol = self.mps_backward_atol if device == "mps" else 1e-05
         dtype = self.mps_dtype if device == "mps" else self.dtype
 
@@ -201,15 +203,16 @@ class RoIOpTester(ABC):
 
         def func(z):
             return self.fn(
-                z, rois, pool_size, pool_size, spatial_scale=1, sampling_ratio=1
+                z,
+                rois,
+                pool_size,
+                pool_size,
+                spatial_scale=1,
+                sampling_ratio=sampling_ratio,
             )
-
-        script_func = self.get_script_fn(rois, pool_size)
 
         with DeterministicGuard(deterministic):
             gradcheck(func, (x,), atol=atol)
-
-        gradcheck(script_func, (x,), atol=atol)
 
     @abstractmethod
     def fn(self, *args, **kwargs):
@@ -217,10 +220,6 @@ class RoIOpTester(ABC):
 
     @abstractmethod
     def make_obj(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
-    def get_script_fn(self, *args, **kwargs):
         pass
 
     @abstractmethod
@@ -235,10 +234,6 @@ class TestRoiPool(RoIOpTester):
     def make_obj(self, pool_h=5, pool_w=5, spatial_scale=1, wrap=False):
         obj = ops.RoIPool((pool_h, pool_w), spatial_scale)
         return RoIOpTesterModuleWrapper(obj) if wrap else obj
-
-    def get_script_fn(self, rois, pool_size):
-        scriped = torch.jit.script(ops.roi_pool)
-        return lambda x: scriped(x, rois, pool_size)
 
     def expected_fn(
         self,
@@ -292,10 +287,6 @@ class TestPSRoIPool(RoIOpTester):
     def make_obj(self, pool_h=5, pool_w=5, spatial_scale=1, wrap=False):
         obj = ops.PSRoIPool((pool_h, pool_w), spatial_scale)
         return RoIOpTesterModuleWrapper(obj) if wrap else obj
-
-    def get_script_fn(self, rois, pool_size):
-        scriped = torch.jit.script(ops.ps_roi_pool)
-        return lambda x: scriped(x, rois, pool_size)
 
     def expected_fn(
         self,
@@ -415,9 +406,17 @@ class TestRoIAlign(RoIOpTester):
         )
         return RoIOpTesterModuleWrapper(obj) if wrap else obj
 
-    def get_script_fn(self, rois, pool_size):
-        scriped = torch.jit.script(ops.roi_align)
-        return lambda x: scriped(x, rois, pool_size)
+    @pytest.mark.parametrize("seed", range(10))
+    @pytest.mark.parametrize("device", ("xpu",))
+    @pytest.mark.parametrize("contiguous", (True, False))
+    @pytest.mark.parametrize("sampling_ratio", (1, -1))
+    def test_backward(self, seed, device, contiguous, sampling_ratio):
+        super().test_backward(
+            seed=seed,
+            device=device,
+            contiguous=contiguous,
+            sampling_ratio=sampling_ratio,
+        )
 
     def expected_fn(
         self,
@@ -533,9 +532,17 @@ class TestPSRoIAlign(RoIOpTester):
         )
         return RoIOpTesterModuleWrapper(obj) if wrap else obj
 
-    def get_script_fn(self, rois, pool_size):
-        scriped = torch.jit.script(ops.ps_roi_align)
-        return lambda x: scriped(x, rois, pool_size)
+    @pytest.mark.parametrize("seed", range(10))
+    @pytest.mark.parametrize("device", ("xpu",))
+    @pytest.mark.parametrize("contiguous", (True, False))
+    @pytest.mark.parametrize("sampling_ratio", (1, -1))
+    def test_backward(self, seed, device, contiguous, sampling_ratio):
+        super().test_backward(
+            seed=seed,
+            device=device,
+            contiguous=contiguous,
+            sampling_ratio=sampling_ratio,
+        )
 
     def expected_fn(
         self,
