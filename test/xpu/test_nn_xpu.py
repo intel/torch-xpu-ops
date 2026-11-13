@@ -6596,8 +6596,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             for shape, offset in product(shapes, (0.0, 100.0)):
                 n, c, h, w = shape
                 generator = torch.Generator().manual_seed(0)
+                scale = 0.5 if offset and dtype != torch.float32 else 1.0
                 x = (
-                    (torch.randn(shape, generator=generator) + offset)
+                    (torch.randn(shape, generator=generator) * scale + offset)
                     .to(dtype)
                     .contiguous(memory_format=torch.channels_last)
                 )
