@@ -46,7 +46,6 @@ void lu_factor_kernel_fallback(
   auto input_cpu = input.to(input.options().device(kCPU));
   auto pivots_cpu = pivots.to(pivots.options().device(kCPU));
   const auto infos_cpu = infos.to(infos.options().device(kCPU));
-
   lu_factor_stub(at::kCPU, input_cpu, pivots_cpu, infos_cpu, compute_pivots);
 
   input.copy_(input_cpu);
@@ -60,13 +59,7 @@ void lu_factor_kernel_xpu(
     const Tensor& infos,
     bool compute_pivots) {
 #if defined(USE_ONEMKL_XPU)
-  int64_t batch_size = native::batchCount(input);
-  // TODO: optimize lu_factor performance on XPU when batch_size = 1
-  if (batch_size == 1) {
-    lu_factor_kernel_fallback(input, pivots, infos, compute_pivots);
-  } else {
-    native::xpu::lu_factor_mkl(input, pivots, infos, compute_pivots);
-  }
+  native::xpu::lu_factor_mkl(input, pivots, infos, compute_pivots);
 #else
   lu_factor_kernel_fallback(input, pivots, infos, compute_pivots);
 #endif // USE_ONEMKL_XPU
