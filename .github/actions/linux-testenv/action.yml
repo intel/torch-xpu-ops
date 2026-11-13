@@ -153,8 +153,8 @@ runs:
         if [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
           SOURCE_ARG+=(--built-wheel)
         fi
-        python torch-xpu-ops/.github/scripts/checkout_torch_xpu_ops.py \
-          --pytorch-dir pytorch \
+        python "${GITHUB_WORKSPACE}/torch-xpu-ops/.github/scripts/checkout_torch_xpu_ops.py" \
+          --pytorch-dir . \
           --repo "${TORCH_XPU_OPS_REPO}" \
           --ref "${TORCH_XPU_OPS_COMMIT}" \
           --prefer-wheel "${SOURCE_ARG[@]}"
