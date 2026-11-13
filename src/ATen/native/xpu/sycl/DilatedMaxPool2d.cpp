@@ -351,15 +351,15 @@ void max_pool2d_backward_deterministic_kernel_impl(
       }
       index_t inputW = input_hw_index % gradInputSizeW;
       index_t inputH = input_hw_index / gradInputSizeW;
-      int phstart = p_start(inputH, pad_h, kernel_h, dilation_h, stride_h);
-      int phend = p_end(inputH, pad_h, gradOutputSizeH, stride_h);
-      int pwstart = p_start(inputW, pad_w, kernel_w, dilation_w, stride_w);
-      int pwend = p_end(inputW, pad_w, gradOutputSizeW, stride_w);
+      index_t phstart = p_start(inputH, pad_h, kernel_h, dilation_h, stride_h);
+      index_t phend = p_end(inputH, pad_h, gradOutputSizeH, stride_h);
+      index_t pwstart = p_start(inputW, pad_w, kernel_w, dilation_w, stride_w);
+      index_t pwend = p_end(inputW, pad_w, gradOutputSizeW, stride_w);
       accscalar_t grad = accscalar_t(0);
       if constexpr (is_channels_last) {
         index_t offset = batch * out_n_stride + plane;
-        for (int ph = phstart; ph < phend; ++ph) {
-          for (int pw = pwstart; pw < pwend; ++pw) {
+        for (index_t ph = phstart; ph < phend; ++ph) {
+          for (index_t pw = pwstart; pw < pwend; ++pw) {
             if (indices[offset + (ph * gradOutputSizeW + pw) * numPlane] ==
                 input_hw_index) {
               grad += static_cast<accscalar_t>(
@@ -369,8 +369,8 @@ void max_pool2d_backward_deterministic_kernel_impl(
         }
       } else {
         index_t offset = batch * out_n_stride + plane * out_cf_c_stride;
-        for (int ph = phstart; ph < phend; ++ph) {
-          for (int pw = pwstart; pw < pwend; ++pw) {
+        for (index_t ph = phstart; ph < phend; ++ph) {
+          for (index_t pw = pwstart; pw < pwend; ++pw) {
             if (indices[offset + ph * gradOutputSizeW + pw] == input_hw_index) {
               grad += static_cast<accscalar_t>(
                   gradOutput[offset + ph * gradOutputSizeW + pw]);
@@ -415,7 +415,7 @@ void max_pool2d_backward_channel_last_vec_kernel_impl(
        inputIndex += item.get_local_range(0) * item.get_group_range(0)) {
     index_t batch = inputIndex / (in_n_stride / vec_size);
     index_t plane;
-    int64_t input_hw_index;
+    index_t input_hw_index;
 
     plane = inputIndex % (numPlane / vec_size);
 
@@ -424,10 +424,10 @@ void max_pool2d_backward_channel_last_vec_kernel_impl(
 
     index_t inputW = input_hw_index % gradInputSizeW;
     index_t inputH = input_hw_index / gradInputSizeW;
-    int phstart = p_start(inputH, pad_h, kernel_h, dilation_h, stride_h);
-    int phend = p_end(inputH, pad_h, gradOutputSizeH, stride_h);
-    int pwstart = p_start(inputW, pad_w, kernel_w, dilation_w, stride_w);
-    int pwend = p_end(inputW, pad_w, gradOutputSizeW, stride_w);
+    index_t phstart = p_start(inputH, pad_h, kernel_h, dilation_h, stride_h);
+    index_t phend = p_end(inputH, pad_h, gradOutputSizeH, stride_h);
+    index_t pwstart = p_start(inputW, pad_w, kernel_w, dilation_w, stride_w);
+    index_t pwend = p_end(inputW, pad_w, gradOutputSizeW, stride_w);
     accscalar_t grad_acc[vec_size];
 #pragma unroll
     for (int i = 0; i < vec_size; i++) {
@@ -435,8 +435,8 @@ void max_pool2d_backward_channel_last_vec_kernel_impl(
     }
 
     index_t offset = batch * out_n_stride / vec_size + plane;
-    for (int ph = phstart; ph < phend; ++ph) {
-      for (int pw = pwstart; pw < pwend; ++pw) {
+    for (index_t ph = phstart; ph < phend; ++ph) {
+      for (index_t pw = pwstart; pw < pwend; ++pw) {
         index_t load_offset = offset +
             ph * gradOutputSizeW * numPlane / vec_size +
             pw * numPlane / vec_size;
@@ -649,7 +649,7 @@ void launch_max_pool2d_kernel(
     };
   }
 
-  static constexpr auto kptr =
+  constexpr auto kptr =
       max_pool2d_kernel_impl<scalar_t, is_channels_last, index_t>;
 
   BatchKernelConfig cfg = BatchKernelConfig::make_config<kptr>(
@@ -885,14 +885,14 @@ void launch_max_pool2d_backward_kernel(
     };
   }
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-  static constexpr auto kptr = max_pool2d_backward_deterministic_kernel_impl<
+  constexpr auto kptr = max_pool2d_backward_deterministic_kernel_impl<
       scalar_t,
       accscalar_t,
       is_channels_last,
       index_t>;
   BatchKernelConfig cfg = BatchKernelConfig::make_config<kptr>(
       1, gradInputSize, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
-  cfg.template build<kptr>();
+
   sycl_kernel_submit<kptr>(
       cfg.global_size(),
       cfg.group_size(),
@@ -921,12 +921,12 @@ void launch_max_pool2d_backward_kernel(
 #else
   int64_t gradOutputSize =
       numBatch * numPlane * gradOutputSizeH * gradOutputSizeW;
-  static constexpr auto kptr =
+  constexpr auto kptr =
       max_pool2d_backward_kernel_impl<scalar_t, is_channels_last, index_t>;
 
   BatchKernelConfig cfg = BatchKernelConfig::make_config<kptr>(
       1, gradOutputSize, 1, 1, true, {BatchKernelConfig::Policy::pAdaptive});
-  cfg.template build<kptr>();
+
   sycl_kernel_submit<kptr>(
       cfg.global_size(),
       cfg.group_size(),
@@ -943,8 +943,6 @@ void launch_max_pool2d_backward_kernel(
       cfg);
 #endif
 }
-
-#undef LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC
 
 void max_pool2d_with_indices_kernel(
     const Tensor& input_,
@@ -1286,6 +1284,7 @@ void max_pool2d_with_indices_backward_kernel(
 
 } // namespace at::native::xpu
 #undef LAUNCH_MAXPOOL_CHANNEL_LAST_VEC
+#undef LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_END
 // clang-format on
