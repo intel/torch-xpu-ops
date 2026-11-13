@@ -4176,6 +4176,9 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           g(mean, input_, grad_output_);
       auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
           item, g, grad_output_, plane, num_sg, local_sum_);
+      // All work-items must finish reading the previous channel's result
+      // before another channel reuses local_sum_.
+      sycl::group_barrier(item.get_group());
 
       stat_accscalar_t grad_output_sum = res.v1;
       stat_accscalar_t dot_p = res.v2;
@@ -4385,6 +4388,7 @@ struct BatchNormBackwardVectorizedKernelFunctor
           g(mean, input_, grad_output_);
       auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
           item, g, grad_output_, plane, num_sg, local_sum_);
+      sycl::group_barrier(item.get_group());
 
       stat_accscalar_t grad_output_sum = res.v1;
       stat_accscalar_t dot_p = res.v2;
@@ -4928,7 +4932,7 @@ template <
     int UNROLL,
     typename input_scalar_t,
     typename stat_scalar_t>
-void launch_channel_tile(
+bool launch_channel_tile(
     const Tensor& input,
     const Tensor& grad_out,
     const Tensor& weight,
@@ -4954,6 +4958,8 @@ void launch_channel_tile(
       input_scalar_t,
       stat_scalar_t,
       accscalar_t>;
+  if (syclMaxWorkGroupSize<K>() < wg)
+    return false;
   auto kfn =
       K(input.const_data_ptr<input_scalar_t>(),
         grad_out.const_data_ptr<input_scalar_t>(),
@@ -4978,10 +4984,11 @@ void launch_channel_tile(
       sycl::range<1>(wg),
       getCurrentSYCLQueue(),
       kfn);
+  return true;
 }
 
 template <int C_TILE, int VEC, typename input_scalar_t, typename stat_scalar_t>
-void launch_channel_tile_unroll(
+bool launch_channel_tile_unroll(
     const Tensor& input,
     const Tensor& grad_out,
     const Tensor& weight,
@@ -4997,7 +5004,7 @@ void launch_channel_tile_unroll(
   // loads before use. A filled device already has enough in flight.
   const int64_t tiles = (input.size(1) + C_TILE - 1) / C_TILE;
   if (tiles < cap_wgs)
-    launch_channel_tile<C_TILE, VEC, 4, input_scalar_t, stat_scalar_t>(
+    return launch_channel_tile<C_TILE, VEC, 4, input_scalar_t, stat_scalar_t>(
         input,
         grad_out,
         weight,
@@ -5009,7 +5016,7 @@ void launch_channel_tile_unroll(
         wg,
         cap_wgs);
   else
-    launch_channel_tile<C_TILE, VEC, 1, input_scalar_t, stat_scalar_t>(
+    return launch_channel_tile<C_TILE, VEC, 1, input_scalar_t, stat_scalar_t>(
         input,
         grad_out,
         weight,
@@ -5023,7 +5030,7 @@ void launch_channel_tile_unroll(
 }
 
 template <int VEC, typename input_scalar_t, typename stat_scalar_t>
-void launch_channel_tile_ct(
+bool launch_channel_tile_ct(
     int ct,
     const Tensor& input,
     const Tensor& grad_out,
@@ -5037,7 +5044,7 @@ void launch_channel_tile_ct(
     int64_t cap_wgs) {
   switch (ct) {
     case 1:
-      launch_channel_tile_unroll<1, VEC, input_scalar_t, stat_scalar_t>(
+      return launch_channel_tile_unroll<1, VEC, input_scalar_t, stat_scalar_t>(
           input,
           grad_out,
           weight,
@@ -5048,9 +5055,8 @@ void launch_channel_tile_ct(
           gb,
           wg,
           cap_wgs);
-      break;
     case 2:
-      launch_channel_tile_unroll<2, VEC, input_scalar_t, stat_scalar_t>(
+      return launch_channel_tile_unroll<2, VEC, input_scalar_t, stat_scalar_t>(
           input,
           grad_out,
           weight,
@@ -5061,9 +5067,8 @@ void launch_channel_tile_ct(
           gb,
           wg,
           cap_wgs);
-      break;
     case 4:
-      launch_channel_tile_unroll<4, VEC, input_scalar_t, stat_scalar_t>(
+      return launch_channel_tile_unroll<4, VEC, input_scalar_t, stat_scalar_t>(
           input,
           grad_out,
           weight,
@@ -5074,9 +5079,8 @@ void launch_channel_tile_ct(
           gb,
           wg,
           cap_wgs);
-      break;
     default:
-      launch_channel_tile_unroll<8, VEC, input_scalar_t, stat_scalar_t>(
+      return launch_channel_tile_unroll<8, VEC, input_scalar_t, stat_scalar_t>(
           input,
           grad_out,
           weight,
@@ -5087,14 +5091,13 @@ void launch_channel_tile_ct(
           gb,
           wg,
           cap_wgs);
-      break;
   }
 }
 
 // Contiguous NCHW training backward: one kernel that walks channel tiles in
 // physical address order (see BatchNormBackwardChannelTileKernelFunctor).
 template <typename input_scalar_t, typename stat_scalar_t>
-void batch_norm_backward_channel_tile(
+bool batch_norm_backward_channel_tile(
     const Tensor& input,
     const Tensor& grad_out,
     const Tensor& weight,
@@ -5122,7 +5125,7 @@ void batch_norm_backward_channel_tile(
     if (aligned) {
       const int ct = choose_channel_tile(N, C, HW, WG, VEC, cap_wgs);
       if (ct != 0) {
-        launch_channel_tile_ct<VEC, input_scalar_t, stat_scalar_t>(
+        return launch_channel_tile_ct<VEC, input_scalar_t, stat_scalar_t>(
             ct,
             input,
             grad_out,
@@ -5134,13 +5137,12 @@ void batch_norm_backward_channel_tile(
             grad_bias,
             WG,
             cap_wgs);
-        return;
       }
     }
   }
   // C_TILE == 1 is always legal for vec1.
   const int ct = choose_channel_tile(N, C, HW, WG, 1, cap_wgs);
-  launch_channel_tile_ct<1, input_scalar_t, stat_scalar_t>(
+  return launch_channel_tile_ct<1, input_scalar_t, stat_scalar_t>(
       ct,
       input,
       grad_out,
@@ -5229,17 +5231,20 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
       subgroup_sizes.end();
   if (supports_simd32 && syclDeviceMaxWorkGroupSize() >= SIMD32 * SIMD32 &&
       train && grad_input_reshaped.defined() &&
-      input_reshaped.is_contiguous() && grad_output_reshaped.is_contiguous()) {
-    batch_norm_backward_channel_tile<input_scalar_t, stat_scalar_t>(
-        input_reshaped,
-        grad_output_reshaped,
-        weight_,
-        save_mean_,
-        save_invstd_,
-        grad_input_reshaped,
-        grad_weight_,
-        grad_bias_);
-    return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
+      input_reshaped.is_contiguous() && grad_output_reshaped.is_contiguous() &&
+      (!weight_.defined() || weight_.is_contiguous()) &&
+      save_mean_.is_contiguous() && save_invstd_.is_contiguous()) {
+    if (batch_norm_backward_channel_tile<input_scalar_t, stat_scalar_t>(
+            input_reshaped,
+            grad_output_reshaped,
+            weight_,
+            save_mean_,
+            save_invstd_,
+            grad_input_reshaped,
+            grad_weight_,
+            grad_bias_)) {
+      return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
+    }
   }
 
   auto& queue = getCurrentSYCLQueue();
