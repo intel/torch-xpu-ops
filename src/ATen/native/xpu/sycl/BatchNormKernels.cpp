@@ -3120,9 +3120,9 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
     const index_t global_stride = item.get_global_range(0);
 
     if constexpr (USE_SLM) {
-      const int lid = item.get_local_id(0);
-      const int lsize = item.get_local_range(0);
-      for (int c = lid; c < stride_; c += lsize) {
+      const index_t lid = item.get_local_id(0);
+      const index_t lsize = item.get_local_range(0);
+      for (index_t c = lid; c < stride_; c += lsize) {
         const accscalar_t inv_std_c = inv_std_[c];
         slm_mean_[c] = mean_[c];
         slm_m_dy_[c] = sum_dy_[c] * norm_fct;
@@ -3140,8 +3140,8 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
     if constexpr (VEC_SIZE == 1) {
       for (index_t idx = item.get_global_id(0); idx < total_elems;
            idx += global_stride) {
-        const int c =
-            static_cast<int>(divider_.divmod(static_cast<div_t>(idx)).mod);
+        const index_t c =
+            static_cast<index_t>(divider_.divmod(static_cast<div_t>(idx)).mod);
         grad_input_[idx] = compute(c, grad_output_[idx], input_[idx], norm_fct);
       }
     } else {
@@ -3150,9 +3150,9 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
       for (index_t id = item.get_global_id(0); id < total_vecs;
            id += global_stride) {
         const index_t flat_pos = id * 2;
-        const int c0 = static_cast<int>(
+        const index_t c0 = static_cast<index_t>(
             divider_.divmod(static_cast<div_t>(flat_pos)).mod);
-        const int c1 = (c0 + 1 < stride_) ? c0 + 1 : 0;
+        const index_t c1 = (c0 + 1 < stride_) ? c0 + 1 : 0;
 
         const vec2_t go_vec =
             *reinterpret_cast<const vec2_t*>(&grad_output_[flat_pos]);
@@ -3168,8 +3168,8 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
       if constexpr (HAS_TAIL) {
         if (item.get_global_id(0) == 0) {
           const index_t fp = total_elems - 1;
-          const int c =
-              static_cast<int>(divider_.divmod(static_cast<div_t>(fp)).mod);
+          const index_t c =
+              static_cast<index_t>(divider_.divmod(static_cast<div_t>(fp)).mod);
           grad_input_[fp] = compute(c, grad_output_[fp], input_[fp], norm_fct);
         }
       }
@@ -3196,7 +3196,7 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
       scalar_t* RESTRICT grad_input,
       const accscalar_t norm_fct,
       const int64_t reduction_size,
-      const int stride,
+      const int64_t stride,
       const int* RESTRICT numel = nullptr,
       const int64_t world_size = 0)
       : grad_output_(grad_output),
@@ -3215,8 +3215,11 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
         divider_(static_cast<div_t>(stride)) {}
 
  private:
-  inline scalar_t compute(int c, scalar_t go, scalar_t x, accscalar_t norm_fct)
-      const {
+  inline scalar_t compute(
+      index_t c,
+      scalar_t go,
+      scalar_t x,
+      accscalar_t norm_fct) const {
     accscalar_t m_c, m_dy_c, factor_1_c, factor_2_c;
     if constexpr (USE_SLM) {
       m_c = slm_mean_[c];
@@ -3248,7 +3251,7 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
   scalar_t* RESTRICT grad_input_;
   const accscalar_t norm_fct_;
   const int64_t reduction_size_;
-  const int stride_;
+  const int64_t stride_;
   const int* RESTRICT numel_;
   const int64_t world_size_;
   const at::detail::IntDivider<div_t> divider_;
@@ -3301,7 +3304,7 @@ static void launch_batch_norm_backward_elemt_channels_last_1d(
       grad_input,
       norm_fct,
       reduction_size,
-      static_cast<int>(stride),
+      stride,
       numel,
       world_size);
 
