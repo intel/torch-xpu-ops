@@ -207,3 +207,19 @@ class TestTorchMethod(TestCase):
         self.assertEqual(x.dtype, torch.bcomplex32)
         self.assertEqual(x[1], vals[0])
         self.assertEqual(x[3], vals[1])
+
+    def test_masked_scatter_non_standard_bool_mask(self):
+        # A bool mask whose storage holds values other than 0/1 (here a uint8
+        # tensor viewed as bool) must count each true element once, including
+        # the last one, which is read directly by the size check.
+        src = torch.arange(1, 5, dtype=torch.float)
+        for byte in (2, 200, 255):
+            for pattern in ([1, 0, 1, 0, 1, 0, 1, 0], [1, 0, 1, 0, 1, 0, 0, 1]):
+                mask = (torch.tensor(pattern, dtype=torch.uint8) * byte).view(
+                    torch.bool
+                )
+                expected = torch.zeros(8).masked_scatter(mask, src)
+                actual = torch.zeros(8, device=xpu_device).masked_scatter(
+                    mask.to(xpu_device), src.to(xpu_device)
+                )
+                self.assertEqual(actual.cpu(), expected)
