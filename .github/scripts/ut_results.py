@@ -864,8 +864,10 @@ class Checker:
         print(f"   Reports: {report_count}, Tests: {total_tests}, "
               f"Failed: {total_failures}, Errors: {total_errors}")
         print(f"   New failures: {len(new)}, Known failures: {len(failed) - len(new)}")
-        # Same rule as the other categories: only failures with no known issue fail.
-        ok = total_tests > 0 and not new
+        unexplained = (total_failures + total_errors) - len(failed)
+        if unexplained > 0:
+            print(f"   ❌ {unexplained} failure(s)/error(s) in reports not matched to a case")
+        ok = total_tests > 0 and not new and unexplained <= 0
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: xpu_profiling")
         return CheckResult(category="xpu_profiling", passed=ok, total=total_tests,
                            new_failures=new, new_passes=new_passes, failures=failed)
