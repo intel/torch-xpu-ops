@@ -516,86 +516,11 @@ static inline void launch_compact_unary_kernel_impl(
   }
 }
 
-template <int vec_size, typename unary_t, bool bounds>
-struct CompactInplaceScalarKernel {
-  using scalar_t = typename function_traits<unary_t>::template arg<0>::type;
-
-  [[sycl::reqd_sub_group_size(launch_config::compact_sub_group_size)]] void
-  operator()(sycl::nd_item<1> item) const {
-    const uint32_t index =
-        uint32_t(item.get_group(0)) * launch_config::compact_work_group_size +
-        uint32_t(item.get_local_id(0));
-    if (bounds && index >= vector_count) {
-      return;
-    }
-    using vec_t = memory::aligned_vector<scalar_t, vec_size>;
-    auto* address =
-        reinterpret_cast<scalar_t*>(reinterpret_cast<vec_t*>(data) + index);
-    compact_unary_apply<vec_size>(
-        address, unary_t(f, scalar), address, 0, true);
-  }
-
-  scalar_t* data;
-  decltype(unary_t::scalar) scalar;
-  decltype(unary_t::f) f;
-  uint32_t vector_count;
-};
-
 template <int vec_size, typename func_t, typename array_t>
 static inline void launch_compact_unary_kernel(
     int numel,
     const func_t& f,
     array_t data) {
-  launch_compact_unary_kernel_impl<vec_size>(numel, f, data);
-}
-
-// Exact inplace aliasing and small state fit inline kernel arguments; other
-// scalar functors retain the general compact unary launch below.
-template <
-    int vec_size,
-    typename input_t,
-    typename output_t,
-    typename func_t,
-    typename scalar_arg_t,
-    bool scalar_left,
-    typename array_t>
-static inline void launch_compact_unary_kernel(
-    int numel,
-    const ScalarUnaryFunctor<
-        input_t,
-        output_t,
-        func_t,
-        scalar_arg_t,
-        scalar_left>& f,
-    array_t data) {
-  if constexpr (
-      std::is_same_v<input_t, output_t> && !is_stateless_functor_v<func_t> &&
-      sizeof(func_t) <= 4 && sizeof(scalar_arg_t) <= 8) {
-    if (data[0] == data[1] && numel % vec_size == 0) {
-      const auto vectors = uint32_t(numel / vec_size);
-      auto launch = [&](auto bounds) {
-        using kernel_t = CompactInplaceScalarKernel<
-            vec_size,
-            std::decay_t<decltype(f)>,
-            decltype(bounds)::value>;
-        // Flatten the scalar and operation to keep kernel arguments inline.
-        static_assert(sizeof(kernel_t) <= 24);
-        sycl_kernel_submit(
-            ceil_div<int64_t>(vectors, launch_config::compact_work_group_size) *
-                launch_config::compact_work_group_size,
-            launch_config::compact_work_group_size,
-            getCurrentSYCLQueue(),
-            kernel_t{
-                reinterpret_cast<input_t*>(data[0]), f.scalar, f.f, vectors});
-      };
-      if (vectors % launch_config::compact_work_group_size == 0) {
-        launch(std::false_type{});
-      } else {
-        launch(std::true_type{});
-      }
-      return;
-    }
-  }
   launch_compact_unary_kernel_impl<vec_size>(numel, f, data);
 }
 
