@@ -68,8 +68,13 @@ struct GeluErfFunctor {
   scalar_t operator()(scalar_t x) const {
     using opmath_t = at::opmath_type<scalar_t>;
     constexpr opmath_t kAlpha = std::numbers::sqrt2_v<opmath_t> / 2;
+    // 1 + erf(x) = erfc(-x)
+    // For large negative x, erf(x / sqrt(2)) -> -1 and the "1 + erf"
+    // form cancels catastrophically in fp32 (flushing gelu to exactly 0.0
+    // from x ~ -6 on). erfc(-x / sqrt(2)) is evaluated directly and stays
+    // accurate in the tail.
     return static_cast<opmath_t>(x) * opmath_t(0.5) *
-        (opmath_t(1) + sycl::erf(static_cast<opmath_t>(x) * kAlpha));
+        sycl::erfc(-static_cast<opmath_t>(x) * kAlpha);
   }
 };
 
@@ -79,8 +84,9 @@ struct GeluErfBackwardFunctor {
     using opmath_t = at::opmath_type<scalar_t>;
     constexpr opmath_t kAlpha = std::numbers::sqrt2_v<opmath_t> / 2;
     constexpr opmath_t kBeta = std::numbers::inv_sqrtpi_v<opmath_t> * kAlpha;
-    const opmath_t cdf = opmath_t(0.5) *
-        (opmath_t(1) + sycl::erf(static_cast<opmath_t>(x) * kAlpha));
+    // 1 + erf(x) = erfc(-x)
+    const opmath_t cdf =
+        opmath_t(0.5) * sycl::erfc(-static_cast<opmath_t>(x) * kAlpha);
     const opmath_t pdf = c10::xpu::compat::exp(
                              opmath_t(-0.5) * static_cast<opmath_t>(x) *
                              static_cast<opmath_t>(x)) *
