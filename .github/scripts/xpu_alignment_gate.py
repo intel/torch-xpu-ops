@@ -16,6 +16,7 @@ from pathlib import Path
 
 from alignment_triage import AUTO_FILE_LIMIT
 from xpu_alignment_collect import CollectionError, validate_collection
+from xpu_alignment_runner import RECORD_ONLY_CATEGORIES, PlanError, validate_triage
 
 
 SCHEMA_VERSION = 1
@@ -216,8 +217,10 @@ def _validate_prepare(
             ):
                 errors.append(f"decision-invalid-id:{unit_id}")
                 continue
-            if item.get("triage") not in {"reject", "validate"}:
-                errors.append(f"decision-invalid-triage:{unit_id}")
+            try:
+                validate_triage(item)
+            except PlanError as error:
+                errors.append(f"decision-invalid-triage:{error}")
             if not str(item.get("reason", "")).strip():
                 errors.append(f"decision-missing-reason:{unit_id}")
             decisions[unit_id] = item
@@ -255,7 +258,7 @@ def _validate_prepare(
     validated = {unit_id for unit_id, item in decisions.items() if item.get("triage") == "validate"}
     if set(executions) != validated:
         errors.append("execution-coverage-mismatch")
-    return path, inventory, executions, errors
+    return path, decisions, executions, errors
 
 
 def _validate_runner(
@@ -535,26 +538,48 @@ def build_decision(
     collection_path, collection, inventory, progress, collection_errors = _validate_collection(
         collection_root, scan_date
     )
-    prepare_path, _, executions, prepare_errors = _validate_prepare(
+    prepare_path, decisions, executions, prepare_errors = _validate_prepare(
         prepare_root, scan_date, collection_path, collection, inventory
     )
-    runner_path, runner_environment, results, runner_errors = _validate_runner(
-        runner_root, collection_path, prepare_path, executions
-    )
-    scan_path, actionable, unit_blockers, scan_errors = _validate_scan(
-        scan_root,
-        runner_root,
-        collection_path,
-        collection,
-        prepare_path,
-        runner_path,
-        runner_environment,
-        executions,
-        results,
-    )
-    payloads, verdicts, review_errors = _validate_review(
-        review_root, collection_path, collection, scan_path, actionable
-    )
+    recorded_units = []
+    if not collection_errors and not prepare_errors:
+        recorded_units = [
+            {
+                "id": unit_id,
+                "title": inventory[unit_id]["title"],
+                "url": inventory[unit_id]["url"],
+                "categories": sorted(set(item["categories"]) & RECORD_ONLY_CATEGORIES),
+                "summary": item["reason"],
+            }
+            for unit_id, item in sorted(decisions.items())
+            if item.get("triage") != "reject"
+            and set(item["categories"]) & RECORD_ONLY_CATEGORIES
+        ]
+    actionable = []
+    unit_blockers = []
+    payloads = []
+    verdicts = {}
+    runner_errors = []
+    scan_errors = []
+    review_errors = []
+    if executions or collection_errors or prepare_errors:
+        runner_path, runner_environment, results, runner_errors = _validate_runner(
+            runner_root, collection_path, prepare_path, executions
+        )
+        scan_path, actionable, unit_blockers, scan_errors = _validate_scan(
+            scan_root,
+            runner_root,
+            collection_path,
+            collection,
+            prepare_path,
+            runner_path,
+            runner_environment,
+            executions,
+            results,
+        )
+        payloads, verdicts, review_errors = _validate_review(
+            review_root, collection_path, collection, scan_path, actionable
+        )
     validation_errors = (
         collection_errors
         + prepare_errors
@@ -608,6 +633,7 @@ def build_decision(
         "unit_blockers": unit_blocker_messages,
         "collection_status": collection_status,
         "collection_progress": progress,
+        "recorded_units": recorded_units,
         "mandatory_units": actionable,
         "unit_verdicts": verdicts,
         "actionable_units": sorted(str(item["unit_id"]) for item in published_payloads),

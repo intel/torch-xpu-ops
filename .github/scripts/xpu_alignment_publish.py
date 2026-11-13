@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter
+from html import escape
 from pathlib import Path
 
 from alignment_triage import (
@@ -42,6 +43,8 @@ from alignment_triage import (
 
 RUN_STATES = {"complete", "complete-with-warnings", "partial", "failed"}
 UNIT_BLOCKER_PREFIX = "scan-blocked-result:"
+# Leave room for the existing summary, blockers, and provenance in one comment.
+RECORD_DISPLAY_BYTE_LIMIT = 48_000
 
 
 def _excluded_units(
@@ -146,6 +149,27 @@ def run_note(
         lines.append("No new XPU tracker was filed.")
     elif not payloads:
         lines.append("No new XPU tracker was filed or drafted.")
+
+    recorded_units = decision.get("recorded_units") or []
+    if recorded_units:
+        lines += ["", "Recorded observations (XPU not validated):"]
+        remaining = RECORD_DISPLAY_BYTE_LIMIT
+        for index, item in enumerate(recorded_units):
+            categories = ", ".join(item["categories"])
+            line = (
+                f"- [{escape(_safe(item['title']))}]({item['url']}) "
+                f"(`{categories}`) — XPU not validated: {escape(_safe(item['summary'], 500))}"
+            )
+            size = len(line.encode("utf-8")) + 1
+            if size > remaining:
+                lines.append(
+                    f"- {len(recorded_units) - index} additional observations "
+                    "are available in the gate artifact (`filing_decision.json`); "
+                    "see the workflow run link below for the complete records."
+                )
+                break
+            lines.append(line)
+            remaining -= size
 
     if publication_failures:
         lines += ["", f"- Publication failures: {len(publication_failures)}"]

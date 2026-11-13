@@ -131,6 +131,7 @@ not require an XPU runtime.
   "decisions": [{
     "id": "issue-123",
     "triage": "validate",
+    "categories": ["training-functional"],
     "reason": "shared operator path"
   }],
   "executions": [{
@@ -147,9 +148,15 @@ not require an XPU runtime.
 
 `collection_sha256` names the exact collector manifest bytes, and
 `collection_status` must match the original manifest. `decisions` covers every
-observed inventory id exactly once with `reject` or `validate` and a concrete
-reason. Every validated item has exactly one execution entry; rejected items
-have none. An object whose body, reproducer, tests, or diff shows independent XPU
+observed inventory id exactly once with `reject`, `record-only`, or `validate` and
+a concrete reason. Non-rejected items require a nonempty `categories` list using
+the scope categories in `evidence.md`. A distributed decision is always
+`record-only`; otherwise a decision containing training functional or inference
+functional/performance work is `validate`. Training performance alone is
+`record-only`. For mixed decisions, `reason` also summarizes the unvalidated
+training-performance observation. Every validated item has exactly one execution
+entry; rejected and record-only items have none. A validation candidate whose
+body, reproducer, tests, or diff shows independent XPU
 work already tracked or implemented upstream is rejected with
 `already-xpu-scoped` in its reason; a title, label, or XPU mention alone cannot
 establish that scope. Generic, shared, or multi-backend work originating in CPU,
@@ -157,6 +164,8 @@ CUDA, ROCm, MPS, or another backend remains eligible when XPU parity is unknown.
 For an explicitly linked issue/PR/commit chain, validate one canonical object at
 most and reject the rest with `duplicate-chain` plus the canonical inventory id
 in each free-text reason.
+Record a linked record-only chain once, rejecting its other inventory objects
+with the same `duplicate-chain` convention.
 An execution identifies immutable script bytes, uses the default 120-second
 timeout unless evidence justifies a smaller value, and states the upstream oracle
 and expected XPU target path. Any missing detail or coverage makes preparation
@@ -164,6 +173,12 @@ incomplete. A structurally valid partial collection may still have a complete
 preparation relative to its observed inventory; that does not make the collection
 complete. The deterministic inventory does not prove that each semantic rejection
 is correct, and automation deliberately uses no negative-sample review.
+
+The prepare job runs the deterministic runner with `--check-only` to validate the
+plan without an XPU runtime. It emits `needs_validation` as a job output. With no
+executions, the workflow skips runner, finalization, and review jobs; the gate
+requires only valid collection and preparation artifacts and clean producer
+jobs. Missing downstream artifacts are expected only for this empty plan.
 
 ## Deterministic runner
 
@@ -319,7 +334,7 @@ metadata and counts, triage/execution coverage, paths and digests, runner
 coverage, terminal scan results, exact review coverage, verdict vocabulary,
 payload ownership, and payload shape.
 
-Clean producer jobs and complete artifact coverage are required for publication.
+Clean producer jobs and complete artifact coverage are required for new tracker publication.
 An individual runner-backed unit blocker excludes only that unit; it does not
 invalidate other fully covered, independently reviewed payloads. A scheduled run
 automatically files all review-approved payloads when there are one to three.
@@ -330,7 +345,19 @@ and errors, notifies maintainers for a scheduled run, and finishes red. Source
 progress is also shown when a partial collection has an unrelated global
 blocker. Dry runs publish drafts only and never notify. A malformed collection,
 incomplete coverage, environment core failure, or producer job failure publishes
-only a blocker summary.
+only a blocker summary and any record-only observations from valid collection
+and preparation artifacts. The gate carries these observations as
+`recorded_units` (id, collector title/URL, record-only categories, and preparation
+reason as summary), including the training-performance portion of mixed
+decisions. The publisher lists them in the standing triage issue's run comment
+as "XPU not validated". The publisher escapes source title/summary HTML so it
+cannot introduce comment-protocol markers. The record list has a conservative
+UTF-8 display budget; if it overflows, the comment states the undisplayed count
+and directs readers to this run's gate artifact, which retains every record.
+They require no runner result or independent review and
+never produce tracker payloads. A downstream job failure does not suppress these
+records; it still fails the run. A record-only run with no validation work may
+complete successfully, preserving the collection's partial status when relevant.
 
 The gate records `run_state` as `complete`, `complete-with-warnings`, `partial`,
 or `failed`; the publisher uses this value for the Run Summary and workflow

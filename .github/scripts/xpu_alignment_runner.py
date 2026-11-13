@@ -25,6 +25,12 @@ UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 MAX_TIMEOUT_SECONDS = 120
 ENVIRONMENT_PROBE_TIMEOUT_SECONDS = 120
+VALIDATION_CATEGORIES = {
+    "training-functional",
+    "inference-functional",
+    "inference-performance",
+}
+RECORD_ONLY_CATEGORIES = {"training-performance", "distributed"}
 PR_SET_CHILD_SUBREAPER = 36
 ENVIRONMENT_FIELDS = {
     "python_executable",
@@ -39,6 +45,32 @@ ENVIRONMENT_FIELDS = {
 
 class PlanError(ValueError):
     pass
+
+
+def validate_triage(item: dict[str, object]) -> None:
+    unit_id = item.get("id")
+    triage = item.get("triage")
+    if triage not in {"reject", "record-only", "validate"}:
+        raise PlanError(f"{unit_id}: invalid triage")
+    if triage == "reject":
+        return
+    categories = item.get("categories")
+    if (
+        not isinstance(categories, list)
+        or not categories
+        or not all(
+            isinstance(category, str)
+            and category in VALIDATION_CATEGORIES | RECORD_ONLY_CATEGORIES
+            for category in categories
+        )
+    ):
+        raise PlanError(f"{unit_id}: invalid categories")
+    needs_validation = (
+        bool(set(categories) & VALIDATION_CATEGORIES)
+        and "distributed" not in categories
+    )
+    if (triage == "validate") != needs_validation:
+        raise PlanError(f"{unit_id}: triage contradicts categories")
 
 
 def _inside(root: Path, value: object, *, existing: bool) -> Path:
@@ -103,8 +135,7 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         ):
             raise PlanError(f"invalid or duplicate decision id: {unit_id!r}")
         triage = item.get("triage")
-        if triage not in {"reject", "validate"}:
-            raise PlanError(f"{unit_id}: invalid triage")
+        validate_triage(item)
         if not str(item.get("reason", "")).strip():
             raise PlanError(f"{unit_id}: missing triage reason")
         decision_ids.add(unit_id)
@@ -437,10 +468,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--prepare", type=Path, required=True)
-    parser.add_argument("--results", type=Path, required=True)
-    parser.add_argument("--python", type=Path, required=True)
-    parser.add_argument("--user", required=True)
+    parser.add_argument("--results", type=Path, default=Path("runner/results.json"))
+    parser.add_argument("--python", type=Path)
+    parser.add_argument("--user")
+    parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
+    if not args.check_only and (args.python is None or args.user is None):
+        parser.error("--python and --user are required for execution")
     try:
         root = args.root.resolve(strict=True)
         prepare = args.prepare if args.prepare.is_absolute() else root / args.prepare
@@ -450,6 +484,13 @@ def main() -> int:
         results = results.resolve()
         results.relative_to(root)
         entries = load_prepare(root, prepare)
+        if args.check_only:
+            needs_validation = "true" if entries else "false"
+            if output := os.environ.get("GITHUB_OUTPUT"):
+                with open(output, "a", encoding="utf-8") as handle:
+                    handle.write(f"needs_validation={needs_validation}\n")
+            print(json.dumps({"executions": len(entries)}))
+            return 0
         payload = run_plan(root, args.python.resolve(), prepare, entries, _identity(args.user))
     except (OSError, PlanError, ValueError) as error:
         print(f"prepare artifact rejected: {error}")
