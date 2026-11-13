@@ -68,7 +68,7 @@ jobs:
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
-      ut: p0
+      ut: xpu_p0
 
   Linux-Ondemand-E2E-Tests:
     name: linux-e2e

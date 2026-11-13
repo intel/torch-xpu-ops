@@ -94,6 +94,8 @@ MAIN_CATEGORIES = (
     "upstream_inductor",
     "upstream_distributed",
     "xpu_distributed",
+    "xpu_p0",
+    "xpu_p0_distributed",
 )
 
 # A UT job name maps to the categories its reports carry, per platform.
@@ -231,6 +233,8 @@ FAILURE_HEADER = ["Category", "Class name", "Test name", "Status", "Message", "S
 
 
 def determine_category(ut: str, ut_job: str = "") -> str:
+    if ut_job in ("xpu_p0", "xpu_p0_distributed"):
+        return ut_job
     exact = {"op_regression", "op_regression_dev1", "op_extended", "test_xpu",
              "test_cpp_extensions_aot_xpu"}
     if ut in exact:
@@ -745,7 +749,7 @@ class Checker:
         print("💡 Available: " + ", ".join([*MAIN_CATEGORIES,
                                             "skipped_ut", "xpu_profiling"]),
               file=sys.stderr)
-        return CheckResult(category=category, passed=True)
+        return CheckResult(category=category, passed=False)
 
     def banner(self, category: str) -> None:
         print("=" * 73)
