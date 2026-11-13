@@ -354,6 +354,44 @@ class TestTorchMethod(TestCase):
         self.assertEqual(result[:3], a)
         self.assertEqual(result[3:], b)
 
+    def test_cat_output_driven_layouts(self):
+        # Narrow channels-last slices, odd row widths, strided, misaligned and
+        # expanded inputs, a single non-empty input, many inputs and cat dims
+        # beyond the SLM table.
+        def to_xpu(t):
+            n = t.untyped_storage().nbytes() // t.element_size()
+            flat = torch.empty(0, dtype=t.dtype)
+            flat.set_(t.untyped_storage(), 0, (n,), (1,))
+            return flat.to(xpu_device).as_strided(
+                t.shape, t.stride(), t.storage_offset()
+            )
+
+        def check(tensors, dim):
+            res_cpu = torch.cat(tensors, dim)
+            res_xpu = torch.cat([to_xpu(t) for t in tensors], dim)
+            self.assertEqual(res_xpu.stride(), res_cpu.stride())
+            self.assertEqual(res_xpu.cpu(), res_cpu, atol=0, rtol=0)
+
+        cl = torch.channels_last
+        dtypes = (torch.bool, torch.int8, torch.bfloat16, torch.float32)
+        for dtype in dtypes + (torch.complex128,):
+
+            def t(*shape):
+                if dtype.is_complex:
+                    return torch.randn(shape, dtype=dtype)
+                return torch.randn(shape).mul(10).to(dtype)
+
+            check([t(2, c, 5, 7).to(memory_format=cl) for c in (14, 54, 3, 64)], 1)
+            check([t(6, 3), t(6, 5), t(6, 1)], 1)
+            check([t(9, 2), t(9, 2)], 1)
+            check([t(5, 33)[:, 1:], t(5, 31)], 1)
+            check([t(8, 6).t(), t(6, 2)], 1)
+            check([t(1, 6).expand(4, 6), t(4, 6)], 0)
+            check([t(0, 6), t(6, 3).t()], 0)
+            check([t(3, 2, 4) for _ in range(5)], 1)
+            check([t(2, 1, 3) for _ in range(40)], 1)
+            check([t(3000, 3), t(2000, 3).t().contiguous().t(), t(1, 3)], 0)
+
 
 instantiate_device_type_tests(
     TestTorchMethod, globals(), only_for="xpu", allow_xpu=True

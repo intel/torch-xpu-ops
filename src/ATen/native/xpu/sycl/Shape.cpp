@@ -17,6 +17,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/MemoryFormat.h>
@@ -31,6 +32,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <numeric>
 
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/ShapeKernels.h>
@@ -713,6 +715,552 @@ struct alignas(N) OpaqueType {
   char data[N];
 };
 
+namespace {
+
+constexpr int kCatMaxDims = 6;
+constexpr int kCatMaxInputs = 32;
+// Largest cat-dim size of the SLM cat-coordinate -> input table; larger cat
+// dims search the inputs' offsets.
+constexpr int kCatMaxTable = 4096;
+constexpr int kCatGroupSize = 256;
+// Output vectors per work-item of the SLM kernel (amortizes its setup).
+constexpr int kCatChunk = 2;
+// Below this output size, the SLM setup outweighs the register metadata
+// blend also for element gathers (measured with cold caches).
+constexpr int64_t kCatSmallBytes = int64_t(12) << 20;
+
+struct CatInputMeta {
+  uint64_t ptr;
+  int32_t begin; // first output coordinate of this input along the cat dim
+  int32_t end; // one past its last one
+  int32_t stride[kCatMaxDims];
+  int32_t vec_ok; // its V-unit vectors are aligned contiguous loads
+};
+
+// Output dims in memory order (dim 0 innermost) after merging neighbours;
+// dim-0 sizes and offsets and all strides are in units of U bytes.
+template <int N>
+struct CatParams {
+  int ndim = 0;
+  int cat_dim = 0;
+  int ninputs = 0;
+  uint32_t nvec = 0;
+  at::detail::IntDivider<uint32_t> size[kCatMaxDims];
+  CatInputMeta in[N];
+};
+
+// Splits output unit index e into outer coordinates c[1..ndim) and returns
+// the dim-0 one. Static loop bounds keep c in registers.
+template <int N>
+inline int32_t cat_decompose(const CatParams<N>& p, uint32_t e, uint32_t* c) {
+  const auto qr = p.size[0].divmod(e);
+  uint32_t r = qr.div;
+#pragma unroll
+  for (int d = 1; d < kCatMaxDims; ++d) {
+    if (d == p.ndim - 1) {
+      c[d] = r;
+    } else if (d < p.ndim) {
+      const auto q = p.size[d].divmod(r);
+      c[d] = q.mod;
+      r = q.div;
+    }
+  }
+  return qr.mod;
+}
+
+// Moves c to the next dim-0 row, whose first unit is e.
+template <int N>
+inline void cat_next_row(const CatParams<N>& p, uint32_t e, uint32_t* c) {
+  if (p.ndim > 1 && c[1] + 1 < p.size[1].divisor) {
+    ++c[1];
+  } else {
+    cat_decompose(p, e, c);
+  }
+}
+
+// Output-driven cat: each work-item writes V consecutive output units of U
+// bytes as one aligned store and gathers them from the input holding them,
+// so sub-group stores cover whole cache lines whatever the inputs' widths
+// (the input-driven kernels below write per-input stripes, which turn into
+// partial-line writes for narrow slices, e.g. channels-last cat along C).
+// kRegInputs > 0: up to kRegInputs inputs, whose metadata is selected from
+// the kernel parameters by a branch-free blend (a dynamic index would move
+// them to private memory). kRegInputs == 0: up to kCatMaxInputs inputs; the
+// metadata and a cat-coordinate -> input table are staged in SLM.
+// kWrap: a vector may run past the end of an output row.
+template <int U, int V, bool kWrap, int kRegInputs>
+struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+  using T = OpaqueType<U>;
+  using VecT = memory::aligned_vector<T, V>;
+  static constexpr bool kReg = kRegInputs > 0;
+  static constexpr int N = kReg ? kRegInputs : kCatMaxInputs;
+
+  // Start of the outer coordinates' row in input m. Coordinates are taken
+  // relative to the input (cat coordinate minus begin), so the offset stays
+  // within the input's 32-bit indexable extent.
+  const T* row_base(const CatInputMeta& m, const uint32_t* c) const {
+    int32_t off = 0;
+#pragma unroll
+    for (int d = 1; d < kCatMaxDims; ++d) {
+      if (d < p_.ndim) {
+        const int32_t x =
+            static_cast<int32_t>(c[d]) - (d == p_.cat_dim ? m.begin : 0);
+        off += x * m.stride[d];
+      }
+    }
+    return reinterpret_cast<const T*>(m.ptr) + off;
+  }
+
+  CatInputMeta meta(const CatInputMeta* slm, int k) const {
+    if constexpr (kReg) {
+      CatInputMeta m{};
+#pragma unroll
+      for (int j = 0; j < N; ++j) {
+        const uint32_t mask = 0u - static_cast<uint32_t>(k == j);
+        const CatInputMeta& s = p_.in[j];
+        m.ptr |= s.ptr & (0ull - static_cast<uint64_t>(k == j));
+        m.begin |= s.begin & mask;
+        m.end |= s.end & mask;
+#pragma unroll
+        for (int d = 0; d < kCatMaxDims; ++d) {
+          m.stride[d] |= s.stride[d] & mask;
+        }
+        m.vec_ok |= s.vec_ok & mask;
+      }
+      return m;
+    } else {
+      return slm[k];
+    }
+  }
+
+  // Input holding cat coordinate x.
+  int find(const CatInputMeta* slm, const uint8_t* table, int32_t x) const {
+    int k = 0;
+    if constexpr (kReg) {
+#pragma unroll
+      for (int j = 1; j < N; ++j) {
+        k += (j < p_.ninputs && x >= p_.in[j].begin) ? 1 : 0;
+      }
+    } else if (table_size_ > 0) {
+      k = table[x];
+    } else {
+      for (int j = 1; j < p_.ninputs; ++j) {
+        k += x >= slm[j].begin ? 1 : 0;
+      }
+    }
+    return k;
+  }
+
+  // slm and table are only read on the SLM path; the register path (kReg)
+  // passes nullptr.
+  VecT gather(const CatInputMeta* slm, const uint8_t* table, uint32_t vid)
+      const {
+    const int32_t n0 = p_.size[0].divisor;
+    uint32_t c[kCatMaxDims];
+    int32_t x = cat_decompose(p_, vid * V, c);
+    VecT v;
+    if (p_.cat_dim == 0) {
+      // Several inputs per row: switch input when x leaves the current one.
+      int k = find(slm, table, x);
+      CatInputMeta m = meta(slm, k);
+      const T* base = row_base(m, c);
+      if (m.vec_ok && x + V <= m.end && ((x - m.begin) & (V - 1)) == 0) {
+        return *reinterpret_cast<const VecT*>(base + (x - m.begin));
+      }
+#pragma unroll
+      for (int i = 0; i < V; ++i) {
+        if (kWrap && x == n0) {
+          x = 0;
+          cat_next_row(p_, vid * V + i, c);
+          k = 0;
+          m = meta(slm, k);
+          base = row_base(m, c);
+        } else if (x >= m.end) {
+          m = meta(slm, ++k);
+          base = row_base(m, c);
+        }
+        v[i] = base[(x - m.begin) * m.stride[0]];
+        ++x;
+      }
+      return v;
+    }
+    // The cat dim is an outer dim: one input per row. Its coordinate is read
+    // with static indices (a dynamic index would put c in private memory).
+    auto lookup = [&](CatInputMeta& m) {
+      uint32_t cc = 0;
+#pragma unroll
+      for (int d = 1; d < kCatMaxDims; ++d) {
+        cc = d == p_.cat_dim ? c[d] : cc;
+      }
+      m = meta(slm, find(slm, table, cc));
+      return row_base(m, c);
+    };
+    CatInputMeta m;
+    const T* base = lookup(m);
+    if (m.vec_ok) {
+      return *reinterpret_cast<const VecT*>(base + x);
+    }
+#pragma unroll
+    for (int i = 0; i < V; ++i) {
+      if (kWrap && x == n0) {
+        x = 0;
+        cat_next_row(p_, vid * V + i, c);
+        base = lookup(m);
+      }
+      v[i] = base[x * m.stride[0]];
+      ++x;
+    }
+    return v;
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    VecT* out = reinterpret_cast<VecT*>(out_);
+    if constexpr (kReg) {
+      const uint32_t vid = item.get_global_linear_id();
+      if (vid < p_.nvec) {
+        out[vid] = gather(nullptr, nullptr, vid);
+      }
+    } else {
+      const int lid = item.get_local_linear_id();
+      const int lsize = item.get_local_range(0);
+      CatInputMeta* meta =
+          slm_meta_.template get_multi_ptr<sycl::access::decorated::no>().get();
+      uint8_t* table =
+          slm_table_.template get_multi_ptr<sycl::access::decorated::no>()
+              .get();
+#pragma unroll
+      for (int k = 0; k < N; ++k) {
+        if (lid == 0 && k < p_.ninputs) {
+          meta[k] = p_.in[k];
+        }
+      }
+      sycl::group_barrier(item.get_group());
+      for (int k = 0; k < (table_size_ > 0 ? p_.ninputs : 0); ++k) {
+        for (int32_t x = meta[k].begin + lid; x < meta[k].end; x += lsize) {
+          table[x] = static_cast<uint8_t>(k);
+        }
+      }
+      sycl::group_barrier(item.get_group());
+      // Each work-group writes kCatChunk consecutive blocks of lsize vectors.
+      const uint32_t span = static_cast<uint32_t>(lsize) * kCatChunk;
+      const uint32_t first =
+          static_cast<uint32_t>(item.get_group_linear_id()) * span;
+      const uint32_t last = p_.nvec - first < span ? p_.nvec : first + span;
+      for (uint32_t vid = first + lid; vid < last; vid += lsize) {
+        out[vid] = gather(meta, table, vid);
+      }
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    if constexpr (!kReg) {
+      slm_meta_ = sycl::local_accessor<CatInputMeta, 1>(N, cgh);
+      slm_table_ = sycl::local_accessor<uint8_t, 1>(
+          std::max<int64_t>(table_size_, 1), cgh);
+    }
+  }
+
+  CatGatherFunctor(void* out, const CatParams<N>& p, int64_t table_size)
+      : out_(static_cast<T*>(out)), p_(p), table_size_(table_size) {}
+
+ private:
+  T* out_;
+  CatParams<N> p_;
+  int64_t table_size_;
+  sycl::local_accessor<CatInputMeta, 1> slm_meta_;
+  sycl::local_accessor<uint8_t, 1> slm_table_;
+};
+
+inline int64_t cat_addr(const Tensor& t) {
+  return static_cast<int64_t>(reinterpret_cast<uintptr_t>(t.const_data_ptr()));
+}
+
+// Host-side description of a cat for the kernels above: the non-empty inputs,
+// the output dims in memory order after merging (dim 0 innermost), each
+// input's strides and range along the cat dim. After cat_to_units, dim-0
+// sizes and offsets and all strides are in units of u bytes.
+struct CatLayout {
+  c10::SmallVector<const Tensor*, kCatMaxInputs> in;
+  int nin = 0;
+  int nd = 0;
+  int cat_dim = -1;
+  int64_t size[kCatMaxDims];
+  int64_t stride[kCatMaxInputs][kCatMaxDims];
+  int64_t begin[kCatMaxInputs + 1] = {0};
+  int64_t u = 0;
+  int64_t out_addr = 0;
+  int64_t total_bytes = 0;
+};
+
+// Output store of each work-item of CatGatherFunctor.
+struct CatVector {
+  int64_t bytes;
+  int64_t units; // V
+  bool wrap; // may run across output rows
+};
+
+// Collects the non-empty inputs. False if the output or an input cannot use
+// the kernels.
+bool cat_collect_inputs(
+    const MaterializedITensorListRef& inputs,
+    const Tensor& out,
+    CatLayout& layout) {
+  const int64_t ndim = out.dim();
+  if (ndim == 0 || !out.is_non_overlapping_and_dense() ||
+      !canUse32BitIndexMath(out)) {
+    return false;
+  }
+  for (const Tensor& t : inputs) {
+    if (t.numel() == 0) {
+      continue;
+    }
+    if (layout.in.size() == kCatMaxInputs || t.dim() != ndim ||
+        !canUse32BitIndexMath(t)) {
+      return false;
+    }
+    layout.in.push_back(&t);
+  }
+  layout.nin = layout.in.size();
+  layout.out_addr = cat_addr(out);
+  layout.total_bytes = out.numel() * out.element_size();
+  return layout.nin > 0;
+}
+
+// Walks the output dims innermost first and merges neighbours that are not
+// the cat dim and are contiguous with each other in every input. False if
+// more than kCatMaxDims dims remain.
+bool cat_merge_dims(const Tensor& out, int64_t dim, CatLayout& layout) {
+  const auto& in = layout.in;
+  auto& size = layout.size;
+  auto& stride = layout.stride;
+  int& nd = layout.nd;
+  c10::SmallVector<int64_t, kCatMaxDims> order(out.dim());
+  std::iota(order.begin(), order.end(), 0);
+  std::stable_sort(order.begin(), order.end(), [&](int64_t a, int64_t b) {
+    return out.stride(a) < out.stride(b);
+  });
+  int64_t prev = -1;
+  for (const int64_t d : order) {
+    const int64_t n = out.size(d);
+    if (n == 1) {
+      continue;
+    }
+    bool merge = nd > 0 && d != dim && prev != dim;
+    for (int k = 0; k < layout.nin && merge; ++k) {
+      merge = in[k]->stride(d) == stride[k][nd - 1] * size[nd - 1];
+    }
+    prev = d;
+    if (merge) {
+      size[nd - 1] *= n;
+      continue;
+    }
+    if (nd == kCatMaxDims) {
+      return false;
+    }
+    layout.cat_dim = d == dim ? nd : layout.cat_dim;
+    size[nd] = n;
+    for (int k = 0; k < layout.nin; ++k) {
+      stride[k][nd] = in[k]->stride(d);
+    }
+    ++nd;
+  }
+  if (layout.cat_dim < 0) {
+    return false;
+  }
+  for (int k = 0; k < layout.nin; ++k) {
+    layout.begin[k + 1] = layout.begin[k] + in[k]->size(dim);
+  }
+  return true;
+}
+
+// Unit: the largest power of two (<= 16 bytes) dividing every byte offset
+// the kernel forms, so it moves U-byte units instead of elements. Needs
+// contiguous inner dims. Rescales the layout to units.
+void cat_to_units(const Tensor& out, CatLayout& layout) {
+  const int nin = layout.nin;
+  const int nd = layout.nd;
+  const bool cat0 = layout.cat_dim == 0;
+  const int64_t es = out.element_size();
+  bool inner_contiguous = true;
+  int64_t bits = 16 | layout.out_addr | layout.size[0] * es;
+  for (int k = 0; k < nin; ++k) {
+    inner_contiguous &= layout.stride[k][0] == 1;
+    bits |= cat_addr(*layout.in[k]) | (cat0 ? layout.begin[k] * es : 0);
+    for (int d = 1; d < nd; ++d) {
+      bits |= layout.stride[k][d] * es;
+    }
+  }
+  layout.u = inner_contiguous ? bits & -bits : es;
+  const int64_t q = layout.u / es;
+  layout.size[0] /= q;
+  for (int k = 0; k <= nin; ++k) {
+    layout.begin[k] /= cat0 ? q : 1;
+  }
+  for (int k = 0; k < nin; ++k) {
+    for (int d = 1; d < nd; ++d) {
+      layout.stride[k][d] /= q;
+    }
+  }
+}
+
+// Store width: 16 or 8 bytes that end on output row boundaries, else 16
+// bytes running across rows. Up to 4 inputs with units of at least 8 bytes
+// store one unit, so that every vector is a single aligned load.
+CatVector cat_pick_vector(const CatLayout& layout) {
+  const int64_t u = layout.u;
+  const int64_t out_addr = layout.out_addr;
+  int64_t vec_bytes = u;
+  bool wrap = false;
+  if (u < 16 && !(layout.nin <= 4 && u >= 8)) {
+    for (const int64_t b : {16, 8}) {
+      if (layout.size[0] * u % b == 0 && out_addr % b == 0) {
+        vec_bytes = std::max(b, u);
+        break;
+      }
+    }
+    if (vec_bytes < 8 && layout.total_bytes % 16 == 0 && out_addr % 16 == 0) {
+      vec_bytes = 16;
+      wrap = true;
+    }
+  }
+  return {vec_bytes, vec_bytes / u, wrap};
+}
+
+// Up to 4 inputs: metadata in registers when every vector is one unit (one
+// lookup each) or the output is small. Else 0 (SLM).
+int cat_reg_inputs(const CatLayout& layout, const CatVector& vec) {
+  const bool use_reg = layout.nin <= 4 &&
+      (vec.units == 1 ? layout.u >= 8 : layout.total_bytes < kCatSmallBytes);
+  return !use_reg ? 0 : (vec.units == 1 && layout.nin <= 2) ? 2 : 4;
+}
+
+template <int N>
+void cat_fill_params(
+    CatParams<N>& p,
+    const CatLayout& layout,
+    const CatVector& vec) {
+  p.ndim = layout.nd;
+  p.cat_dim = layout.cat_dim;
+  p.ninputs = layout.nin;
+  p.nvec = static_cast<uint32_t>(layout.total_bytes / vec.bytes);
+  for (int d = 0; d < layout.nd; ++d) {
+    p.size[d] = at::detail::IntDivider<uint32_t>(layout.size[d]);
+  }
+  for (int k = 0; k < layout.nin; ++k) {
+    CatInputMeta& m = p.in[k];
+    m = CatInputMeta{};
+    m.ptr = static_cast<uint64_t>(cat_addr(*layout.in[k]));
+    m.begin = static_cast<int32_t>(layout.begin[k]);
+    m.end = static_cast<int32_t>(layout.begin[k + 1]);
+    m.vec_ok = !vec.wrap && layout.stride[k][0] == 1 && m.ptr % vec.bytes == 0;
+    for (int d = 0; d < layout.nd; ++d) {
+      m.stride[d] = static_cast<int32_t>(layout.stride[k][d]);
+      m.vec_ok &= d == 0 || layout.stride[k][d] % vec.units == 0;
+    }
+  }
+}
+
+template <int U, int V, bool kWrap, int kRegInputs>
+void launch_cat_gather(
+    const Tensor& out,
+    const CatLayout& layout,
+    const CatVector& vec,
+    int64_t table_size) {
+  using Kernel = CatGatherFunctor<U, V, kWrap, kRegInputs>;
+  // Zeroed: the register blend in meta() reads all N entries.
+  CatParams<Kernel::N> p{};
+  cat_fill_params(p, layout, vec);
+  const int64_t per_group = kCatGroupSize * (kRegInputs ? 1 : kCatChunk);
+  const int64_t groups = ceil_div<int64_t>(p.nvec, per_group);
+  Kernel kfn(out.mutable_data_ptr(), p, table_size);
+  sycl_kernel_submit(
+      sycl::range<1>(groups * kCatGroupSize),
+      sycl::range<1>(kCatGroupSize),
+      getCurrentSYCLQueue(),
+      kfn);
+}
+
+// Register metadata for up to 2 or 4 inputs (reg_inputs), else SLM. Vectors
+// may run across rows (wrap) only if they are 16 bytes of several units.
+template <int U, int V>
+void launch_cat(
+    const Tensor& out,
+    const CatLayout& layout,
+    const CatVector& vec,
+    int reg_inputs,
+    int64_t table_size) {
+  if constexpr (V == 1 && U >= 8) {
+    if (reg_inputs) {
+      return reg_inputs == 2
+          ? launch_cat_gather<U, V, false, 2>(out, layout, vec, 0)
+          : launch_cat_gather<U, V, false, 4>(out, layout, vec, 0);
+    }
+  }
+  // Rows wrap only for units below 8 bytes, and V > 1 with 8-byte units
+  // means more than 4 inputs, which use SLM.
+  if constexpr (V > 1 && U < 8 && U * V == 16) {
+    if (vec.wrap) {
+      return reg_inputs
+          ? launch_cat_gather<U, V, true, 4>(out, layout, vec, 0)
+          : launch_cat_gather<U, V, true, 0>(out, layout, vec, table_size);
+    }
+  }
+  if constexpr (V > 1 && U < 8) {
+    if (reg_inputs) {
+      return launch_cat_gather<U, V, false, 4>(out, layout, vec, 0);
+    }
+  }
+  launch_cat_gather<U, V, false, 0>(out, layout, vec, table_size);
+}
+
+// Launches CatGatherFunctor for the layout's unit and the vector width.
+// False if no kernel is instantiated for them.
+bool cat_dispatch_gather(
+    const Tensor& out,
+    const CatLayout& layout,
+    const CatVector& vec) {
+  const int reg_inputs = cat_reg_inputs(layout, vec);
+  const int64_t cat_size = layout.size[layout.cat_dim];
+  const int64_t table_size = cat_size <= kCatMaxTable ? cat_size : 0;
+#define CAT_CASE(U, V)                                          \
+  case U * 32 + V:                                              \
+    launch_cat<U, V>(out, layout, vec, reg_inputs, table_size); \
+    return true;
+  switch (layout.u * 32 + vec.units) {
+    CAT_CASE(1, 1)
+    CAT_CASE(1, 8)
+    CAT_CASE(1, 16)
+    CAT_CASE(2, 1)
+    CAT_CASE(2, 4)
+    CAT_CASE(2, 8)
+    CAT_CASE(4, 1)
+    CAT_CASE(4, 2)
+    CAT_CASE(4, 4)
+    CAT_CASE(8, 1)
+    CAT_CASE(8, 2)
+    CAT_CASE(16, 1)
+  }
+#undef CAT_CASE
+  return false;
+}
+
+// Cat of same-dtype `inputs` along `dim` into the dense `out` with
+// CatGatherFunctor. Returns false if unsupported.
+bool cat_output_driven(
+    const MaterializedITensorListRef& inputs,
+    int64_t dim,
+    const Tensor& out) {
+  CatLayout layout;
+  if (!cat_collect_inputs(inputs, out, layout) ||
+      !cat_merge_dims(out, dim, layout)) {
+    return false;
+  }
+  cat_to_units(out, layout);
+  return cat_dispatch_gather(out, layout, cat_pick_vector(layout));
+}
+
+} // namespace
+
 void cat_out_kernel(
     const ITensorListRef& tensors,
     int64_t dim,
@@ -727,6 +1275,12 @@ void cat_out_kernel(
   }
 
   auto materialized = tensors.materialize();
+
+  if (all_same_dtype &&
+      materialized[valid].get().scalar_type() == result.scalar_type() &&
+      cat_output_driven(materialized, dim, result)) {
+    return;
+  }
 
   const bool all32BitIndexable = std::all_of(
       materialized.begin(), materialized.end(), [](const Tensor& t) {
