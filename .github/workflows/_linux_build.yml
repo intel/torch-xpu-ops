@@ -155,6 +155,9 @@ jobs:
           persist-credentials: false
       - name: Prepare Pytorch Source
         run: |
+          # The reused tree is chowned to 1000 by cleanup while this container runs
+          # as root; actions/checkout only trusts it for its own steps.
+          git config --global --add safe.directory '*'
           if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
             TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
             TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"

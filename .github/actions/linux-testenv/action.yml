@@ -104,6 +104,9 @@ runs:
       shell: bash -xe {0}
       working-directory: pytorch
       run: |
+        # actions/checkout trusts the repo only for its own steps; later git
+        # calls run as a different user in containers/baremetal.
+        git config --global --add safe.directory '*'
         # the source tree must match the installed wheel
         test "$(git rev-parse HEAD)" = "${TORCH_COMMIT_ID}"
         # Extra PyTorch cherry-picks via apply_torch_pr.py are disabled.
