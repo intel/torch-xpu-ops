@@ -992,6 +992,62 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
 
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    @parametrize("dtype", [torch.float, torch.bfloat16])
+    def test_all_to_all_equal_split(self, dtype):
+        device = self.rank_to_GPU[self.rank][0]
+        W = self.world_size
+        in_tensors = [
+            torch.full((4, 3), self.rank * W + i, dtype=dtype, device=f"xpu:{device}")
+            for i in range(W)
+        ]
+        out_tensors = [torch.empty_like(in_tensors[0]) for _ in range(W)]
+        dist.all_to_all(out_tensors, in_tensors)
+        for i, t in enumerate(out_tensors):
+            self.assertEqual(t, torch.full_like(t, i * W + self.rank))
+
+        work = dist.all_to_all(out_tensors, in_tensors, async_op=True)
+        work.wait()
+        for i, t in enumerate(out_tensors):
+            self.assertEqual(t, torch.full_like(t, i * W + self.rank))
+
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    def test_all_to_all_graph_replay(self):
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        W = self.world_size
+
+        in_tensors = [torch.zeros(1024, device=f"xpu:{device}") for _ in range(W)]
+        out_tensors = [torch.zeros(1024, device=f"xpu:{device}") for _ in range(W)]
+
+        # warmup
+        dist.all_to_all(out_tensors, in_tensors, group=self.pg)
+        torch.xpu.synchronize()
+
+        # capture
+        graph = torch.xpu.XPUGraph()
+        with torch.xpu.graph(graph):
+            dist.all_to_all(out_tensors, in_tensors, group=self.pg)
+
+        # multiple replays with different per-rank values
+        for trial in range(5):
+            for i, t in enumerate(in_tensors):
+                t.fill_(float((self.rank * W + i) * (trial + 1)))
+            for t in out_tensors:
+                t.fill_(-1.0)
+            torch.xpu.synchronize()
+
+            graph.replay()
+            torch.xpu.synchronize()
+
+            for i, t in enumerate(out_tensors):
+                expected = float((i * W + self.rank) * (trial + 1))
+                self.assertEqual(t, torch.full_like(t, expected))
+
+        graph.reset()
+
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
     def test_all_to_all_single_none(self):
         device = self.rank_to_GPU[self.rank][0]
 
