@@ -3,7 +3,7 @@ name: Setup Test Environment
 inputs:
   pytorch:
     type: string
-    default: 'nightly'
+    default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   pytorch_artifact_run_id:
     type: string
@@ -45,7 +45,7 @@ runs:
         gcc -v && g++ -v
         uname -a
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
-        sudo -n rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
+        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python
       uses: ./.github/actions/setup-python
@@ -84,7 +84,7 @@ runs:
         echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
-      if: ${{ inputs.pytorch_artifact_run_id == '' && ! endsWith(inputs.pytorch, '_wheel') && ! contains(inputs.pytorch, '+xpu') }}
+      if: ${{ inputs.pytorch_artifact_run_id == '' && ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
@@ -108,8 +108,6 @@ runs:
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-        elif [[ "${{ inputs.pytorch }}" == *"+xpu" ]];then
-          uv pip install --pre "torch==${{ inputs.pytorch }}" torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           uv pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
@@ -149,8 +147,10 @@ runs:
           && "${{ inputs.torch_xpu_ops }}" == "${{ github.sha }}" ]];then
           SOURCE_ARG=(--source "${{ github.workspace }}/torch-xpu-ops")
         fi
-        if [[ "${{ inputs.pytorch }}" != *"_wheel" \
-          && "${{ inputs.pytorch }}" != *"+xpu" ]];then
+        # A wheel built in this run records the exact commit it compiled
+        # (torch.version.xpu_ops_commit); use it for any ref so tests
+        # cannot drift. Published wheels only consult it for `pinned`.
+        if [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
           SOURCE_ARG+=(--built-wheel)
         fi
         python torch-xpu-ops/.github/scripts/checkout_torch_xpu_ops.py \
@@ -185,6 +185,9 @@ runs:
           git clone https://github.com/pytorch/benchmark benchmark
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
+          # newer PyTorch drops torch.jit.interface; fall back to a no-op decorator
+          grep -rlE '^\s*@torch\.jit\.interface\s*$' torchbenchmark | xargs -r sed -i -E \
+            's/^(\s*)@torch\.jit\.interface\s*$/\1@getattr(torch.jit, "interface", lambda c: c)/'
           # torchbench carries its own transformers/timm pins, drop them for the pytorch ones
           sed -i -E '/^[[:space:]]*(pynvml|transformers|timm)([[:space:]]*[<>=!~;[].*)?[[:space:]]*$/d' requirements.txt
           # Work around legacy deps (e.g. visdom) that still import
