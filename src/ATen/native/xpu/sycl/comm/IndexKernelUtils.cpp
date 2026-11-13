@@ -10,6 +10,7 @@
 
 #include <ATen/native/xpu/sycl/comm/IndexKernelUtils.h>
 #include <ATen/xpu/XPUContext.h>
+#include <comm/Macros.h>
 
 namespace at::native::xpu {
 
@@ -31,8 +32,8 @@ void vectorized_gather_kernel_impl(
   if (allow_neg_indices) {
     ind = (ind < 0) ? ind + ind_dim_size : ind;
   }
-  SYCL_KERNEL_ASSERT(
-      ind >= 0 && ind < ind_dim_size &&
+  XPU_KERNEL_ASSERT_WORKAROUND(
+      ind >= 0 && ind < ind_dim_size,
       "vectorized gather kernel index out of bounds");
   int32_t off =
       (item.get_local_range(1) * item.get_group(0) + item.get_local_id(1)) *
