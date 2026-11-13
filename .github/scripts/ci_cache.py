@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Point pip/uv/HF/torch at the persistent ~/.cache, export a merged CA bundle, keep the cache within budget.
+"""Point pip/uv/HF/torch at the persistent ~/.cache and keep the cache within budget.
 
 Runs once per job from setup-python. Best effort: problems are reported as warnings, never failures.
 Budget (env): CI_CACHE_MAX_GB (40% of disk), CI_CACHE_MIN_FREE_GB (15% of disk), CI_CACHE_MAX_AGE_DAYS (14).
@@ -10,7 +10,6 @@ from __future__ import annotations
 import fcntl
 import os
 import shutil
-import ssl
 import subprocess
 import sys
 import time
@@ -22,7 +21,6 @@ DAY = 86_400
 GIB = 1 << 30
 NOW = time.time()
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-SYSTEM_CA = ("/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt")
 
 
 def info(msg: str) -> None:
@@ -81,22 +79,6 @@ def setup_env() -> None:
         HF_HOME=os.environ.get("HF_HOME") or CACHE / "huggingface",
         TORCH_HOME=os.environ.get("TORCH_HOME") or CACHE / "torch",
     )
-
-
-def setup_ca() -> None:
-    """System store (corporate/proxy CAs) + latest certifi (Mozilla roots); requests alone only reads certifi."""
-    if shutil.which("uv") and os.environ.get("VIRTUAL_ENV"):
-        subprocess.run(["uv", "pip", "install", "-q", "-U", "certifi"])
-    certifi = subprocess.run([sys.executable, "-c", "import certifi; print(certifi.where())"],
-                             capture_output=True, text=True).stdout.strip()
-    candidates = (ssl.get_default_verify_paths().cafile, *SYSTEM_CA, certifi)
-    sources = dict.fromkeys(Path(p).resolve() for p in candidates if p and Path(p).is_file())
-    if not sources:
-        warn("no CA bundle found, keeping defaults")
-        return
-    bundle = Path(os.environ.get("RUNNER_TEMP") or "/tmp") / "ci-ca-bundle.pem"
-    bundle.write_text("\n".join(p.read_text() for p in sources))
-    export(SSL_CERT_FILE=bundle, REQUESTS_CA_BUNDLE=bundle)
 
 
 # ── prune ────────────────────────────────────────────────────────────────────
@@ -210,7 +192,7 @@ def prune() -> None:
 
 
 def main() -> int:
-    for step in (setup_env, setup_ca, prune):
+    for step in (setup_env, prune):
         try:
             step()
         except Exception as exc:  # a cache problem must never fail the job
