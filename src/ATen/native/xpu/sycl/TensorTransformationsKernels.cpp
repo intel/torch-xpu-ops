@@ -166,6 +166,8 @@ void flip_kernel(TensorIterator& iter, bool quantized) {
 
 namespace {
 
+// Shifted copy, out[c] = in[c + shift]: roll_kernel uses it with shifts taken
+// mod size; constant_pad_nd reuses it as well, so it is not named after roll.
 constexpr int kShiftedCopyMaxDims = 6;
 constexpr int kShiftedCopyGroupSize = 256;
 
