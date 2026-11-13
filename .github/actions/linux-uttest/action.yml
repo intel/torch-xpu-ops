@@ -110,7 +110,8 @@ runs:
         # the profiler tables the cases print for manual check
         export PYTEST_ADDOPTS="-v --timeout 3600 --timeout_method=thread"
         # RN50 Test (runs rn50.py, then checks its kernel events, runtime op time and .pt artifact)
-        # the xpu_profiling_ prefix is what ut_results.py uses to group these reports
+        # the xpu_profiling_ prefix is what ut_results.py uses to group these reports;
+        # it also fails the check when any --junitxml report listed here is missing
         python -m pytest -s -v \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_rn50.xml \
           test/profiling/test_rn50_profiling.py | \
@@ -136,7 +137,7 @@ runs:
           tee ${UT_LOG_DIR}/test_profiler_use_cases.log
 
         # llama case for calls number test
-        uv pip install transformers
+        uv pip install "transformers>=5.19"
         python -m pytest -s -v \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_llama.xml \
           test/profiling/test_llama_profiling.py | \
