@@ -13,7 +13,6 @@
 # (512, 768) with both the SYCL path (USE_SYCL_SPECTRAL=1) and the XPU MKL
 # path (USE_SYCL_SPECTRAL unset).
 
-import os
 from itertools import product
 from unittest import mock
 
@@ -52,10 +51,9 @@ class TestFftC2CSyclKernel(TestCase):
             torch.cdouble: tol(1e-7, 1e-10),
         }
     )
-    @mock.patch.dict("os.environ", {}, clear=False)
+    @mock.patch.dict("os.environ", {"USE_SYCL_SPECTRAL": "0"})
     def test_fft2_mkl_path(self, device, dtype, op):
-        """2D complex FFT/IFFT through the MKL path (USE_SYCL_SPECTRAL unset)."""
-        os.environ.pop("USE_SYCL_SPECTRAL", None)
+        """2D complex FFT/IFFT through the MKL CPU or GPU path (depending on USE_ONEMKL_XPU)."""
         self._run_fft2(device, dtype, op)
 
     def _run_fft2(self, device, dtype, op):
