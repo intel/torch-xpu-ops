@@ -123,15 +123,28 @@ jobs:
           echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
           echo "USE_DPCLANG=yes" >> $GITHUB_ENV
           echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
-      - name: Prepare Pytorch Source
+      - name: Resolve Pytorch source
+        id: pytorch
         run: |
+          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          PYTORCH_COMMIT="${{ inputs.pytorch }}"
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
-          else
-            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-            PYTORCH_COMMIT="${{ inputs.pytorch }}"
           fi
+          PYTORCH_REPO="${PYTORCH_REPO#https://github.com/}"
+          echo "repo=${PYTORCH_REPO%.git}" >> "${GITHUB_OUTPUT}"
+          echo "ref=${PYTORCH_COMMIT}" >> "${GITHUB_OUTPUT}"
+      # the build workspace persists, so checkout only fetches new commits and keeps submodules
+      - name: Checkout Pytorch
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.pytorch.outputs.repo }}
+          ref: ${{ steps.pytorch.outputs.ref }}
+          path: pytorch
+          persist-credentials: false
+      - name: Prepare Pytorch Source
+        run: |
           if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
             TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
             TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
@@ -141,8 +154,7 @@ jobs:
           fi
           python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/prepare_pytorch.py \
             --workspace="${{ github.workspace }}" \
-            --pytorch-repo="${PYTORCH_REPO}" \
-            --pytorch-commit="${PYTORCH_COMMIT}" \
+            --use-existing \
             --torch-xpu-ops-repo="${TORCH_XPU_OPS_REPO}" \
             --torch-xpu-ops-commit="${TORCH_XPU_OPS_COMMIT}" \
             --onednn-commit='${{ inputs.onednn }}'
@@ -165,15 +177,30 @@ jobs:
             echo "Build pytorch got failed"
             exit 1
           fi
+      - name: Resolve Torchvision and Torchaudio pins
+        id: pins
+        run: |
+          echo "vision=$(cat pytorch/.github/ci_commit_pins/vision.txt)" >> "${GITHUB_OUTPUT}"
+          echo "audio=$(cat pytorch/.github/ci_commit_pins/audio.txt)" >> "${GITHUB_OUTPUT}"
+      - name: Checkout Torchvision
+        uses: actions/checkout@v7
+        with:
+          repository: pytorch/vision
+          ref: ${{ steps.pins.outputs.vision }}
+          path: pytorch/xpu-vision
+          persist-credentials: false
+      - name: Checkout Torchaudio
+        uses: actions/checkout@v7
+        with:
+          repository: pytorch/audio
+          ref: ${{ steps.pins.outputs.audio }}
+          path: pytorch/xpu-audio
+          persist-credentials: false
       - name: Build Torchvision and Torchaudio
         run: |
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
-          cd ./pytorch
-          TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
-          TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
-          git clone --single-branch -b main https://github.com/pytorch/vision.git xpu-vision
-          cd xpu-vision && git checkout ${TORCHVISION_COMMIT_ID}
+          cd ./pytorch/xpu-vision
           python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_vision_${TRITON_COMMIT_ID}.log
           if [ $(ls dist/ |grep -c "torchvision-.*.whl") -eq 0 ];then
             echo "Build torchvision got failed"
@@ -181,8 +208,7 @@ jobs:
           fi
           pip install dist/*.whl
           cp dist/*.whl ${{ github.workspace }}
-          git clone --single-branch -b main https://github.com/pytorch/audio.git xpu-audio
-          cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT_ID}
+          cd ../xpu-audio
           python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_audio_${TRITON_COMMIT_ID}.log
           if [ $(ls dist/ |grep -c "torchaudio-.*.whl") -eq 0 ];then
             echo "Build torchaudio got failed"

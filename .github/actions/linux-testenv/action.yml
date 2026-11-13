@@ -67,7 +67,8 @@ runs:
       uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
-    - name: Prepare Stock Pytorch
+    - name: Install Pytorch
+      id: torch
       shell: bash -xe {0}
       run: |
         # install pytorch
@@ -82,19 +83,28 @@ runs:
           uv pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+        PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-        else
-          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
         fi
-        git clone ${PYTORCH_REPO} pytorch
-        cd pytorch
-        git checkout ${TORCH_COMMIT_ID}
-        # apply extra PRs for stock pytorch
+        PYTORCH_REPO="${PYTORCH_REPO#https://github.com/}"
+        echo "repo=${PYTORCH_REPO%.git}" >> "${GITHUB_OUTPUT}"
+        echo "commit=${TORCH_COMMIT_ID}" >> "${GITHUB_OUTPUT}"
+        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> "${GITHUB_ENV}"
+    - name: Checkout Pytorch
+      uses: actions/checkout@v7
+      with:
+        repository: ${{ steps.torch.outputs.repo }}
+        ref: ${{ steps.torch.outputs.commit }}
+        path: pytorch
+        persist-credentials: false
+    - name: Apply extra PRs to Pytorch
+      shell: bash -xe {0}
+      working-directory: pytorch
+      run: |
         uv pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
-        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
@@ -120,6 +130,35 @@ runs:
           --repo "${TORCH_XPU_OPS_REPO}" \
           --ref "${TORCH_XPU_OPS_COMMIT}" \
           --prefer-wheel "${SOURCE_ARG[@]}"
+    - name: Resolve Torchbench pin
+      if: ${{ contains(inputs.suite, 'torchbench') }}
+      id: torchbench
+      shell: bash -xe {0}
+      run: echo "commit=$(cat pytorch/.ci/docker/ci_commit_pins/torchbench.txt)" >> "${GITHUB_OUTPUT}"
+    - name: Checkout Torchbench
+      if: ${{ contains(inputs.suite, 'torchbench') }}
+      uses: actions/checkout@v7
+      with:
+        repository: pytorch/benchmark
+        ref: ${{ steps.torchbench.outputs.commit }}
+        path: benchmark
+        persist-credentials: false
+    - name: Checkout PT2E accuracy tools
+      if: ${{ contains(inputs.suite, 'pt2e') && !contains(inputs.suite, 'torchbench') }}
+      uses: actions/checkout@v7
+      with:
+        repository: chuanqi129/inductor-tools
+        ref: main
+        path: pt2e-accuracy
+        persist-credentials: false
+    - name: Checkout PT2E benchmark
+      if: ${{ contains(inputs.suite, 'pt2e') && !contains(inputs.suite, 'torchbench') }}
+      uses: actions/checkout@v7
+      with:
+        repository: zxd1997066/benchmark
+        ref: yifeng/pt2e_xpu
+        path: pt2e-performance
+        persist-credentials: false
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
@@ -141,12 +180,7 @@ runs:
           echo "Pinned by pytorch: transformers/timm ${PINNED_VERSIONS}"
         fi
         if [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
-          cd ../
-          rm -rf ./benchmark
-          git clone https://github.com/pytorch/benchmark benchmark
-          cd benchmark
-          git checkout ${TORCHBENCH_COMMIT_ID}
+          cd ../benchmark
           # newer PyTorch drops torch.jit.interface; fall back to a no-op decorator
           grep -rlE '^\s*@torch\.jit\.interface\s*$' torchbenchmark | xargs -r sed -i -E \
             's/^(\s*)@torch\.jit\.interface\s*$/\1@getattr(torch.jit, "interface", lambda c: c)/'
@@ -176,12 +210,7 @@ runs:
           uv pip install git+https://github.com/nocoding03/gym@fix-np
           cd ../pytorch
         elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
-          cd ../
-          rm -rf ./pt2e-performance ./pt2e-accuracy
-          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
-          cd pt2e-performance
-          TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
+          cd ../pt2e-performance
           sed -i 's/^ *pynvml.*//' requirements.txt
           uv pip install -r requirements.txt
           # python install.py --continue_on_fail

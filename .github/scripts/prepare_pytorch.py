@@ -49,6 +49,11 @@ def main():
         default=os.environ.get("PYTORCH_COMMIT", "main"),
     )
     parser.add_argument(
+        "--use-existing",
+        action="store_true",
+        help="<workspace>/pytorch is already checked out (e.g. by actions/checkout), skip the clone",
+    )
+    parser.add_argument(
         "--torch-xpu-ops-repo",
         default=os.environ.get(
             "TORCH_XPU_OPS_REPO", "https://github.com/intel/torch-xpu-ops.git"
@@ -70,11 +75,13 @@ def main():
     github_event = os.environ.get("GITHUB_EVENT_NAME", "")
 
     # Clone PyTorch
-    if pytorch_dir.exists():
-        shutil.rmtree(pytorch_dir, onerror=force_remove_readonly)
-    git("clone", args.pytorch_repo, str(pytorch_dir))
+    if not args.use_existing:
+        if pytorch_dir.exists():
+            shutil.rmtree(pytorch_dir, onerror=force_remove_readonly)
+        git("clone", args.pytorch_repo, str(pytorch_dir))
     os.chdir(pytorch_dir)
-    git("checkout", args.pytorch_commit)
+    if not args.use_existing:
+        git("checkout", args.pytorch_commit)
     git("remote", "-v")
     git("branch")
     git("show", "-s")
