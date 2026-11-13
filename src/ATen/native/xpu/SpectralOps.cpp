@@ -48,9 +48,14 @@ bool to_bool(std::string str) {
 }
 
 bool use_sycl_spectral() {
+#ifndef USE_ONEMKL_XPU
+  constexpr bool default_value = true;
+#else
+  constexpr bool default_value = false;
+#endif
   const bool enabled = [] {
     auto env = c10::utils::get_env("USE_SYCL_SPECTRAL");
-    return env.has_value() && to_bool(*env);
+    return env.has_value() ? to_bool(*env) : default_value;
   }();
   return enabled;
 }
