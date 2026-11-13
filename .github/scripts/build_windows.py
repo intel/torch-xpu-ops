@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from zipfile import ZipFile
 
+from checkout_torch_xpu_ops import xpu_ops_commit_from_version
+
 
 def main():
     workspace = Path(os.environ["WORKSPACE"])
@@ -111,12 +113,12 @@ def main():
         raise RuntimeError(f"No PyTorch wheel found in {dist_dir}")
     for wheel in wheels:
         with ZipFile(wheel) as archive:
-            try:
-                built_xpu_ops = archive.read("torch/xpu.txt").decode().strip()
-            except KeyError:
-                # Compatibility with PyTorch versions before pytorch/pytorch#202608.
-                print(f"{wheel.name}: no XPU SHA record; skipping comparison", flush=True)
-                continue
+            version_source = archive.read("torch/version.py").decode()
+        built_xpu_ops = xpu_ops_commit_from_version(version_source)
+        if not built_xpu_ops:
+            # Compatibility with PyTorch versions before pytorch/pytorch#202608.
+            print(f"Warning: {wheel.name} has no xpu_ops_commit; skipping comparison", flush=True)
+            continue
         if not re.fullmatch(r"[0-9a-f]{40}", expected_xpu_ops):
             print(f"Source pin {expected_xpu_ops} is not a SHA; skipping comparison", flush=True)
             continue

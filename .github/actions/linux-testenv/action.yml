@@ -110,8 +110,8 @@ runs:
           SOURCE_ARG=(--source "${{ github.workspace }}/torch-xpu-ops")
         fi
         # A wheel built in this run records the exact commit it compiled
-        # (torch/xpu.txt); use it for any ref so tests cannot drift from it.
-        # Published wheels only consult it for `pinned`.
+        # (torch.version.xpu_ops_commit); use it for any ref so tests
+        # cannot drift. Published wheels only consult it for `pinned`.
         if [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
           SOURCE_ARG+=(--built-wheel)
         fi
