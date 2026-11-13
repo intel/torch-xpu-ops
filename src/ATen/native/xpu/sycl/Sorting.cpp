@@ -170,6 +170,10 @@ void sort_stable_kernel(
   }
 }
 
+// Size of shared memory (in number of ints) reserved as scratch space for
+// radixSelect.
+constexpr int RADIX_SELECT_SMEM_SIZE = 32;
+
 template <typename scalar_t, typename index_t, int Dim>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void gather_median_kernel_func(
@@ -186,7 +190,9 @@ void gather_median_kernel_func(
   auto item = syclext::this_work_item::get_nd_item<1>();
 
   int* smem = static_cast<int*>(syclexp::get_work_group_scratch_memory());
-  index_t* num_nan = (index_t*)(smem + 32);
+  // The first RADIX_SELECT_SMEM_SIZE ints of smem are reserved for radixSelect.
+  // The remaining space in SLM holds an index_t counter.
+  index_t* num_nan = reinterpret_cast<index_t*>(smem + RADIX_SELECT_SMEM_SIZE);
 
   index_t slice = item.get_group_linear_id();
 
@@ -217,7 +223,7 @@ void gather_median_kernel_func(
 
   sycl::group_barrier(item.get_group());
   if (nan_count > 0) {
-    atomicAdd((sycl_local_ptr<index_t>)num_nan, nan_count);
+    atomicAdd(static_cast<sycl_local_ptr<index_t>>(num_nan), nan_count);
   }
   sycl::group_barrier(item.get_group());
 
@@ -243,16 +249,33 @@ void gather_median_kernel_func(
       &median,
       item);
 
-  valuesSliceStart[0] = median;
+  // Find the first index of the median value; atomicMin makes the choice
+  // among duplicates deterministic.
+  // Reuses the index_t slot at smem + RADIX_SELECT_SMEM_SIZE (previously used
+  // for num_nan, which is no longer needed after radixSelect).
+  index_t* min_index_ptr =
+      reinterpret_cast<index_t*>(smem + RADIX_SELECT_SMEM_SIZE);
+  if (item.get_local_id(0) == 0) {
+    min_index_ptr[0] = inputSliceSize;
+  }
+  sycl::group_barrier(item.get_group());
 
-  // Find the index of the median value in the slice
   for (index_t i = item.get_local_id(0); i < inputSliceSize;
        i += item.get_local_range(0)) {
-    scalar_t val = inputSliceStart[i * inputWithinSliceStride];
-    if (val == median || (at::_isnan(val) && at::_isnan(median))) {
-      indicesSliceStart[0] = i;
+    if (i >= min_index_ptr[0]) {
       break;
     }
+    scalar_t val = inputSliceStart[i * inputWithinSliceStride];
+    if (val == median || (at::_isnan(val) && at::_isnan(median))) {
+      atomicMin(static_cast<sycl_local_ptr<index_t>>(min_index_ptr), i);
+      break;
+    }
+  }
+  sycl::group_barrier(item.get_group());
+
+  if (item.get_local_id(0) == 0) {
+    valuesSliceStart[0] = median;
+    indicesSliceStart[0] = static_cast<int64_t>(min_index_ptr[0]);
   }
 }
 
@@ -345,7 +368,7 @@ void gatherMedian(
 
   int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<
       gather_median_kernel_func<scalar_t, index_t, Dim>>();
-  int slm_size = 32 * sizeof(int) + sizeof(index_t);
+  int slm_size = RADIX_SELECT_SMEM_SIZE * sizeof(int) + sizeof(index_t);
   sycl_kernel_submit<gather_median_kernel_func<scalar_t, index_t, Dim>>(
       numInputSlices * local_size,
       local_size,
@@ -382,7 +405,7 @@ void gatherKthValue(
 
   int64_t local_size = at::xpu::getKernelMaxWorkGroupSize<
       gather_kth_value_kernel_func<scalar_t, index_t, Dim>>();
-  int slm_size = 32 * sizeof(int);
+  int slm_size = RADIX_SELECT_SMEM_SIZE * sizeof(int);
   sycl_kernel_submit<gather_kth_value_kernel_func<scalar_t, index_t, Dim>>(
       numInputSlices * local_size,
       local_size,
