@@ -2225,11 +2225,6 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
           shmem_sum_dy_,
           shmem_sum_dy_xmu_,
           v * wg_size_);
-      // The next channel reuses the same work-group memory while the previous
-      // reduction may still be reading it.
-      if (v + 1 < VEC_SIZE) {
-        sycl::group_barrier(item.get_group());
-      }
     }
 
     auto nwg_y = item.get_group_range(0);
@@ -2290,10 +2285,6 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
               shmem_sum_dy_,
               shmem_sum_dy_xmu_,
               v * wg_size_);
-          // Keep the staging reduction from overwriting the previous channel.
-          if (v + 1 < VEC_SIZE) {
-            sycl::group_barrier(item.get_group());
-          }
         }
         if (tid_y == 0) {
           for (int v = 0; v < VEC_SIZE; v++) {
@@ -2405,8 +2396,8 @@ batch_norm_backward_reduce_channels_last_template(
   constexpr int VEC_ALIGNMENT = sizeof(at::Half) * VEC_SIZE;
   const int64_t max_wg_size = at::xpu::getDeviceMaxSubGroupSize() *
       at::xpu::getDeviceEUCountPerXeCore() * 2;
-  // Conservatively budget two float SLM arrays at the maximum requested work-
-  // group size; leave enough local memory for at least two resident groups.
+  // Conservatively reject vec2 if two work-groups' SLM arrays exceed the
+  // device's local-memory capacity; this is not a full occupancy estimate.
   const bool slm_fits =
       4 * max_wg_size * VEC_SIZE * static_cast<int64_t>(sizeof(float)) <=
       syclLocalMemSize();
