@@ -11,14 +11,6 @@ PYTORCH_TEST_DIR = "../../../../test"
 skip_dict = {
     # torch-xpu-ops tests, not upstreamed yet, must be sorted alphabetically
     "complex_tensor/test_complex_tensor_xpu.py": None,
-    "dynamo/test_aot_autograd_cache_xpu.py": (
-        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
-        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
-        "test_cache_hot_load_device_cpu",
-        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
-        "test_cache_lazy_backward_for_compiled_autograd",
-    ),
-    "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_ctx_manager_xpu.py": (
         # Autocast to float64 is CUDA-specific and not supported on XPU.
         # More details in https://github.com/pytorch/pytorch/pull/179141
@@ -26,11 +18,7 @@ skip_dict = {
         "test_cuda_amp_autocast",
     ),
     "dynamo/test_cudagraphs_xpu.py": None,
-    "dynamo/test_deviceguard_xpu.py": None,
-    "dynamo/test_export_xpu.py": None,
-    "dynamo/test_logging_xpu.py": None,
     "dynamo/test_misc_xpu.py": None,
-    "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
@@ -304,6 +292,16 @@ skip_dict = {
     "test_utils_xpu.py": None,
     # upstreamed tests, must be sorted alphabetically
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_aot_autograd_cache.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_compiler_bisector.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_converter.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_cpp_serdes.py": (
+        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
+        "test_non_strict_export_distribution_validation_cpp_serdes",
+    ),
+    f"{PYTORCH_TEST_DIR}/dynamo/test_debug_utils.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_deviceguard.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_export.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
         # Worker crash on BMG; no dedicated tracking issue yet
         "test_torch_size_tensor_index_scalar_constant_dynamic_shapes",
@@ -313,11 +311,10 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_recompiles.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
-    f"{PYTORCH_TEST_DIR}/export/test_converter.py": None,
-    f"{PYTORCH_TEST_DIR}/export/test_cpp_serdes.py": (
-        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
-        "test_non_strict_export_distribution_validation_cpp_serdes",
-    ),
+    f"{PYTORCH_TEST_DIR}/dynamo/test_regional_inductor.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_structured_trace.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_subclasses.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_trace_rules.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_draft_export.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_experimental.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_export_strict.py": None,
