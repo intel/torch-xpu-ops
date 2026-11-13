@@ -26,11 +26,8 @@ skip_dict = {
         "test_cuda_amp_autocast",
     ),
     "dynamo/test_cudagraphs_xpu.py": None,
-    "dynamo/test_deviceguard_xpu.py": None,
-    "dynamo/test_export_xpu.py": None,
     "dynamo/test_logging_xpu.py": None,
     "dynamo/test_misc_xpu.py": None,
-    "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
@@ -304,14 +301,17 @@ skip_dict = {
     "test_utils_xpu.py": None,
     # upstreamed tests, must be sorted alphabetically
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_deviceguard.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
         # Worker crash on BMG; no dedicated tracking issue yet
         "test_torch_size_tensor_index_scalar_constant_dynamic_shapes",
     ),
+    f"{PYTORCH_TEST_DIR}/dynamo/test_export.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_recompiles.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_regional_inductor.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_converter.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_cpp_serdes.py": (
