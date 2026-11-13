@@ -133,8 +133,11 @@ jobs:
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
           fi
           PYTORCH_REPO="${PYTORCH_REPO#https://github.com/}"
-          echo "repo=${PYTORCH_REPO%.git}" >> "${GITHUB_OUTPUT}"
-          echo "ref=${PYTORCH_COMMIT}" >> "${GITHUB_OUTPUT}"
+          PYTORCH_REPO="${PYTORCH_REPO%.git}"
+          # actions/checkout needs a branch, tag or full SHA; this also handles short SHAs
+          PYTORCH_SHA="$(gh api "repos/${PYTORCH_REPO}/commits/${PYTORCH_COMMIT}" --jq .sha)"
+          echo "repo=${PYTORCH_REPO}" >> "${GITHUB_OUTPUT}"
+          echo "ref=${PYTORCH_SHA}" >> "${GITHUB_OUTPUT}"
       # the build workspace persists, so checkout only fetches new commits and keeps submodules
       - name: Checkout Pytorch
         uses: actions/checkout@v7

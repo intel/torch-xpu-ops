@@ -102,6 +102,8 @@ runs:
       shell: bash -xe {0}
       working-directory: pytorch
       run: |
+        # the source tree must match the installed wheel
+        test "$(git rev-parse HEAD)" = "${TORCH_COMMIT_ID}"
         uv pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s

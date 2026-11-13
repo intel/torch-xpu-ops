@@ -104,9 +104,11 @@ def main():
     # Keep CMake on the prepared checkout, including PR merge commits.
     xpu_pin.write_bytes((torch_xpu_ops_sha + "\n").encode())
 
-    # Init submodules
-    git("submodule", "sync")
-    git("submodule", "update", "--init", "--recursive")
+    # Init submodules; --force and clean drop leftovers when the tree is reused across builds
+    git("submodule", "sync", "--recursive")
+    git("submodule", "update", "--init", "--recursive", "--force")
+    git("submodule", "foreach", "--recursive", "git clean -ffdxq")
+    git("submodule", "status", "--recursive")
 
     # Optional oneDNN override
     onednn = args.onednn_commit
