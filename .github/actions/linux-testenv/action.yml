@@ -39,9 +39,6 @@ runs:
       uses: ./.github/actions/setup-python
       with:
         python: ${{ inputs.python }}
-    - name: Prune caches
-      shell: bash -xe {0}
-      run: python ${{ github.action_path }}/../../scripts/ci_cache.py prune
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v7
       with:
@@ -166,15 +163,10 @@ runs:
           uv pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
             models=$(python -c "import yaml; cfg=yaml.safe_load(open('${{ github.workspace }}/torch-xpu-ops/.ci/benchmarks/p0/config.yaml')); print(' '.join(dict.fromkeys(m for mode in ('inference', 'training') for m in (cfg['models']['torchbench'].get(mode) or []))))")
-            install_args=()
+            python install.py ${models}
           else
-            models="${MODEL_ONLY_NAME//,/ }"
-            install_args=(--continue_on_fail)
+            python install.py --continue_on_fail $(echo "${MODEL_ONLY_NAME}" |sed 's/,/ /g')
           fi
-          CI_CACHE="${{ github.action_path }}/../../scripts/ci_cache.py"
-          python "${CI_CACHE}" torchbench restore . ${models}
-          python install.py "${install_args[@]}" ${models}
-          python "${CI_CACHE}" torchbench save . ${models}
           echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
           # for dlrm
           uv pip install pyre-extensions

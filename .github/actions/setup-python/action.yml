@@ -32,7 +32,7 @@ runs:
         uv pip install -U pip wheel "setuptools<81"
     - name: Setup caches and certificates
       shell: bash -xe {0}
-      run: python ${{ github.action_path }}/../../scripts/ci_cache.py setup
+      run: python ${{ github.action_path }}/../../scripts/ci_cache.py
     - name: Setup venv paths
       shell: bash -xe {0}
       run: |
