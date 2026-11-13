@@ -398,6 +398,9 @@ constexpr static inline int max_scalar_size() {
 namespace launch_config {
 constexpr int compact_work_group_size = 128;
 constexpr int compact_sub_group_size = 32;
+
+constexpr int strided_unary_work_group_size = 128;
+constexpr int strided_unary_sub_group_size = 32;
 } // namespace launch_config
 
 template <int vec_size, typename func_t, bool bounds>
@@ -522,6 +525,158 @@ static inline void launch_compact_unary_kernel(
     const func_t& f,
     array_t data) {
   launch_compact_unary_kernel_impl<vec_size>(numel, f, data);
+}
+
+template <int vec_size, typename func_t, typename in_calc_t>
+class StridedUnaryElementwiseKernel;
+
+// Density is relative to TI's reordered/coalesced iteration dimensions, not
+// the tensor's logical memory format. Alignment remains path-specific.
+static inline bool has_dense_output(
+    const TensorIteratorBase& iter,
+    int64_t element_size) {
+  int64_t expected = element_size;
+  for (int dim = 0; dim < iter.ndim(); ++dim) {
+    if (iter.shape()[dim] != 1 && iter.strides(0)[dim] != expected) {
+      return false;
+    }
+    expected *= iter.shape()[dim];
+  }
+  return true;
+}
+
+// How a work-item reads the inputs of its vec_size consecutive outputs. The
+// mode is uniform across the launch, so selecting it at runtime does not
+// diverge and keeps one kernel per functor.
+enum class StridedInputMode : int {
+  // Innermost input dim is unit-stride and every row is vector-aligned.
+  kRowVector,
+  // Innermost input dim has stride 0: at most two distinct inputs per vector.
+  kBroadcastInner,
+  // Otherwise: gather with stride s0; at most one row wrap per vector.
+  kStridedInner,
+};
+
+// For a unary functor (including tensor-scalar ops whose CPU scalar was
+// captured) whose output is dense in iteration order while its input is
+// strided or broadcast. The innermost size must be >= vec_size unless rows
+// are vector-aligned, so one offset calculation covers the vector and a
+// second is needed only where it wraps into the next row.
+template <typename func_t, typename array_t>
+static inline bool try_launch_strided_input_unary_kernel(
+    TensorIteratorBase& iter,
+    const func_t& f,
+    array_t data) {
+  using traits = function_traits<func_t>;
+  static_assert(traits::arity == 1);
+  using input_t = std::decay_t<typename traits::template arg<0>::type>;
+  using output_t = typename traits::result_type;
+  constexpr int vec_size = std::min<int>(8, 16 / sizeof(output_t));
+  if constexpr (vec_size < 2) {
+    return false;
+  } else {
+    if (iter.ndim() == 0) {
+      return false;
+    }
+    const auto shape = iter.shape();
+    if (!has_dense_output(iter, sizeof(output_t))) {
+      return false;
+    }
+    if (memory::can_vectorize_up_to<output_t>(data[0]) < vec_size) {
+      return false;
+    }
+
+    const auto in_strides = iter.strides(1);
+    const uint32_t size0 = shape[0];
+    const uint32_t stride0 = in_strides[0] / int64_t(sizeof(input_t));
+    StridedInputMode mode;
+    if (in_strides[0] == 0) {
+      mode = StridedInputMode::kBroadcastInner;
+    } else {
+      mode = StridedInputMode::kStridedInner;
+    }
+    if (sizeof(input_t) * vec_size <= 16 &&
+        in_strides[0] == int64_t(sizeof(input_t)) && size0 % vec_size == 0 &&
+        reinterpret_cast<uint64_t>(data[1]) % (sizeof(input_t) * vec_size) ==
+            0) {
+      mode = StridedInputMode::kRowVector;
+      for (int dim = 1; dim < iter.ndim(); dim++) {
+        if (in_strides[dim] % int64_t(sizeof(input_t) * vec_size) != 0) {
+          mode = StridedInputMode::kStridedInner;
+        }
+      }
+    }
+    if (mode != StridedInputMode::kRowVector && size0 < vec_size) {
+      return false;
+    }
+
+    auto ic = make_input_offset_calculator<1>(iter);
+    using in_calc_t = decltype(ic);
+    const auto div0 = at::detail::IntDivider<uint32_t>(size0);
+    constexpr int work_group_size =
+        launch_config::strided_unary_work_group_size;
+    const int numel = iter.numel();
+    const int vec_numel = numel / vec_size;
+    const int64_t items = vec_numel + (numel % vec_size != 0);
+    const int64_t groups = ceil_div<int64_t>(items, work_group_size);
+    const auto* input = reinterpret_cast<const input_t*>(data[1]);
+    auto* output = reinterpret_cast<output_t*>(data[0]);
+    getCurrentSYCLQueue().submit([&](sycl::handler& handler) {
+      // SG32 improved measured throughput for this strided unary path.
+      handler.parallel_for<
+          StridedUnaryElementwiseKernel<vec_size, func_t, in_calc_t>>(
+          sycl::nd_range<1>(groups * work_group_size, work_group_size),
+          [=](sycl::nd_item<1> item) [[sycl::reqd_sub_group_size(
+              launch_config::strided_unary_sub_group_size)]] {
+            const int64_t index = int64_t(item.get_group(0)) * work_group_size +
+                item.get_local_id(0);
+            if (index < vec_numel) {
+              const uint32_t base = uint32_t(index) * vec_size;
+              const uint32_t first = ic.get(base)[0];
+              // Load modes share the same straight-line loop over the functor.
+              memory::aligned_vector<input_t, vec_size> values;
+              if (mode == StridedInputMode::kRowVector) {
+                // The shared loader also normalizes noncanonical bool bytes.
+                values = memory::load_vector<vec_size>(input + first, 0);
+              } else {
+                const uint32_t pos0 = div0.divmod(base).mod;
+                // Offset of the next innermost row, needed only on a wrap.
+                const uint32_t second = pos0 + vec_size > size0
+                    ? ic.get(base - pos0 + size0)[0]
+                    : first;
+                if (mode == StridedInputMode::kBroadcastInner) {
+                  const input_t a = c10::load(input + first);
+                  const input_t b = c10::load(input + second);
+#pragma unroll
+                  for (int i = 0; i < vec_size; ++i) {
+                    values.val[i] = pos0 + i < size0 ? a : b;
+                  }
+                } else {
+#pragma unroll
+                  for (int i = 0; i < vec_size; ++i) {
+                    const uint32_t offset = pos0 + i < size0
+                        ? first + i * stride0
+                        : second + (pos0 + i - size0) * stride0;
+                    values.val[i] = c10::load(input + offset);
+                  }
+                }
+              }
+              memory::aligned_vector<output_t, vec_size> results;
+#pragma unroll
+              for (int i = 0; i < vec_size; ++i) {
+                results.val[i] = f(values.val[i]);
+              }
+              reinterpret_cast<memory::aligned_vector<output_t, vec_size>*>(
+                  output)[index] = results;
+            } else if (index == vec_numel) {
+              for (int i = vec_numel * vec_size; i < numel; ++i) {
+                output[i] = f(c10::load(input + ic.get(i)[0]));
+              }
+            }
+          });
+    });
+    return true;
+  }
 }
 
 template <
@@ -676,8 +831,8 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
                                    at::xpu::getDeviceEUCountPerXeCore()) *
           4; /* on tuning for different data types */
 
-  // Contiguous unary work uses compact tiles; strided work keeps its
-  // original aligned-row and general offset paths.
+  // Contiguous indexing and the original aligned-row path are tried first;
+  // packed strided unary work precedes the general offset fallback.
   int vec_size;
   if (contiguous) {
     auto input_calc = TrivialOffsetCalculator<traits::arity>();
@@ -692,6 +847,11 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
           can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
         auto input_calc = make_input_offset_calculator<traits::arity>(iter);
         launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
+        return;
+      }
+    }
+    if constexpr (compact_unary) {
+      if (try_launch_strided_input_unary_kernel(iter, f, data)) {
         return;
       }
     }
@@ -823,8 +983,8 @@ void gpu_kernel_nocast(TensorIteratorBase& iter, const func_t& f) {
   gpu_kernel_impl_nocast(iter, f);
 }
 
-// Unary functors, including captured CPU scalars, use compact contiguous
-// tiles; strided inputs retain the original launchers.
+// Unary functors, including tensor-scalar ops whose CPU scalar was captured
+// into the functor, use the compact contiguous and strided-input launchers.
 template <
     typename func_t,
     bool enable_broadcast_vec = true,
@@ -846,6 +1006,7 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
       // Keep legacy row-vector restrictions for split iterators.
+      // Iterator-local packed paths validate their own strides and pointers.
       gpu_kernel<func_t, false, compact_unary>(sub_iter, f);
     }
     return;
