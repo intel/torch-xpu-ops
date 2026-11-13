@@ -32,6 +32,7 @@ KNOWN_ISSUE_IDS = "known_issue_ids.json"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 DEFAULTS_FILE = SCRIPT_DIR.parent / "ci-config" / "defaults.yaml"
+UTTEST_ACTION = SCRIPT_DIR.parent / "actions" / "linux-uttest" / "action.yml"
 
 
 def load_defaults(path: Path) -> dict:
@@ -134,6 +135,14 @@ def expected_cases(category: str, platform: str) -> int | None:
     if category == "op_ut":
         return OP_UT_EXPECTED[platform]
     return EXPECTED_CASES.get(category)
+
+
+def expected_profiling_reports() -> set[str]:
+    """The junit reports the xpu_profiling step of linux-uttest writes."""
+    if not UTTEST_ACTION.is_file():
+        return set()
+    return set(re.findall(r"--junitxml=\S*/(xpu_profiling_\w+\.xml)",
+                          UTTEST_ACTION.read_text(encoding="utf-8")))
 
 
 def resolve_platform() -> str:
@@ -867,7 +876,11 @@ class Checker:
         unexplained = (total_failures + total_errors) - len(failed)
         if unexplained > 0:
             print(f"   ❌ {unexplained} failure(s)/error(s) in reports not matched to a case")
-        ok = total_tests > 0 and not new and unexplained <= 0
+        # A test file that crashed or timed out writes no report.
+        missing = sorted(expected_profiling_reports() - {p.name for p in reports})
+        if missing:
+            print(f"   ❌ Missing reports: {', '.join(missing)}")
+        ok = total_tests > 0 and not new and unexplained <= 0 and not missing
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: xpu_profiling")
         return CheckResult(category="xpu_profiling", passed=ok, total=total_tests,
                            new_failures=new, new_passes=new_passes, failures=failed)
