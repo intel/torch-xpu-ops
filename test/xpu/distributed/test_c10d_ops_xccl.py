@@ -32,6 +32,7 @@ if not c10d.is_available() or not c10d.is_xccl_available():
     sys.exit(0)
 
 import torch.distributed as dist
+from torch._C._distributed_c10d import HookOpName
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from test_c10d_xccl import init_multigpu_helper, requires_xccl
@@ -1106,6 +1107,72 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
             self.assertEqual(output_tensor.item(), expected)
 
         graph.reset()
+
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    def test_hooks_fire_for_all_collectives(self):
+        device = torch.device("xpu", self.rank_to_GPU[self.rank][0])
+        torch.xpu.set_device(device)
+        rank, ws = self.rank, self.world_size
+        pre_ops, post_ops, pre_ids, post_ids = [], [], [], []
+        self.pg.register_pre_hook(
+            0, lambda args: (pre_ops.append(args.name), pre_ids.append(args.op_id))
+        )
+        self.pg.register_post_hook(
+            0, lambda args: (post_ops.append(args.name), post_ids.append(args.op_id))
+        )
+        try:
+
+            def t(n):
+                return torch.ones(n, device=device)
+
+            dist.broadcast(t(2), src=0)
+            dist.all_reduce(t(2))
+            dist.reduce(t(2), dst=0)
+            dist.all_gather([t(2) for _ in range(ws)], t(2))
+            dist.all_gather_into_tensor(t(2 * ws), t(2))
+            dist.reduce_scatter(t(2), [t(2) for _ in range(ws)])
+            dist.reduce_scatter_tensor(t(2), t(2 * ws))
+            dist.all_to_all_single(t(ws), t(ws))
+            dist.all_to_all([t(1) for _ in range(ws)], [t(1) for _ in range(ws)])
+            dist.scatter(t(2), [t(2) for _ in range(ws)] if rank == 0 else None, src=0)
+            dist.gather(t(2), [t(2) for _ in range(ws)] if rank == 0 else None, dst=0)
+            dist.barrier()
+            dst, src = (rank + 1) % ws, (rank - 1) % ws
+            if rank == 0:
+                dist.send(t(2), dst=dst)
+                dist.recv(t(2), src=src)
+            else:
+                dist.recv(t(2), src=src)
+                dist.send(t(2), dst=dst)
+            torch.xpu.synchronize()
+        finally:
+            self.pg.unregister_pre_hook(0)
+            self.pg.unregister_post_hook(0)
+
+        expected = {
+            HookOpName.BROADCAST,
+            HookOpName.ALLREDUCE,
+            HookOpName.REDUCE,
+            HookOpName.ALLGATHER,
+            HookOpName.ALLGATHER_BASE,
+            HookOpName.REDUCE_SCATTER,
+            HookOpName.REDUCE_SCATTER_BASE,
+            HookOpName.ALLTOALL,
+            HookOpName.ALLTOALL_BASE,
+            HookOpName.SCATTER,
+            HookOpName.GATHER,
+            HookOpName.BARRIER,
+            HookOpName.SEND,
+            HookOpName.RECV,
+        }
+        self.assertTrue(expected.issubset(pre_ops), expected - set(pre_ops))
+        self.assertEqual(pre_ops, post_ops)
+        self.assertEqual(pre_ids, post_ids)
+
+        count = len(pre_ops)
+        dist.all_reduce(torch.ones(2, device=device))
+        self.assertEqual(len(pre_ops), count)
 
 
 instantiate_parametrized_tests(ProcessGroupXCCLOpTest)
