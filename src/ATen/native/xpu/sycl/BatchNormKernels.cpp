@@ -199,31 +199,39 @@ int get_prefer_simd(int numPlane, int nHw) {
 
   auto dev_id = at::xpu::current_device();
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
-  auto sub_group_size = dev_prop->sub_group_sizes;
-  int simd = sub_group_size[1];
-  if (simd <= SIMD16)
-    return simd;
+  const auto& sub_group_sizes = dev_prop->sub_group_sizes;
+  const bool supports_simd16 =
+      std::find(sub_group_sizes.begin(), sub_group_sizes.end(), SIMD16) !=
+      sub_group_sizes.end();
+  const bool supports_simd32 =
+      std::find(sub_group_sizes.begin(), sub_group_sizes.end(), SIMD32) !=
+      sub_group_sizes.end();
+  TORCH_CHECK(
+      supports_simd16 || supports_simd32,
+      "BatchNorm requires a 16- or 32-lane subgroup");
+  if (!supports_simd32)
+    return SIMD16;
+  if (!supports_simd16)
+    return SIMD32;
 
-  // if max supported simd >16
+  // Both subgroup sizes are available: choose based on the workload.
   if (nHw <= SIMD16)
     return SIMD16;
-  if (simd >= SIMD32 && nHw <= SIMD32)
+  if (nHw <= SIMD32)
     return SIMD32;
 
   int64_t target_tile_size = at::xpu::getDeviceMaxWorkItems(dev_id);
   // for work group barrier perf
   int64_t wg_size = at::xpu::getDeviceMaxSubGroupSize(dev_id) *
       dev_prop->gpu_hw_threads_per_eu;
-  if (simd == SIMD32) {
-    // when setting wg_size 256 can achieve high occupancy, use SIMD16
-    if (wg_size * numPlane >= target_tile_size)
-      return SIMD16;
-    // for latency case
-    if (nHw <= 1024 && numPlane > 128 && SIMD16 * SIMD16 >= wg_size) {
-      return SIMD16;
-    }
+  // When setting wg_size 256 can achieve high occupancy, use SIMD16.
+  if (wg_size * numPlane >= target_tile_size)
+    return SIMD16;
+  // For latency cases.
+  if (nHw <= 1024 && numPlane > 128 && SIMD16 * SIMD16 >= wg_size) {
+    return SIMD16;
   }
-  return simd;
+  return SIMD32;
 }
 
 template <typename scalar_t, typename accscalar_t>
