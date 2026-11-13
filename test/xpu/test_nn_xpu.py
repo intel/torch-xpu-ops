@@ -6534,23 +6534,15 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
 
         if mode == "train":
             _train(memory_format, ref_backend, mixed, dtype)
-            if (
-                device_type == "xpu"
-                and dims == 2
-                and memory_format == "NCHW"
-                and ref_backend == "cpu"
-                and dtype in (torch.float, torch.half)
-            ):
-                # Channel-tile layouts: odd C with a partial tile, odd HW,
-                # few channels, and rows wider than one work-group.
-                for size in [(8, 33, 7, 7), (5, 30, 6, 6), (3, 8, 33, 33)]:
-                    _train(memory_format, ref_backend, mixed, dtype, size)
         else:
             _inference(memory_format, ref_backend, mixed, dtype)
 
     @unittest.skipIf(not TEST_XPU or device_type != "xpu", "XPU not available")
     def test_batchnorm_nchw_backward_channel_tiles(self):
         cases = (
+            ((8, 33, 7, 7), torch.float32, False),
+            ((5, 30, 6, 6), torch.float16, False),
+            ((3, 8, 33, 33), torch.float32, False),
             ((8, 257, 7, 7), torch.float32, False),
             ((8, 258, 7, 7), torch.float16, False),
             ((8, 258, 7, 7), torch.bfloat16, False),
