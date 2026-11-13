@@ -231,5 +231,136 @@ class TestBatchNormContiguous(TestCase):
         self.assertEqual(rv_cpu, rv_xpu.cpu(), atol=1e-4, rtol=1e-4)
 
 
+def _channels_last_with_offset(src, offset):
+    """Copy *src* (NCHW logical) to an XPU channels-last tensor whose
+    storage_offset is *offset* elements, so offset=1 breaks 2-element
+    alignment for 16-bit dtypes and forces the scalar fallback."""
+    numel = src.numel()
+    buf = torch.empty(numel + offset, dtype=src.dtype, device=xpu_device)
+    _, C, H, W = src.shape
+    t = buf.as_strided(src.shape, (H * W * C, 1, W * C, C), offset)
+    t.copy_(src.to(xpu_device))
+    if not t.is_contiguous(memory_format=torch.channels_last):
+        raise AssertionError("expected a channels-last tensor")
+    if t.storage_offset() != offset:
+        raise AssertionError(f"expected storage offset {offset}, got {t.storage_offset()}")
+    return t
+
+
+class TestBatchNormBackwardElemtChannelsLast(TestCase):
+    """Numerical coverage for the 1-D channels-last backward elementwise kernel
+    (batch_norm_backward_elemt_channels_last_template, with and without count).
+
+    Shapes cover: aligned C, even non-aligned C, odd C with odd total element
+    count (vec2 channel wrap-around + scalar tail), and C >= 1024 (non-SLM
+    paths). storage_offset=1 on input / grad_output independently exercises
+    the unaligned scalar fallback.
+    """
+
+    SHAPES = [
+        (2, 32, 5, 5),  # aligned C
+        (2, 24, 7, 7),  # even, non cache-line aligned C
+        (3, 27, 3, 3),  # odd C, odd total -> wrap-around + tail
+        (1, 61, 3, 3),  # odd C, odd total
+        (2, 1026, 3, 3),  # even C >= 1024 -> non-SLM vec2
+        (1, 1025, 3, 3),  # odd C >= 1024, odd total -> scalar
+    ]
+    DTYPES = [torch.float32, torch.float16, torch.bfloat16]
+
+    def _tol(self, dtype):
+        if dtype == torch.float32:
+            return 1e-4, 1e-4
+        if dtype == torch.float16:
+            return 2e-3, 2e-3
+        return 2e-2, 2e-2
+
+    def _inputs(self, shape, dtype):
+        torch.manual_seed(0)
+        C = shape[1]
+        x = torch.randn(shape).to(dtype)
+        go = torch.randn(shape).to(dtype)
+        # Distinct per-channel parameters so a wrong channel index is visible.
+        w = (torch.arange(C, dtype=torch.float32) / C + 0.5).to(dtype)
+        b = torch.randn(C).to(dtype)
+        return x, go, w, b
+
+    def _check_native_backward(self, shape, dtype, in_off, go_off):
+        x, go, w, b = self._inputs(shape, dtype)
+
+        # Reference: CPU fp64 NCHW.
+        xr = x.double().requires_grad_()
+        out = torch.nn.functional.batch_norm(
+            xr, None, None, w.double(), b.double(), training=True, eps=1e-5
+        )
+        out.backward(go.double())
+        ref = xr.grad
+
+        xx = _channels_last_with_offset(x, in_off).requires_grad_()
+        gx = _channels_last_with_offset(go, go_off)
+        out = torch.nn.functional.batch_norm(
+            xx,
+            None,
+            None,
+            w.to(xpu_device),
+            b.to(xpu_device),
+            training=True,
+            eps=1e-5,
+        )
+        out.backward(gx)
+        atol, rtol = self._tol(dtype)
+        self.assertEqual(xx.grad.cpu().double(), ref, atol=atol, rtol=rtol)
+
+    def _check_backward_elemt_count(self, shape, dtype, in_off, go_off):
+        x, go, w, _ = self._inputs(shape, dtype)
+        C = shape[1]
+        dims = [0, 2, 3]
+
+        xd, god, wd = x.double(), go.double(), w.double()
+        mean = xd.mean(dims)
+        invstd = 1.0 / torch.sqrt(xd.var(dims, unbiased=False) + 1e-5)
+        sum_dy = god.sum(dims)
+        sum_dy_xmu = (god * (xd - mean.view(1, C, 1, 1))).sum(dims)
+        # Simulate 2 ranks each contributing the local count.
+        count = torch.tensor([x.numel() // C] * 2, dtype=torch.int32)
+        total = float(count.sum())
+        c4 = lambda t: t.view(1, C, 1, 1)
+        ref = (
+            god
+            - c4(sum_dy) / total
+            - (xd - c4(mean)) * c4(invstd * invstd * sum_dy_xmu / total)
+        ) * c4(wd * invstd)
+
+        xx = _channels_last_with_offset(x, in_off)
+        gx = _channels_last_with_offset(go, go_off)
+        f32 = lambda t: t.float().to(xpu_device)
+        gi = torch.batch_norm_backward_elemt(
+            gx,
+            xx,
+            f32(mean),
+            f32(invstd),
+            w.to(xpu_device),
+            f32(sum_dy),
+            f32(sum_dy_xmu),
+            count.to(xpu_device),
+        )
+        atol, rtol = self._tol(dtype)
+        self.assertEqual(gi.cpu().double(), ref, atol=atol, rtol=rtol)
+
+    def _run(self, checker):
+        for shape in self.SHAPES:
+            for dtype in self.DTYPES:
+                for in_off, go_off in [(0, 0), (1, 0), (0, 1)]:
+                    with self.subTest(
+                        shape=shape, dtype=dtype, in_off=in_off, go_off=go_off
+                    ):
+                        checker(shape, dtype, in_off, go_off)
+
+    def test_native_backward_channels_last(self):
+        self._run(self._check_native_backward)
+
+    def test_backward_elemt_count_channels_last(self):
+        self._run(self._check_backward_elemt_count)
+
+
 if __name__ == "__main__":
     run_tests()
