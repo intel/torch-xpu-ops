@@ -1,6 +1,8 @@
 """Entry point for `python -m benchmarks`."""
 
 import argparse
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -171,6 +173,14 @@ def main() -> None:
             sys.exit("ERROR: NUM_GPUS must be set for GPU devices.")
         workers = generate_gpu_workers(num_gpus)
         log(f"Auto-generated {len(workers)} GPU worker(s)")
+    if args.device == "xpu":
+        # The SKU (e.g. Max 1100 vs 1550) changes accuracy results; e2e_accuracy_collect_evidence.py reads these lines.
+        for card, _, _ in workers:
+            name = subprocess.run(
+                [sys.executable, "-c", "import torch; print(torch.xpu.get_device_name(0))"],
+                env={**os.environ, "ZE_AFFINITY_MASK": str(card)}, capture_output=True, text=True,
+            ).stdout.strip()
+            log(f"card {card}: {name or 'unknown'}")
 
     banner("Running Benchmarks")
     total_failed = 0

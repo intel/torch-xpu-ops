@@ -238,10 +238,12 @@ runs:
         mkdir -p "${{ github.workspace }}/ut_log/env"
         python pytorch/torch/utils/collect_env.py |tee "${{ github.workspace }}/ut_log/env/collect_env.log"
         # collect_env only carries an abbreviated torch sha and no torch-xpu-ops sha.
-        printf 'torch=%s\ntorch_xpu_ops=%s\n' \
+        printf 'torch=%s\ntorch_xpu_ops=%s\ntorchbench=%s\n' \
           "${TORCH_COMMIT_ID}" \
           "$(git -C pytorch/third_party/torch-xpu-ops rev-parse HEAD 2>/dev/null || echo unknown)" \
+          "$(cat pytorch/.ci/docker/ci_commit_pins/torchbench.txt 2>/dev/null || echo unknown)" \
           > "${{ github.workspace }}/ut_log/env/versions.txt"
+        uv pip list > "${{ github.workspace }}/ut_log/env/pip_list.txt"
         uv pip list |grep -E 'torch|intel'
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then

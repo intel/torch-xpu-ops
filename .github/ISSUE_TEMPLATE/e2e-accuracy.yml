@@ -1,0 +1,54 @@
+name: 🐛 E2E accuracy
+description: Report an E2E (dynamo benchmarks) accuracy, crash, OOM or timeout failure
+title: "[E2E][<category>] <suite> <models> <dtype> <mode> <symptom>"
+labels: ["test: e2e", "Accuracy"]
+
+# The same sections e2e_accuracy_create_issues.py renders for the nightly bot.
+# Affected Cases is what mutes the nightly gate (get_issue.py ->
+# check_expected.py): one row per case with all six cells filled, Target being
+# the exact result value. Outside that table no line may hold a `|` together
+# with `suite | dtype | mode | model`, or it is read as a row too. An issue
+# without the `Accuracy` label mutes nothing.
+
+body:
+- type: textarea
+  id: summary
+  attributes:
+    label: Summary
+    description: One to three sentences. What fails, why these rows are one root cause, and whether it depends on the card (Max 1100 vs 1550).
+  validations:
+    required: true
+- type: textarea
+  id: cases
+  attributes:
+    label: Affected Cases
+    description: |
+      Plain markdown table, six columns, Target is the exact result value of that night. For example
+      `| torchbench | bfloat16 | inference | sam | fail_accuracy | IoU accuracy failed: 0.0000 < 0.95 (masks) |`
+    value: |
+      | Suite | Dtype | Mode | Name | Target | Message |
+      |---|---|---|---|---|---|
+  validations:
+    required: true
+- type: textarea
+  id: reproducer
+  attributes:
+    label: Reproducer
+    description: From `docker run` to the benchmark command, including the rsync of torch-xpu-ops' .ci/benchmarks over benchmarks/dynamo.
+    render: bash
+  validations:
+    required: true
+- type: textarea
+  id: details
+  attributes:
+    label: Details
+    description: Per card type (e.g. PVC 1550, run id, card), the full command and output, and the device name.
+  validations:
+    required: true
+- type: textarea
+  id: versions
+  attributes:
+    label: Versions
+    description: torch / torchvision / torchaudio / triton-xpu / torchao, pytorch and torch-xpu-ops commits, transformers / timm / numpy / torchbench commit, driver, image and card.
+  validations:
+    required: true
