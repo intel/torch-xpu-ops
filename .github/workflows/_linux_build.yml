@@ -142,7 +142,7 @@ jobs:
       - name: Limit reused Pytorch checkout
         run: |
           # every fetch and submodule bump adds history; start fresh once it passes the cap
-          GIT_MAX_GB=10
+          GIT_MAX_GB=50
           if [ -d pytorch/.git ] && [ "$(du -s --block-size=1G pytorch/.git | cut -f1)" -gt "${GIT_MAX_GB}" ];then
             rm -rf pytorch
           fi
