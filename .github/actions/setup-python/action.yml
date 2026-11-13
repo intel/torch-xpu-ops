@@ -25,11 +25,17 @@ runs:
       with:
         python-version: ${{ steps.config.outputs.python }}
         activate-environment: true
+    - name: Setup caches
+      shell: bash -xe {0}
+      run: bash ${{ github.action_path }}/../../scripts/ci_cache.sh env
     - name: Clear venv
       shell: bash -xe {0}
       run: |
         uv venv --clear --python ${{ steps.config.outputs.python }}
         uv pip install -U pip wheel "setuptools<81"
+    - name: Setup certificates
+      shell: bash -xe {0}
+      run: bash ${{ github.action_path }}/../../scripts/ci_cache.sh certs
     - name: Setup venv paths
       shell: bash -xe {0}
       run: |
