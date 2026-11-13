@@ -46,8 +46,8 @@ void is_nonzero_kernel_impl(
   }
 }
 
-// Work-group-level reduction: counts nonzeros in [data_, data_+N_).
-// Each work-group writes its partial count to partial_sums_[group_id].
+// Work-group-level reduction: counts nonzeros in [data, data+N).
+// Each work-group writes its partial count to partial_sums[group_id].
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void count_nonzeros_kernel_impl(
@@ -143,7 +143,6 @@ struct CopyIfFunc {
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void flatten_idx_to_real_idx_kernel_impl(
     int64_t N,
-    const int64_t num_dim,
     const int64_t num_nonzeros,
     int64_t* out_begin,
     int64_t* idx_flat_begin,
@@ -151,7 +150,7 @@ void flatten_idx_to_real_idx_kernel_impl(
   sycl::nd_item<1> item = syclext::this_work_item::get_nd_item<1>();
   auto global_id = item.get_global_linear_id();
 
-  if (global_id < N) {
+  if (global_id < static_cast<size_t>(N)) {
     auto* divisor = divisor_sizes.divisor;
     auto* sizes = divisor_sizes.sizes;
     auto dim = global_id / num_nonzeros;
@@ -221,7 +220,6 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           queue,
           0,
           total,
-          num_dim,
           num_nonzeros,
           out_begin,
           idx_flat_begin,
@@ -327,12 +325,6 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
       (num_nonzeros > 0 && num_dim > 0) ? out_.data_ptr<int64_t>() : nullptr;
 
   if (out_ptr != nullptr) {
-    const int64_t count_wg_size_is_nonzero =
-        at::xpu::getKernelMaxWorkGroupSize<is_nonzero_kernel_impl<scalar_t>>();
-
-    const int64_t count_wg_size_scatter =
-        at::xpu::getKernelMaxWorkGroupSize<scatter_to_out_kernel_impl>();
-
     for (int64_t ci = 0; ci < num_chunks; ci++) {
       if (chunk_counts[ci] == 0)
         continue;
@@ -343,12 +335,15 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
       // Fill global_mask[0..this_chunk): 1 where element is nonzero, 0
       // elsewhere.
 
-      const int64_t num_wgs =
-          at::ceil_div(this_chunk, count_wg_size_is_nonzero);
+      const int64_t mask_wg_size = std::min(
+          at::xpu::getKernelMaxWorkGroupSize<
+              is_nonzero_kernel_impl<scalar_t>>(),
+          this_chunk);
+      const int64_t num_wgs = at::ceil_div(this_chunk, mask_wg_size);
 
       sycl_kernel_submit<is_nonzero_kernel_impl<scalar_t>>(
-          num_wgs * count_wg_size_is_nonzero,
-          count_wg_size_is_nonzero,
+          num_wgs * mask_wg_size,
+          mask_wg_size,
           queue,
           0,
           self_data + start,
@@ -365,11 +360,14 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           target_pos_ptr,
           int64_t(0));
 
-      const int64_t num_wgs1 = at::ceil_div(this_chunk, count_wg_size_scatter);
+      const int64_t scatter_wg_size = std::min(
+          at::xpu::getKernelMaxWorkGroupSize<scatter_to_out_kernel_impl>(),
+          this_chunk);
+      const int64_t num_wgs1 = at::ceil_div(this_chunk, scatter_wg_size);
 
       sycl_kernel_submit<scatter_to_out_kernel_impl>(
-          num_wgs1 * count_wg_size_scatter,
-          count_wg_size_scatter,
+          num_wgs1 * scatter_wg_size,
+          scatter_wg_size,
           queue,
           0,
           global_mask_ptr,
