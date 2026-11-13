@@ -3135,7 +3135,8 @@ struct BatchNormBackwardElemtChannelsLast1DKernelFunctor
       sycl::group_barrier(item.get_group());
     }
 
-    const index_t total_elems = static_cast<index_t>(reduction_size_) * stride_;
+    // The host checks that the product fits before selecting the int32 path.
+    const index_t total_elems = static_cast<index_t>(reduction_size_ * stride_);
 
     if constexpr (VEC_SIZE == 1) {
       for (index_t idx = item.get_global_id(0); idx < total_elems;
