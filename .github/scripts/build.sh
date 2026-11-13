@@ -15,6 +15,7 @@ done
 install_test=${INSTALL_TEST:-0}
 WORKSPACE=$(realpath "${WORKSPACE:-/tmp}")
 cd "${WORKSPACE}/pytorch"
+expected_xpu_ops="$(cat third_party/xpu.txt)"
 PYTORCH_WHEEL_LINUX_SCRIPT_PATH="./.ci/wheel/linux"
 
 # Build using PyTorch's upstream build pipeline
@@ -70,6 +71,23 @@ python -m pip install --force-reinstall dist/torch*.whl
 
 cd "${WORKSPACE}"
 python "${WORKSPACE}/pytorch/torch/utils/collect_env.py"
+
+# The freshly installed wheel can be imported, so check the public API.
+# Wheels without the field come from PyTorch before pytorch/pytorch#202608.
+built_xpu_ops="$(python -c '
+import torch
+print(getattr(torch.version, "xpu_ops_commit", None) or "")
+')"
+# Only a prepared tree holds a full SHA; skip trees still naming release/X.Y.
+if [[ "${expected_xpu_ops}" =~ ^[0-9a-f]{40}$ ]] && [ -n "${built_xpu_ops}" ] && \
+        [ "${built_xpu_ops}" != "${expected_xpu_ops}" ];then
+    echo "torch-xpu-ops mismatch: wheel built ${built_xpu_ops}, prepared ${expected_xpu_ops}"
+    exit 1
+fi
+if [ -z "${built_xpu_ops}" ];then
+    echo "Warning: torch.version.xpu_ops_commit is unavailable; skipping XPU SHA verification"
+fi
+echo "torch-xpu-ops: prepared ${expected_xpu_ops}, wheel ${built_xpu_ops:-<not recorded>}"
 python -c "import torch; print(torch.__config__.show())"
 python -c "import torch; print(torch.__config__.parallel_info())"
 xpu_is_compiled="$(python -c 'import torch; print(torch.xpu._is_compiled())')"

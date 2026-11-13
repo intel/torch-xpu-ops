@@ -6,26 +6,24 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-import os
 import sys
 
+from run_utils import launch_test
 from skip_list_common import skip_dict
 from skip_list_win import skip_dict as skip_dict_win
 
 IS_WINDOWS = sys.platform == "win32"
 
-skip_list = skip_dict["test_ops_xpu.py"]
-if IS_WINDOWS:
-    skip_list += skip_dict_win["test_ops_xpu.py"]
+fail_test: list[str] = []
+for key in skip_dict:
+    skip_list = list(skip_dict[key] or ())
+    if IS_WINDOWS:
+        skip_list += skip_dict_win.get(key, ())
+    result: int = launch_test(key, skip_list)
+    if result:
+        fail_test.append(key)
 
-skip_options = ' -k "not ' + skip_list[0]
-for skip_case in skip_list[1:]:
-    skip_option = " and not " + skip_case
-    skip_options += skip_option
-skip_options += '"'
-
-os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-test_command = "pytest --junit-xml=./op_extended.xml test_ops_xpu.py"
-test_command += skip_options
-res = os.system(test_command)
-sys.exit(res)
+if fail_test:
+    print(",".join(fail_test) + " have failures")
+    sys.exit(1)
+print("All tests passed!")

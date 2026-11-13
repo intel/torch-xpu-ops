@@ -1282,16 +1282,18 @@ def copy_tests(
             setattr(generic_test_class, name, nontest)
 
 
-def launch_test(test_case, skip_list=None, exe_list=None):
+def launch_test(test_case, skip_list=None, exe_list=None, xml_prefix="op_ut"):
     import subprocess
 
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
+    # check-ut.py derives the result category from this prefix, so it must match
+    # the UT job name that runs the test.
     if skip_list is not None and len(skip_list) > 0:
         k_expr = "not " + " and not ".join(skip_list)
         cmd_args = [
             "pytest",
-            f"--junit-xml=./op_ut_with_skip.{module_name}.xml",
+            f"--junit-xml=./{xml_prefix}_with_skip.{module_name}.xml",
             test_case,
             "-k",
             k_expr,
@@ -1300,7 +1302,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         k_expr = " or ".join(exe_list)
         cmd_args = [
             "pytest",
-            f"--junit-xml=./op_ut_with_exe.{module_name}.xml",
+            f"--junit-xml=./{xml_prefix}_with_exe.{module_name}.xml",
             test_case,
             "-k",
             k_expr,
@@ -1308,7 +1310,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     else:
         cmd_args = [
             "pytest",
-            f"--junit-xml=./op_ut_with_all.{module_name}.xml",
+            f"--junit-xml=./{xml_prefix}_with_all.{module_name}.xml",
             test_case,
         ]
     # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows

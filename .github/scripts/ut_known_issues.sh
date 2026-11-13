@@ -25,6 +25,10 @@ fetch_open() {
   if [[ "${runner}" == *"bmg"* ]]; then
     labels+=("skipped_bmg")
   fi
+  # skipped_windows likewise: a case muted on Windows still has to pass on Linux.
+  if [[ "${runner}" == *"windows"* ]]; then
+    labels+=("skipped_windows")
+  fi
   if [[ "${category}" == "dpclang" ]]; then
     labels+=("skipped_dpclang")
   fi

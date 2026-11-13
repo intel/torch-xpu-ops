@@ -29,7 +29,6 @@ import sys
 import threading
 import time
 import unittest
-import warnings
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -1273,35 +1272,54 @@ class TestProfiler(TestCase):
                     raise AssertionError("Invalid stacks record")
 
     def test_experimental_config_pickle(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", BytesWarning)
+        # Test with default values
+        config = _ExperimentalConfig()
+        pickled = pickle.dumps(config)
+        unpickled = pickle.loads(pickled)
+        self.assertIsInstance(unpickled, _ExperimentalConfig)
 
-            # Test with default values
-            config = _ExperimentalConfig()
-            pickled = pickle.dumps(config)
-            unpickled = pickle.loads(pickled)
-            self.assertIsInstance(unpickled, _ExperimentalConfig)
+        # Alternate the flags in pickled order so that a flag read from a
+        # neighboring slot gets the wrong value.
+        config = _ExperimentalConfig(
+            verbose=True,
+            performance_events=["event1", "event2"],
+            enable_cuda_sync_events=False,
+            disable_external_correlation=True,
+            profile_all_threads=False,
+            capture_overload_names=True,
+            record_python_gc_info=False,
+            expose_kineto_event_metadata=True,
+            custom_profiler_config="custom_config",
+            adjust_timestamps=False,
+            trace_only=True,
+        )
+        pickled = pickle.dumps(config)
+        unpickled = pickle.loads(pickled)
+        self.assertIsInstance(unpickled, _ExperimentalConfig)
+        self.assertEqual(unpickled.__getstate__(), config.__getstate__())
 
-            # Test with non-default values
-            config = _ExperimentalConfig(
-                verbose=True,
-                performance_events=["event1", "event2"],
-                enable_cuda_sync_events=True,
-                adjust_profiler_step=True,
-                disable_external_correlation=True,
-                profile_all_threads=True,
-                capture_overload_names=True,
-                record_python_gc_info=True,
-                expose_kineto_event_metadata=True,
-                custom_profiler_config="custom_config",
-            )
-            pickled = pickle.dumps(config)
-            unpickled = pickle.loads(pickled)
-            self.assertIsInstance(unpickled, _ExperimentalConfig)
+        # Test deepcopy (which uses pickle internally)
+        copied = copy.deepcopy(config)
+        self.assertIsInstance(copied, _ExperimentalConfig)
+        self.assertEqual(copied.__getstate__(), config.__getstate__())
 
-            # Test deepcopy (which uses pickle internally)
-            copied = copy.deepcopy(config)
-            self.assertIsInstance(copied, _ExperimentalConfig)
+    def test_experimental_config_rejects_old_pickle_state(self):
+        # Pickles from before PyTorch 2.16 use a different layout, with more,
+        # fewer, or the same number of values as the current state.
+        state = _ExperimentalConfig().__getstate__()
+        old_states = [
+            state + (False,),
+            state[:-1],
+            (False, [], False, False, False, False, False, False, False, "", False),
+        ]
+        for old_state in old_states:
+            # Unpickling calls __setstate__ on an object made by __new__. pybind
+            # ignores __setstate__ on an already initialized object, so this
+            # test can't use _ExperimentalConfig().
+            config = _ExperimentalConfig.__new__(_ExperimentalConfig)
+            with self.subTest(old_state=old_state):
+                with self.assertRaisesRegex(RuntimeError, "older PyTorch versions"):
+                    config.__setstate__(old_state)
 
     @unittest.skipIf(not kineto_available(), "Kineto is required")
     def test_tensorboard_trace_handler(self):
