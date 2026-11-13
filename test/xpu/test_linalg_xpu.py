@@ -425,9 +425,7 @@ def _compile_int4_mm(self, device, m, k, n):
 @setBlasBackendsToDefaultFinally
 def matmul_small_brute_force_1d_Nd(self, device, dtype):
     for backend in ["cublas", "cublaslt"]:
-        if torch.device(device).type == "cuda":
-            torch.backends.cuda.preferred_blas_library(backend)
-
+ 
     make_arg = partial(make_tensor, device=device, dtype=dtype)
 
     for (size_x, size_y), nctg_x, nctg_y in itertools.product(
@@ -442,9 +440,7 @@ def matmul_small_brute_force_1d_Nd(self, device, dtype):
 @setBlasBackendsToDefaultFinally
 def matmul_small_brute_force_2d_Nd(self, device, dtype):
     for backend in ["cublas", "cublaslt"]:
-        if torch.device(device).type == "cuda":
-            torch.backends.cuda.preferred_blas_library(backend)
-
+ 
         make_arg = partial(make_tensor, device=device, dtype=dtype)
 
         for (size_x, size_y), nctg_x, nctg_y in itertools.product(
@@ -459,9 +455,7 @@ def matmul_small_brute_force_2d_Nd(self, device, dtype):
 @setBlasBackendsToDefaultFinally
 def matmul_small_brute_force_3d_Nd(self, device, dtype):
     for backend in ["cublas", "cublaslt"]:
-        if torch.device(device).type == "cuda":
-            torch.backends.cuda.preferred_blas_library(backend)
-
+ 
         make_arg = partial(make_tensor, device=device, dtype=dtype)
 
         for (size_x, size_y), nctg_x, nctg_y in itertools.product(
