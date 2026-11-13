@@ -380,7 +380,7 @@ void adaptive_avg_pool2d_backward_kernel(
           input.scalar_type(),
           "adaptive_avg_pool2d_backward_nhwc_xpu",
           [&] {
-            int shmem_size = (kernel_size_C * group_x * group_y * group_z +
+            size_t shmem_size = (kernel_size_C * group_x * group_y * group_z +
                               osizeH + osizeW) *
                     sizeof(scalar_t) +
                 2 * isizeW * sizeof(int32_t);
@@ -428,9 +428,9 @@ void adaptive_avg_pool2d_backward_kernel(
           auto gyacc = grad_output.packed_accessor64<const scalar_t, 4>();
           auto gxacc = grad_input.packed_accessor64<scalar_t, 4>();
 
-          int ohw01_shared_size = ((isizeH + isizeW) * 2) * sizeof(int);
-          int ikhw_shared_size = (osizeH + osizeW) * sizeof(opmath_t);
-          int total_shared_size = ohw01_shared_size + ikhw_shared_size;
+          size_t ohw01_shared_size = ((isizeH + isizeW) * 2) * sizeof(int);
+          size_t ikhw_shared_size = (osizeH + osizeW) * sizeof(opmath_t);
+          size_t total_shared_size = ohw01_shared_size + ikhw_shared_size;
           bool using_shared =
               at::xpu::getDeviceLocalMemSize() >= total_shared_size;
 
