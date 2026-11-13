@@ -192,6 +192,9 @@ def prune() -> None:
 
 
 def main() -> int:
+    if os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted":
+        info("GitHub-hosted runner: ~/.cache does not persist, skipping")
+        return 0
     for step in (setup_env, prune):
         try:
             step()
