@@ -30,6 +30,9 @@ runs:
       run: |
         uv venv --clear --python ${{ steps.config.outputs.python }}
         uv pip install -U pip wheel "setuptools<81"
+    - name: Setup caches
+      shell: bash -xe {0}
+      run: python ${{ github.action_path }}/../../scripts/ci_cache.py
     - name: Setup venv paths
       shell: bash -xe {0}
       run: |
