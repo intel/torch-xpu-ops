@@ -18,6 +18,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/IndexingUtils.h>
 #include <ATen/native/Padding.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
@@ -116,7 +117,8 @@ void reflection_pad1d_template(
     int64_t nplane,
     int64_t output_w) {
   auto queue = getCurrentSYCLQueue();
-  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t work_group_num = at::ceil_div(output_w, work_group_size);
   sycl_kernel_submit<reflection_pad1d_kernel<scalar_t>, 3>(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
@@ -160,7 +162,8 @@ void reflection_pad1d_backward_template(
     int64_t nplane,
     int64_t output_w) {
   auto queue = getCurrentSYCLQueue();
-  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t work_group_num = at::ceil_div(output_w, work_group_size);
   sycl_kernel_submit<reflection_pad1d_backward_kernel<scalar_t>, 3>(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
@@ -217,7 +220,8 @@ void reflection_pad2d_template(
   int64_t output_dim_y = input_dim_y + pad_t + pad_b;
 
   auto queue = getCurrentSYCLQueue();
-  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t work_group_num =
       at::ceil_div(output_dim_x * output_dim_y, work_group_size);
   sycl_kernel_submit<reflection_pad2d_kernel<scalar_t>, 3>(
@@ -279,7 +283,8 @@ void reflection_pad2d_backward_template(
   auto queue = getCurrentSYCLQueue();
   int64_t output_dim_x = input_dim_x + pad_l + pad_r;
   int64_t output_dim_y = input_dim_y + pad_t + pad_b;
-  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t work_group_num =
       at::ceil_div(output_dim_x * output_dim_y, work_group_size);
   sycl_kernel_submit<reflection_pad2d_backward_kernel<scalar_t>, 3>(
@@ -408,7 +413,8 @@ void reflection_pad2d_backward_det_template(
     int64_t nbatch,
     int64_t nplane) {
   auto queue = getCurrentSYCLQueue();
-  const int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  const int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
 
   const int64_t total_elements = nbatch * nplane * input_dim_x * input_dim_y;
   const int64_t work_group_num = at::ceil_div(total_elements, work_group_size);
@@ -481,7 +487,8 @@ void reflection_pad3d_template(
     int64_t pad_front) {
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3) * output.size(4);
-  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = input.size(1);
   int64_t nbatch = input.size(0);
@@ -552,7 +559,8 @@ void reflection_pad3d_backward_template(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size =
       grad_output.size(2) * grad_output.size(3) * grad_output.size(4);
-  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = grad_input.size(1);
   int64_t nbatch = grad_input.size(0);

@@ -65,6 +65,7 @@
 #include <comm/Memory.h>
 
 #include <ATen/native/sparse/xpu/sycl/SparseSoftmaxKernels.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
@@ -109,8 +110,8 @@ OutputIt max_row(
   const auto N = std::distance(pool_sizes_first, pool_sizes_last);
   auto& q = getCurrentSYCLQueue();
 
-  auto wg_size =
-      syclMaxWorkGroupSize<max_row_kernel<T, InputIt1, InputIt2, OutputIt>>();
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      max_row_kernel<T, InputIt1, InputIt2, OutputIt>>();
   sycl::range<1> local_range(wg_size);
   sycl::range<1> global_range(((N + wg_size - 1) / wg_size) * wg_size);
   sycl_kernel_submit<max_row_kernel<T, InputIt1, InputIt2, OutputIt>>(

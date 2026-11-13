@@ -8,12 +8,6 @@
 
 # Owner(s): ["module: intel"]
 
-import os
-
-# test_debug_set_in_ci asserts TORCH_SERIALIZATION_DEBUG=1; set it before
-# upstream test_serialization is imported so subprocess workers also see it.
-os.environ.setdefault("TORCH_SERIALIZATION_DEBUG", "1")
-
 import torch
 from torch.serialization import safe_globals
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
