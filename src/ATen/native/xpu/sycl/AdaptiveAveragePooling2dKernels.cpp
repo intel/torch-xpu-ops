@@ -381,7 +381,7 @@ void adaptive_avg_pool2d_backward_kernel(
           "adaptive_avg_pool2d_backward_nhwc_xpu",
           [&] {
             size_t shmem_size = (kernel_size_C * group_x * group_y * group_z +
-                              osizeH + osizeW) *
+                                 osizeH + osizeW) *
                     sizeof(scalar_t) +
                 2 * isizeW * sizeof(int32_t);
             if (shmem_size <= sharedMemPerGroup) {
