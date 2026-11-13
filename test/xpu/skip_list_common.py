@@ -132,7 +132,6 @@ skip_dict = {
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
-    "test_distributions_xpu.py": None,
     "test_expanded_weights_xpu.py": None,
     "test_fake_tensor_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2472
@@ -304,6 +303,7 @@ skip_dict = {
     "test_utils_xpu.py": None,
     # upstreamed tests, must be sorted alphabetically
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
+    f"{PYTORCH_TEST_DIR}/distributions/test_distributions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
         # Worker crash on BMG; no dedicated tracking issue yet
         "test_torch_size_tensor_index_scalar_constant_dynamic_shapes",
