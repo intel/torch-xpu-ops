@@ -166,14 +166,15 @@ runs:
           uv pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
             models=$(python -c "import yaml; cfg=yaml.safe_load(open('${{ github.workspace }}/torch-xpu-ops/.ci/benchmarks/p0/config.yaml')); print(' '.join(dict.fromkeys(m for mode in ('inference', 'training') for m in (cfg['models']['torchbench'].get(mode) or []))))")
-            install_args=(${models})
+            install_args=()
           else
-            install_args=(--continue_on_fail $(echo "${MODEL_ONLY_NAME}" |sed 's/,/ /g'))
+            models="${MODEL_ONLY_NAME//,/ }"
+            install_args=(--continue_on_fail)
           fi
           CI_CACHE="${{ github.action_path }}/../../scripts/ci_cache.py"
-          python "${CI_CACHE}" torchbench restore . "${install_args[@]}"
-          python install.py "${install_args[@]}"
-          python "${CI_CACHE}" torchbench save . "${install_args[@]}"
+          python "${CI_CACHE}" torchbench restore . ${models}
+          python install.py "${install_args[@]}" ${models}
+          python "${CI_CACHE}" torchbench save . ${models}
           echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
           # for dlrm
           uv pip install pyre-extensions
