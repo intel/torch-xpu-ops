@@ -3389,15 +3389,30 @@ static void batch_norm_backward_elemt_channels_last_1d(
     // (bounded by HW threads) fits in the sub-slice local memory.
     const int64_t slm_bytes_per_wg =
         4 * stride * static_cast<int64_t>(sizeof(accscalar_t));
-    const int64_t wg_size =
-        std::min<int64_t>(1024, syclDeviceMaxWorkGroupSize());
-    const int64_t max_items_per_ss =
-        syclGpuEUCountPerSubslice() * syclMaxWorkItemsPerEU();
-    const int64_t active_wgs_per_ss =
-        std::max<int64_t>(1, max_items_per_ss / wg_size);
-    const bool use_slm = stride < 1024 &&
-        slm_bytes_per_wg * active_wgs_per_ss <= syclLocalMemSize();
     const bool has_tail = (reduction_size * stride) % 2 != 0;
+    bool use_slm = false;
+    if (can_vec && stride < 1024 && slm_bytes_per_wg <= syclLocalMemSize()) {
+      auto slm_wg_size = [&](auto tail_tag) {
+        using Kernel = BatchNormBackwardElemtChannelsLast1DKernelFunctor<
+            scalar_t,
+            accscalar_t,
+            layerscalar_t,
+            2,
+            true,
+            USE_COUNTS,
+            decltype(tail_tag)::value,
+            index_t>;
+        return std::min<int64_t>(
+            1024, at::xpu::getKernelMaxWorkGroupSize<Kernel>());
+      };
+      const int64_t wg_size = has_tail ? slm_wg_size(std::true_type{})
+                                       : slm_wg_size(std::false_type{});
+      const int64_t max_items_per_ss =
+          syclGpuEUCountPerSubslice() * syclMaxWorkItemsPerEU();
+      const int64_t active_wgs_per_ss =
+          std::max<int64_t>(1, max_items_per_ss / wg_size);
+      use_slm = slm_bytes_per_wg * active_wgs_per_ss <= syclLocalMemSize();
+    }
     if (can_vec && use_slm) {
       if (has_tail) {
         LAUNCH_BN_BWD_CL_1D(2, true, true);
