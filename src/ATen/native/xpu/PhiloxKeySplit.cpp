@@ -21,4 +21,8 @@ Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data) {
   return xpu::_philox_key_fold_in_xpu(key, data);
 }
 
+Tensor _philox_key_fold_in_tensor_xpu(const Tensor& key, const Tensor& data) {
+  return xpu::_philox_key_fold_in_tensor_xpu(key, data);
+}
+
 } // namespace at::native
