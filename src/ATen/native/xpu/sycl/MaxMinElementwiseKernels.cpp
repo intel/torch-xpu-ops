@@ -48,12 +48,12 @@ struct MaximumFunctor {
 };
 
 void maximum_kernel(TensorIteratorBase& iter) {
-  if (iter.dtype() == ScalarType::Bool) {
+  if (iter.common_dtype() == ScalarType::Bool) {
     opmath_symmetric_gpu_kernel_with_scalars<bool>(
         iter, MaximumIntFunctor<bool>());
-  } else if (isIntegralType(iter.dtype(), /*includeBool=*/false)) {
+  } else if (isIntegralType(iter.common_dtype(), /*includeBool=*/false)) {
     AT_DISPATCH_V2(
-        iter.dtype(),
+        iter.common_dtype(),
         "max_elementwise_xpu",
         AT_WRAP([&]() {
           opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
@@ -62,7 +62,7 @@ void maximum_kernel(TensorIteratorBase& iter) {
         AT_EXPAND(AT_INTEGRAL_TYPES_V2));
   } else {
     AT_DISPATCH_V2(
-        iter.dtype(),
+        iter.common_dtype(),
         "max_elementwise_xpu",
         AT_WRAP([&]() {
           opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
@@ -103,12 +103,12 @@ struct MinimumFunctor {
 };
 
 void minimum_kernel(TensorIteratorBase& iter) {
-  if (iter.dtype() == ScalarType::Bool) {
+  if (iter.common_dtype() == ScalarType::Bool) {
     opmath_symmetric_gpu_kernel_with_scalars<bool>(
         iter, MinimumIntFunctor<bool>());
-  } else if (isIntegralType(iter.dtype(), /*includeBool=*/false)) {
+  } else if (isIntegralType(iter.common_dtype(), /*includeBool=*/false)) {
     AT_DISPATCH_V2(
-        iter.dtype(),
+        iter.common_dtype(),
         "min_elementwise_xpu",
         AT_WRAP([&]() {
           opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
@@ -117,7 +117,7 @@ void minimum_kernel(TensorIteratorBase& iter) {
         AT_EXPAND(AT_INTEGRAL_TYPES_V2));
   } else {
     AT_DISPATCH_V2(
-        iter.dtype(),
+        iter.common_dtype(),
         "min_elementwise_xpu",
         AT_WRAP([&]() {
           opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
