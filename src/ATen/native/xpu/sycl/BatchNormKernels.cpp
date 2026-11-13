@@ -5214,7 +5214,13 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
       packed_accessor_or_dummy<const accscalar_t, 1, DefaultPtrTraits, index_t>(
           save_invstd_, "save_invstd");
 
-  if (train && grad_input_reshaped.defined() &&
+  const auto& subgroup_sizes =
+      at::xpu::getDeviceProperties(at::xpu::current_device())->sub_group_sizes;
+  const bool supports_simd32 =
+      std::find(subgroup_sizes.begin(), subgroup_sizes.end(), SIMD32) !=
+      subgroup_sizes.end();
+  if (supports_simd32 && syclDeviceMaxWorkGroupSize() >= SIMD32 * SIMD32 &&
+      train && grad_input_reshaped.defined() &&
       input_reshaped.is_contiguous() && grad_output_reshaped.is_contiguous()) {
     batch_norm_backward_channel_tile<input_scalar_t, stat_scalar_t>(
         input_reshaped,
@@ -5230,95 +5236,101 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
 
   auto& queue = getCurrentSYCLQueue();
 
-  // NCHW: always SIMD32, tile channels per WG to match tile capacity.
-  constexpr int SIMD_W = SIMD32;
-  int feature_size = input.size(2);
-  int C = input.size(1);
-  int64_t tile_capacity = syclMaxWorkItemsPerTile();
+  // Use SIMD16 on devices without SIMD32 support.
+  auto launch_fused = [&](auto simd_tag) {
+    constexpr int SIMD_W = decltype(simd_tag)::value;
+    int feature_size = input.size(2);
+    int C = input.size(1);
+    int64_t tile_capacity = syclMaxWorkItemsPerTile();
 
-  using KernelClass = BatchNormBackwardKernelFunctor<
-      SIMD_W,
-      input_scalar_t,
-      stat_scalar_t,
-      accscalar_t,
-      index_t>;
-  int max_group_size = get_max_group_size<KernelClass>(SIMD_W);
-
-  int feature_size_padded = std::max(feature_size, SIMD_W);
-  int tf = get_num_threads<KernelClass>(feature_size_padded, SIMD_W);
-  int wg_sz_y = std::max<int>(1, max_group_size / tf);
-  int wg_thr = wg_sz_y * tf;
-  int target_nwg = std::min<int>(tile_capacity / wg_thr, C);
-  if (target_nwg < 1)
-    target_nwg = 1;
-  sycl::range<2> local_range(wg_sz_y, tf);
-  sycl::range<2> global_range(wg_sz_y, target_nwg * tf);
-
-  auto input_ptr = (char*)input_reshaped.const_data_ptr();
-  auto grad_input_ptr = (char*)grad_input_reshaped.mutable_data_ptr();
-  auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
-  bool can_use_vec_kernel =
-      (input_reshaped.is_contiguous() && grad_input_reshaped.is_contiguous() &&
-       grad_output_reshaped.is_contiguous() &&
-       memory::can_vectorize_up_to<input_scalar_t>(input_ptr) >=
-           PREFERRED_VEC_SIZE &&
-       memory::can_vectorize_up_to<input_scalar_t>(grad_input_ptr) >=
-           PREFERRED_VEC_SIZE &&
-       memory::can_vectorize_up_to<input_scalar_t>(grad_output_ptr) >=
-           PREFERRED_VEC_SIZE &&
-       feature_size % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2);
-
-  if (can_use_vec_kernel) {
-    using VecKernelClass = BatchNormBackwardVectorizedKernelFunctor<
+    using KernelClass = BatchNormBackwardKernelFunctor<
         SIMD_W,
-        PREFERRED_VEC_SIZE,
         input_scalar_t,
         stat_scalar_t,
         accscalar_t,
         index_t>;
-    int vec_max_group_size = get_max_group_size<VecKernelClass>(SIMD_W);
-    int vec_tf = get_num_threads<VecKernelClass>(feature_size_padded, SIMD_W);
-    int vec_wg_sz_y = std::max<int>(1, vec_max_group_size / vec_tf);
-    int vec_wg_thr = vec_wg_sz_y * vec_tf;
-    int vec_target_nwg = std::min<int>(tile_capacity / vec_wg_thr, C);
-    if (vec_target_nwg < 1)
-      vec_target_nwg = 1;
-    sycl::range<2> vec_local_range(vec_wg_sz_y, vec_tf);
-    sycl::range<2> vec_global_range(
-        vec_wg_sz_y, vec_target_nwg * vec_tf);
-    auto kfn = VecKernelClass(
-        input,
-        grad_output,
-        grad_input,
-        grad_weight,
-        grad_bias,
-        weight,
-        running_mean,
-        running_var,
-        save_mean,
-        save_invstd,
-        train,
-        epsilon,
-        vec_wg_thr);
-    sycl_kernel_submit(vec_global_range, vec_local_range, queue, kfn);
-  } else {
-    auto kfn = KernelClass(
-        input,
-        grad_output,
-        grad_input,
-        grad_weight,
-        grad_bias,
-        weight,
-        running_mean,
-        running_var,
-        save_mean,
-        save_invstd,
-        train,
-        epsilon,
-        wg_thr);
-    sycl_kernel_submit(global_range, local_range, queue, kfn);
+    int max_group_size = get_max_group_size<KernelClass>(SIMD_W);
+
+    int feature_size_padded = std::max(feature_size, SIMD_W);
+    int tf = get_num_threads<KernelClass>(feature_size_padded, SIMD_W);
+    int wg_sz_y = std::max<int>(1, max_group_size / tf);
+    int wg_thr = wg_sz_y * tf;
+    int target_nwg = std::min<int>(tile_capacity / wg_thr, C);
+    if (target_nwg < 1)
+      target_nwg = 1;
+    sycl::range<2> local_range(wg_sz_y, tf);
+    sycl::range<2> global_range(wg_sz_y, target_nwg * tf);
+
+    auto input_ptr = (char*)input_reshaped.const_data_ptr();
+    auto grad_input_ptr = (char*)grad_input_reshaped.mutable_data_ptr();
+    auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
+    bool can_use_vec_kernel =
+        (input_reshaped.is_contiguous() &&
+         grad_input_reshaped.is_contiguous() &&
+         grad_output_reshaped.is_contiguous() &&
+         memory::can_vectorize_up_to<input_scalar_t>(input_ptr) >=
+             PREFERRED_VEC_SIZE &&
+         memory::can_vectorize_up_to<input_scalar_t>(grad_input_ptr) >=
+             PREFERRED_VEC_SIZE &&
+         memory::can_vectorize_up_to<input_scalar_t>(grad_output_ptr) >=
+             PREFERRED_VEC_SIZE &&
+         feature_size % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2);
+
+    if (can_use_vec_kernel) {
+      using VecKernelClass = BatchNormBackwardVectorizedKernelFunctor<
+          SIMD_W,
+          PREFERRED_VEC_SIZE,
+          input_scalar_t,
+          stat_scalar_t,
+          accscalar_t,
+          index_t>;
+      int vec_max_group_size = get_max_group_size<VecKernelClass>(SIMD_W);
+      int vec_tf = get_num_threads<VecKernelClass>(feature_size_padded, SIMD_W);
+      int vec_wg_sz_y = std::max<int>(1, vec_max_group_size / vec_tf);
+      int vec_wg_thr = vec_wg_sz_y * vec_tf;
+      int vec_target_nwg = std::min<int>(tile_capacity / vec_wg_thr, C);
+      if (vec_target_nwg < 1)
+        vec_target_nwg = 1;
+      sycl::range<2> vec_local_range(vec_wg_sz_y, vec_tf);
+      sycl::range<2> vec_global_range(vec_wg_sz_y, vec_target_nwg * vec_tf);
+      auto kfn = VecKernelClass(
+          input,
+          grad_output,
+          grad_input,
+          grad_weight,
+          grad_bias,
+          weight,
+          running_mean,
+          running_var,
+          save_mean,
+          save_invstd,
+          train,
+          epsilon,
+          vec_wg_thr);
+      sycl_kernel_submit(vec_global_range, vec_local_range, queue, kfn);
+    } else {
+      auto kfn = KernelClass(
+          input,
+          grad_output,
+          grad_input,
+          grad_weight,
+          grad_bias,
+          weight,
+          running_mean,
+          running_var,
+          save_mean,
+          save_invstd,
+          train,
+          epsilon,
+          wg_thr);
+      sycl_kernel_submit(global_range, local_range, queue, kfn);
+    }
+    return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
+  };
+  if (supports_simd32) {
+    return launch_fused(std::integral_constant<int, SIMD32>{});
   }
-  return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
+  return launch_fused(std::integral_constant<int, SIMD16>{});
 }
 
 template <typename scalar_t, typename accscalar_t>
