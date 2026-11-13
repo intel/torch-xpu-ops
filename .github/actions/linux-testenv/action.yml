@@ -19,7 +19,7 @@ inputs:
     description: Token with actions:read permission on pytorch/pytorch
   torch_xpu_ops:
     type: string
-    default: 'daisyden/distributed_2.16'
+    default: 'pinned'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
@@ -139,15 +139,25 @@ runs:
         else
           TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
           if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
-            TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
+            TORCH_XPU_OPS_COMMIT="pinned"
           else
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-        cd third_party/torch-xpu-ops
-        git checkout ${TORCH_XPU_OPS_COMMIT}
-        git status && git diff && git show -s
+        SOURCE_ARG=()
+        if [[ "${{ github.event_name }}" == "pull_request" \
+          && "${{ inputs.torch_xpu_ops }}" == "${{ github.sha }}" ]];then
+          SOURCE_ARG=(--source "${{ github.workspace }}/torch-xpu-ops")
+        fi
+        if [[ "${{ inputs.pytorch }}" != *"_wheel" \
+          && "${{ inputs.pytorch }}" != *"+xpu" ]];then
+          SOURCE_ARG+=(--built-wheel)
+        fi
+        python torch-xpu-ops/.github/scripts/checkout_torch_xpu_ops.py \
+          --pytorch-dir pytorch \
+          --repo "${TORCH_XPU_OPS_REPO}" \
+          --ref "${TORCH_XPU_OPS_COMMIT}" \
+          --prefer-wheel "${SOURCE_ARG[@]}"
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
