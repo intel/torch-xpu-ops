@@ -190,6 +190,8 @@ INDUCTOR_PART2 = [
     "test/inductor/test_torchinductor_opinfo.py",
     "test/inductor/test_aot_inductor.py",
     "test/inductor/test_cpu_select_algorithm.py",
+    "test/inductor/test_module_level_kernels.py",
+    "test/inductor/test_slice_scatter_chunking.py",
 ]
 
 INDUCTOR_ENV = {
