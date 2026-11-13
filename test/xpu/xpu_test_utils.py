@@ -384,6 +384,11 @@ _none_device_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
     ("_refs.true_divide", "test_python_ref_executor"),
+    # Currently for following operators CPU fallback occurs, causing
+    # Unexpected Success in CI. Issues for proper implementation of
+    # each operator linked next to the entry.
+    ("cholesky_inverse", "test_out"),  # https://github.com/intel/torch-xpu-ops/issues/6051
+    ("ormqr", "test_out"),  # https://github.com/intel/torch-xpu-ops/issues/5902
 ]
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
