@@ -272,6 +272,7 @@
     "../../../../test/distributed/tensor/test_dtensor_logging.py": None,
     "../../../../test/distributed/test_symmetric_memory.py": None,
     "../../../../test/distributed/test_c10d_ops_nccl.py": None,
+    "../../../../test/inductor/test_comm_analysis.py": None,
 }
 
 skip_dict_python = {
