@@ -33,13 +33,7 @@ skip_dict = {
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
-    "export/test_draft_export_xpu.py": None,
-    "export/test_experimental_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "export/test_retraceability_xpu.py": None,
-    "export/test_serdes_xpu.py": None,
-    "export/test_serialize_xpu.py": None,
-    "export/test_strict_export_v2_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
@@ -287,10 +281,10 @@ skip_dict = {
         "test_fused_kernels_nested_broadcasting_requires_grad_failure_xpu",
         "test_flash_attention_fail_with_non_square_causal_attention_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/3137
-        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_12_xpu",
-        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_256_xpu",
-        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_12_xpu",
-        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_256_xpu",
+        "test_transformerencoder_fastpath_enable_nested_tensor_True_use_autocast_True_d_model_12_xpu",
+        "test_transformerencoder_fastpath_enable_nested_tensor_False_use_autocast_True_d_model_256_xpu",
+        "test_transformerencoder_fastpath_enable_nested_tensor_False_use_autocast_True_d_model_12_xpu",
+        "test_transformerencoder_fastpath_enable_nested_tensor_True_use_autocast_True_d_model_256_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/3136
         "test_disable_fastpath_xpu",
         "test_fused_sdp_priority_order_use_compile_False_xpu",
@@ -324,10 +318,27 @@ skip_dict = {
         # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
         "test_non_strict_export_distribution_validation_cpp_serdes",
     ),
+    f"{PYTORCH_TEST_DIR}/export/test_draft_export.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_experimental.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_export_strict.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_export_training_ir_to_run_decomp.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_passes.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_retraceability.py": (
+        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
+        "test_non_strict_export_distribution_validation_retraceability_strict",
+        "test_non_strict_export_distribution_validation_retraceability_nonstrict",
+    ),
+    f"{PYTORCH_TEST_DIR}/export/test_serdes.py": (
+        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
+        "test_non_strict_export_distribution_validation_serdes_strict",
+        "test_non_strict_export_distribution_validation_serdes_nonstrict",
+    ),
+    f"{PYTORCH_TEST_DIR}/export/test_serialize.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_strict_export_v2.py": (
+        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
+        "test_non_strict_export_distribution_validation_strict_export_v2",
+    ),
     f"{PYTORCH_TEST_DIR}/export/test_torchbind.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_ac.py": None,
     f"{PYTORCH_TEST_DIR}/functorch/test_aot_joint_with_descriptors.py": None,
@@ -399,7 +410,6 @@ skip_dict = {
     },
     f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
     f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
-    f"{PYTORCH_TEST_DIR}/test_callback.py": None,
     f"{PYTORCH_TEST_DIR}/test_comparison_utils.py": None,
     f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
@@ -416,8 +426,6 @@ skip_dict = {
     ),
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
-    f"{PYTORCH_TEST_DIR}/test_mkldnn_fusion.py": None,
-    f"{PYTORCH_TEST_DIR}/test_modes.py": None,
     f"{PYTORCH_TEST_DIR}/test_modules.py": None,
     f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
@@ -425,16 +433,10 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
     f"{PYTORCH_TEST_DIR}/test_ops_fwd_gradients.py": (
         # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/5930
-        "test_fn_fwgrad_bwgrad_stft_xpu_complex128",
         # https://github.com/intel/torch-xpu-ops/issues/4996
         "test_fn_fwgrad_bwgrad_stft_xpu_float64",
     ),
-    f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/5930
-        "test_fn_gradgrad_stft_xpu_complex128",
-    ),
+    f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": None,
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
