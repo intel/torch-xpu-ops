@@ -29,7 +29,8 @@ is `fix-verify`'s job); staging-only, see HARD RULES.
 
 - `triage_result` — JSON output from `fix-root-cause` (`root_cause`,
   `fix_strategy`, `target_repo`, `domain`, `analyzed_sha`).
-- `PYTORCH_DIR` — path to local PyTorch checkout.
+- `PYTORCH_DIR` — path to local PyTorch checkout (default
+  `agent_space_xpu/pytorch`).
 - `target_repo_dir` — path to the checkout that will be edited. Derived
   from `PYTORCH_DIR` and `triage_result.target_repo`:
   - `target_repo == "pytorch"` → `target_repo_dir = PYTORCH_DIR`.

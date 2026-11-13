@@ -11,13 +11,13 @@ Shared knowledge base for `domain: xpu-kernel`.
 
 ## CUDA cross-reference
 
-CUDA counterparts live in `agent_space_xpu/pytorch/`:
+CUDA counterparts live in `$PYTORCH_DIR/`:
 
 - `src/ATen/native/xpu/<Op>.cpp` → `aten/src/ATen/native/<Op>.cpp`
 - `src/ATen/native/xpu/sycl/<Op>Kernels.cpp` → `aten/src/ATen/native/cuda/<Op>.cu`
 
 For ported tests, find the original under
-`agent_space_xpu/pytorch/test/` and compare tolerances, dtypes, and
+`$PYTORCH_DIR/test/` and compare tolerances, dtypes, and
 device assumptions.
 
 ## Missing kernel
