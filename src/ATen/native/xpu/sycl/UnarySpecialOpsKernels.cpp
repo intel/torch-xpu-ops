@@ -21,6 +21,7 @@
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
 #include <comm/xpu_aten.h>
+#include <sycl/ext/intel/math.hpp>
 #include <numbers>
 
 #define SYCL_EXT_ONEAPI_COMPLEX
@@ -49,7 +50,7 @@ struct SigmoidFunctor {
       const auto e = syclex::exp(-z);
       return one / (one + opmath_t(e.real(), e.imag()));
     } else {
-      return one / (one + sycl::exp(-a_));
+      return one / (one + sycl::ext::intel::math::exp(-a_));
     }
   }
 };
@@ -134,7 +135,7 @@ template <typename scalar_t>
 struct Exp2Functor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    return sycl::exp2(static_cast<opmath_t>(a));
+    return sycl::ext::intel::math::exp2(static_cast<opmath_t>(a));
   }
 };
 

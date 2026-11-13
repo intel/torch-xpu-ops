@@ -15,6 +15,7 @@
 #include <c10/core/ScalarType.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <sycl/ext/intel/math.hpp>
 
 #include <ATen/native/xpu/sycl/UnaryGeometricTanhKernel.h>
 
@@ -27,7 +28,7 @@ struct TanhFunctor {
     if constexpr (c10::is_complex<opmath_t>::value) {
       return std::tanh(static_cast<opmath_t>(a));
     } else {
-      return sycl::tanh(static_cast<opmath_t>(a));
+      return sycl::ext::intel::math::tanh(static_cast<opmath_t>(a));
     }
   }
 };
