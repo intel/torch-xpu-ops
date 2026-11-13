@@ -43,24 +43,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/5638 (not XPU-specific, fix: pytorch/pytorch#200914)
         "test_source_multithreaded",
     ),
-    "quantization/core/test_quantized_op_xpu.py": (
-        # AssertionError: Tensor-likes are not close!
-        # RuntimeError: value cannot be converted to type int without overflow
-        "test_add_scalar_relu_xpu",
-        # AssertionError: Tensor-likes are not close!
-        "test_cat_nhwc_xpu",
-        # AssertionError: Quantized tensor-likes are not close!
-        # Rounding mismatch at quantization midpoint due to hypothesis
-        # derandomize seed difference from _xpu suffix.
-        # https://github.com/intel/torch-xpu-ops/issues/3482
-        "test_leaky_relu_observed_output_xpu",
-        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
-        "test_max_pool2d_cudnn_xpu",
-        "test_qgelu_xpu",
-        "test_qrelu_xpu",
-        # CPU-only qnnpack backend, not applicable to XPU
-        "test_qsoftmax_qnnpack_xpu",
-    ),
     "quantization/core/test_quantized_tensor_xpu.py": (
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
         "test_qtensor_cuda_xpu",
@@ -252,7 +234,6 @@ skip_dict = {
         # cuFFT plan cache is CUDA-specific and has no XPU equivalent.
         "test_cufft_plan_cache_xpu_float64",
     ),
-    "test_tensor_creation_ops_xpu.py": None,
     "test_testing_xpu.py": None,
     "test_torch_xpu.py": None,
     "test_transformers_xpu.py": (
@@ -372,6 +353,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_execution_trace.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_memory_profiler.py": None,
+    f"{PYTORCH_TEST_DIR}/quantization/core/test_quantized_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_ao_sparsity.py": None,
     f"{PYTORCH_TEST_DIR}/custom_backend/test_custom_backend.py": {
         # Requires "custom_backend" target to be build
@@ -446,6 +428,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
+    f"{PYTORCH_TEST_DIR}/test_tensor_creation_ops.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
 }
