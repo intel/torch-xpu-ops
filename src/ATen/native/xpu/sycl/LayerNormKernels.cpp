@@ -646,7 +646,7 @@ struct VectorizedLayerNormKernelSmallFunctor {
     using vec_t = aligned_vector<T, vec_size<T>>;
     using acc_t = acc_type_device<T, kXPU>;
     auto sg = item_id.get_sub_group();
-    const int lane_id = item_id.get_local_id(0);
+    const int lane_id = sg.get_local_linear_id();
     const int row_in_wg = lane_id / kLanesPerRow;
     const int lane_in_row = lane_id % kLanesPerRow;
     const int64_t row =
