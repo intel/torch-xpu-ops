@@ -6465,17 +6465,18 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             self.assertEqual(mod.running_var, ref_mod.running_var)
             self.assertEqual(inp.grad, ref_inp.grad)
 
-        def _train(memory_format_name, ref_backend, mixed, dtype):
+        def _train(memory_format_name, ref_backend, mixed, dtype, size=None):
             memory_format = _get_memory_format_from_name(memory_format_name)
 
             ref_memory_format = _get_backend_memory_format(ref_backend, memory_format)
             ref_device = _get_ref_device(ref_backend, device=device_type)
 
-            size = (
-                (4, 8, 2, 2, 2)
-                if memory_format_name in ("NCHW3D", "NHWC3D")
-                else (4, 8, 2, 2)
-            )
+            if size is None:
+                size = (
+                    (4, 8, 2, 2, 2)
+                    if memory_format_name in ("NCHW3D", "NHWC3D")
+                    else (4, 8, 2, 2)
+                )
             inp = (
                 _create_tensor(size, memory_format, dtype, device=device_type)
                 .detach()
@@ -6535,6 +6536,86 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             _train(memory_format, ref_backend, mixed, dtype)
         else:
             _inference(memory_format, ref_backend, mixed, dtype)
+
+    @unittest.skipIf(not TEST_XPU or device_type != "xpu", "XPU not available")
+    def test_batchnorm_nchw_backward_channel_tiles(self):
+        cases = (
+            ((8, 33, 7, 7), torch.float32, False),
+            ((5, 30, 6, 6), torch.float16, False),
+            ((3, 8, 33, 33), torch.float32, False),
+            ((8, 257, 7, 7), torch.float32, False),
+            ((8, 258, 7, 7), torch.float16, False),
+            ((8, 258, 7, 7), torch.bfloat16, False),
+            ((256, 1280, 7, 7), torch.bfloat16, False),
+            ((8, 257, 7, 7), torch.float32, True),
+        )
+        for size, dtype, strided_stats in cases:
+            with self.subTest(size=size, dtype=dtype, strided_stats=strided_stats):
+                generator = torch.Generator().manual_seed(0)
+                x = torch.randn(size, dtype=dtype, generator=generator)
+                grad = torch.randn(size, dtype=dtype, generator=generator)
+                stats_size = size[1] * (2 if strided_stats else 1)
+                weight_base = torch.randn(
+                    stats_size, dtype=torch.float32, generator=generator
+                )
+                mean_base = torch.randn(
+                    stats_size, dtype=torch.float32, generator=generator
+                )
+                invstd_base = torch.rand(
+                    stats_size, dtype=torch.float32, generator=generator
+                )
+                weight = weight_base[::2] if strided_stats else weight_base
+                mean = mean_base[::2] if strided_stats else mean_base
+                invstd = (
+                    invstd_base[::2] if strided_stats else invstd_base
+                ) + 0.5
+
+                def to_xpu(value):
+                    # Preserve the stride: copying a sliced CPU tensor to XPU
+                    # can materialize it as a contiguous tensor.
+                    if strided_stats:
+                        base = torch.empty(
+                            size[1] * 2, dtype=value.dtype, device="xpu"
+                        )
+                        base[::2].copy_(value)
+                        return base[::2]
+                    return value.to("xpu")
+
+                weight_xpu = to_xpu(weight)
+                mean_xpu = to_xpu(mean)
+                invstd_xpu = to_xpu(invstd)
+                if strided_stats:
+                    self.assertEqual(weight_xpu.stride(), (2,))
+                    self.assertEqual(mean_xpu.stride(), (2,))
+                    self.assertEqual(invstd_xpu.stride(), (2,))
+
+                x_xpu = x.to("xpu")
+                grad_xpu = grad.to("xpu")
+                running_mean = torch.zeros_like(weight)
+                running_var = torch.ones_like(weight)
+                args = (True, 1e-5, [True, True, True])
+                expected = torch.ops.aten.native_batch_norm_backward(
+                    grad, x, weight, running_mean, running_var, mean, invstd, *args
+                )
+                actual = torch.ops.aten.native_batch_norm_backward(
+                    grad_xpu,
+                    x_xpu,
+                    weight_xpu,
+                    running_mean.to("xpu"),
+                    running_var.to("xpu"),
+                    mean_xpu,
+                    invstd_xpu,
+                    *args,
+                )
+                for result, reference in zip(actual, expected):
+                    tol = 1e-2 if dtype == torch.bfloat16 else 1e-3
+                    self.assertEqual(
+                        result.cpu(),
+                        reference,
+                        atol=tol,
+                        rtol=tol,
+                        exact_dtype=False,
+                    )
 
     @unittest.skipIf(not TEST_GPU, f"{device_type} not available")
     def test_batchnorm_nhwc_cuda(self):

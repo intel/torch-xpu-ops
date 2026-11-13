@@ -199,31 +199,39 @@ int get_prefer_simd(int numPlane, int nHw) {
 
   auto dev_id = at::xpu::current_device();
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
-  auto sub_group_size = dev_prop->sub_group_sizes;
-  int simd = sub_group_size[1];
-  if (simd <= SIMD16)
-    return simd;
+  const auto& sub_group_sizes = dev_prop->sub_group_sizes;
+  const bool supports_simd16 =
+      std::find(sub_group_sizes.begin(), sub_group_sizes.end(), SIMD16) !=
+      sub_group_sizes.end();
+  const bool supports_simd32 =
+      std::find(sub_group_sizes.begin(), sub_group_sizes.end(), SIMD32) !=
+      sub_group_sizes.end();
+  TORCH_CHECK(
+      supports_simd16 || supports_simd32,
+      "BatchNorm requires a 16- or 32-lane subgroup");
+  if (!supports_simd32)
+    return SIMD16;
+  if (!supports_simd16)
+    return SIMD32;
 
-  // if max supported simd >16
+  // Both subgroup sizes are available: choose based on the workload.
   if (nHw <= SIMD16)
     return SIMD16;
-  if (simd >= SIMD32 && nHw <= SIMD32)
+  if (nHw <= SIMD32)
     return SIMD32;
 
   int64_t target_tile_size = at::xpu::getDeviceMaxWorkItems(dev_id);
   // for work group barrier perf
   int64_t wg_size = at::xpu::getDeviceMaxSubGroupSize(dev_id) *
       dev_prop->gpu_hw_threads_per_eu;
-  if (simd == SIMD32) {
-    // when setting wg_size 256 can achieve high occupancy, use SIMD16
-    if (wg_size * numPlane >= target_tile_size)
-      return SIMD16;
-    // for latency case
-    if (nHw <= 1024 && numPlane > 128 && SIMD16 * SIMD16 >= wg_size) {
-      return SIMD16;
-    }
+  // When setting wg_size 256 can achieve high occupancy, use SIMD16.
+  if (wg_size * numPlane >= target_tile_size)
+    return SIMD16;
+  // For latency cases.
+  if (nHw <= 1024 && numPlane > 128 && SIMD16 * SIMD16 >= wg_size) {
+    return SIMD16;
   }
-  return simd;
+  return SIMD32;
 }
 
 template <typename scalar_t, typename accscalar_t>
@@ -4131,78 +4139,85 @@ template <
     typename index_t>
 struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
-    index_t plane = item.get_group(1);
+    int nwg_x = item.get_group_range(1);
+    int C = input_.size(1);
+    int planes_per_wg = (C + nwg_x - 1) / nwg_x;
+    index_t base_plane = item.get_group(1) * planes_per_wg;
+    index_t last_plane = std::min(base_plane + planes_per_wg, (index_t)C);
+
     index_t N = grad_output_.size(0) * grad_output_.size(2);
-
-    stat_accscalar_t mean, invstd;
-    if (train_) {
-      mean = save_mean_[plane];
-      invstd = save_invstd_[plane];
-    } else {
-      mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd = sycl::rsqrt(
-          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
-    }
-
-    stat_accscalar_t weight_val = weight_.size(0) > 0
-        ? static_cast<stat_accscalar_t>(weight_[plane])
-        : stat_accscalar_t(1);
     stat_accscalar_t norm = stat_accscalar_t(1) / N;
-
-    // Compute two values across (batch, x/y/z) in one pass:
-    // 1. Sum(grad_output)
-    // 2. DotProduct(input - mean, grad_output)
-    GradOp<
-        input_scalar_t,
-        stat_accscalar_t,
-        GenericPackedTensorAccessor<
-            const input_scalar_t,
-            3,
-            DefaultPtrTraits,
-            index_t>>
-        g(mean, input_, grad_output_);
     int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
-    auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
-        item, g, grad_output_, plane, num_sg, local_sum_);
-
-    stat_accscalar_t grad_output_sum = res.v1;
-    stat_accscalar_t dot_p = res.v2;
-
-    stat_accscalar_t grad_mean = grad_output_sum * norm;
-    stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
-    stat_accscalar_t grad_scale = invstd * weight_val;
-
     auto grad_input = grad_input_;
-    if (grad_input_.data() != NULL) {
-      for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
-           batch += item.get_local_range(0)) {
-        for (int x = item.get_local_id(1); x < grad_output_.size(2);
-             x += item.get_local_range(1)) {
-          input_scalar_t go = grad_output_[batch][plane][x];
-          if (train_) {
-            stat_accscalar_t inp = input_[batch][plane][x];
-            stat_accscalar_t proj = (inp - mean) * proj_scale;
-            grad_input[batch][plane][x] = static_cast<input_scalar_t>(
-                (go - proj - grad_mean) * grad_scale);
-          } else {
-            grad_input[batch][plane][x] =
-                static_cast<input_scalar_t>(go * grad_scale);
+
+    for (index_t plane = base_plane; plane < last_plane; plane++) {
+      stat_accscalar_t mean, invstd;
+      if (train_) {
+        mean = save_mean_[plane];
+        invstd = save_invstd_[plane];
+      } else {
+        mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
+        invstd = sycl::rsqrt(
+            static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+      }
+
+      stat_accscalar_t weight_val = weight_.size(0) > 0
+          ? static_cast<stat_accscalar_t>(weight_[plane])
+          : stat_accscalar_t(1);
+
+      GradOp<
+          input_scalar_t,
+          stat_accscalar_t,
+          GenericPackedTensorAccessor<
+              const input_scalar_t,
+              3,
+              DefaultPtrTraits,
+              index_t>>
+          g(mean, input_, grad_output_);
+      auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
+          item, g, grad_output_, plane, num_sg, local_sum_);
+      // All work-items must finish reading the previous channel's result
+      // before another channel reuses local_sum_.
+      sycl::group_barrier(item.get_group());
+
+      stat_accscalar_t grad_output_sum = res.v1;
+      stat_accscalar_t dot_p = res.v2;
+
+      stat_accscalar_t grad_mean = grad_output_sum * norm;
+      stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
+      stat_accscalar_t grad_scale = invstd * weight_val;
+
+      if (grad_input_.data() != NULL) {
+        for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
+             batch += item.get_local_range(0)) {
+          for (int x = item.get_local_id(1); x < grad_output_.size(2);
+               x += item.get_local_range(1)) {
+            input_scalar_t go = grad_output_[batch][plane][x];
+            if (train_) {
+              stat_accscalar_t inp = input_[batch][plane][x];
+              stat_accscalar_t proj = (inp - mean) * proj_scale;
+              grad_input[batch][plane][x] = static_cast<input_scalar_t>(
+                  (go - proj - grad_mean) * grad_scale);
+            } else {
+              grad_input[batch][plane][x] =
+                  static_cast<input_scalar_t>(go * grad_scale);
+            }
           }
         }
       }
-    }
 
-    if (grad_weight_.size(0) > 0) {
-      if (item.get_local_id(1) == 0) {
-        auto grad_weight = grad_weight_;
-        grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
+      if (grad_weight_.size(0) > 0) {
+        if (item.get_local_id(1) == 0) {
+          auto grad_weight = grad_weight_;
+          grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
+        }
       }
-    }
 
-    if (grad_bias_.size(0) > 0) {
-      if (item.get_local_id(1) == 0) {
-        auto grad_bias = grad_bias_;
-        grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
+      if (grad_bias_.size(0) > 0) {
+        if (item.get_local_id(1) == 0) {
+          auto grad_bias = grad_bias_;
+          grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
+        }
       }
     }
   }
@@ -4336,93 +4351,98 @@ template <
 struct BatchNormBackwardVectorizedKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
-    index_t plane = item.get_group(1);
+    int nwg_x = item.get_group_range(1);
+    int C = input_.size(1);
+    int planes_per_wg = (C + nwg_x - 1) / nwg_x;
+    index_t base_plane = item.get_group(1) * planes_per_wg;
+    index_t last_plane = std::min(base_plane + planes_per_wg, (index_t)C);
+
     index_t N = grad_output_.size(0) * grad_output_.size(2);
-
-    stat_accscalar_t mean, invstd;
-    if (train_) {
-      mean = save_mean_[plane];
-      invstd = save_invstd_[plane];
-    } else {
-      mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd = sycl::rsqrt(
-          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
-    }
-
-    stat_accscalar_t weight_val = weight_.size(0) > 0
-        ? static_cast<stat_accscalar_t>(weight_[plane])
-        : stat_accscalar_t(1);
     stat_accscalar_t norm = stat_accscalar_t(1) / N;
-
-    // Compute two values across (batch, x/y/z) in one pass:
-    // 1. Sum(grad_output)
-    // 2. DotProduct(input - mean, grad_output)
-    GradOp<
-        input_scalar_t,
-        stat_accscalar_t,
-        GenericPackedTensorAccessor<
-            const input_scalar_t,
-            3,
-            DefaultPtrTraits,
-            index_t>>
-        g(mean, input_, grad_output_);
     int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
-    auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
-        item, g, grad_output_, plane, num_sg, local_sum_);
-
-    stat_accscalar_t grad_output_sum = res.v1;
-    stat_accscalar_t dot_p = res.v2;
-
-    stat_accscalar_t grad_mean = grad_output_sum * norm;
-    stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
-    stat_accscalar_t grad_scale = invstd * weight_val;
-
     auto grad_input = grad_input_;
-    if (grad_input_.data() != NULL) {
-      for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
-           batch += item.get_local_range(0)) {
-        for (int x_vec_begin = item.get_local_id(1) * VEC_SIZE;
-             x_vec_begin < grad_output_.size(2);
-             x_vec_begin += VEC_SIZE * item.get_local_range(1)) {
-          using vec_t = memory::aligned_vector<input_scalar_t, VEC_SIZE>;
-          auto go_vec = *reinterpret_cast<vec_t*>(const_cast<input_scalar_t*>(
-              &grad_output_[batch][plane][x_vec_begin]));
-          vec_t grad_input_vec;
-          if (train_) {
-            auto inp_vec =
-                *reinterpret_cast<vec_t*>(const_cast<input_scalar_t*>(
-                    &input_[batch][plane][x_vec_begin]));
+
+    for (index_t plane = base_plane; plane < last_plane; plane++) {
+      stat_accscalar_t mean, invstd;
+      if (train_) {
+        mean = save_mean_[plane];
+        invstd = save_invstd_[plane];
+      } else {
+        mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
+        invstd = sycl::rsqrt(
+            static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+      }
+
+      stat_accscalar_t weight_val = weight_.size(0) > 0
+          ? static_cast<stat_accscalar_t>(weight_[plane])
+          : stat_accscalar_t(1);
+
+      GradOp<
+          input_scalar_t,
+          stat_accscalar_t,
+          GenericPackedTensorAccessor<
+              const input_scalar_t,
+              3,
+              DefaultPtrTraits,
+              index_t>>
+          g(mean, input_, grad_output_);
+      auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
+          item, g, grad_output_, plane, num_sg, local_sum_);
+      sycl::group_barrier(item.get_group());
+
+      stat_accscalar_t grad_output_sum = res.v1;
+      stat_accscalar_t dot_p = res.v2;
+
+      stat_accscalar_t grad_mean = grad_output_sum * norm;
+      stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
+      stat_accscalar_t grad_scale = invstd * weight_val;
+
+      if (grad_input_.data() != NULL) {
+        for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
+             batch += item.get_local_range(0)) {
+          for (int x_vec_begin = item.get_local_id(1) * VEC_SIZE;
+               x_vec_begin < grad_output_.size(2);
+               x_vec_begin += VEC_SIZE * item.get_local_range(1)) {
+            using vec_t = memory::aligned_vector<input_scalar_t, VEC_SIZE>;
+            auto go_vec = *reinterpret_cast<vec_t*>(const_cast<input_scalar_t*>(
+                &grad_output_[batch][plane][x_vec_begin]));
+            vec_t grad_input_vec;
+            if (train_) {
+              auto inp_vec =
+                  *reinterpret_cast<vec_t*>(const_cast<input_scalar_t*>(
+                      &input_[batch][plane][x_vec_begin]));
 #pragma unroll
-            for (int vt = 0; vt < VEC_SIZE; ++vt) {
-              stat_accscalar_t proj =
-                  ((stat_accscalar_t)inp_vec[vt] - mean) * proj_scale;
-              grad_input_vec[vt] = static_cast<input_scalar_t>(
-                  (go_vec[vt] - proj - grad_mean) * grad_scale);
-            }
-          } else {
+              for (int vt = 0; vt < VEC_SIZE; ++vt) {
+                stat_accscalar_t proj =
+                    ((stat_accscalar_t)inp_vec[vt] - mean) * proj_scale;
+                grad_input_vec[vt] = static_cast<input_scalar_t>(
+                    (go_vec[vt] - proj - grad_mean) * grad_scale);
+              }
+            } else {
 #pragma unroll
-            for (int vt = 0; vt < VEC_SIZE; ++vt) {
-              grad_input_vec[vt] =
-                  static_cast<input_scalar_t>(go_vec[vt] * grad_scale);
+              for (int vt = 0; vt < VEC_SIZE; ++vt) {
+                grad_input_vec[vt] =
+                    static_cast<input_scalar_t>(go_vec[vt] * grad_scale);
+              }
             }
+            input_scalar_t* write_ptr = &grad_input[batch][plane][x_vec_begin];
+            *(reinterpret_cast<vec_t*>(write_ptr)) = grad_input_vec;
           }
-          input_scalar_t* write_ptr = &grad_input[batch][plane][x_vec_begin];
-          *(reinterpret_cast<vec_t*>(write_ptr)) = grad_input_vec;
         }
       }
-    }
 
-    if (grad_weight_.size(0) > 0) {
-      if (item.get_local_id(1) == 0) {
-        auto grad_weight = grad_weight_;
-        grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
+      if (grad_weight_.size(0) > 0) {
+        if (item.get_local_id(1) == 0) {
+          auto grad_weight = grad_weight_;
+          grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
+        }
       }
-    }
 
-    if (grad_bias_.size(0) > 0) {
-      if (item.get_local_id(1) == 0) {
-        auto grad_bias = grad_bias_;
-        grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
+      if (grad_bias_.size(0) > 0) {
+        if (item.get_local_id(1) == 0) {
+          auto grad_bias = grad_bias_;
+          grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
+        }
       }
     }
   }
@@ -4546,6 +4566,596 @@ struct BatchNormBackwardVectorizedKernelFunctor
   sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>> local_sum_;
 };
 
+// ---------------------------------------------------------------------------
+// Physical channel-tile kernel for contiguous NCHW with small HW.
+//
+// A tile covers C_TILE adjacent channels. For every batch row n, the tile is
+// one contiguous segment of span = C_TILE * HW elements, so the tile is
+// [N, span] with row stride C * HW. Each work-item owns VEC consecutive
+// columns r .. r + VEC - 1 of the span and walks rows n = row0,
+// row0 + rows_per_it, ... All divisions happen once per work-item; adjacent
+// work-items touch adjacent addresses. With an odd HW a vector may straddle
+// two channels, so every element keeps its own bucket.
+// ---------------------------------------------------------------------------
+template <
+    int SIMD,
+    int C_TILE,
+    int VEC,
+    int UNROLL,
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename accscalar_t>
+struct BatchNormBackwardChannelTileKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
+  using vec_t = memory::aligned_vector<input_scalar_t, VEC>;
+  // Rows whose loads are issued before use (more bytes in flight when the
+  // device is not filled with work-groups).
+  static constexpr int kUnroll = UNROLL;
+
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
+    const int t = item.get_local_linear_id();
+    const int wg = item.get_local_range(0);
+    auto sg = item.get_sub_group();
+    const int lane = sg.get_local_linear_id();
+    const int sg_id = sg.get_group_linear_id();
+    const int n_sg = wg / SIMD;
+    const int n_tiles = (C_ + C_TILE - 1) / C_TILE;
+    const accscalar_t norm = accscalar_t(1) / (accscalar_t(N_) * HW_);
+    // run() guarantees 32-bit indexable tensors.
+    const int row_stride = C_ * HW_;
+
+    // Tile order. Interleaved (g, g + nwg, ...) keeps adjacent channels on
+    // adjacent work-groups at the same time, so lines / DRAM blocks shared by
+    // unaligned tile rows are fetched once. Blocked (WG g owns a contiguous
+    // run of tiles) spreads the concurrent tiles over the whole row stride,
+    // which avoids concentrating the in-flight data in a narrow address
+    // window when tile rows are 256 B aligned and nothing is shared.
+    const int nwg = item.get_group_range(0);
+    const int g = item.get_group(0);
+    const int tiles_per_wg = (n_tiles + nwg - 1) / nwg;
+    int it_parity = 0;
+    for (int k = 0; k < tiles_per_wg; ++k, it_parity ^= 1) {
+      const int tile = blocked_ ? g * tiles_per_wg + k : g + k * nwg;
+      if (tile >= n_tiles)
+        break; // work-group uniform
+      const int c0 = tile * C_TILE;
+      const int cnt = std::min(C_TILE, C_ - c0);
+      const int lanes = cnt * HW_ / VEC;
+      // A row segment narrower than the work-group packs several rows per
+      // step; a wider one (only with C_TILE == 1, so a single bucket) is
+      // walked in work-group-wide column chunks.
+      const bool packed = lanes <= wg;
+      const int rows_per_it = packed ? wg / lanes : 1;
+      const int row0 = packed ? t / lanes : 0;
+      const int col0 = packed ? t - row0 * lanes : t;
+      const int col_step = packed ? lanes : wg;
+      const bool active = row0 < rows_per_it;
+      const int tile_base = c0 * HW_;
+      // Double-buffered SLM: tile parity selects the slm_/stats_ half.
+      const int buf = it_parity;
+      const int slm_off = buf * n_sg * C_TILE * 2;
+      const int st_off = buf * C_TILE * 2;
+
+      int bk[VEC];
+      accscalar_t mean[VEC];
+#pragma unroll
+      for (int e = 0; e < VEC; ++e) {
+        bk[e] = packed ? (col0 * VEC + e) / HW_ : 0;
+        mean[e] = active ? save_mean_[c0 + bk[e]] : accscalar_t(0);
+      }
+
+      // Pass 1: per-element sum(dy) and sum(dy * (x - mean)).
+      accscalar_t s_dy[VEC], s_dxm[VEC];
+#pragma unroll
+      for (int e = 0; e < VEC; ++e) {
+        s_dy[e] = 0;
+        s_dxm[e] = 0;
+      }
+      auto accumulate = [&](const vec_t& gv_, const vec_t& xv_) {
+#pragma unroll
+        for (int e = 0; e < VEC; ++e) {
+          const accscalar_t gv = static_cast<accscalar_t>(gv_[e]);
+          s_dy[e] += gv;
+          s_dxm[e] += gv * (static_cast<accscalar_t>(xv_[e]) - mean[e]);
+        }
+      };
+      if (active && packed) {
+        // One column per work-item; issue kUnroll rows' loads before use.
+        const int base = tile_base + col0 * VEC;
+        int n = row0;
+        for (; n + (kUnroll - 1) * rows_per_it < N_;
+             n += kUnroll * rows_per_it) {
+          vec_t gu[kUnroll], xu[kUnroll];
+#pragma unroll
+          for (int u = 0; u < kUnroll; ++u) {
+            const int idx = (n + u * rows_per_it) * row_stride + base;
+            gu[u] = *reinterpret_cast<const vec_t*>(grad_output_ + idx);
+            xu[u] = *reinterpret_cast<const vec_t*>(input_ + idx);
+          }
+#pragma unroll
+          for (int u = 0; u < kUnroll; ++u)
+            accumulate(gu[u], xu[u]);
+        }
+        for (; n < N_; n += rows_per_it) {
+          const int idx = n * row_stride + base;
+          accumulate(
+              *reinterpret_cast<const vec_t*>(grad_output_ + idx),
+              *reinterpret_cast<const vec_t*>(input_ + idx));
+        }
+      } else if (active) {
+        for (int n = 0; n < N_; ++n) {
+          for (int col = col0; col < lanes; col += col_step) {
+            const int idx = n * row_stride + tile_base + col * VEC;
+            accumulate(
+                *reinterpret_cast<const vec_t*>(grad_output_ + idx),
+                *reinterpret_cast<const vec_t*>(input_ + idx));
+          }
+        }
+      }
+
+      // Segmented reduction by bucket: subgroup reduce, then across subgroups.
+#pragma unroll
+      for (int k = 0; k < C_TILE; ++k) {
+        accscalar_t v0 = 0, v1 = 0;
+#pragma unroll
+        for (int e = 0; e < VEC; ++e) {
+          if (active && bk[e] == k) {
+            v0 += s_dy[e];
+            v1 += s_dxm[e];
+          }
+        }
+        v0 = sycl::reduce_over_group(sg, v0, sycl::plus<accscalar_t>());
+        v1 = sycl::reduce_over_group(sg, v1, sycl::plus<accscalar_t>());
+        if (lane == 0) {
+          slm_[slm_off + (sg_id * C_TILE + k) * 2 + 0] = v0;
+          slm_[slm_off + (sg_id * C_TILE + k) * 2 + 1] = v1;
+        }
+      }
+      sycl::group_barrier(item.get_group());
+      if (t < 2 * C_TILE) {
+        const int k = t >> 1, comp = t & 1;
+        accscalar_t acc = 0;
+        for (int s = 0; s < n_sg; ++s)
+          acc += slm_[slm_off + (s * C_TILE + k) * 2 + comp];
+        stats_[st_off + t] = acc;
+      }
+      sycl::group_barrier(item.get_group());
+
+      // Pass 2: elementwise grad_input.
+      if (active) {
+        accscalar_t grad_mean[VEC], proj_scale[VEC], grad_scale[VEC];
+#pragma unroll
+        for (int e = 0; e < VEC; ++e) {
+          const int c = c0 + bk[e];
+          const accscalar_t invstd = save_invstd_[c];
+          const accscalar_t w = has_weight_
+              ? static_cast<accscalar_t>(weight_[c])
+              : accscalar_t(1);
+          grad_mean[e] = stats_[st_off + bk[e] * 2 + 0] * norm;
+          proj_scale[e] =
+              stats_[st_off + bk[e] * 2 + 1] * norm * invstd * invstd;
+          grad_scale[e] = invstd * w;
+        }
+        auto transform = [&](const vec_t& gv_, const vec_t& xv_) {
+          vec_t out;
+#pragma unroll
+          for (int e = 0; e < VEC; ++e) {
+            out[e] = static_cast<input_scalar_t>(
+                (static_cast<accscalar_t>(gv_[e]) -
+                 (static_cast<accscalar_t>(xv_[e]) - mean[e]) * proj_scale[e] -
+                 grad_mean[e]) *
+                grad_scale[e]);
+          }
+          return out;
+        };
+        if (packed) {
+          const int base = tile_base + col0 * VEC;
+          int n = row0;
+          for (; n + (kUnroll - 1) * rows_per_it < N_;
+               n += kUnroll * rows_per_it) {
+            vec_t gu[kUnroll], xu[kUnroll];
+#pragma unroll
+            for (int u = 0; u < kUnroll; ++u) {
+              const int idx = (n + u * rows_per_it) * row_stride + base;
+              gu[u] = *reinterpret_cast<const vec_t*>(grad_output_ + idx);
+              xu[u] = *reinterpret_cast<const vec_t*>(input_ + idx);
+            }
+#pragma unroll
+            for (int u = 0; u < kUnroll; ++u) {
+              const int idx = (n + u * rows_per_it) * row_stride + base;
+              *reinterpret_cast<vec_t*>(grad_input_ + idx) =
+                  transform(gu[u], xu[u]);
+            }
+          }
+          for (; n < N_; n += rows_per_it) {
+            const int idx = n * row_stride + base;
+            *reinterpret_cast<vec_t*>(grad_input_ + idx) = transform(
+                *reinterpret_cast<const vec_t*>(grad_output_ + idx),
+                *reinterpret_cast<const vec_t*>(input_ + idx));
+          }
+        } else {
+          for (int n = 0; n < N_; ++n) {
+            for (int col = col0; col < lanes; col += col_step) {
+              const int idx = n * row_stride + tile_base + col * VEC;
+              *reinterpret_cast<vec_t*>(grad_input_ + idx) = transform(
+                  *reinterpret_cast<const vec_t*>(grad_output_ + idx),
+                  *reinterpret_cast<const vec_t*>(input_ + idx));
+            }
+          }
+        }
+      }
+      if (t < cnt) {
+        if (grad_weight_ != nullptr) {
+          grad_weight_[c0 + t] = static_cast<stat_scalar_t>(
+              stats_[st_off + t * 2 + 1] * save_invstd_[c0 + t]);
+        }
+        if (grad_bias_ != nullptr) {
+          grad_bias_[c0 + t] =
+              static_cast<stat_scalar_t>(stats_[st_off + t * 2 + 0]);
+        }
+      }
+      // No end-of-tile barrier. Tile j (local iteration index) uses half
+      // b = j & 1 of slm_ and stats_; tile j+1 uses the other half, so it
+      // never touches what tile j's threads may still be reading. Half b is
+      // rewritten only in tile j+2: slm_[b] by the sub-group partial writes
+      // (before barrier A of j+2) and stats_[b] after barrier A of j+2. Any
+      // thread doing those writes has already passed barrier A (and B) of
+      // tile j+1, which every thread of the work-group reaches only after
+      // finishing all of its tile-j work in program order: the slm_[b] reads
+      // (between A_j and B_j) and every stats_[b] read (pass-2 grad_mean /
+      // proj_scale and the grad_weight / grad_bias epilogue, after B_j).
+      // The tile loop is work-group uniform, so all threads hit every
+      // barrier. Hence 2 barriers per tile suffice.
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm_ = sycl_local_acc_t<accscalar_t>(
+        sycl::range<1>{static_cast<size_t>(2 * (wg_size_ / SIMD) * C_TILE * 2)},
+        cgh);
+    stats_ = sycl_local_acc_t<accscalar_t>(
+        sycl::range<1>{static_cast<size_t>(2 * C_TILE * 2)}, cgh);
+  }
+
+  BatchNormBackwardChannelTileKernelFunctor(
+      const input_scalar_t* input,
+      const input_scalar_t* grad_output,
+      input_scalar_t* grad_input,
+      stat_scalar_t* grad_weight,
+      stat_scalar_t* grad_bias,
+      const stat_scalar_t* weight,
+      const accscalar_t* save_mean,
+      const accscalar_t* save_invstd,
+      bool has_weight,
+      int N,
+      int C,
+      int HW,
+      int wg_size,
+      bool blocked)
+      : input_(input),
+        grad_output_(grad_output),
+        grad_input_(grad_input),
+        grad_weight_(grad_weight),
+        grad_bias_(grad_bias),
+        weight_(weight),
+        save_mean_(save_mean),
+        save_invstd_(save_invstd),
+        has_weight_(has_weight),
+        N_(N),
+        C_(C),
+        HW_(HW),
+        wg_size_(wg_size),
+        blocked_(blocked) {}
+
+ private:
+  const input_scalar_t* input_;
+  const input_scalar_t* grad_output_;
+  input_scalar_t* grad_input_;
+  stat_scalar_t* grad_weight_;
+  stat_scalar_t* grad_bias_;
+  const stat_scalar_t* weight_;
+  const accscalar_t* save_mean_;
+  const accscalar_t* save_invstd_;
+  bool has_weight_;
+  int N_;
+  int C_;
+  int HW_;
+  int wg_size_;
+  bool blocked_;
+  sycl_local_acc_t<accscalar_t> slm_;
+  sycl_local_acc_t<accscalar_t> stats_;
+};
+
+// A vector of `vec` elements is legal for C_TILE `ct` when every row segment
+// (full tiles and the tail tile) starts on a vector boundary and has a length
+// divisible by `vec`.
+inline bool channel_tile_vec_ok(int C, int HW, int ct, int vec) {
+  if (vec == 1)
+    return true;
+  const int64_t tail = C % ct;
+  return (int64_t(C) * HW) % vec == 0 && (int64_t(ct) * HW) % vec == 0 &&
+      (tail * HW) % vec == 0;
+}
+
+// Thread layout for a tile (the C_TILE-aware counterpart of get_num_threads).
+// A tile row is one contiguous segment of ct * HW elements (ct * HW / vec
+// lanes). The cost of a layout is the critical path of one work-group in row
+// steps: ceil(tiles / nwg) tiles per work-group times the row steps per tile,
+//   lanes <= wg: ceil(N / (wg / lanes)) steps (wg / lanes rows per step),
+//   lanes >  wg: N * ceil(lanes / wg) steps (C_TILE == 1, column chunks).
+// It counts idle lanes in a step, the idle tail of the last row step, and
+// idle work-groups when there are fewer tiles than resident work-groups.
+// A regular HW reaches the minimum with C_TILE == 1; an irregular HW pads its
+// rows with adjacent channels. Ties keep the smallest C_TILE.
+inline int64_t channel_tile_cost(
+    int64_t N,
+    int C,
+    int ct,
+    int64_t lanes,
+    int wg,
+    int64_t cap_wgs) {
+  const int64_t tiles = (C + ct - 1) / ct;
+  const int64_t nwg = std::max<int64_t>(1, std::min<int64_t>(cap_wgs, tiles));
+  const int64_t rounds = (tiles + nwg - 1) / nwg;
+  const int64_t steps = lanes <= wg ? (N + wg / lanes - 1) / (wg / lanes)
+                                    : N * ((lanes + wg - 1) / wg);
+  return rounds * steps;
+}
+
+inline int choose_channel_tile(
+    int64_t N,
+    int C,
+    int HW,
+    int wg,
+    int vec,
+    int64_t cap_wgs) {
+  int best = 0;
+  int64_t best_cost = 0;
+  for (int ct : {1, 2, 4, 8}) {
+    if (!channel_tile_vec_ok(C, HW, ct, vec))
+      continue;
+    const int64_t lanes = int64_t(ct) * HW / vec;
+    if (ct > 1 && lanes > wg)
+      break;
+    const int64_t cost = channel_tile_cost(N, C, ct, lanes, wg, cap_wgs);
+    if (best == 0 || cost < best_cost) {
+      best = ct;
+      best_cost = cost;
+    }
+  }
+  return best;
+}
+
+template <
+    int C_TILE,
+    int VEC,
+    int UNROLL,
+    typename input_scalar_t,
+    typename stat_scalar_t>
+bool launch_channel_tile(
+    const Tensor& input,
+    const Tensor& grad_out,
+    const Tensor& weight,
+    const Tensor& save_mean,
+    const Tensor& save_invstd,
+    Tensor& grad_input,
+    Tensor& grad_weight,
+    Tensor& grad_bias,
+    int wg,
+    int64_t cap_wgs) {
+  using accscalar_t = acc_type_device<stat_scalar_t, kXPU>;
+  constexpr int SIMD = SIMD32;
+  const int N = input.size(0);
+  const int C = input.size(1);
+  const int HW = input.numel() / (int64_t(N) * C);
+  const int tiles = (C + C_TILE - 1) / C_TILE;
+  const int nwg = std::max<int64_t>(1, std::min<int64_t>(cap_wgs, tiles));
+  using K = BatchNormBackwardChannelTileKernelFunctor<
+      SIMD,
+      C_TILE,
+      VEC,
+      UNROLL,
+      input_scalar_t,
+      stat_scalar_t,
+      accscalar_t>;
+  if (syclMaxWorkGroupSize<K>() < wg)
+    return false;
+  auto kfn =
+      K(input.const_data_ptr<input_scalar_t>(),
+        grad_out.const_data_ptr<input_scalar_t>(),
+        grad_input.mutable_data_ptr<input_scalar_t>(),
+        grad_weight.defined() ? grad_weight.mutable_data_ptr<stat_scalar_t>()
+                              : nullptr,
+        grad_bias.defined() ? grad_bias.mutable_data_ptr<stat_scalar_t>()
+                            : nullptr,
+        weight.defined() ? weight.const_data_ptr<stat_scalar_t>() : nullptr,
+        save_mean.const_data_ptr<accscalar_t>(),
+        save_invstd.const_data_ptr<accscalar_t>(),
+        weight.defined(),
+        N,
+        C,
+        HW,
+        wg,
+        // 256 B aligned tile rows share no line or DRAM block with the
+        // neighbouring tile: spread the concurrent tiles (blocked order).
+        (int64_t(C_TILE) * HW * sizeof(input_scalar_t)) % 256 == 0);
+  sycl_kernel_submit(
+      sycl::range<1>(size_t(nwg) * wg),
+      sycl::range<1>(wg),
+      getCurrentSYCLQueue(),
+      kfn);
+  return true;
+}
+
+template <int C_TILE, int VEC, typename input_scalar_t, typename stat_scalar_t>
+bool launch_channel_tile_unroll(
+    const Tensor& input,
+    const Tensor& grad_out,
+    const Tensor& weight,
+    const Tensor& save_mean,
+    const Tensor& save_invstd,
+    Tensor& gi,
+    Tensor& gw,
+    Tensor& gb,
+    int wg,
+    int64_t cap_wgs) {
+  // With fewer tiles than resident work-groups the device is not filled and
+  // one load step per thread keeps too few bytes in flight: issue 4 rows'
+  // loads before use. A filled device already has enough in flight.
+  const int64_t tiles = (input.size(1) + C_TILE - 1) / C_TILE;
+  if (tiles < cap_wgs)
+    return launch_channel_tile<C_TILE, VEC, 4, input_scalar_t, stat_scalar_t>(
+        input,
+        grad_out,
+        weight,
+        save_mean,
+        save_invstd,
+        gi,
+        gw,
+        gb,
+        wg,
+        cap_wgs);
+  else
+    return launch_channel_tile<C_TILE, VEC, 1, input_scalar_t, stat_scalar_t>(
+        input,
+        grad_out,
+        weight,
+        save_mean,
+        save_invstd,
+        gi,
+        gw,
+        gb,
+        wg,
+        cap_wgs);
+}
+
+template <int VEC, typename input_scalar_t, typename stat_scalar_t>
+bool launch_channel_tile_ct(
+    int ct,
+    const Tensor& input,
+    const Tensor& grad_out,
+    const Tensor& weight,
+    const Tensor& save_mean,
+    const Tensor& save_invstd,
+    Tensor& gi,
+    Tensor& gw,
+    Tensor& gb,
+    int wg,
+    int64_t cap_wgs) {
+  switch (ct) {
+    case 1:
+      return launch_channel_tile_unroll<1, VEC, input_scalar_t, stat_scalar_t>(
+          input,
+          grad_out,
+          weight,
+          save_mean,
+          save_invstd,
+          gi,
+          gw,
+          gb,
+          wg,
+          cap_wgs);
+    case 2:
+      return launch_channel_tile_unroll<2, VEC, input_scalar_t, stat_scalar_t>(
+          input,
+          grad_out,
+          weight,
+          save_mean,
+          save_invstd,
+          gi,
+          gw,
+          gb,
+          wg,
+          cap_wgs);
+    case 4:
+      return launch_channel_tile_unroll<4, VEC, input_scalar_t, stat_scalar_t>(
+          input,
+          grad_out,
+          weight,
+          save_mean,
+          save_invstd,
+          gi,
+          gw,
+          gb,
+          wg,
+          cap_wgs);
+    default:
+      return launch_channel_tile_unroll<8, VEC, input_scalar_t, stat_scalar_t>(
+          input,
+          grad_out,
+          weight,
+          save_mean,
+          save_invstd,
+          gi,
+          gw,
+          gb,
+          wg,
+          cap_wgs);
+  }
+}
+
+// Contiguous NCHW training backward: one kernel that walks channel tiles in
+// physical address order (see BatchNormBackwardChannelTileKernelFunctor).
+template <typename input_scalar_t, typename stat_scalar_t>
+bool batch_norm_backward_channel_tile(
+    const Tensor& input,
+    const Tensor& grad_out,
+    const Tensor& weight,
+    const Tensor& save_mean,
+    const Tensor& save_invstd,
+    Tensor& grad_input,
+    Tensor& grad_weight,
+    Tensor& grad_bias) {
+  constexpr int WG = SIMD32 * SIMD32;
+  // 16-bit inputs use vec2 to avoid partial-word read-modify-write on
+  // stores; float32 uses scalar accesses.
+  constexpr int VEC = sizeof(input_scalar_t) == 2 ? 2 : 1;
+  const int64_t N = input.size(0);
+  const int64_t C = input.size(1);
+  const int64_t HW = input.numel() / (N * C);
+  const int64_t cap_wgs = std::max<int64_t>(1, syclMaxWorkItemsPerTile() / WG);
+
+  if constexpr (VEC > 1) {
+    const bool aligned = memory::can_vectorize_up_to<input_scalar_t>(
+                             (char*)input.const_data_ptr()) >= VEC &&
+        memory::can_vectorize_up_to<input_scalar_t>(
+            (char*)grad_out.const_data_ptr()) >= VEC &&
+        memory::can_vectorize_up_to<input_scalar_t>(
+            (char*)grad_input.mutable_data_ptr()) >= VEC;
+    if (aligned) {
+      const int ct = choose_channel_tile(N, C, HW, WG, VEC, cap_wgs);
+      if (ct != 0) {
+        return launch_channel_tile_ct<VEC, input_scalar_t, stat_scalar_t>(
+            ct,
+            input,
+            grad_out,
+            weight,
+            save_mean,
+            save_invstd,
+            grad_input,
+            grad_weight,
+            grad_bias,
+            WG,
+            cap_wgs);
+      }
+    }
+  }
+  // C_TILE == 1 is always legal for vec1.
+  const int ct = choose_channel_tile(N, C, HW, WG, 1, cap_wgs);
+  return launch_channel_tile_ct<1, input_scalar_t, stat_scalar_t>(
+      ct,
+      input,
+      grad_out,
+      weight,
+      save_mean,
+      save_invstd,
+      grad_input,
+      grad_weight,
+      grad_bias,
+      WG,
+      cap_wgs);
+}
+
 template <typename input_scalar_t, typename stat_scalar_t, typename index_t>
 std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
     const Tensor& grad_out_,
@@ -4614,103 +5224,126 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
       packed_accessor_or_dummy<const accscalar_t, 1, DefaultPtrTraits, index_t>(
           save_invstd_, "save_invstd");
 
-  int simd = get_prefer_simd(
-      input_reshaped.size(1), input_reshaped.size(0) * input_reshaped.size(1));
+  const auto& subgroup_sizes =
+      at::xpu::getDeviceProperties(at::xpu::current_device())->sub_group_sizes;
+  const bool supports_simd32 =
+      std::find(subgroup_sizes.begin(), subgroup_sizes.end(), SIMD32) !=
+      subgroup_sizes.end();
+  if (supports_simd32 && syclDeviceMaxWorkGroupSize() >= SIMD32 * SIMD32 &&
+      train && grad_input_reshaped.defined() &&
+      input_reshaped.is_contiguous() && grad_output_reshaped.is_contiguous() &&
+      (!weight_.defined() || weight_.is_contiguous()) &&
+      save_mean_.is_contiguous() && save_invstd_.is_contiguous()) {
+    if (batch_norm_backward_channel_tile<input_scalar_t, stat_scalar_t>(
+            input_reshaped,
+            grad_output_reshaped,
+            weight_,
+            save_mean_,
+            save_invstd_,
+            grad_input_reshaped,
+            grad_weight_,
+            grad_bias_)) {
+      return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
+    }
+  }
 
   auto& queue = getCurrentSYCLQueue();
 
-#define LAUNCH_KERNEL_WITH_SIMD(SIMD_W)                           \
-  {                                                               \
-    using KernelClass = BatchNormBackwardKernelFunctor<           \
-        SIMD_W,                                                   \
-        input_scalar_t,                                           \
-        stat_scalar_t,                                            \
-        accscalar_t,                                              \
-        index_t>;                                                 \
-    int max_group_size = get_max_group_size<KernelClass>(SIMD_W); \
-    int tf = get_num_threads<KernelClass>(input.size(2), SIMD_W); \
-    int wg_sz_y = std::max<int>(1, max_group_size / tf);          \
-    sycl::range<2> local_range(wg_sz_y, tf);                      \
-    sycl::range<2> global_range(1 * wg_sz_y, input.size(1) * tf); \
-    auto kfn = KernelClass(                                       \
-        input,                                                    \
-        grad_output,                                              \
-        grad_input,                                               \
-        grad_weight,                                              \
-        grad_bias,                                                \
-        weight,                                                   \
-        running_mean,                                             \
-        running_var,                                              \
-        save_mean,                                                \
-        save_invstd,                                              \
-        train,                                                    \
-        epsilon,                                                  \
-        wg_sz_y * tf);                                            \
-    sycl_kernel_submit(global_range, local_range, queue, kfn);    \
-  }
+  // Use SIMD16 on devices without SIMD32 support.
+  auto launch_fused = [&](auto simd_tag) {
+    constexpr int SIMD_W = decltype(simd_tag)::value;
+    int feature_size = input.size(2);
+    int C = input.size(1);
+    int64_t tile_capacity = syclMaxWorkItemsPerTile();
 
-#define LAUNCH_VEC_KERNEL_WITH_SIMD(SIMD_W)                       \
-  {                                                               \
-    using KernelClass = BatchNormBackwardVectorizedKernelFunctor< \
-        SIMD_W,                                                   \
-        PREFERRED_VEC_SIZE,                                       \
-        input_scalar_t,                                           \
-        stat_scalar_t,                                            \
-        accscalar_t,                                              \
-        index_t>;                                                 \
-    int max_group_size = get_max_group_size<KernelClass>(SIMD_W); \
-    int tf = get_num_threads<KernelClass>(input.size(2), SIMD_W); \
-    int wg_sz_y = std::max<int>(1, max_group_size / tf);          \
-    sycl::range<2> local_range(wg_sz_y, tf);                      \
-    sycl::range<2> global_range(1 * wg_sz_y, input.size(1) * tf); \
-    auto kfn = KernelClass(                                       \
-        input,                                                    \
-        grad_output,                                              \
-        grad_input,                                               \
-        grad_weight,                                              \
-        grad_bias,                                                \
-        weight,                                                   \
-        running_mean,                                             \
-        running_var,                                              \
-        save_mean,                                                \
-        save_invstd,                                              \
-        train,                                                    \
-        epsilon,                                                  \
-        wg_sz_y * tf);                                            \
-    sycl_kernel_submit(global_range, local_range, queue, kfn);    \
-  }
+    using KernelClass = BatchNormBackwardKernelFunctor<
+        SIMD_W,
+        input_scalar_t,
+        stat_scalar_t,
+        accscalar_t,
+        index_t>;
+    int max_group_size = get_max_group_size<KernelClass>(SIMD_W);
 
-  auto input_ptr = (char*)input_reshaped.const_data_ptr();
-  auto grad_input_ptr = (char*)grad_input_reshaped.mutable_data_ptr();
-  auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
-  bool can_use_vec_kernel =
-      (input_reshaped.is_contiguous() && grad_input_reshaped.is_contiguous() &&
-       grad_output_reshaped.is_contiguous() &&
-       memory::can_vectorize_up_to<input_scalar_t>(input_ptr) >=
-           PREFERRED_VEC_SIZE &&
-       memory::can_vectorize_up_to<input_scalar_t>(grad_input_ptr) >=
-           PREFERRED_VEC_SIZE &&
-       memory::can_vectorize_up_to<input_scalar_t>(grad_output_ptr) >=
-           PREFERRED_VEC_SIZE &&
-       input.size(2) % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2);
+    int feature_size_padded = std::max(feature_size, SIMD_W);
+    int tf = get_num_threads<KernelClass>(feature_size_padded, SIMD_W);
+    int wg_sz_y = std::max<int>(1, max_group_size / tf);
+    int wg_thr = wg_sz_y * tf;
+    int target_nwg = std::min<int>(tile_capacity / wg_thr, C);
+    if (target_nwg < 1)
+      target_nwg = 1;
+    sycl::range<2> local_range(wg_sz_y, tf);
+    sycl::range<2> global_range(wg_sz_y, target_nwg * tf);
 
-  if (simd == SIMD32) {
+    auto input_ptr = (char*)input_reshaped.const_data_ptr();
+    auto grad_input_ptr = (char*)grad_input_reshaped.mutable_data_ptr();
+    auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
+    bool can_use_vec_kernel =
+        (input_reshaped.is_contiguous() &&
+         grad_input_reshaped.is_contiguous() &&
+         grad_output_reshaped.is_contiguous() &&
+         memory::can_vectorize_up_to<input_scalar_t>(input_ptr) >=
+             PREFERRED_VEC_SIZE &&
+         memory::can_vectorize_up_to<input_scalar_t>(grad_input_ptr) >=
+             PREFERRED_VEC_SIZE &&
+         memory::can_vectorize_up_to<input_scalar_t>(grad_output_ptr) >=
+             PREFERRED_VEC_SIZE &&
+         feature_size % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2);
+
     if (can_use_vec_kernel) {
-      LAUNCH_VEC_KERNEL_WITH_SIMD(SIMD32);
+      using VecKernelClass = BatchNormBackwardVectorizedKernelFunctor<
+          SIMD_W,
+          PREFERRED_VEC_SIZE,
+          input_scalar_t,
+          stat_scalar_t,
+          accscalar_t,
+          index_t>;
+      int vec_max_group_size = get_max_group_size<VecKernelClass>(SIMD_W);
+      int vec_tf = get_num_threads<VecKernelClass>(feature_size_padded, SIMD_W);
+      int vec_wg_sz_y = std::max<int>(1, vec_max_group_size / vec_tf);
+      int vec_wg_thr = vec_wg_sz_y * vec_tf;
+      int vec_target_nwg = std::min<int>(tile_capacity / vec_wg_thr, C);
+      if (vec_target_nwg < 1)
+        vec_target_nwg = 1;
+      sycl::range<2> vec_local_range(vec_wg_sz_y, vec_tf);
+      sycl::range<2> vec_global_range(vec_wg_sz_y, vec_target_nwg * vec_tf);
+      auto kfn = VecKernelClass(
+          input,
+          grad_output,
+          grad_input,
+          grad_weight,
+          grad_bias,
+          weight,
+          running_mean,
+          running_var,
+          save_mean,
+          save_invstd,
+          train,
+          epsilon,
+          vec_wg_thr);
+      sycl_kernel_submit(vec_global_range, vec_local_range, queue, kfn);
     } else {
-      LAUNCH_KERNEL_WITH_SIMD(SIMD32);
+      auto kfn = KernelClass(
+          input,
+          grad_output,
+          grad_input,
+          grad_weight,
+          grad_bias,
+          weight,
+          running_mean,
+          running_var,
+          save_mean,
+          save_invstd,
+          train,
+          epsilon,
+          wg_thr);
+      sycl_kernel_submit(global_range, local_range, queue, kfn);
     }
-  } else {
-    if (can_use_vec_kernel) {
-      LAUNCH_VEC_KERNEL_WITH_SIMD(SIMD16);
-    } else {
-      LAUNCH_KERNEL_WITH_SIMD(SIMD16);
-    }
+    return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
+  };
+  if (supports_simd32) {
+    return launch_fused(std::integral_constant<int, SIMD32>{});
   }
-
-#undef LAUNCH_KERNEL_WITH_SIMD
-#undef LAUNCH_VEC_KERNEL_WITH_SIMD
-  return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
+  return launch_fused(std::integral_constant<int, SIMD16>{});
 }
 
 template <typename scalar_t, typename accscalar_t>
