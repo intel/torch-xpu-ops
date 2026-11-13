@@ -697,6 +697,9 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
     at::IntArrayRef split_sizes,
     int64_t dim,
     at::TensorList out) {
+  if (self.numel() == 0) {
+    return;
+  }
   const auto device = self.device();
   const auto src_base_addrs = get_split_base_addrs(self, split_sizes, dim);
   const auto dst_base_addrs = get_dst_addrs(out);

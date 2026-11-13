@@ -13,6 +13,7 @@
 #include <ATen/native/xpu/sycl/EmbeddingBackwardKernel.h>
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/DeviceProperties.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingKernels.h>
@@ -40,6 +41,9 @@ Tensor embedding_dense_backward_kernel(
 
   auto num_indices = indices.numel();
   auto grad = grad_.contiguous().view({num_indices, grad_.size(-1)});
+  if (num_indices == 0 || grad_.size(-1) == 0) {
+    return at::zeros({num_weights, grad_.size(-1)}, grad_.options());
+  }
 
   auto sorted_indices =
       at::empty_like(indices, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
@@ -158,7 +162,8 @@ void embedding_renorm_template(
     int64_t weights_stride0,
     int64_t weights_stride1,
     int64_t num_unique_indices) {
-  const int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  const int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   constexpr auto kfn = renorm_kernel<scalar_t, accscalar_t, index_t>;
   auto& queue = at::xpu::getCurrentSYCLQueue();
   sycl_kernel_submit<kfn>(

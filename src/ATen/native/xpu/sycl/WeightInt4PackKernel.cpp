@@ -10,6 +10,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/WeightInt4PackKernel.h>
@@ -54,7 +55,7 @@ void weight_to_int4pack_kernel(
   int K_div_8 = K / 8;
   int total = N * K_div_8;
   constexpr auto kptr = weight_to_int4_pack_sub_kernel;
-  int64_t local_range = syclMaxWorkGroupSize<kptr>();
+  int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   int64_t num_groups = (total + local_range - 1) / local_range;
   int64_t global_range = num_groups * local_range;
   sycl_kernel_submit<kptr>(

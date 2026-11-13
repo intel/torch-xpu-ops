@@ -11,6 +11,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/UpSampleNearest1dKernels.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
@@ -21,33 +22,32 @@ namespace xpu {
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void upsample_nearest1d_backward_kernel(
-    int n_,
-    const scalar_t* grad_o_,
-    size_t dim_b_,
-    size_t dim_c_,
-    size_t src_dim_w_,
-    size_t dst_dim_w_,
-    scalar_t* grad_i_,
-    float scale_factor_,
-    index_bw_op_t index_bw_op_) {
+    const scalar_t* grad_o,
+    size_t dim_b,
+    size_t dim_c,
+    size_t src_dim_w,
+    size_t dst_dim_w,
+    scalar_t* grad_i,
+    float scale_factor,
+    index_bw_op_t index_bw_op) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int dst_idx = item.get_global_linear_id();
-  if (dst_idx >= dim_c_ * dst_dim_w_)
+  if (dst_idx >= dim_c * dst_dim_w)
     return;
-  int c = (dst_idx / (dst_dim_w_)) % dim_c_;
-  int dst_x = dst_idx % dst_dim_w_;
+  int c = (dst_idx / (dst_dim_w)) % dim_c;
+  int dst_x = dst_idx % dst_dim_w;
   // note that we do not want to clamp src_x to src_dim_w, since we might
   // intentionally want to skip in case of scale_factor < 1.0
-  int src_x = index_bw_op_(scale_factor_, dst_x, src_dim_w_);
-  int src_x_up = index_bw_op_(scale_factor_, dst_x + 1, src_dim_w_);
-  for (int b = 0; b < dim_b_; b++) {
+  int src_x = index_bw_op(scale_factor, dst_x, src_dim_w);
+  int src_x_up = index_bw_op(scale_factor, dst_x + 1, src_dim_w);
+  for (int b = 0; b < dim_b; b++) {
     accscalar_t grad = 0;
-    int src_idx = b * dim_c_ * src_dim_w_ + c * src_dim_w_ + src_x;
+    int src_idx = b * dim_c * src_dim_w + c * src_dim_w + src_x;
     for (int x = src_x; x < src_x_up; x++) {
-      grad += grad_o_[src_idx++];
+      grad += grad_o[src_idx++];
     }
-    grad_i_[dst_idx] = grad;
-    dst_idx += dim_c_ * dst_dim_w_;
+    grad_i[dst_idx] = grad;
+    dst_idx += dim_c * dst_dim_w;
   }
 }
 
@@ -63,17 +63,16 @@ void upsample_nearest1d_backward_frame(
     float scale_factor,
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  auto work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
-
   sycl_kernel_submit<
       upsample_nearest1d_backward_kernel<scalar_t, accscalar_t, index_bw_op_t>>(
       global_range,
       work_group_size,
       queue,
       0,
-      n,
       grad_o,
       dim_b,
       dim_c,
@@ -151,31 +150,30 @@ void upsample_nearest1d_backward_kernel(
 template <typename scalar_t, typename index_op_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void upsample_nearest1d_kernel(
-    int n_,
-    const scalar_t* input_,
-    size_t dim_b_,
-    size_t dim_c_,
-    size_t src_dim_w_,
-    size_t dst_dim_w_,
-    scalar_t* output_,
-    float scale_factor_,
-    index_op_t index_op_) {
+    const scalar_t* input,
+    size_t dim_b,
+    size_t dim_c,
+    size_t src_dim_w,
+    size_t dst_dim_w,
+    scalar_t* output,
+    float scale_factor,
+    index_op_t index_op) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int dst_idx = item.get_global_linear_id();
-  if (dst_idx >= dim_c_ * dst_dim_w_)
+  if (dst_idx >= dim_c * dst_dim_w)
     return;
 
-  int c = (dst_idx / dst_dim_w_) % dim_c_;
+  int c = (dst_idx / dst_dim_w) % dim_c;
 
-  int dst_x = dst_idx % dst_dim_w_;
-  int src_x = index_op_(scale_factor_, dst_x, src_dim_w_);
+  int dst_x = dst_idx % dst_dim_w;
+  int src_x = index_op(scale_factor, dst_x, src_dim_w);
 
-  int src_idx = c * src_dim_w_ + src_x;
-  int src_stride = dim_c_ * src_dim_w_;
-  int dst_stride = dim_c_ * dst_dim_w_;
+  int src_idx = c * src_dim_w + src_x;
+  int src_stride = dim_c * src_dim_w;
+  int dst_stride = dim_c * dst_dim_w;
 
-  for (int b = 0; b < dim_b_; b++) {
-    output_[dst_idx] = input_[src_idx];
+  for (int b = 0; b < dim_b; b++) {
+    output[dst_idx] = input[src_idx];
     src_idx += src_stride;
     dst_idx += dst_stride;
   }
@@ -194,7 +192,8 @@ void upsample_nearest1d_frame(
     index_op_t index_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
 
-  auto work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
 
@@ -203,7 +202,6 @@ void upsample_nearest1d_frame(
       work_group_size,
       queue,
       0,
-      n,
       input,
       dim_b,
       dim_c,

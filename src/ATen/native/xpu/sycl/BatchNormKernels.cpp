@@ -17,6 +17,7 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/StridedRandomAccessor.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
 #include <ATen/native/xpu/sycl/ResizeKernel.h>
@@ -211,7 +212,8 @@ int get_prefer_simd(int numPlane, int nHw) {
 
   int64_t target_tile_size = at::xpu::getDeviceMaxWorkItems(dev_id);
   // for work group barrier perf
-  int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
+  int64_t wg_size = at::xpu::getDeviceMaxSubGroupSize(dev_id) *
+      dev_prop->gpu_hw_threads_per_eu;
   if (simd == SIMD32) {
     // when setting wg_size 256 can achieve high occupancy, use SIMD16
     if (wg_size * numPlane >= target_tile_size)
@@ -1262,13 +1264,41 @@ void batch_norm_elemt_template(
   }
 }
 
+// 1D kernel for channels-last BN forward transform.
+// Flat 1D mapping: consecutive work items access consecutive elements, so a
+// sub-group writes whole cache lines regardless of the channel count.
+// VEC_SIZE=2: vec2 load/store (avoids the d16u32 penalty on fp16/bf16). The
+//   caller must guarantee input/output/z are 2-element aligned. Pairs that
+//   straddle a row boundary (odd C) wrap channel_1 back to 0.
+// USE_SLM: the four per-channel parameter arrays are staged in SLM once per
+//   work-group, turning the irregular per-element gather into SLM reads.
+template <typename scalar_t, typename accscalar_t>
+static inline scalar_t batch_norm_transform_channels_last_1d_elem(
+    scalar_t x,
+    scalar_t zv,
+    bool has_z,
+    accscalar_t m_c,
+    accscalar_t inv_std_c,
+    accscalar_t w_c,
+    accscalar_t s_c,
+    bool fuse_relu) {
+  accscalar_t tmp = w_c * (static_cast<accscalar_t>(x) - m_c) * inv_std_c + s_c;
+  if (has_z) {
+    tmp += static_cast<accscalar_t>(zv);
+  }
+  return (fuse_relu && tmp <= accscalar_t(0.0)) ? scalar_t(0.0)
+                                                : static_cast<scalar_t>(tmp);
+}
+
 template <
     typename scalar_t,
     typename accscalar_t,
     typename layerscalar_t,
-    int PARALLEL_LOADS>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void batch_norm_transform_input_channels_last_kernel(
+    int VEC_SIZE,
+    bool USE_SLM,
+    typename index_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void batch_norm_transform_input_channels_last_1d_kernel(
     const scalar_t* RESTRICT input,
     const scalar_t* RESTRICT z,
     const accscalar_t* RESTRICT mean,
@@ -1278,48 +1308,94 @@ void batch_norm_transform_input_channels_last_kernel(
     scalar_t* RESTRICT out,
     const int reduction_size,
     const int stride,
-    const bool fuse_relu) {
-  // tensor dimension (m,c)
-  // loop along m dimension
-  auto item = syclext::this_work_item::get_nd_item<2>();
-  int inner_loop_stride = item.get_local_range(0) * item.get_group_range(0);
+    const bool fuse_relu,
+    const at::detail::IntDivider<unsigned int> divider) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const index_t global_stride = item.get_global_range(0);
 
-  // offset along m dimension
-  int m_offset = item.get_global_id(0);
-  int c_offset = item.get_global_id(1);
-
-  if (c_offset >= stride || m_offset >= reduction_size) {
-    return;
+  // SLM layout: [mean | inv_std | weight | shift], each `stride` elements.
+  accscalar_t* slm_mean = nullptr;
+  accscalar_t* slm_inv_std = nullptr;
+  accscalar_t* slm_weight = nullptr;
+  accscalar_t* slm_shift = nullptr;
+  if constexpr (USE_SLM) {
+    slm_mean =
+        static_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
+    slm_inv_std = slm_mean + stride;
+    slm_weight = slm_inv_std + stride;
+    slm_shift = slm_weight + stride;
+    const int lid = item.get_local_id(0);
+    const int lsize = item.get_local_range(0);
+    for (int c = lid; c < stride; c += lsize) {
+      slm_mean[c] = mean[c];
+      slm_inv_std[c] = inv_std[c];
+      slm_weight[c] = weight == nullptr ? accscalar_t(1.0)
+                                        : static_cast<accscalar_t>(weight[c]);
+      slm_shift[c] = shift == nullptr ? accscalar_t(0.0)
+                                      : static_cast<accscalar_t>(shift[c]);
+    }
+    sycl::group_barrier(item.get_group());
   }
 
-  auto m_c = mean[c_offset];
-  auto inv_std_c = static_cast<accscalar_t>(inv_std[c_offset]);
-  auto w_c = weight == nullptr ? accscalar_t(1.0)
-                               : static_cast<accscalar_t>(weight[c_offset]);
-  auto s_c = shift == nullptr ? accscalar_t(0.0)
-                              : static_cast<accscalar_t>(shift[c_offset]);
+  auto transform = [&](int c, scalar_t x, scalar_t zv) {
+    accscalar_t m_c, inv_std_c, w_c, s_c;
+    if constexpr (USE_SLM) {
+      m_c = slm_mean[c];
+      inv_std_c = slm_inv_std[c];
+      w_c = slm_weight[c];
+      s_c = slm_shift[c];
+    } else {
+      m_c = mean[c];
+      inv_std_c = inv_std[c];
+      w_c = weight == nullptr ? accscalar_t(1.0)
+                              : static_cast<accscalar_t>(weight[c]);
+      s_c = shift == nullptr ? accscalar_t(0.0)
+                             : static_cast<accscalar_t>(shift[c]);
+    }
+    return batch_norm_transform_channels_last_1d_elem<scalar_t, accscalar_t>(
+        x, zv, z != nullptr, m_c, inv_std_c, w_c, s_c, fuse_relu);
+  };
 
-  int loop_count =
-      1 + (reduction_size - 1) / (inner_loop_stride * PARALLEL_LOADS);
-  int address_base = m_offset * stride + c_offset;
-  int address_increment = inner_loop_stride * stride;
+  const index_t total_elems = static_cast<index_t>(reduction_size) * stride;
 
-  for (int i = 0; i < loop_count; i++) {
-#pragma unroll
-    for (int j = 0; j < PARALLEL_LOADS; j++) {
-      if (c_offset < stride && m_offset < reduction_size) {
-        auto tmp = w_c * (static_cast<accscalar_t>(input[address_base]) - m_c) *
-                inv_std_c +
-            s_c;
-        if (z != nullptr) {
-          tmp += z[address_base];
-        }
-        out[address_base] =
-            (fuse_relu && tmp <= accscalar_t(0.0) ? scalar_t(0.0)
-                                                  : static_cast<scalar_t>(tmp));
+  if constexpr (VEC_SIZE == 1) {
+    for (index_t idx = item.get_global_id(0); idx < total_elems;
+         idx += global_stride) {
+      const int c =
+          static_cast<int>(divider.divmod(static_cast<unsigned int>(idx)).mod);
+      out[idx] = transform(c, input[idx], z == nullptr ? scalar_t(0) : z[idx]);
+    }
+  } else {
+    using vec2_t = memory::aligned_vector<scalar_t, 2>;
+    const index_t total_vecs = total_elems / 2;
+    for (index_t id = item.get_global_id(0); id < total_vecs;
+         id += global_stride) {
+      const index_t flat_pos = id * 2;
+      const int c0 = static_cast<int>(
+          divider.divmod(static_cast<unsigned int>(flat_pos)).mod);
+      const int c1 = (c0 + 1 < stride) ? c0 + 1 : 0;
+
+      const vec2_t in_vec = *reinterpret_cast<const vec2_t*>(&input[flat_pos]);
+      vec2_t z_vec;
+      if (z != nullptr) {
+        z_vec = *reinterpret_cast<const vec2_t*>(&z[flat_pos]);
+      } else {
+        z_vec[0] = scalar_t(0);
+        z_vec[1] = scalar_t(0);
       }
-      m_offset += inner_loop_stride;
-      address_base += address_increment;
+
+      vec2_t out_vec;
+      out_vec[0] = transform(c0, in_vec[0], z_vec[0]);
+      out_vec[1] = transform(c1, in_vec[1], z_vec[1]);
+      *reinterpret_cast<vec2_t*>(&out[flat_pos]) = out_vec;
+    }
+
+    // Scalar tail when the total element count is odd.
+    if ((total_elems & 1) && item.get_global_id(0) == 0) {
+      const index_t fp = total_elems - 1;
+      const int c =
+          static_cast<int>(divider.divmod(static_cast<unsigned int>(fp)).mod);
+      out[fp] = transform(c, input[fp], z == nullptr ? scalar_t(0) : z[fp]);
     }
   }
 }
@@ -1329,107 +1405,133 @@ template <
     typename accscalar_t,
     typename layerscalar_t,
     int VEC_SIZE,
-    int PARALLEL_LOADS>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void batch_norm_transform_input_channels_last_vectorized_kernel(
-    const scalar_t* RESTRICT input,
-    const scalar_t* RESTRICT z,
-    const accscalar_t* RESTRICT mean,
-    const accscalar_t* RESTRICT inv_std,
-    const layerscalar_t* RESTRICT weight,
-    const layerscalar_t* RESTRICT shift,
-    scalar_t* RESTRICT out,
-    const int reduction_size,
-    const int stride,
-    const bool fuse_relu) {
-  // tensor dimension (m,c)
-  // loop along m dimension
-  auto item = syclext::this_work_item::get_nd_item<2>();
-  int inner_loop_stride = item.get_local_range(0) * item.get_group_range(0);
+    bool USE_SLM,
+    typename index_t>
+static void launch_batch_norm_transform_channels_last_1d(
+    const scalar_t* input,
+    const scalar_t* z,
+    const accscalar_t* mean,
+    const accscalar_t* inv_std,
+    const layerscalar_t* weight,
+    const layerscalar_t* shift,
+    scalar_t* output,
+    int64_t reduction_size,
+    int64_t stride,
+    bool fuse_relu) {
+  auto& queue = getCurrentSYCLQueue();
+  constexpr auto kfn = batch_norm_transform_input_channels_last_1d_kernel<
+      scalar_t,
+      accscalar_t,
+      layerscalar_t,
+      VEC_SIZE,
+      USE_SLM,
+      index_t>;
 
-  // offset along m dimension
-  int m_offset = item.get_global_id(0);
-  int c_vec_offset = item.get_global_id(1) * VEC_SIZE;
-
-  if (c_vec_offset >= stride || m_offset >= reduction_size) {
-    return;
-  }
-
-  int loop_count =
-      1 + (reduction_size - 1) / (inner_loop_stride * PARALLEL_LOADS);
-  int address_base = m_offset * stride + c_vec_offset;
-  int address_increment = inner_loop_stride * stride;
-
-  for (int i = 0; i < loop_count; i++) {
-#pragma unroll
-    for (int j = 0; j < PARALLEL_LOADS; j++) {
-      if (m_offset < reduction_size) {
-        using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
-        using layerscalar_vec_t =
-            memory::aligned_vector<layerscalar_t, VEC_SIZE>;
-        auto input_vec = *reinterpret_cast<vec_t*>(
-            const_cast<scalar_t*>(&input[address_base]));
-        vec_t output_vec, z_vec;
-        layerscalar_vec_t weight_vec, shift_vec;
-
-        if (z != nullptr) {
-          z_vec = *reinterpret_cast<vec_t*>(
-              const_cast<scalar_t*>(&z[address_base]));
-        }
-        if (weight != nullptr) {
-          weight_vec = *reinterpret_cast<layerscalar_vec_t*>(
-              const_cast<layerscalar_t*>(&weight[c_vec_offset]));
-        }
-        if (shift != nullptr) {
-          shift_vec = *reinterpret_cast<layerscalar_vec_t*>(
-              const_cast<layerscalar_t*>(&shift[c_vec_offset]));
-        }
-
-#pragma unroll
-        for (int vt = 0; vt < VEC_SIZE; ++vt) {
-          auto c_offset = c_vec_offset + vt;
-          auto m_c = mean[c_offset];
-          auto inv_std_c = static_cast<accscalar_t>(inv_std[c_offset]);
-          auto w_c = weight == nullptr
-              ? accscalar_t(1.0)
-              : static_cast<accscalar_t>(weight_vec[vt]);
-          auto s_c = shift == nullptr ? accscalar_t(0.0)
-                                      : static_cast<accscalar_t>(shift_vec[vt]);
-          auto tmp = w_c * (static_cast<accscalar_t>(input_vec[vt]) - m_c) *
-                  inv_std_c +
-              s_c;
-          if (z != nullptr) {
-            tmp += z_vec[vt];
-          }
-          output_vec[vt] =
-              (fuse_relu && tmp <= accscalar_t(0.0)
-                   ? scalar_t(0.0)
-                   : static_cast<scalar_t>(tmp));
-        }
-        *reinterpret_cast<vec_t*>(&out[address_base]) = output_vec;
-      }
-      m_offset += inner_loop_stride;
-      address_base += address_increment;
-    }
-  }
+  const int64_t wg_size =
+      std::min<int64_t>(1024, at::xpu::getKernelMaxWorkGroupSize<kfn>());
+  const int64_t work_items = reduction_size * stride / VEC_SIZE;
+  const int64_t num_wg = std::max<int64_t>(
+      1,
+      std::min<int64_t>(
+          at::ceil_div(work_items, wg_size),
+          static_cast<int64_t>(at::xpu::getDeviceMaxWorkItems()) / wg_size));
+  const int slm_sz =
+      USE_SLM ? static_cast<int>(4 * stride * sizeof(accscalar_t)) : 0;
+  sycl_kernel_submit<kfn>(
+      num_wg * wg_size,
+      wg_size,
+      queue,
+      slm_sz,
+      input,
+      z,
+      mean,
+      inv_std,
+      weight,
+      shift,
+      output,
+      static_cast<int>(reduction_size),
+      static_cast<int>(stride),
+      fuse_relu,
+      at::detail::IntDivider<unsigned int>(static_cast<unsigned int>(stride)));
 }
 
-template <typename scalar_t, typename weight_t, int VEC_SIZE>
-bool can_use_batch_norm_cnl_vec_kernel(
-    char* input,
-    char* output,
-    char* z,
-    char* weight,
-    char* shift,
-    int stride) {
-  return memory::can_vectorize_up_to<scalar_t>(input) >= VEC_SIZE &&
-      memory::can_vectorize_up_to<scalar_t>(output) >= VEC_SIZE &&
-      (z == nullptr || memory::can_vectorize_up_to<scalar_t>(z) >= VEC_SIZE) &&
-      (weight == nullptr ||
-       memory::can_vectorize_up_to<weight_t>(weight) >= VEC_SIZE) &&
-      (shift == nullptr ||
-       memory::can_vectorize_up_to<weight_t>(shift) >= VEC_SIZE) &&
-      (stride % VEC_SIZE == 0) && sizeof(scalar_t) <= 2;
+// Selects vector width and SLM usage for the channels-last forward transform.
+//   - vec2 is used only for 2-byte types when input/output/z are 2-element
+//     aligned (e.g. an odd storage_offset view falls back to scalar).
+//   - SLM path (vec2 only): C < 1024 and 4 * C * sizeof(accscalar_t) fits in
+//     the device local memory. Handles odd C via channel wrap-around.
+//   - Non-SLM vec2 path additionally requires even C to keep the parameter
+//     gather monotone; otherwise scalar.
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t,
+    typename index_t>
+static void batch_norm_transform_channels_last_1d(
+    const at::Tensor& output,
+    const at::Tensor& input,
+    const at::Tensor& weight,
+    const at::Tensor& shift,
+    const at::Tensor& mean,
+    const at::Tensor& inv_std,
+    const std::optional<at::Tensor>& z,
+    const bool fuse_relu) {
+  constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 2 : 1;
+  const int64_t stride = input.sizes()[1];
+  const int64_t reduction_size = input.numel() / stride;
+
+  const scalar_t* input_ptr = input.const_data_ptr<scalar_t>();
+  scalar_t* output_ptr = output.mutable_data_ptr<scalar_t>();
+  const scalar_t* z_ptr =
+      z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr;
+  const accscalar_t* mean_ptr = mean.const_data_ptr<accscalar_t>();
+  const accscalar_t* inv_std_ptr = inv_std.const_data_ptr<accscalar_t>();
+  const layerscalar_t* weight_ptr =
+      weight.defined() ? weight.const_data_ptr<layerscalar_t>() : nullptr;
+  const layerscalar_t* shift_ptr =
+      shift.defined() ? shift.const_data_ptr<layerscalar_t>() : nullptr;
+
+#define LAUNCH_BN_CL_1D(VEC, SLM)               \
+  launch_batch_norm_transform_channels_last_1d< \
+      scalar_t,                                 \
+      accscalar_t,                              \
+      layerscalar_t,                            \
+      VEC,                                      \
+      SLM,                                      \
+      index_t>(                                 \
+      input_ptr,                                \
+      z_ptr,                                    \
+      mean_ptr,                                 \
+      inv_std_ptr,                              \
+      weight_ptr,                               \
+      shift_ptr,                                \
+      output_ptr,                               \
+      reduction_size,                           \
+      stride,                                   \
+      fuse_relu)
+
+  if constexpr (VEC_SIZE == 2) {
+    // Only input/output/z are accessed with vector loads/stores; the
+    // per-channel parameter arrays are always read element-wise.
+    const bool can_vec =
+        memory::can_vectorize_up_to<scalar_t>((char*)input_ptr) >= 2 &&
+        memory::can_vectorize_up_to<scalar_t>((char*)output_ptr) >= 2 &&
+        (z_ptr == nullptr ||
+         memory::can_vectorize_up_to<scalar_t>((char*)z_ptr) >= 2);
+    const bool use_slm = stride < 1024 &&
+        4 * stride * static_cast<int64_t>(sizeof(accscalar_t)) <=
+            static_cast<int64_t>(at::xpu::getDeviceLocalMemSize());
+    if (can_vec && use_slm) {
+      LAUNCH_BN_CL_1D(2, true);
+      return;
+    }
+    if (can_vec && stride % 2 == 0) {
+      LAUNCH_BN_CL_1D(2, false);
+      return;
+    }
+  }
+  LAUNCH_BN_CL_1D(1, false);
+#undef LAUNCH_BN_CL_1D
 }
 
 void batch_norm_elemt_channels_last_template(
@@ -1441,98 +1543,40 @@ void batch_norm_elemt_channels_last_template(
     const at::Tensor& inv_std,
     const std::optional<at::Tensor>& z = std::nullopt, // bias after BN
     const bool fuse_relu = false) {
-  const auto stride = input.sizes()[1];
-  const auto reduction_size = input.numel() / stride;
-  auto& queue = getCurrentSYCLQueue();
   const auto second_dtype = weight.defined()
       ? weight.scalar_type()
       : (shift.defined() ? shift.scalar_type() : input.scalar_type());
-  constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
+
+  // The CL 1D transform uses a grid-stride loop whose terminating
+  // `idx += global_stride` runs one step past the last valid index. Even when
+  // every valid index fits in int32, that final increment can exceed INT32_MAX
+  // (signed overflow is UB). global_stride is bounded by
+  // at::xpu::getDeviceMaxWorkItems(), so only take the int32 fast path when
+  // numel leaves that much headroom below INT32_MAX; otherwise use the int64
+  // path.
+  const int64_t index32_limit =
+      static_cast<int64_t>(std::numeric_limits<int32_t>::max()) -
+      static_cast<int64_t>(at::xpu::getDeviceMaxWorkItems());
+  const bool can_use_32bit_index = canUse32BitIndexMath(input, index32_limit);
 
   if (input.scalar_type() != second_dtype) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-
-          auto input_data_ptr = input.const_data_ptr<scalar_t>();
-          auto output_data_ptr = output.mutable_data_ptr<scalar_t>();
-          auto z_data_ptr =
-              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr;
-          auto weight_data_ptr =
-              weight.defined() ? weight.const_data_ptr<accscalar_t>() : nullptr;
-          auto shift_data_ptr =
-              shift.defined() ? shift.const_data_ptr<accscalar_t>() : nullptr;
-
-          if (can_use_batch_norm_cnl_vec_kernel<
-                  scalar_t,
-                  accscalar_t,
-                  VEC_SIZE>(
-                  (char*)input_data_ptr,
-                  (char*)output_data_ptr,
-                  (char*)z_data_ptr,
-                  (char*)weight_data_ptr,
-                  (char*)shift_data_ptr,
-                  stride)) {
-            constexpr auto kfn =
-                batch_norm_transform_input_channels_last_vectorized_kernel<
-                    scalar_t,
-                    accscalar_t,
-                    accscalar_t,
-                    VEC_SIZE,
-                    ELEMENTS_PER_ITER / VEC_SIZE>;
-            auto config_vec = get_adaptive_launch_config(
-                at::xpu::getKernelMaxWorkGroupSize<kfn>(),
-                reduction_size,
-                stride / VEC_SIZE,
-                false,
-                ELEMENTS_PER_WORK_ITEM);
-            auto global_range_vec = std::get<0>(config_vec);
-            auto local_range_vec = std::get<1>(config_vec);
-            sycl_kernel_submit<kfn>(
-                global_range_vec,
-                local_range_vec,
-                queue,
-                0,
-                input_data_ptr,
-                z_data_ptr,
-                mean.const_data_ptr<accscalar_t>(),
-                inv_std.const_data_ptr<accscalar_t>(),
-                weight_data_ptr,
-                shift_data_ptr,
-                output_data_ptr,
-                reduction_size,
-                stride,
-                fuse_relu);
+          if (can_use_32bit_index) {
+            batch_norm_transform_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                int32_t>(
+                output, input, weight, shift, mean, inv_std, z, fuse_relu);
           } else {
-            constexpr auto kfn =
-                batch_norm_transform_input_channels_last_kernel<
-                    scalar_t,
-                    accscalar_t,
-                    accscalar_t,
-                    ELEMENTS_PER_ITER>;
-            auto config = get_adaptive_launch_config(
-                at::xpu::getKernelMaxWorkGroupSize<kfn>(),
-                reduction_size,
-                stride,
-                false,
-                ELEMENTS_PER_WORK_ITEM);
-            auto global_range = std::get<0>(config);
-            auto local_range = std::get<1>(config);
-            sycl_kernel_submit<kfn>(
-                global_range,
-                local_range,
-                queue,
-                0,
-                input_data_ptr,
-                z_data_ptr,
-                mean.const_data_ptr<accscalar_t>(),
-                inv_std.const_data_ptr<accscalar_t>(),
-                weight_data_ptr,
-                shift_data_ptr,
-                output_data_ptr,
-                reduction_size,
-                stride,
-                fuse_relu);
+            batch_norm_transform_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                int64_t>(
+                output, input, weight, shift, mean, inv_std, z, fuse_relu);
           }
         });
   } else {
@@ -1547,83 +1591,20 @@ void batch_norm_elemt_channels_last_template(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-
-          auto input_data_ptr = input.const_data_ptr<scalar_t>();
-          auto output_data_ptr = output.mutable_data_ptr<scalar_t>();
-          auto z_data_ptr =
-              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr;
-          auto weight_data_ptr =
-              weight.defined() ? weight.const_data_ptr<scalar_t>() : nullptr;
-          auto shift_data_ptr =
-              shift.defined() ? shift.const_data_ptr<scalar_t>() : nullptr;
-
-          if (can_use_batch_norm_cnl_vec_kernel<scalar_t, scalar_t, VEC_SIZE>(
-                  (char*)input_data_ptr,
-                  (char*)output_data_ptr,
-                  (char*)z_data_ptr,
-                  (char*)weight_data_ptr,
-                  (char*)shift_data_ptr,
-                  stride)) {
-            constexpr auto kfn =
-                batch_norm_transform_input_channels_last_vectorized_kernel<
-                    scalar_t,
-                    accscalar_t,
-                    scalar_t,
-                    VEC_SIZE,
-                    ELEMENTS_PER_ITER / VEC_SIZE>;
-            auto config_vec = get_adaptive_launch_config(
-                at::xpu::getKernelMaxWorkGroupSize<kfn>(),
-                reduction_size,
-                stride / VEC_SIZE,
-                false,
-                ELEMENTS_PER_WORK_ITEM);
-            auto global_range_vec = std::get<0>(config_vec);
-            auto local_range_vec = std::get<1>(config_vec);
-            sycl_kernel_submit<kfn>(
-                global_range_vec,
-                local_range_vec,
-                queue,
-                0,
-                input_data_ptr,
-                z_data_ptr,
-                mean.const_data_ptr<accscalar_t>(),
-                inv_std.const_data_ptr<accscalar_t>(),
-                weight_data_ptr,
-                shift_data_ptr,
-                output_data_ptr,
-                reduction_size,
-                stride,
-                fuse_relu);
+          if (can_use_32bit_index) {
+            batch_norm_transform_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                int32_t>(
+                output, input, weight, shift, mean, inv_std, z, fuse_relu);
           } else {
-            constexpr auto kfn =
-                batch_norm_transform_input_channels_last_kernel<
-                    scalar_t,
-                    accscalar_t,
-                    scalar_t,
-                    ELEMENTS_PER_ITER>;
-            auto config = get_adaptive_launch_config(
-                at::xpu::getKernelMaxWorkGroupSize<kfn>(),
-                reduction_size,
-                stride,
-                false,
-                ELEMENTS_PER_WORK_ITEM);
-            auto global_range = std::get<0>(config);
-            auto local_range = std::get<1>(config);
-            sycl_kernel_submit<kfn>(
-                global_range,
-                local_range,
-                queue,
-                0,
-                input_data_ptr,
-                z_data_ptr,
-                mean.const_data_ptr<accscalar_t>(),
-                inv_std.const_data_ptr<accscalar_t>(),
-                weight_data_ptr,
-                shift_data_ptr,
-                output_data_ptr,
-                reduction_size,
-                stride,
-                fuse_relu);
+            batch_norm_transform_channels_last_1d<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                int64_t>(
+                output, input, weight, shift, mean, inv_std, z, fuse_relu);
           }
         });
   }
@@ -2152,7 +2133,8 @@ batch_norm_backward_reduce_channels_last_template(
   at::Tensor grad_bias = at::empty({grad_size}, grad_opts);
 
   auto config = get_adaptive_launch_config(
-      syclMaxWorkItemsPerSubSlice() * 2,
+      at::xpu::getDeviceMaxSubGroupSize() *
+          at::xpu::getDeviceEUCountPerXeCore() * 2,
       reduction_size,
       stride,
       false,

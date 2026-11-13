@@ -12,4 +12,19 @@
 
 #include <ATen/core/Tensor.h>
 
-namespace at::native::xpu {} // namespace at::native::xpu
+namespace at::native::xpu {
+
+TORCH_XPU_API Tensor _sspaddmm_mkl_out(
+    const Tensor& row_indices,
+    const Tensor& col_indices,
+    const Tensor& values1,
+    const Tensor& mat2,
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& alpha,
+    int64_t dim_i,
+    int64_t dim_j,
+    int64_t dim_k,
+    int64_t nnz1);
+
+} // namespace at::native::xpu

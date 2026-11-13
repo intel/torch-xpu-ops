@@ -21,14 +21,15 @@ parser.add_argument(
     default="selected",
     help="Test cases scope",
 )
+parser.add_argument("tests", nargs="*", help="Specific test cases to execute")
 args = parser.parse_args()
 
 
 def should_skip_entire_file(skip_list):
-    """Check if the skip list contains any entire file skip pattern (*.py::)"""
+    """Check if the skip list contains any entire file skip pattern (*.py:: or *.py)"""
     if not skip_list:
         return False
-    return any(item.endswith(".py::") for item in skip_list)
+    return any(item.endswith((".py::", ".py")) for item in skip_list)
 
 
 print(f"Running test on the platform: {os.name}")
@@ -95,8 +96,13 @@ else:
 res = 0
 fail_test = []
 
-for key in merged_skip_dict:
-    skip_list = merged_skip_dict[key]
+for key in args.tests or merged_skip_dict:
+    skip_list = merged_skip_dict.get(key) or merged_skip_dict.get(
+        key.replace("\\", "/")
+    )
+    if args.test_cases == "selected" and should_skip_entire_file(skip_list):
+        print(f"Skipping {key}: entire file is skipped")
+        continue
     exe_list = None
 
     if args.test_cases == "skipped":
@@ -128,11 +134,7 @@ for key in merged_skip_dict:
 
 if fail_test:
     print(",".join(fail_test) + " have failures")
+    sys.exit(1)
 else:
     print("All tests passed!")
-
-if os.name == "nt":
-    sys.exit(res)
-else:
-    exit_code = os.WEXITSTATUS(res)
-    sys.exit(exit_code)
+    sys.exit(0)
