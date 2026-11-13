@@ -68,10 +68,9 @@ runs:
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_test_with_skip.py \
+        python run_test_with_skip.py --junit-dir ${UT_JUNIT_DIR} \
           2>&1 | \
           tee ${UT_LOG_DIR}/op_ut_with_skip_test.log
-        find . -type f -name "op_ut_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_ut.log
     - name: skipped_ut
@@ -81,10 +80,9 @@ runs:
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTEST_ADDOPTS="$(echo "${PYTEST_ADDOPTS}" | sed 's/--timeout 600/--timeout 3600/')"
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_test_with_skip.py --test-cases skipped \
+        python run_test_with_skip.py --test-cases skipped --junit-dir ${UT_JUNIT_DIR} \
           2>&1 | \
           tee ${UT_LOG_DIR}/skipped_ut_with_skip_test.log
-        find . -type f -name "op_ut_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_skipped_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_skipped_ut.log
     - name: torch_xpu
@@ -174,10 +172,9 @@ runs:
           exit 1
         fi
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_distributed.py \
+        python run_distributed.py --junit-dir ${UT_JUNIT_DIR} --exit-zero \
           2>&1 | \
           tee ${UT_LOG_DIR}/xpu_distributed_test.log
-        find ../ -type f -name "xpu_distributed_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_xpu_distributed.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_xpu_distributed.log
 
