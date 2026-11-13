@@ -424,8 +424,6 @@ def _compile_int4_mm(self, device, m, k, n):
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
 @setBlasBackendsToDefaultFinally
 def matmul_small_brute_force_1d_Nd(self, device, dtype):
-    for backend in ["cublas", "cublaslt"]:
- 
     make_arg = partial(make_tensor, device=device, dtype=dtype)
 
     for (size_x, size_y), nctg_x, nctg_y in itertools.product(
@@ -439,31 +437,27 @@ def matmul_small_brute_force_1d_Nd(self, device, dtype):
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
 @setBlasBackendsToDefaultFinally
 def matmul_small_brute_force_2d_Nd(self, device, dtype):
-    for backend in ["cublas", "cublaslt"]:
- 
-        make_arg = partial(make_tensor, device=device, dtype=dtype)
+    make_arg = partial(make_tensor, device=device, dtype=dtype)
 
-        for (size_x, size_y), nctg_x, nctg_y in itertools.product(
-            self.gen_sizes_matmul(2), (True, False), (True, False)
-        ):
-            x = make_arg(size_x, noncontiguous=nctg_x)
-            y = make_arg(size_y, noncontiguous=nctg_y)
-            self.check_single_matmul(x, y)
+    for (size_x, size_y), nctg_x, nctg_y in itertools.product(
+        self.gen_sizes_matmul(2), (True, False), (True, False)
+    ):
+        x = make_arg(size_x, noncontiguous=nctg_x)
+        y = make_arg(size_y, noncontiguous=nctg_y)
+        self.check_single_matmul(x, y)
 
 
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
 @setBlasBackendsToDefaultFinally
 def matmul_small_brute_force_3d_Nd(self, device, dtype):
-    for backend in ["cublas", "cublaslt"]:
- 
-        make_arg = partial(make_tensor, device=device, dtype=dtype)
+    make_arg = partial(make_tensor, device=device, dtype=dtype)
 
-        for (size_x, size_y), nctg_x, nctg_y in itertools.product(
-            self.gen_sizes_matmul(3), (True, False), (True, False)
-        ):
-            x = make_arg(size_x, noncontiguous=nctg_x)
-            y = make_arg(size_y, noncontiguous=nctg_y)
-            self.check_single_matmul(x, y)
+    for (size_x, size_y), nctg_x, nctg_y in itertools.product(
+        self.gen_sizes_matmul(3), (True, False), (True, False)
+    ):
+        x = make_arg(size_x, noncontiguous=nctg_x)
+        y = make_arg(size_y, noncontiguous=nctg_y)
+        self.check_single_matmul(x, y)
 
 
 @setBlasBackendsToDefaultFinally
