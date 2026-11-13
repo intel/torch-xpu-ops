@@ -2181,6 +2181,7 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
             x_grad_output[j][0] = grad_output_[address_base];
           }
         } else {
+#pragma unroll
           for (int v = 0; v < VEC_SIZE; v++) {
             x_input[j][v] = accscalar_t(0);
             x_grad_output[j][v] = accscalar_t(0);
@@ -2224,6 +2225,8 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
           shmem_sum_dy_,
           shmem_sum_dy_xmu_,
           v * wg_size_);
+      // The next channel reuses the same work-group memory while the previous
+      // reduction may still be reading it.
       if (v + 1 < VEC_SIZE) {
         sycl::group_barrier(item.get_group());
       }
@@ -2287,6 +2290,7 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
               shmem_sum_dy_,
               shmem_sum_dy_xmu_,
               v * wg_size_);
+          // Keep the staging reduction from overwriting the previous channel.
           if (v + 1 < VEC_SIZE) {
             sycl::group_barrier(item.get_group());
           }
@@ -2395,11 +2399,26 @@ batch_norm_backward_reduce_channels_last_template(
     const bool bias_g) {
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
+  constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
+  constexpr int VEC_LOADS = ELEMENTS_PER_ITER / VEC_SIZE;
+  static_assert(ELEMENTS_PER_ITER % VEC_SIZE == 0);
+  constexpr int VEC_ALIGNMENT = sizeof(at::Half) * VEC_SIZE;
+  const int64_t max_wg_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore() * 2;
+  // Conservatively budget two float SLM arrays at the maximum requested work-
+  // group size; leave enough local memory for at least two resident groups.
+  const bool slm_fits =
+      4 * max_wg_size * VEC_SIZE * static_cast<int64_t>(sizeof(float)) <=
+      syclLocalMemSize();
   const bool use_vec2 = (input.scalar_type() == at::kHalf ||
                          input.scalar_type() == at::kBFloat16) &&
       stride % 2 == 0 &&
-      (reinterpret_cast<uintptr_t>(input.data_ptr()) % 4 == 0) &&
-      (reinterpret_cast<uintptr_t>(grad_output.data_ptr()) % 4 == 0);
+      (reinterpret_cast<uintptr_t>(input.const_data_ptr()) % VEC_ALIGNMENT ==
+       0) &&
+      (reinterpret_cast<uintptr_t>(grad_output.const_data_ptr()) %
+           VEC_ALIGNMENT ==
+       0) &&
+      slm_fits;
 
   at::Tensor sumn_dy = at::empty({stride}, mean.options());
   at::Tensor sum_dy_xmu = at::empty({stride}, mean.options());
@@ -2413,8 +2432,7 @@ batch_norm_backward_reduce_channels_last_template(
   at::Tensor grad_bias = at::empty({grad_size}, grad_opts);
 
   auto config = get_adaptive_launch_config(
-      at::xpu::getDeviceMaxSubGroupSize() *
-          at::xpu::getDeviceEUCountPerXeCore() * 2,
+      max_wg_size,
       reduction_size,
       use_vec2 ? (stride / 2) : stride,
       false,
@@ -2447,49 +2465,51 @@ batch_norm_backward_reduce_channels_last_template(
               : nullptr;
           int* semaphores_ptr =
               nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
-          if (use_vec2) {
-            auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
-                2,
-                2,
-                scalar_t,
-                accscalar_t,
-                accscalar_t>(
-                input.const_data_ptr<scalar_t>(),
-                grad_output.const_data_ptr<scalar_t>(),
-                mean.const_data_ptr<accscalar_t>(),
-                inv_std.const_data_ptr<accscalar_t>(),
-                sumn_dy.mutable_data_ptr<accscalar_t>(),
-                sum_dy_xmu.mutable_data_ptr<accscalar_t>(),
-                grad_weight.mutable_data_ptr<accscalar_t>(),
-                grad_bias.mutable_data_ptr<accscalar_t>(),
-                staging_data_ptr,
-                semaphores_ptr,
-                reduction_size,
-                stride,
-                wg_size_y * wg_size_x);
-            sycl_kernel_submit(global_range, local_range, queue, kfn);
-          } else {
-            auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
-                ELEMENTS_PER_ITER,
-                1,
-                scalar_t,
-                accscalar_t,
-                accscalar_t>(
-                input.const_data_ptr<scalar_t>(),
-                grad_output.const_data_ptr<scalar_t>(),
-                mean.const_data_ptr<accscalar_t>(),
-                inv_std.const_data_ptr<accscalar_t>(),
-                sumn_dy.mutable_data_ptr<accscalar_t>(),
-                sum_dy_xmu.mutable_data_ptr<accscalar_t>(),
-                grad_weight.mutable_data_ptr<accscalar_t>(),
-                grad_bias.mutable_data_ptr<accscalar_t>(),
-                staging_data_ptr,
-                semaphores_ptr,
-                reduction_size,
-                stride,
-                wg_size_y * wg_size_x);
-            sycl_kernel_submit(global_range, local_range, queue, kfn);
+          if constexpr (sizeof(scalar_t) == 2) {
+            if (use_vec2) {
+              auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
+                  VEC_LOADS,
+                  VEC_SIZE,
+                  scalar_t,
+                  accscalar_t,
+                  accscalar_t>(
+                  input.const_data_ptr<scalar_t>(),
+                  grad_output.const_data_ptr<scalar_t>(),
+                  mean.const_data_ptr<accscalar_t>(),
+                  inv_std.const_data_ptr<accscalar_t>(),
+                  sumn_dy.mutable_data_ptr<accscalar_t>(),
+                  sum_dy_xmu.mutable_data_ptr<accscalar_t>(),
+                  grad_weight.mutable_data_ptr<accscalar_t>(),
+                  grad_bias.mutable_data_ptr<accscalar_t>(),
+                  staging_data_ptr,
+                  semaphores_ptr,
+                  reduction_size,
+                  stride,
+                  wg_size_y * wg_size_x);
+              sycl_kernel_submit(global_range, local_range, queue, kfn);
+              return;
+            }
           }
+          auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
+              ELEMENTS_PER_ITER,
+              1,
+              scalar_t,
+              accscalar_t,
+              accscalar_t>(
+              input.const_data_ptr<scalar_t>(),
+              grad_output.const_data_ptr<scalar_t>(),
+              mean.const_data_ptr<accscalar_t>(),
+              inv_std.const_data_ptr<accscalar_t>(),
+              sumn_dy.mutable_data_ptr<accscalar_t>(),
+              sum_dy_xmu.mutable_data_ptr<accscalar_t>(),
+              grad_weight.mutable_data_ptr<accscalar_t>(),
+              grad_bias.mutable_data_ptr<accscalar_t>(),
+              staging_data_ptr,
+              semaphores_ptr,
+              reduction_size,
+              stride,
+              wg_size_y * wg_size_x);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         });
   } else {
     if (weight.defined()) {
@@ -2513,53 +2533,55 @@ batch_norm_backward_reduce_channels_last_template(
           int* semaphores_ptr =
               nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
 
-          if (use_vec2) {
-            auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
-                2,
-                2,
-                scalar_t,
-                accscalar_t,
-                scalar_t>(
-                input.const_data_ptr<scalar_t>(),
-                grad_output.const_data_ptr<scalar_t>(),
-                mean.const_data_ptr<accscalar_t>(),
-                inv_std.const_data_ptr<accscalar_t>(),
-                sumn_dy.mutable_data_ptr<accscalar_t>(),
-                sum_dy_xmu.mutable_data_ptr<accscalar_t>(),
-                weight.defined() ? grad_weight.mutable_data_ptr<scalar_t>()
-                                 : nullptr,
-                weight.defined() ? grad_bias.mutable_data_ptr<scalar_t>()
-                                 : nullptr,
-                staging_data_ptr,
-                semaphores_ptr,
-                reduction_size,
-                stride,
-                wg_size_y * wg_size_x);
-            sycl_kernel_submit(global_range, local_range, queue, kfn);
-          } else {
-            auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
-                ELEMENTS_PER_ITER,
-                1,
-                scalar_t,
-                accscalar_t,
-                scalar_t>(
-                input.const_data_ptr<scalar_t>(),
-                grad_output.const_data_ptr<scalar_t>(),
-                mean.const_data_ptr<accscalar_t>(),
-                inv_std.const_data_ptr<accscalar_t>(),
-                sumn_dy.mutable_data_ptr<accscalar_t>(),
-                sum_dy_xmu.mutable_data_ptr<accscalar_t>(),
-                weight.defined() ? grad_weight.mutable_data_ptr<scalar_t>()
-                                 : nullptr,
-                weight.defined() ? grad_bias.mutable_data_ptr<scalar_t>()
-                                 : nullptr,
-                staging_data_ptr,
-                semaphores_ptr,
-                reduction_size,
-                stride,
-                wg_size_y * wg_size_x);
-            sycl_kernel_submit(global_range, local_range, queue, kfn);
+          if constexpr (sizeof(scalar_t) == 2) {
+            if (use_vec2) {
+              auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
+                  VEC_LOADS,
+                  VEC_SIZE,
+                  scalar_t,
+                  accscalar_t,
+                  scalar_t>(
+                  input.const_data_ptr<scalar_t>(),
+                  grad_output.const_data_ptr<scalar_t>(),
+                  mean.const_data_ptr<accscalar_t>(),
+                  inv_std.const_data_ptr<accscalar_t>(),
+                  sumn_dy.mutable_data_ptr<accscalar_t>(),
+                  sum_dy_xmu.mutable_data_ptr<accscalar_t>(),
+                  weight.defined() ? grad_weight.mutable_data_ptr<scalar_t>()
+                                   : nullptr,
+                  weight.defined() ? grad_bias.mutable_data_ptr<scalar_t>()
+                                   : nullptr,
+                  staging_data_ptr,
+                  semaphores_ptr,
+                  reduction_size,
+                  stride,
+                  wg_size_y * wg_size_x);
+              sycl_kernel_submit(global_range, local_range, queue, kfn);
+              return;
+            }
           }
+          auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
+              ELEMENTS_PER_ITER,
+              1,
+              scalar_t,
+              accscalar_t,
+              scalar_t>(
+              input.const_data_ptr<scalar_t>(),
+              grad_output.const_data_ptr<scalar_t>(),
+              mean.const_data_ptr<accscalar_t>(),
+              inv_std.const_data_ptr<accscalar_t>(),
+              sumn_dy.mutable_data_ptr<accscalar_t>(),
+              sum_dy_xmu.mutable_data_ptr<accscalar_t>(),
+              weight.defined() ? grad_weight.mutable_data_ptr<scalar_t>()
+                               : nullptr,
+              weight.defined() ? grad_bias.mutable_data_ptr<scalar_t>()
+                               : nullptr,
+              staging_data_ptr,
+              semaphores_ptr,
+              reduction_size,
+              stride,
+              wg_size_y * wg_size_x);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         });
   }
 
