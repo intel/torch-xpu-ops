@@ -16,6 +16,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
@@ -122,7 +123,7 @@ void histogram_1d_kernel(
       BDims,
       has_weight,
       Op>;
-  int64_t max_wg_size = syclMaxWorkGroupSize<kernelFunc>();
+  int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<kernelFunc>();
   auto wg_size = std::min(max_wg_size, total_elements);
   auto total_blocks = (total_elements + wg_size - 1) / wg_size;
 

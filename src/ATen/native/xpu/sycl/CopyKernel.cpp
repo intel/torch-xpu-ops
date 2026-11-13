@@ -34,17 +34,6 @@ struct CastScalarFunc {
   }
 };
 
-// TODO: Avoid using sycl::half to prevent the fp16->fp32->fp8 fusion
-// from incorrectly converting -0.0 to NaN. This temporary fix should
-// be removed once the compiler/driver error is resolved.
-template <typename Float8DataType>
-struct CastScalarFunc<Half, Float8DataType> {
-  Float8DataType operator()(Half src_val) const {
-    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
-    return Float8DataType(val);
-  }
-};
-
 void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   ScalarType dtype = iter.dtype(0);
   ScalarType other_dtype = iter.dtype(1);
@@ -145,6 +134,29 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
   }
 }
 
+void float16_bfloat16_copy_kernel_xpu(TensorIteratorBase& iter) {
+  ScalarType dtype = iter.dtype(0);
+  ScalarType other_dtype = iter.dtype(1);
+
+  if (dtype == kHalf && other_dtype == kFloat) {
+    gpu_kernel_nocast(iter, CastScalarFunc<float, Half>());
+  } else if (dtype == kBFloat16 && other_dtype == kFloat) {
+    gpu_kernel_nocast(iter, CastScalarFunc<float, BFloat16>());
+  } else if (dtype == kFloat && other_dtype == kHalf) {
+    gpu_kernel_nocast(iter, CastScalarFunc<Half, float>());
+  } else if (dtype == kFloat && other_dtype == kBFloat16) {
+    gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, float>());
+  } else {
+    TORCH_CHECK(
+        false,
+        "Copy from ",
+        other_dtype,
+        " to ",
+        dtype,
+        " has not been supported.");
+  }
+}
+
 void copy_kernel(TensorIteratorBase& iter) {
   ScalarType dtype = iter.common_dtype();
   if (isQIntType(dtype)) {
@@ -166,6 +178,12 @@ void copy_kernel(TensorIteratorBase& iter) {
     float8_copy_kernel_xpu(iter);
   } else if (iter.dtype(0) == kFloat4_e2m1fn_x2) {
     float4_copy_kernel_xpu(iter);
+  } else if (
+      (iter.dtype(0) == kFloat &&
+       (iter.dtype(1) == kHalf || iter.dtype(1) == kBFloat16)) ||
+      (iter.dtype(1) == kFloat &&
+       (iter.dtype(0) == kHalf || iter.dtype(0) == kBFloat16))) {
+    float16_bfloat16_copy_kernel_xpu(iter);
   } else {
     AT_DISPATCH_V2(
         dtype,

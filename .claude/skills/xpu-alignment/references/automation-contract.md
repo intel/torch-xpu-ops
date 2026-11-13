@@ -302,9 +302,11 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 targets `intel/torch-xpu-ops`. `implementation_repository` is required for
 `needs-xpu-fix` and `track-upstream` and unused otherwise; the
 [evidence reference](evidence.md) defines which repository to name.
-`status: blocked` lists blockers and contains no payloads. When an existing
-`intel/torch-xpu-ops` issue covers the same work, record its URL as
-`canonical_tracker`; do not create a payload or comment on that tracker.
+`status: blocked` lists blockers and contains no payloads. `canonical_tracker`
+is null or the canonical URL of an open `intel/torch-xpu-ops` issue covering
+the same work: `https://github.com/intel/torch-xpu-ops/issues/<number>`, without
+a trailing slash, query, or fragment. Closed and related trackers are cited
+in the payload body instead.
 
 This role requires read-only GitHub access to refresh source and tracker state,
 but it does not require an XPU runtime.

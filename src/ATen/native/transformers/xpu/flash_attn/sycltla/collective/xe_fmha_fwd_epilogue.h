@@ -161,20 +161,19 @@ class FMHAFwdEpilogue {
       return;
 
     auto non_reciprocal_rAsum = rA_sum(0);
-    /* Complete softmax, dividing out sums. */
+    /* Complete softmax, dividing out sums.
+       A sum of exactly zero therefore means the row is fully masked. Scale
+       those rows by zero to emit O = 0 directly. */
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < rA_sum.size(); i++)
-      rA_sum(i) = ElementA(1) / rA_sum(i);
+      rA_sum(i) =
+          rA_sum(i) == ElementA(0) ? ElementA(0) : ElementA(1) / rA_sum(i);
 
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < rA.size(); i++) {
       rA(i) *= broadcast<0>(rA_sum, rA, i);
       if (is_dropout)
         rA(i) *= params.rp_dropout;
-      if (std::isnan(rA(i))) {
-        rA(i) =
-            0; // Handle the -nan when the whole sequence is completely masked
-      }
     }
 
     /* Tile output */
@@ -220,9 +219,14 @@ class FMHAFwdEpilogue {
       // The softmax scale was multiplied by log2(e) in the mainloop
       // Multiply by ln(2) == 1/log2(e) to restore the value
       tA_max[0] = tA_max[0] * std::numbers::ln2_v<float>;
-      float lse_val = tA_max[0] + logf(non_reciprocal_rAsum);
-      *(pLSE + lse_offset + tile_row_idx) =
-          lse_val == -std::numeric_limits<float>::infinity() ? 0 : lse_val;
+      // A zero softmax sum means the row is fully masked. Write +inf, matching
+      // upstream FA2's fully-masked path. This is a sentinel, not the
+      // mathematical value: log(0) is -inf, but the backward evaluates
+      // exp(S - LSE), which collapses to zero for +inf and blows up to NaN for
+      // -inf.
+      *(pLSE + lse_offset + tile_row_idx) = non_reciprocal_rAsum == 0
+          ? std::numeric_limits<float>::infinity()
+          : tA_max[0] + logf(non_reciprocal_rAsum);
     }
   }
 
