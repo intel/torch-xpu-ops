@@ -34,6 +34,10 @@ struct AddFunctor {
 
 void add_kernel(TensorIteratorBase& iter, const c10::Scalar& alpha) {
   auto common_dtype = iter.common_dtype();
+  if (common_dtype == kFloat &&
+      opmath_gpu_kernel_with_mixed_types(iter, AddFunctor(alpha.to<float>()))) {
+    return;
+  }
   if (common_dtype == kComplexHalf) {
     using scalar_t = c10::complex<c10::Half>;
     using opmath_t = opmath_type<scalar_t>;
@@ -62,6 +66,10 @@ void sub_kernel(TensorIteratorBase& iter, const c10::Scalar& alpha) {
 
 void mul_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
+  if (common_dtype == kFloat &&
+      opmath_gpu_kernel_with_mixed_types(iter, MulFunctor<float>())) {
+    return;
+  }
   if (common_dtype == kComplexHalf) {
     using scalar_t = c10::complex<c10::Half>;
     using opmath_t = opmath_type<scalar_t>;
