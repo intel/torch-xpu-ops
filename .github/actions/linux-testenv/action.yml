@@ -35,6 +35,8 @@ runs:
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
+        # sources are checked out per job at the exact pin; never reuse them
+        rm -rf pytorch benchmark pt2e-accuracy pt2e-performance
     - name: Setup python
       uses: ./.github/actions/setup-python
       with:

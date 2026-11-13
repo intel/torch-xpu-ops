@@ -139,6 +139,13 @@ jobs:
           echo "repo=${PYTORCH_REPO}" >> "${GITHUB_OUTPUT}"
           echo "ref=${PYTORCH_SHA}" >> "${GITHUB_OUTPUT}"
       # the build workspace persists, so checkout only fetches new commits and keeps submodules
+      - name: Limit reused Pytorch checkout
+        run: |
+          # every fetch and submodule bump adds history; start fresh once it passes the cap
+          GIT_MAX_GB=10
+          if [ -d pytorch/.git ] && [ "$(du -s --block-size=1G pytorch/.git | cut -f1)" -gt "${GIT_MAX_GB}" ];then
+            rm -rf pytorch
+          fi
       - name: Checkout Pytorch
         uses: actions/checkout@v7
         with:
