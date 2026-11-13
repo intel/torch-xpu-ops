@@ -11,6 +11,7 @@
 #include <ATen/xpu/Sleep.h>
 #include <c10/xpu/XPUStream.h>
 #include <comm/SYCLContext.h>
+#include <sycl/ext/oneapi/experimental/clock.hpp>
 
 #if !defined(SYCL_COMPILER_VERSION)
 #error \
@@ -18,29 +19,27 @@
 #endif
 
 namespace at::xpu {
+namespace {
+
+struct SpinKernel {
+  uint64_t cycles_;
+  SpinKernel(uint64_t cycles) : cycles_(cycles) {}
+  void operator()() const {
+    namespace syclex = sycl::ext::oneapi::experimental;
+    uint64_t start = syclex::clock<syclex::clock_scope::sub_group>();
+    while (syclex::clock<syclex::clock_scope::sub_group>() - start < cycles_) {
+    }
+  }
+};
+
+} // namespace
 
 void sleep(uint64_t cycles) {
 #if SYCL_COMPILER_VERSION >= 20260000
-  // SYCL free-function kernel compiled at runtime via the online-compilation
-  // extension (sycl_ext_oneapi_kernel_compiler).
-  static const std::string source = R"""(
-    #include <sycl/sycl.hpp>
-
-    namespace syclex = sycl::ext::oneapi::experimental;
-
-    extern "C"
-    SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclex::single_task_kernel))
-    void spin_kernel(uint64_t cycles) {
-      uint64_t start = syclex::clock<syclex::clock_scope::sub_group>();
-      while (syclex::clock<syclex::clock_scope::sub_group>() - start < cycles) {}
-    }
-  )""";
-
-  namespace syclex = sycl::ext::oneapi::experimental;
-  // TODO: PVC does not expose ext_oneapi_clock_sub_group because its bundled
-  // IGC (Intel Graphics Compiler) is too old, and enabling the extension breaks
-  // AOT builds on PVC. Online compilation is used here as a workaround. Once
-  // the driver ships a newer IGC, migrate to a functor-based implementation.
+  // PVC ships an IGC too old to expose ext_oneapi_clock_sub_group, so sleep
+  // stays unsupported there. On devices that expose the extension the spin
+  // kernel is a regular SYCL functor compiled ahead of time with the rest of
+  // the library, so the first call pays only launch cost.
   TORCH_CHECK_NOT_IMPLEMENTED(
       c10::xpu::get_raw_device(c10::xpu::current_device())
           .has(sycl::aspect::ext_oneapi_clock_sub_group),
@@ -48,20 +47,7 @@ void sleep(uint64_t cycles) {
       "which is not supported on this device. ",
       "Please upgrade to a newer driver.");
   auto& queue = getCurrentSYCLQueue();
-
-  // All XPU queues in a process share the same SYCL context, so compile once
-  // and reuse the kernel object across calls.
-  static sycl::kernel spin_kernel = [&]() {
-    auto kb_src = syclex::create_kernel_bundle_from_source(
-        c10::xpu::get_device_context(), syclex::source_language::sycl, source);
-    auto kb_exe = syclex::build(kb_src);
-    return kb_exe.ext_oneapi_get_kernel("spin_kernel");
-  }();
-
-  queue.submit([&](sycl::handler& cgh) {
-    cgh.set_args(cycles);
-    cgh.single_task(spin_kernel);
-  });
+  queue.single_task(SpinKernel{cycles});
 #else
   TORCH_CHECK_NOT_IMPLEMENTED(
       false,
