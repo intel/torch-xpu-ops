@@ -273,6 +273,7 @@ struct ReduceConfig {
   int step_input = 1;
   int step_output = 1;
   int groups_per_output = 1;
+  int groups_to_launch = 0;
   int input_mult[3] = {0, 0, 0};
   int output_mult[2] = {0, 0};
 
@@ -333,15 +334,18 @@ struct ReduceConfig {
   sycl::range<2> group_sz() const {
     return {(size_t)group_height, (size_t)group_width};
   }
+  int launch_group_count() const {
+    return groups_to_launch > 0 ? groups_to_launch : groups_per_output;
+  }
   sycl::range<2> global_sz() const {
     return {
-        (size_t)(groups_per_output * group_height),
+        (size_t)(launch_group_count() * group_height),
         (size_t)(group_width *
                  div_up(num_outputs / output_vec_size, step_output))};
   }
   sycl::range<2> n_groups() const {
     return {
-        (size_t)(groups_per_output),
+        (size_t)(launch_group_count()),
         (size_t)(div_up(num_outputs / output_vec_size, step_output))};
   }
 
@@ -393,7 +397,7 @@ struct ReduceConfig {
   }
 
   int staging_memory_offset(sycl::nd_item<2> pos, int wg_y) const {
-    int offset = wg_y + pos.get_group(1) * pos.get_group_range(0);
+    int offset = wg_y + pos.get_group(1) * groups_per_output;
     if (!should_group_x_reduce()) {
       offset = pos.get_local_id(1) + offset * pos.get_local_range(1);
     }
@@ -534,6 +538,8 @@ struct ReduceOp {
   static constexpr float acc_buffer_multiplier =
       (float)sizeof(arg_t) / sizeof(out_scalar_t);
 
+  enum class GlobalReduceStage { Cooperative, Partial, Combine };
+  GlobalReduceStage stage = GlobalReduceStage::Cooperative;
   ops_t ops;
   arg_t ident;
   ReduceConfig config;
@@ -600,41 +606,43 @@ struct ReduceOp {
       value[i] = ident;
     }
 
-    if (output_idx < (index_t)config.num_outputs &&
-        input_idx < (index_t)config.num_inputs) {
-      const scalar_t* input_slice =
-          (const scalar_t*)((const char*)src + base_offsets1);
-      value = item_reduce<output_vec_size>(pos, input_slice);
-    }
-
-    auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
-      return ops.combine(value, other);
-    };
-
-    using native_op_t = native_sycl_op_t<ops_t>;
-
-    if (config.should_group_x_reduce() && config.should_group_y_reduce()) {
-      value = group_reduce<
-          arg_t,
-          decltype(pos),
-          decltype(combine),
-          native_op_t,
-          output_vec_size>(
-          pos, config.num_items, shared, value, combine, ident);
-    } else {
-      if (config.should_group_y_reduce()) {
-        value = group_y_reduce<
-            arg_t,
-            decltype(pos),
-            decltype(combine),
-            output_vec_size>(pos, shared, value, combine);
+    if (stage != GlobalReduceStage::Combine) {
+      if (output_idx < (index_t)config.num_outputs &&
+          input_idx < (index_t)config.num_inputs) {
+        const scalar_t* input_slice =
+            (const scalar_t*)((const char*)src + base_offsets1);
+        value = item_reduce<output_vec_size>(pos, input_slice);
       }
-      if (config.should_group_x_reduce()) {
-        value = group_x_reduce<
+
+      auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
+        return ops.combine(value, other);
+      };
+
+      using native_op_t = native_sycl_op_t<ops_t>;
+
+      if (config.should_group_x_reduce() && config.should_group_y_reduce()) {
+        value = group_reduce<
             arg_t,
             decltype(pos),
             decltype(combine),
-            output_vec_size>(pos, shared, value, combine);
+            native_op_t,
+            output_vec_size>(
+            pos, config.num_items, shared, value, combine, ident);
+      } else {
+        if (config.should_group_y_reduce()) {
+          value = group_y_reduce<
+              arg_t,
+              decltype(pos),
+              decltype(combine),
+              output_vec_size>(pos, shared, value, combine);
+        }
+        if (config.should_group_x_reduce()) {
+          value = group_x_reduce<
+              arg_t,
+              decltype(pos),
+              decltype(combine),
+              output_vec_size>(pos, shared, value, combine);
+        }
       }
     }
 
@@ -656,6 +664,15 @@ struct ReduceOp {
       reduce_fraction(numerator, denominator);
       acc = (arg_vec_t*)((char*)acc_buf +
                          (base_offsets[0] * numerator / denominator));
+    }
+
+    if (stage == GlobalReduceStage::Partial) {
+      if (config.should_store(pos, output_idx)) {
+        auto* reduce_buffer = (arg_vec_t*)group_buf;
+        index_t offset = config.staging_memory_offset(pos, pos.get_group(0));
+        reduce_buffer[offset] = value;
+      }
+      return;
     }
 
     if (config.should_global_reduce()) {
@@ -997,7 +1014,7 @@ struct ReduceOp {
     }
 
     bool should_store = config.should_store(pos, output_idx);
-    if (should_store) {
+    if (stage != GlobalReduceStage::Combine && should_store) {
       index_t offset = config.staging_memory_offset(pos, pos.get_group(0));
       reduce_buffer[offset] = value;
     }
@@ -1473,7 +1490,17 @@ inline void gpu_reduce_kernel(
   reduce.accumulate = iter.should_accumulate();
   reduce.final_output = iter.is_final_output();
 
-  launch_reduce_kernel(config, reduce);
+  if (config.should_global_reduce()) {
+    reduce.stage = R::GlobalReduceStage::Partial;
+    launch_reduce_kernel(config, reduce);
+
+    config.groups_to_launch = 1;
+    reduce.config.groups_to_launch = 1;
+    reduce.stage = R::GlobalReduceStage::Combine;
+    launch_reduce_kernel(config, reduce);
+  } else {
+    launch_reduce_kernel(config, reduce);
+  }
 }
 
 } // namespace xpu

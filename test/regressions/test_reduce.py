@@ -27,6 +27,25 @@ class TestSimpleReduce(TestCase):
         self.assertEqual(xpu_min.cpu(), cpu_min)
         self.assertEqual(xpu_max.cpu(), cpu_max)
 
+    def test_global_reduce_staging_visibility(self):
+        # Regression for intel/torch-xpu-ops#6033: the last work-group could
+        # read stale staging slots after prior device work.
+        torch.manual_seed(6033)
+        for name in ("sum", "mean", "amax"):
+            for _ in range(12):
+                rows = 64 * int(torch.randint(300, 760, ()))
+                cpu_input = torch.randn(rows, 256)
+                cpu_result = getattr(cpu_input.double(), name)(0)
+
+                xpu_input = cpu_input.xpu()
+                xpu_result = getattr(xpu_input, name)(0).cpu().double()
+
+                relative_error = (
+                    (xpu_result - cpu_result).norm()
+                    / cpu_result.norm().clamp_min(1e-12)
+                ).item()
+                self.assertLess(relative_error, 1e-4)
+
 
 if __name__ == "__main__":
     run_tests()
