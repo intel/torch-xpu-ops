@@ -60,14 +60,17 @@ struct FmodFloatingFunctor {
 };
 
 void remainder_kernel(TensorIteratorBase& iter) {
+  // Keep the original scalar launcher: compact regressed remainder benchmarks.
   if (isIntegralType(iter.common_dtype(), /*includeBool*/ false)) {
     AT_DISPATCH_INTEGRAL_TYPES(iter.common_dtype(), "remainder_xpu", [&]() {
-      gpu_kernel_with_scalars(iter, RemainderIntegralFunctor<scalar_t>());
+      gpu_kernel_with_scalars(
+          iter, RemainderIntegralFunctor<scalar_t>(), std::false_type{});
     });
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, iter.common_dtype(), "remainder_xpu", [&]() {
-          gpu_kernel_with_scalars(iter, RemainderFloatingFunctor<scalar_t>());
+          gpu_kernel_with_scalars(
+              iter, RemainderFloatingFunctor<scalar_t>(), std::false_type{});
         });
   }
 }
