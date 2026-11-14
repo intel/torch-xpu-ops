@@ -10,12 +10,36 @@
 
 #include <ATen/native/transformers/xpu/flash_attn/flash_api.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/flash_api.h>
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+#include <ATen/xpu/XPUContext.h>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 
 namespace sycltla {
 
 bool is_flash_attention_available() {
 #ifndef USE_SYCLTLA
   return false;
+#elif defined(SYCLTLA_NO_PVC)
+  // PVC kernels were left out of the build because the IGC used at build time
+  // is too old; let SDPA fall back.
+  using sycl::ext::oneapi::experimental::architecture;
+  if (at::xpu::is_available()) {
+    auto arch = at::xpu::getCurrentDeviceProperties()->architecture;
+    if (arch == architecture::intel_gpu_pvc ||
+        arch == architecture::intel_gpu_pvc_vg) {
+      TORCH_WARN_ONCE(
+          "Flash attention was not built for PVC because the IGC used at "
+          "build time is older than SYCL-TLA requires; "
+          "scaled_dot_product_attention will use another backend.");
+      return false;
+    }
+  }
+  return true;
 #else
   return true;
 #endif
