@@ -102,3 +102,13 @@ class TestForeachListMethod(TestCase):
             cpu_inplace = test_(x1, x2, "cpu", is_inplace=True, scalar=scalar)
             xpu_inplace = test_(x1, x2, "xpu", is_inplace=True, scalar=scalar)
             self.result_compare(cpu_inplace, xpu_inplace)
+
+    def test_foreach_norm_subgroup_width(self):
+        # Regression for intel/torch-xpu-ops#6035: reduction must use the
+        # actual sub-group width instead of mixing values across sub-groups.
+        torch.manual_seed(6035)
+        for n in (1, 64, 3072, 1_000_000):
+            cpu_input = torch.randn(n)
+            expected = cpu_input.norm()
+            actual = torch._foreach_norm([cpu_input.xpu()], 2.0)[0].cpu()
+            self.assertEqual(actual, expected, atol=1e-5, rtol=1e-5)

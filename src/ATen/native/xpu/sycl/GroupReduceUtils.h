@@ -44,9 +44,9 @@ inline T& SubgroupReduceSumWithoutBroadcast(sycl::nd_item<DIM>& item, T& val) {
   auto sg = item.get_sub_group();
   auto sg_tid = sg.get_local_linear_id();
 #pragma unroll
-  for (int offset = 1; offset < SIMD; offset <<= 1) {
+  for (int offset = 1; offset < sg.get_local_range()[0]; offset <<= 1) {
     T temp = sycl::shift_group_left(sg, val, offset);
-    if (sg_tid < SIMD - offset) {
+    if (sg_tid < sg.get_local_range()[0] - offset) {
       val += temp;
     }
   }
@@ -61,7 +61,7 @@ inline T& GroupReduceSumWithoutBroadcast(
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
-  int n_sg = get_local_linear_range<DIM>(item) / SIMD;
+  int n_sg = get_local_linear_range<DIM>(item) / sg.get_local_range()[0];
   val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
   sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum
                                          // are called in a row.
@@ -74,7 +74,7 @@ inline T& GroupReduceSumWithoutBroadcast(
   sycl::group_barrier(item.get_group());
   val = 0;
   if (sg_id == 0) {
-    for (int i = sg_tid; i < n_sg; i += SIMD) {
+    for (int i = sg_tid; i < n_sg; i += sg.get_local_range()[0]) {
       val += shared[i];
     }
     val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
@@ -89,9 +89,9 @@ inline T& SubgroupReduceMaxWithoutBroadcast(sycl::nd_item<DIM>& item, T& val) {
   auto sg = item.get_sub_group();
   auto sg_tid = sg.get_local_linear_id();
 #pragma unroll
-  for (int offset = 1; offset < SIMD; offset <<= 1) {
+  for (int offset = 1; offset < sg.get_local_range()[0]; offset <<= 1) {
     T temp = sycl::shift_group_left(sg, val, offset);
-    if (sg_tid < SIMD - offset) {
+    if (sg_tid < sg.get_local_range()[0] - offset) {
       val = max_impl(temp, val);
     }
   }
@@ -106,7 +106,7 @@ inline T& GroupReduceMaxWithoutBroadcast(
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
-  int n_sg = get_local_linear_range<DIM>(item) / SIMD;
+  int n_sg = get_local_linear_range<DIM>(item) / sg.get_local_range()[0];
   val = SubgroupReduceMaxWithoutBroadcast<T, SIMD, DIM>(item, val);
   sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum
                                          // are called in a row.
