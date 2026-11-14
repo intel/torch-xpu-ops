@@ -1153,6 +1153,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @requires_multigpu
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     @parametrize("origin", ("input", "intermediate"))
     def test_device_passthrough_still_reuses_compile_under_coor(self, origin):
         # The payoff of the relaxed index guard, measured the only way it shows up:
@@ -1258,6 +1259,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @unittest.skipIf(not torch.accelerator.is_available(), "requires an accelerator")
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     def test_inductor_compiles_under_coor(self):
         # The current_device() node must lower through inductor, and the generated code
         # must be device-agnostic: the device is resolved at runtime with no baked
@@ -1529,6 +1531,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @unittest.skipIf(not torch.accelerator.is_available(), "requires an accelerator")
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     @torch._inductor.config.patch({"triton.force_cooperative_reductions": True})
     def test_cooperative_reduction_workspace_name_not_baked(self):
         # The cooperative-reduction semaphore workspace is named after its device, and
@@ -1651,6 +1654,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @requires_multigpu
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     def test_current_device_context_under_coor(self):
         from torch._dynamo.testing import CompileCounterWithBackend
 
@@ -1828,6 +1832,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @requires_multigpu
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     @parametrize("stream_kind", (device_type, "generic"))
     @parametrize("use_kwarg", (True, False))
     def test_current_device_stream_constructor_under_coor(self, stream_kind, use_kwarg):
@@ -1955,7 +1960,12 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
             opposite = make_stream(not matches_current)
             self.assertEqual(compiled(x, opposite), f(x, opposite))
 
-        self.assertEqual(cnt.frame_count, 2)
+        expected_frame_count = (
+            1
+            if stream_kind == "generic" and comparison == "eq" and matches_current
+            else 2
+        )
+        self.assertEqual(cnt.frame_count, expected_frame_count)
 
     @requires_multigpu
     @compiler_config.patch(compile_on_one_rank=True)
@@ -2159,6 +2169,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @unittest.skipIf(not torch.accelerator.is_available(), "requires accelerator")
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     def test_clip_grad_norm_under_coor(self):
         m = torch.nn.Linear(4, 4, device=device_type)
         inp = torch.randn(2, 4, device=device_type)
@@ -2373,6 +2384,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @requires_multigpu
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     def test_inductor_runs_on_nonzero_device(self):
         # Problem 2 (runtime): a graph compiled under CooR must run on a rank's own
         # (non-zero) device -- the device guard, stream, and kernel load must follow the
@@ -2554,6 +2566,7 @@ class TestCompileOnOneRankDeviceAsParameter(TestCase):
 
     @requires_multigpu
     @compiler_config.patch(compile_on_one_rank=True)
+    @torch._inductor.config.patch(compile_threads=1)
     @parametrize("origin", ("input", "factory"))
     def test_device_observations_track_current_device_under_coor(self, origin):
         from torch._dynamo.testing import CompileCounterWithBackend
