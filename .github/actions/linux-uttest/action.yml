@@ -189,14 +189,18 @@ runs:
         PYTORCH_ROOT_DIR: ${{ github.workspace }}/pytorch
         XML_PREFIX: xpu_p0_with_
       run: |
-        # run_ut.sh writes to LOG_BASE and XML_OUTPUT_DIR.
-        export LOG_BASE="${UT_LOG_DIR}" XML_OUTPUT_DIR="${UT_JUNIT_DIR}"
+        export XML_OUTPUT_DIR="${UT_JUNIT_DIR}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
-        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" inductor non-inductor profiling \
-          2>&1 | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
-        find . -name "xpu_p0_with_*.xml" -exec cp {} "${UT_JUNIT_DIR}/" \; 2>/dev/null || true
-        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
-          | tee "${UT_LOG_DIR}/reproduce_xpu_p0.log"
+        # JUnit reports test failures; only runner errors fail this step.
+        rc=0
+        python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" inductor non-inductor profiling \
+          --reproduce-log "${UT_LOG_DIR}/reproduce_xpu_p0.log" \
+          2> "${UT_LOG_DIR}/xpu_p0_with_skip_test_error.log" \
+          | tee "${UT_LOG_DIR}/xpu_p0_with_skip_test.log" || rc=$?
+        if [ "${rc}" -gt 1 ]; then
+          echo "P0 runner error (exit ${rc}), see ${UT_LOG_DIR}/xpu_p0_with_skip_test_error.log"
+          exit "${rc}"
+        fi
 
     - name: xpu_p0_distributed
       shell: timeout 72000 bash -xe -o pipefail {0}
@@ -206,13 +210,19 @@ runs:
         PYTORCH_ROOT_DIR: ${{ github.workspace }}/pytorch
         XML_PREFIX: xpu_p0_with_
       run: |
-        export LOG_BASE="${UT_LOG_DIR}" XML_OUTPUT_DIR="${UT_JUNIT_DIR}"
+        export XML_OUTPUT_DIR="${UT_JUNIT_DIR}"
         cd "${GITHUB_WORKSPACE}/pytorch/"
-        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" distributed \
-          2>&1 | tee "${LOG_BASE}/xpu_p0_with_skip_test.log" || true
-        find . -name "xpu_p0_with_*.xml" -exec cp {} "${UT_JUNIT_DIR}/" \; 2>/dev/null || true
-        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
-          | tee "${UT_LOG_DIR}/reproduce_xpu_p0.log"
+        xpu-smi topology -m || true
+        # JUnit reports test failures; only runner errors fail this step.
+        rc=0
+        python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" distributed \
+          --reproduce-log "${UT_LOG_DIR}/reproduce_xpu_p0_distributed.log" \
+          2> "${UT_LOG_DIR}/xpu_p0_with_skip_test_error.log" \
+          | tee "${UT_LOG_DIR}/xpu_p0_with_skip_test.log" || rc=$?
+        if [ "${rc}" -gt 1 ]; then
+          echo "P0 runner error (exit ${rc}), see ${UT_LOG_DIR}/xpu_p0_with_skip_test_error.log"
+          exit "${rc}"
+        fi
 
     - name: upstream_ut
       shell: timeout 172800 bash -e -o pipefail {0}
