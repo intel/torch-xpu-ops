@@ -18,11 +18,12 @@ runs:
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
         call conda activate windows_ut
         set PYTORCH_TEST_WITH_SLOW=1
+        set PYTEST_ADDOPTS=-v
         cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
         python run_test_with_skip_mtl.py
 
         if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
-        copy op_extended.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
+        copy op_extended*.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
     - name: Run CPP Extensions AOT SYCL UT
       if: ${{ inputs.ut_name == 'test_cpp_extensions_aot_xpu' || inputs.ut_name == 'basic' }}
       shell: cmd
