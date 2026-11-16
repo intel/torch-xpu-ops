@@ -260,5 +260,5 @@ runs:
       shell: bash -xe {0}
       run: |
         uv pip uninstall triton triton-xpu pytorch-triton-xpu
-        uv pip install ${{ github.workspace }}/wheels/triton-*.whl
+        uv pip install ${{ github.workspace }}/wheels/triton_*.whl
         uv pip list |grep -E 'intel|torch|triton'
