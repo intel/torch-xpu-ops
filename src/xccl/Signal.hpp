@@ -2,11 +2,13 @@
 
 #include <atomic>
 
-#include <sycl/ext/oneapi/experimental/clock.hpp>
-
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
+
+#ifdef SYCL_EXT_ONEAPI_CLOCK
+#include <sycl/ext/oneapi/experimental/clock.hpp>
+#endif
 
 namespace c10d::symmetric_memory {
 
@@ -107,10 +109,14 @@ inline uint32_t load_acquire(uint32_t* addr) {
 // sycl_ext_oneapi_clock that current Intel GPUs report. It counts EU cycles, so
 // timeout_ticks is derived from the device's maximum clock frequency (see
 // timeout_ms_to_ticks): a GPU running below that frequency times out late,
-// never early. A budget of 0 waits forever, as timeout_ms=0 does on CUDA.
+// never early. A budget of 0 waits forever, as timeout_ms=0 does on CUDA, and
+// so does every budget when the compiler lacks sycl_ext_oneapi_clock.
 // Returns false once the budget is spent.
-inline bool spin_until_eq(uint32_t* addr, uint32_t val, uint64_t timeout_ticks) {
-#ifdef __SYCL_DEVICE_ONLY__
+inline bool spin_until_eq(
+    uint32_t* addr,
+    uint32_t val,
+    uint64_t timeout_ticks) {
+#ifdef SYCL_EXT_ONEAPI_CLOCK
   namespace syclex = sycl::ext::oneapi::experimental;
   const uint64_t start = syclex::clock<syclex::clock_scope::sub_group>();
   while (ld_flag_sys(addr) != val) {
