@@ -150,7 +150,7 @@ void flip_kernel(TensorIterator& iter, bool quantized) {
 
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void roll_kernel(
+void roll_sub_kernel(
     const scalar_t* in_data,
     scalar_t* out_data,
     int val_of_work_item,
@@ -188,15 +188,15 @@ void roll_template(
     int64_t size,
     int64_t stride,
     int64_t total_dims) {
-  constexpr auto kfn = roll_kernel<scalar_t>;
+  constexpr auto kfn = roll_sub_kernel<scalar_t>;
 
   auto shift = size - start;
   auto offset = shift * stride;
   auto start_offset = start * stride;
   auto total_offset = size * stride;
 
-  auto local_range = at::xpu::getKernelMaxWorkGroupSize<kfn>();
-  const auto target_global_range =
+  int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<kfn>();
+  const int64_t target_global_range =
       at::xpu::getDeviceMaxWorkItems() / local_range * local_range;
   int global_range = (N + local_range - 1) / local_range * local_range;
   auto val_of_work_item =
