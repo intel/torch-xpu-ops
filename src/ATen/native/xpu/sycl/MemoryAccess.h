@@ -115,7 +115,10 @@ template <int vec_size, typename data_t, typename inp_calc_t>
 struct vectorized {
   data_t data;
   inp_calc_t input_offset_calculator;
-  uint32_t linear_idx;
+  int item_idx;
+  int group_idx;
+  int num_items_per_group;
+  int group_work_size;
 
   vectorized(
       data_t data,
@@ -125,10 +128,10 @@ struct vectorized {
       int num_items_per_group)
       : data(data),
         input_offset_calculator(ic),
-        linear_idx(
-            (uint32_t(group_idx) * uint32_t(num_items_per_group) +
-             uint32_t(item_idx)) *
-            uint32_t(vec_size)) {}
+        item_idx(item_idx),
+        group_idx(group_idx),
+        num_items_per_group(num_items_per_group),
+        group_work_size(vec_size * num_items_per_group) {}
 
   inline constexpr bool check_inbounds(int item_work_elem) const {
     return true;
@@ -146,6 +149,7 @@ struct vectorized {
   template <typename args_t>
   inline void load(args_t* args) {
     constexpr int arity = std::tuple_size_v<args_t>;
+    int group_offset = group_work_size * group_idx;
     // `Unroll` policy cannot feed memory bandwidth well on Intel GPU,
     // 1. Small loop size cannot provide enough payloads, specially for small
     //    size data type s8/u8/f16/bf16.
@@ -153,6 +157,8 @@ struct vectorized {
     // Apply `Vectorized` policy for some 'non-contiguous' cases,
     // like broadcast. The broadcasted operands are dense and could be
     // optimized by the policy if satisfying vectorization conditions.
+    // auto offset = input_offset_calculator.get(group_offset);
+    auto linear_idx = group_offset + item_idx * vec_size;
     auto offset = input_offset_calculator.get(linear_idx);
     detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(
         *this, args, offset);
@@ -161,14 +167,15 @@ struct vectorized {
   template <typename scalar_t>
   inline void store(scalar_t* from) {
     using vec_t = aligned_vector<scalar_t, vec_size>;
-    scalar_t* to = reinterpret_cast<scalar_t*>(data[0]) + linear_idx;
+    scalar_t* to =
+        reinterpret_cast<scalar_t*>(data[0]) + group_work_size * group_idx;
     vec_t* to_ = reinterpret_cast<vec_t*>(to);
     vec_t v;
 #pragma unroll
     for (int j = 0; j < vec_size; j++) {
       v.val[j] = from[j];
     }
-    to_[0] = v;
+    to_[item_idx] = v;
   }
 };
 
