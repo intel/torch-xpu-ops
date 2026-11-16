@@ -1232,6 +1232,31 @@ bool indexShouldBeMajor(
   return false;
 }
 
+struct IndexInRangeCheckFunctor {
+  void operator()(sycl::item<1> item) const {
+    const int64_t idx = index_[item.get_id(0)];
+    SYCL_KERNEL_ASSERT(idx >= 0 && idx < self_dim_size_);
+  }
+  IndexInRangeCheckFunctor(const int64_t* index, int64_t self_dim_size)
+      : index_(index), self_dim_size_(self_dim_size) {}
+
+ private:
+  const int64_t* index_;
+  int64_t self_dim_size_;
+};
+
+// For paths that hand the index to an op accepting negative indices
+// (index_put_) before any kernel enforces [0, size).
+static void check_index_in_range(const Tensor& index, int64_t self_dim_size) {
+  if (index.numel() == 0) {
+    return;
+  }
+  const Tensor index_ = index.contiguous();
+  IndexInRangeCheckFunctor kfn(index_.const_data_ptr<int64_t>(), self_dim_size);
+  sycl_kernel_submit(
+      sycl::range<1>(index_.numel()), getCurrentSYCLQueue(), kfn);
+}
+
 template <typename func_t>
 void index_reduce_add_xpu_template(
     const Tensor& self,
@@ -1271,13 +1296,29 @@ void index_reduce_add_xpu_template(
       ") dims");
 
   if (globalContext().deterministicAlgorithms()) {
+    const Tensor index_long = index.to(at::kLong);
+    const Tensor value = source * alpha;
+    TORCH_CHECK_INDEX(
+        dim < result.dim(),
+        "too many indices for tensor of dimension ",
+        result.dim(),
+        " (got ",
+        dim + 1,
+        ")");
+    TORCH_CHECK(
+        value.scalar_type() == result.scalar_type(),
+        "expected scalar type ",
+        value.scalar_type(),
+        " but found ",
+        result.scalar_type());
+    check_index_in_range(index_long, self_.size(dim));
     torch::List<std::optional<Tensor>> indices;
     indices.reserve(dim + 1);
     for (int i = 0; i < dim; i++) {
       indices.emplace_back();
     }
-    indices.emplace_back(index.to(at::kLong));
-    result.index_put_(indices, source * alpha, true);
+    indices.emplace_back(index_long);
+    result.index_put_(indices, value, true);
     return;
   }
 
