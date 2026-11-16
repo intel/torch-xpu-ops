@@ -1236,7 +1236,8 @@ void group_norm_kernel_impl(
       }
       // SLM budget: local_mem_size shared among concurrent WGs per Xe-core
       int64_t eu_per_xc = at::xpu::getDeviceEUCountPerXeCore();
-      int64_t hw_thr = syclGpuHWThreadsPerEU();
+      int64_t hw_thr =
+          at::xpu::getCurrentDeviceProperties()->gpu_hw_threads_per_eu;
       int64_t slots_per_xc = eu_per_xc * hw_thr;
       int64_t sgs_per_wg = wg_size / simd;
       int64_t concurrent_wgs = slots_per_xc / sgs_per_wg;

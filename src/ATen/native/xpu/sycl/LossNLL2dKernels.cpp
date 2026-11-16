@@ -306,7 +306,7 @@ void nll_loss2d_backward_noreduce_kernel(
   }
 }
 
-template <typename scalar_t>
+template <typename scalar_t, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void nll_loss2d_backward_kernel_(
     scalar_t* grad_input,
@@ -315,25 +315,26 @@ void nll_loss2d_backward_kernel_(
     const scalar_t* weights,
     const scalar_t* total_weight,
     bool size_average,
-    int n_classes,
-    int map_nelem,
+    index_t n_classes,
+    index_t map_nelem,
     int blocks_per_sample,
     int64_t ignore_index) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   const auto grad =
       -(size_average ? *grad_output / *total_weight : *grad_output);
 
-  const int sample = item.get_group(0) / blocks_per_sample;
-  const int step = item.get_local_range(0) * blocks_per_sample;
+  const index_t sample = item.get_group(0) / blocks_per_sample;
+  const index_t step =
+      static_cast<index_t>(item.get_local_range(0)) * blocks_per_sample;
 
-  const int toffset = sample * map_nelem;
+  const index_t toffset = sample * map_nelem;
   const auto* const target_thread = target + toffset;
 
-  const int ioffset = sample * map_nelem * n_classes;
+  const index_t ioffset = sample * map_nelem * n_classes;
   auto* const grad_input_thread = grad_input + ioffset;
 
-  for (int i =
-           (item.get_group(0) % blocks_per_sample) * item.get_local_range(0) +
+  for (index_t i = static_cast<index_t>(item.get_group(0) % blocks_per_sample) *
+               item.get_local_range(0) +
            item.get_local_id(0);
        i < map_nelem;
        i += step) {
@@ -432,28 +433,37 @@ void nll_loss2d_backward_kernel(
           auto target_ = target.contiguous();
           auto weight_ = optional_contiguous(weight);
           int64_t map_nelem = target_numel / batch_size;
-          constexpr auto kfn = nll_loss2d_backward_kernel_<scalar_t>;
-          int64_t max_work_group_size =
-              at::xpu::getKernelMaxWorkGroupSize<kfn>();
-          int blocks_per_sample =
-              (map_nelem + max_work_group_size - 1) / max_work_group_size / 128;
-          blocks_per_sample = (blocks_per_sample == 0) ? 1 : blocks_per_sample;
-          int total_blocks = blocks_per_sample * batch_size;
-          sycl_kernel_submit<kfn>(
-              total_blocks * max_work_group_size,
-              max_work_group_size,
-              getCurrentSYCLQueue(),
-              0,
-              grad_input.mutable_data_ptr<scalar_t>(),
-              grad_output.const_data_ptr<scalar_t>(),
-              target_.const_data_ptr<int64_t>(),
-              optional_data<scalar_t>(weight_),
-              total_weight.const_data_ptr<scalar_t>(),
-              reduction == at::Reduction::Mean,
-              input.size(1),
-              map_nelem,
-              blocks_per_sample,
-              ignore_index);
+          AT_DISPATCH_INDEX_TYPES(
+              at::native::canUse32BitIndexMath(input, INT_MAX)
+                  ? ScalarType::Int
+                  : ScalarType::Long,
+              "nll_loss2d_backward_launcher",
+              [&] {
+                constexpr auto kfn =
+                    nll_loss2d_backward_kernel_<scalar_t, index_t>;
+                int64_t max_work_group_size =
+                    at::xpu::getKernelMaxWorkGroupSize<kfn>();
+                int blocks_per_sample = (map_nelem + max_work_group_size - 1) /
+                    max_work_group_size / 128;
+                blocks_per_sample =
+                    (blocks_per_sample == 0) ? 1 : blocks_per_sample;
+                int total_blocks = blocks_per_sample * batch_size;
+                sycl_kernel_submit<kfn>(
+                    total_blocks * max_work_group_size,
+                    max_work_group_size,
+                    getCurrentSYCLQueue(),
+                    0,
+                    grad_input.mutable_data_ptr<scalar_t>(),
+                    grad_output.const_data_ptr<scalar_t>(),
+                    target_.const_data_ptr<int64_t>(),
+                    optional_data<scalar_t>(weight_),
+                    total_weight.const_data_ptr<scalar_t>(),
+                    reduction == at::Reduction::Mean,
+                    input.size(1),
+                    map_nelem,
+                    blocks_per_sample,
+                    ignore_index);
+              });
         });
   }
 }

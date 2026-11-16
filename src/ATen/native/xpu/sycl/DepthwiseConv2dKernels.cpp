@@ -298,8 +298,7 @@ void conv_depthwise2d_backward_kernel(
 }
 
 template <typename scalar_t, typename acc_t, typename index_t, int SIMD>
-[[sycl::reqd_sub_group_size(SIMD)]] SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
-    (syclexp::nd_range_kernel<1>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 void conv_depthwise2d_grad_weight_kernel(
     const PackedTensorAccessor32<const scalar_t, 4, DefaultPtrTraits>

@@ -234,6 +234,25 @@ macro(set_build_flags)
 
   if(REPLACE_FLAGS_FOR_SYCLTLA)
     set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen)
+    # FlashAttention's softmax subtracts a rounded row maximum from s * scale.
+    # Contracting those into an FMA leaves the product unrounded, so the
+    # largest element no longer cancels to zero; the residual is ~ulp(s*scale)
+    # and exp2 turns it into inf for large inputs, which poisons the output
+    # with NaN. See pytorch/pytorch#121558, which CUDA addresses via its
+    # UNFUSE_FMA macro. This must stay after the -ffp-contract=fast set above;
+    # the last setting wins.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      set(_sycltla_no_fma_flag /Qfma-)
+    else()
+      set(_sycltla_no_fma_flag -ffp-contract=off)
+    endif()
+    CHECK_SYCL_FLAG("${_sycltla_no_fma_flag}" _supports_no_fma)
+    if(NOT _supports_no_fma)
+      message(FATAL_ERROR
+        "SYCL compiler ${SYCL_COMPILER} rejects ${_sycltla_no_fma_flag}; FMA "
+        "contraction would make FlashAttention return NaN for large inputs.")
+    endif()
+    list(APPEND SYCL_COMPILE_FLAGS ${_sycltla_no_fma_flag})
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       # Keep third-party SYCL-TLA diagnostics visible without making them
       # errors in WERROR builds. This flag set is captured only by the
