@@ -1065,7 +1065,7 @@ class XCCLTraceTestBase(MultiProcessTestCase):
         return self._trace_basename() + str(rank)
 
     def started_or_scheduled(self, timing_enabled=False):
-        return "started" if timing_enabled else "scheduled"
+        return "scheduled"
 
 
 class XCCLTraceTest(XCCLTraceTestBase):
@@ -1084,7 +1084,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         pg_status = t["pg_status"]
         self.assertEqual(len(pg_status), 1)
         self.assertEqual(str(pg_status["0"]["last_enqueued_collective"]), "2")
-        # self.assertEqual(str(pg_status["0"]["last_completed_collective"]), "2")
+        self.assertEqual(str(pg_status["0"]["last_completed_collective"]), "2")
         self.assertEqual(
             str(pg_status["0"]["last_started_collective"]),
             "2" if timing_enabled else "-1",
@@ -1098,14 +1098,14 @@ class XCCLTraceTest(XCCLTraceTestBase):
             self.assertEqual(last["thread_id"], str(threading.current_thread().ident))
             self.assertEqual(last["thread_name"], "fr_test_thread")
             self.assertEqual(last["process_group"], ("0", "default_pg"))
-            # self.assertEqual(last["state"], "completed") # Watchdog will fix marking works completed
+            self.assertEqual(last["state"], "completed")
             s = last["time_discovered_started_ns"]
-            # f = last["time_discovered_completed_ns"]
+            f = last["time_discovered_completed_ns"]
             self.assertEqual(last["record_id"], 1)
-            # self.assertIsNotNone(f)
+            self.assertIsNotNone(f)
             if timing_enabled:
                 self.assertIsNotNone(s)
-                # self.assertTrue(s <= f)
+                self.assertTrue(s <= f)
             # we don't collect stack traces in JSON at the moment
             if not is_json:
                 self.assertIn("test_c10d_xccl.py", str(last["frames"]))
@@ -1161,7 +1161,8 @@ class XCCLTraceTest(XCCLTraceTestBase):
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     @parametrize("include_collectives", [True, False])
-    def test_short_pickle(self, include_collectives, timing_enabled=False):
+    @parametrize("timing_enabled", [True, False])
+    def test_short_pickle(self, include_collectives, timing_enabled):
         if self.rank == self.MAIN_PROCESS_RANK:
             return
         pg = self._create_process_group_xccl()
@@ -1253,7 +1254,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         first = t[0]
         last = t[-1]
         self.assertEqual(last["profiling_name"], "xccl:all_reduce")
-        # self.assertEqual(last["state"], "completed") # Watchdog will fix marking works completed
+        self.assertEqual(last["state"], "completed")
         self.assertIn("test_c10d_xccl.py", str(last["frames"]))
         self.assertEqual(last["input_sizes"], ((3, 4),))
         self.assertEqual(last["input_dtypes"], ["Float"])
@@ -1294,7 +1295,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             [(2, 3), (5, 5), (1,)],
         ],
     )
-    @parametrize("timing_enabled", [False])
+    @parametrize("timing_enabled", [True, False])
     def test_batched_send_recv(self, op_sizes_per_coalesce, timing_enabled):
         """
         'WorkEnqueue' was skipped for isendirecv, leading to segfault on dump_entries when update_state tried to use
@@ -1375,7 +1376,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             )
             self.assertEqual(t["entries"][coalesced_op]["p2p_seq_id"], expected_seq)
             expected_seq += 1
-            # self.assertEqual(t["entries"][coalesced_op]["state"], "completed")
+            self.assertEqual(t["entries"][coalesced_op]["state"], "completed")
             self.assertEqual(t["entries"][coalesced_op]["input_sizes"], [])
             self.assertEqual(t["entries"][coalesced_op]["output_sizes"], [])
             if timing_enabled:
@@ -1394,7 +1395,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             [(2, 3), (5, 5), (1,)],
         ],
     )
-    @parametrize("timing_enabled", [False])
+    @parametrize("timing_enabled", [True, False])
     def test_individual_send_recv(self, op_sizes, timing_enabled):
         """
         'WorkEnqueue' was skipped for isendirecv, leading to segfault on dump_entries when update_state tried to use
@@ -1438,7 +1439,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             expected_op_id += 1
             self.assertEqual(t["entries"][seq]["input_sizes"], [input_sizes])
             self.assertEqual(t["entries"][seq]["output_sizes"], [input_sizes])
-            # self.assertEqual(t["entries"][seq]["state"], "completed") # Watchdog will fix marking works completed
+            self.assertEqual(t["entries"][seq]["state"], "completed")
 
             if timing_enabled:
                 duration = t["entries"][seq]["duration_ms"]
@@ -1482,7 +1483,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
                 t["entries"][i]["output_sizes"],
                 [[i + 1, 2]],
             )
-            # self.assertEqual(t["entries"][i]["state"], "scheduled") # Watchdog will fix marking works completed
+            self.assertEqual(t["entries"][i]["state"], "scheduled")
             # No event is recorded for individual ops
             self.assertTrue("time_discovered_completed_ns" in t["entries"][i])
         # TODO: (frost-intel) Add coalesced op recording for FR
@@ -1490,7 +1491,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
     # TODO(whc) test out other ops (And combinations of ops, if that's valid?)
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
-    @parametrize("timing_enabled", [False])
+    @parametrize("timing_enabled", [True, False])
     def test_coalescing_manager_collective(self, timing_enabled):
         """
         The coalescing manager api works by accumulating operations in python via a contextmanager, and then making
@@ -1544,12 +1545,312 @@ class XCCLTraceTest(XCCLTraceTestBase):
                 ],
             ],
         )
-        # self.assertEqual(t["entries"][0]["state"], "completed") # Watchdog will fix marking works completed
+        self.assertEqual(t["entries"][0]["state"], "completed")
         if timing_enabled:
             duration = t["entries"][0]["duration_ms"]
             self.assertTrue(0.001 < duration < 10000, duration)
         else:
             self.assertTrue("duration_ms" not in t["entries"][0])
+
+    def _dump(self, only_active=False):
+        return pickle.loads(
+            torch._C._distributed_c10d._dump_xccl_trace(onlyActive=only_active)
+        )
+
+    def _warmed_up_pg(self):
+        # Lazy communicator setup would otherwise block rank 0 before a peer
+        # deliberately holds back from a collective.
+        pg = self._create_process_group_xccl()
+        a = torch.full((3, 4), float(self.rank), device=self.local_device)
+        pg.allreduce(a).wait()
+        pg._wait_for_pending_works()
+        return pg, a, dist.distributed_c10d._get_default_store()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    @parametrize("timing_enabled", [True, False])
+    def test_trace_retires_only_after_completion(self, timing_enabled):
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg, a, store = self._warmed_up_pg()
+        if timing_enabled:
+            pg._enable_collectives_timing()
+        if self.rank == 0:
+            # The Work is dropped at once; rank 1 joins only after the dump.
+            pg.allreduce(a)
+            try:
+                t = self._dump()
+                self.assertFalse(t["entries"][-1]["retired"])
+                self.assertEqual(t["entries"][-1]["state"], "scheduled")
+                self.assertEqual(t["pg_status"]["0"]["last_completed_collective"], 1)
+            finally:
+                store.set("join", "1")
+        else:
+            store.wait(["join"])
+            pg.allreduce(a)
+        pg._wait_for_pending_works()
+        t = self._dump()
+        last = t["entries"][-1]
+        self.assertTrue(last["retired"])
+        self.assertEqual(last["state"], "completed")
+        self.assertIsNotNone(last["time_discovered_completed_ns"])
+        status = t["pg_status"]["0"]
+        self.assertEqual(status["last_completed_collective"], 2)
+        self.assertEqual(status["last_started_collective"], 2 if timing_enabled else -1)
+        if timing_enabled:
+            # Spans rank 0 waiting for rank 1, so only the lower bound is fixed.
+            self.assertGreater(last["duration_ms"], 0.001)
+        self.assertEqual(self._dump(only_active=True).get("entries", []), [])
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    @parametrize("is_json", [True, False])
+    def test_trace_overlapping_dumps(self, is_json):
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg, a, store = self._warmed_up_pg()
+        if self.rank == 0:
+            from torch._inductor.codecache import PyCodeCache
+
+            entered = threading.Event()
+            release = threading.Event()
+            traces = []
+
+            def hold_dump(*args):
+                entered.set()
+                if not release.wait(30):
+                    raise TimeoutError("Timed out waiting to release the dump")
+
+            work = pg.allreduce(a)
+            reader = threading.Thread(target=lambda: traces.append(self._dump()))
+            with mock.patch.object(PyCodeCache, "stack_frames_for_code", hold_dump):
+                try:
+                    reader.start()
+                    self.assertTrue(entered.wait(30))
+                    store.set("join", "1")
+                    deadline = time.monotonic() + 30
+                    while not work.is_completed():
+                        self.assertLess(time.monotonic(), deadline)
+                        time.sleep(0.01)
+                    # Must not retire what the status published for the held
+                    # dump doesn't reflect.
+                    pg._wait_for_pending_works()
+                    if is_json:
+                        t = json.loads(
+                            torch._C._distributed_c10d._dump_xccl_trace_json()
+                        )
+                    else:
+                        t = pickle.loads(
+                            torch._C._distributed_c10d._dump_xccl_trace(
+                                includeStackTraces=False
+                            )
+                        )
+                    self.assertEqual(t["entries"][-1]["state"], "scheduled")
+                    self.assertEqual(
+                        int(t["pg_status"]["0"]["last_completed_collective"]), 1
+                    )
+                finally:
+                    store.set("join", "1")
+                    release.set()
+                    reader.join(30)
+            self.assertFalse(reader.is_alive())
+            self.assertEqual(len(traces), 1)
+            t = self._dump()
+            self.assertEqual(t["entries"][-1]["state"], "completed")
+            self.assertEqual(t["pg_status"]["0"]["last_completed_collective"], 2)
+        else:
+            store.wait(["join"])
+            pg.allreduce(a)
+            pg._wait_for_pending_works()
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_trace_while_all_works_retired(self):
+        os.environ["TORCH_FR_BUFFER_SIZE"] = "10"
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg = self._create_process_group_xccl()
+        device = self.local_device
+        # send more works than the buffer size to overwrite the previous entry
+        for _ in range(12):
+            a = [torch.ones(3, 4, device=device)]
+            pg.broadcast(a).wait()
+        torch.xpu.synchronize(device=device)
+
+        # wait for all works to be retired
+        pg._wait_for_pending_works()
+        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
+        t = t["entries"]
+        self.assertEqual(len(t), 10)
+        last = t[-1]
+        self.assertEqual(last["retired"], True)
+        self.assertEqual(last["state"], "completed")
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    # timing_enabled=True hangs on rank 1 in e.synchronize() below, even with FR
+    # off: with collectives timing on, the wait for e (on the current stream)
+    # does not return until the allreduce rank 0 never joins (on the XCCL comm
+    # stream) completes.
+    @parametrize("timing_enabled", [False])
+    @parametrize("only_active", [True, False])
+    def test_trace_while_active(self, timing_enabled, only_active):
+        if self.rank == self.MAIN_PROCESS_RANK:
+            for c in self.children_pipes:
+                self.assertEqual(c.recv(), "next")
+            for c in self.children_pipes:
+                c.send("next")
+            return
+
+        pg = self._create_process_group_xccl()
+        if timing_enabled:
+            pg._enable_collectives_timing()
+        device = self.local_device
+        with torch.xpu.device(device):
+            a = torch.full((3, 4), float(self.rank), device=device)
+
+            pg.allreduce(a).wait()
+            e = torch.xpu.Event()
+            e.record()
+            if self.rank != 0:
+                pg.allreduce(a).wait()
+            e.synchronize()
+            t = pickle.loads(
+                torch._C._distributed_c10d._dump_xccl_trace(onlyActive=only_active)
+            )
+            t = t["entries"]
+            if only_active:
+                if self.rank == 0:
+                    self.assertEqual(len(t), 0)
+                else:
+                    self.assertEqual(len(t), 1)
+            if not only_active:
+                if self.rank == 0:
+                    self.assertEqual(t[-1]["profiling_name"], "xccl:all_reduce")
+                    self.assertEqual(t[-1]["collective_seq_id"], 1)
+                    self.assertEqual(t[-1]["state"], "completed")
+                else:
+                    self.assertEqual(t[-1]["profiling_name"], "xccl:all_reduce")
+                    self.assertEqual(t[-1]["collective_seq_id"], 2)
+                    self.assertEqual(
+                        t[-1]["state"], self.started_or_scheduled(timing_enabled)
+                    )
+
+            self.parent.send("next")
+            self.assertEqual("next", self.parent.recv())
+            if self.rank == 0:
+                pg.allreduce(a).wait()
+            torch.xpu.synchronize(device=device)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_trace_completion_survives_ring_eviction(self):
+        os.environ["TORCH_FR_BUFFER_SIZE"] = "1"
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg, a, store = self._warmed_up_pg()
+        if self.rank == 0:
+            pg.allreduce(a)
+            # Overwrites the only ring slot while the first is in flight.
+            pg.allreduce(a)
+            store.set("join_first", "1")
+            try:
+                deadline = time.monotonic() + 60
+                while self._dump()["pg_status"]["0"]["last_completed_collective"] < 2:
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(0.01)
+                t = self._dump()
+                self.assertEqual(t["pg_status"]["0"]["last_completed_collective"], 2)
+                self.assertFalse(t["entries"][-1]["retired"])
+            finally:
+                store.set("join_second", "1")
+        else:
+            store.wait(["join_first"])
+            pg.allreduce(a)
+            store.wait(["join_second"])
+            pg.allreduce(a)
+        pg._wait_for_pending_works()
+        self.assertEqual(self._dump()["pg_status"]["0"]["last_completed_collective"], 3)
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_trace_reset_with_pending_work(self):
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg, a, store = self._warmed_up_pg()
+        if self.rank == 0:
+            pg.allreduce(a)
+            torch._C._distributed_c10d._reset_fr_recording_xccl()
+            store.set("join", "1")
+        else:
+            store.wait(["join"])
+            pg.allreduce(a)
+        for _ in range(2):
+            pg.allreduce(a)
+        pg._wait_for_pending_works()
+        t = self._dump()
+        for entry in t["entries"][-2:]:
+            self.assertTrue(entry["retired"])
+            self.assertEqual(entry["state"], "completed")
+        self.assertEqual(t["pg_status"]["0"]["last_completed_collective"], 4)
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_wait_for_pending_works_ignores_later_work(self):
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg, a, _ = self._warmed_up_pg()
+        with torch.xpu.device(self.local_device):
+            # A blocking collective runs on, and registers, the caller's stream.
+            dist.all_reduce(a)
+            x = torch.randn(8192, 8192, device=self.local_device)
+            for _ in range(60):
+                x = x @ x
+            after = torch.xpu.Event()
+            after.record()
+            pg._wait_for_pending_works()
+            self.assertFalse(after.query())
+            torch.xpu.synchronize()
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_trace_status_survives_group_destruction(self):
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg, a, _ = self._warmed_up_pg()
+        other = c10d.new_group([0, 1])
+        other_id = str(other._get_backend(self.local_device).uid)
+        b = torch.ones(3, 4, device=self.local_device)
+        dist.all_reduce(b, group=other)
+        other._wait_for_pending_works()
+        dist.destroy_process_group(other)
+        del other
+        status = self._dump()["pg_status"][other_id]
+        self.assertEqual(status["last_enqueued_collective"], 1)
+        self.assertEqual(status["last_completed_collective"], 1)
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_wait_for_pending_works_without_flight_recorder(self):
+        os.environ["TORCH_FR_BUFFER_SIZE"] = "0"
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg, a, _ = self._warmed_up_pg()
+        if self.rank == 0:
+            work = pg.allreduce(a)
+            pg._wait_for_pending_works()
+            self.assertTrue(work.is_completed())
+        else:
+            time.sleep(2)
+            pg.allreduce(a)
+            pg._wait_for_pending_works()
+        dist.destroy_process_group()
 
 
 # ------------------------------------------------------------------
