@@ -21,7 +21,6 @@ exclude:
   - "test/xpu/test_fake_tensor_xpu.py"
   - "test/xpu/test_meta_xpu.py"
   - "test/xpu/test_nn_xpu.py"
-  - "test/xpu/test_schema_check.py"
 
 # Custom header groups - files listed here get a specific header
 # instead of the default one
