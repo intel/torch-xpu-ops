@@ -91,7 +91,8 @@ std::vector<Tensor> foreach_tensor_norm_xpu(
   }
   if (!at::native::can_use_fast_route(tensors) || has_int_or_complex ||
       !(p == static_cast<double>(1) || p == static_cast<double>(2) ||
-        p == std::numeric_limits<double>::infinity())) {
+        p == std::numeric_limits<double>::infinity()) ||
+      !native::xpu::foreach_reduce_supports_sub_group_size_32()) {
     return at::native::foreach_tensor_norm_slow(tensors, ord, dtype);
   }
   check_foreach_norm_dtype(
@@ -125,7 +126,8 @@ std::vector<Tensor> foreach_tensor_powsum_xpu(
             at::isComplexType(scalar_type);
       });
   if (!at::native::can_use_fast_route(tensors) || has_int_or_complex ||
-      !(p == static_cast<double>(1) || p == static_cast<double>(2))) {
+      !(p == static_cast<double>(1) || p == static_cast<double>(2)) ||
+      !native::xpu::foreach_reduce_supports_sub_group_size_32()) {
     return at::native::foreach_tensor_powsum_slow(tensors, ord, dtype);
   }
   check_foreach_norm_dtype(
@@ -146,7 +148,8 @@ std::vector<Tensor> foreach_tensor_max_xpu(TensorList tensors) {
           [](const auto& t) { return t.numel() > 0; }),
       "_foreach_max cannot compute the maximum of an empty tensor; max over zero elements is undefined.");
 
-  if (!can_use_fast_route(tensors)) {
+  if (!can_use_fast_route(tensors) ||
+      !xpu::foreach_reduce_supports_sub_group_size_32()) {
     return foreach_tensor_max_slow(tensors);
   }
 
