@@ -14,6 +14,11 @@
 
 namespace at::native::xpu {
 
+TORCH_XPU_API void add_out_dense_sparse_compressed_kernel(
+    Tensor& output,
+    const Tensor& sparse,
+    const Scalar& alpha);
+
 TORCH_XPU_API void add_out_sparse_csr_kernel(
     const Tensor& A,
     const Tensor& B,
