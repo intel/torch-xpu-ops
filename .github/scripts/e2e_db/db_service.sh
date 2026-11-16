@@ -91,6 +91,14 @@ wait_ready() {
     die "database is not ready, see: docker logs ${CONTAINER}"
 }
 
+# Docker creates missing bind-mount paths as root; make the service and backup directories
+# exist and belong to this user before anything is written to them.
+ensure_dirs() {
+    docker run --rm --entrypoint sh -v "${DB_DIR}:/svc" -v "${BACKUP_DIR}:/backup" "${IMAGE}" -c \
+        'mkdir -p /svc/pgdata /backup/base /backup/wal && chown "$1" /svc && chown -R "$1" /svc/pgdata /backup' \
+        sh "$(id -u):$(id -g)"
+}
+
 save_settings() {
     {
         for var in E2E_DB_CONTAINER E2E_DB_IMAGE E2E_DB_PORT E2E_DB_BACKUP_DIR E2E_DB_BACKUP_REMOTE \
@@ -118,7 +126,7 @@ start() {
     E2E_DB_CONTAINER="${CONTAINER}" E2E_DB_IMAGE="${IMAGE}" E2E_DB_PORT="${PORT}" \
         E2E_DB_BACKUP_DIR="${BACKUP_DIR}" E2E_DB_BACKUP_REMOTE="${BACKUP_REMOTE}" \
         E2E_DB_BASE_DAYS="${BASE_DAYS}" E2E_DB_RETENTION_DAYS="${RETENTION_DAYS}" E2E_DB_DATA_DAYS="${DATA_DAYS}"
-    mkdir -p "${PGDATA_DIR}" "${BACKUP_DIR}/base" "${BACKUP_DIR}/wal"
+    ensure_dirs
     if [[ ! -f "${ENV_FILE}" ]]; then
         printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_DB=postgres\n' "${DB_USER}" "$(openssl rand -hex 24)" \
             > "${ENV_FILE}"
@@ -134,8 +142,6 @@ start() {
     # Postgres runs as the host user so backups stay readable for offsite sync and restore.
     local uid_gid
     uid_gid="$(id -u):$(id -g)"
-    docker run --rm --entrypoint chown -v "${PGDATA_DIR}:/data" -v "${BACKUP_DIR}:/backup" "${IMAGE}" \
-        -R "${uid_gid}" /data /backup
     if [[ "$(container_state)" != missing ]]; then
         # Recreate so configuration changes apply; data lives in the bind mount.
         docker stop -t 120 "${CONTAINER}" >/dev/null
@@ -299,6 +305,9 @@ esac
 
 # Serialize commands: cron jobs must not run while start/restore recreates the container.
 if [[ "$1" != status ]]; then
+    if [[ "$1" == start || "$1" == restore ]]; then
+        ensure_dirs
+    fi
     mkdir -p "${DB_DIR}"
     exec 9>"${DB_DIR}/.lock"
     case "$1" in
