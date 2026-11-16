@@ -19,6 +19,8 @@
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
+#include <deque>
+
 namespace c10d {
 
 using FlightRecorderXCCL = FlightRecorder<at::xpu::XPUEvent>;
@@ -160,10 +162,188 @@ inline void errorIfCapturingNonCapturableXCCL(c10::xpu::CaptureStatus status) {
 
 } // namespace
 
+// Note [XCCL flight recorder retirement]
+// XCCL has no watchdog, so a traced work's completion is discovered by a sweep
+// (on the next traced enqueue, a dump, or waitForPendingWorks) that queries
+// its end event and then retires its flight recorder entry with
+// retire_completed(). FR itself is given no events to query: XPUEvent::record()
+// replaces the event that a concurrent dump would be reading, and querying an
+// event recorded ahead of a oneCCL collective that waits for its peer blocks
+// until the collective completes. In-flight works therefore show as scheduled,
+// never as started. The events are held here, not the Work, so the outputs and
+// stashed tensors go as soon as the caller drops them. A timed work's duration
+// is read once its end event has completed: the start event is on the same
+// in-order stream, so it has completed too.
+struct PendingWorks {
+  struct FrEntry {
+    uint64_t order;
+    size_t traceId;
+    size_t resetEpoch;
+    int64_t seq;
+    std::string opName;
+    size_t numelIn;
+    size_t numelOut;
+    std::shared_ptr<at::xpu::XPUEvent> end;
+    // Null unless timing was enabled for the work.
+    std::shared_ptr<at::xpu::XPUEvent> timingStart;
+  };
+
+  void sweep() {
+    std::lock_guard<std::mutex> lock(mutex);
+    sweepLocked(/*inDump*/ false);
+  }
+
+  // Streams are in order, so retiring the completed prefix of every stream
+  // retires all completed entries, and a stuck stream holds back only its own.
+  void sweepLocked(bool inDump);
+
+  std::mutex mutex;
+  // End event of the last work on each stream, traced or not.
+  std::unordered_map<c10::Stream, std::shared_ptr<at::xpu::XPUEvent>> lastEnd;
+  std::unordered_map<c10::Stream, std::deque<FrEntry>> frEntries;
+  uint64_t nextOrder = 0;
+  // Status only moves forward in enqueue order, which also orders works whose
+  // seq comes from different counters (collective vs p2p).
+  uint64_t lastStartedOrder = 0;
+  uint64_t lastCompletedOrder = 0;
+  // Status is written to latest under mutex and copied to published, which
+  // FR reads unlocked during a dump; see DumpState.
+  ProcessGroupStatus latest;
+  std::shared_ptr<ProcessGroupStatus> published;
+  // Set once the PG is gone and its last status still awaits publishing.
+  bool destroyed = false;
+};
+
+namespace {
+
+// published is copied only while no dump is reading it. The mutex is never
+// held across FR's dump itself, which takes the GIL to symbolize tracebacks.
+struct DumpState {
+  std::mutex mutex;
+  std::atomic<int> readers{0};
+};
+
+DumpState& dumpState() {
+  static auto* state = new DumpState();
+  return *state;
+}
+
+// dump_xccl_trace*() are free functions, so they reach the pending works of
+// every PG through this registry. Leaked, so that exit-time destruction never
+// frees XPU events after the SYCL runtime is gone.
+struct PendingWorksRegistry {
+  std::mutex mutex;
+  std::unordered_map<size_t, std::shared_ptr<PendingWorks>> byPgId;
+};
+
+PendingWorksRegistry& pendingWorksRegistry() {
+  static auto* registry = new PendingWorksRegistry();
+  return *registry;
+}
+
+// Counts the caller as a reader of published status until destroyed; the
+// first of overlapping readers sweeps and publishes every PG.
+class DumpReader {
+ public:
+  DumpReader() {
+    auto& state = dumpState();
+    std::lock_guard<std::mutex> stateLock(state.mutex);
+    // Counted before sweeping, so that sweeps outside a dump back off until
+    // the last reader is done; see PendingWorks::sweepLocked().
+    if (state.readers++ == 0) {
+      // As at enqueue, no events are queried while the current stream captures.
+      const bool capturing = c10::xpu::currentStreamCaptureStatusMayInitCtx() !=
+          c10::xpu::CaptureStatus::Executing;
+      auto& registry = pendingWorksRegistry();
+      std::vector<std::pair<size_t, std::shared_ptr<PendingWorks>>> all;
+      {
+        std::lock_guard<std::mutex> lock(registry.mutex);
+        all.assign(registry.byPgId.begin(), registry.byPgId.end());
+      }
+      std::vector<size_t> published;
+      for (const auto& [pgId, pending] : all) {
+        std::lock_guard<std::mutex> lock(pending->mutex);
+        if (!capturing) {
+          pending->sweepLocked(/*inDump*/ true);
+        }
+        *pending->published = pending->latest;
+        if (pending->destroyed) {
+          published.push_back(pgId);
+        }
+      }
+      {
+        std::lock_guard<std::mutex> lock(registry.mutex);
+        for (const auto pgId : published) {
+          registry.byPgId.erase(pgId);
+        }
+      }
+    }
+  }
+
+  ~DumpReader() {
+    auto& state = dumpState();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    --state.readers;
+  }
+
+  DumpReader(const DumpReader&) = delete;
+  DumpReader& operator=(const DumpReader&) = delete;
+};
+
+} // namespace
+
+void PendingWorks::sweepLocked(bool inDump) {
+  // Retiring while a dump reads would show entries that the status it already
+  // published doesn't reflect; the next sweep retires them instead.
+  if (!inDump && dumpState().readers.load() > 0) {
+    return;
+  }
+  for (auto& [stream, entries] : frEntries) {
+    while (!entries.empty()) {
+      const auto& entry = entries.front();
+      try {
+        if (!entry.end->query()) {
+          break;
+        }
+        std::optional<float> duration;
+        if (entry.timingStart) {
+          duration =
+              static_cast<float>(entry.timingStart->elapsed_time(*entry.end));
+        }
+        FlightRecorderXCCL::get()->retire_completed(
+            entry.traceId, entry.resetEpoch, duration);
+      } catch (const std::exception& e) {
+        // Sweeps run inside unrelated collectives, so a failing entry is
+        // dropped instead of propagating; FR keeps showing it as scheduled.
+        LOG(ERROR) << "Dropping flight recorder entry " << entry.traceId << ": "
+                   << e.what();
+        entries.pop_front();
+        continue;
+      }
+      if (entry.timingStart && lastStartedOrder < entry.order) {
+        lastStartedOrder = entry.order;
+        latest.lastStartedSeq = entry.seq;
+        latest.lastStartedWorkName = entry.opName;
+        latest.lastStartedNumelIn = entry.numelIn;
+        latest.lastStartedNumelOut = entry.numelOut;
+      }
+      if (lastCompletedOrder < entry.order) {
+        lastCompletedOrder = entry.order;
+        latest.lastCompletedSeq = entry.seq;
+        latest.lastCompletedWorkName = entry.opName;
+        latest.lastCompletedNumelIn = entry.numelIn;
+        latest.lastCompletedNumelOut = entry.numelOut;
+      }
+      entries.pop_front();
+    }
+  }
+}
+
 std::string dump_xccl_trace(
     bool includeCollectives,
     bool includeStackTraces,
     bool onlyActive) {
+  DumpReader reader;
   auto xcclDumpMap = std::unordered_map<
       std::string,
       std::unordered_map<std::string, std::string>>();
@@ -172,6 +352,7 @@ std::string dump_xccl_trace(
 }
 
 std::string dump_xccl_trace_json(bool includeCollectives, bool onlyActive) {
+  DumpReader reader;
   auto xcclDumpMap = std::unordered_map<
       std::string,
       std::unordered_map<std::string, std::string>>();
@@ -377,6 +558,13 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   xpuEventCacheEnabled_.store(getCvarBool(TORCH_XCCL_XPU_EVENT_CACHE, true));
   traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 0);
   FlightRecorderXCCL::get()->enabled_ = traceBufferSize_ > 0;
+  pendingWorks_ = std::make_shared<PendingWorks>();
+  pendingWorks_->published = pgStatus_;
+  {
+    auto& registry = pendingWorksRegistry();
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    registry.byPgId.emplace(local_id_, pendingWorks_);
+  }
   enableTiming_.store(getCvarBool(TORCH_XCCL_ENABLE_TIMING, false));
 
   // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just
@@ -419,6 +607,25 @@ ProcessGroupXCCL::~ProcessGroupXCCL() {
   heartbeatMonitor_->stop();
   // Wait for all threads to finish before returning
   heartbeatMonitor_->join();
+  // No events are queried here, as this can run after the SYCL runtime is
+  // gone at exit. FR borrows none of them, so pending works are dropped and
+  // stay scheduled. The final status is published now, or by the next dump if
+  // one is reading.
+  auto& state = dumpState();
+  std::lock_guard<std::mutex> stateLock(state.mutex);
+  {
+    std::lock_guard<std::mutex> lock(pendingWorks_->mutex);
+    pendingWorks_->frEntries.clear();
+    pendingWorks_->lastEnd.clear();
+    if (state.readers > 0) {
+      pendingWorks_->destroyed = true;
+      return;
+    }
+    *pendingWorks_->published = pendingWorks_->latest;
+  }
+  auto& registry = pendingWorksRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  registry.byPgId.erase(local_id_);
 }
 
 bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
@@ -457,32 +664,55 @@ bool ProcessGroupXCCL::isInitialized() {
 
 void ProcessGroupXCCL::setEnqueuedPgStatus(
     c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
-  pgStatus_->lastEnqueuedSeq = static_cast<int64_t>(work->getSequencenumber());
-  pgStatus_->lastEnqueuedWorkName = opTypeToString(work->opType_);
-  pgStatus_->lastEnqueuedNumelIn = work->numelIn_;
-  pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
+  std::lock_guard<std::mutex> lock(pendingWorks_->mutex);
+  auto& status = pendingWorks_->latest;
+  status.lastEnqueuedSeq = static_cast<int64_t>(work->getSequencenumber());
+  status.lastEnqueuedWorkName = opTypeToString(work->opType_);
+  status.lastEnqueuedNumelIn = work->numelIn_;
+  status.lastEnqueuedNumelOut = work->numelOut_;
 }
 
-void ProcessGroupXCCL::attachRetireAndStatusCallback(
-    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
-    std::shared_ptr<ProcessGroupStatus> pgStatus) {
-  auto id = work->trace_id_;
-  auto reset_epoch = work->trace_reset_epoch_;
-  int64_t seq = static_cast<int64_t>(work->getSequencenumber());
-  std::string workName = opTypeToString(work->opType_);
-  size_t numelIn = work->numelIn_;
-  size_t numelOut = work->numelOut_;
-  work->future_->addCallback(
-      [id, reset_epoch, pgStatus, seq, workName, numelIn, numelOut](
-          at::ivalue::Future&) {
-        FlightRecorderXCCL::get()->retire_id(
-            id, reset_epoch, /*compute_duration*/ true);
-        pgStatus->lastCompletedSeq = seq;
-        pgStatus->lastCompletedWorkName = workName;
-        pgStatus->lastCompletedNumelIn = numelIn;
-        pgStatus->lastCompletedNumelOut = numelOut;
-      },
-      /*use_future*/ false);
+void ProcessGroupXCCL::enqueuePendingWork(
+    const c10::intrusive_ptr<WorkXCCL>& work,
+    const at::xpu::XPUStream& stream) {
+  std::lock_guard<std::mutex> lock(pendingWorks_->mutex);
+  pendingWorks_->lastEnd[stream.unwrap()] = work->xcclEndEvent_;
+  // Untraced works (FR is off) have no flight recorder entry to retire.
+  if (!work->trace_id_ || !work->trace_reset_epoch_) {
+    return;
+  }
+  pendingWorks_->frEntries[stream.unwrap()].push_back(
+      {++pendingWorks_->nextOrder,
+       *work->trace_id_,
+       *work->trace_reset_epoch_,
+       static_cast<int64_t>(work->getSequencenumber()),
+       opTypeToString(work->opType_),
+       work->numelIn_,
+       work->numelOut_,
+       work->xcclEndEvent_,
+       work->xcclStartEvent_});
+  pendingWorks_->sweepLocked(/*inDump*/ false);
+}
+
+void ProcessGroupXCCL::waitForPendingWorks() {
+  TORCH_CHECK(
+      coalescing_state_ == 0,
+      "waitForPendingWorks() cannot be called inside a coalescing block");
+  TORCH_CHECK(
+      c10::xpu::currentStreamCaptureStatusMayInitCtx() ==
+          c10::xpu::CaptureStatus::Executing,
+      "waitForPendingWorks() cannot be called while capturing an XPU graph");
+  std::vector<std::shared_ptr<at::xpu::XPUEvent>> lastEnds;
+  {
+    std::lock_guard<std::mutex> lock(pendingWorks_->mutex);
+    for (const auto& [stream, end] : pendingWorks_->lastEnd) {
+      lastEnds.push_back(end);
+    }
+  }
+  for (const auto& end : lastEnds) {
+    end->synchronize();
+  }
+  pendingWorks_->sweep();
 }
 
 void ProcessGroupXCCL::attachRecordFunctionEndCallback(
@@ -542,8 +772,9 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
         profilingTitle ? profilingTitle : "",
         inputs,
         outputs,
-        r->xcclStartEvent_.get(),
-        r->xcclEndEvent_.get(),
+        // See Note [XCCL flight recorder retirement].
+        nullptr,
+        nullptr,
         options_->timeout,
         pgStatus_,
         isP2P);
@@ -738,7 +969,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
       opProfilerTitle.c_str(),
       {},
       {},
-      coalescing_state_);
+      coalescing_state_ &&
+          capture_status == c10::xpu::CaptureStatus::Executing);
 
   work->blockingWait_ = blockingWait_;
 
@@ -765,8 +997,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
 
   // Skip PG status update during graph capture
   if (capture_status == c10::xpu::CaptureStatus::Executing) {
-    attachRetireAndStatusCallback(work, pgStatus_);
     setEnqueuedPgStatus(work);
+    enqueuePendingWork(work, stream);
   }
 
   coalescing_state_ = 0;
@@ -931,7 +1163,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   */
   if (capture_status == c10::xpu::CaptureStatus::Executing) {
     setEnqueuedPgStatus(work);
-    attachRetireAndStatusCallback(work, pgStatus_);
+    // Coalesced children record no end event; endCoalescing() enqueues.
+    if (!coalescing_state_) {
+      enqueuePendingWork(work, stream);
+    }
   }
 
   return asyncOp ? work : nullptr;
@@ -1021,23 +1256,27 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
 
-    auto traceId = FlightRecorderXCCL::get()->recordWithResetEnabled(
-        local_id_,
-        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-        seqCollective_,
-        seqP2P_,
-        op_id_,
-        profilingTitle,
-        {tensor},
-        {tensor},
-        work->xcclStartEvent_.get(),
-        work->xcclEndEvent_.get(),
-        options_->timeout,
-        pgStatus_,
-        true);
+    // The retire path skips captured works, so FR must not see their events.
+    if (capture_status == c10::xpu::CaptureStatus::Executing) {
+      auto traceId = FlightRecorderXCCL::get()->recordWithResetEnabled(
+          local_id_,
+          std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+          seqCollective_,
+          seqP2P_,
+          op_id_,
+          profilingTitle,
+          {tensor},
+          {tensor},
+          // See Note [XCCL flight recorder retirement].
+          nullptr,
+          nullptr,
+          options_->timeout,
+          pgStatus_,
+          true);
 
-    work->trace_id_ = traceId.id;
-    work->trace_reset_epoch_ = traceId.reset_epoch;
+      work->trace_id_ = traceId.id;
+      work->trace_reset_epoch_ = traceId.reset_epoch;
+    }
   }
 
   if (enableNanCheck_ && opType == OpType::SEND) {
@@ -1082,7 +1321,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     // Skip PG status update during graph capture
     if (capture_status == c10::xpu::CaptureStatus::Executing) {
       setEnqueuedPgStatus(work);
-      attachRetireAndStatusCallback(work, pgStatus_);
+      enqueuePendingWork(work, stream);
     }
   }
 
