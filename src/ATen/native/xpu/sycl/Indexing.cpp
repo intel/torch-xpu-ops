@@ -1248,7 +1248,7 @@ struct IndexInRangeCheckFunctor {
 };
 
 // For paths that hand the index to an op accepting negative indices
-// (index_put_) before any kernel enforces [0, size).
+// (index_put_, index_fill_) before any kernel enforces [0, size).
 static void check_index_in_range(const Tensor& index, int64_t self_dim_size) {
   if (index.numel() == 0) {
     return;
@@ -1591,6 +1591,8 @@ void index_reduce_func_xpu_template(
       ") dims");
 
   if (!include_self) {
+    // index_fill_ requires index to be a LongTensor
+    const Tensor index_long = index.to(at::ScalarType::Long);
     AT_DISPATCH_ALL_TYPES_AND2(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
@@ -1616,8 +1618,8 @@ void index_reduce_func_xpu_template(
               init_val = (scalar_t)0;
               break;
           }
-          // index_fill_ requires index to be a LongTensor
-          self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
+          check_index_in_range(index_long, self_.size(dim));
+          self_.index_fill_(dim, index_long, init_val);
         });
   }
 

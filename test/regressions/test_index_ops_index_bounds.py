@@ -15,6 +15,8 @@ Regression tests for index bounds checks in XPU indexing ops.
 - index_add_ and index_select kernels cast the int64 index to the kernel's
   unsigned index type before checking it, so 2**32 wrapped to 0 and silently
   wrote or read row 0.
+- index_reduce_(include_self=False) runs index_fill_ before the checked
+  reduction kernel, and index_fill_ had no bounds check at all.
 
 A failing bounds check aborts the process through SYCL_KERNEL_ASSERT, so every
 case runs in its own subprocess. Each case first proves the device is healthy,
@@ -24,6 +26,7 @@ work-item fails the assert.
 
 import subprocess
 import sys
+import unittest
 
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
@@ -69,6 +72,9 @@ def run(device, det):
         out.append(b.index_add_(0, idx, torch.ones(2, dtype=torch.bool, device=device), alpha=True))
     else:
         out.append(x.index_select(0, idx))
+        neg = torch.tensor([-4, -1], device=device)
+        out.append(x.clone().index_fill_(0, neg, 7.0))
+        out.append(x.clone().index_reduce_(0, idx, src, "amax", include_self=False))
     return out
 
 for det in (False, True):
@@ -95,12 +101,19 @@ print("synchronized", flush=True)
 
 INDEX_ADD = "x.index_add_(0, idx, src)"
 INDEX_SELECT = "x.index_select(0, idx)"
+INDEX_FILL = "x.index_fill_(0, idx, 1.0)"
+INDEX_REDUCE = 'x.index_reduce_(0, idx, src, "amax", include_self=False)'
 
 # Expected SYCL_KERNEL_ASSERT conditions.
 RANGE_CHECK = "idx >= 0 && idx < self_dim_size_"
 ADD_CHECK = "dstIndexRaw >= 0 && dstIndexRaw < dstAddDimSize_"
 SELECT_CHECK = "srcIndexRaw >= 0 && srcIndexRaw < srcSelectDimSize"
+FILL_CHECK = (
+    "glb_batch_group_loc_off >= -cfg_.indexing_dimension_size_ && "
+    "glb_batch_group_loc_off < cfg_.indexing_dimension_size_"
+)
 
+HANGS_NEXT_PROCESS = unittest.skip("device assert hangs the next XPU process, #4284")
 BOOL_MISMATCH = "RuntimeError expected scalar type Long but found Bool"
 INT_MISMATCH = "RuntimeError expected scalar type Float but found Int"
 SCALAR_INDEX_ERROR = "IndexError too many indices for tensor of dimension 0"
@@ -112,6 +125,13 @@ CASES = [
     subtest((INDEX_ADD, False, -1, ADD_CHECK), name="index_add_neg1"),
     subtest((INDEX_ADD, False, 2**32, ADD_CHECK), name="index_add_2p32"),
     subtest((INDEX_SELECT, False, 2**32, SELECT_CHECK), name="index_select_2p32"),
+    subtest((INDEX_FILL, False, 4, FILL_CHECK), name="index_fill_too_large"),
+    subtest((INDEX_FILL, False, -5, FILL_CHECK), name="index_fill_too_small"),
+    subtest(
+        (INDEX_REDUCE, False, -1, RANGE_CHECK),
+        name="index_reduce_no_self_neg1",
+        decorators=[HANGS_NEXT_PROCESS],
+    ),
 ]
 
 
