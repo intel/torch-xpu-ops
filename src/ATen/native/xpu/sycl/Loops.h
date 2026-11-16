@@ -456,27 +456,6 @@ constexpr static inline int max_scalar_size() {
 }
 
 template <
-    typename input_t,
-    typename output_t,
-    typename func_t,
-    typename scalar_arg_t,
-    bool scalar_left>
-struct ScalarUnaryFunctor {
-  output_t operator()(input_t value) const {
-    if constexpr (scalar_left) {
-      return f(scalar, value);
-    } else {
-      return f(value, scalar);
-    }
-  }
-  ScalarUnaryFunctor(func_t f_, scalar_arg_t scalar_)
-      : scalar(scalar_), f(f_) {}
-
-  scalar_arg_t scalar;
-  [[no_unique_address]] func_t f;
-};
-
-template <
     bool compact_unary = false,
     typename func_t,
     typename array_t,
@@ -819,20 +798,32 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
 }
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
-using AUnaryFunctor = ScalarUnaryFunctor<
-    arg2_t,
-    return_t,
-    func_t,
-    typename function_traits<func_t>::template arg<0>::type,
-    true>;
+struct AUnaryFunctor {
+  using traits = function_traits<func_t>;
+  using opmath_arg1_t = typename traits::template arg<0>::type;
+  return_t operator()(arg2_t b) const {
+    return f(a, b);
+  }
+  AUnaryFunctor(func_t f_, opmath_arg1_t a_) : f(f_), a(a_) {}
+
+ private:
+  [[no_unique_address]] func_t f;
+  opmath_arg1_t a;
+};
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
-using BUnaryFunctor = ScalarUnaryFunctor<
-    arg1_t,
-    return_t,
-    func_t,
-    typename function_traits<func_t>::template arg<1>::type,
-    false>;
+struct BUnaryFunctor {
+  using traits = function_traits<func_t>;
+  using opmath_arg2_t = typename traits::template arg<1>::type;
+  return_t operator()(arg1_t a) const {
+    return f(a, b);
+  }
+  BUnaryFunctor(func_t f_, opmath_arg2_t b_) : f(f_), b(b_) {}
+
+ private:
+  [[no_unique_address]] func_t f;
+  opmath_arg2_t b;
+};
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
 struct BinaryFunctor {
