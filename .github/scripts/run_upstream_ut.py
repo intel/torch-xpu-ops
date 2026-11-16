@@ -96,9 +96,36 @@ def get_issue_files(args, category):
         f"excluded {len(done) - len(files)} Not Applicable)",
         file=sys.stderr,
     )
+    return split_category(files, category)
+
+
+def split_category(files, category):
     if category == "distributed":
-        return distributed
+        return [f for f in files if f.startswith(DISTRIBUTED_PREFIX)]
     return [f for f in files if not f.startswith(DISTRIBUTED_PREFIX)]
+
+
+def get_list_files(args, category):
+    """*.py paths from --files-from, one per line, relative to pytorch/ or pytorch/test/."""
+    lines = (line.strip() for line in args.files_from.read_text().splitlines())
+    files = [
+        line if line.startswith("test/") else f"test/{line}"
+        for line in lines
+        if line.endswith(".py")
+    ]
+    files = split_category(list(dict.fromkeys(files)), category)
+    missing = [f for f in files if not (args.pytorch_dir / f).is_file()]
+    for f in missing:
+        print(f"[WARN] skip missing test file: {f}", file=sys.stderr)
+    return [f for f in files if f not in missing]
+
+
+def select_files(args, category):
+    if args.files:
+        return args.files
+    if args.files_from:
+        return get_list_files(args, category)
+    return get_issue_files(args, category)
 
 
 @dataclass(frozen=True)
@@ -255,7 +282,7 @@ DISTRIBUTED_ENV = {
 
 
 def distributed_files(args):
-    return args.files or get_issue_files(args, "distributed")
+    return select_files(args, "distributed")
 
 
 def distributed_jobs(args, env, files):
@@ -287,7 +314,7 @@ def distributed_jobs(args, env, files):
 
 
 def default_files(args):
-    return args.files or get_issue_files(args, "default")
+    return select_files(args, "default")
 
 
 def default_jobs(args, env, files):
@@ -332,6 +359,11 @@ def parse_args():
         "--files",
         nargs="+",
         help="default/distributed: test files instead of the issue list",
+    )
+    parser.add_argument(
+        "--files-from",
+        type=Path,
+        help="default/distributed: file listing test files (one per line) instead of the issue list",
     )
     parser.add_argument(
         "--repo", default="intel/torch-xpu-ops", help="owner/repo of the tracking issue"

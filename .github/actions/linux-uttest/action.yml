@@ -244,6 +244,7 @@ runs:
         # Exit code 1 means test failures, which the check job reports; fail only on setup errors
         rc=0
         python .github/scripts/run_upstream_ut.py "${category}" --ut-name "${ut_name}" \
+          --files-from ww47_cuda_test_files_only.txt \
           --pytorch-dir pytorch \
           --log-dir "${UT_LOG_DIR}" \
           --xml-dir "${UT_JUNIT_DIR}" || rc=$?
