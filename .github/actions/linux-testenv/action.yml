@@ -89,11 +89,18 @@ runs:
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
         fi
-        PYTORCH_REPO="${PYTORCH_REPO#https://github.com/}"
-        echo "repo=${PYTORCH_REPO%.git}" >> "${GITHUB_OUTPUT}"
+        if [[ "${PYTORCH_REPO}" == https://github.com/* ]];then
+          PYTORCH_REPO="${PYTORCH_REPO#https://github.com/}"
+          echo "repo=${PYTORCH_REPO%.git}" >> "${GITHUB_OUTPUT}"
+        else
+          # actions/checkout only serves GitHub
+          git clone "${PYTORCH_REPO}" pytorch
+          git -C pytorch checkout "${TORCH_COMMIT_ID}"
+        fi
         echo "commit=${TORCH_COMMIT_ID}" >> "${GITHUB_OUTPUT}"
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> "${GITHUB_ENV}"
     - name: Checkout Pytorch
+      if: ${{ steps.torch.outputs.repo != '' }}
       uses: actions/checkout@v7
       with:
         repository: ${{ steps.torch.outputs.repo }}

@@ -132,14 +132,21 @@ jobs:
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
           fi
-          PYTORCH_REPO="${PYTORCH_REPO#https://github.com/}"
-          PYTORCH_REPO="${PYTORCH_REPO%.git}"
-          # actions/checkout needs a branch, tag or full SHA; this also handles short SHAs
-          PYTORCH_SHA="$(gh api "repos/${PYTORCH_REPO}/commits/${PYTORCH_COMMIT}" --jq .sha)"
-          echo "repo=${PYTORCH_REPO}" >> "${GITHUB_OUTPUT}"
-          echo "ref=${PYTORCH_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "url=${PYTORCH_REPO}" >> "${GITHUB_OUTPUT}"
+          echo "commit=${PYTORCH_COMMIT}" >> "${GITHUB_OUTPUT}"
+          if [[ "${PYTORCH_REPO}" == https://github.com/* ]];then
+            PYTORCH_REPO="${PYTORCH_REPO#https://github.com/}"
+            PYTORCH_REPO="${PYTORCH_REPO%.git}"
+            # actions/checkout needs a branch, tag or full SHA; this also handles short SHAs
+            PYTORCH_SHA="$(gh api "repos/${PYTORCH_REPO}/commits/${PYTORCH_COMMIT}" --jq .sha 2>/dev/null || true)"
+            # on API errors gh prints the error body; fall back to the ref as given
+            [[ "${PYTORCH_SHA}" =~ ^[0-9a-f]{40}$ ]] || PYTORCH_SHA="${PYTORCH_COMMIT}"
+            echo "repo=${PYTORCH_REPO}" >> "${GITHUB_OUTPUT}"
+            echo "ref=${PYTORCH_SHA}" >> "${GITHUB_OUTPUT}"
+          fi
       # the build workspace persists, so checkout only fetches new commits and keeps submodules
       - name: Limit reused Pytorch checkout
+        if: ${{ steps.pytorch.outputs.repo != '' }}
         run: |
           # every fetch and submodule bump adds history; start fresh once it passes the cap
           GIT_MAX_GB=50
@@ -147,6 +154,7 @@ jobs:
             rm -rf pytorch
           fi
       - name: Checkout Pytorch
+        if: ${{ steps.pytorch.outputs.repo != '' }}
         uses: actions/checkout@v7
         with:
           repository: ${{ steps.pytorch.outputs.repo }}
@@ -165,9 +173,14 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
+          # sources outside GitHub can't use actions/checkout; let the script clone them
+          SOURCE_ARGS=(--use-existing)
+          if [ -z "${{ steps.pytorch.outputs.repo }}" ];then
+            SOURCE_ARGS=(--pytorch-repo="${{ steps.pytorch.outputs.url }}" --pytorch-commit="${{ steps.pytorch.outputs.commit }}")
+          fi
           python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/prepare_pytorch.py \
             --workspace="${{ github.workspace }}" \
-            --use-existing \
+            "${SOURCE_ARGS[@]}" \
             --torch-xpu-ops-repo="${TORCH_XPU_OPS_REPO}" \
             --torch-xpu-ops-commit="${TORCH_XPU_OPS_COMMIT}" \
             --onednn-commit='${{ inputs.onednn }}'

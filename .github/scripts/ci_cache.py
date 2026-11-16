@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Point pip/uv/HF/torch at the persistent ~/.cache and keep the cache within budget.
+"""Point pip/uv/HF/torch at the shared CI cache and keep it within budget.
 
-Runs once per job from setup-python. Best effort: problems are reported as warnings, never failures.
+Host jobs and container jobs use the same directory: /opt/xpu-test/_cache on the host, bind-mounted to ~/.cache
+in job containers. Runs once per job from setup-python. Best effort: problems are warnings, never failures.
 Budget (env): CI_CACHE_MAX_GB (40% of disk), CI_CACHE_MIN_FREE_GB (15% of disk), CI_CACHE_MAX_AGE_DAYS (14).
 """
 
@@ -20,7 +21,9 @@ from pathlib import Path
 DAY = 86_400
 GIB = 1 << 30
 NOW = time.time()
-CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+SHARED = Path("/opt/xpu-test/_cache")
+PRIVATE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+CACHE = Path(os.environ.get("CI_CACHE_DIR") or (SHARED if SHARED.is_dir() else PRIVATE))
 
 
 def info(msg: str) -> None:
@@ -60,14 +63,32 @@ def du(path: Path) -> int:
 
 
 def uv_cache(*args: str) -> None:
-    # uv locks its cache, so this waits for concurrent installs instead of breaking them
+    # takes uv's exclusive cache lock, which waits for and then blocks other installs on this host
     if shutil.which("uv"):
-        subprocess.run(["timeout", "900", "uv", "cache", *args])
+        subprocess.run(["timeout", "300", "uv", "cache", *args], env={**os.environ, "UV_CACHE_DIR": str(CACHE / "uv")})
 
 
-# ── setup ────────────────────────────────────────────────────────────────────
+# ── setup ──────────────────────────────────────────────────────────────────────
+
+def claim(root: Path) -> bool:
+    """Container jobs write as root; hand those entries back to the cache owner before a host job uses them."""
+    if os.geteuid() == 0:
+        return True
+    st = root.stat()
+    if st.st_uid != os.geteuid():
+        return False
+    find = ["find", str(root), "-xdev", "(", "!", "-uid", str(st.st_uid), "-o", "!", "-gid", str(st.st_gid), ")"]
+    if not subprocess.run([*find, "-print", "-quit"], capture_output=True, text=True).stdout:
+        return True
+    chown = ["sudo", "-n", *find, "-exec", "chown", "-h", f"{st.st_uid}:{st.st_gid}", "{}", "+"]
+    return subprocess.run(chown, capture_output=True).returncode == 0
+
 
 def setup_env() -> None:
+    global CACHE
+    if CACHE == SHARED and not claim(SHARED):
+        warn(f"cannot take ownership of {SHARED}, using {PRIVATE}")
+        CACHE = PRIVATE
     pip_cache = CACHE / "pip"
     pip_cache.mkdir(parents=True, exist_ok=True)
     if os.geteuid() == 0:
@@ -118,16 +139,17 @@ def drop_superseded_hf() -> None:
                 remove(blob)
 
 
-def drop_stale_uv_pointers(max_age: float) -> None:
+def drop_stale_uv_pointers(max_age: float) -> int:
     """Old nightlies and per-build wheels; `uv cache prune` then frees the archives they pointed to."""
     groups: dict[Path, list[Path]] = defaultdict(list)
     for ptr in (CACHE / "uv").glob("wheels-v*/**/*"):
         if ptr.is_file():
             groups[ptr.with_suffix("")].append(ptr)  # .http/.msgpack/.rev of one wheel go together
-    for files in groups.values():
-        if max(map(last_used, files)) < NOW - max_age:
-            for ptr in files:
-                remove(ptr)
+    stale = [files for files in groups.values() if max(map(last_used, files)) < NOW - max_age]
+    for files in stale:
+        for ptr in files:
+            remove(ptr)
+    return len(stale)
 
 
 def lru_entries() -> list[Entry]:
@@ -145,7 +167,11 @@ def lru_entries() -> list[Entry]:
 
 def prune() -> None:
     stamp = CACHE / ".ci_cache.pruned"
-    with open(CACHE / ".ci_cache.lock", "w") as lock:
+    try:
+        lock = open(CACHE / ".ci_cache.lock", "a")
+    except OSError:  # held by a root-owned file from a running container job
+        return
+    with lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -160,8 +186,8 @@ def prune() -> None:
 
         # superseded versions and anything idle for max_age
         drop_superseded_hf()
-        drop_stale_uv_pointers(max_age)
-        uv_cache("prune")
+        if drop_stale_uv_pointers(max_age):
+            uv_cache("prune")
         entries = []
         for entry in lru_entries():
             if entry.used < NOW - max_age:
