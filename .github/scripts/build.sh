@@ -72,17 +72,20 @@ python -m pip install --force-reinstall dist/torch*.whl
 cd "${WORKSPACE}"
 python "${WORKSPACE}/pytorch/torch/utils/collect_env.py"
 
-# Compare against the pin captured before building; older wheels have no record.
+# The freshly installed wheel can be imported, so check the public API.
+# Wheels without the field come from PyTorch before pytorch/pytorch#202608.
 built_xpu_ops="$(python -c '
-from importlib.metadata import distribution
-p = distribution("torch").locate_file("torch/xpu.txt")
-print(open(p).read().strip() if p.is_file() else "")
+import torch
+print(getattr(torch.version, "xpu_ops_commit", None) or "")
 ')"
 # Only a prepared tree holds a full SHA; skip trees still naming release/X.Y.
 if [[ "${expected_xpu_ops}" =~ ^[0-9a-f]{40}$ ]] && [ -n "${built_xpu_ops}" ] && \
         [ "${built_xpu_ops}" != "${expected_xpu_ops}" ];then
     echo "torch-xpu-ops mismatch: wheel built ${built_xpu_ops}, prepared ${expected_xpu_ops}"
     exit 1
+fi
+if [ -z "${built_xpu_ops}" ];then
+    echo "Warning: torch.version.xpu_ops_commit is unavailable; skipping XPU SHA verification"
 fi
 echo "torch-xpu-ops: prepared ${expected_xpu_ops}, wheel ${built_xpu_ops:-<not recorded>}"
 python -c "import torch; print(torch.__config__.show())"
