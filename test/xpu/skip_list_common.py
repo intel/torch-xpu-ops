@@ -169,6 +169,11 @@ skip_dict = {
         "test_compile_dyn_quant_matmul_4bit_m_32_k_64_n_4096_xpu",
         "_tunableop_",
         "_tuning_tunableop_",
+        # CUDA/ROCm-specific: MAGMA and cuSOLVER backends, ROCm driver warning, rocBLAS workspace
+        "test_svd_driver_ignored_on_rocm",
+        "test_svd_driver_magma",
+        "test_eigh_workspace_growth_with_full_caching_allocator",
+        "test_linalg_ldl_factor_edge_cases",
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
