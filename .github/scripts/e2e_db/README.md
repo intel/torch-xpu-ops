@@ -175,7 +175,7 @@ Settings are environment variables; `start` saves them to `$E2E_DB_DIR/service.e
 | `E2E_DB_BACKUP_DIR` | `$E2E_DB_DIR/backup` | Local backup directory |
 | `E2E_DB_BACKUP_REMOTE` | (empty) | rsync target for the offsite copy, e.g. `user@node:/path` |
 | `E2E_DB_BASE_DAYS` | `7` | Days between full base backups |
-| `E2E_DB_KEEP_BASES` | `2` | Base backups (and their WAL) to keep |
+| `E2E_DB_RETENTION_DAYS` | `90` | Maximum age of backup data (base backups and WAL) |
 
 `./db_service.sh status` shows container health, WAL archiving state and backup size.
 
@@ -196,9 +196,12 @@ changes ownership recursively and the offsite sync mirrors with `--delete`.
 - PostgreSQL archives every completed WAL segment (compressed) to `backup/wal/` as it is written,
   so the backup grows incrementally with the data.
 - `backup` (cron, hourly) closes the current WAL segment and waits until it is archived, so at
-  most about an hour of writes is unarchived, takes a full base backup every `E2E_DB_BASE_DAYS` days, keeps the newest
-  `E2E_DB_KEEP_BASES` base backups and the WAL needed after them, and mirrors `backup/` to
-  `E2E_DB_BACKUP_REMOTE`.
+  most about an hour of writes is unarchived, takes a full base backup every `E2E_DB_BASE_DAYS`
+  days, and mirrors `backup/` to `E2E_DB_BACKUP_REMOTE`.
+- Retention: backups are kept for at most `E2E_DB_RETENTION_DAYS` (3 months). Older base
+  backups and the WAL before the oldest remaining base backup are deleted, locally and (through
+  the mirror) offsite, so any point in the last 3 months can be restored. The newest base backup
+  is never deleted.
 - `backup/` also holds a copy of `postgres.env`, so a restored node keeps the same credentials.
 
 Set `E2E_DB_BACKUP_REMOTE` (with key-based SSH from the database host) so the backup survives the

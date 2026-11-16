@@ -24,7 +24,7 @@ PORT="${E2E_DB_PORT:-5432}"
 BACKUP_DIR="${E2E_DB_BACKUP_DIR:-${DB_DIR}/backup}"
 BACKUP_REMOTE="${E2E_DB_BACKUP_REMOTE:-}"
 BASE_DAYS="${E2E_DB_BASE_DAYS:-7}"
-KEEP_BASES="${E2E_DB_KEEP_BASES:-2}"
+RETENTION_DAYS="${E2E_DB_RETENTION_DAYS:-90}"
 INSTALL_CRON="${E2E_DB_CRON:-1}"
 DB_USER=e2e
 ENV_FILE="${DB_DIR}/postgres.env"
@@ -88,7 +88,7 @@ wait_ready() {
 save_settings() {
     {
         for var in E2E_DB_CONTAINER E2E_DB_IMAGE E2E_DB_PORT E2E_DB_BACKUP_DIR E2E_DB_BACKUP_REMOTE \
-                   E2E_DB_BASE_DAYS E2E_DB_KEEP_BASES; do
+                   E2E_DB_BASE_DAYS E2E_DB_RETENTION_DAYS; do
             # Quote removal inside the unquoted ${VAR:-word} turns %q output back into the value.
             # shellcheck disable=SC2016
             printf '%s=${%s:-%q}\n' "${var}" "${var}" "${!var:-}"
@@ -111,7 +111,7 @@ install_cron() {
 start() {
     E2E_DB_CONTAINER="${CONTAINER}" E2E_DB_IMAGE="${IMAGE}" E2E_DB_PORT="${PORT}" \
         E2E_DB_BACKUP_DIR="${BACKUP_DIR}" E2E_DB_BACKUP_REMOTE="${BACKUP_REMOTE}" \
-        E2E_DB_BASE_DAYS="${BASE_DAYS}" E2E_DB_KEEP_BASES="${KEEP_BASES}"
+        E2E_DB_BASE_DAYS="${BASE_DAYS}" E2E_DB_RETENTION_DAYS="${RETENTION_DAYS}"
     mkdir -p "${PGDATA_DIR}" "${BACKUP_DIR}/base" "${BACKUP_DIR}/wal"
     if [[ ! -f "${ENV_FILE}" ]]; then
         printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_DB=postgres\n' "${DB_USER}" "$(openssl rand -hex 24)" \
@@ -207,16 +207,17 @@ backup() {
         log "base backup ${ts} done"
     fi
 
-    # Keep the newest KEEP_BASES base backups and only the WAL newer than the oldest one kept.
-    local bases count oldest
+    # Drop base backups older than RETENTION_DAYS (never the newest one) and the WAL before the
+    # oldest base kept, so no backup data is older than the retention window.
+    local bases oldest
     mapfile -t bases < <(complete_bases)
-    count="${#bases[@]}"
-    if (( count > KEEP_BASES )); then
-        for old in "${bases[@]:0:count-KEEP_BASES}"; do
+    (( ${#bases[@]} > 0 )) || die "no base backup in ${BACKUP_DIR}/base"
+    for old in "${bases[@]:0:${#bases[@]}-1}"; do
+        if [[ -n "$(find "${old}/.started" -mmin +$((RETENTION_DAYS * 1440)))" ]]; then
             rm -rf "${old}"
-            log "pruned base backup $(basename "${old}")"
-        done
-    fi
+            log "pruned base backup $(basename "${old}") (older than ${RETENTION_DAYS} days)"
+        fi
+    done
     oldest="$(complete_bases | head -n 1)"
     [[ -n "${oldest}" ]] || die "no base backup in ${BACKUP_DIR}/base"
     find "${BACKUP_DIR}/wal" -type f -name '*.gz' ! -newer "${oldest}/.started" -delete
