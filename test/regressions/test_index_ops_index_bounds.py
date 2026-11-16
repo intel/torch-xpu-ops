@@ -12,6 +12,9 @@ Regression tests for index bounds checks in XPU indexing ops.
 
 - Deterministic index_add_ goes through index_put_, which accepts negative
   indices, so -1 silently added to the last row.
+- index_add_ and index_select kernels cast the int64 index to the kernel's
+  unsigned index type before checking it, so 2**32 wrapped to 0 and silently
+  wrote or read row 0.
 
 A failing bounds check aborts the process through SYCL_KERNEL_ASSERT, so every
 case runs in its own subprocess. Each case first proves the device is healthy,
@@ -64,6 +67,8 @@ def run(device, det):
     if det:
         b = torch.zeros(4, dtype=torch.bool, device=device)
         out.append(b.index_add_(0, idx, torch.ones(2, dtype=torch.bool, device=device), alpha=True))
+    else:
+        out.append(x.index_select(0, idx))
     return out
 
 for det in (False, True):
@@ -89,9 +94,12 @@ print("synchronized", flush=True)
 """
 
 INDEX_ADD = "x.index_add_(0, idx, src)"
+INDEX_SELECT = "x.index_select(0, idx)"
 
 # Expected SYCL_KERNEL_ASSERT conditions.
 RANGE_CHECK = "idx >= 0 && idx < self_dim_size_"
+ADD_CHECK = "dstIndexRaw >= 0 && dstIndexRaw < dstAddDimSize_"
+SELECT_CHECK = "srcIndexRaw >= 0 && srcIndexRaw < srcSelectDimSize"
 
 BOOL_MISMATCH = "RuntimeError expected scalar type Long but found Bool"
 INT_MISMATCH = "RuntimeError expected scalar type Float but found Int"
@@ -101,6 +109,9 @@ SCALAR_INDEX_ERROR = "IndexError too many indices for tensor of dimension 0"
 CASES = [
     subtest((INDEX_ADD, True, -1, RANGE_CHECK), name="index_add_det_neg1"),
     subtest((INDEX_ADD, True, 4, RANGE_CHECK), name="index_add_det_too_large"),
+    subtest((INDEX_ADD, False, -1, ADD_CHECK), name="index_add_neg1"),
+    subtest((INDEX_ADD, False, 2**32, ADD_CHECK), name="index_add_2p32"),
+    subtest((INDEX_SELECT, False, 2**32, SELECT_CHECK), name="index_select_2p32"),
 ]
 
 

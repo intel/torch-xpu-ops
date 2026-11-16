@@ -927,11 +927,12 @@ struct IndexFuncSmallIndexFunctor {
     // re-accessing indices in addition to src elements can be slow.
     for (IndexType srcIndex = 0; srcIndex < indices_.sizes[0]; ++srcIndex) {
       // Lua indices begin at 1
-      IndexType dstIndex =
+      const IndicesType dstIndexRaw =
           indices_
               .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
                   srcIndex, indices_)];
-      SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
+      SYCL_KERNEL_ASSERT(dstIndexRaw >= 0 && dstIndexRaw < dstAddDimSize_);
+      const IndexType dstIndex = static_cast<IndexType>(dstIndexRaw);
 
       // We stride over the output ignoring the indexed dimension
       // (innerSize), whose offset calculation is handled differently
@@ -1041,11 +1042,12 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
 
       // Lua indices begin at 1
-      IndexType dstIndex =
+      const IndicesType dstIndexRaw =
           indices_
               .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
                   srcIndex, indices_)];
-      SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
+      SYCL_KERNEL_ASSERT(dstIndexRaw >= 0 && dstIndexRaw < dstAddDimSize_);
+      const IndexType dstIndex = static_cast<IndexType>(dstIndexRaw);
 
       IndexType dstOffset =
           IndexToOffset<T, IndexType, DstDim>::get(elementInSlice, dst_);
@@ -2115,10 +2117,11 @@ struct IndexSelectSmallIndexFunctor {
     // this is a good choice (small number of chosen indices), since
     // re-accessing indices in addition to src elements can be slow.
     for (IndexType dstIndex = 0; dstIndex < indices.sizes[0]; ++dstIndex) {
-      IndexType srcIndex =
+      const IndicesType srcIndexRaw =
           indices.data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
               dstIndex, indices)];
-      SYCL_KERNEL_ASSERT(srcIndex < srcSelectDimSize);
+      SYCL_KERNEL_ASSERT(srcIndexRaw >= 0 && srcIndexRaw < srcSelectDimSize);
+      const IndexType srcIndex = static_cast<IndexType>(srcIndexRaw);
 
       // We stride over the output ignoring the indexed dimension
       // (innerSize), whose offset calculation is handled differently
