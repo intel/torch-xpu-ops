@@ -58,6 +58,21 @@ def require_mapping(value, label):
     return value
 
 
+def pytest_command():
+    """Argv prefix for pytest.
+
+    `python -m pytest` puts the working directory first on sys.path. PyTorch
+    files run in the source checkout, so `import torch` loads that unbuilt
+    tree instead of the installed wheel. The import fails, and the retry is
+    rejected. The console script next to this interpreter does not add cwd.
+    """
+    name = "pytest.exe" if sys.platform == "win32" else "pytest"
+    script = Path(sys.executable).with_name(name)
+    if not script.is_file():
+        raise FileNotFoundError(f"pytest for {sys.executable} was not found at {script}")
+    return [str(script)]
+
+
 def build_plan(config, selected, roots, output, prefix, run_id):
     require_mapping(config, "Config")
     if set(config) != {"groups"}:
@@ -97,7 +112,7 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                     raise ValueError(f"Test file does not exist: {root / path}")
                 name = f"{prefix}{group}__{repo}__{path.replace('/', '__')}_{run_id}"
                 junit = output / f"{name}.xml"
-                command = [sys.executable, "-m", "pytest", path, f"--rootdir={root}", f"--junit-xml={junit}"] + [
+                command = pytest_command() + [path, f"--rootdir={root}", f"--junit-xml={junit}"] + [
                     f"--deselect={path}::{case}" for case in cases
                 ]
                 tasks.append(
@@ -259,7 +274,7 @@ def write_reproduce(path, tasks, results):
     if failed:
         lines.append("Failed cases:")
         lines += [
-            f"cd {display_root(r['cwd'])} && {prefix}python -m pytest -sv {shlex.quote(node)}"
+            f"cd {display_root(r['cwd'])} && {prefix}pytest -sv {shlex.quote(node)}"
             for r, node in failed
         ]
     path.write_text("\n".join(lines) + "\n")
