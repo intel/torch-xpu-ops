@@ -187,16 +187,18 @@ struct Msg {
   char msg[MAX_MSG_LENGTH];
 };
 
-// SYCL_KERNEL_ASSERT_MSG is not ready; see:
-// https://github.com/intel/torch-xpu-ops/issues/5165
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void assert_async_kernel(const scalar_t* input) {
   SYCL_KERNEL_ASSERT(input[0] != scalar_t(0));
 }
 
+// TODO: pass msg to the kernel once SYCL_KERNEL_ASSERT_MSG is ready.
+// See: https://github.com/intel/torch-xpu-ops/issues/5165
 template <typename scalar_t>
-void launch_assert_async_kernel(const scalar_t* input, Msg msg) {
+void launch_assert_async_kernel(
+    const scalar_t* input,
+    [[maybe_unused]] Msg msg) {
   sycl_kernel_submit<assert_async_kernel<scalar_t>>(
       1, 1, getCurrentSYCLQueue(), 0, input);
 }
