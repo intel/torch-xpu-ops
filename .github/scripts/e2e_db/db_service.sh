@@ -95,7 +95,7 @@ wait_ready() {
 # exist and belong to this user before anything is written to them.
 ensure_dirs() {
     docker run --rm --entrypoint sh -v "${DB_DIR}:/svc" -v "${BACKUP_DIR}:/backup" "${IMAGE}" -c \
-        'mkdir -p /svc/pgdata /backup/base /backup/wal && chown "$1" /svc && chown -R "$1" /svc/pgdata /backup' \
+        'mkdir -p /svc/pgdata /backup/base /backup/wal && chown "$1" /svc && chown -R "$1" /svc/pgdata /backup && chmod 700 /svc /backup' \
         sh "$(id -u):$(id -g)"
 }
 
