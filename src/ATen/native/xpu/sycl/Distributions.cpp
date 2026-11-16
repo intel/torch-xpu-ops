@@ -231,7 +231,6 @@ void launch_standard_gamma_grad_kernel(TensorIteratorBase& iter) {
       });
 }
 
-
 template <typename scalar_t>
 struct DirichletKernelFunctor {
   scalar_t operator()(scalar_t gamma, scalar_t gamma_sum) const {
