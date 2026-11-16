@@ -293,20 +293,18 @@ void upsample_nearest3d_backward_template(
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
   int64_t work_group_size =
-      at::xpu::getKernelMaxWorkGroupSize<
-          upsample_nearest3d_backward_kernel<
-              scalar_t,
-              accscalar_t,
-              index_t,
-              index_bw_op_t>>();
-  int64_t work_group_num =
-      at::ceil_div(n, static_cast<int64_t>(work_group_size));
-  sycl_kernel_submit<
-      upsample_nearest3d_backward_kernel<
+      at::xpu::getKernelMaxWorkGroupSize<upsample_nearest3d_backward_kernel<
           scalar_t,
           accscalar_t,
           index_t,
-          index_bw_op_t>>(
+          index_bw_op_t>>();
+  int64_t work_group_num =
+      at::ceil_div(n, static_cast<int64_t>(work_group_size));
+  sycl_kernel_submit<upsample_nearest3d_backward_kernel<
+      scalar_t,
+      accscalar_t,
+      index_t,
+      index_bw_op_t>>(
       work_group_num * work_group_size,
       work_group_size,
       queue,

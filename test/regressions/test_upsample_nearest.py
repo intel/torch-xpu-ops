@@ -10,12 +10,7 @@
 import torch
 from torch.autograd import Variable
 from torch.testing._internal.common_device_type import largeTensorTest
-from torch.testing._internal.common_utils import (
-    instantiate_parametrized_tests,
-    parametrize,
-    run_tests,
-    TestCase,
-)
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 device = torch.device("xpu")
 cpu_device = torch.device("cpu")
@@ -178,40 +173,38 @@ class TestTorchMethod(TestCase):
             test_upsamle_nearest(dtype)
             test_upsample_nearest_exact(dtype)
 
-    @parametrize("mode", ("nearest", "nearest-exact"))
-    @parametrize("dtype", (torch.float, torch.bfloat16, torch.float16))
-    @parametrize("channels", (255, 256, 257, 512))
-    def test_upsample_nearest2d_channels_last_many_channels(
-        self, mode, dtype, channels
-    ):
-        # Use a larger spatial size to exercise the channels-last kernel launch
-        # boundary on PVC-class hardware (intel/torch-xpu-ops#5701).
-        x = torch.randn(1, channels, 32, 32, dtype=dtype).contiguous(
-            memory_format=torch.channels_last
-        )
+    def test_upsample_nearest2d_channels_last_many_channels(self):
+        # The launch is clamped to getDeviceMaxWorkItems(), so the output must
+        # exceed that for the grid-stride loop to be exercised (#5701).
+        for mode in ("nearest", "nearest-exact"):
+            for dtype in (torch.float, torch.bfloat16, torch.float16):
+                for channels in (255, 256, 257, 512):
+                    with self.subTest(mode=mode, dtype=dtype, channels=channels):
+                        x = torch.randn(1, channels, 32, 32, dtype=dtype).contiguous(
+                            memory_format=torch.channels_last
+                        )
 
-        x_xpu = x.to(device)
-        self.assertTrue(x_xpu.is_contiguous(memory_format=torch.channels_last))
+                        x_xpu = x.to(device)
+                        self.assertTrue(
+                            x_xpu.is_contiguous(memory_format=torch.channels_last)
+                        )
 
-        out = torch.nn.functional.interpolate(x_xpu, scale_factor=2.0, mode=mode)
-        ref = torch.nn.functional.interpolate(
-            x.float(), scale_factor=2.0, mode=mode
-        ).to(dtype)
+                        out = torch.nn.functional.interpolate(
+                            x_xpu, scale_factor=2.0, mode=mode
+                        )
+                        ref = torch.nn.functional.interpolate(
+                            x.float(), scale_factor=2.0, mode=mode
+                        ).to(dtype)
 
-        self.assertEqual(out.cpu(), ref)
+                        self.assertEqual(out.cpu(), ref)
 
-    # Regression tests for large-tensor indexing in upsample_nearest3d
-    # forward/backward.
-    #
+    # Large-tensor indexing regressions for upsample_nearest3d forward/backward.
     # *_large_size_int64: the kernels walk the batch dim with
     # dst_idx += C * D * H * W, so the flat index exceeds INT32_MAX once
-    # N * C * D * H * W > INT32_MAX even if a single batch fits in int32.
-    # Each batch is compared against a single-batch launch, which stays on
-    # the 32-bit index path.
-    #
-    # *_single_batch_over_uint32: a single batch has more than UINT32_MAX
-    # elements, so the launch size (ceil_div of the per-batch numel) must be
-    # computed in 64 bits or part of the output is never written.
+    # N * C * D * H * W > INT32_MAX even if a single batch fits in int32. Each
+    # batch is compared against a single-batch launch (32-bit index path).
+    # *_single_batch_over_uint32: one batch has more than UINT32_MAX elements,
+    # so the launch size (ceil_div of the per-batch numel) must be 64-bit.
 
     @largeTensorTest("8GB", device="xpu")
     def test_upsample_nearest3d_fwd_large_size_int64(self):
@@ -335,8 +328,6 @@ class TestTorchMethod(TestCase):
             self.assertEqual(grad_input[b : b + 1], ref)
             del ref
 
-
-instantiate_parametrized_tests(TestTorchMethod)
 
 if __name__ == "__main__":
     run_tests()

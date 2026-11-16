@@ -104,7 +104,9 @@ void upsample_nearest1d_backward_kernel(
   // upsample_nearest1d meta call makes sure `nbatch != 0`
   unsigned int n = grad_input.numel() / nbatch;
   // safe check for int32 indexing; implicitly restrict launch config for kernel
-  TORCH_CHECK(grad_input.numel() <= std::numeric_limits<int32_t>::max());
+  TORCH_CHECK(
+      grad_input.numel() <= std::numeric_limits<int32_t>::max() &&
+      grad_output.numel() <= std::numeric_limits<int32_t>::max());
   Tensor grad_input_c = grad_input.contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND3(
       ScalarType::BFloat16,
@@ -236,7 +238,9 @@ void upsample_nearest1d_kernel(
   unsigned int n = output.numel() / nbatch;
   // safe check for int32 indexing; implicitly restrict launch config for
   // kernel
-  TORCH_CHECK(output.numel() <= std::numeric_limits<int32_t>::max());
+  TORCH_CHECK(
+      output.numel() <= std::numeric_limits<int32_t>::max() &&
+      input.numel() <= std::numeric_limits<int32_t>::max());
   Tensor output_c = output.contiguous();
 
   AT_DISPATCH_FLOATING_TYPES_AND3(
