@@ -159,6 +159,7 @@ jobs:
       runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ needs.resolve-python.outputs.python }}
       suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
@@ -211,6 +212,7 @@ jobs:
       runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ needs.resolve-python.outputs.python }}
       suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
