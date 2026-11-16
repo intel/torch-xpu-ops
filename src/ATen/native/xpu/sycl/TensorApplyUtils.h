@@ -232,12 +232,9 @@ void pointwiseApply2Kernel(
     IndexType totalElements,
     const Op op) {
   auto item = syclext::this_work_item::get_nd_item<1>();
-  for (IndexType linearIndex = (item.get_group(0) * item.get_local_range(0) +
-                                item.get_local_id(0)) *
-           step;
-       linearIndex < totalElements;
-       linearIndex +=
-       item.get_group_range(0) * item.get_local_range(0) * step) {
+  // The uncapped launch covers every step-sized block with one work-item.
+  const IndexType linearIndex = item.get_global_linear_id() * step;
+  if (linearIndex < totalElements) {
     ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
         item,
         a,

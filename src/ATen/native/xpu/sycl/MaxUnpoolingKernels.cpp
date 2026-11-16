@@ -18,6 +18,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/MaxUnpoolingKernels.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/MemoryFormat.h>
 #include <comm/SYCLHelpers.h>
 
@@ -42,7 +43,9 @@ void max_unpooling_2d_forward_kernel_impl(
         ? linearIndex % numChannels
         : (linearIndex / inputWidth / inputHeight) % numChannels;
     int n = linearIndex / inputWidth / inputHeight / numChannels;
-    int maxind = indices_data[linearIndex];
+    // Keep the index at int64 so the bounds check below sees the value the
+    // user passed in, not its 32-bit truncation.
+    int64_t maxind = indices_data[linearIndex];
     SYCL_KERNEL_ASSERT(maxind >= 0 && maxind < outputImageSize);
     index_t offset = is_channels_last
         ? n * numChannels * outputHeight * outputWidth + c
@@ -141,7 +144,8 @@ Tensor& max_unpooling2d_forward_kernel(
               "max_unpooling2d_forward_xpu",
               [&] {
                 if (is_channels_last(memory_format)) {
-                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+                  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
+                      at::xpu::getDeviceEUCountPerXeCore();
                   int64_t num_groups =
                       xpuKernelLoopGroupRange(count, group_size);
                   sycl_kernel_submit<max_unpooling_2d_forward_kernel_impl<
@@ -162,7 +166,8 @@ Tensor& max_unpooling2d_forward_kernel(
                       owidth,
                       output.mutable_data_ptr<scalar_t>());
                 } else {
-                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+                  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
+                      at::xpu::getDeviceEUCountPerXeCore();
                   int64_t num_groups =
                       xpuKernelLoopGroupRange(count, group_size);
 
@@ -217,12 +222,12 @@ void max_unpooling_3d_forward_kernel_impl(
   index_t iRow = item.get_global_id(1);
   index_t iFrame = (item.get_group()[0] + offsetZ) % iT; // input frame/time
   index_t slice = (item.get_group()[0] + offsetZ) / iT; // input slice/feature
-  index_t outputImageSize = oT * oH * oW;
+  int64_t outputImageSize = oT * oH * oW;
   if (iRow < iH && iColumn < iW) {
     scalar_t val = input_ptr
         [slice * iT * iH * iW + iFrame * iH * iW + iRow * iW +
          iColumn] /*[slice][iFrame][iRow][iColumn]*/;
-    index_t index = indices_ptr
+    int64_t index = indices_ptr
         [slice * iT * iH * iW + iFrame * iH * iW + iRow * iW +
          iColumn] /*[slice][iFrame][iRow][iColumn]*/;
     SYCL_KERNEL_ASSERT(index >= 0 && index < outputImageSize);
@@ -245,7 +250,10 @@ void max_unpooling3d_forward_template(
     const int64_t oW,
     const int64_t offsetZ) {
   int64_t work_group_size_w = 32;
-  int64_t work_group_size_h = syclMaxWorkItemsPerSubSlice() / work_group_size_w;
+  int64_t work_group_size_h = static_cast<int64_t>(
+                                  at::xpu::getDeviceMaxSubGroupSize() *
+                                  at::xpu::getDeviceEUCountPerXeCore()) /
+      work_group_size_w;
   int64_t total_t = batchSize * inputSlices * iT;
   // int64_t num_groups_w = CeilDiv(iW, work_group_size_w);
   // int64_t num_groups_h = CeilDiv(iH, work_group_size_h);
@@ -294,13 +302,15 @@ void max_unpooling_3d_cl_forward_kernel_impl(
   auto item = syclext::this_work_item::get_nd_item<1>();
   auto input_ptr = input_data;
   auto indices_ptr = indices_data;
+  int64_t outputImageSize = outputDepth * outputHeight * outputWidth;
   for (index_t linearIndex = item.get_global_id(0);
        linearIndex < numInputElements;
        linearIndex += item.get_global_range()[0]) {
     index_t c = linearIndex % numChannels;
     index_t n =
         linearIndex / inputDepth / inputWidth / inputHeight / numChannels;
-    index_t maxind = indices_ptr[linearIndex];
+    int64_t maxind = indices_ptr[linearIndex];
+    SYCL_KERNEL_ASSERT(maxind >= 0 && maxind < outputImageSize);
     index_t offset =
         n * numChannels * outputDepth * outputHeight * outputWidth + c;
     scalar_t* out = output_data + offset;
@@ -321,7 +331,8 @@ void max_unpooling3d_cl_forward_template(
     const int64_t outputHeight,
     const int64_t outputWidth,
     scalar_t* output) {
-  int64_t group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t group_size = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int64_t num_groups = xpuKernelLoopGroupRange(numInputElements, group_size);
   int64_t total_items = num_groups * group_size;
   sycl_kernel_submit<

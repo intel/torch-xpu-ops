@@ -104,6 +104,11 @@ TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors = skipIfXpu(
     msg="XPU supports row-wise fp32 output with bias"
 )(TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors)
 
+# Upstream @skipXPU (pytorch #181726) is a no-op under XPUPatchForImport (_skipXPU); re-apply it.
+TestFP8Matmul.test_passed_swizzle_arrays = skipIfXpu(
+    msg="XPU MX scales are unswizzled; omitted swizzle means NO_SWIZZLE"
+)(TestFP8Matmul.test_passed_swizzle_arrays)
+
 
 @onlyXPU
 @unittest.skipIf(not PLATFORM_SUPPORTS_FP8 or IS_WINDOWS, f8_msg)

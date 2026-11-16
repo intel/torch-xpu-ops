@@ -20,6 +20,7 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/im2col_shape_check.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
@@ -110,7 +111,8 @@ static void col2im_kernel(
   auto in_data = data_col;
   auto out_data = data_im;
 
-  int64_t local_range = syclMaxWorkGroupSize<col2im_ff_kernel<T>>();
+  int64_t local_range =
+      at::xpu::getKernelMaxWorkGroupSize<col2im_ff_kernel<T>>();
   int64_t global_range =
       ((total_threads + local_range - 1) / local_range) * local_range;
 

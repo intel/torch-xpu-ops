@@ -15,6 +15,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/TransposeKernel.h>
 
@@ -173,15 +174,20 @@ static void dispatch_transpose(
   constexpr int kMaxVec =
       sizeof(scalar_t) * 4 <= 16 ? 4 : (sizeof(scalar_t) * 2 <= 16 ? 2 : 1);
 
-  int vec_size = 1;
-  if constexpr (kMaxVec >= 4) {
-    if (cols % 4 == 0 && rows % 4 == 0)
-      vec_size = 4;
-    else if (cols % 2 == 0 && rows % 2 == 0)
-      vec_size = 2;
-  } else if constexpr (kMaxVec >= 2) {
-    if (cols % 2 == 0 && rows % 2 == 0)
-      vec_size = 2;
+  int vec_size = kMaxVec;
+  if (full_tile) {
+    // Only the full-tile path dereferences vec_t, so only it needs the bases
+    // aligned for the chosen width. Clamping the partial-tile path too would
+    // change its work-group geometry for a scalar kernel that is never at
+    // risk.
+    vec_size = std::min(
+        {vec_size,
+         memory::can_vectorize_up_to<scalar_t>(
+             reinterpret_cast<const char*>(src)),
+         memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(dst))});
+  }
+  while (vec_size > 1 && (cols % vec_size != 0 || rows % vec_size != 0)) {
+    vec_size /= 2;
   }
 
 #define LAUNCH(VS, FT)                                \
@@ -340,7 +346,8 @@ static bool detect_batch_transpose(
       int64_t slm_per_wg = TILE_DIM * (TILE_DIM + slm_pad) * elem_size;
 
       int64_t eu_per_xc = at::xpu::getDeviceEUCountPerXeCore();
-      int64_t hw_thr = syclGpuHWThreadsPerEU();
+      int64_t hw_thr =
+          at::xpu::getCurrentDeviceProperties()->gpu_hw_threads_per_eu;
       int64_t slots_per_xc = eu_per_xc * hw_thr;
       int64_t concurrent_wgs = slots_per_xc / sgs_per_wg;
       int64_t slm_per_wg_upbound =

@@ -19,7 +19,7 @@ res = 0
 IS_WINDOWS = sys.platform == "win32"
 
 for key in skip_dict:
-    skip_list = skip_dict[key]
+    skip_list = list(skip_dict[key] or ())
     if key in skip_dict_specifical:
         skip_list += skip_dict_specifical[key]
     if IS_WINDOWS and key in skip_dict_win:

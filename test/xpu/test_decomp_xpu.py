@@ -73,30 +73,6 @@ op_assert_ref_tol_table.update(
 )
 
 
-# For integer output dtypes the kernel evaluates pow() in float32 (matching CUDA,
-# which does the same to avoid promotion to double) while the decomposition
-# evaluates in float64. sycl::pow is only accurate to 16 ULP, so a value such as
-# pow(3.0f, 3.0f) can come back as 26.999... and truncate to 26 instead of 27.
-# Allow the same off-by-one upstream already allows for integer linspace.
-op_assert_equal_tol_table.update(
-    {
-        (dtype, overload): (0, 1)
-        for dtype in (
-            torch.int8,
-            torch.uint8,
-            torch.int16,
-            torch.int32,
-            torch.int64,
-        )
-        for overload in (
-            torch.ops.aten.logspace.default,
-            torch.ops.aten.logspace.Tensor_Tensor,
-            torch.ops.aten.logspace.Tensor_Scalar,
-            torch.ops.aten.logspace.Scalar_Tensor,
-        )
-    }
-)
-
 # ======================================================================
 # CROSS_REF_EXCLUDE_SET patches (XPU-specific exclusions)
 # ======================================================================
