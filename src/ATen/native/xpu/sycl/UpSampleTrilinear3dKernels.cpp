@@ -22,6 +22,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/SYCLContext.h>
+#include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/UpSampleTrilinear3dKernels.h>
 
@@ -29,7 +30,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void upsample_trilinear3d_kernel_fn(
+void upsample_trilinear3d_kernel(
     const int n,
     const accscalar_t rdepth,
     const accscalar_t rheight,
@@ -120,7 +121,7 @@ void launch_upsample_trilinear3d_kernel(
     const bool align_corners,
     const PackedTensorAccessor64<const scalar_t, 5> idata_acc,
     PackedTensorAccessor64<scalar_t, 5> odata_acc) {
-  constexpr auto kptr = upsample_trilinear3d_kernel_fn<scalar_t, accscalar_t>;
+  constexpr auto kptr = upsample_trilinear3d_kernel<scalar_t, accscalar_t>;
 
   int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   int num_group = at::ceil_div(n, (int)wg_size);
@@ -153,7 +154,7 @@ inline size_t idx_3d(
 
 template <typename scalar_t, typename accscalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void upsample_trilinear3d_backward_kernel_fn(
+void upsample_trilinear3d_backward_kernel(
     const size_t n,
     const accscalar_t rdepth,
     const accscalar_t rheight,
@@ -241,16 +242,15 @@ void upsample_trilinear3d_backward_kernel_fn(
 
             static_cast<scalar_t>(t0lambda * h1lambda * w0lambda * d2val));
         atomicAdd(
-            (sycl_global_ptr<scalar_t>)(sycl_global_ptr<
-                                        scalar_t>)(idata_ptr +
-                                                   idx_3d(
-                                                       nc,
-                                                       depth1,
-                                                       height1,
-                                                       width1,
-                                                       t1,
-                                                       h1 + h1p,
-                                                       w1 + w1p)),
+            (sycl_global_ptr<scalar_t>)(idata_ptr +
+                                        idx_3d(
+                                            nc,
+                                            depth1,
+                                            height1,
+                                            width1,
+                                            t1,
+                                            h1 + h1p,
+                                            w1 + w1p)),
 
             static_cast<scalar_t>(t0lambda * h1lambda * w1lambda * d2val));
         atomicAdd(
@@ -312,7 +312,7 @@ void launch_upsample_trilinear3d_backward_kernel(
     const PackedTensorAccessor64<const scalar_t, 5> odata,
     scalar_t* idata_ptr) {
   constexpr auto kptr =
-      upsample_trilinear3d_backward_kernel_fn<scalar_t, accscalar_t>;
+      upsample_trilinear3d_backward_kernel<scalar_t, accscalar_t>;
 
   int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
