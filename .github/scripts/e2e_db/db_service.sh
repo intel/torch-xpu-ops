@@ -36,6 +36,34 @@ RESTORE_CMD='gunzip -c /backup/wal/%f.gz > %p'
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 
+# chown -R and rsync --delete run on these paths; refuse anything but a dedicated directory.
+check_dir() {
+    local name="$1" dir="$2"
+    [[ "${dir}" == /* ]] || die "${name} must be an absolute path: '${dir}'"
+    dir="$(realpath -m "${dir}")"
+    case "${dir}" in
+        / | /home | /root | /opt | /var | /tmp | /usr | /etc | /srv | /mnt | "$(realpath -m "${HOME}")")
+            die "${name} must be a dedicated directory, not '${dir}'" ;;
+    esac
+}
+
+check_remote() {
+    local path="${BACKUP_REMOTE#*:}"
+    if [[ "${BACKUP_REMOTE}" == *:* ]]; then
+        [[ "${BACKUP_REMOTE%%:*}" =~ ^[A-Za-z0-9._@-]+$ ]] || die "E2E_DB_BACKUP_REMOTE host is invalid"
+        [[ "${path}" == /* && "$(realpath -m "${path}")" != / ]] \
+            || die "E2E_DB_BACKUP_REMOTE must be host:/dedicated/absolute/path"
+    else
+        check_dir E2E_DB_BACKUP_REMOTE "${BACKUP_REMOTE}"
+    fi
+}
+
+check_dir E2E_DB_DIR "${DB_DIR}"
+check_dir E2E_DB_BACKUP_DIR "${BACKUP_DIR}"
+if [[ -n "${BACKUP_REMOTE}" ]]; then
+    check_remote
+fi
+
 container_state() {
     local state
     # docker inspect prints an empty line before failing on a missing container.
@@ -155,8 +183,16 @@ complete_bases() {
 
 backup() {
     mkdir -p "${BACKUP_DIR}/base" "${BACKUP_DIR}/wal"
-    # Close the current WAL segment so everything written so far reaches the archive.
-    docker exec "${CONTAINER}" psql -U "${DB_USER}" -d postgres -Atqc 'SELECT pg_switch_wal()' >/dev/null
+    # Close the current WAL segment and wait until it is archived, so the backup (and the
+    # offsite copy) contains everything written so far.
+    local segment
+    segment="$(docker exec "${CONTAINER}" psql -U "${DB_USER}" -d postgres -Atqc \
+        'SELECT pg_walfile_name(pg_switch_wal())')"
+    for _ in $(seq 1 120); do
+        [[ -f "${BACKUP_DIR}/wal/${segment}.gz" ]] && break
+        sleep 1
+    done
+    [[ -f "${BACKUP_DIR}/wal/${segment}.gz" ]] || log "WARNING: WAL ${segment} not archived yet; check: status"
 
     local latest
     latest="$(complete_bases | tail -n 1)"
@@ -182,6 +218,7 @@ backup() {
         done
     fi
     oldest="$(complete_bases | head -n 1)"
+    [[ -n "${oldest}" ]] || die "no base backup in ${BACKUP_DIR}/base"
     find "${BACKUP_DIR}/wal" -type f -name '*.gz' ! -newer "${oldest}/.started" -delete
     find "${BACKUP_DIR}/base" -mindepth 1 -maxdepth 1 -name '.tmp-*' -mmin +1440 -exec rm -rf {} +
 
@@ -194,6 +231,7 @@ backup() {
 restore() {
     local src="${1:-${BACKUP_DIR}}" base
     src="$(cd "${src}" && pwd)"
+    check_dir "restore source" "${src}"
     base="$(BACKUP_DIR="${src}" complete_bases | tail -n 1)"
     [[ -n "${base}" ]] || die "no base backup under ${src}/base"
     [[ "$(container_state)" == missing ]] || die "container ${CONTAINER} exists; remove it first"
@@ -225,10 +263,24 @@ status() {
 }
 
 case "${1:-}" in
+    start | watchdog | backup | restore | status) ;;
+    *) sed -n '2,10p' "$0"; exit 1 ;;
+esac
+
+# Serialize commands: cron jobs must not run while start/restore recreates the container.
+if [[ "$1" != status ]]; then
+    mkdir -p "${DB_DIR}"
+    exec 9>"${DB_DIR}/.lock"
+    case "$1" in
+        watchdog | backup) flock -n 9 || { log "another db_service.sh command is running, skip $1"; exit 0; } ;;
+        start | restore) flock 9 ;;
+    esac
+fi
+
+case "$1" in
     start) start ;;
     watchdog) watchdog ;;
     backup) backup ;;
     restore) restore "${2:-}" ;;
     status) status ;;
-    *) sed -n '2,10p' "$0"; exit 1 ;;
 esac

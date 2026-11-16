@@ -179,6 +179,11 @@ Settings are environment variables; `start` saves them to `$E2E_DB_DIR/service.e
 
 `./db_service.sh status` shows container health, WAL archiving state and backup size.
 
+Commands share a lock, so cron jobs skip while `start` or `restore` is running. The service and
+backup directories must be dedicated absolute paths (not `/`, `$HOME`, `/home`, ...) and
+`E2E_DB_BACKUP_REMOTE` must be `host:/absolute/path` or a dedicated local path, because `start`
+changes ownership recursively and the offsite sync mirrors with `--delete`.
+
 ### Keep alive
 
 - Docker restarts the container after crashes and host reboots (`--restart always`).
@@ -190,8 +195,8 @@ Settings are environment variables; `start` saves them to `$E2E_DB_DIR/service.e
 
 - PostgreSQL archives every completed WAL segment (compressed) to `backup/wal/` as it is written,
   so the backup grows incrementally with the data.
-- `backup` (cron, hourly) closes the current WAL segment so at most about an hour of writes is
-  unarchived, takes a full base backup every `E2E_DB_BASE_DAYS` days, keeps the newest
+- `backup` (cron, hourly) closes the current WAL segment and waits until it is archived, so at
+  most about an hour of writes is unarchived, takes a full base backup every `E2E_DB_BASE_DAYS` days, keeps the newest
   `E2E_DB_KEEP_BASES` base backups and the WAL needed after them, and mirrors `backup/` to
   `E2E_DB_BACKUP_REMOTE`.
 - `backup/` also holds a copy of `postgres.env`, so a restored node keeps the same credentials.
