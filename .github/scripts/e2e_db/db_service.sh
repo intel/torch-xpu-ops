@@ -61,8 +61,9 @@ save_settings() {
     {
         for var in E2E_DB_CONTAINER E2E_DB_IMAGE E2E_DB_PORT E2E_DB_BACKUP_DIR E2E_DB_BACKUP_REMOTE \
                    E2E_DB_BASE_DAYS E2E_DB_KEEP_BASES; do
+            # Quote removal inside the unquoted ${VAR:-word} turns %q output back into the value.
             # shellcheck disable=SC2016
-            printf ': "${%s:=%q}"\n' "${var}" "${!var:-}"
+            printf '%s=${%s:-%q}\n' "${var}" "${var}" "${!var:-}"
         done
     } > "${SERVICE_ENV}"
 }
