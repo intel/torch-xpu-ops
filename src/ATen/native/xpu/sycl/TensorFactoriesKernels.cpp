@@ -90,7 +90,6 @@ void triu_indices_kernel(
     int64_t rectangle_size,
     int64_t triu_size,
     int64_t totalElements) {
-  auto tensor_ptr = data;
   int64_t r, c;
   auto item = syclext::this_work_item::get_nd_item<1>();
   for (int64_t linearIndex = item.get_global_id(0); linearIndex < totalElements;
@@ -106,8 +105,8 @@ void triu_indices_kernel(
       r += rectangle_size / col;
     }
     c += col_offset;
-    tensor_ptr[linearIndex] = r;
-    tensor_ptr[linearIndex + triu_size] = c;
+    data[linearIndex] = r;
+    data[linearIndex + triu_size] = c;
   }
 }
 
@@ -119,20 +118,19 @@ void triu_indices_kernel_template(
     int64_t col,
     int64_t rectangle_size,
     int64_t triu_size) {
-  constexpr auto Kernel = triu_indices_kernel<scalar_t>;
-  int64_t group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
+  constexpr auto kptr = triu_indices_kernel<scalar_t>;
+  int64_t group_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   auto totalElements = triu_size;
   auto num_groups = at::ceil_div(totalElements, group_size);
   auto total_items = num_groups * group_size;
 
-  auto data = tensor;
   // kick off kernel
-  sycl_kernel_submit<Kernel>(
-      {total_items},
-      {group_size},
+  sycl_kernel_submit<kptr>(
+      total_items,
+      group_size,
       getCurrentSYCLQueue(),
       0,
-      data,
+      tensor,
       col_offset,
       m_first_row,
       col,
@@ -151,7 +149,6 @@ void tril_indices_kernel(
     int64_t trapezoid_size,
     int64_t tril_size,
     int64_t totalElements) {
-  auto tensor_ptr = data;
   int64_t r, c;
   auto item = syclext::this_work_item::get_nd_item<1>();
   for (int64_t linearIndex = item.get_global_id(0); linearIndex < totalElements;
@@ -167,8 +164,8 @@ void tril_indices_kernel(
       c = surplus % col;
     }
     r += row_offset;
-    tensor_ptr[linearIndex] = r;
-    tensor_ptr[linearIndex + tril_size] = c;
+    data[linearIndex] = r;
+    data[linearIndex + tril_size] = c;
   }
 }
 
@@ -180,20 +177,19 @@ void tril_indices_kernel_template(
     int64_t col,
     int64_t trapezoid_size,
     int64_t tril_size) {
-  constexpr auto Kernel = tril_indices_kernel<scalar_t>;
-  int64_t group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
+  constexpr auto kptr = tril_indices_kernel<scalar_t>;
+  int64_t group_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   auto totalElements = tril_size;
   auto num_groups = at::ceil_div(totalElements, group_size);
   auto total_items = num_groups * group_size;
 
-  auto data = tensor;
   // kick off kernel
-  sycl_kernel_submit<Kernel>(
-      {total_items},
-      {group_size},
+  sycl_kernel_submit<kptr>(
+      total_items,
+      group_size,
       getCurrentSYCLQueue(),
       0,
-      data,
+      tensor,
       row_offset,
       m_first_row,
       col,
