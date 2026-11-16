@@ -96,6 +96,10 @@ emulate_precision_casts:
   - vit_base_patch14_dinov2.lvd142m
   - levit_128
   - mobilenetv2_100
+  # bf16 training: BatchNorm running stats/grads (#4424)
+  - botnet26t_256
+  - eca_halonext26ts
+  - rexnet_100
 
 
 dtype:
