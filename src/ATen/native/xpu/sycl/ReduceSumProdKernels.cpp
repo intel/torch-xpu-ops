@@ -186,8 +186,6 @@ struct XorSumOps {
   }
 };
 
-// Named functor (not a lambda): torch-xpu-ops builds with
-// -fno-sycl-unnamed-lambda.
 struct XorSumDoubleOps {
   inline double operator()(double a, double b) const {
     union {
