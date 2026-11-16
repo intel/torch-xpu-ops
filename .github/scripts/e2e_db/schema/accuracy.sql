@@ -1,8 +1,3 @@
-CREATE TABLE IF NOT EXISTS result (
-    id smallint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name text NOT NULL UNIQUE
-);
-
 CREATE TABLE IF NOT EXISTS accuracy (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     run_id integer NOT NULL REFERENCES run (id),
@@ -24,7 +19,8 @@ CREATE TABLE IF NOT EXISTS accuracy (
 );
 CREATE INDEX IF NOT EXISTS accuracy_key_idx ON accuracy (suite_id, dtype_id, mode_id, model_id, run_id);
 
-CREATE OR REPLACE VIEW v_accuracy AS
+DROP VIEW IF EXISTS v_accuracy;
+CREATE VIEW v_accuracy AS
 SELECT a.id, r.name AS run, r.type AS run_type, r.started_at, h.hostname, c.name AS container,
        t.name AS torch, t.version AS torch_version, t.commit AS torch_commit, p.version AS python,
        dv.name AS device, b.name AS backend,

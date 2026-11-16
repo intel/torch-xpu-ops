@@ -12,20 +12,24 @@ CREATE TABLE IF NOT EXISTS performance (
     mode_id smallint NOT NULL REFERENCES mode (id),
     model_id integer NOT NULL REFERENCES model (id),
     batch_size integer,
+    result_id smallint REFERENCES result (id),
     eager_latency real,
     inductor_latency real,
     issue_id integer REFERENCES issue (id),
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (run_id, device_id, backend_id, suite_id, dtype_id, mode_id, model_id)
 );
+-- Upgrades databases created before result_id existed.
+ALTER TABLE performance ADD COLUMN IF NOT EXISTS result_id smallint REFERENCES result (id);
 CREATE INDEX IF NOT EXISTS performance_key_idx ON performance (suite_id, dtype_id, mode_id, model_id, run_id);
 
-CREATE OR REPLACE VIEW v_performance AS
+DROP VIEW IF EXISTS v_performance;
+CREATE VIEW v_performance AS
 SELECT pf.id, r.name AS run, r.type AS run_type, r.started_at, h.hostname, c.name AS container,
        t.name AS torch, t.version AS torch_version, t.commit AS torch_commit, p.version AS python,
        dv.name AS device, b.name AS backend,
        s.name AS suite, d.name AS dtype, m.name AS mode, mo.name AS model, pf.batch_size,
-       pf.eager_latency, pf.inductor_latency,
+       rs.name AS result, pf.eager_latency, pf.inductor_latency,
        pf.eager_latency / NULLIF(pf.inductor_latency, 0) AS speedup,
        i.repo AS issue_repo, i.number AS issue_number, pf.created_at
 FROM performance pf
@@ -40,4 +44,5 @@ JOIN suite s ON s.id = pf.suite_id
 JOIN dtype d ON d.id = pf.dtype_id
 JOIN mode m ON m.id = pf.mode_id
 JOIN model mo ON mo.id = pf.model_id
+LEFT JOIN result rs ON rs.id = pf.result_id
 LEFT JOIN issue i ON i.id = pf.issue_id;

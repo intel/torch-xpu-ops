@@ -18,13 +18,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo "Created $ENV_FILE (readable by owner only)"
 fi
 
-# The postgres image runs as uid 999; the bind-mounted data dir must be owned by it.
-docker run --rm --entrypoint chown -v "$DB_DIR/pgdata:/var/lib/postgresql/data" "$IMAGE" -R 999:999 /var/lib/postgresql/data
-
 if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
     docker update --restart always "$CONTAINER" >/dev/null
     docker start "$CONTAINER" >/dev/null
 else
+    # The postgres image runs as uid 999; the bind-mounted data dir must be owned by it.
+    docker run --rm --entrypoint chown -v "$DB_DIR/pgdata:/var/lib/postgresql/data" "$IMAGE" -R 999:999 /var/lib/postgresql/data
     docker run -d --name "$CONTAINER" --restart always \
         --env-file "$ENV_FILE" \
         -p "${PORT}:5432" \
@@ -32,13 +31,14 @@ else
         "$IMAGE" >/dev/null
 fi
 
+# Probe over TCP: on first start the image runs a socket-only init server, then restarts.
 for _ in $(seq 1 60); do
-    if docker exec "$CONTAINER" pg_isready -U "$DB_USER" -q; then
+    if docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U "$DB_USER" -q; then
         break
     fi
     sleep 1
 done
-docker exec "$CONTAINER" pg_isready -U "$DB_USER"
+docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U "$DB_USER"
 
 docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -q -U "$DB_USER" -d postgres <<'SQL'
 SELECT 'CREATE DATABASE accuracy' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'accuracy')\gexec

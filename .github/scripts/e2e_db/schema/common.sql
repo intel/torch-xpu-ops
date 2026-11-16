@@ -82,6 +82,11 @@ CREATE TABLE IF NOT EXISTS model (
     id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name text NOT NULL UNIQUE
 );
+-- Case outcome: "pass" or the failure reason (e.g. fail_accuracy, eager_fail_to_run).
+CREATE TABLE IF NOT EXISTS result (
+    id smallint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name text NOT NULL UNIQUE
+);
 CREATE TABLE IF NOT EXISTS issue (
     id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     repo text NOT NULL,

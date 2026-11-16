@@ -88,7 +88,8 @@ def main():
         "gcc": run("gcc", "-dumpfullversion"),
     }
     in_container = bool(args.container_image)
-    host_os = os_name(args.host_etc)
+    # os is required by the schema; never let a missing os-release drop the whole load.
+    host_os = os_name(args.host_etc) or "unknown"
     host = {
         "hostname": read(Path(args.host_etc) / "hostname").strip() or platform.node(),
         "cpu": cpu(),
@@ -103,8 +104,12 @@ def main():
         # Inside a container the user-space driver stack belongs to the image, not the host.
         **({} if in_container else stack),
     }
-    container = {"name": args.container_image, "os": os_name("/etc"), **stack} if in_container \
+    container = {"name": args.container_image, "os": os_name("/etc") or "unknown", **stack} if in_container \
         else {"name": "none", "os": host_os}
+    # Only torchbench jobs clone the benchmark repo; other suites fall back to PyTorch's pin
+    # so every shard of a run records the same torch row.
+    torchbench = run("git", "-C", args.torchbench_dir, "rev-parse", "HEAD") \
+        or read(Path(args.pytorch_dir) / ".ci/docker/ci_commit_pins/torchbench.txt").strip() or None
     meta = {
         "host": host,
         "container": container,
@@ -115,7 +120,7 @@ def main():
             "repo": run("git", "-C", args.pytorch_dir, "remote", "get-url", "origin"),
             "torchvision": dist("torchvision"),
             "torchaudio": dist("torchaudio"),
-            "torchbench": run("git", "-C", args.torchbench_dir, "rev-parse", "HEAD"),
+            "torchbench": torchbench,
             "transformers": dist("transformers"),
             "timm": dist("timm"),
             "pytest": dist("pytest"),

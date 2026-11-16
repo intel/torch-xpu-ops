@@ -95,14 +95,17 @@ def build_values(cur, db, env_ids, row, cache):
         "dtype_id": upsert_name(cur, "dtype", row["dtype"], cache),
         "mode_id": upsert_name(cur, "mode", row["mode"], cache),
         "model_id": upsert_name(cur, "model", row["name"], cache),
-        "batch_size": to_int(row.get("batch_size")),
+        # Failed cases record batch size 0 as a placeholder.
+        "batch_size": to_int(row.get("batch_size")) or None,
     }
+    status = row.get("status")
     if db == "accuracy":
-        result = row.get("accuracy") or row.get("status")
+        result = row.get("accuracy") or status
         values["result_id"] = upsert_name(cur, "result", result, cache) if result else None
     else:
+        values["result_id"] = upsert_name(cur, "result", status, cache) if status else None
         # Failed cases carry 0 placeholders; keep them NULL so they never look like real timings.
-        failed = row.get("status") not in (None, "", "pass")
+        failed = status not in (None, "", "pass")
         inductor = None if failed else to_float(row.get("abs_latency")) or None
         eager = None if failed else to_float(row.get("eager_latency")) or None
         speedup = to_float(row.get("speedup"))
