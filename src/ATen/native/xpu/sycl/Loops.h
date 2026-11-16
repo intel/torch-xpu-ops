@@ -99,49 +99,111 @@ struct UnrolledElementwiseKernel {
   storer_t s_;
 };
 
-template <int vec_size, typename func_t, typename array_t, typename in_calc_t>
-struct VectorizedElementwiseKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    int grpsz = item.get_local_range(0);
-    int grpid = item.get_group(0);
-    int lid = item.get_local_id(0);
-    int group_work_size = vec_size * grpsz;
-    int remaining = numel_ - grpid * group_work_size;
+// Reconstruct only values whose type completely determines their state.
+template <typename func_t>
+constexpr bool is_stateless_functor_v =
+    std::is_empty_v<func_t> && std::is_default_constructible_v<func_t>;
 
-    // ic_
-    if (remaining < group_work_size) {
-      auto oc = TrivialOffsetCalculator<1>();
-      auto l = at::native::memory::LoadWithoutCast();
-      auto s = at::native::memory::StoreWithoutCast();
-      auto policy = at::native::memory::policies::unroll<
-          vec_size,
-          array_t,
-          decltype(ic_),
-          decltype(oc),
-          at::native::memory::LoadWithoutCast,
-          at::native::memory::StoreWithoutCast>(
-          data_, remaining, ic_, oc, l, s, lid, grpid, grpsz);
-      elementwise_kernel_helper<vec_size>(f_, policy);
+template <typename calc_t>
+constexpr bool is_trivial_offset_calculator_v = false;
+template <int N, typename index_t>
+constexpr bool
+    is_trivial_offset_calculator_v<TrivialOffsetCalculator<N, index_t>> = true;
+
+namespace launch_config {
+constexpr int compact_work_group_size = 128;
+constexpr int compact_sub_group_size = 32;
+} // namespace launch_config
+
+template <
+    int vec_size,
+    typename func_t,
+    typename array_t,
+    typename in_calc_t,
+    bool full_tile,
+    bool compact_geometry>
+struct VectorizedElementwiseKernel {
+  template <bool omit, typename T>
+  static auto capture(const T& value) {
+    if constexpr (omit) {
+      return std::tuple<>{};
     } else {
-      auto policy = at::native::memory::policies::
-          vectorized<vec_size, array_t, in_calc_t>(
-              data_, ic_, lid, grpid, grpsz);
-      elementwise_kernel_helper<vec_size>(f_, policy);
+      return value;
+    }
+  }
+
+  template <typename T, typename stored_t>
+  static T restore(const stored_t& value) {
+    if constexpr (std::is_same_v<T, stored_t>) {
+      return value;
+    } else {
+      return T{};
+    }
+  }
+
+  template <int width>
+  static inline void apply(
+      const func_t& f,
+      array_t data,
+      in_calc_t ic,
+      uint32_t lid,
+      uint32_t grpid,
+      uint32_t grpsz) {
+    auto policy = memory::policies::vectorized<width, array_t, in_calc_t>(
+        data, ic, lid, grpid, grpsz);
+    elementwise_kernel_helper<width>(f, policy);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const uint32_t grpsz = compact_geometry
+        ? launch_config::compact_work_group_size
+        : item.get_local_range(0);
+    const uint32_t grpid = item.get_group(0);
+    const uint32_t lid = item.get_local_id(0);
+    const auto f = restore<func_t>(f_);
+    const auto ic = restore<in_calc_t>(ic_);
+    if constexpr (full_tile) {
+      apply<vec_size>(f, data_, ic, lid, grpid, grpsz);
+    } else {
+      const uint32_t numel = numel_;
+      if (grpid * grpsz + lid < numel / vec_size) {
+        apply<vec_size>(f, data_, ic, lid, grpid, grpsz);
+      }
+      if (grpid == numel / (vec_size * grpsz) && lid < numel % vec_size) {
+        apply<1>(f, data_, ic, (numel / vec_size) * vec_size + lid, 0, 1);
+      }
+    }
+  }
+
+  auto get(sycl::ext::oneapi::experimental::properties_tag) const {
+    if constexpr (compact_geometry) {
+      return sycl::ext::oneapi::experimental::properties{
+          sycl::ext::oneapi::experimental::sub_group_size<
+              launch_config::compact_sub_group_size>};
+    } else {
+      return sycl::ext::oneapi::experimental::properties{};
     }
   }
 
   VectorizedElementwiseKernel(
       int numel,
-      const func_t f,
+      const func_t& f,
       array_t data,
       in_calc_t ic)
-      : numel_(numel), f_(f), data_(data), ic_(ic) {}
+      : numel_(capture<full_tile>(numel)),
+        f_(capture<is_stateless_functor_v<func_t>>(f)),
+        data_(data),
+        ic_(capture<is_trivial_offset_calculator_v<in_calc_t>>(ic)) {}
 
  private:
-  int numel_;
-  const func_t f_;
+  [[no_unique_address]] std::conditional_t<full_tile, std::tuple<>, int> numel_;
+  [[no_unique_address]] std::
+      conditional_t<is_stateless_functor_v<func_t>, std::tuple<>, func_t> f_;
   array_t data_;
-  in_calc_t ic_;
+  [[no_unique_address]] std::conditional_t<
+      is_trivial_offset_calculator_v<in_calc_t>,
+      std::tuple<>,
+      in_calc_t> ic_;
 };
 
 template <
@@ -393,44 +455,6 @@ constexpr static inline int max_scalar_size() {
   return std::max<int>(sizeof(return_t), size);
 }
 
-// Keep launch and indexing geometry in sync within each path. Configurations
-// are independent even where their current values coincide.
-namespace launch_config {
-constexpr int compact_work_group_size = 128;
-constexpr int compact_sub_group_size = 32;
-} // namespace launch_config
-
-template <int vec_size, typename func_t, bool bounds>
-class CompactScalarElementwiseKernel;
-
-// A captured empty functor still occupies a padded by-value kernel argument
-// (e.g. 8 x 1 B between two pointers), which can push the payload past the
-// inline cross-thread data. Such functors are rebuilt inside the kernel.
-template <typename func_t>
-constexpr bool is_stateless_functor_v =
-    std::is_empty_v<func_t> && std::is_default_constructible_v<func_t>;
-
-template <int vec_size, typename func_t, typename input_t, typename output_t>
-static inline void compact_unary_apply(
-    const input_t* input,
-    const func_t& f,
-    output_t* output,
-    int index,
-    bool vectorized) {
-  if (vectorized) {
-    auto values = memory::load_vector<vec_size>(input, index);
-    memory::aligned_vector<output_t, vec_size> results;
-#pragma unroll
-    for (int i = 0; i < vec_size; ++i) {
-      results.val[i] = f(values.val[i]);
-    }
-    reinterpret_cast<memory::aligned_vector<output_t, vec_size>*>(
-        output)[index] = results;
-  } else {
-    output[index] = f(c10::load(input + index));
-  }
-}
-
 template <
     typename input_t,
     typename output_t,
@@ -449,80 +473,8 @@ struct ScalarUnaryFunctor {
       : scalar(scalar_), f(f_) {}
 
   scalar_arg_t scalar;
-  func_t f;
+  [[no_unique_address]] func_t f;
 };
-
-// Pack contiguous unary and captured CPU-scalar work into WG128/SG32 tiles.
-// Full-tile specialization omits the bounds argument/check; partial tiles
-// retain scalar tails, and vec1 uses the caller's unrolled path.
-template <int vec_size, typename func_t, typename array_t>
-static inline void launch_compact_unary_kernel_impl(
-    int numel,
-    const func_t& f,
-    array_t data) {
-  using traits = function_traits<func_t>;
-  static_assert(traits::arity == 1);
-  using input_t = typename traits::template arg<0>::type;
-  using output_t = typename traits::result_type;
-  constexpr int work_group_size = launch_config::compact_work_group_size;
-  constexpr int group_work_size = work_group_size * vec_size;
-  const auto* input = reinterpret_cast<const input_t*>(data[1]);
-  auto* output = reinterpret_cast<output_t*>(data[0]);
-  auto compute = [=](int index, bool vectorized) {
-    // `f` is named only in the branch that is kept, so it is captured only
-    // when the functor has state. Captures are laid out in order of first
-    // use: `input` comes first so its pointer stays in the inline payload.
-    if constexpr (is_stateless_functor_v<func_t>) {
-      compact_unary_apply<vec_size>(input, func_t{}, output, index, vectorized);
-    } else {
-      compact_unary_apply<vec_size>(input, f, output, index, vectorized);
-    }
-  };
-  const size_t groups = ceil_div<int64_t>(numel, group_work_size);
-  const sycl::nd_range<1> range(groups * work_group_size, work_group_size);
-  auto& queue = getCurrentSYCLQueue();
-  if (numel % group_work_size == 0) {
-    // Full tiles omit the bounds argument from the cross-thread payload.
-    queue.submit([&](sycl::handler& handler) {
-      handler.parallel_for<
-          CompactScalarElementwiseKernel<vec_size, func_t, false>>(
-          range,
-          [=](sycl::nd_item<1> item) [[sycl::reqd_sub_group_size(
-              launch_config::compact_sub_group_size)]] {
-            const int index = int(item.get_group(0)) * work_group_size +
-                int(item.get_local_id(0));
-            compute(index, true);
-          });
-    });
-  } else {
-    queue.submit([&](sycl::handler& handler) {
-      handler
-          .parallel_for<CompactScalarElementwiseKernel<vec_size, func_t, true>>(
-              range,
-              [=](sycl::nd_item<1> item) [[sycl::reqd_sub_group_size(
-                  launch_config::compact_sub_group_size)]] {
-                const int group = int(item.get_group(0));
-                const int local = int(item.get_local_id(0));
-                const int index = group * work_group_size + local;
-                if (index < numel / vec_size) {
-                  compute(index, true);
-                }
-                if (group == numel / group_work_size &&
-                    local < numel % vec_size) {
-                  compute((numel / vec_size) * vec_size + local, false);
-                }
-              });
-    });
-  }
-}
-
-template <int vec_size, typename func_t, typename array_t>
-static inline void launch_compact_unary_kernel(
-    int numel,
-    const func_t& f,
-    array_t data) {
-  launch_compact_unary_kernel_impl<vec_size>(numel, f, data);
-}
 
 template <
     bool compact_unary = false,
@@ -540,21 +492,33 @@ static inline void launch_vectorized_kernel(
   using traits = function_traits<func_t>;
   int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
       at::xpu::getDeviceEUCountPerXeCore();
+  // This flag controls launch geometry only; payload and tile specialization
+  // apply to every vectorized caller, including row and nullary helpers.
+  const int64_t vector_wg_sz =
+      compact_unary ? launch_config::compact_work_group_size : wg_sz;
 
-#define VEC_KER(vec_size)                                                      \
-  {                                                                            \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                             \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                         \
-      if constexpr (compact_unary) {                                           \
-        launch_compact_unary_kernel<vec_size>(N, f, data);                     \
-      } else {                                                                 \
-        auto ker =                                                             \
-            VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
-                N, f, data, input_calc);                                       \
-        int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
-        sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
-      }                                                                        \
-    }                                                                          \
+#define VEC_KER(vec_size)                                                    \
+  {                                                                          \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
+      auto submit = [&](auto full_tile) {                                    \
+        auto ker = VectorizedElementwiseKernel<                              \
+            vec_size,                                                        \
+            func_t,                                                          \
+            array_t,                                                         \
+            in_calc_t,                                                       \
+            decltype(full_tile)::value,                                      \
+            compact_unary>(N, f, data, input_calc);                          \
+        int64_t num_wg = ceil_div<int64_t>(N, vector_wg_sz * vec_size);      \
+        sycl_kernel_submit(                                                  \
+            vector_wg_sz* num_wg, vector_wg_sz, getCurrentSYCLQueue(), ker); \
+      };                                                                     \
+      if (N % (vector_wg_sz * vec_size) == 0) {                              \
+        submit(std::true_type{});                                            \
+      } else {                                                               \
+        submit(std::false_type{});                                           \
+      }                                                                      \
+    }                                                                        \
   }
 
   switch (vec_size) {
