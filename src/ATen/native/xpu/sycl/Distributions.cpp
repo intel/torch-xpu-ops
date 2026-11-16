@@ -238,7 +238,7 @@ struct DirichletKernelFunctor {
     float s = gamma_sum;
     float q = g / s;
     float diff  = sycl::fma(-s, q, g);
-    float correction = 1.0f/s;
+    float correction = 1.0f / s;
     // corrected division reduces normalization noise
     q = sycl::fma(diff, correction, q);
     scalar_t ret_val = static_cast<scalar_t>(q);
