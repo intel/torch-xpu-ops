@@ -232,12 +232,9 @@ void pointwiseApply2Kernel(
     IndexType totalElements,
     const Op op) {
   auto item = syclext::this_work_item::get_nd_item<1>();
-  for (IndexType linearIndex = (item.get_group(0) * item.get_local_range(0) +
-                                item.get_local_id(0)) *
-           step;
-       linearIndex < totalElements;
-       linearIndex +=
-       item.get_group_range(0) * item.get_local_range(0) * step) {
+  // The uncapped launch covers every step-sized block with one work-item.
+  const IndexType linearIndex = item.get_global_linear_id() * step;
+  if (linearIndex < totalElements) {
     ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
         item,
         a,
@@ -256,10 +253,6 @@ inline uint64_t get_apply_group_count(
       static_cast<uint64_t>(threads_per_group) * static_cast<uint64_t>(step);
   uint64_t num_groups =
       (total_elements + numel_per_thread - 1) / numel_per_thread;
-  uint64_t estimated_max_groups_per_tile =
-      at::xpu::getDeviceMaxWorkItems() / threads_per_group;
-  if (num_groups > estimated_max_groups_per_tile)
-    num_groups = estimated_max_groups_per_tile;
   return num_groups;
 }
 

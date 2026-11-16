@@ -10,6 +10,55 @@
 
 #include <xccl/xccl.h>
 
+#ifndef _WIN32
+#include <dlfcn.h>
+#include <link.h>
+#endif
+
+namespace {
+
+// WA. revert it once DLE 2026.2 releases.
+//
+// libccl.so.2 dlopen()s its legacy plugin libccl_legacy.so, which lists
+// libccl.so.1 in DT_NEEDED but ships without RPATH/RUNPATH. A dlopen'd object
+// does not inherit the search path of whoever pulled it in, so in the flat
+// PyPI/venv layout libccl.so.1 is looked up only in /etc/ld.so.cache, /lib and
+// /usr/lib; it is not found and oneCCL fails with "Could not load any plugin",
+// taking down every process group creation. Pulling it into the global scope
+// here lets the plugin bind against the already-loaded object.
+//
+// Our own RPATH is no help: libtorch_xpu.so is only an indirect dependency, so
+// glibc resolves dlopen() against the RPATH of whatever was dlopen'd directly
+// (libtorch_global_deps.so), never ours. Derive the location from the already
+// mapped libccl.so.2 instead -- oneCCL always ships the two side by side.
+//
+// A failure here is expected on a full oneAPI/DLE layout, where the plugin
+// resolves its own dependencies, so it is deliberately not reported.
+//
+// oneCCL 2022.2 adds $ORIGIN search paths to its wheels; drop this once that
+// is the minimum supported version.
+[[maybe_unused]] const bool preloaded_oneccl_legacy_dep = []() {
+#ifndef _WIN32
+  // libccl.so.2 is DT_NEEDED, so it is already mapped by the time this runs.
+  if (void* v2 = dlopen("libccl.so.2", RTLD_LAZY | RTLD_NOLOAD)) {
+    link_map* lm = nullptr;
+    if (dlinfo(v2, RTLD_DI_LINKMAP, static_cast<void*>(&lm)) == 0 &&
+        lm != nullptr && lm->l_name != nullptr && lm->l_name[0] != '\0') {
+      std::string path(lm->l_name);
+      const size_t slash = path.rfind('/');
+      if (slash != std::string::npos) {
+        path.replace(slash + 1, std::string::npos, "libccl.so.1");
+        (void)dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+      }
+    }
+    dlclose(v2);
+  }
+#endif
+  return true;
+}();
+
+} // namespace
+
 namespace c10d {
 namespace xccl {
 

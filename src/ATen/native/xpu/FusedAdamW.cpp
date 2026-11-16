@@ -39,10 +39,19 @@ void _fused_adamw_kernel_xpu_(
     const bool maximize,
     const std::optional<at::Tensor>& grad_scale,
     const std::optional<at::Tensor>& found_inf) {
+  if (params.empty()) {
+    return;
+  }
+
+  const bool is_mixed_precision =
+      params[0].scalar_type() != exp_avgs[0].scalar_type();
   if (amsgrad) {
     TORCH_CHECK(
         at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs}),
+            {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs},
+            /*scalarList=*/{},
+            /*does_op_promote_integer_inputs_to_float=*/false,
+            /*skip_cross_list_dtype_check=*/is_mixed_precision),
         "params, grads, exp_avgs, exp_avg_sqs, and max_exp_avg_sqs must have same dtype, device, and layout");
     xpu::fused_adamw_amsgrad_kernel(
         params,
@@ -62,7 +71,10 @@ void _fused_adamw_kernel_xpu_(
   } else {
     TORCH_CHECK(
         at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs, exp_avg_sqs}),
+            {params, grads, exp_avgs, exp_avg_sqs},
+            /*scalarList=*/{},
+            /*does_op_promote_integer_inputs_to_float=*/false,
+            /*skip_cross_list_dtype_check=*/is_mixed_precision),
         "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device, and layout");
     xpu::fused_adamw_kernel(
         params,
@@ -117,14 +129,38 @@ void _fused_adamw_kernel_xpu_(
         found_inf);
     return;
   }
+
+  if (params.empty()) {
+    return;
+  }
+
+  // Manually check devices since we specify no device check in
+  // native_functions.yaml
   Device param_device = params[0].device();
   TORCH_CHECK(
       lr.device() == param_device,
       "lr must be on the same GPU device as the params");
+
+  if (grad_scale != std::nullopt) {
+    TORCH_CHECK(
+        grad_scale->device() == param_device,
+        "grad_scale must be on the same GPU device as the params");
+  }
+  if (found_inf != std::nullopt) {
+    TORCH_CHECK(
+        found_inf->device() == param_device,
+        "found_inf must be on the same GPU device as the params");
+  }
+
+  const bool is_mixed_precision =
+      params[0].scalar_type() != exp_avgs[0].scalar_type();
   if (amsgrad) {
     TORCH_CHECK(
         at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs}),
+            {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs},
+            /*scalarList=*/{},
+            /*does_op_promote_integer_inputs_to_float=*/false,
+            /*skip_cross_list_dtype_check=*/is_mixed_precision),
         "params, grads, exp_avgs, exp_avg_sqs, and max_exp_avg_sqs must have same dtype, device, and layout");
     xpu::fused_adamw_amsgrad_kernel(
         params,
@@ -144,7 +180,10 @@ void _fused_adamw_kernel_xpu_(
   } else {
     TORCH_CHECK(
         at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs, exp_avg_sqs}),
+            {params, grads, exp_avgs, exp_avg_sqs},
+            /*scalarList=*/{},
+            /*does_op_promote_integer_inputs_to_float=*/false,
+            /*skip_cross_list_dtype_check=*/is_mixed_precision),
         "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device, and layout");
     xpu::fused_adamw_kernel(
         params,
