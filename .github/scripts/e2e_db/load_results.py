@@ -113,15 +113,8 @@ def build_values(cur, db, env_ids, row, cache):
     return values
 
 
-def load_db(db, args, meta, rows):
-    with psycopg.connect(
-        host=os.environ.get("E2E_DB_HOST") or "skx-3725",
-        port=int(os.environ.get("E2E_DB_PORT") or "5432"),
-        user=os.environ.get("E2E_DB_USER") or "e2e",
-        password=os.environ["E2E_DB_PASSWORD"],
-        dbname=db,
-        connect_timeout=15,
-    ) as conn, conn.cursor() as cur:
+def write_rows(conn, db, args, meta, rows):
+    with conn, conn.cursor() as cur:
         cache = {}
         env_ids = {"run_id": upsert_run(cur, args)}
         env_ids.update({f"{table}_id": upsert_env(cur, table, meta.get(table, {})) for table in ENV_COLS})
@@ -135,6 +128,25 @@ def load_db(db, args, meta, rows):
                 f"{', '.join(f'{c} = EXCLUDED.{c}' for c in updates)}, created_at = now()",
                 [values[c] for c in cols],
             )
+
+
+def load_db(db, args, meta, rows):
+    # Driver errors carry the server address and row values; keep them out of public CI logs.
+    try:
+        conn = psycopg.connect(
+            host=os.environ["E2E_DB_HOST"],
+            port=int(os.environ.get("E2E_DB_PORT") or "5432"),
+            user=os.environ.get("E2E_DB_USER") or "e2e",
+            password=os.environ["E2E_DB_PASSWORD"],
+            dbname=db,
+            connect_timeout=15,
+        )
+    except psycopg.Error:
+        sys.exit(f"{db}: cannot connect to the E2E database")
+    try:
+        write_rows(conn, db, args, meta, rows)
+    except psycopg.Error as e:
+        sys.exit(f"{db}: database error {type(e).__name__} (sqlstate {e.sqlstate})")
     print(f"{db}: loaded {len(rows)} rows for {args.run_type} run '{args.run}'")
 
 

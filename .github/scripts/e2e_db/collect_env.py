@@ -123,7 +123,6 @@ def main():
         "python": {"version": platform.python_version()},
     }
     args.output.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(meta, indent=2))
 
 
 if __name__ == "__main__":

@@ -182,10 +182,20 @@ jobs:
       - name: Collect test environment
         if: ${{ ! cancelled() }}
         continue-on-error: true
+        env:
+          E2E_DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD }}
         run: |
+          if [ -z "${E2E_DB_PASSWORD}" ];then
+            echo "E2E_DB_PASSWORD is not available, skip"
+            exit 0
+          fi
           python ${{ github.workspace }}/.github/scripts/e2e_db/collect_env.py \
-            --output ${{ github.workspace }}/upload_files/e2e-env.json --host-etc /host/etc \
+            --output /tmp/e2e-env.json --host-etc /host/etc \
             --torch-name "${{ inputs.pytorch }}" --pytorch-dir pytorch --torchbench-dir benchmark
+          # The artifact is public; only the database job can decrypt the environment details.
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:E2E_DB_PASSWORD \
+            -in /tmp/e2e-env.json -out ${{ github.workspace }}/upload_files/e2e-env.json.enc
+          rm -f /tmp/e2e-env.json
       - name: Cleanup
         if: ${{ always() }}
         run: |
@@ -206,14 +216,14 @@ jobs:
     timeout-minutes: 30
     continue-on-error: true
     env:
-      E2E_DB_HOST: ${{ vars.E2E_DB_HOST }}
+      E2E_DB_HOST: ${{ secrets.E2E_DB_HOST }}
       E2E_DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD }}
     steps:
       - name: Check credentials
         id: creds
         run: |
-          if [ -z "${E2E_DB_PASSWORD}" ];then
-            echo "E2E_DB_PASSWORD is not available, skip"
+          if [ -z "${E2E_DB_HOST}" ] || [ -z "${E2E_DB_PASSWORD}" ];then
+            echo "E2E_DB_HOST or E2E_DB_PASSWORD is not available, skip"
             echo "skip=true" >> "${GITHUB_OUTPUT}"
           fi
       - name: Checkout torch-xpu-ops
@@ -246,7 +256,9 @@ jobs:
             run_name+="-${{ inputs.category }}"
           fi
           uv pip install 'psycopg[binary]'
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:E2E_DB_PASSWORD \
+            -in e2e_data/e2e-env.json.enc -out "${RUNNER_TEMP}/e2e-env.json"
           python .github/scripts/e2e_db/load_results.py --run "${run_name}" --run-type "${run_type}" \
             --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --started-at "${{ needs.test.outputs.started_at }}" \
-            --meta e2e_data/e2e-env.json --input e2e_data
+            --meta "${RUNNER_TEMP}/e2e-env.json" --input e2e_data

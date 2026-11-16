@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Start the E2E results PostgreSQL container on the host. Data lives in a host bind mount.
-# Usage (on skx-3725): ./deploy_db.sh
+# Usage (on the database host): ./deploy_db.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DB_DIR="${E2E_DB_DIR:-/home/jenkins/e2e-db}"
+DB_DIR="${E2E_DB_DIR:-${HOME}/e2e-db}"
 CONTAINER="${E2E_DB_CONTAINER:-e2e-results-pg}"
 IMAGE="${E2E_DB_IMAGE:-postgres:16}"
 PORT="${E2E_DB_PORT:-5432}"
