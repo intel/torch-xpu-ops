@@ -176,6 +176,7 @@ Settings are environment variables; `start` saves them to `$E2E_DB_DIR/service.e
 | `E2E_DB_BACKUP_REMOTE` | (empty) | rsync target for the offsite copy, e.g. `user@node:/path` |
 | `E2E_DB_BASE_DAYS` | `7` | Days between full base backups |
 | `E2E_DB_RETENTION_DAYS` | `90` | Maximum age of backup data (base backups and WAL) |
+| `E2E_DB_DATA_DAYS` | `180` | Maximum age of results in the `accuracy` / `performance` tables |
 
 `./db_service.sh status` shows container health, WAL archiving state and backup size.
 
@@ -183,6 +184,13 @@ Commands share a lock, so cron jobs skip while `start` or `restore` is running. 
 backup directories must be dedicated absolute paths (not `/`, `$HOME`, `/home`, ...) and
 `E2E_DB_BACKUP_REMOTE` must be `host:/absolute/path` or a dedicated local path, because `start`
 changes ownership recursively and the offsite sync mirrors with `--delete`.
+
+### Data retention
+
+The main tables keep results for at most `E2E_DB_DATA_DAYS` (6 months). Every hourly `backup`
+first deletes the `accuracy` / `performance` rows of runs whose `started_at` is older than that,
+then the `run` rows left without results; `./db_service.sh purge` does the same on demand.
+Environment and name lookups are small and kept.
 
 ### Keep alive
 

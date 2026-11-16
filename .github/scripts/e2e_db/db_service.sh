@@ -4,7 +4,8 @@
 # Usage (on the database host):
 #   db_service.sh start               create or upgrade the container, apply the schema, install cron
 #   db_service.sh watchdog            restart the container if it is missing, stopped or unhealthy
-#   db_service.sh backup              archive WAL, take a base backup when due, prune, sync offsite
+#   db_service.sh backup              purge old results, archive WAL, take a base backup when due, prune, sync
+#   db_service.sh purge               delete result rows of runs older than E2E_DB_DATA_DAYS
 #   db_service.sh restore [DIR]       rebuild the database from a backup directory, then start
 #   db_service.sh status              show container health and backup state
 set -euo pipefail
@@ -25,6 +26,7 @@ BACKUP_DIR="${E2E_DB_BACKUP_DIR:-${DB_DIR}/backup}"
 BACKUP_REMOTE="${E2E_DB_BACKUP_REMOTE:-}"
 BASE_DAYS="${E2E_DB_BASE_DAYS:-7}"
 RETENTION_DAYS="${E2E_DB_RETENTION_DAYS:-90}"
+DATA_DAYS="${E2E_DB_DATA_DAYS:-180}"
 INSTALL_CRON="${E2E_DB_CRON:-1}"
 DB_USER=e2e
 ENV_FILE="${DB_DIR}/postgres.env"
@@ -63,6 +65,10 @@ check_dir E2E_DB_BACKUP_DIR "${BACKUP_DIR}"
 if [[ -n "${BACKUP_REMOTE}" ]]; then
     check_remote
 fi
+# These are used in arithmetic and SQL.
+for days in BASE_DAYS RETENTION_DAYS DATA_DAYS; do
+    [[ "${!days}" =~ ^[1-9][0-9]*$ ]] || die "E2E_DB_${days} must be a positive integer"
+done
 
 container_state() {
     local state
@@ -88,7 +94,7 @@ wait_ready() {
 save_settings() {
     {
         for var in E2E_DB_CONTAINER E2E_DB_IMAGE E2E_DB_PORT E2E_DB_BACKUP_DIR E2E_DB_BACKUP_REMOTE \
-                   E2E_DB_BASE_DAYS E2E_DB_RETENTION_DAYS; do
+                   E2E_DB_BASE_DAYS E2E_DB_RETENTION_DAYS E2E_DB_DATA_DAYS; do
             # Quote removal inside the unquoted ${VAR:-word} turns %q output back into the value.
             # shellcheck disable=SC2016
             printf '%s=${%s:-%q}\n' "${var}" "${var}" "${!var:-}"
@@ -111,7 +117,7 @@ install_cron() {
 start() {
     E2E_DB_CONTAINER="${CONTAINER}" E2E_DB_IMAGE="${IMAGE}" E2E_DB_PORT="${PORT}" \
         E2E_DB_BACKUP_DIR="${BACKUP_DIR}" E2E_DB_BACKUP_REMOTE="${BACKUP_REMOTE}" \
-        E2E_DB_BASE_DAYS="${BASE_DAYS}" E2E_DB_RETENTION_DAYS="${RETENTION_DAYS}"
+        E2E_DB_BASE_DAYS="${BASE_DAYS}" E2E_DB_RETENTION_DAYS="${RETENTION_DAYS}" E2E_DB_DATA_DAYS="${DATA_DAYS}"
     mkdir -p "${PGDATA_DIR}" "${BACKUP_DIR}/base" "${BACKUP_DIR}/wal"
     if [[ ! -f "${ENV_FILE}" ]]; then
         printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_DB=postgres\n' "${DB_USER}" "$(openssl rand -hex 24)" \
@@ -181,8 +187,31 @@ complete_bases() {
     find "${BACKUP_DIR}/base" -mindepth 1 -maxdepth 1 -type d -name '2*' | sort
 }
 
+# Results are kept for DATA_DAYS after the run started; the run row goes with its last result.
+purge() {
+    local db deleted
+    for db in accuracy performance; do
+        deleted="$(docker exec -i "${CONTAINER}" psql -v ON_ERROR_STOP=1 -Atq -U "${DB_USER}" -d "${db}" <<SQL
+WITH old AS (
+    DELETE FROM ${db} t USING run r
+    WHERE t.run_id = r.id AND r.started_at < now() - make_interval(days => ${DATA_DAYS})
+    RETURNING 1
+)
+SELECT count(*) FROM old;
+DELETE FROM run r
+WHERE r.started_at < now() - make_interval(days => ${DATA_DAYS})
+  AND NOT EXISTS (SELECT 1 FROM ${db} t WHERE t.run_id = r.id);
+SQL
+)"
+        if [[ "${deleted}" != 0 ]]; then
+            log "${db}: purged ${deleted} rows of runs older than ${DATA_DAYS} days"
+        fi
+    done
+}
+
 backup() {
     mkdir -p "${BACKUP_DIR}/base" "${BACKUP_DIR}/wal"
+    purge
     # Close the current WAL segment and wait until it is archived, so the backup (and the
     # offsite copy) contains everything written so far.
     local segment
@@ -264,8 +293,8 @@ status() {
 }
 
 case "${1:-}" in
-    start | watchdog | backup | restore | status) ;;
-    *) sed -n '2,10p' "$0"; exit 1 ;;
+    start | watchdog | backup | purge | restore | status) ;;
+    *) sed -n '2,11p' "$0"; exit 1 ;;
 esac
 
 # Serialize commands: cron jobs must not run while start/restore recreates the container.
@@ -273,7 +302,7 @@ if [[ "$1" != status ]]; then
     mkdir -p "${DB_DIR}"
     exec 9>"${DB_DIR}/.lock"
     case "$1" in
-        watchdog | backup) flock -n 9 || { log "another db_service.sh command is running, skip $1"; exit 0; } ;;
+        watchdog | backup | purge) flock -n 9 || { log "another db_service.sh command is running, skip $1"; exit 0; } ;;
         start | restore) flock 9 ;;
     esac
 fi
@@ -282,6 +311,7 @@ case "$1" in
     start) start ;;
     watchdog) watchdog ;;
     backup) backup ;;
+    purge) purge ;;
     restore) restore "${2:-}" ;;
     status) status ;;
 esac
