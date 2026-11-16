@@ -359,31 +359,13 @@ struct FMHAFwdMainloop<
 
       /* Causal masking */
       if constexpr (CausalMask) {
+        const int diagonal_offset = seq_len_kv - seq_len_qo;
         CUTLASS_PRAGMA_UNROLL
         for (int i = 0; i < tSrS.size(); ++i) {
           int row_idx = get<0>(cS_thread(i));
           int col_idx = get<1>(cS_thread(i));
-
-          if (seq_len_qo == seq_len_kv) {
-            if (col_idx > row_idx) {
-              tSrS(i) = ElementS(-INFINITY);
-            }
-          }
-
-          if (seq_len_kv > seq_len_qo) {
-            int first_masked_col_index = 0;
-            first_masked_col_index = seq_len_kv - (seq_len_qo - 1) + row_idx;
-            if (col_idx >= first_masked_col_index) {
-              tSrS(i) = ElementS{-INFINITY};
-            }
-          }
-
-          if (seq_len_qo > seq_len_kv) {
-            int first_non_masked_sequence = seq_len_qo - seq_len_kv;
-            if (row_idx < first_non_masked_sequence ||
-                col_idx > row_idx - first_non_masked_sequence) {
-              tSrS(i) = ElementS{-INFINITY};
-            }
+          if (col_idx > row_idx + diagonal_offset) {
+            tSrS(i) = ElementS(-INFINITY);
           }
         }
       }
@@ -462,6 +444,28 @@ struct FMHAFwdMainloop<
     /* Get necessary metadata for LSE*/
     get_LSE_metadata(
         thr_id, TileShapePV{}, thr_mma_pv, rows_of_maxima, tile_row_idx);
+  }
+
+  // Prepare the accumulators of a Q tile that the causal mask rejects in full,
+  // so the epilogue can be run without the main loop. A zero accumulator and
+  // a zero softmax sum drive the epilogue's existing fully-masked handling,
+  // which emits O = 0 and LSE = +inf.
+  CUTLASS_DEVICE void init_fully_masked_tile(
+      FragA& tArA,
+      FragARow& tA_max,
+      FragARow& tA_sum,
+      int thr_id,
+      const int& rows_of_maxima,
+      int& tile_row_idx) {
+    clear(tArA);
+    fill(tA_max, cutlass::platform::numeric_limits<ElementA>::lowest());
+    clear(tA_sum);
+    get_LSE_metadata(
+        thr_id,
+        TileShapePV{},
+        TiledMMAPV{}.get_slice(thr_id),
+        rows_of_maxima,
+        tile_row_idx);
   }
 
   // Find the metadata for constructing the mapping between lane_id, local row

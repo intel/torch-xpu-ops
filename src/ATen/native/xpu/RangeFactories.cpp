@@ -12,7 +12,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/core/Tensor.h>
@@ -32,38 +31,12 @@
 namespace at {
 
 namespace native {
+
 Tensor& arange_xpu_out(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,
     Tensor& out) {
-  AT_DISPATCH_ALL_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      out.scalar_type(),
-      "arange_xpu_preprocess",
-      [&]() {
-        int64_t size = compute_arange_size<scalar_t>(start, end, step);
-        int64_t numel = out.numel();
-
-        if (numel != size) {
-          if (numel > 0) {
-            TORCH_WARN(
-                "The number of elements in the out tensor of shape ",
-                out.sizes(),
-                " is ",
-                numel,
-                " which does not match the computed number of elements ",
-                size,
-                ". Note that this may occur as a result of rounding error. "
-                "The out tensor will be resized to a tensor of shape (",
-                size,
-                ",).");
-          }
-          out.resize_({size});
-        }
-      });
-
   return xpu::arange_kernel(start, end, step, out);
 }
 

@@ -16,11 +16,15 @@ try:
 except Exception:
     from .xpu_test_utils import XPUPatchForImport
 
+# TestPrimsPhiloxOnCUDA is deliberately not ported: rngprims.philox_rand has no
+# XPU implementation (torch/_prims/rng_prims.py raises throw_on_non_cuda).
 with XPUPatchForImport(False):
-    from test_prims import TestDecomp, TestPrims, TestRefs
+    from test_prims import TestDecomp, TestPrimsDevice, TestRefs
 
 
-instantiate_device_type_tests(TestPrims, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestPrimsDevice, globals(), only_for="xpu", allow_xpu=True
+)
 instantiate_device_type_tests(TestRefs, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestDecomp, globals(), only_for="xpu", allow_xpu=True)
 

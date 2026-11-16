@@ -23,6 +23,7 @@
 
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorAddKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
@@ -192,7 +193,8 @@ void add_out_sparse_csr_kernel(
               index_t* row_nnz_ptr = row_nnz.data_ptr<index_t>();
 
               constexpr auto pass1_kernel = compute_row_nnz_kernel<index_t>;
-              int64_t pass1_group_size = syclMaxWorkGroupSize<pass1_kernel>();
+              int64_t pass1_group_size =
+                  at::xpu::getKernelMaxWorkGroupSize<pass1_kernel>();
               int64_t pass1_group_num =
                   (nrows + pass1_group_size - 1) / pass1_group_size;
               sycl_kernel_submit<pass1_kernel>(
@@ -240,7 +242,8 @@ void add_out_sparse_csr_kernel(
                 // Pass 2: merge rows and fill col_indices + values.
                 constexpr auto pass2_kernel =
                     merge_rows_kernel<scalar_t, index_t>;
-                int64_t pass2_group_size = syclMaxWorkGroupSize<pass2_kernel>();
+                int64_t pass2_group_size =
+                    at::xpu::getKernelMaxWorkGroupSize<pass2_kernel>();
                 int64_t pass2_group_num =
                     (nrows + pass2_group_size - 1) / pass2_group_size;
                 sycl_kernel_submit<pass2_kernel>(
