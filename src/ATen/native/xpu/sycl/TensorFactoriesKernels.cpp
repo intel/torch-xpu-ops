@@ -82,7 +82,7 @@ inline void get_coordinate_in_tril_trapezoid(
 
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void triu_indices_kernel(
+void triu_indices_sub_kernel(
     scalar_t* data,
     int64_t col_offset,
     int64_t m_first_row,
@@ -118,7 +118,7 @@ void triu_indices_kernel_template(
     int64_t col,
     int64_t rectangle_size,
     int64_t triu_size) {
-  constexpr auto kptr = triu_indices_kernel<scalar_t>;
+  constexpr auto kptr = triu_indices_sub_kernel<scalar_t>;
   int64_t group_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   auto totalElements = triu_size;
   auto num_groups = at::ceil_div(totalElements, group_size);
