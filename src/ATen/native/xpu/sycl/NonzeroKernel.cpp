@@ -335,7 +335,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
       // Fill global_mask[0..this_chunk): 1 where element is nonzero, 0
       // elsewhere.
 
-      const int64_t mask_wg_size = std::min(
+      const int64_t mask_wg_size = std::min<int64_t>(
           at::xpu::getKernelMaxWorkGroupSize<
               is_nonzero_kernel_impl<scalar_t>>(),
           this_chunk);
@@ -360,7 +360,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           target_pos_ptr,
           int64_t(0));
 
-      const int64_t scatter_wg_size = std::min(
+      const int64_t scatter_wg_size = std::min<int64_t>(
           at::xpu::getKernelMaxWorkGroupSize<scatter_to_out_kernel_impl>(),
           this_chunk);
       const int64_t num_wgs1 = at::ceil_div(this_chunk, scatter_wg_size);
