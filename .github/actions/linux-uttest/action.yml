@@ -226,7 +226,7 @@ runs:
         fi
 
     - name: upstream_ut
-      shell: timeout 172800 bash -e -o pipefail {0}
+      shell: timeout 432000 bash -e -o pipefail {0}
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         ut_name="${{ inputs.ut_name }}"
