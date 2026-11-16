@@ -11,8 +11,8 @@ on:
       torch_xpu_ops:
         required: false
         type: string
-        default: 'main'
-        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+        default: 'pinned'
+        description: Torch-xpu-ops defaults to the wheel/source pin, or 'commit/branch', or 'repo@commit/repo@branch'
       ut:
         required: true
         type: string
