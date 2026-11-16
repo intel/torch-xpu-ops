@@ -1,54 +1,13 @@
-import os
+"""Run the torch-xpu-ops unit tests of the Windows nightly, one pytest process per file."""
+
 import sys
 
 from skip_list_common import PYTORCH_TEST_DIR, skip_dict
 from skip_list_win import skip_dict as skip_dict_win
 from skip_list_win_lnl import skip_dict as skip_dict_win_lnl
+from ut_launcher import main, merge_skip_dicts
 
-res = 0
-IS_WINDOWS = sys.platform == "win32"
-
-
-def launch_test(test_case, skip_list=None, exe_list=None):
-    os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-    module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
-    if skip_list is not None:
-        if skip_list:
-            skip_options = ' -k "not ' + skip_list[0]
-            for skip_case in skip_list[1:]:
-                skip_option = " and not " + skip_case
-                skip_options += skip_option
-            skip_options += '"'
-            test_command = (
-                f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
-            )
-            test_command += skip_options
-        else:
-            test_command = (
-                f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
-            )
-    elif exe_list is not None:
-        if exe_list:
-            exe_options = ' -k "' + exe_list[0]
-            for exe_case in exe_list[1:]:
-                exe_option = " or " + exe_case
-                exe_options += exe_option
-            exe_options += '"'
-            test_command = (
-                f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
-            )
-            test_command += exe_options
-        else:
-            test_command = (
-                f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
-            )
-    else:
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
-        )
-    return os.system(test_command)
-
-
+# Files the Windows nightly does not run
 skip_files_list = [
     f"{PYTORCH_TEST_DIR}/test_autocast.py",
     f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py",
@@ -92,28 +51,12 @@ skip_files_list = [
     "functorch/test_ops_xpu.py",
 ]
 
-print("Current working directory:", os.getcwd())
-print("Files in directory:")
-for file in os.listdir("."):
-    if file.endswith(".py"):
-        print(f"  {file}")
-
-for key in skip_dict:
-    # Check if key is in skip list
-    if key in skip_files_list:
-        print(f"\n=== Skipping test file: {key} ===")
-        continue
-
-    skip_list: list[str] = list(skip_dict.get(key) or ())
-    if IS_WINDOWS:
-        skip_list.extend(skip_dict_win.get(key) or ())
-        skip_list.extend(skip_dict_win_lnl.get(key) or ())
-
-    print(f"\n=== Processing test case: {key} ===")
-    res += launch_test(key, skip_list=skip_list)
-
-if os.name == "nt":
-    sys.exit(res)
-else:
-    exit_code = os.WEXITSTATUS(res)
-    sys.exit(exit_code)
+if __name__ == "__main__":
+    overlays = [skip_dict_win, skip_dict_win_lnl] if sys.platform == "win32" else []
+    sys.exit(
+        main(
+            merge_skip_dicts(skip_dict, *overlays),
+            __doc__,
+            skip_files=skip_files_list,
+        )
+    )
