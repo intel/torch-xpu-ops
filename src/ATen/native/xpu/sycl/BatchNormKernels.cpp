@@ -5272,7 +5272,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
       std::find(subgroup_sizes.begin(), subgroup_sizes.end(), SIMD32) !=
       subgroup_sizes.end();
   if (supports_simd32 && syclDeviceMaxWorkGroupSize() >= SIMD32 * SIMD32 &&
-      train && grad_input_reshaped.defined() &&
+      train && grad_input_reshaped.defined() && input_reshaped.numel() > 0 &&
       input_reshaped.is_contiguous() && grad_output_reshaped.is_contiguous() &&
       (!weight_.defined() || weight_.is_contiguous()) &&
       save_mean_.is_contiguous() && save_invstd_.is_contiguous()) {
