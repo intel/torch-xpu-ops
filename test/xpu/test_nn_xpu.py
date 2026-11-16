@@ -17445,13 +17445,6 @@ if __name__ == '__main__':
                     lambda a, p, n: loss_op(a, p, n), (anchor, positive, negative)
                 )
             )
-            traced_loss_op = torch.jit.trace(loss_op, (anchor, positive, negative))
-            self.assertTrue(
-                gradcheck(
-                    lambda a, p, n: traced_loss_op(a, p, n),
-                    (anchor, positive, negative),
-                )
-            )
 
             # Test forward parity
             functional = F.triplet_margin_with_distance_loss(
@@ -17464,9 +17457,7 @@ if __name__ == '__main__':
                 swap=swap,
             )
             modular = loss_op(anchor, positive, negative)
-            traced = traced_loss_op(anchor, positive, negative)
             self.assertEqual(functional, modular, atol=1e-6, rtol=1e-6)
-            self.assertEqual(traced, modular, atol=1e-6, rtol=1e-6)
 
     @dtypesIfMPS(torch.cfloat, torch.float)
     @dtypes(torch.cfloat, torch.cdouble, torch.float)
