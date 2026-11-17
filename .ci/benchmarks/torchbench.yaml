@@ -64,6 +64,8 @@ tolerance:
   higher_bf16:
     - doctr_reco_predictor
     - drq
+    # #4905: bf16 grad RMSE sits at ~1 bf16 ulp (device-dependent fusion order)
+    - timm_efficientnet
 
   # These models need higher tolerance for xpu devices with bf16
   higher_bf16_xpu:
