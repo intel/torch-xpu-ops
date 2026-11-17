@@ -203,7 +203,7 @@ bool can_vectorize(const T* ptr, int alignment) {
 template <typename T, typename T_ACC, bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
-void row_wise_moments_kernel_impl(
+void layer_norm_rowwise_moments_kernel_impl(
     int64_t N,
     T_ACC eps,
     const T* X,
@@ -239,7 +239,7 @@ void row_wise_moments_kernel_impl(
 }
 
 template <typename T, typename T_ACC, bool rms_norm>
-void launch_rowwise_moments_kernel(
+void launch_layer_norm_rowwise_moments_kernel(
     int64_t N,
     int64_t M,
     T_ACC eps,
@@ -255,7 +255,8 @@ void launch_rowwise_moments_kernel(
   auto queue = getCurrentSYCLQueue();
 
   int slm_sz = sizeof(WelfordType) * SIMD;
-  sycl_kernel_submit<row_wise_moments_kernel_impl<T, T_ACC, rms_norm>>(
+  sycl_kernel_submit<
+      layer_norm_rowwise_moments_kernel_impl<T, T_ACC, rms_norm>>(
       global_range,
       local_range,
       queue,
@@ -861,7 +862,7 @@ void launch_vectorized_layer_norm_kernel(
 }
 
 template <typename T, typename T_ACC, bool rms_norm = false>
-void layer_norm_kernel_impl(
+void do_layer_norm_kernel(
     const Tensor& X,
     const Tensor& gamma,
     const Tensor& beta,
@@ -906,7 +907,7 @@ void layer_norm_kernel_impl(
         mean_data,
         rstd_data);
   } else {
-    launch_rowwise_moments_kernel<T, T_ACC, rms_norm>(
+    launch_layer_norm_rowwise_moments_kernel<T, T_ACC, rms_norm>(
         N, M, eps, X_data, mean_data, rstd_data);
     launch_layer_norm_forward_kernel<T, T_ACC, rms_norm>(
         N, M, X_data, mean_data, rstd_data, gamma_data, beta_data, Y_data);
@@ -1269,7 +1270,7 @@ template <
     typename mean_t,
     typename weight_t,
     bool rms_norm = false>
-void layer_norm_backward_kernel_impl(
+void do_layer_norm_backward_kernel(
     const Tensor& dY,
     const Tensor& X,
     const Tensor& mean,
@@ -1421,12 +1422,12 @@ void layer_norm_backward_kernel_impl(
       }
     }
 
+    size_t lsm_size = 2 * tile_size_n * tile_size_m / elements_per_thread *
+        sizeof(accscalar_t);
+
     size_t num_workgroup = std::min(
         num_tile_m * num_tile_n, static_cast<int>(thread_slots / local_size_x));
     if (dgamma->defined() && dbeta->defined()) {
-      size_t lsm_size = 2 * tile_size_n * tile_size_m / elements_per_thread *
-          sizeof(accscalar_t);
-
       sycl_kernel_submit<gamma_beta_reduce_kernel_impl<
           scalar_t,
           accscalar_t,
@@ -1464,8 +1465,6 @@ void layer_norm_backward_kernel_impl(
         *dbeta = dbeta_blocks.sum(0).view_as(*dbeta);
       }
     } else if (dgamma->defined() && !dbeta->defined()) {
-      size_t lsm_size = 2 * tile_size_n * tile_size_m / elements_per_thread *
-          sizeof(accscalar_t);
       sycl_kernel_submit<gamma_beta_reduce_kernel_impl<
           scalar_t,
           accscalar_t,
@@ -1500,8 +1499,6 @@ void layer_norm_backward_kernel_impl(
           N);
       *dgamma = dgamma_blocks.sum(0).view_as(*dgamma);
     } else if (!dgamma->defined() && dbeta->defined()) {
-      size_t lsm_size = 2 * tile_size_n * tile_size_m / elements_per_thread *
-          sizeof(accscalar_t);
       sycl_kernel_submit<gamma_beta_reduce_kernel_impl<
           scalar_t,
           accscalar_t,
@@ -1568,7 +1565,7 @@ void layer_norm_kernel(
       "layer_norm_xpu",
       [&]() {
         using acc_t = acc_type_device<scalar_t, kXPU>;
-        layer_norm_kernel_impl<scalar_t, acc_t>(
+        do_layer_norm_kernel<scalar_t, acc_t>(
             X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
       });
 }
@@ -1592,7 +1589,7 @@ void layer_norm_backward_kernel(
         "layer_norm_backward_xpu",
         [&]() {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
-          layer_norm_backward_kernel_impl<scalar_t, accscalar_t, scalar_t>(
+          do_layer_norm_backward_kernel<scalar_t, accscalar_t, scalar_t>(
               dY.contiguous(), X, mean, rstd, gamma, M, N, dX, dgamma, dbeta);
         });
   }
@@ -1613,7 +1610,7 @@ void rms_norm_kernel(
       "rms_norm_xpu",
       [&]() {
         using acc_t = acc_type_device<scalar_t, kXPU>;
-        layer_norm_kernel_impl<scalar_t, acc_t, true>(
+        do_layer_norm_kernel<scalar_t, acc_t, true>(
             X,
             gamma,
             at::Tensor(),
@@ -1643,7 +1640,7 @@ void rms_norm_backward_kernel(
       [&]() {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         Tensor unused_dbeta;
-        layer_norm_backward_kernel_impl<scalar_t, accscalar_t, scalar_t, true>(
+        do_layer_norm_backward_kernel<scalar_t, accscalar_t, scalar_t, true>(
             dY.contiguous(),
             X,
             rstd,
