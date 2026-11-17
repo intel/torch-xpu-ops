@@ -119,7 +119,7 @@ runs:
         git checkout %TORCH_COMMIT_ID% || exit /b 1
         git show -s
 
-        REM A wheel built in this run records its exact commit (torch/xpu.txt);
+        REM A wheel built in this run records its exact commit (torch.version.xpu_ops_commit);
         REM use it for any ref. Published wheels only consult it for `pinned`.
         set BUILT_ARG=--built-wheel
         echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul && set BUILT_ARG=

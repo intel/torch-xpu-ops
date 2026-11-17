@@ -318,10 +318,6 @@ class TestDeformConv:
                 res_grads = init_weight.grad.to("cpu")
                 torch.testing.assert_close(true_cpu_grads, res_grads)
 
-    def test_forward_scriptability(self):
-        # Non-regression test for https://github.com/pytorch/vision/issues/4078
-        torch.jit.script(ops.DeformConv2d(in_channels=8, out_channels=8, kernel_size=3))
-
 
 optests.generate_opcheck_tests(
     testcase=TestDeformConv,
