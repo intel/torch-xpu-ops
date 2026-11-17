@@ -28,7 +28,8 @@ build — never a nightly wheel, which cannot see local code.
 
 - `refined_command` — the exact test command from `fix-reproduce`'s
   output.
-- `PYTORCH_DIR` — path to local PyTorch checkout.
+- `PYTORCH_DIR` — path to local PyTorch checkout (default
+  `agent_space_xpu/pytorch`).
 - `target_repo_dir` — path to the checkout that holds the staged fix
   (same derivation rule as in `fix-implement`: equals
   `PYTORCH_DIR` for `target_repo=pytorch`,
