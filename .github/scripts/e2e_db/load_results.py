@@ -10,14 +10,17 @@ The --meta JSON describes the test environment, e.g.
    "torch": {"name": ..., "version": ..., "commit": ...},
    "python": {"version": ...}}
 Optional keys are the remaining columns of the matching table in schema/common.sql.
-Connection settings come from E2E_DB_HOST (default 127.0.0.1: the loader runs on the database
-host), E2E_DB_PORT, E2E_DB_USER and E2E_DB_PASSWORD.
+Connection: the database container has no network; the loader runs on the same node and connects
+through its Unix socket. E2E_DB_HOST is the directory holding the socket (default /var/run/e2e-db,
+where the CI job container mounts it), E2E_DB_USER defaults to the least-privilege e2e_loader role,
+E2E_DB_PASSWORD is its password.
 """
 import argparse
 import csv
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import psycopg
@@ -31,6 +34,7 @@ ENV_COLS = {
     "python": ["version"],
 }
 RUN_TYPES = ["ci", "nightly", "weekly", "acceptance", "on-demand"]
+CONNECT_ATTEMPTS = 4
 KEY_COLS = ["run_id", "device_id", "backend_id", "suite_id", "dtype_id", "mode_id", "model_id"]
 
 
@@ -136,17 +140,25 @@ def write_rows(conn, db, args, meta, rows):
 
 def load_db(db, args, meta, rows):
     # Driver errors carry the server address and row values; keep them out of public CI logs.
-    try:
-        conn = psycopg.connect(
-            host=os.environ.get("E2E_DB_HOST") or "127.0.0.1",
-            port=int(os.environ.get("E2E_DB_PORT") or "5432"),
-            user=os.environ.get("E2E_DB_USER") or "e2e",
-            password=os.environ["E2E_DB_PASSWORD"],
-            dbname=db,
-            connect_timeout=15,
-        )
-    except psycopg.Error:
-        sys.exit(f"{db}: cannot connect to the E2E database")
+    # Retry for a while: the watchdog may be restarting the container.
+    conn = None
+    for attempt in range(1, CONNECT_ATTEMPTS + 1):
+        try:
+            conn = psycopg.connect(
+                host=os.environ.get("E2E_DB_HOST") or "/var/run/e2e-db",
+                port=int(os.environ.get("E2E_DB_PORT") or "5432"),
+                user=os.environ.get("E2E_DB_USER") or "e2e_loader",
+                password=os.environ["E2E_DB_PASSWORD"],
+                dbname=db,
+                connect_timeout=15,
+                application_name="e2e_load_results",
+                options="-c statement_timeout=300000",
+            )
+            break
+        except psycopg.OperationalError:
+            if attempt == CONNECT_ATTEMPTS:
+                sys.exit(f"{db}: cannot connect to the E2E database after {attempt} attempts")
+            time.sleep(15 * attempt)
     try:
         write_rows(conn, db, args, meta, rows)
     except psycopg.Error as e:

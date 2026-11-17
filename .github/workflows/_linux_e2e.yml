@@ -213,12 +213,23 @@ jobs:
     name: Upload results to E2E database
     needs: test
     if: ${{ ! cancelled() && needs.test.outputs.artifact != '' && ! contains(inputs.suite, 'pt2e') }}
-    # Runs on the database host itself, so results are written over loopback, not the network.
-    runs-on: xpu-ubuntu-24.04
+    # Runs on the database node in a container. The database container has no network; this job
+    # reaches it only through its Unix socket, mounted from the host (E2E_DB_DIR/run).
+    runs-on: ${{ vars.E2E_DB_RUNNER || 'xpu-ubuntu-24.04' }}
     timeout-minutes: 30
     continue-on-error: true
+    container:
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      volumes:
+        - ${{ vars.E2E_DB_SOCKET_DIR || '/opt/e2e-db/run' }}:/var/run/e2e-db
+      # The job needs the network for checkout/artifacts; the database itself has none.
+      options: --security-opt no-new-privileges
+    defaults:
+      run:
+        shell: bash -e {0}
     env:
-      E2E_DB_HOST: 127.0.0.1
+      E2E_DB_HOST: /var/run/e2e-db
+      E2E_DB_USER: e2e_loader
       E2E_DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD }}
     steps:
       - name: Check credentials
@@ -226,6 +237,9 @@ jobs:
         run: |
           if [ -z "${E2E_DB_PASSWORD}" ];then
             echo "E2E_DB_PASSWORD is not available, skip"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+          elif [ ! -S "${E2E_DB_HOST}/.s.PGSQL.5432" ];then
+            echo "::warning::E2E database socket not found on this node, skip"
             echo "skip=true" >> "${GITHUB_OUTPUT}"
           fi
       - name: Checkout torch-xpu-ops
@@ -262,9 +276,11 @@ jobs:
             exit 0
           fi
           uv pip install 'psycopg[binary]'
+          meta="$(mktemp)"
+          trap 'rm -f "${meta}"' EXIT
           openssl enc -d -aes-256-cbc -pbkdf2 -pass env:E2E_DB_PASSWORD \
-            -in e2e_data/e2e-env.json.enc -out "${RUNNER_TEMP}/e2e-env.json"
+            -in e2e_data/e2e-env.json.enc -out "${meta}"
           python .github/scripts/e2e_db/load_results.py --run "${run_name}" --run-type "${run_type}" \
             --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --started-at "${{ needs.test.outputs.started_at }}" \
-            --meta "${RUNNER_TEMP}/e2e-env.json" --input e2e_data
+            --meta "${meta}" --input e2e_data

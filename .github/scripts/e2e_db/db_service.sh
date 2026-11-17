@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # E2E results PostgreSQL service: start, keep alive, back up and restore.
 #
+# Security model (single node: the database and its loaders run on the same host):
+#   - the container has no network (--network none); clients reach it only through the Unix
+#     socket in ${E2E_DB_DIR}/run, which a CI job container mounts as a volume
+#   - every socket login needs a password (scram-sha-256); the admin role `e2e` is used only
+#     over the container's own loopback by this script, CI uses the least-privilege role
+#     `e2e_loader` (SELECT/INSERT/UPDATE, no DELETE or DDL)
+#   - the container runs as this host user with a read-only root fs, no capabilities and
+#     no-new-privileges
+#
 # Usage (on the database host):
 #   db_service.sh start               create or upgrade the container, apply the schema, install cron
 #   db_service.sh watchdog            restart the container if it is missing, stopped or unhealthy
@@ -21,9 +30,6 @@ if [[ -f "${SERVICE_ENV}" ]]; then
 fi
 CONTAINER="${E2E_DB_CONTAINER:-e2e-results-pg}"
 IMAGE="${E2E_DB_IMAGE:-postgres:16}"
-PORT="${E2E_DB_PORT:-5432}"
-# Loaders run on this host; publish on loopback only so the database is not reachable remotely.
-BIND="${E2E_DB_BIND:-127.0.0.1}"
 BACKUP_DIR="${E2E_DB_BACKUP_DIR:-${DB_DIR}/backup}"
 BACKUP_REMOTE="${E2E_DB_BACKUP_REMOTE:-}"
 BASE_DAYS="${E2E_DB_BASE_DAYS:-7}"
@@ -31,8 +37,13 @@ RETENTION_DAYS="${E2E_DB_RETENTION_DAYS:-90}"
 DATA_DAYS="${E2E_DB_DATA_DAYS:-180}"
 INSTALL_CRON="${E2E_DB_CRON:-1}"
 DB_USER=e2e
+LOADER_USER=e2e_loader
 ENV_FILE="${DB_DIR}/postgres.env"
+LOADER_ENV="${DB_DIR}/loader.env"
+HBA_FILE="${DB_DIR}/pg_hba.conf"
 PGDATA_DIR="${DB_DIR}/pgdata"
+# Unix socket directory shared with CI job containers (mount it, connect with host=<mount point>).
+SOCKET_DIR="${DB_DIR}/run"
 # Compressed WAL archive; an already archived segment counts as success so retries never block.
 ARCHIVE_CMD='test -f /backup/wal/%f.gz || (gzip -c %p > /backup/wal/%f.gz.part && mv /backup/wal/%f.gz.part /backup/wal/%f.gz)'
 RESTORE_CMD='gunzip -c /backup/wal/%f.gz > %p'
@@ -97,13 +108,13 @@ wait_ready() {
 # exist and belong to this user before anything is written to them.
 ensure_dirs() {
     docker run --rm --entrypoint sh -v "${DB_DIR}:/svc" -v "${BACKUP_DIR}:/backup" "${IMAGE}" -c \
-        'mkdir -p /svc/pgdata /backup/base /backup/wal && chown "$1" /svc && chown -R "$1" /svc/pgdata /backup && chmod 700 /svc /backup' \
+        'mkdir -p /svc/pgdata /svc/run /backup/base /backup/wal && chown "$1" /svc /svc/run && chown -R "$1" /svc/pgdata /backup && chmod 700 /svc /svc/run /backup' \
         sh "$(id -u):$(id -g)"
 }
 
 save_settings() {
     {
-        for var in E2E_DB_CONTAINER E2E_DB_IMAGE E2E_DB_PORT E2E_DB_BIND E2E_DB_BACKUP_DIR E2E_DB_BACKUP_REMOTE \
+        for var in E2E_DB_CONTAINER E2E_DB_IMAGE E2E_DB_BACKUP_DIR E2E_DB_BACKUP_REMOTE \
                    E2E_DB_BASE_DAYS E2E_DB_RETENTION_DAYS E2E_DB_DATA_DAYS; do
             # Quote removal inside the unquoted ${VAR:-word} turns %q output back into the value.
             # shellcheck disable=SC2016
@@ -125,7 +136,7 @@ install_cron() {
 }
 
 start() {
-    E2E_DB_CONTAINER="${CONTAINER}" E2E_DB_IMAGE="${IMAGE}" E2E_DB_PORT="${PORT}" E2E_DB_BIND="${BIND}" \
+    E2E_DB_CONTAINER="${CONTAINER}" E2E_DB_IMAGE="${IMAGE}" \
         E2E_DB_BACKUP_DIR="${BACKUP_DIR}" E2E_DB_BACKUP_REMOTE="${BACKUP_REMOTE}" \
         E2E_DB_BASE_DAYS="${BASE_DAYS}" E2E_DB_RETENTION_DAYS="${RETENTION_DAYS}" E2E_DB_DATA_DAYS="${DATA_DAYS}"
     ensure_dirs
@@ -134,9 +145,15 @@ start() {
             > "${ENV_FILE}"
         log "created ${ENV_FILE} (readable by owner only)"
     fi
+    if [[ ! -f "${LOADER_ENV}" ]]; then
+        printf 'E2E_LOADER_PASSWORD=%s\n' "$(openssl rand -hex 24)" > "${LOADER_ENV}"
+        log "created ${LOADER_ENV}; set the E2E_DB_PASSWORD repository secret to this password"
+    fi
+    write_hba
     save_settings
     # A node restoring from the backup needs the same credentials.
     cp -p "${ENV_FILE}" "${BACKUP_DIR}/postgres.env"
+    cp -p "${LOADER_ENV}" "${BACKUP_DIR}/loader.env"
     if ! systemctl is-enabled docker >/dev/null 2>&1; then
         log "WARNING: docker is not enabled at boot; run: sudo systemctl enable docker"
     fi
@@ -150,28 +167,69 @@ start() {
         docker rm "${CONTAINER}" >/dev/null
     fi
     docker run -d --name "${CONTAINER}" --restart always --user "${uid_gid}" --stop-timeout 120 \
-        --env-file "${ENV_FILE}" -p "${BIND}:${PORT}:5432" \
+        --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+        --pids-limit 512 --shm-size 512m \
+        --env-file "${ENV_FILE}" \
         -v "${PGDATA_DIR}:/var/lib/postgresql/data" -v "${BACKUP_DIR}:/backup" \
+        -v "${SOCKET_DIR}:/var/run/postgresql" -v "${HBA_FILE}:/etc/e2e-db/pg_hba.conf:ro" \
         --health-cmd "pg_isready -h 127.0.0.1 -U ${DB_USER}" \
         --health-interval 30s --health-timeout 10s --health-retries 5 \
-        "${IMAGE}" postgres -c wal_level=replica -c archive_mode=on -c "archive_command=${ARCHIVE_CMD}" >/dev/null
+        "${IMAGE}" postgres -c listen_addresses=127.0.0.1 -c hba_file=/etc/e2e-db/pg_hba.conf \
+        -c wal_level=replica -c archive_mode=on -c "archive_command=${ARCHIVE_CMD}" \
+        -c statement_timeout=10min -c idle_in_transaction_session_timeout=10min \
+        -c log_connections=on -c password_encryption=scram-sha-256 >/dev/null
     wait_ready
 
-    docker exec -i "${CONTAINER}" psql -v ON_ERROR_STOP=1 -q -U "${DB_USER}" -d postgres <<'SQL'
+    docker exec -i -e PGHOST=127.0.0.1 "${CONTAINER}" psql -v ON_ERROR_STOP=1 -q -U "${DB_USER}" -d postgres <<'SQL'
 SELECT 'CREATE DATABASE accuracy' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'accuracy')\gexec
 SELECT 'CREATE DATABASE performance' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'performance')\gexec
 SQL
     for db in accuracy performance; do
         cat "${SCRIPT_DIR}/schema/common.sql" "${SCRIPT_DIR}/schema/${db}.sql" |
-            docker exec -i -e PGOPTIONS='-c client_min_messages=warning' "${CONTAINER}" \
+            docker exec -i -e PGHOST=127.0.0.1 -e PGOPTIONS='-c client_min_messages=warning' "${CONTAINER}" \
                 psql -v ON_ERROR_STOP=1 -q -U "${DB_USER}" -d "${db}"
         log "schema applied to database: ${db}"
     done
+    grant_loader
     if [[ "${INSTALL_CRON}" == 1 ]]; then
         install_cron
     fi
     # Every backup chain starts from a base backup.
     backup
+}
+
+# Authentication: the socket (CI job containers) always needs a password; trust only the
+# container-internal loopback, which nothing outside the container can reach (--network none).
+write_hba() {
+    cat > "${HBA_FILE}" <<EOF
+# Managed by db_service.sh; changes are overwritten by start.
+local   all          all                    scram-sha-256
+host    all          ${DB_USER}            127.0.0.1/32   trust
+host    replication  ${DB_USER}            127.0.0.1/32   trust
+EOF
+}
+
+# CI loads results as ${LOADER_USER}: read and upsert only, no DELETE, DDL or other databases.
+grant_loader() {
+    local pw
+    pw="$(sed -n 's/^E2E_LOADER_PASSWORD=//p' "${LOADER_ENV}")"
+    [[ "${pw}" =~ ^[0-9a-f]+$ ]] || die "invalid E2E_LOADER_PASSWORD in ${LOADER_ENV}"
+    docker exec -i -e PGHOST=127.0.0.1 "${CONTAINER}" psql -v ON_ERROR_STOP=1 -q -U "${DB_USER}" -d postgres <<SQL
+SELECT 'CREATE ROLE ${LOADER_USER} LOGIN' WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${LOADER_USER}')\gexec
+ALTER ROLE ${LOADER_USER} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION CONNECTION LIMIT 32 PASSWORD '${pw}';
+REVOKE ALL ON DATABASE postgres FROM PUBLIC;
+SQL
+    for db in accuracy performance; do
+        docker exec -i -e PGHOST=127.0.0.1 "${CONTAINER}" psql -v ON_ERROR_STOP=1 -q -U "${DB_USER}" -d "${db}" <<SQL
+REVOKE ALL ON DATABASE ${db} FROM PUBLIC;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT CONNECT, TEMPORARY ON DATABASE ${db} TO ${LOADER_USER};
+GRANT USAGE ON SCHEMA public TO ${LOADER_USER};
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO ${LOADER_USER};
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${LOADER_USER};
+SQL
+    done
+    log "role ${LOADER_USER} granted SELECT/INSERT/UPDATE on accuracy, performance"
 }
 
 watchdog() {
@@ -199,7 +257,7 @@ complete_bases() {
 purge() {
     local db deleted
     for db in accuracy performance; do
-        deleted="$(docker exec -i "${CONTAINER}" psql -v ON_ERROR_STOP=1 -Atq -U "${DB_USER}" -d "${db}" <<SQL
+        deleted="$(docker exec -i -e PGHOST=127.0.0.1 "${CONTAINER}" psql -v ON_ERROR_STOP=1 -Atq -U "${DB_USER}" -d "${db}" <<SQL
 WITH old AS (
     DELETE FROM ${db} t USING run r
     WHERE t.run_id = r.id AND r.started_at < now() - make_interval(days => ${DATA_DAYS})
@@ -223,7 +281,7 @@ backup() {
     # Close the current WAL segment and wait until it is archived, so the backup (and the
     # offsite copy) contains everything written so far.
     local segment
-    segment="$(docker exec "${CONTAINER}" psql -U "${DB_USER}" -d postgres -Atqc \
+    segment="$(docker exec -e PGHOST=127.0.0.1 "${CONTAINER}" psql -U "${DB_USER}" -d postgres -Atqc \
         'SELECT pg_walfile_name(pg_switch_wal())')"
     for _ in $(seq 1 120); do
         [[ -f "${BACKUP_DIR}/wal/${segment}.gz" ]] && break
@@ -238,7 +296,7 @@ backup() {
         ts="$(date -u +%Y%m%dT%H%M%SZ)"
         started="$(date +%s)"
         tmp="${BACKUP_DIR}/base/.tmp-${ts}"
-        docker exec "${CONTAINER}" pg_basebackup -U "${DB_USER}" -D "/backup/base/.tmp-${ts}" -Ft -z -X stream -c fast
+        docker exec -e PGHOST=127.0.0.1 "${CONTAINER}" pg_basebackup -U "${DB_USER}" -D "/backup/base/.tmp-${ts}" -Ft -z -X stream -c fast
         touch -d "@${started}" "${tmp}/.started"
         mv "${tmp}" "${BACKUP_DIR}/base/${ts}"
         log "base backup ${ts} done"
@@ -287,13 +345,16 @@ restore() {
     if [[ ! -f "${ENV_FILE}" ]]; then
         cp -p "${src}/postgres.env" "${ENV_FILE}"
     fi
+    if [[ ! -f "${LOADER_ENV}" && -f "${src}/loader.env" ]]; then
+        cp -p "${src}/loader.env" "${LOADER_ENV}"
+    fi
     BACKUP_DIR="${src}"
     start
 }
 
 status() {
-    log "container: $(container_state)"
-    docker exec "${CONTAINER}" psql -U "${DB_USER}" -d postgres -Atc \
+    log "container: $(container_state), socket: $([[ -S "${SOCKET_DIR}/.s.PGSQL.5432" ]] && echo present || echo MISSING)"
+    docker exec -e PGHOST=127.0.0.1 "${CONTAINER}" psql -U "${DB_USER}" -d postgres -Atc \
         "SELECT 'archived: ' || coalesce(last_archived_wal, '-') || ' at ' || coalesce(last_archived_time::text, '-')
                 || ', failures: ' || failed_count FROM pg_stat_archiver" 2>/dev/null || true
     log "base backups: $(complete_bases | xargs -r -n1 basename | tr '\n' ' ')"
