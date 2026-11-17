@@ -910,7 +910,7 @@ struct ReduceOp {
   // In/out from slm pointers
   void mark_group_finished(sycl::nd_item<2> pos, sycl_local_ptr<bool> finished)
       const {
-    sycl::atomic_fence(sycl_mem_odr_rel, sycl_mem_scp_dev);    
+    sycl::atomic_fence(sycl_mem_odr_rel, sycl_mem_scp_dev);
     sycl::group_barrier(pos.get_group());
 
     if (pos.get_local_linear_id() == 0) {
