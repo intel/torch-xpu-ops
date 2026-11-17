@@ -2213,6 +2213,7 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
                 *reinterpret_cast<const vec2_t*>(&input_[address_base]);
             const vec2_t grad_output_vec =
                 *reinterpret_cast<const vec2_t*>(&grad_output_[address_base]);
+#pragma unroll
             for (int v = 0; v < VEC_SIZE; v++) {
               x_input[j][v] = static_cast<accscalar_t>(input_vec[v]);
               x_grad_output[j][v] =
