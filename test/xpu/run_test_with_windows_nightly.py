@@ -89,7 +89,7 @@ skip_files_list = [
     "test_type_promotion_xpu.py",
     # "test_unary_ufuncs_xpu.py",
     # f"{PYTORCH_TEST_DIR}/test_view_ops.py",
-    "functorch/test_ops_xpu.py",
+    f"{PYTORCH_TEST_DIR}/functorch/test_ops.py",
 ]
 
 print("Current working directory:", os.getcwd())
