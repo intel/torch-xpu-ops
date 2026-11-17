@@ -115,7 +115,8 @@ template <
     typename func_t,
     typename array_t,
     typename in_calc_t,
-    bool full_tile>
+    bool full_tile,
+    int work_group_size = 0>
 struct VectorizedElementwiseKernel {
   template <bool omit, typename T>
   static auto capture(const T& value) {
@@ -149,7 +150,8 @@ struct VectorizedElementwiseKernel {
   }
 
   void operator()(sycl::nd_item<1> item) const {
-    const uint32_t grpsz = item.get_local_range(0);
+    const uint32_t grpsz =
+        work_group_size ? work_group_size : item.get_local_range(0);
     const uint32_t grpid = item.get_group(0);
     const uint32_t lid = item.get_local_id(0);
     const auto f = restore<func_t>(f_);
@@ -450,26 +452,35 @@ static inline void launch_vectorized_kernel(
   int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
       at::xpu::getDeviceEUCountPerXeCore();
 
-#define VEC_KER(vec_size)                                                     \
-  {                                                                           \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                            \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                        \
-      auto submit = [&](auto full_tile) {                                     \
-        auto ker = VectorizedElementwiseKernel<                               \
-            vec_size,                                                         \
-            func_t,                                                           \
-            array_t,                                                          \
-            in_calc_t,                                                        \
-            decltype(full_tile)::value>(N, f, data, input_calc);              \
-        int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);              \
-        sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker); \
-      };                                                                      \
-      if (N % (wg_sz * vec_size) == 0) {                                      \
-        submit(std::true_type{});                                             \
-      } else {                                                                \
-        submit(std::false_type{});                                            \
-      }                                                                       \
-    }                                                                         \
+#define VEC_KER(vec_size)                                           \
+  {                                                                 \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                  \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {              \
+      auto submit = [&](auto group_size) {                          \
+        auto launch = [&](auto full_tile) {                         \
+          auto ker = VectorizedElementwiseKernel<                   \
+              vec_size,                                             \
+              func_t,                                               \
+              array_t,                                              \
+              in_calc_t,                                            \
+              decltype(full_tile)::value,                           \
+              decltype(group_size)::value>(N, f, data, input_calc); \
+          int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);  \
+          sycl_kernel_submit(                                       \
+              wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);    \
+        };                                                          \
+        if (N % (wg_sz * vec_size) == 0) {                          \
+          launch(std::true_type{});                                 \
+        } else {                                                    \
+          launch(std::false_type{});                                \
+        }                                                           \
+      };                                                            \
+      if (wg_sz == 256) {                                           \
+        submit(std::integral_constant<int, 256>{});                 \
+      } else {                                                      \
+        submit(std::integral_constant<int, 0>{});                   \
+      }                                                             \
+    }                                                               \
   }
 
   switch (vec_size) {
