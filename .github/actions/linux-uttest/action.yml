@@ -230,8 +230,9 @@ runs:
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         ut_name="${{ inputs.ut_name }}"
+        files_list=ww47_cuda_test_files_only.txt
         case "${ut_name}" in
-          upstream_distributed) category="distributed" ;;
+          upstream_distributed) category="distributed"; files_list=ww47_distributed_failed.txt ;;
           upstream_inductor) category="inductor" ;;
           *) category="default" ;;
         esac
@@ -244,7 +245,7 @@ runs:
         # Exit code 1 means test failures, which the check job reports; fail only on setup errors
         rc=0
         python .github/scripts/run_upstream_ut.py "${category}" --ut-name "${ut_name}" \
-          --files-from ww47_cuda_test_files_only.txt \
+          --files-from "${files_list}" \
           --pytorch-dir pytorch \
           --log-dir "${UT_LOG_DIR}" \
           --xml-dir "${UT_JUNIT_DIR}" || rc=$?
