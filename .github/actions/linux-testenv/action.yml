@@ -25,6 +25,21 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Install base packages
+      shell: bash -xe {0}
+      env:
+        GCC_VERSION: '13'
+        # keep the image's driver packages as shipped
+        APT_UPGRADE: '0'
+        INSTALL_BASE: ${{ github.action_path }}/../../../.ci/docker/common/install_base.sh
+      run: |
+        if [ ! -f /.dockerenv ]; then
+          echo "Not in a container, keeping the host packages"
+          exit 0
+        fi
+        SUDO=""
+        [ "$(id -u)" -eq 0 ] || SUDO="sudo -E"
+        ${SUDO} bash "${INSTALL_BASE}"
     - name: Check runner
       shell: bash -xe {0}
       run: |
