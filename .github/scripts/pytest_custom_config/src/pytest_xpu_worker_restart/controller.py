@@ -20,7 +20,6 @@ import os
 import signal
 import threading
 import time
-import types
 
 import pytest
 
@@ -472,4 +471,11 @@ def _drop_rerunfailures_crash_hook(pm):
                 n: getattr(plugin, n) for n in dir(plugin) if n.startswith("pytest_")
             }
             hooks.pop("pytest_handlecrashitem")
-            pm.register(types.SimpleNamespace(**hooks), name)
+            pm.register(_HookProxy(hooks), name)
+
+
+class _HookProxy:
+    """Plugin object exposing the given hooks; hashable, as pytest requires."""
+
+    def __init__(self, hooks):
+        self.__dict__.update(hooks)
