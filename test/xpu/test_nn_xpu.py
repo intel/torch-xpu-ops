@@ -6618,7 +6618,12 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                         torch.manual_seed(0)
                         shape = (4, channels, spatial_size, spatial_size)
                         batch, _, height, width = shape
-                        strides = (channels * height * width, 1, channels * width, channels)
+                        strides = (
+                            channels * height * width,
+                            1,
+                            channels * width,
+                            channels,
+                        )
                         storage_size = batch * channels * height * width + 1
                         input_storage = torch.randn(storage_size, dtype=dtype)
                         grad_storage = torch.randn_like(input_storage)
