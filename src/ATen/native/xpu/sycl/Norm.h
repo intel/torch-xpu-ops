@@ -120,15 +120,18 @@ static inline void norm_group_reduce_row(
     const local_shared_t& local_data1,
     const local_shared_t& local_data2,
     int block_row,
+    int workgroup_size,
     reduce_op bin_op) {
   auto local_row_id = item.get_local_id(1);
   auto local_col_id = item.get_local_id(2);
 
 #pragma unroll(vec_size)
   for (int j = 0; j < vec_size; ++j) {
-    local_data1[local_row_id][local_col_id][j] = input1[j];
+    const size_t local_index =
+       (local_row_id * workgroup_size  + local_col_id) * vec_size + j;
+    local_data1[local_index] = input1[j];
     if constexpr (!rms_norm) {
-      local_data2[local_row_id][local_col_id][j] = input2[j];
+      local_data2[local_index] = input2[j];
     }
   }
   sycl::group_barrier(item.get_group());
@@ -138,13 +141,16 @@ static inline void norm_group_reduce_row(
     if (local_row_id % (k << 1) == 0 && local_row_id + k < block_row) {
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        local_data1[local_row_id][local_col_id][j] = bin_op(
-            local_data1[local_row_id][local_col_id][j],
-            local_data1[local_row_id + k][local_col_id][j]);
+        const size_t local_index =
+            (local_row_id * workgroup_size + local_col_id) * vec_size + j;
+        const size_t local_index_k =
+            ((local_row_id + k) * workgroup_size + local_col_id) * vec_size + j;
+
+        local_data1[local_index] =
+            bin_op(local_data1[local_index], local_data1[local_index_k]);
         if constexpr (!rms_norm) {
-          local_data2[local_row_id][local_col_id][j] = bin_op(
-              local_data2[local_row_id][local_col_id][j],
-              local_data2[local_row_id + k][local_col_id][j]);
+          local_data2[local_index] =
+              bin_op(local_data2[local_index], local_data2[local_index_k]);
         }
       }
     }
@@ -478,12 +484,11 @@ template <
     typename index_t,
     typename accscalar_t,
     int vec_size,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
-void fused_norm_kernel(
+void fused_norm_kernel_impl(
     Norm<scalar_t, mean_t, weight_t, rms_norm> norm,
     NormConfig cfg) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
@@ -521,8 +526,7 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 void launch_vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -535,7 +539,7 @@ void launch_vectorized_fused_norm_kernel(
       (size_t)cfg.workgroup_num_foreach,
       (size_t)cfg.workgroup_size};
   int slm_sz = 2 * cfg.sub_group_num * sizeof(accscalar_t);
-  sycl_kernel_submit<fused_norm_kernel<
+  sycl_kernel_submit<fused_norm_kernel_impl<
       scalar_t,
       mean_t,
       weight_t,
@@ -551,8 +555,7 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 void vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -608,12 +611,11 @@ template <
     typename index_t,
     typename accscalar_t,
     int vec_size,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
-void row_wise_moments_kernel(
+void row_wise_moments_kernel_impl(
     Norm<scalar_t, mean_t, weight_t, rms_norm> norm,
     NormConfig cfg) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
@@ -673,8 +675,7 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 void launch_rowwise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -688,7 +689,7 @@ void launch_rowwise_moments_kernel(
       (size_t)cfg.workgroup_size};
   int slm_sz = 2 * cfg.sub_group_num * sizeof(accscalar_t) + sizeof(bool);
 
-  sycl_kernel_submit<row_wise_moments_kernel<
+  sycl_kernel_submit<row_wise_moments_kernel_impl<
       scalar_t,
       mean_t,
       weight_t,
@@ -704,8 +705,7 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 void rowwise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -759,11 +759,10 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
-void norm_update_kernel_func(
+void norm_update_kernel_impl(
     Norm<scalar_t, mean_t, weight_t, rms_norm> norm,
     NormConfig cfg) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
@@ -778,8 +777,7 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 void launch_norm_update_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -794,7 +792,7 @@ void launch_norm_update_kernel(
       (size_t)cfg.workgroup_num_foreach,
       (size_t)cfg.workgroup_size};
 
-  sycl_kernel_submit<norm_update_kernel_func<
+  sycl_kernel_submit<norm_update_kernel_impl<
       scalar_t,
       mean_t,
       weight_t,
@@ -809,8 +807,7 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool>
-    class Norm,
+    template <typename, typename, typename, bool> class Norm,
     bool rms_norm>
 void norm_update_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
