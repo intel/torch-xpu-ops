@@ -111,7 +111,6 @@ constexpr bool
     is_trivial_offset_calculator_v<TrivialOffsetCalculator<N, index_t>> = true;
 
 namespace launch_config {
-constexpr int compact_work_group_size = 128;
 constexpr int compact_sub_group_size = 32;
 } // namespace launch_config
 
@@ -155,9 +154,7 @@ struct VectorizedElementwiseKernel {
   }
 
   void operator()(sycl::nd_item<1> item) const {
-    const uint32_t grpsz = compact_geometry
-        ? launch_config::compact_work_group_size
-        : item.get_local_range(0);
+    const uint32_t grpsz = item.get_local_range(0);
     const uint32_t grpid = item.get_group(0);
     const uint32_t lid = item.get_local_id(0);
     const auto f = restore<func_t>(f_);
@@ -471,33 +468,30 @@ static inline void launch_vectorized_kernel(
   using traits = function_traits<func_t>;
   int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
       at::xpu::getDeviceEUCountPerXeCore();
-  // This flag controls launch geometry only; payload and tile specialization
+  // The flag only controls subgroup properties. Payload and tile specialization
   // apply to every vectorized caller, including row and nullary helpers.
-  const int64_t vector_wg_sz =
-      compact_unary ? launch_config::compact_work_group_size : wg_sz;
 
-#define VEC_KER(vec_size)                                                    \
-  {                                                                          \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
-      auto submit = [&](auto full_tile) {                                    \
-        auto ker = VectorizedElementwiseKernel<                              \
-            vec_size,                                                        \
-            func_t,                                                          \
-            array_t,                                                         \
-            in_calc_t,                                                       \
-            decltype(full_tile)::value,                                      \
-            compact_unary>(N, f, data, input_calc);                          \
-        int64_t num_wg = ceil_div<int64_t>(N, vector_wg_sz * vec_size);      \
-        sycl_kernel_submit(                                                  \
-            vector_wg_sz* num_wg, vector_wg_sz, getCurrentSYCLQueue(), ker); \
-      };                                                                     \
-      if (N % (vector_wg_sz * vec_size) == 0) {                              \
-        submit(std::true_type{});                                            \
-      } else {                                                               \
-        submit(std::false_type{});                                           \
-      }                                                                      \
-    }                                                                        \
+#define VEC_KER(vec_size)                                                     \
+  {                                                                           \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                            \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {                        \
+      auto submit = [&](auto full_tile) {                                     \
+        auto ker = VectorizedElementwiseKernel<                               \
+            vec_size,                                                         \
+            func_t,                                                           \
+            array_t,                                                          \
+            in_calc_t,                                                        \
+            decltype(full_tile)::value,                                       \
+            compact_unary>(N, f, data, input_calc);                           \
+        int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);              \
+        sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker); \
+      };                                                                      \
+      if (N % (wg_sz * vec_size) == 0) {                                      \
+        submit(std::true_type{});                                             \
+      } else {                                                                \
+        submit(std::false_type{});                                            \
+      }                                                                       \
+    }                                                                         \
   }
 
   switch (vec_size) {
