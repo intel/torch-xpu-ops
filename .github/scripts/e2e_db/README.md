@@ -147,8 +147,8 @@ erDiagram
 
 ## Start the database service
 
-On the database node, the same node that hosts the `xpu-ubuntu-24.04` runner (Docker required,
-user in the `docker` group, Docker enabled at boot):
+On the database node (skx-3725; Docker required, user in the `docker` group, Docker enabled at
+boot), which also runs the dedicated `xpu-e2e-db` ARC scale set that loads results:
 
 ```bash
 cd .github/scripts/e2e_db
@@ -166,7 +166,7 @@ Everything runs on one node in containers; nothing listens on the network.
 | Roles | `e2e` (admin, never used by CI) and `e2e_loader` (CI): `SELECT`/`INSERT`/`UPDATE` on `accuracy` and `performance` only; no `DELETE`, DDL or access to other databases. |
 | Container | Runs as the host user, read-only root filesystem, `--cap-drop ALL`, `no-new-privileges`, PID limit; statement and idle-transaction timeouts. |
 | Files | `$E2E_DB_DIR` is `0700`; `postgres.env` (admin) and `loader.env` (loader) are `0600` and copied into the backup. |
-| CI | The `database` job runs in a container on this node, mounts only the socket directory, decrypts the environment to a temp file it deletes, and never prints connection details or database errors. |
+| CI | The `database` job runs on the `xpu-e2e-db` ARC scale set (`.ci/arc/arc-xpu-e2e-db-values.yaml`): ephemeral pods on this node with only the socket directory mounted read-only, no generic `ubuntu-*` labels. It decrypts the environment to a temp file it deletes and never prints connection details or database errors. |
 
 `start` is idempotent and also used for upgrades:
 
@@ -249,9 +249,8 @@ given backup directory). The new node must also host the `xpu-ubuntu-24.04` runn
 
 1. The `test` job runs `collect_env.py` after the tests. The JSON is encrypted with
    `E2E_DB_PASSWORD` and added to the public result artifact as `e2e-env.json.enc`.
-2. The `database` job runs on the database node (`vars.E2E_DB_RUNNER`, default
-   `xpu-ubuntu-24.04`) in a container that mounts the socket directory (`vars.E2E_DB_SOCKET_DIR`,
-   default `/opt/e2e-db/run`) at `/var/run/e2e-db`. It downloads the artifact, decrypts the
+2. The `database` job runs on the `xpu-e2e-db` ARC scale set (`vars.E2E_DB_RUNNER` overrides
+   it), whose pods mount `/opt/e2e-db/run` read-only at `/var/run/e2e-db`. It downloads the artifact, decrypts the
    environment and runs `load_results.py` as `e2e_loader` through the socket, retrying while the
    watchdog restarts the database. It is non-blocking and skips when the secret is unavailable
    (e.g. pull requests from forks), the socket is not on the node, or the artifact has no
@@ -266,8 +265,16 @@ Repository settings:
 | Name | Kind | Value |
 | --- | --- | --- |
 | `E2E_DB_PASSWORD` | secret | `E2E_LOADER_PASSWORD` from `$E2E_DB_DIR/loader.env` (also encrypts the environment) |
-| `E2E_DB_RUNNER` | variable (optional) | runner label of the database node, if `xpu-ubuntu-24.04` is not unique to it |
-| `E2E_DB_SOCKET_DIR` | variable (optional) | `$E2E_DB_DIR/run` on the node, if not `/opt/e2e-db/run` |
+| `E2E_DB_RUNNER` | variable (optional) | runner label, if not `xpu-e2e-db` |
+
+Install the scale set once on the node (same ARC controller and `github-token` secret as
+`xpu-ubuntu-24.04`):
+
+```bash
+helm upgrade --install xpu-e2e-db -n arc-runners \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set --version 0.15.1 \
+  -f .ci/arc/arc-xpu-e2e-db-values.yaml
+```
 
 The loader never prints connection details or database error text because CI logs are public.
 

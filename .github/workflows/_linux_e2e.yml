@@ -213,17 +213,12 @@ jobs:
     name: Upload results to E2E database
     needs: test
     if: ${{ ! cancelled() && needs.test.outputs.artifact != '' && ! contains(inputs.suite, 'pt2e') }}
-    # Runs on the database node in a container. The database container has no network; this job
-    # reaches it only through its Unix socket, mounted from the host (E2E_DB_DIR/run).
-    runs-on: ${{ vars.E2E_DB_RUNNER || 'xpu-ubuntu-24.04' }}
+    # Runs on the dedicated ARC scale set on the database node (.ci/arc/arc-xpu-e2e-db-values.yaml).
+    # Its pods mount only the PostgreSQL socket directory at /var/run/e2e-db; the database
+    # container has no network.
+    runs-on: ${{ vars.E2E_DB_RUNNER || 'xpu-e2e-db' }}
     timeout-minutes: 30
     continue-on-error: true
-    container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
-      volumes:
-        - ${{ vars.E2E_DB_SOCKET_DIR || '/opt/e2e-db/run' }}:/var/run/e2e-db
-      # The job needs the network for checkout/artifacts; the database itself has none.
-      options: --security-opt no-new-privileges
     defaults:
       run:
         shell: bash -e {0}
