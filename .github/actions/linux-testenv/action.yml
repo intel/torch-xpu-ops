@@ -32,8 +32,8 @@ runs:
         cat /etc/os-release
         gcc -v && g++ -v
         uname -a
-        apt-get update
-        apt-get upgrade -y
+        sudo apt-get update
+        sudo apt-get upgrade -y
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
