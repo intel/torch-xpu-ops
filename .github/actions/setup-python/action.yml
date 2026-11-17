@@ -25,6 +25,9 @@ runs:
       with:
         python-version: ${{ steps.config.outputs.python }}
         activate-environment: true
+    - name: Setup caches
+      shell: bash -xe {0}
+      run: $(command -v python3 || command -v python) ${{ github.action_path }}/../../scripts/ci_cache.py
     - name: Clear venv
       shell: bash -xe {0}
       run: |
