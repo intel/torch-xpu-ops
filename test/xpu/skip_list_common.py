@@ -132,11 +132,6 @@ skip_dict = {
     ),
     "test_distributions_xpu.py": None,
     "test_expanded_weights_xpu.py": None,
-    "test_fake_tensor_xpu.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/2472
-        # aten::_cudnn_rnn/aten::miopen_rnn not supported
-        "test_cudnn_rnn",
-    ),
     "test_fx_experimental_xpu.py": None,
     "test_fx_xpu.py": None,
     "test_linalg_xpu.py": (
@@ -417,6 +412,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
     f"{PYTORCH_TEST_DIR}/test_dynamic_shapes.py": None,
+    f"{PYTORCH_TEST_DIR}/test_fake_tensor.py": None,
     f"{PYTORCH_TEST_DIR}/test_flop_counter.py": None,
     f"{PYTORCH_TEST_DIR}/test_foreach.py": None,
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
