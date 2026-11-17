@@ -147,14 +147,36 @@ class TestUpsampleNearestPacked(TestCase):
         )
 
     @dtypes(torch.float16, torch.bfloat16)
-    def test_packed_channel_boundary(self, device, dtype):
-        # C=18 crosses channel and row boundaries within a vector.
-        shape = (1, 18, 3, 5)
+    @parametrize("channels", [16, 18, 20, 26, 36, 72])
+    @parametrize("scale", [2, 4, 8])
+    @parametrize("spatial_shape", [(3, 5), (1, 1)])
+    def test_packed_channel_boundary(
+        self, device, dtype, channels, scale, spatial_shape
+    ):
+        shape = (2, channels, *spatial_shape)
         x = torch.arange(math.prod(shape), dtype=torch.float32).reshape(shape).to(dtype)
         x_device = x.to(device).contiguous(memory_format=torch.channels_last)
-        actual = torch.ops.aten.upsample_nearest2d(x_device, [6, 10])
-        expected = x.repeat_interleave(2, 2).repeat_interleave(2, 3)
+        output_size = [extent * scale for extent in spatial_shape]
+        actual = torch.ops.aten.upsample_nearest2d(x_device, output_size)
+        expected = x.repeat_interleave(scale, 2).repeat_interleave(scale, 3)
+        self.assertEqual(actual.numel() % 8, 0)
         self.assertEqual(actual.cpu(), expected, atol=0, rtol=0)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("channels", [18, 72])
+    @parametrize("scale", [2, 4, 8])
+    @parametrize("offset", [0, 2, 8])
+    def test_packed_bit_patterns(self, device, dtype, channels, scale, offset):
+        width = (65536 + channels - 1) // channels
+        bits = torch.arange(channels * width, dtype=torch.int32).to(torch.int16)
+        bits = bits.reshape(1, channels, 1, width)
+        storage = torch.empty(bits.numel() + offset, device=device, dtype=dtype)
+        values = storage[offset:].view(1, 1, width, channels).permute(0, 3, 1, 2)
+        values.copy_(bits.view(dtype))
+        actual = torch.ops.aten.upsample_nearest2d(values, [scale, width * scale])
+        actual_bits = actual.contiguous().view(torch.int16).cpu()
+        expected_bits = bits.repeat_interleave(scale, 2).repeat_interleave(scale, 3)
+        self.assertEqual(actual_bits, expected_bits, atol=0, rtol=0)
 
 
 instantiate_device_type_tests(
