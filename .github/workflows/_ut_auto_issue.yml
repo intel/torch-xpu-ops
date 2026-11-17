@@ -43,7 +43,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BEDROCK_MODEL: global.anthropic.claude-opus-5
+  # Default model for every AI task. Override with the AWS_BEDROCK_MODEL secret;
+  # each task can be overridden on its own with AWS_BEDROCK_MODEL_<TASK>.
+  AWS_BEDROCK_MODEL: ${{ secrets.AWS_BEDROCK_MODEL || 'global.anthropic.claude-opus-5-5' }}
   # Cost rows go to a tracker outside this repo so they do not add noise here.
   COST_TRACKING_REPO: torchxpubot/ci-infra
   COST_TRACKING_ISSUE: 1
@@ -102,7 +104,7 @@ jobs:
           allowed_bots: github-merge-queue
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: >-
-            --model ${{ env.BEDROCK_MODEL }} --max-turns 120
+            --model ${{ secrets.AWS_BEDROCK_MODEL_UT_AUTO_ISSUE || env.AWS_BEDROCK_MODEL }} --max-turns 120
             --allowedTools ${{ env.ANALYSIS_ALLOWED_TOOLS }}
           prompt: |
             Use the /ut-issue-authoring skill for nightly run
