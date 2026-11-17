@@ -243,7 +243,9 @@ def _channels_last_with_offset(src, offset):
     if not t.is_contiguous(memory_format=torch.channels_last):
         raise AssertionError("expected a channels-last tensor")
     if t.storage_offset() != offset:
-        raise AssertionError(f"expected storage offset {offset}, got {t.storage_offset()}")
+        raise AssertionError(
+            f"expected storage offset {offset}, got {t.storage_offset()}"
+        )
     return t
 
 
