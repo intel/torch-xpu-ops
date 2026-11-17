@@ -22,6 +22,8 @@ fi
 CONTAINER="${E2E_DB_CONTAINER:-e2e-results-pg}"
 IMAGE="${E2E_DB_IMAGE:-postgres:16}"
 PORT="${E2E_DB_PORT:-5432}"
+# Loaders run on this host; publish on loopback only so the database is not reachable remotely.
+BIND="${E2E_DB_BIND:-127.0.0.1}"
 BACKUP_DIR="${E2E_DB_BACKUP_DIR:-${DB_DIR}/backup}"
 BACKUP_REMOTE="${E2E_DB_BACKUP_REMOTE:-}"
 BASE_DAYS="${E2E_DB_BASE_DAYS:-7}"
@@ -101,7 +103,7 @@ ensure_dirs() {
 
 save_settings() {
     {
-        for var in E2E_DB_CONTAINER E2E_DB_IMAGE E2E_DB_PORT E2E_DB_BACKUP_DIR E2E_DB_BACKUP_REMOTE \
+        for var in E2E_DB_CONTAINER E2E_DB_IMAGE E2E_DB_PORT E2E_DB_BIND E2E_DB_BACKUP_DIR E2E_DB_BACKUP_REMOTE \
                    E2E_DB_BASE_DAYS E2E_DB_RETENTION_DAYS E2E_DB_DATA_DAYS; do
             # Quote removal inside the unquoted ${VAR:-word} turns %q output back into the value.
             # shellcheck disable=SC2016
@@ -123,7 +125,7 @@ install_cron() {
 }
 
 start() {
-    E2E_DB_CONTAINER="${CONTAINER}" E2E_DB_IMAGE="${IMAGE}" E2E_DB_PORT="${PORT}" \
+    E2E_DB_CONTAINER="${CONTAINER}" E2E_DB_IMAGE="${IMAGE}" E2E_DB_PORT="${PORT}" E2E_DB_BIND="${BIND}" \
         E2E_DB_BACKUP_DIR="${BACKUP_DIR}" E2E_DB_BACKUP_REMOTE="${BACKUP_REMOTE}" \
         E2E_DB_BASE_DAYS="${BASE_DAYS}" E2E_DB_RETENTION_DAYS="${RETENTION_DAYS}" E2E_DB_DATA_DAYS="${DATA_DAYS}"
     ensure_dirs
@@ -148,7 +150,7 @@ start() {
         docker rm "${CONTAINER}" >/dev/null
     fi
     docker run -d --name "${CONTAINER}" --restart always --user "${uid_gid}" --stop-timeout 120 \
-        --env-file "${ENV_FILE}" -p "${PORT}:5432" \
+        --env-file "${ENV_FILE}" -p "${BIND}:${PORT}:5432" \
         -v "${PGDATA_DIR}:/var/lib/postgresql/data" -v "${BACKUP_DIR}:/backup" \
         --health-cmd "pg_isready -h 127.0.0.1 -U ${DB_USER}" \
         --health-interval 30s --health-timeout 10s --health-retries 5 \

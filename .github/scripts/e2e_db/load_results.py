@@ -10,7 +10,8 @@ The --meta JSON describes the test environment, e.g.
    "torch": {"name": ..., "version": ..., "commit": ...},
    "python": {"version": ...}}
 Optional keys are the remaining columns of the matching table in schema/common.sql.
-Connection settings come from E2E_DB_HOST, E2E_DB_PORT, E2E_DB_USER and E2E_DB_PASSWORD.
+Connection settings come from E2E_DB_HOST (default 127.0.0.1: the loader runs on the database
+host), E2E_DB_PORT, E2E_DB_USER and E2E_DB_PASSWORD.
 """
 import argparse
 import csv
@@ -137,7 +138,7 @@ def load_db(db, args, meta, rows):
     # Driver errors carry the server address and row values; keep them out of public CI logs.
     try:
         conn = psycopg.connect(
-            host=os.environ["E2E_DB_HOST"],
+            host=os.environ.get("E2E_DB_HOST") or "127.0.0.1",
             port=int(os.environ.get("E2E_DB_PORT") or "5432"),
             user=os.environ.get("E2E_DB_USER") or "e2e",
             password=os.environ["E2E_DB_PASSWORD"],

@@ -171,6 +171,7 @@ Settings are environment variables; `start` saves them to `$E2E_DB_DIR/service.e
 | --- | --- | --- |
 | `E2E_DB_DIR` | `$HOME/e2e-db` | Service directory |
 | `E2E_DB_PORT` | `5432` | Published port |
+| `E2E_DB_BIND` | `127.0.0.1` | Address the port is published on (loopback: loaders run on this host) |
 | `E2E_DB_IMAGE` | `postgres:16` | PostgreSQL image |
 | `E2E_DB_BACKUP_DIR` | `$E2E_DB_DIR/backup` | Local backup directory |
 | `E2E_DB_BACKUP_REMOTE` | (empty) | rsync target for the offsite copy, e.g. `user@node:/path` |
@@ -225,7 +226,7 @@ rsync -a user@backup-node:/path/to/backup/ ~/e2e-db-backup/
 
 `restore` extracts the newest base backup into an empty `$E2E_DB_DIR/pgdata`, replays all archived
 WAL, promotes the server and then runs `start` (cron, archiving and backups continue into the
-given backup directory). Afterwards point the `E2E_DB_HOST` secret at the new node.
+given backup directory). The new node must also host the `xpu-ubuntu-24.04` runner that loads results.
 
 ## Save data
 
@@ -235,27 +236,28 @@ given backup directory). Afterwards point the `E2E_DB_HOST` secret at the new no
 
 1. The `test` job runs `collect_env.py` after the tests. The JSON is encrypted with
    `E2E_DB_PASSWORD` and added to the public result artifact as `e2e-env.json.enc`.
-2. The `database` job on `xpu-ubuntu-24.04` downloads the artifact, decrypts the environment and
-   runs `load_results.py`. It is non-blocking and skips when the secrets are unavailable (e.g.
-   pull requests from forks).
+2. The `database` job on `xpu-ubuntu-24.04`, which runs on the database host, downloads the
+   artifact, decrypts the environment and runs `load_results.py` against `127.0.0.1`, so results
+   never cross the network. It is non-blocking and skips when the secret is unavailable (e.g.
+   pull requests from forks) or the artifact has no environment.
+3. PT2E jobs only run the benchmarks; their results are not stored.
 
 Run type comes from the workflow `test_type`; the run name is the GitHub run id (plus `-target` /
 `-baseline` for acceptance).
 
-Required repository secrets: `E2E_DB_HOST` and `E2E_DB_PASSWORD` (`POSTGRES_PASSWORD` from
-`postgres.env`). The loader never prints connection details or database error text because CI
+Required repository secret: `E2E_DB_PASSWORD` (`POSTGRES_PASSWORD` from `postgres.env`). The loader never prints connection details or database error text because CI
 logs are public.
 
 ### Manually
 
 ```bash
 python collect_env.py --output env.json            # in the test environment
-E2E_DB_HOST=<host> E2E_DB_PASSWORD=<password> \
-python load_results.py --run <name> --run-type nightly \
+E2E_DB_PASSWORD=<password> \
+python load_results.py   # on the database host --run <name> --run-type nightly \
     --meta env.json --input <dir with inductor-*.csv> [--started-at <ISO 8601>] [--run-url <url>]
 ```
 
-Optional: `E2E_DB_PORT` (5432), `E2E_DB_USER` (`e2e`).
+Optional: `E2E_DB_HOST` (127.0.0.1), `E2E_DB_PORT` (5432), `E2E_DB_USER` (`e2e`).
 
 ## Example: latest nightly vs. previous nightly
 

@@ -179,8 +179,9 @@ jobs:
             artifact_name+="-${{ inputs.category }}"
           fi
           echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
+      # PT2E only runs the benchmarks; its results are not stored in the database.
       - name: Collect test environment
-        if: ${{ ! cancelled() }}
+        if: ${{ ! cancelled() && ! contains(inputs.suite, 'pt2e') }}
         continue-on-error: true
         env:
           E2E_DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD }}
@@ -211,19 +212,20 @@ jobs:
   database:
     name: Upload results to E2E database
     needs: test
-    if: ${{ ! cancelled() && needs.test.outputs.artifact != '' }}
+    if: ${{ ! cancelled() && needs.test.outputs.artifact != '' && ! contains(inputs.suite, 'pt2e') }}
+    # Runs on the database host itself, so results are written over loopback, not the network.
     runs-on: xpu-ubuntu-24.04
     timeout-minutes: 30
     continue-on-error: true
     env:
-      E2E_DB_HOST: ${{ secrets.E2E_DB_HOST }}
+      E2E_DB_HOST: 127.0.0.1
       E2E_DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD }}
     steps:
       - name: Check credentials
         id: creds
         run: |
-          if [ -z "${E2E_DB_HOST}" ] || [ -z "${E2E_DB_PASSWORD}" ];then
-            echo "E2E_DB_HOST or E2E_DB_PASSWORD is not available, skip"
+          if [ -z "${E2E_DB_PASSWORD}" ];then
+            echo "E2E_DB_PASSWORD is not available, skip"
             echo "skip=true" >> "${GITHUB_OUTPUT}"
           fi
       - name: Checkout torch-xpu-ops
@@ -254,6 +256,10 @@ jobs:
           run_name="${GITHUB_RUN_ID}"
           if [[ -n "${{ inputs.category }}" ]]; then
             run_name+="-${{ inputs.category }}"
+          fi
+          if [ ! -f e2e_data/e2e-env.json.enc ];then
+            echo "No test environment in the artifact (collection failed or skipped), skip"
+            exit 0
           fi
           uv pip install 'psycopg[binary]'
           openssl enc -d -aes-256-cbc -pbkdf2 -pass env:E2E_DB_PASSWORD \
