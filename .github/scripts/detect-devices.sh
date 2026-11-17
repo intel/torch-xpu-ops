@@ -168,9 +168,12 @@ recover_as_root() {
   local nodes=()
   local node
   local pids
+  local pid_list=()
   local i
 
-  [[ "${bdf}" =~ ${BDF_RE} ]] && [ -e "${dev}" ] || recover_result refused "no PCI device ${bdf}"
+  if ! [[ "${bdf}" =~ ${BDF_RE} ]] || [ ! -e "${dev}" ]; then
+    recover_result refused "no PCI device ${bdf}"
+  fi
   if [ "$(cat "${dev}/vendor")" != 0x8086 ] || [[ "$(cat "${dev}/class")" != 0x03* ]]; then
     recover_result refused "${bdf} is not an Intel GPU"
   fi
@@ -198,7 +201,8 @@ recover_as_root() {
     pids="$(card_holders "${nodes[@]}")"
     if [ -n "${pids}" ]; then
       log "[Recover] ${bdf}: killing holders $(tr '\n' ' ' <<< "${pids}")"
-      kill -9 ${pids} 2>/dev/null || true
+      mapfile -t pid_list <<< "${pids}"
+      kill -9 "${pid_list[@]}" 2>/dev/null || true
     fi
     for ((i = 0; i < 30; i++)); do
       [ -z "$(card_holders "${nodes[@]}")" ] && break

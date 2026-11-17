@@ -150,7 +150,7 @@ def _on_timeout(item, settings):
     report = pytest.TestReport(
         nodeid=item.nodeid,
         location=item.location,
-        keywords={k: 1 for k in item.keywords},
+        keywords=dict.fromkeys(item.keywords, 1),
         outcome="failed",
         longrepr=f"Failed: Timeout >{settings.timeout}s\n{verdict}\n\n{stacks}",
         when="call",
