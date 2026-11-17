@@ -52,8 +52,9 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
+      # --privileged: writable /sys, so detect-devices.sh --recover can rebind a broken GPU
       options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops
