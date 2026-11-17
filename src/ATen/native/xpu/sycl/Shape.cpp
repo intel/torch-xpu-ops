@@ -1127,10 +1127,12 @@ CatVector cat_pick_vector(const CatLayout& layout) {
 }
 
 // Up to 4 inputs: metadata in registers when every vector is one unit (one
-// lookup each) or the output is small. Else 0 (SLM).
+// lookup each) or the output is small and stored in 16-byte vectors. Else 0
+// (SLM).
 int cat_reg_inputs(const CatLayout& layout, const CatVector& vec) {
   const bool use_reg = layout.nin <= 4 &&
-      (vec.units == 1 ? layout.u >= 8 : layout.total_bytes < kCatSmallBytes);
+      (vec.units == 1 ? layout.u >= 8
+                      : vec.bytes == 16 && layout.total_bytes < kCatSmallBytes);
   return !use_reg ? 0 : (vec.units == 1 && layout.nin <= 2) ? 2 : 4;
 }
 
@@ -1197,15 +1199,14 @@ void launch_cat(
     }
   }
   // Rows wrap only for units below 8 bytes, and V > 1 with 8-byte units
-  // means more than 4 inputs, which use SLM.
+  // means more than 4 inputs, which use SLM. 8-byte vectors of smaller
+  // units always use SLM.
   if constexpr (V > 1 && U < 8 && U * V == 16) {
     if (vec.wrap) {
       return reg_inputs
           ? launch_cat_gather<U, V, true, 4>(out, layout, vec, 0)
           : launch_cat_gather<U, V, true, 0>(out, layout, vec, table_size);
     }
-  }
-  if constexpr (V > 1 && U < 8) {
     if (reg_inputs) {
       return launch_cat_gather<U, V, false, 4>(out, layout, vec, 0);
     }
@@ -1214,7 +1215,8 @@ void launch_cat(
 }
 
 // Launches CatGatherFunctor for the layout's unit and the vector width.
-// False if no kernel is instantiated for them.
+// False if no kernel is instantiated for them: 1-byte units and unvectorized
+// 2- or 4-byte units are rare and use the fallback.
 bool cat_dispatch_gather(
     const Tensor& out,
     const CatLayout& layout,
@@ -1227,13 +1229,8 @@ bool cat_dispatch_gather(
     launch_cat<U, V>(out, layout, vec, reg_inputs, table_size); \
     return true;
   switch (layout.u * 32 + vec.units) {
-    CAT_CASE(1, 1)
-    CAT_CASE(1, 8)
-    CAT_CASE(1, 16)
-    CAT_CASE(2, 1)
     CAT_CASE(2, 4)
     CAT_CASE(2, 8)
-    CAT_CASE(4, 1)
     CAT_CASE(4, 2)
     CAT_CASE(4, 4)
     CAT_CASE(8, 1)
