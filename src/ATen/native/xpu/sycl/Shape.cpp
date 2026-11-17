@@ -1006,9 +1006,10 @@ bool cat_collect_inputs(
   return layout.nin > 0;
 }
 
-// Walks the output dims innermost first and merges neighbours that are not
-// the cat dim and are contiguous with each other in every input. False if
-// more than kCatMaxDims dims remain.
+// Walks the output dims innermost first and merges neighbours that are
+// contiguous with each other in every input. The cat dim may absorb the dims
+// inside it (its offsets scale by their size) but not those outside it. False
+// if more than kCatMaxDims dims remain.
 bool cat_merge_dims(const Tensor& out, int64_t dim, CatLayout& layout) {
   const auto& in = layout.in;
   auto& size = layout.size;
@@ -1020,17 +1021,24 @@ bool cat_merge_dims(const Tensor& out, int64_t dim, CatLayout& layout) {
     return out.stride(a) < out.stride(b);
   });
   int64_t prev = -1;
+  int64_t cat_inner = 1;
   for (const int64_t d : order) {
     const int64_t n = out.size(d);
     if (n == 1) {
       continue;
     }
-    bool merge = nd > 0 && d != dim && prev != dim;
+    bool merge = nd > 0 && prev != dim;
     for (int k = 0; k < layout.nin && merge; ++k) {
-      merge = in[k]->stride(d) == stride[k][nd - 1] * size[nd - 1];
+      // An input of size 1 along the cat dim may have any stride there.
+      merge = (d == dim && in[k]->size(d) == 1) ||
+          in[k]->stride(d) == stride[k][nd - 1] * size[nd - 1];
     }
     prev = d;
     if (merge) {
+      if (d == dim) {
+        layout.cat_dim = nd - 1;
+        cat_inner = size[nd - 1];
+      }
       size[nd - 1] *= n;
       continue;
     }
@@ -1048,7 +1056,7 @@ bool cat_merge_dims(const Tensor& out, int64_t dim, CatLayout& layout) {
     return false;
   }
   for (int k = 0; k < layout.nin; ++k) {
-    layout.begin[k + 1] = layout.begin[k] + in[k]->size(dim);
+    layout.begin[k + 1] = layout.begin[k] + in[k]->size(dim) * cat_inner;
   }
   return true;
 }
