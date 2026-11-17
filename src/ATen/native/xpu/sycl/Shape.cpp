@@ -1240,12 +1240,6 @@ bool cat_try_interleave(const Tensor& out, const CatLayout& layout) {
     return false;
   }
   switch (u * 8 + nin) {
-    case 1 * 8 + 2:
-      launch_cat_interleave<1, 8, 2>(out, layout);
-      return true;
-    case 1 * 8 + 4:
-      launch_cat_interleave<1, 4, 4>(out, layout);
-      return true;
     case 2 * 8 + 2:
       launch_cat_interleave<2, 4, 2>(out, layout);
       return true;
