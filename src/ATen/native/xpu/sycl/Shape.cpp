@@ -719,9 +719,6 @@ namespace {
 
 constexpr int kCatMaxDims = 6;
 constexpr int kCatMaxInputs = 32;
-// Largest cat-dim size of the SLM cat-coordinate -> input table; larger cat
-// dims search the inputs' offsets.
-constexpr int kCatMaxTable = 4096;
 constexpr int kCatGroupSize = 256;
 // Output vectors per work-item of the SLM kernel (amortizes its setup).
 constexpr int kCatChunk = 2;
@@ -785,8 +782,8 @@ inline void cat_next_row(const CatParams<N>& p, uint32_t e, uint32_t* c) {
 // partial-line writes for narrow slices, e.g. channels-last cat along C).
 // kRegInputs > 0: up to kRegInputs inputs, whose metadata is selected from
 // the kernel parameters by a branch-free blend (a dynamic index would move
-// them to private memory). kRegInputs == 0: up to kCatMaxInputs inputs; the
-// metadata and a cat-coordinate -> input table are staged in SLM.
+// them to private memory). kRegInputs == 0: up to kCatMaxInputs inputs, whose
+// metadata is staged in SLM.
 // kWrap: a vector may run past the end of an output row.
 template <int U, int V, bool kWrap, int kRegInputs>
 struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
@@ -834,15 +831,13 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   // Input holding cat coordinate x.
-  int find(const CatInputMeta* slm, const uint8_t* table, int32_t x) const {
+  int find(const CatInputMeta* slm, int32_t x) const {
     int k = 0;
     if constexpr (kReg) {
 #pragma unroll
       for (int j = 1; j < N; ++j) {
         k += (j < p_.ninputs && x >= p_.in[j].begin) ? 1 : 0;
       }
-    } else if (table_size_ > 0) {
-      k = table[x];
     } else {
       for (int j = 1; j < p_.ninputs; ++j) {
         k += x >= slm[j].begin ? 1 : 0;
@@ -851,17 +846,15 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     return k;
   }
 
-  // slm and table are only read on the SLM path; the register path (kReg)
-  // passes nullptr.
-  VecT gather(const CatInputMeta* slm, const uint8_t* table, uint32_t vid)
-      const {
+  // slm is only read on the SLM path; the register path (kReg) passes nullptr.
+  VecT gather(const CatInputMeta* slm, uint32_t vid) const {
     const int32_t n0 = p_.size[0].divisor;
     uint32_t c[kCatMaxDims];
     int32_t x = cat_decompose(p_, vid * V, c);
     VecT v;
     if (p_.cat_dim == 0) {
       // Several inputs per row: switch input when x leaves the current one.
-      int k = find(slm, table, x);
+      int k = find(slm, x);
       CatInputMeta m = meta(slm, k);
       const T* base = row_base(m, c);
       if (m.vec_ok && x + V <= m.end && ((x - m.begin) & (V - 1)) == 0) {
@@ -892,7 +885,7 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       for (int d = 1; d < kCatMaxDims; ++d) {
         cc = d == p_.cat_dim ? c[d] : cc;
       }
-      m = meta(slm, find(slm, table, cc));
+      m = meta(slm, find(slm, cc));
       return row_base(m, c);
     };
     CatInputMeta m;
@@ -918,26 +911,17 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if constexpr (kReg) {
       const uint32_t vid = item.get_global_linear_id();
       if (vid < p_.nvec) {
-        out[vid] = gather(nullptr, nullptr, vid);
+        out[vid] = gather(nullptr, vid);
       }
     } else {
       const int lid = item.get_local_linear_id();
       const int lsize = item.get_local_range(0);
       CatInputMeta* meta =
           slm_meta_.template get_multi_ptr<sycl::access::decorated::no>().get();
-      uint8_t* table =
-          slm_table_.template get_multi_ptr<sycl::access::decorated::no>()
-              .get();
 #pragma unroll
       for (int k = 0; k < N; ++k) {
         if (lid == 0 && k < p_.ninputs) {
           meta[k] = p_.in[k];
-        }
-      }
-      sycl::group_barrier(item.get_group());
-      for (int k = 0; k < (table_size_ > 0 ? p_.ninputs : 0); ++k) {
-        for (int32_t x = meta[k].begin + lid; x < meta[k].end; x += lsize) {
-          table[x] = static_cast<uint8_t>(k);
         }
       }
       sycl::group_barrier(item.get_group());
@@ -947,7 +931,7 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           static_cast<uint32_t>(item.get_group_linear_id()) * span;
       const uint32_t last = p_.nvec - first < span ? p_.nvec : first + span;
       for (uint32_t vid = first + lid; vid < last; vid += lsize) {
-        out[vid] = gather(meta, table, vid);
+        out[vid] = gather(meta, vid);
       }
     }
   }
@@ -955,20 +939,16 @@ struct CatGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void sycl_ker_config_convention(sycl::handler& cgh) {
     if constexpr (!kReg) {
       slm_meta_ = sycl::local_accessor<CatInputMeta, 1>(N, cgh);
-      slm_table_ = sycl::local_accessor<uint8_t, 1>(
-          std::max<int64_t>(table_size_, 1), cgh);
     }
   }
 
-  CatGatherFunctor(void* out, const CatParams<N>& p, int64_t table_size)
-      : out_(static_cast<T*>(out)), p_(p), table_size_(table_size) {}
+  CatGatherFunctor(void* out, const CatParams<N>& p)
+      : out_(static_cast<T*>(out)), p_(p) {}
 
  private:
   T* out_;
   CatParams<N> p_;
-  int64_t table_size_;
   sycl::local_accessor<CatInputMeta, 1> slm_meta_;
-  sycl::local_accessor<uint8_t, 1> slm_table_;
 };
 
 inline int64_t cat_addr(const Tensor& t) {
@@ -1166,15 +1146,14 @@ template <int U, int V, bool kWrap, int kRegInputs>
 void launch_cat_gather(
     const Tensor& out,
     const CatLayout& layout,
-    const CatVector& vec,
-    int64_t table_size) {
+    const CatVector& vec) {
   using Kernel = CatGatherFunctor<U, V, kWrap, kRegInputs>;
   // Zeroed: the register blend in meta() reads all N entries.
   CatParams<Kernel::N> p{};
   cat_fill_params(p, layout, vec);
   const int64_t per_group = kCatGroupSize * (kRegInputs ? 1 : kCatChunk);
   const int64_t groups = ceil_div<int64_t>(p.nvec, per_group);
-  Kernel kfn(out.mutable_data_ptr(), p, table_size);
+  Kernel kfn(out.mutable_data_ptr(), p);
   sycl_kernel_submit(
       sycl::range<1>(groups * kCatGroupSize),
       sycl::range<1>(kCatGroupSize),
@@ -1189,13 +1168,12 @@ void launch_cat(
     const Tensor& out,
     const CatLayout& layout,
     const CatVector& vec,
-    int reg_inputs,
-    int64_t table_size) {
+    int reg_inputs) {
   if constexpr (V == 1 && U >= 8) {
     if (reg_inputs) {
       return reg_inputs == 2
-          ? launch_cat_gather<U, V, false, 2>(out, layout, vec, 0)
-          : launch_cat_gather<U, V, false, 4>(out, layout, vec, 0);
+          ? launch_cat_gather<U, V, false, 2>(out, layout, vec)
+          : launch_cat_gather<U, V, false, 4>(out, layout, vec);
     }
   }
   // Rows wrap only for units below 8 bytes, and V > 1 with 8-byte units
@@ -1203,15 +1181,14 @@ void launch_cat(
   // units always use SLM.
   if constexpr (V > 1 && U < 8 && U * V == 16) {
     if (vec.wrap) {
-      return reg_inputs
-          ? launch_cat_gather<U, V, true, 4>(out, layout, vec, 0)
-          : launch_cat_gather<U, V, true, 0>(out, layout, vec, table_size);
+      return reg_inputs ? launch_cat_gather<U, V, true, 4>(out, layout, vec)
+                        : launch_cat_gather<U, V, true, 0>(out, layout, vec);
     }
     if (reg_inputs) {
-      return launch_cat_gather<U, V, false, 4>(out, layout, vec, 0);
+      return launch_cat_gather<U, V, false, 4>(out, layout, vec);
     }
   }
-  launch_cat_gather<U, V, false, 0>(out, layout, vec, table_size);
+  launch_cat_gather<U, V, false, 0>(out, layout, vec);
 }
 
 // Launches CatGatherFunctor for the layout's unit and the vector width.
@@ -1222,11 +1199,9 @@ bool cat_dispatch_gather(
     const CatLayout& layout,
     const CatVector& vec) {
   const int reg_inputs = cat_reg_inputs(layout, vec);
-  const int64_t cat_size = layout.size[layout.cat_dim];
-  const int64_t table_size = cat_size <= kCatMaxTable ? cat_size : 0;
-#define CAT_CASE(U, V)                                          \
-  case U * 32 + V:                                              \
-    launch_cat<U, V>(out, layout, vec, reg_inputs, table_size); \
+#define CAT_CASE(U, V)                              \
+  case U * 32 + V:                                  \
+    launch_cat<U, V>(out, layout, vec, reg_inputs); \
     return true;
   switch (layout.u * 32 + vec.units) {
     CAT_CASE(2, 4)
