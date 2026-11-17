@@ -9,9 +9,10 @@ SYS  New machine acceptance (Linux only): Intel GPU on PCI, OS version and kerne
      compute runtime packages, tools, GPU visible to clinfo/xpu-smi, / > 800 GB
      plus disk bandwidth, user jenkins with UID 1001.
 NET  Download speed of pytorch/pytorch git, intel/omix docker layer, torch XPU
-     wheel, Hugging Face model and torch weights, all forced through the proxy
-     (https_proxy must be set; no_proxy is ignored). Each download is capped at
-     NET_LIMIT_MIB and NET_DEADLINE seconds, so a stalled link cannot hang it.
+     wheel, Hugging Face model and torch weights, using the current *_proxy env
+     (nodes may be internal behind a proxy or external without one). Each
+     download is capped at NET_LIMIT_MIB and NET_DEADLINE seconds, so a stalled
+     link cannot hang it.
 BW   H2D/D2H copy bandwidth per device, pageable and pinned (reference only).
      Uses --python (default: the current Python) if its torch sees XPU (probe
      only, never modified). With --install-torch, falls back to a temporary uv
@@ -32,7 +33,6 @@ import sys
 import tempfile
 import time
 import urllib.request
-from contextlib import contextmanager
 from pathlib import Path
 
 MIN_DISK_GB = 800
@@ -114,7 +114,7 @@ def run(cmd, timeout=600, env=None):
 
 def detect_gpus():
     """Return [(bdf, family, driver, desc)] of Intel display-class PCI devices."""
-    _, out = run(["lspci", "-nnk", "-d", "8086:"])
+    _, out = run(["lspci", "-Dnnk", "-d", "8086:"])
     gpus = []
     for block in re.split(r"\n(?=\S)", out):
         head = block.splitlines()[0] if block else ""
@@ -145,15 +145,25 @@ def installed_packages(pkgs):
 
 
 def clinfo_gpus():
-    """Devices on Intel OpenCL GPU platforms; CPU OpenCL runtimes are not counted."""
-    _, out = run(["clinfo", "-l"])
-    n, gpu_platform = 0, False
+    """PCI BDFs of devices on Intel OpenCL GPU platforms (PVC tiles share one BDF)."""
+    _, out = run(["clinfo"], timeout=120)
+    bdfs, gpu_platform = set(), False
     for ln in out.splitlines():
-        if ln.startswith("Platform #"):
-            gpu_platform = "Intel" in ln and "Graphics" in ln
-        elif gpu_platform and re.search(r"Device #\d+:", ln):
-            n += 1
-    return n
+        if m := re.match(r"\s*Platform Name\s+(.*)", ln):
+            gpu_platform = "Intel" in m[1] and "Graphics" in m[1]
+        elif gpu_platform and (m := re.search(r"PCI bus info \(KHR\)\s+PCI-E,\s*(\S+)", ln)):
+            bdfs.add(m[1].lower())
+    return bdfs
+
+
+def xpu_smi_gpus():
+    """PCI BDFs listed by xpu-smi discovery."""
+    rc, out = run(["xpu-smi", "discovery", "-j"])
+    try:
+        devices = json.loads(out).get("device_list", []) if rc == 0 else []
+    except ValueError:
+        devices = []
+    return {d["pci_bdf_address"].lower() for d in devices if d.get("pci_bdf_address")}
 
 
 def disk_bw(path, mib=2048):
@@ -211,16 +221,18 @@ def check_sys():
     bad = ["|".join(alts) for alts in PACKAGES if not have.intersection(alts)]
     check("Packages", not bad, f"missing {bad}" if bad else "compute runtime installed")
 
-    n_cl = clinfo_gpus()
-    rc, out = run(["xpu-smi", "discovery", "-j"])
-    try:
-        n_smi = len(json.loads(out).get("device_list", [])) if rc == 0 else 0
-    except ValueError:
-        n_smi = 0
-    detail = f"clinfo {n_cl}, xpu-smi {n_smi}, lspci {len(gpus)}"
-    check("Visible", n_cl > 0 and n_smi > 0, detail)
-    if n_cl and n_smi and len({n_cl, n_smi, len(gpus)}) > 1:
-        note("WARN", "Visible", f"device count mismatch: {detail}")
+    pci = {g[0].lower() for g in gpus}
+    seen = {"clinfo": clinfo_gpus(), "xpu-smi": xpu_smi_gpus()}
+    detail = ", ".join(f"{k} {len(v)}" for k, v in seen.items()) + f", lspci {len(pci)}"
+    # Level Zero enumerates GPUs in PCI BDF order, so a card's index is its ZE_AFFINITY_MASK id.
+    ze_id = {bdf: i for i, bdf in enumerate(sorted(pci))}
+    gaps = []
+    for tool, bdfs in seen.items():
+        if missing := sorted(pci - bdfs):
+            gaps.append(f"{tool} missing " + " ".join(f"{b} (ZE_AFFINITY_MASK={ze_id[b]})" for b in missing))
+        if extra := sorted(bdfs - pci):
+            gaps.append(f"{tool} extra {' '.join(extra)}")
+    check("Visible", not gaps and all(seen.values()), detail + "".join(f"; {g}" for g in gaps))
 
     total_gb = shutil.disk_usage("/").total / 1e9
     check("Disk /", total_gb > MIN_DISK_GB, f"{total_gb:.0f} GB (want > {MIN_DISK_GB} GB)")
@@ -327,36 +339,19 @@ NET_TARGETS = (
 )
 
 
-@contextmanager
-def proxy_only():
-    """Drop no_proxy for the block so every target (git subprocess too) uses the proxy."""
-    saved = {k: os.environ.pop(k) for k in ("no_proxy", "NO_PROXY") if k in os.environ}
-    try:
-        yield
-    finally:
-        os.environ.update(saved)
-
-
-def proxy_url():
-    return next((os.environ[k] for k in ("https_proxy", "HTTPS_PROXY") if os.environ.get(k)), "")
-
-
 def check_net():
-    proxy = proxy_url()
-    check("Proxy", bool(proxy), proxy or "https_proxy not set; downloads would go direct")
-    with proxy_only():
-        for name, fn in NET_TARGETS:
-            try:
-                size, secs = fn()
-            except Exception as e:
-                check(name, False, f"{type(e).__name__}: {line(e)}")
-                continue
-            mb = size / 1e6
-            detail = f"{mb:8.1f} MB in {secs:6.1f} s = {mb / secs:8.1f} MB/s"
-            if size:
-                speed(name, detail, mb / secs, NET_WARN_MBPS, "MB/s")
-            else:
-                check(name, False, detail)
+    for name, fn in NET_TARGETS:
+        try:
+            size, secs = fn()
+        except Exception as e:
+            check(name, False, f"{type(e).__name__}: {line(e)}")
+            continue
+        mb = size / 1e6
+        detail = f"{mb:8.1f} MB in {secs:6.1f} s = {mb / secs:8.1f} MB/s"
+        if size:
+            speed(name, detail, mb / secs, NET_WARN_MBPS, "MB/s")
+        else:
+            check(name, False, detail)
 
 
 def bench_bw(k, pinned, mib=256, iters=20):
