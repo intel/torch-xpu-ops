@@ -32,6 +32,7 @@ KNOWN_ISSUE_IDS = "known_issue_ids.json"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 DEFAULTS_FILE = SCRIPT_DIR.parent / "ci-config" / "defaults.yaml"
+UTTEST_ACTION = SCRIPT_DIR.parent / "actions" / "linux-uttest" / "action.yml"
 
 
 def load_defaults(path: Path) -> dict:
@@ -89,14 +90,18 @@ MAIN_CATEGORIES = (
     "op_extended",
     "op_ut",
     "test_xpu",
+    "test_cpp_extensions_aot_xpu",
     "upstream_default",
     "upstream_inductor",
     "upstream_distributed",
     "xpu_distributed",
 )
 
-# A UT job name maps to the categories its reports carry.
-JOB_CATEGORIES = {"basic": ("op_regression", "op_extended", "op_regression_dev1")}
+# A UT job name maps to the categories its reports carry, per platform.
+JOB_CATEGORIES = {
+    "linux": {"basic": ("op_regression", "op_extended", "op_regression_dev1")},
+    "windows": {"basic": ("op_extended", "test_xpu", "test_cpp_extensions_aot_xpu")},
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -132,6 +137,14 @@ def expected_cases(category: str, platform: str) -> int | None:
     return EXPECTED_CASES.get(category)
 
 
+def expected_profiling_reports() -> set[str]:
+    """The junit reports the xpu_profiling step of linux-uttest writes."""
+    if not UTTEST_ACTION.is_file():
+        return set()
+    return set(re.findall(r"--junitxml=\S*/(xpu_profiling_\w+\.xml)",
+                          UTTEST_ACTION.read_text(encoding="utf-8")))
+
+
 def resolve_platform() -> str:
     raw = os.environ.get("TEST_PLATFORM", "linux")
     platform = raw.lower()
@@ -153,9 +166,9 @@ def issue_platform(platform: str, runner: str) -> str:
     return "Linux"
 
 
-def categories_of(ut_job: str) -> tuple[str, ...]:
-    if ut_job in JOB_CATEGORIES:
-        return JOB_CATEGORIES[ut_job]
+def categories_of(ut_job: str, platform: str = "linux") -> tuple[str, ...]:
+    if ut_job in JOB_CATEGORIES[platform]:
+        return JOB_CATEGORIES[platform][ut_job]
     return tuple(part for part in ut_job.split(",") if part)
 
 
@@ -227,7 +240,8 @@ FAILURE_HEADER = ["Category", "Class name", "Test name", "Status", "Message", "S
 
 
 def determine_category(ut: str, ut_job: str = "") -> str:
-    exact = {"op_regression", "op_regression_dev1", "op_extended", "test_xpu"}
+    exact = {"op_regression", "op_regression_dev1", "op_extended", "test_xpu",
+             "test_cpp_extensions_aot_xpu"}
     if ut in exact:
         return ut
     for marker in ("op_ut", "xpu_distributed", "upstream_distributed",
@@ -858,7 +872,15 @@ class Checker:
         print("\n📈 Final Summary:")
         print(f"   Reports: {report_count}, Tests: {total_tests}, "
               f"Failed: {total_failures}, Errors: {total_errors}")
-        ok = total_failures == 0 and total_errors == 0 and total_tests > 0
+        print(f"   New failures: {len(new)}, Known failures: {len(failed) - len(new)}")
+        unexplained = (total_failures + total_errors) - len(failed)
+        if unexplained > 0:
+            print(f"   ❌ {unexplained} failure(s)/error(s) in reports not matched to a case")
+        # A test file that crashed or timed out writes no report.
+        missing = sorted(expected_profiling_reports() - {p.name for p in reports})
+        if missing:
+            print(f"   ❌ Missing reports: {', '.join(missing)}")
+        ok = total_tests > 0 and not new and unexplained <= 0 and not missing
         print(f"{'✅ TEST PASSED' if ok else '❌ TEST FAILED'}: xpu_profiling")
         return CheckResult(category="xpu_profiling", passed=ok, total=total_tests,
                            new_failures=new, new_passes=new_passes, failures=failed)
@@ -1133,7 +1155,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
         known_lines: list[tuple[str, str]] = []
         pass_lines: list[tuple[str, str]] = []
         links: dict[tuple[str, str], str] = {}
-        for category in categories_of(meta.ut_job):
+        for category in categories_of(meta.ut_job, platform):
             known.write_for(category, meta, job_dir / "Known_issue.log")
             result = checker.run(category)
             failed = failed or not result.passed
@@ -1168,7 +1190,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
         (out_job / "verdict.json").write_text(json.dumps(verdict, indent=2),
                                               encoding="utf-8")
         case_logs = [job_dir / f"{kind}_{category}.log" for category in
-                     categories_of(ut_job) for kind in CASE_LOG_KINDS]
+                     categories_of(ut_job, platform) for kind in CASE_LOG_KINDS]
         for path in [*case_logs, job_dir / "ut_failure_list.csv"]:
             if path.is_file():
                 shutil.copy2(path, out_job / "cases" / path.name)
