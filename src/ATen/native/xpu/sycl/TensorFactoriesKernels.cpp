@@ -141,7 +141,7 @@ void triu_indices_kernel_template(
 
 template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void tril_indices_kernel(
+void tril_indices_sub_kernel(
     scalar_t* data,
     int64_t row_offset,
     int64_t m_first_row,
@@ -177,7 +177,7 @@ void tril_indices_kernel_template(
     int64_t col,
     int64_t trapezoid_size,
     int64_t tril_size) {
-  constexpr auto kptr = tril_indices_kernel<scalar_t>;
+  constexpr auto kptr = tril_indices_sub_kernel<scalar_t>;
   int64_t group_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
   auto totalElements = tril_size;
   auto num_groups = at::ceil_div(totalElements, group_size);
