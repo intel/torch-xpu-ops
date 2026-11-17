@@ -196,9 +196,9 @@ the UT report shows it:
 
 | Machine | Card | Event | UT job | Detail |
 |---|---|---|---|---|
-| BMG-IDC136 | 0000:19:00.0 | unhealthy | upstream_distributed | on PCI but not enumerated by the compute runtime |
-| BMG-IDC136 | 0000:19:00.0 | reboot-required | upstream_distributed | kernel oopsed (taint D): unbinding 0000:19:00.0 would hang, reboot the node |
-| BMG-IDC136 | 0000:19:00.0 | excluded | upstream_distributed | not usable before the tests started |
+| runner-01 | 0000:19:00.0 | unhealthy | upstream_distributed | on PCI but not enumerated by the compute runtime |
+| runner-01 | 0000:19:00.0 | reboot-required | upstream_distributed | kernel oopsed (taint D): unbinding 0000:19:00.0 would hang, reboot the node |
+| runner-01 | 0000:19:00.0 | excluded | upstream_distributed | not usable before the tests started |
 
 Events: `unhealthy`, `recovered`, `excluded`, `reboot-required`, `no-privilege`,
 `failed`.
