@@ -6566,17 +6566,13 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 )
                 weight = weight_base[::2] if strided_stats else weight_base
                 mean = mean_base[::2] if strided_stats else mean_base
-                invstd = (
-                    invstd_base[::2] if strided_stats else invstd_base
-                ) + 0.5
+                invstd = (invstd_base[::2] if strided_stats else invstd_base) + 0.5
 
                 def to_xpu(value):
                     # Preserve the stride: copying a sliced CPU tensor to XPU
                     # can materialize it as a contiguous tensor.
                     if strided_stats:
-                        base = torch.empty(
-                            size[1] * 2, dtype=value.dtype, device="xpu"
-                        )
+                        base = torch.empty(size[1] * 2, dtype=value.dtype, device="xpu")
                         base[::2].copy_(value)
                         return base[::2]
                     return value.to("xpu")
