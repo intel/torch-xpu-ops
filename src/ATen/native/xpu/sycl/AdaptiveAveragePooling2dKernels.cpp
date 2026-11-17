@@ -194,11 +194,11 @@ void adaptive_avg_pool2d_bwd_slm_channels_last_kernel_impl(
   auto item = syclext::this_work_item::get_nd_item<3>();
 
   int* lsm = static_cast<int*>(syclexp::get_work_group_scratch_memory());
-  int* ostartW_cached = reinterpret_cast<int*>(lsm);
-  int* oendW_cached = reinterpret_cast<int*>(ostartW_cached + isizeW);
+  int* ostartW_cached = lsm;
+  int* oendW_cached = ostartW_cached + isizeW;
   scalar_t* r_kW_cached = reinterpret_cast<scalar_t*>(oendW_cached + isizeW);
-  scalar_t* r_kH_cached = reinterpret_cast<scalar_t*>(r_kW_cached + osizeW);
-  scalar_t* out_cached = reinterpret_cast<scalar_t*>(r_kH_cached + osizeH);
+  scalar_t* r_kH_cached = r_kW_cached + osizeW;
+  scalar_t* out_cached = r_kH_cached + osizeH;
 
   // flattening cta for pre-computation & smem initialization;
   int thread_id = item.get_local_id(2) +
@@ -441,15 +441,14 @@ void adaptive_avg_pool2d_backward_kernel(
           int iw = gxacc.size(3);
           int oh = gyacc.size(2);
           int ow = gyacc.size(3);
+
+          int64_t numel(static_cast<int64_t>(ib) * ic * ih * iw);
+          int64_t total_item =
+              std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
           if (using_shared) {
             static constexpr auto kptr =
                 adaptive_avg_pool2d_bwd_slm_kernel_impl<scalar_t, opmath_t>;
             int64_t local_range = at::xpu::getKernelMaxWorkGroupSize<kptr>();
-            int64_t numel(static_cast<int64_t>(ib) * ic * ih * iw);
-
-            int64_t total_item =
-                std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
-
             int64_t global_range = total_item < local_range
                 ? local_range
                 : (total_item / local_range) * local_range;
@@ -469,11 +468,8 @@ void adaptive_avg_pool2d_backward_kernel(
                 oh,
                 ow);
           } else {
-            int64_t numel = static_cast<int64_t>(ib) * ic * ih * iw;
             int64_t local_range = at::xpu::getDeviceMaxSubGroupSize() *
                 at::xpu::getDeviceEUCountPerXeCore();
-            int64_t total_item =
-                std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
             int64_t global_range = total_item < local_range
                 ? local_range
                 : (total_item / local_range) * local_range;
