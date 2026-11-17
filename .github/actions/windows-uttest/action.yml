@@ -47,6 +47,9 @@ runs:
       run: |
         call "C:\ProgramData\miniforge3\Scripts\activate.bat"
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+        call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
+        call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
+        call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
         call conda activate windows_ut
         cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
         python run_test_win_with_skip_mtl.py
