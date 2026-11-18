@@ -60,6 +60,14 @@ static std::vector<std::string> TORCH_XCCL_ENABLE_TIMING = {
 
 static std::vector<std::string> TORCH_XCCL_NAN_CHECK = {"TORCH_XCCL_NAN_CHECK"};
 
+// Set to 0 to skip the backend teardown at destroy_process_group() entirely,
+// the pre-2.16 behavior: outstanding operations are not waited for, the
+// communicators stay alive (and leak), and the process group remains usable.
+// Escape hatch for oneCCL releases whose exit-time KVS cleanup can hang after
+// communicators are destroyed (before a766d7238).
+static std::vector<std::string> TORCH_XCCL_DESTROY_COMMS = {
+    "TORCH_XCCL_DESTROY_COMMS"};
+
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
 
 class TensorShelf {
@@ -174,6 +182,15 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   ~ProcessGroupXCCL() override;
 
+  // Destroys all oneCCL communicators owned by this process group. Called by
+  // destroy_process_group(). Comms are not destroyed in the destructor since
+  // it may run during process exit, after the SYCL runtime is torn down.
+  void shutdown() override;
+
+  // Only warns: without onecclCommAbort the comms cannot be released without
+  // waiting, so they leak until process exit.
+  void abort() override;
+
   uint64_t getUid() const noexcept {
     return static_cast<uint64_t>(local_id_);
   }
@@ -226,6 +243,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
  protected:
   int globalRankStart_;
   int globalRankStride_;
+
+  void shutdownImpl();
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
@@ -517,6 +536,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
   bool blockingWait_ = false;
+  // Set by shutdown(); guarded by mutex_.
+  bool terminated_ = false;
+  // A comm used during graph capture may be replayed on any stream.
+  std::atomic<bool> usedDuringCapture_{false};
   std::atomic<bool> enableTiming_;
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
