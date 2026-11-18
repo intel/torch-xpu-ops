@@ -609,12 +609,12 @@ void vectorized_layer_norm_small_kernel_impl(
   auto item = syclext::this_work_item::get_nd_item<1>();
   using vec_t = aligned_vector<T, vec_size<T>>;
   using acc_t = acc_type_device<T, kXPU>;
-  auto sg = item_id.get_sub_group();
+  auto sg = item.get_sub_group();
   const int lane_id = sg.get_local_linear_id();
   const int row_in_wg = lane_id / kLanesPerRow;
   const int lane_in_row = lane_id % kLanesPerRow;
   const int64_t row =
-      static_cast<int64_t>(item_id.get_group(0)) * ROWS_PER_WG + row_in_wg;
+      static_cast<int64_t>(item.get_group(0)) * ROWS_PER_WG + row_in_wg;
   // Lanes of a row past M must still take part in the sub-group shuffles.
   const bool row_valid = row < M;
   const int n_vec_to_read = N / vec_size<T>;
