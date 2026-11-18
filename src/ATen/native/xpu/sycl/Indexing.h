@@ -357,69 +357,6 @@ class IndexKernel {
         cfg_.alpha_);
   }
 
-  void operator()(sycl::nd_item<2> item) const {
-    auto id = cfg_.get_item_desc(item);
-
-    if (id.glb_problem >= cfg_.problem_ ||
-        id.glb_batch >= cfg_.problem_batch_) {
-      return;
-    }
-
-    // Indexing kernels have three operands,
-    // 1. index operand
-    // 2. operand indexing on
-    // 3. operand has fixing size as index (optional)
-    int64_t idx_logical_off, glb_batch_group, glb_batch_group_loc_off;
-    int64_t glb_indexing_logical_off, glb_fixing_logical_off;
-    int64_t dst_off, src_off;
-
-    init_global_batch_info(
-        id, idx_logical_off, glb_batch_group, glb_batch_group_loc_off);
-
-    glb_indexing_logical_off =
-        indexing_logical_off(id, glb_batch_group, glb_batch_group_loc_off);
-
-    if (cfg_.sinfo_.data != nullptr && cfg_.dinfo_.data != nullptr) {
-      glb_fixing_logical_off =
-          fixing_logical_off(id, glb_batch_group, idx_logical_off);
-    }
-
-    if constexpr (TrivialOffCal) {
-      if (cfg_.indexing_dst_) {
-        dst_off = glb_indexing_logical_off;
-        if (cfg_.sinfo_.data != nullptr) {
-          src_off = glb_fixing_logical_off;
-        }
-      } else {
-        src_off = glb_indexing_logical_off;
-        dst_off = glb_fixing_logical_off;
-      }
-    } else {
-      if (cfg_.indexing_dst_) {
-        // index_copy, index_add, index_fill
-        dst_off = IndexToOffset<ValType, int64_t, -1>::get(
-            glb_indexing_logical_off, cfg_.dinfo_);
-        if (cfg_.sinfo_.data != nullptr) {
-          src_off = IndexToOffset<const ValType, int64_t, -1>::get(
-              glb_fixing_logical_off, cfg_.sinfo_);
-        }
-      } else {
-        // index_select
-        src_off = IndexToOffset<const ValType, int64_t, -1>::get(
-            glb_indexing_logical_off, cfg_.sinfo_);
-        dst_off = IndexToOffset<ValType, int64_t, -1>::get(
-            glb_fixing_logical_off, cfg_.dinfo_);
-      }
-    }
-    cfg_.func_(
-        cfg_.dinfo_.data,
-        cfg_.sinfo_.data,
-        dst_off,
-        src_off,
-        glb_batch_group_loc_off,
-        cfg_.alpha_);
-  }
-
  private:
   IdxConfig cfg_;
 };
@@ -561,7 +498,7 @@ void small_index_kernel(
   auto group_numel = group_index_iter * indices_size;
   auto group_numel_tail = (group_index_iter - 1) * indices_size;
 
-  auto wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+  int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
       small_index_kernel_impl<func_t, index_buf_type>>();
   wgroup_size = std::min(decltype(wgroup_size)(group_numel), wgroup_size);
   auto global_size = max_group_num * wgroup_size;
@@ -838,7 +775,7 @@ void _index_kernel(
   index_functor_kernel<func_t>(iter, index_size, index_stride, f);
 }
 
-template <typename scalar_t, typename accscalar_t>
+template <typename scalar_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
 void index_put_deterministic_kernel_impl(
     int64_t* sorted_indices,
@@ -953,7 +890,7 @@ void launch_index_put_deterministic_kernel(
         cfg);
   } else {
     auto cfg = BatchKernelConfig::make_config<
-        index_put_deterministic_kernel_impl<scalar_t, accscalar_t>>(
+        index_put_deterministic_kernel_impl<scalar_t>>(
         /* num of indices */ numel,
         /* num of elements to put per indices */ outer_dim * stride,
         1,
@@ -962,8 +899,7 @@ void launch_index_put_deterministic_kernel(
         {BatchKernelConfig::Policy::pSegment,
          BatchKernelConfig::Policy::pAggressiveSplit});
 
-    sycl_kernel_submit<
-        index_put_deterministic_kernel_impl<scalar_t, accscalar_t>>(
+    sycl_kernel_submit<index_put_deterministic_kernel_impl<scalar_t>>(
         cfg.global_size(),
         cfg.group_size(),
         getCurrentSYCLQueue(),
@@ -981,7 +917,7 @@ void launch_index_put_deterministic_kernel(
 
 template <int vt, typename func_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void index_elemnent_wise_kernel_impl(const int64_t N, const func_t f) {
+void index_elemnentwise_kernel_impl(const int64_t N, const func_t f) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int wg_sz = item.get_local_range(0);
   auto tid = item.get_local_id(0);
@@ -1005,7 +941,7 @@ static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
   int wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
       at::xpu::getDeviceEUCountPerXeCore();
   int num_wg = (N + wg_sz * vt - 1) / (wg_sz * vt);
-  sycl_kernel_submit<index_elemnent_wise_kernel_impl<vt, func_t>, 1>(
+  sycl_kernel_submit<index_elemnentwise_kernel_impl<vt, func_t>, 1>(
       wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, f);
 }
 

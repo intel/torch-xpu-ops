@@ -446,6 +446,8 @@ void masked_scatter_size_check_kernel_impl(
     const int64_t* const mask_exclusive_sum,
     const bool* const mask,
     const int64_t srcSize) {
+  // c10::load normalizes a bool whose storage holds a value other than 0/1
+  // (e.g. a uint8 tensor viewed as bool), as the prefix sum already does.
   const auto totalElements = *mask_exclusive_sum + (c10::load(mask) ? 1 : 0);
   SYCL_KERNEL_ASSERT(totalElements <= srcSize);
 }
@@ -911,50 +913,50 @@ template <
     typename func_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void index_func_small_index_kernel_impl(
-    TensorInfo<T, IndexType> dst_,
-    TensorInfo<const T, IndexType> src_,
-    TensorInfo<const IndicesType, IndexType> indices_,
-    int dstAddDim_,
-    int srcAddDim_,
-    IndexType innerSize_,
-    int64_t dstAddDimSize_,
-    int64_t dstNumel_,
-    func_t op_,
-    T alpha_) {
+    TensorInfo<T, IndexType> dst,
+    TensorInfo<const T, IndexType> src,
+    TensorInfo<const IndicesType, IndexType> indices,
+    int dstAddDim,
+    int srcAddDim,
+    IndexType innerSize,
+    int64_t dstAddDimSize,
+    int64_t dstNumel,
+    func_t op,
+    T alpha) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   // In order to avoid reloading the index that we are copying, load
   // it once to handle all of the points that are being selected, so
   // it can be reused as much as possible. This kernel is chosen when
   // this is a good choice (small number of chosen indices), since
   // re-accessing indices in addition to src elements can be slow.
-  for (IndexType srcIndex = 0; srcIndex < indices_.sizes[0]; ++srcIndex) {
+  for (IndexType srcIndex = 0; srcIndex < indices.sizes[0]; ++srcIndex) {
     // Lua indices begin at 1
     IndexType dstIndex =
-        indices_.data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
-            srcIndex, indices_)];
-    SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
+        indices.data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
+            srcIndex, indices)];
+    SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize);
 
     // We stride over the output ignoring the indexed dimension
     // (innerSize), whose offset calculation is handled differently
     for (IndexType linearIndex =
              item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-         linearIndex < innerSize_;
+         linearIndex < innerSize;
          linearIndex += item.get_group_range(0) * item.get_local_range(0)) {
       IndexType dstOffset =
-          IndexToOffset<T, IndexType, DstDim>::get(linearIndex, dst_);
-      dstOffset += dstIndex * dst_.strides[dstAddDim_];
+          IndexToOffset<T, IndexType, DstDim>::get(linearIndex, dst);
+      dstOffset += dstIndex * dst.strides[dstAddDim];
 
       IndexType srcOffset =
-          IndexToOffset<const T, IndexType, SrcDim>::get(linearIndex, src_);
-      srcOffset += srcIndex * src_.strides[srcAddDim_];
+          IndexToOffset<const T, IndexType, SrcDim>::get(linearIndex, src);
+      srcOffset += srcIndex * src.strides[srcAddDim];
 
       T val;
       if constexpr (std::is_same_v<T, bool>) {
-        val = c10::load(&src_.data[srcOffset]) && alpha_;
+        val = c10::load(&src.data[srcOffset]) && alpha;
       } else {
-        val = src_.data[srcOffset] * alpha_;
+        val = src.data[srcOffset] * alpha;
       }
-      op_(dst_.data, dstOffset, dstNumel_, &val);
+      op(dst.data, dstOffset, dstNumel, &val);
     }
   }
 }
@@ -973,17 +975,17 @@ template <
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void index_func_large_index_kernel_impl(
-    TensorInfo<T, IndexType> dst_,
-    TensorInfo<const T, IndexType> src_,
-    TensorInfo<const IndicesType, IndexType> indices_,
-    int dstAddDim_,
-    int srcAddDim_,
-    IndexType totalSize_,
-    IndexType innerSize_,
-    int64_t dstAddDimSize_,
-    int64_t dstNumel_,
-    func_t op_,
-    T alpha_) {
+    TensorInfo<T, IndexType> dst,
+    TensorInfo<const T, IndexType> src,
+    TensorInfo<const IndicesType, IndexType> indices,
+    int dstAddDim,
+    int srcAddDim,
+    IndexType totalSize,
+    IndexType innerSize,
+    int64_t dstAddDimSize,
+    int64_t dstNumel,
+    func_t op,
+    T alpha) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   // We stride over the output including the indexed dimension
   // (totalSize), and calculate the destination index point based on that
@@ -1013,36 +1015,36 @@ void index_func_large_index_kernel_impl(
   }
   for (IndexType linearIndex =
            item.get_group(0) * local_range + item.get_local_id(0);
-       linearIndex < totalSize_;
+       linearIndex < totalSize;
        linearIndex += item.get_group_range(0) * local_range) {
     IndexType srcIndex, elementInSlice;
     if (IndexIsMajor) {
-      srcIndex = linearIndex / innerSize_;
-      elementInSlice = linearIndex % innerSize_;
+      srcIndex = linearIndex / innerSize;
+      elementInSlice = linearIndex % innerSize;
     } else {
-      elementInSlice = linearIndex / innerSize_;
-      srcIndex = linearIndex % innerSize_;
+      elementInSlice = linearIndex / innerSize;
+      srcIndex = linearIndex % innerSize;
     }
 
     // Lua indices begin at 1
     IndexType dstIndex =
-        indices_.data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
-            srcIndex, indices_)];
-    SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
+        indices.data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
+            srcIndex, indices)];
+    SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize);
 
     IndexType dstOffset =
-        IndexToOffset<T, IndexType, DstDim>::get(elementInSlice, dst_);
-    dstOffset += dstIndex * dst_.strides[dstAddDim_];
+        IndexToOffset<T, IndexType, DstDim>::get(elementInSlice, dst);
+    dstOffset += dstIndex * dst.strides[dstAddDim];
 
     IndexType srcOffset =
-        IndexToOffset<const T, IndexType, SrcDim>::get(elementInSlice, src_);
-    srcOffset += srcIndex * src_.strides[srcAddDim_];
+        IndexToOffset<const T, IndexType, SrcDim>::get(elementInSlice, src);
+    srcOffset += srcIndex * src.strides[srcAddDim];
 
     T val;
     if constexpr (std::is_same_v<T, bool>) {
-      val = c10::load(&src_.data[srcOffset]) && alpha_;
+      val = c10::load(&src.data[srcOffset]) && alpha;
     } else {
-      val = src_.data[srcOffset] * alpha_;
+      val = src.data[srcOffset] * alpha;
     }
     if constexpr (use_smem_coalescing) {
       const int smem_idx = dstOffset & (SMEM_SIZE - 1);
@@ -1059,13 +1061,13 @@ void index_func_large_index_kernel_impl(
           atomicAdd(
               static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
         } else {
-          op_(dst_.data, dstOffset, dstNumel_, &val);
+          op(dst.data, dstOffset, dstNumel, &val);
         }
       } else {
-        op_(dst_.data, dstOffset, dstNumel_, &val);
+        op(dst.data, dstOffset, dstNumel, &val);
       }
     } else {
-      op_(dst_.data, dstOffset, dstNumel_, &val);
+      op(dst.data, dstOffset, dstNumel, &val);
     }
   }
 
@@ -1079,7 +1081,7 @@ void index_func_large_index_kernel_impl(
       if (final_dstOffset != (IndexType)-1) {
         T final_val = smem_values[i];
 
-        op_(dst_.data, final_dstOffset, dstNumel_, &final_val);
+        op(dst.data, final_dstOffset, dstNumel, &final_val);
       }
     }
   }
@@ -1257,7 +1259,7 @@ void index_reduce_add_xpu_template(
       selfAddDimSize,                                                       \
       selfNumel,                                                            \
       func,                                                                 \
-      alpha_value);
+      alpha_value)
 
 #define LARGE_INDEX(                                                  \
     TENSOR_TYPE,                                                      \
@@ -1370,7 +1372,6 @@ void index_reduce_add_xpu_template(
                 if (indexIsMajor) {
                   LARGE_INDEX(
                       scalar_t, index_t, unsigned int, 3, 3, -2, true, func_t);
-
                 } else {
                   LARGE_INDEX(
                       scalar_t, index_t, unsigned int, 3, 3, -2, false, func_t);
@@ -1532,7 +1533,7 @@ void index_reduce_func_xpu_template(
       selfReduceDimSize,                                                    \
       selfNumel,                                                            \
       reduce_func,                                                          \
-      alpha_value);
+      alpha_value)
 
 #define LARGE_INDEX(                                                  \
     TENSOR_TYPE,                                                      \
@@ -1572,7 +1573,7 @@ void index_reduce_func_xpu_template(
         selfNumel,                                                    \
         reduce_func,                                                  \
         alpha_value);                                                 \
-  } while (0);
+  } while (0)
 
   int xecore_count = at::xpu::getDeviceXeCoreCount();
 
@@ -1610,7 +1611,6 @@ void index_reduce_func_xpu_template(
                     size_t wg_size = std::min(sliceSize, (uint64_t)128);
                     SMALL_INDEX(
                         scalar_t, index_t, unsigned int, 1, 1, -2, func_t);
-
                   } else if (
                       selfInfo.dims == 2 && sourceInfo.dims == 2 && indContig) {
                     size_t num_wg = std::min(
@@ -1619,7 +1619,6 @@ void index_reduce_func_xpu_template(
                     size_t wg_size = std::min(sliceSize, (uint64_t)128);
                     SMALL_INDEX(
                         scalar_t, index_t, unsigned int, 2, 2, -2, func_t);
-
                   } else if (
                       selfInfo.dims == 3 && sourceInfo.dims == 3 && indContig) {
                     size_t num_wg = std::min(
@@ -1628,7 +1627,6 @@ void index_reduce_func_xpu_template(
                     size_t wg_size = std::min(sliceSize, (uint64_t)128);
                     SMALL_INDEX(
                         scalar_t, index_t, unsigned int, 3, 3, -2, func_t);
-
                   } else {
                     size_t num_wg = std::min(
                         ceil_div(sliceSize, (uint64_t)128),
@@ -1643,7 +1641,7 @@ void index_reduce_func_xpu_template(
 
                   if (selfInfo.dims == 1 && sourceInfo.dims == 1 && indContig) {
                     int defaultMaxGroupThreads =
-                        at::xpu::getKernelMaxWorkGroupSize(
+                        at::xpu::getKernelMaxWorkGroupSize<
                             index_func_large_index_kernel_impl<
                                 scalar_t,
                                 index_t,
@@ -1652,7 +1650,7 @@ void index_reduce_func_xpu_template(
                                 1,
                                 -2,
                                 true,
-                                func_t>);
+                                func_t>>();
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
                         (uint64_t)(xecore_count * 8));
@@ -1668,12 +1666,11 @@ void index_reduce_func_xpu_template(
                         -2,
                         true,
                         func_t);
-
                   } else if (
                       selfInfo.dims == 2 && sourceInfo.dims == 2 && indContig) {
                     if (indexIsMajor) {
                       int defaultMaxGroupThreads =
-                          at::xpu::getKernelMaxWorkGroupSize(
+                          at::xpu::getKernelMaxWorkGroupSize<
                               index_func_large_index_kernel_impl<
                                   scalar_t,
                                   index_t,
@@ -1682,7 +1679,7 @@ void index_reduce_func_xpu_template(
                                   2,
                                   -2,
                                   true,
-                                  func_t>);
+                                  func_t>>();
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(xecore_count * 8));
@@ -1701,7 +1698,7 @@ void index_reduce_func_xpu_template(
                           func_t);
                     } else {
                       int defaultMaxGroupThreads =
-                          at::xpu::getKernelMaxWorkGroupSize(
+                          at::xpu::getKernelMaxWorkGroupSize<
                               index_func_large_index_kernel_impl<
                                   scalar_t,
                                   index_t,
@@ -1710,7 +1707,7 @@ void index_reduce_func_xpu_template(
                                   2,
                                   -2,
                                   false,
-                                  func_t>);
+                                  func_t>>();
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(xecore_count * 8));
@@ -1732,7 +1729,7 @@ void index_reduce_func_xpu_template(
                       selfInfo.dims == 3 && sourceInfo.dims == 3 && indContig) {
                     if (indexIsMajor) {
                       int defaultMaxGroupThreads =
-                          at::xpu::getKernelMaxWorkGroupSize(
+                          at::xpu::getKernelMaxWorkGroupSize<
                               index_func_large_index_kernel_impl<
                                   scalar_t,
                                   index_t,
@@ -1741,7 +1738,7 @@ void index_reduce_func_xpu_template(
                                   3,
                                   -2,
                                   true,
-                                  func_t>);
+                                  func_t>>();
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(xecore_count * 8));
@@ -1760,7 +1757,7 @@ void index_reduce_func_xpu_template(
                           func_t);
                     } else {
                       int defaultMaxGroupThreads =
-                          at::xpu::getKernelMaxWorkGroupSize(
+                          at::xpu::getKernelMaxWorkGroupSize<
                               index_func_large_index_kernel_impl<
                                   scalar_t,
                                   index_t,
@@ -1769,7 +1766,7 @@ void index_reduce_func_xpu_template(
                                   3,
                                   -2,
                                   false,
-                                  func_t>);
+                                  func_t>>();
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(xecore_count * 8));
@@ -1789,7 +1786,7 @@ void index_reduce_func_xpu_template(
                     }
                   } else {
                     int defaultMaxGroupThreads =
-                        at::xpu::getKernelMaxWorkGroupSize(
+                        at::xpu::getKernelMaxWorkGroupSize<
                             index_func_large_index_kernel_impl<
                                 scalar_t,
                                 index_t,
@@ -1798,7 +1795,7 @@ void index_reduce_func_xpu_template(
                                 -1,
                                 -1,
                                 true,
-                                func_t>);
+                                func_t>>();
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
                         (uint64_t)(xecore_count * 8));
@@ -1841,7 +1838,7 @@ void index_reduce_func_xpu_template(
                 TensorInfo<const index_t, uint64_t> indexInfo =
                     getTensorInfo<const index_t, uint64_t>(index);
                 indexInfo.collapseDims();
-                int defaultMaxGroupThreads = at::xpu::getKernelMaxWorkGroupSize(
+                int defaultMaxGroupThreads = at::xpu::getKernelMaxWorkGroupSize<
                     index_func_large_index_kernel_impl<
                         scalar_t,
                         index_t,
@@ -1850,7 +1847,7 @@ void index_reduce_func_xpu_template(
                         -1,
                         -1,
                         true,
-                        func_t>);
+                        func_t>>();
                 size_t num_wg = std::min(
                     ceil_div(sourceTotalSize, (uint64_t)128),
                     (uint64_t)(xecore_count * 8));
@@ -2165,7 +2162,6 @@ void index_select_out_impl(
             SMALL_INDEX(scalar_t, index_t, unsigned int, 1, 1, -2);
           } else if (outInfo.dims == 2 && selfInfo.dims == 2 && indContig) {
             SMALL_INDEX(scalar_t, index_t, unsigned int, 2, 2, -2);
-
           } else if (outInfo.dims == 3 && selfInfo.dims == 3 && indContig) {
             SMALL_INDEX(scalar_t, index_t, unsigned int, 3, 3, -2);
           } else {
