@@ -457,7 +457,7 @@ void cdist_backward_kernel_impl_func(
     const scalar_t* x2_data) {
   auto item = syclext::this_work_item::get_nd_item<3>();
 
-  const int y =
+  const int64_t y =
       (item.get_group(1) * group_num_z + item.get_group(2)) * group_size_y +
       item.get_local_id(1);
   const int init = item.get_group(0) * group_size_x + item.get_local_id(0);
@@ -465,10 +465,10 @@ void cdist_backward_kernel_impl_func(
     return;
   }
 
-  const int l = y / r_size;
-  const int k = y % r_size;
+  const int64_t l = y / r_size;
+  const int64_t k = y % r_size;
   const int stride = group_size_x * group_num_x;
-  const int l_size = r_size * m;
+  const int64_t l_size = r_size * m;
 
   int64_t i = k / r2;
   int64_t j = k % r2;

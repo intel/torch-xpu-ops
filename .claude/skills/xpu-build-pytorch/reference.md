@@ -9,13 +9,13 @@ CMake's checkout becomes a no-op:
 
 ```bash
 # 1. Clone your fork into the path CMake expects (if not already there)
-cd <pytorch_root>/third_party
+cd $PYTORCH_DIR/third_party
 git clone <your-fork-url> torch-xpu-ops
 cd torch-xpu-ops
 git checkout <your-pr-branch>
 
 # 2. Update the pin so CMake checks out your HEAD (no-op)
-git rev-parse HEAD > <pytorch_root>/third_party/xpu.txt
+git rev-parse HEAD > $PYTORCH_DIR/third_party/xpu.txt
 ```
 
 Do not commit `xpu.txt` — this is a local-only override.
