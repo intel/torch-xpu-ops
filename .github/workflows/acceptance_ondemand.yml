@@ -94,12 +94,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Resolve CI defaults
+        id: defaults
+        uses: ./.github/actions/ci-config
+
       - name: Pick python version
         id: pick
         env:
           REQUESTED: ${{ inputs.python }}
+          DEFAULT_PYTHON: ${{ steps.defaults.outputs.python }}
         run: |
-          default=$(jq -r .python .github/ci-config/defaults.json)
+          default="${DEFAULT_PYTHON}"
           python="${REQUESTED:-$default}"
           valid=true
           [[ "$python" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || valid=false
