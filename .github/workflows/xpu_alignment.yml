@@ -217,6 +217,7 @@ jobs:
     runs-on: xpu-agent
     timeout-minutes: 120
     container:
+      # xpu-agent runners are BMG
       image: intel/omix:0.5.0-devel-ubuntu26.04
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
