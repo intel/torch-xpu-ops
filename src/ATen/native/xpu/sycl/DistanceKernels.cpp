@@ -13,6 +13,7 @@
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/sum.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/DistanceKernels.h>
@@ -456,7 +457,7 @@ void cdist_backward_kernel_impl_func(
     const scalar_t* x2_data) {
   auto item = syclext::this_work_item::get_nd_item<3>();
 
-  const int y =
+  const int64_t y =
       (item.get_group(1) * group_num_z + item.get_group(2)) * group_size_y +
       item.get_local_id(1);
   const int init = item.get_group(0) * group_size_x + item.get_local_id(0);
@@ -464,10 +465,10 @@ void cdist_backward_kernel_impl_func(
     return;
   }
 
-  const int l = y / r_size;
-  const int k = y % r_size;
+  const int64_t l = y / r_size;
+  const int64_t k = y % r_size;
   const int stride = group_size_x * group_num_x;
-  const int l_size = r_size * m;
+  const int64_t l_size = r_size * m;
 
   int64_t i = k / r2;
   int64_t j = k % r2;
@@ -508,7 +509,9 @@ static void cdist_backward_kernel_impl(
     const int64_t r_size,
     const int64_t l1_size,
     const int64_t l2_size) {
-  auto wgroup_size = syclGpuHWThreadsPerEU() * syclMaxSubGroupSize();
+  int64_t wgroup_size =
+      at::xpu::getCurrentDeviceProperties()->gpu_hw_threads_per_eu *
+      at::xpu::getDeviceMaxSubGroupSize();
   const int group_size_x = 256 > wgroup_size ? wgroup_size : 256;
   const int group_size_y = wgroup_size / group_size_x;
   const int group_num_x = (m + group_size_x * 32 - 1) / (group_size_x * 32);
@@ -731,9 +734,9 @@ static void pdist_kernel_impl(
     const double n2_squared_minus_1) {
   const auto ngroups = result.numel();
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  auto min_sg_size = syclMinSubGroupSize();
-  auto wgroup_size =
-      syclMaxWorkGroupSize<pdist_kernel<scalar_t, F, accscalar_t>>();
+  int64_t min_sg_size = at::xpu::getDeviceMinSubGroupSize();
+  int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize<
+      pdist_kernel<scalar_t, F, accscalar_t>>();
   while (wgroup_size >> 1 >= m && wgroup_size >> 1 >= 32 /* sg_size */) {
     wgroup_size >>= 1;
   }

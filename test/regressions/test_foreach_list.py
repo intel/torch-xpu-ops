@@ -102,3 +102,19 @@ class TestForeachListMethod(TestCase):
             cpu_inplace = test_(x1, x2, "cpu", is_inplace=True, scalar=scalar)
             xpu_inplace = test_(x1, x2, "xpu", is_inplace=True, scalar=scalar)
             self.result_compare(cpu_inplace, xpu_inplace)
+
+    def test_foreach_copy_barebones_unsigned(self):
+        # The fused XPU copy kernel doesn't instantiate uint16/uint32/uint64,
+        # so these copies must take the slow path instead of failing to dispatch.
+        test = ForeachTest(torch._foreach_copy_)
+        for dtype in (torch.uint16, torch.uint32, torch.uint64):
+            for dst_dtype, src_dtype in (
+                (dtype, dtype),
+                (dtype, torch.int64),
+                (torch.float32, dtype),
+            ):
+                src = [torch.arange(n).to(src_dtype) for n in (3, 5)]
+                dst = [torch.zeros(n, dtype=dst_dtype) for n in (3, 5)]
+                cpu = test(dst, src, "cpu", is_inplace=True)
+                xpu = test(dst, src, "xpu", is_inplace=True)
+                self.result_compare(cpu, xpu)

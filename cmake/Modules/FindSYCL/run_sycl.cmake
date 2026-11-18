@@ -33,9 +33,11 @@ set(SYCL_generated_dependency_file "@SYCL_generated_dependency_file@") # path
 set(generated_file_path "@generated_file_path@") # path
 set(generated_file_internal "@generated_file@") # path
 set(SYCL_executable "@SYCL_EXECUTABLE@") # path
+set(SYCL_compiler_launcher @SYCL_compiler_launcher@) # list
 set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
+set(SYCL_host_flags_direct_to_sycl [==[@SYCL_HOST_FLAGS_DIRECT_TO_SYCL@]==]) # list
 set(SYCL_host_flags_excluded_from_sycl [==[@SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL@]==]) # list
 set(SYCL_host_flags_only_for_sycl [==[@SYCL_HOST_FLAGS_ONLY_FOR_SYCL@]==]) # list
 
@@ -70,7 +72,9 @@ endforeach()
 list(REMOVE_DUPLICATES CMAKE_HOST_FLAGS)
 foreach(flag ${CMAKE_HOST_FLAGS})
   string(STRIP "${flag}" normalized_flag)
-  if(NOT normalized_flag IN_LIST SYCL_host_flags_excluded_from_sycl)
+  if(normalized_flag IN_LIST SYCL_host_flags_direct_to_sycl)
+    list(APPEND SYCL_compile_flags "${normalized_flag}")
+  elseif(NOT normalized_flag IN_LIST SYCL_host_flags_excluded_from_sycl)
     list(APPEND SYCL_host_arch_flags -Xarch_host "${normalized_flag}")
   endif()
 endforeach()
@@ -130,7 +134,8 @@ else()
 endif()
 SYCL_execute_process(
   "Generating ${generated_file}"
-  COMMAND "${SYCL_executable}"
+  COMMAND ${SYCL_compiler_launcher}
+  "${SYCL_executable}"
   ${SYCL_dependency_file_args}
   -c
   "${source_file}"

@@ -13,6 +13,7 @@
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/xpu/XPUContext.h>
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -87,11 +88,18 @@ struct fft_descriptor {
   int which_dir; // 0 for forward, 1 for backward, 2 for both
   bool external_workspace = false;
   std::int64_t external_workspace_size = 0;
+  std::int64_t fwd_dist_cache_batch = 0;
+  std::int64_t bwd_dist_cache_batch = 0;
+  std::int64_t num_cache_batches = 0;
+  std::int64_t num_batch_in_cache = 0;
+  std::int64_t rem_batch_in_cache = 0;
   std::int64_t twidl_table_size[3] = {0, 0, 0};
   const void* twidl_table[3][2] = {{nullptr}}; // [dimension][direction]
   std::array<std::array<size_t, 3>, 3> local_work_size{
       {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
-  std::array<std::array<size_t, 3>, 3> global_work_size{
+  std::array<std::array<size_t, 3>, 3> global_work_size_cache_batch{
+      {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
+  std::array<std::array<size_t, 3>, 3> global_work_size_last_cache_batch{
       {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
   // Handles to cached executable bundles; ownership stays with
   // FftKernelBundleCache. std::optional is used because sycl::kernel_bundle is
@@ -174,13 +182,18 @@ const Tensor& _fft_apply_normalization(
 }
 
 // TODO: Remove this work-around in future.
+ScalarType promote_fft_dtype(ScalarType dtype) {
+  if (dtype == ScalarType::Half || dtype == ScalarType::BFloat16)
+    return ScalarType::Float;
+  if (dtype == ScalarType::ComplexHalf)
+    return ScalarType::ComplexFloat;
+  return dtype;
+}
+
+// TODO: Remove this work-around in future.
 Tensor promote_fft_input(const Tensor& input) {
-  if (input.scalar_type() == ScalarType::Half ||
-      input.scalar_type() == ScalarType::BFloat16)
-    return input.to(ScalarType::Float);
-  if (input.scalar_type() == ScalarType::ComplexHalf)
-    return input.to(ScalarType::ComplexFloat);
-  return input;
+  const auto dtype = promote_fft_dtype(input.scalar_type());
+  return dtype == input.scalar_type() ? input : input.to(dtype);
 }
 
 std::string kernel_src = R"""(
@@ -428,30 +441,24 @@ void KERNEL_NAME(const DFT_FTYPE *in, DFT_FTYPE *out, sycl::local_accessor<DFT_F
 constexpr int supported_sizes[][3] = {{512, 32, 16}, {768, 32, 24}};
 
 template <typename T>
-struct TwiddleTableKernel2FactsFunctor {
-  void operator()(sycl::item<2> item) const {
-    const int row = item.get_id(0);
-    const int col = item.get_id(1);
-    const T theta = (2.0 * row * col) / (fact0_ * fact1_);
-    T* cosPtr = twidl_buf_ + row * fact1_ * 2 + col * 2;
-    T* sinPtr = twidl_buf_ + row * fact1_ * 2 + col * 2 + 1;
-    *cosPtr = scale_ * sycl::cospi(theta);
-    *sinPtr = scale_ * sycl::sinpi(theta);
-  }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void twiddle_table_kernel2_facts_kernel_impl(
+    std::int64_t fact0,
+    std::int64_t fact1,
+    T* twidl_buf,
+    T scale) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  const int row = item.get_global_id(0);
+  const int col = item.get_global_id(1);
+  if (row >= fact0 || col >= fact1)
+    return;
 
-  TwiddleTableKernel2FactsFunctor(
-      std::int64_t fact0,
-      std::int64_t fact1,
-      T* twidl_buf,
-      T scale)
-      : fact0_(fact0), fact1_(fact1), twidl_buf_(twidl_buf), scale_(scale) {}
-
- private:
-  std::int64_t fact0_;
-  std::int64_t fact1_;
-  T* twidl_buf_;
-  T scale_;
-};
+  const T theta = (2.0 * row * col) / (fact0 * fact1);
+  T* cosPtr = twidl_buf + row * fact1 * 2 + col * 2;
+  T* sinPtr = twidl_buf + row * fact1 * 2 + col * 2 + 1;
+  *cosPtr = scale * sycl::cospi(theta);
+  *sinPtr = scale * sycl::sinpi(theta);
+}
 
 template <typename T>
 void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
@@ -478,11 +485,18 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
         twidl_buf = (T*)desc.twidl_table[dim][i];
       }
 
-      auto ker =
-          TwiddleTableKernel2FactsFunctor<T>(fact0, fact1, twidl_buf, scale);
-      q.submit([&](sycl::handler& h) {
-        h.parallel_for(sycl::range<2>(fact0, fact1), ker);
-      });
+      int64_t sg_sizes = at::xpu::getDeviceMaxSubGroupSize();
+      int64_t max_work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+          twiddle_table_kernel2_facts_kernel_impl<T>>();
+      int64_t local_x = sg_sizes;
+      int64_t local_y = max_work_group_size / local_x;
+      sycl::range<2> local_range(local_y, local_x);
+
+      int64_t global_x = ((fact0 + local_x - 1) / local_x) * local_x;
+      int64_t global_y = ((fact1 + local_y - 1) / local_y) * local_y;
+      sycl::range<2> global_range(global_y, global_x);
+      sycl_kernel_submit<twiddle_table_kernel2_facts_kernel_impl<T>>(
+          global_range, local_range, q, 0, fact0, fact1, twidl_buf, scale);
     }
   }
 }
@@ -510,6 +524,23 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
   std::optional<sycl::kernel_bundle<sycl::bundle_state::ext_oneapi_source>>
       src_bundle;
 
+  // Compute the number of batches that fit in the cache and related parameters.
+  auto cache_size_bytes =
+      q.get_device().get_info<sycl::info::device::global_mem_cache_size>();
+  auto bytes_per_element = 2 * sizeof(T); // cmplx has 2 fp components
+  auto bytes_per_transform = bytes_per_element;
+  for (size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
+    bytes_per_transform *= desc.fft_len[dim];
+  }
+  desc.num_batch_in_cache = cache_size_bytes / bytes_per_transform;
+  if (desc.num_batch_in_cache == 0)
+    desc.num_batch_in_cache = 1;
+  desc.rem_batch_in_cache = desc.batch % desc.num_batch_in_cache;
+  desc.num_cache_batches =
+      (desc.batch + desc.num_batch_in_cache - 1) / desc.num_batch_in_cache;
+  desc.fwd_dist_cache_batch = desc.fwd_dist * desc.num_batch_in_cache * 2;
+  desc.bwd_dist_cache_batch = desc.bwd_dist * desc.num_batch_in_cache * 2;
+
   for (size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
     for (int i = 0; i < sizeof(supported_sizes) / sizeof(supported_sizes[0]);
          ++i) {
@@ -536,7 +567,10 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
     desc.local_work_size[dim][0] = fact1;
     if (fact0 % fact1 != 0)
       desc.local_work_size[dim][0] = std::max(fact0, fact1);
-    desc.global_work_size[dim][0] = desc.local_work_size[dim][0] * desc.batch;
+    desc.global_work_size_cache_batch[dim][0] =
+        desc.local_work_size[dim][0] * desc.num_batch_in_cache;
+    desc.global_work_size_last_cache_batch[dim][0] =
+        desc.local_work_size[dim][0] * desc.rem_batch_in_cache;
 
     // Kernel build parameters
     std::string kernel_prec;
@@ -558,22 +592,35 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
       if (dim == 0) {
         fwd_dist = desc.fwd_strides[0] * desc.fft_len[0];
         bwd_dist = desc.bwd_strides[0] * desc.fft_len[0];
-        desc.global_work_size[dim][0] =
-            desc.local_work_size[dim][0] * desc.batch * desc.fft_len[1];
+        desc.global_work_size_cache_batch[dim][0] =
+            desc.local_work_size[dim][0] * desc.num_batch_in_cache *
+            desc.fft_len[1];
+        desc.global_work_size_last_cache_batch[dim][0] =
+            desc.local_work_size[dim][0] * desc.rem_batch_in_cache *
+            desc.fft_len[1];
       } else if (dim == 1) {
         fwd_dist = desc.fwd_strides[0];
         bwd_dist = desc.bwd_strides[0];
         inner_batch_fwd_dist = desc.fwd_strides[1] * desc.fft_len[1];
         inner_batch_bwd_dist = desc.bwd_strides[1] * desc.fft_len[1];
         dist_to_next_work_item = desc.fwd_strides[1];
-        desc.global_work_size[dim][0] =
+        desc.global_work_size_cache_batch[dim][0] =
             desc.local_work_size[dim][0] * desc.fft_len[0];
-        desc.global_work_size[dim][1] = desc.batch;
+        desc.global_work_size_last_cache_batch[dim][0] =
+            desc.global_work_size_cache_batch[dim][0];
+        desc.global_work_size_cache_batch[dim][1] = desc.num_batch_in_cache;
+        desc.global_work_size_last_cache_batch[dim][1] =
+            desc.rem_batch_in_cache;
+
         if (desc.fft_len.size() == 3) {
           outer_batch_fwd_dist = desc.fwd_dist;
           outer_batch_bwd_dist = desc.bwd_dist;
-          desc.global_work_size[dim][1] = desc.fft_len[2];
-          desc.global_work_size[dim][2] = desc.batch;
+          desc.global_work_size_cache_batch[dim][1] = desc.fft_len[2];
+          desc.global_work_size_last_cache_batch[dim][1] =
+              desc.global_work_size_cache_batch[dim][1];
+          desc.global_work_size_cache_batch[dim][2] = desc.num_batch_in_cache;
+          desc.global_work_size_last_cache_batch[dim][2] =
+              desc.rem_batch_in_cache;
         }
       } else {
         fwd_dist = desc.fwd_strides[0];
@@ -583,8 +630,13 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
         outer_batch_fwd_dist = desc.fwd_dist;
         outer_batch_bwd_dist = desc.bwd_dist;
         dist_to_next_work_item = desc.fwd_strides[2];
-        desc.global_work_size[dim][1] = desc.fft_len[1] * desc.fft_len[2];
-        desc.global_work_size[dim][2] = desc.batch;
+        desc.global_work_size_cache_batch[dim][1] =
+            desc.fft_len[1] * desc.fft_len[2];
+        desc.global_work_size_last_cache_batch[dim][1] =
+            desc.global_work_size_cache_batch[dim][1];
+        desc.global_work_size_cache_batch[dim][2] = desc.num_batch_in_cache;
+        desc.global_work_size_last_cache_batch[dim][2] =
+            desc.rem_batch_in_cache;
       }
     }
 
@@ -689,35 +741,54 @@ static sycl::event compute(
     T* out,
     int dir) {
   const char* dir_suffix = (dir == 0) ? "_fwd" : "_bwd";
+  auto ndims = desc.fft_len.size();
   sycl::event prev_ev;
-  for (auto dim = 0; dim < desc.fft_len.size(); ++dim) {
-    TORCH_CHECK(
-        !desc.external_workspace || desc.twidl_table[dim][dir] != nullptr,
-        "set_workspace must be called with a valid workspace before compute");
-    auto& bundle = *(desc.exe_bundle[dim][dir]);
-    std::string kernel_name =
-        "dft_2_facts_kernel_" + std::to_string(dim) + dir_suffix;
-    auto kernel = bundle.ext_oneapi_get_kernel(kernel_name);
 
-    sycl::range<3> global_range{
-        desc.global_work_size[dim][0],
-        desc.global_work_size[dim][1],
-        desc.global_work_size[dim][2]};
-    sycl::range<3> local_range{
-        desc.local_work_size[dim][0],
-        desc.local_work_size[dim][1],
-        desc.local_work_size[dim][2]};
-    sycl::nd_range<3> ndrange(global_range, local_range);
+  for (auto cache_batch = 0; cache_batch < desc.num_cache_batches;
+       ++cache_batch) {
+    for (auto dim = 0; dim < ndims; ++dim) {
+      TORCH_CHECK(
+          !desc.external_workspace || desc.twidl_table[dim][dir] != nullptr,
+          "set_workspace must be called with a valid workspace before compute");
+      auto& bundle = *(desc.exe_bundle[dim][dir]);
+      std::string kernel_name =
+          "dft_2_facts_kernel_" + std::to_string(dim) + dir_suffix;
+      auto kernel = bundle.ext_oneapi_get_kernel(kernel_name);
 
-    const T* input = (dim == 0) ? in : out;
-    prev_ev = q.submit([&](sycl::handler& h) {
-      h.set_arg(0, input);
-      h.set_arg(1, out);
-      h.set_arg(2, sycl::local_accessor<T, 1>(desc.slm_size[dim], h));
-      h.set_arg(3, static_cast<const T*>(desc.twidl_table[dim][dir]));
+      sycl::range<3> global_range;
+      if (desc.rem_batch_in_cache &&
+          cache_batch == desc.num_cache_batches - 1) {
+        global_range = sycl::range<3>{
+            desc.global_work_size_last_cache_batch[dim][0],
+            desc.global_work_size_last_cache_batch[dim][1],
+            desc.global_work_size_last_cache_batch[dim][2]};
+      } else {
+        global_range = sycl::range<3>{
+            desc.global_work_size_cache_batch[dim][0],
+            desc.global_work_size_cache_batch[dim][1],
+            desc.global_work_size_cache_batch[dim][2]};
+      }
+      sycl::range<3> local_range{
+          desc.local_work_size[dim][0],
+          desc.local_work_size[dim][1],
+          desc.local_work_size[dim][2]};
+      sycl::nd_range<3> ndrange(global_range, local_range);
 
-      h.parallel_for(ndrange, kernel);
-    });
+      const T* input = (dim == 0) ? in : out;
+      auto out_dist_moved =
+          (dir == 0) ? desc.bwd_dist_cache_batch : desc.fwd_dist_cache_batch;
+      auto in_dist_moved = (dim == 0)
+          ? ((dir == 0) ? desc.fwd_dist_cache_batch : desc.bwd_dist_cache_batch)
+          : out_dist_moved;
+      prev_ev = q.submit([&](sycl::handler& h) {
+        h.set_arg(0, input + cache_batch * in_dist_moved);
+        h.set_arg(1, out + cache_batch * out_dist_moved);
+        h.set_arg(2, sycl::local_accessor<T, 1>(desc.slm_size[dim], h));
+        h.set_arg(3, static_cast<const T*>(desc.twidl_table[dim][dir]));
+
+        h.parallel_for(ndrange, kernel);
+      });
+    }
   }
   return prev_ev;
 }
@@ -979,47 +1050,41 @@ struct HermitianSymmetryOffsetCalculator {
 };
 
 template <typename scalar_t, typename inp_calc_t, typename out_calc_t>
-struct FFTConjugateCopyKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto in_offset = ic_.get(item_id)[0];
-    auto out_offset = oc_.get(item_id)[0];
-    out_data_[out_offset] = std::conj(in_data_[in_offset]);
-  }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void fft_conjugate_copy_kernel_impl(
+    int64_t total_work_items,
+    scalar_t* out_data,
+    const scalar_t* in_data,
+    inp_calc_t ic,
+    out_calc_t oc) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto idx = item_id.get_global_id(0);
+  if (idx >= total_work_items)
+    return;
 
-  FFTConjugateCopyKernelFunctor(
-      int64_t numel,
-      scalar_t* out_data,
-      const scalar_t* in_data,
-      inp_calc_t ic,
-      out_calc_t oc)
-      : numel_(numel),
-        out_data_(out_data),
-        in_data_(in_data),
-        ic_(ic),
-        oc_(oc) {}
-
- private:
-  int64_t numel_;
-  scalar_t* out_data_;
-  const scalar_t* in_data_;
-  inp_calc_t ic_;
-  out_calc_t oc_;
-};
+  auto in_offset = ic.get(idx)[0];
+  auto out_offset = oc.get(idx)[0];
+  out_data[out_offset] = std::conj(in_data[in_offset]);
+}
 
 template <typename scalar_t, typename inp_calc_t, typename out_calc_t>
-void _fft_conjugate_copy_kernel(
+void launch_fft_conjugate_copy_kernel(
     int64_t numel,
     scalar_t* out_data,
     const scalar_t* in_data,
     inp_calc_t ic,
     out_calc_t oc) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  int thread_num = numel;
 
-  auto ker = FFTConjugateCopyKernelFunctor<scalar_t, inp_calc_t, out_calc_t>(
-      numel, out_data, in_data, ic, oc);
+  int64_t max_work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      fft_conjugate_copy_kernel_impl<scalar_t, inp_calc_t, out_calc_t>>();
 
-  sycl_kernel_submit(sycl::range<1>(thread_num), queue, ker);
+  int local_range = max_work_group_size;
+  int global_range = ((numel + local_range - 1) / local_range) * local_range;
+
+  sycl_kernel_submit<
+      fft_conjugate_copy_kernel_impl<scalar_t, inp_calc_t, out_calc_t>>(
+      global_range, local_range, queue, 0, numel, out_data, in_data, ic, oc);
 }
 
 void _fft_fill_with_conjugate_symmetry_xpu(
@@ -1042,7 +1107,7 @@ void _fft_fill_with_conjugate_symmetry_xpu(
 
   const auto numel = c10::multiply_integers(signal_half_sizes);
   AT_DISPATCH_COMPLEX_TYPES(dtype, "_fft_fill_with_conjugate_symmetry_", [&] {
-    _fft_conjugate_copy_kernel(
+    launch_fft_conjugate_copy_kernel(
         numel,
         static_cast<scalar_t*>(out_data),
         static_cast<const scalar_t*>(in_data),

@@ -14,6 +14,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/native/BucketizationUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
@@ -132,8 +133,8 @@ void searchsorted_template(
   auto data_out_data = result.mutable_data_ptr<output_t>();
 
   int64_t rng, grng, tile_size;
-  tile_size =
-      syclMaxWorkGroupSize<searchsorted_kernel_impl<input_t, output_t>>();
+  tile_size = at::xpu::getKernelMaxWorkGroupSize<
+      searchsorted_kernel_impl<input_t, output_t>>();
   rng = numel_in;
   if (rng == 0) {
     rng = static_cast<int64_t>(1);

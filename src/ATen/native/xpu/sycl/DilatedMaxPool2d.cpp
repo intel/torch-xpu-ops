@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -742,9 +743,9 @@ void launch_max_pool2d_kernel(
   int64_t stride = static_cast<int64_t>(numPlane) *
       static_cast<int64_t>(outputSizeH) * static_cast<int64_t>(outputSizeW);
   int vec_size = 1;
-  int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int thread_slots = at::xpu::getDeviceHWThreads();
   int64_t num_sub_wg;
-  auto wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t wg_size = at::xpu::getDeviceMaxWorkGroupSize();
   int64_t num_wg;
   if constexpr (is_channels_last) {
     for (vec_size =
@@ -754,7 +755,7 @@ void launch_max_pool2d_kernel(
       if (numPlane % vec_size != 0) {
         continue;
       }
-      num_sub_wg = outputSize / vec_size / syclMaxSubGroupSize();
+      num_sub_wg = outputSize / vec_size / at::xpu::getDeviceMaxSubGroupSize();
       if (2 * num_sub_wg > thread_slots) {
         int total_thread = outputSize / vec_size;
         num_wg = (total_thread + wg_size - 1) / wg_size;
@@ -972,9 +973,9 @@ void launch_max_pool2d_backward_kernel(
   // deterministic path.
 
   int vec_size = 1;
-  int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int thread_slots = at::xpu::getDeviceHWThreads();
   int num_sub_wg;
-  auto wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t wg_size = at::xpu::getDeviceMaxWorkGroupSize();
   int64_t num_wg;
   if constexpr (is_channels_last) {
     for (vec_size = std::min(
@@ -984,7 +985,8 @@ void launch_max_pool2d_backward_kernel(
       if (numPlane % vec_size != 0) {
         continue;
       }
-      num_sub_wg = gradInputSize / vec_size / syclMaxSubGroupSize();
+      num_sub_wg =
+          gradInputSize / vec_size / at::xpu::getDeviceMaxSubGroupSize();
       if (2 * num_sub_wg > thread_slots) {
         int total_thread = gradInputSize / vec_size;
         num_wg = (total_thread + wg_size - 1) / wg_size;

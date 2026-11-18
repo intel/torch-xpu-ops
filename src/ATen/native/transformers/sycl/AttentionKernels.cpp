@@ -18,6 +18,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
+#include <ATen/xpu/XPUContext.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -399,7 +400,7 @@ void _transform_bias_rescale_qkv_kernel(
     int64_t T,
     int64_t D,
     int64_t dim_per_head) {
-  auto max_wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t max_wg_size = at::xpu::getDeviceMaxWorkGroupSize();
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -438,7 +439,13 @@ void _transform_bias_rescale_qkv_kernel(
 
           native::narrow_symint(offsets, 0, sizes.numel() + 1, sizes.numel())
               .copy_(sizes.reshape({-1}));
-          auto metadata = offsets.to(at::Device(kXPU), at::kInt, true, true);
+          // Blocking H2D: `offsets` is a pageable host-local that frees on
+          // return, so a non-blocking copy can read freed memory on XPU.
+          auto metadata = offsets.to(
+              /*device=*/at::Device(kXPU),
+              /*dtype=*/at::kInt,
+              /*non_blocking=*/false,
+              /*copy=*/true);
           const auto offsets_ptr = metadata.data_ptr<int>();
           const auto sizes_ptr = offsets_ptr + sizes.numel() + 1;
           // const auto input_dim = sizes.sizes()[1];

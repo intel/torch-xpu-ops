@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -59,8 +60,8 @@ void parallel_replication_pad1d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2);
 
-  int64_t work_group_size =
-      syclMaxWorkGroupSize<parallel_replication_pad_1d_kernel_func<
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      parallel_replication_pad_1d_kernel_func<
           input_scalar_t,
           output_scalar_t,
           F>>();
@@ -179,8 +180,8 @@ void parallel_replication_pad2d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3);
 
-  int64_t work_group_size =
-      syclMaxWorkGroupSize<parallel_replication_pad_2d_kernel_func<
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      parallel_replication_pad_2d_kernel_func<
           input_scalar_t,
           output_scalar_t,
           F>>();
@@ -316,8 +317,8 @@ void parallel_replication_pad3d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3) * output.size(4);
 
-  int64_t work_group_size =
-      syclMaxWorkGroupSize<parallel_replication_pad_3d_kernel_func<
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize<
+      parallel_replication_pad_3d_kernel_func<
           input_scalar_t,
           output_scalar_t,
           F>>();
@@ -529,18 +530,34 @@ void replication_pad2d_backward_kernel(
   const auto padR = padding[1];
   const auto padT = padding[2];
   const auto padB = padding[3];
+  int dimc = 0;
   int dimh = 1;
   int dimw = 2;
 
   int numInputDims = input.dim();
   if (numInputDims == 4) {
+    dimc++;
     dimh++;
     dimw++;
   }
+  const auto ichannel = input.size(dimc);
   const auto iheight = input.size(dimh);
   const auto iwidth = input.size(dimw);
   const auto oheight = iheight + padT + padB;
   const auto owidth = iwidth + padL + padR;
+
+  // Validate the channel (plane) dimension in addition to the spatial dims.
+  // Without this check a grad_output whose channel count does not match the
+  // input (e.g. 0 channels) passes the width/height checks, a non-empty
+  // grad_input is allocated from the input shape, and the kernel reads
+  // grad_output out of bounds -> SIGSEGV. Mirrors the 3d backward check and
+  // the CPU/CUDA fix in pytorch/pytorch#189463.
+  TORCH_CHECK(
+      ichannel == grad_output.size(dimc),
+      "gradOutput channel unexpected. Expected: ",
+      ichannel,
+      ", Got: ",
+      grad_output.size(dimc));
 
   TORCH_CHECK(
       owidth == grad_output.size(dimw),

@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -17,6 +18,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
+#include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/xpu/sycl/LaunchUtils.h>
 #include <comm/xpu_aten.h>
 
@@ -26,6 +28,8 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/UpSampleBilinear2dKernels.h>
+
+#include <limits>
 
 namespace at::native::xpu {
 
@@ -93,8 +97,8 @@ void launch_upsample_bilinear2d_kernel(
     int64_t output_width,
     int64_t nbatch,
     int64_t channels) {
-  int64_t wg_size =
-      syclMaxWorkGroupSize<upsample_bilinear2d_kernel<scalar_t, accscalar_t>>();
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      upsample_bilinear2d_kernel<scalar_t, accscalar_t>>();
   int num_group = at::ceil_div(n, (int)wg_size);
   auto queue = getCurrentSYCLQueue();
 
@@ -117,7 +121,7 @@ void launch_upsample_bilinear2d_kernel(
       channels);
 }
 
-template <typename scalar_t, typename accscalar_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
 void upsample_bilinear2d_nhwc_kernel(
@@ -131,25 +135,25 @@ void upsample_bilinear2d_nhwc_kernel(
     const int output_width,
     const scalar_t* idata,
     scalar_t* odata,
-    const int out_numel) {
+    const index_t out_numel) {
   sycl::nd_item<1> item = sycl::ext::oneapi::this_work_item::get_nd_item<1>();
-  int index = item.get_global_linear_id();
+  const index_t index = static_cast<index_t>(item.get_global_linear_id());
 
   if (index < out_numel) {
-    const int c = index % channels;
-    const int w2 = (index / channels) % output_width;
-    const int h2 = (index / channels / output_width) % output_height;
-    const int n = index / channels / output_width / output_height;
+    const index_t c = index % channels;
+    const index_t w2 = (index / channels) % output_width;
+    const index_t h2 = (index / channels / output_width) % output_height;
+    const index_t n = index / channels / output_width / output_height;
 
     const accscalar_t h1r = area_pixel_compute_source_index<accscalar_t>(
-        rheight, h2, align_corners, /*cubic=*/false);
+        rheight, static_cast<int>(h2), align_corners, /*cubic=*/false);
     const int h1 = h1r;
     const int h1p = (h1 < input_height - 1) ? 1 : 0;
     const accscalar_t h1lambda = h1r - h1;
     const accscalar_t h0lambda = static_cast<accscalar_t>(1) - h1lambda;
 
     const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
-        rwidth, w2, align_corners, /*cubic=*/false);
+        rwidth, static_cast<int>(w2), align_corners, /*cubic=*/false);
     const int w1 = w1r;
     const int w1p = (w1 < input_width - 1) ? 1 : 0;
     const accscalar_t w1lambda = w1r - w1;
@@ -157,10 +161,10 @@ void upsample_bilinear2d_nhwc_kernel(
 
     const accscalar_t val = h0lambda *
             (w0lambda *
-                 idata[idx_cl(
+                 idata[idx_cl<index_t>(
                      n, h1, w1, c, input_height, input_width, channels)] +
              w1lambda *
-                 idata[idx_cl(
+                 idata[idx_cl<index_t>(
                      n,
                      h1,
                      w1 + w1p,
@@ -170,10 +174,10 @@ void upsample_bilinear2d_nhwc_kernel(
                      channels)]) +
         h1lambda *
             (w0lambda *
-                 idata[idx_cl(
+                 idata[idx_cl<index_t>(
                      n, h1 + h1p, w1, c, input_height, input_width, channels)] +
              w1lambda *
-                 idata[idx_cl(
+                 idata[idx_cl<index_t>(
                      n,
                      h1 + h1p,
                      w1 + w1p,
@@ -181,12 +185,13 @@ void upsample_bilinear2d_nhwc_kernel(
                      input_height,
                      input_width,
                      channels)]);
-    odata[idx_cl(n, h2, w2, c, output_height, output_width, channels)] =
+    odata[idx_cl<index_t>(
+        n, h2, w2, c, output_height, output_width, channels)] =
         static_cast<scalar_t>(val);
   }
 }
 
-template <typename scalar_t, typename accscalar_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 void launch_upsample_bilinear2d_nhwc_kernel(
     const accscalar_t rheight,
     const accscalar_t rwidth,
@@ -198,13 +203,14 @@ void launch_upsample_bilinear2d_nhwc_kernel(
     const int width2,
     const scalar_t* idata,
     scalar_t* odata,
-    const int out_numel) {
-  int64_t wg_size = syclMaxWorkGroupSize<
-      upsample_bilinear2d_nhwc_kernel<scalar_t, accscalar_t>>();
-  int num_group = at::ceil_div(out_numel, (int)wg_size);
+    const index_t out_numel) {
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      upsample_bilinear2d_nhwc_kernel<scalar_t, accscalar_t, index_t>>();
+  int64_t num_group = at::ceil_div<int64_t>(out_numel, wg_size);
   auto queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit<upsample_bilinear2d_nhwc_kernel<scalar_t, accscalar_t>>(
+  sycl_kernel_submit<
+      upsample_bilinear2d_nhwc_kernel<scalar_t, accscalar_t, index_t>>(
       num_group * wg_size,
       wg_size,
       queue,
@@ -286,7 +292,7 @@ void upsample_bilinear2d_backward_align_kernel(
             static_cast<accscalar_t>((output_width - 1) * (output_height - 1));
         if constexpr (is_channel_last) {
           tmp += scale *
-              static_cast<accscalar_t>(odata[idx_cl(
+              static_cast<accscalar_t>(odata[idx_cl<size_t>(
                   n,
                   point_h / (input_height - 1),
                   point_w / (input_width - 1),
@@ -381,7 +387,7 @@ void upsample_bilinear2d_backward_not_align_kernel(
 
         if constexpr (is_channel_last) {
           tmp += scale *
-              static_cast<accscalar_t>(odata[idx_cl(
+              static_cast<accscalar_t>(odata[idx_cl<size_t>(
                   n,
                   (point_h - input_height) / (2 * input_height),
                   (point_w - input_width) / (2 * input_width),
@@ -507,8 +513,8 @@ void launch_upsample_bilinear2d_backward_kernel(
       !std::is_same_v<scalar_t, double>;
   if (can_optimize) {
     if (align_corners) {
-      int64_t wg_size =
-          syclMaxWorkGroupSize<upsample_bilinear2d_backward_align_kernel<
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+          upsample_bilinear2d_backward_align_kernel<
               scalar_t,
               accscalar_t,
               false>>();
@@ -532,8 +538,8 @@ void launch_upsample_bilinear2d_backward_kernel(
           (int)channels,
           i_numel);
     } else {
-      int64_t wg_size =
-          syclMaxWorkGroupSize<upsample_bilinear2d_backward_not_align_kernel<
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+          upsample_bilinear2d_backward_not_align_kernel<
               scalar_t,
               accscalar_t,
               false>>();
@@ -561,7 +567,7 @@ void launch_upsample_bilinear2d_backward_kernel(
   } else {
     const size_t num_kernels = nc * output_width * output_height;
 
-    int64_t wg_size = syclMaxWorkGroupSize<
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
         upsample_bilinear2d_backward_kernel<scalar_t, accscalar_t>>();
     int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
     auto queue = getCurrentSYCLQueue();
@@ -585,7 +591,7 @@ void launch_upsample_bilinear2d_backward_kernel(
   }
 }
 
-template <typename scalar_t, typename accscalar_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
     (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
 void upsample_bilinear2d_backward_nhwc_kernel(
@@ -599,25 +605,25 @@ void upsample_bilinear2d_backward_nhwc_kernel(
     scalar_t* idata,
     const scalar_t* odata,
     const int channels,
-    const size_t o_numel) {
+    const index_t o_numel) {
   sycl::nd_item<1> item = sycl::ext::oneapi::this_work_item::get_nd_item<1>();
-  const int index = item.get_global_linear_id();
+  const index_t index = static_cast<index_t>(item.get_global_linear_id());
 
   if (index < o_numel) {
-    const int c = index % channels;
-    const int w2 = (index / channels) % output_width;
-    const int h2 = (index / channels / output_width) % output_height;
-    const int n = index / channels / output_width / output_height;
+    const index_t c = index % channels;
+    const index_t w2 = (index / channels) % output_width;
+    const index_t h2 = (index / channels / output_width) % output_height;
+    const index_t n = index / channels / output_width / output_height;
 
     const accscalar_t h1r = area_pixel_compute_source_index<accscalar_t>(
-        rheight, h2, align_corners, /*cubic=*/false);
+        rheight, static_cast<int>(h2), align_corners, /*cubic=*/false);
     const int h1 = h1r;
     const int h1p = (h1 < input_height - 1) ? 1 : 0;
     const accscalar_t h1lambda = h1r - h1;
     const accscalar_t h0lambda = static_cast<accscalar_t>(1) - h1lambda;
 
     const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
-        rwidth, w2, align_corners, /*cubic=*/false);
+        rwidth, static_cast<int>(w2), align_corners, /*cubic=*/false);
     const int w1 = w1r;
     const int w1p = (w1 < input_width - 1) ? 1 : 0;
     const accscalar_t w1lambda = w1r - w1;
@@ -627,12 +633,12 @@ void upsample_bilinear2d_backward_nhwc_kernel(
     atomicAdd(
         (sycl_global_ptr<
             scalar_t>)(idata +
-                       idx_cl(
+                       idx_cl<index_t>(
                            n, h1, w1, c, input_height, input_width, channels)),
         static_cast<scalar_t>(h0lambda * w0lambda * d2val));
     atomicAdd(
         (sycl_global_ptr<scalar_t>)(idata +
-                                    idx_cl(
+                                    idx_cl<index_t>(
                                         n,
                                         h1,
                                         w1 + w1p,
@@ -643,7 +649,7 @@ void upsample_bilinear2d_backward_nhwc_kernel(
         static_cast<scalar_t>(h0lambda * w1lambda * d2val));
     atomicAdd(
         (sycl_global_ptr<scalar_t>)(idata +
-                                    idx_cl(
+                                    idx_cl<index_t>(
                                         n,
                                         h1 + h1p,
                                         w1,
@@ -654,7 +660,7 @@ void upsample_bilinear2d_backward_nhwc_kernel(
         static_cast<scalar_t>(h1lambda * w0lambda * d2val));
     atomicAdd(
         (sycl_global_ptr<scalar_t>)(idata +
-                                    idx_cl(
+                                    idx_cl<index_t>(
                                         n,
                                         h1 + h1p,
                                         w1 + w1p,
@@ -666,7 +672,7 @@ void upsample_bilinear2d_backward_nhwc_kernel(
   }
 }
 
-template <typename scalar_t, typename accscalar_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 void launch_upsample_bilinear2d_backward_nhwc_kernel(
     int64_t input_height,
     int64_t input_width,
@@ -690,10 +696,13 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
        (input_width == (rwidth * output_width) &&
         input_height == (rheight * output_height))) &&
       !std::is_same_v<scalar_t, double>;
+  // The optimized kernels index the gradient input with 32-bit work-item ids.
+  can_optimize = can_optimize &&
+      i_numel <= static_cast<size_t>(std::numeric_limits<int>::max());
   if (can_optimize) {
     if (align_corners) {
-      int64_t wg_size =
-          syclMaxWorkGroupSize<upsample_bilinear2d_backward_align_kernel<
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+          upsample_bilinear2d_backward_align_kernel<
               scalar_t,
               accscalar_t,
               true>>();
@@ -718,8 +727,8 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
           i_numel);
 
     } else {
-      int64_t wg_size =
-          syclMaxWorkGroupSize<upsample_bilinear2d_backward_not_align_kernel<
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+          upsample_bilinear2d_backward_not_align_kernel<
               scalar_t,
               accscalar_t,
               true>>();
@@ -745,13 +754,18 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
     }
 
   } else {
-    int64_t wg_size = syclMaxWorkGroupSize<
-        upsample_bilinear2d_backward_nhwc_kernel<scalar_t, accscalar_t>>();
-    int num_group = at::ceil_div((int64_t)o_numel, (int64_t)wg_size);
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        upsample_bilinear2d_backward_nhwc_kernel<
+            scalar_t,
+            accscalar_t,
+            index_t>>();
+    int64_t num_group = at::ceil_div<int64_t>(o_numel, wg_size);
     auto queue = getCurrentSYCLQueue();
 
-    sycl_kernel_submit<
-        upsample_bilinear2d_backward_nhwc_kernel<scalar_t, accscalar_t>>(
+    sycl_kernel_submit<upsample_bilinear2d_backward_nhwc_kernel<
+        scalar_t,
+        accscalar_t,
+        index_t>>(
         num_group * wg_size,
         wg_size,
         queue,
@@ -766,7 +780,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
         idata,
         odata,
         channels,
-        o_numel);
+        static_cast<index_t>(o_numel));
   }
 }
 
@@ -806,20 +820,6 @@ void upsample_bilinear2d_out_kernel(
         if (memory_format == at::MemoryFormat::ChannelsLast && channels >= 16 &&
             output.is_contiguous(memory_format)) {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
-          TORCH_CHECK(
-              input.numel() < std::numeric_limits<int>::max(),
-              "upsample_bilinear2d_nhwc only supports input tensors with less than INT_MAX elements, but got ",
-              input.sizes());
-          TORCH_CHECK(
-              output.numel() < std::numeric_limits<int>::max(),
-              "upsample_bilinear2d_nhwc only supports output tensors with less than INT_MAX elements, but got ",
-              output.sizes());
-
-          const int channels = input.size(1);
-          const int height1 = input.size(2);
-          const int width1 = input.size(3);
-          const int height2 = output.size(2);
-          const int width2 = output.size(3);
 
           Tensor input_cl = input.contiguous(at::MemoryFormat::ChannelsLast);
 
@@ -830,18 +830,39 @@ void upsample_bilinear2d_out_kernel(
               input_height, output_height, align_corners, scales_h);
           const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
               input_width, output_width, align_corners, scales_w);
-          launch_upsample_bilinear2d_nhwc_kernel<scalar_t, accscalar_t>(
-              rheight,
-              rwidth,
-              align_corners,
-              channels,
-              height1,
-              width1,
-              height2,
-              width2,
-              idata,
-              odata,
-              output.numel());
+          if (canUse32BitIndexMath(input_cl) && canUse32BitIndexMath(output)) {
+            launch_upsample_bilinear2d_nhwc_kernel<
+                scalar_t,
+                accscalar_t,
+                int32_t>(
+                rheight,
+                rwidth,
+                align_corners,
+                channels,
+                input_height,
+                input_width,
+                output_height,
+                output_width,
+                idata,
+                odata,
+                static_cast<int32_t>(output.numel()));
+          } else {
+            launch_upsample_bilinear2d_nhwc_kernel<
+                scalar_t,
+                accscalar_t,
+                int64_t>(
+                rheight,
+                rwidth,
+                align_corners,
+                channels,
+                input_height,
+                input_width,
+                output_height,
+                output_width,
+                idata,
+                odata,
+                output.numel());
+          }
         } else {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
           auto idata_acc = input.packed_accessor64<const scalar_t, 4>();
@@ -923,21 +944,42 @@ void upsample_bilinear2d_backward_out_kernel(
           const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
               input_width, output_width, align_corners, scales_w);
 
-          launch_upsample_bilinear2d_backward_nhwc_kernel<
-              scalar_t,
-              accscalar_t>(
-              input_height,
-              input_width,
-              output_height,
-              output_width,
-              rheight,
-              rwidth,
-              align_corners,
-              idata,
-              odata,
-              channels,
-              grad_output.numel(),
-              grad_input.numel());
+          if (canUse32BitIndexMath(grad_input) &&
+              canUse32BitIndexMath(grad_output)) {
+            launch_upsample_bilinear2d_backward_nhwc_kernel<
+                scalar_t,
+                accscalar_t,
+                int32_t>(
+                input_height,
+                input_width,
+                output_height,
+                output_width,
+                rheight,
+                rwidth,
+                align_corners,
+                idata,
+                odata,
+                channels,
+                grad_output.numel(),
+                grad_input.numel());
+          } else {
+            launch_upsample_bilinear2d_backward_nhwc_kernel<
+                scalar_t,
+                accscalar_t,
+                int64_t>(
+                input_height,
+                input_width,
+                output_height,
+                output_width,
+                rheight,
+                rwidth,
+                align_corners,
+                idata,
+                odata,
+                channels,
+                grad_output.numel(),
+                grad_input.numel());
+          }
         } else {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
@@ -1280,12 +1322,12 @@ void launch_upsample_gen2d_aa_kernel(
   const int interp_height = (int)ceilf(support_h) * 2 + 1;
   const int interp_width = (int)ceilf(support_w) * 2 + 1;
 
-  auto sharedMemPerBlock = syclLocalMemSize();
+  int64_t sharedMemPerBlock = at::xpu::getDeviceLocalMemSize();
   int maxThreadsPerBlock = std::min<int>(
-      syclMaxWorkGroupSize<
+      at::xpu::getKernelMaxWorkGroupSize<
           UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
       256); // 256 performs better
-  int block_x = syclMaxSubGroupSize();
+  int block_x = at::xpu::getDeviceMaxSubGroupSize();
 
   int numer =
       sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
@@ -1348,12 +1390,12 @@ void launch_upsample_gen2d_aa_backward_kernel(
     const accscalar_t support_w) {
   auto queue = getCurrentSYCLQueue();
 
-  auto sharedMemPerBlock = syclLocalMemSize();
+  int64_t sharedMemPerBlock = at::xpu::getDeviceLocalMemSize();
   int maxThreadsPerBlock = std::min<int>(
-      syclMaxWorkGroupSize<
+      at::xpu::getKernelMaxWorkGroupSize<
           UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
       256); // 256 performs better
-  int block_x = syclMaxSubGroupSize();
+  int block_x = at::xpu::getDeviceMaxSubGroupSize();
   int block_y = maxThreadsPerBlock / block_x;
 
   int grid_x = (output_width + block_x - 1) / block_x * block_x;

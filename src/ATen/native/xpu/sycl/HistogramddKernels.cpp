@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <ATen/xpu/XPUContext.h>
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -158,7 +159,7 @@ void histogramdd_template(
     const int64_t* num_bin_edges,
     const int64_t total_bin_size) {
   const int64_t max_wg_size =
-      syclMaxWorkGroupSize<histogramdd_kernel<scalar_t>>();
+      at::xpu::getKernelMaxWorkGroupSize<histogramdd_kernel<scalar_t>>();
   int64_t num_wg = input_size;
   int64_t batch_num = 1;
   int64_t batch_wg_size = max_wg_size;
@@ -253,7 +254,7 @@ void histogramdd_linear_template(
     int64_t input_dim,
     const int64_t* num_bin_edges) {
   const int64_t work_group_size =
-      syclMaxWorkGroupSize<histogramdd_linear_kernel<scalar_t>>();
+      at::xpu::getKernelMaxWorkGroupSize<histogramdd_linear_kernel<scalar_t>>();
   const int64_t num_wg = (input_size + work_group_size - 1) / work_group_size;
   sycl_kernel_submit<histogramdd_linear_kernel<scalar_t>>(
       num_wg * work_group_size,
