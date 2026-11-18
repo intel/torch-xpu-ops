@@ -48,7 +48,8 @@ void abs_kernel(TensorIteratorBase& iter) {
         AT_EXPAND(AT_ALL_TYPES),
         ScalarType::Half,
         ScalarType::BFloat16,
-        ScalarType::Bool);
+        ScalarType::Bool,
+        ScalarType::Float8_e5m2);
   }
 }
 

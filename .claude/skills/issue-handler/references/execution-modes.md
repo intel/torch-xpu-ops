@@ -130,6 +130,10 @@ never a bare `pytorch/pytorch#197334`, a URL, or a markdown link. All three
 render as a reference, which back-links the comment onto the upstream issue;
 a code span is not linkified. Run and job log links are fine.
 
+**References to issues in this repo stay bare** — write
+intel/torch-xpu-ops#5476, not backticked. Here the back-link is wanted: it
+is how a tracking issue you file gets found again.
+
 The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
 already lives in the root-cause block above it.
@@ -229,8 +233,8 @@ Capture the two independent base SHAs **once**, before entering the
 loop:
 
 ```bash
-pytorch_base=$(git -C $pytorch_dir rev-parse HEAD)
-xpu_ops_base=$(git -C $pytorch_dir/third_party/torch-xpu-ops rev-parse HEAD)
+pytorch_base=$(git -C $PYTORCH_DIR rev-parse HEAD)
+xpu_ops_base=$(git -C $PYTORCH_DIR/third_party/torch-xpu-ops rev-parse HEAD)
 ```
 
 Track them as two separate variables — a torch-xpu-ops fix bases off
@@ -240,11 +244,11 @@ and a pytorch fix does the reverse. Do not conflate them.
 Reset **both** checkouts before each entry:
 
 ```bash
-git -C $pytorch_dir reset --hard $pytorch_base
-git -C $pytorch_dir clean -fdx
-if [ -d "$pytorch_dir/third_party/torch-xpu-ops/.git" ]; then
-    git -C $pytorch_dir/third_party/torch-xpu-ops reset --hard $xpu_ops_base
-    git -C $pytorch_dir/third_party/torch-xpu-ops clean -fdx
+git -C $PYTORCH_DIR reset --hard $pytorch_base
+git -C $PYTORCH_DIR clean -fdx
+if [ -d "$PYTORCH_DIR/third_party/torch-xpu-ops/.git" ]; then
+    git -C $PYTORCH_DIR/third_party/torch-xpu-ops reset --hard $xpu_ops_base
+    git -C $PYTORCH_DIR/third_party/torch-xpu-ops clean -fdx
 fi
 ```
 

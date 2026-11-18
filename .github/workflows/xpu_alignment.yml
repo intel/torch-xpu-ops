@@ -22,11 +22,15 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BEDROCK_MODEL: global.anthropic.claude-opus-5
+  # Default model for every AI task. Override with the AWS_BEDROCK_MODEL secret;
+  # each task can be overridden on its own with AWS_BEDROCK_MODEL_<TASK>.
+  AWS_BEDROCK_MODEL: ${{ secrets.AWS_BEDROCK_MODEL || 'global.anthropic.claude-opus-5-5' }}
   ALIGNMENT_RUN_ROOT: agent_space_xpu/runs
   ALIGNMENT_ARTIFACT: xpu-alignment-${{ github.run_id }}-${{ github.run_attempt }}
   ALIGNMENT_TRIAGE_ISSUE: '5018'
-  ALIGNMENT_COST_ISSUE: '4251'
+  # Cost rows go to a tracker outside this repo so they do not add noise here.
+  ALIGNMENT_COST_REPO: torchxpubot/ci-infra
+  ALIGNMENT_COST_ISSUE: '1'
 
 jobs:
   collect:
@@ -112,7 +116,7 @@ jobs:
           github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: >-
-            --model ${{ env.BEDROCK_MODEL }} --max-turns 300
+            --model ${{ secrets.AWS_BEDROCK_MODEL_XPU_ALIGNMENT || env.AWS_BEDROCK_MODEL }} --max-turns 300
             --allowedTools "Bash(gh api:*),Bash(gh search:*),Bash(gh pr view:*),Bash(gh issue view:*),Bash(git log:*),Bash(git show:*),Bash(sha256sum:*),Read,Write,Edit,Glob,Grep,WebFetch,Skill"
           prompt: |
             Use .claude/skills/xpu-alignment/SKILL.md in automation mode with
@@ -367,7 +371,7 @@ jobs:
           github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: >-
-            --model ${{ env.BEDROCK_MODEL }} --max-turns 300
+            --model ${{ secrets.AWS_BEDROCK_MODEL_XPU_ALIGNMENT || env.AWS_BEDROCK_MODEL }} --max-turns 300
             --allowedTools Bash(sha256sum:*),Read,Write,Edit,Glob,Grep,Skill
           prompt: |
             Use .claude/skills/xpu-alignment/SKILL.md in automation mode with
@@ -511,7 +515,7 @@ jobs:
           github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: >-
-            --model ${{ env.BEDROCK_MODEL }} --max-turns 300
+            --model ${{ secrets.AWS_BEDROCK_MODEL_XPU_ALIGNMENT || env.AWS_BEDROCK_MODEL }} --max-turns 300
             --allowedTools "Bash(gh api:*),Bash(gh search:*),Bash(gh pr view:*),Bash(gh issue view:*),Read,Write,Edit,Glob,Grep,WebFetch,Skill"
           prompt: |
             Use .claude/skills/xpu-alignment/SKILL.md in automation mode with
@@ -523,7 +527,7 @@ jobs:
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
             existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
-            If an existing intel/torch-xpu-ops tracker covers the same work,
+            If an open intel/torch-xpu-ops tracker covers the same work,
             record it as `canonical_tracker`; do not create a payload or comment
             on it.
 
@@ -721,8 +725,10 @@ jobs:
         if: always()
         uses: actions/github-script@v9
         env:
+          COST_TRACKING_TOKEN: ${{ secrets.COST_TRACKING_TOKEN }}
           ALIGNMENT_MODE: ${{ github.event_name == 'schedule' && 'schedule' || 'dry-run' }}
           COST_ISSUE: ${{ env.ALIGNMENT_COST_ISSUE }}
+          COST_REPO: ${{ env.ALIGNMENT_COST_REPO }}
           PREPARE_USAGE: ${{ needs.scan-prepare.outputs.usage }}
           FINALIZE_USAGE: ${{ needs.scan-finalize.outputs.usage }}
           REVIEW_USAGE: ${{ needs.independent-review.outputs.usage }}
@@ -787,9 +793,17 @@ jobs:
             }).join('\n');
             const date = new Date().toISOString().split('T')[0];
             const body = `\`${date}\` [\`xpu-alignment\`](${jobUrl}) run \`${context.runId}\`, attempt \`${process.env.RUN_ATTEMPT}\` (${process.env.ALIGNMENT_MODE}) — ${costTotal} (${tokenTotal}) [${status}]\n\n${roles}`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+            const [costOwner, costRepo] = process.env.COST_REPO.split('/');
+            // The tracker lives in another org, so the row is written with a
+            // token scoped to it rather than MERGE_TOKEN, which is not.
+            if (!process.env.COST_TRACKING_TOKEN) {
+              core.warning('COST_TRACKING_TOKEN is not set; skipping the cost row');
+              return;
+            }
+            const costClient = getOctokit(process.env.COST_TRACKING_TOKEN);
+            await costClient.rest.issues.createComment({
+              owner: costOwner,
+              repo: costRepo,
               issue_number: Number(process.env.COST_ISSUE),
               body,
             });

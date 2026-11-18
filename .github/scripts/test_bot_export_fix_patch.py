@@ -93,7 +93,7 @@ def test_passed_exports_a_patch(tmp_path, space):
 
     assert (made, salvaged, errors) == (1, 0, [])
     assert len(patches(out)) == 1
-    assert patches(out)[0].startswith("fix-issue-1" + os.sep)
+    assert patches(out)[0].startswith("fix-issue-1-torch-xpu-ops" + os.sep)
 
 
 def test_passed_missing_base_sha_is_an_error(tmp_path, space):
@@ -212,7 +212,8 @@ def test_upstream_filed_bug_is_named_after_the_upstream_issue(tmp_path, space):
     made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
 
     assert (made, salvaged, errors) == (1, 0, [])
-    assert patches(out)[0].startswith("fix-pytorch-issue-197334-test_foo" + os.sep)
+    assert patches(out)[0].startswith(
+        "fix-pytorch-issue-197334-test_foo-torch-xpu-ops" + os.sep)
     # the lost-fix trap must still see the non-`fix-issue-` name
     assert any(branch in b for b in ex.fix_branches(str(tmp_path)))
 
@@ -227,8 +228,52 @@ def test_batch_exports_one_series_per_slug(tmp_path, space):
     made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
 
     assert (made, salvaged, errors) == (2, 0, [])
-    assert [p.split(os.sep)[0] for p in patches(out)] == ["fix-issue-1-1-aa",
-                                                          "fix-issue-1-2-bb"]
+    assert [p.split(os.sep)[0] for p in patches(out)] == [
+        "fix-issue-1-1-aa-torch-xpu-ops", "fix-issue-1-2-bb-torch-xpu-ops"]
+
+
+def test_two_repo_fix_keeps_both_halves(tmp_path, space):
+    """One bug, one branch name, two repos -- the halves must not collide.
+
+    `issue-handler` names the branch after the issue in each repo, so a fix that
+    spans pytorch and torch-xpu-ops writes two units with the same branch. Both
+    series restart at 0001, so a shared directory loses one half whenever the two
+    commit subjects match (the 197521 grid_sample batch came one subject away).
+    """
+    agent_space, out = space
+    branch = "agent/fix-pytorch-issue-197521"
+    base_x, _ = make_repo(tmp_path / "xpuops", branch=branch)
+    base_p, _ = make_repo(tmp_path / "pytorch", branch=branch)
+    write_result(agent_space, tmp_path / "xpuops", base_x, branch, slug="gs")
+    write_result(agent_space, tmp_path / "pytorch", base_p, branch, slug="gs-pytorch",
+                 target_repo="pytorch")
+
+    made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
+
+    assert (made, salvaged, errors) == (2, 0, [])
+    assert [p.split(os.sep)[0] for p in patches(out)] == [
+        "fix-pytorch-issue-197521-pytorch", "fix-pytorch-issue-197521-torch-xpu-ops"]
+
+
+def test_two_units_claiming_one_directory_is_an_error(tmp_path, space):
+    """The guard behind the suffix: a collision must never be a silent green.
+
+    Both halves here carry the same branch AND the same target_repo, which means
+    the agent broke its own branch naming. Exporting anyway would write both
+    series into one directory, and `format-patch` restarting at 0001 would drop
+    one of them while this function counted two.
+    """
+    agent_space, out = space
+    branch = "agent/fix-issue-1"
+    base_a, _ = make_repo(tmp_path / "a", branch=branch)
+    base_b, _ = make_repo(tmp_path / "b", branch=branch)
+    write_result(agent_space, tmp_path / "a", base_a, branch, slug="aa")
+    write_result(agent_space, tmp_path / "b", base_b, branch, slug="bb")
+
+    made, salvaged, errors = ex.export(str(agent_space), str(out), str(tmp_path))
+
+    assert made == 1
+    assert len(errors) == 1 and "already another unit's" in errors[0]
 
 
 def test_unparseable_fix_result_is_an_error(tmp_path, space):
