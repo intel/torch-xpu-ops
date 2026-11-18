@@ -136,8 +136,7 @@ jobs:
       image: ${{ needs.config.outputs.image }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      # --entrypoint= skips the OMIX entrypoint, which activates oneAPI
-      options: --entrypoint= --device=/dev/mem --device=/dev/dri
+      options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
