@@ -68,7 +68,7 @@ runs:
             const type = key.replace(/^runner_/, '');
             const label = override || value;
             core.setOutput(type, label);
-            core.setOutput(`${type}_image`, image.image_xpu);
+            core.setOutput(`${type}_image`, label.includes('bmg') ? image.image_bmg : image.image_pvc);
           }
     - name: Install gcc-${{ steps.resolve.outputs.gcc }}
       if: ${{ inputs.setup_gcc == 'true' }}
