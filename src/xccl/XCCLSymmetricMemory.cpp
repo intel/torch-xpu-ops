@@ -313,8 +313,9 @@ class XCCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
         !group_name.has_value(),
         "XCCLSymmetricMemoryAllocator::alloc must not be called with a "
         "group_name");
-    // A tensor created on a plain "xpu" device carries no index; onecclSetDevice
-    // and the per-device communicator lookup both need a real one.
+    // A tensor created on a plain "xpu" device carries no index;
+    // onecclSetDevice and the per-device communicator lookup both need a real
+    // one.
     if (device_idx < 0) {
       device_idx = static_cast<int>(c10::xpu::current_device());
     }
