@@ -9,7 +9,7 @@ runner:
   runner_performance: bmg-b70
 
 image:
-  # Linux test container image per runner family: BMG uses OMIX, PVC uses LTS
+  # Linux test container image: PVC runners use LTS2, all others OMIX
   image_bmg: intel/omix:0.5.0-devel-ubuntu26.04
   image_pvc: intelgpu/ubuntu-24.04-lts2:2523.40
 
