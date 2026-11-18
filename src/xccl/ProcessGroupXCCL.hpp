@@ -490,6 +490,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::vector<uint64_t>& groupRanks() const;
   const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void trackInflightWork(const c10::intrusive_ptr<WorkXCCL>& work);
+
   void attachRetireAndStatusCallback(
       c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
       std::shared_ptr<ProcessGroupStatus> pgStatus);
@@ -518,6 +520,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::shared_ptr<onecclComm_t> coalescedComm_ = nullptr;
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
+  std::list<WorkXCCL> inflightWorks_;
+  std::mutex inflightWorksMutex_;
   bool blockingWait_ = false;
   std::atomic<bool> enableTiming_;
   static thread_local uint64_t xcclActiveGroupCounter_;
