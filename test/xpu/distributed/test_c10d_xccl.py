@@ -771,6 +771,36 @@ class CommTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_all_to_all_single_uneven(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        device = torch.device("xpu", self.rank)
+        # Rank r sends (r + 1) * (d + 1) rows to rank d, each row tagged r * 100 + d.
+        in_splits = [(self.rank + 1) * (d + 1) for d in range(self.world_size)]
+        out_splits = [(s + 1) * (self.rank + 1) for s in range(self.world_size)]
+        inp = torch.cat(
+            [
+                torch.full((n, 3), float(self.rank * 100 + d), device=device)
+                for d, n in enumerate(in_splits)
+            ]
+        )
+        out = torch.empty(sum(out_splits), 3, device=device)
+        dist.all_to_all_single(out, inp, out_splits, in_splits)
+        expected = torch.cat(
+            [
+                torch.full((n, 3), float(s * 100 + self.rank), device=device)
+                for s, n in enumerate(out_splits)
+            ]
+        )
+        self.assertEqual(out, expected)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     # The difference between this case and `test_send_recv` is that `test_send_recv` uses a previously created process group,
     # whereas this case performs point-to-point operations immediately after creating the process group.
     def test_single_p2p(self):
