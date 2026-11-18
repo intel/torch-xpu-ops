@@ -13,6 +13,8 @@ if [ -z "$PYTORCH_ROOT_DIR" ]; then
 fi
 XML_OUTPUT_DIR="${XML_OUTPUT_DIR:-./test-reports}"        # where JUnit XML files go
 XML_PREFIX="${XML_PREFIX:-op_p0_with_}"                   # prefix for XML filenames
+# Wall-clock limit per test file/script, so one hang cannot block the rest
+P0_FILE_TIMEOUT="${P0_FILE_TIMEOUT:-14400}"
 mkdir -p "$XML_OUTPUT_DIR"
 
 # Known failures tracked by issues, plus the current AOTInductor package failures.
@@ -132,22 +134,59 @@ PYTEST_DESELECTS=(
 )
 
 # -------------------- Helper Functions --------------------
+# Write a one-case JUnit XML so a crashed/hung/failed file is reported, not silently missing.
+# Arguments: test_file case_name rc
+write_status_xml() {
+    local test_file="$1" case_name="$2" rc="$3"
+    local test_name classname xml_file failure="" failures=0
+    test_name=$(basename "$test_file" .py)
+    classname="${test_file%.py}"
+    classname="${classname//\//.}"
+    xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_${case_name}_$(date +%s%N).xml"
+    if [ "$rc" -ne 0 ]; then
+        failures=1
+        failure="<failure message=\"exit code ${rc} (124=timeout after ${P0_FILE_TIMEOUT}s, >128=killed by signal)\"/>"
+    fi
+    cat > "$xml_file" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite name="pytest" tests="1" failures="${failures}" errors="0" skipped="0"><testcase classname="${classname}" name="${case_name}" file="${test_file}">${failure}</testcase></testsuite></testsuites>
+EOF
+}
+
 # Run pytest with a unique JUnit XML filename
 # Arguments: test_file [optional: extra pytest args]
 run_pytest() {
     local test_file="$1"
     shift
     local extra_args=("$@")
-    local deselect test_name xml_file
+    local deselect test_name xml_file rc
     for deselect in "${PYTEST_DESELECTS[@]}"; do
         if [[ "$deselect" == "$test_file"::* ]]; then
             extra_args+=("--deselect=$deselect")
         fi
     done
     test_name=$(basename "$test_file" .py)
-    xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_$(date +%s).xml"
+    xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_$(date +%s%N).xml"
     echo "Running pytest $test_file -> $xml_file"
-    pytest "$test_file" --junit-xml="$xml_file" "${extra_args[@]}"
+    timeout -k 60 "$P0_FILE_TIMEOUT" pytest "$test_file" --junit-xml="$xml_file" "${extra_args[@]}"
+    rc=$?
+    # 0 passed, 1 test failures, 5 nothing collected; anything else is a crash/timeout/internal error
+    if [ ! -s "$xml_file" ] || [[ ! "$rc" =~ ^(0|1|5)$ ]]; then
+        echo "::warning::$test_file did not complete (exit code $rc)"
+        write_status_xml "$test_file" "file_crash_or_timeout" "$rc"
+    fi
+    return 0
+}
+
+# Run a non-pytest script and record its result as one JUnit case
+# Arguments: script_path
+run_python_script() {
+    local script="$1" rc
+    echo "Running $script"
+    timeout -k 60 "$P0_FILE_TIMEOUT" python "$script"
+    rc=$?
+    write_status_xml "${script#"$PYTORCH_ROOT_DIR"/third_party/torch-xpu-ops/}" "run_script" "$rc"
+    return 0
 }
 
 # -------------------- Test Groups --------------------
@@ -270,21 +309,20 @@ run_group() {
             done
             echo "=== Running Profiling scripts (python) ==="
             for script in "${profiling_python_scripts[@]}"; do
-                echo "Running $script"
-                python "$script"
+                run_python_script "$script"
             done
             ;;
         distributed)
             echo "=== Running Distributed tests ==="
             # First show topology (if needed)
-            xpu-smi topology -m
+            timeout 300 xpu-smi topology -m
             for test_file in "${!distributed_tests[@]}"; do
                 (cd "${distributed_tests[$test_file]}" && run_pytest "$test_file")
             done
             ;;
         *)
-            echo "Unknown group: $group_name"
-            exit 1
+            echo "::error::Unknown group: $group_name"
+            return 1
             ;;
     esac
 }
