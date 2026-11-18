@@ -33,9 +33,11 @@ Tensor roll_xpu(const Tensor& self, IntArrayRef shifts, IntArrayRef dims) {
   if (out.numel() == 0 || xpu::roll_kernel(self, out, shifts, dims)) {
     return out;
   }
-  // Free the unused output before the fallback allocates its own.
+  // Free the unused output before the fallback allocates its own. The fallback
+  // is built on cat, which keeps the input's layout; return the same
+  // contiguous layout as the fast path.
   out.reset();
-  return at::native::roll(self, shifts, dims);
+  return at::native::roll(self, shifts, dims).contiguous();
 }
 
 } // namespace native

@@ -218,10 +218,12 @@ struct ShiftedCopyFunctor {
     }
   }
 
+  // x and shift are both below size (< 2^31), so their unsigned sum cannot
+  // overflow, while a signed one can.
   int32_t src(int d, uint32_t x) const {
-    const int32_t s = static_cast<int32_t>(x) + p_.shift[d];
-    const int32_t n = p_.size[d].divisor;
-    return s >= n ? s - n : s;
+    const uint32_t s = x + static_cast<uint32_t>(p_.shift[d]);
+    const uint32_t n = p_.size[d].divisor;
+    return static_cast<int32_t>(s >= n ? s - n : s);
   }
 
   int32_t row_offset(const uint32_t* c) const {
