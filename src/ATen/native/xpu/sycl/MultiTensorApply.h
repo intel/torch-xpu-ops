@@ -64,11 +64,12 @@ struct TLMetaForWG {
   uint32_t wg_to_chunk;
 };
 
-static int64_t multi_tensor_apply_kernel_get_wg_size() {
+static inline int64_t multi_tensor_apply_kernel_get_wg_size() {
   return syclDeviceMaxWorkGroupSize();
 }
 
-static int64_t multi_tensor_apply_kernel_get_chunk_size(size_t total_elements) {
+static inline int64_t multi_tensor_apply_kernel_get_chunk_size(
+    size_t total_elements) {
   int64_t wg_size = multi_tensor_apply_kernel_get_wg_size();
   int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
   int64_t hw_threads_per_wg = wg_size / simd;
