@@ -14,17 +14,14 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_utils import parametrize, run_tests, TestCase
 
-DTYPES = (torch.float32, torch.float16, torch.bfloat16)
-TENSOR_COUNTS = (3, 257)
-# Includes an empty, a single-element, and a multi-chunk (131073 element)
-# tensor so the packed work-group table covers zero, one, and many chunks.
-TENSOR_SIZES = (0, 1, 17, 4096, 131073)
-
 
 class TestForeachMetadata(TestCase):
     def _inputs(self, dtype, count, device):
+        # Empty, single-element, and multi-chunk (131073 element) sizes
+        # exercise zero, one, and many work-group table entries.
+        sizes = (0, 1, 17, 4096, 131073)
         tensors = [
-            torch.randn(TENSOR_SIZES[i % len(TENSOR_SIZES)], dtype=dtype, device=device)
+            torch.randn(sizes[i % len(sizes)], dtype=dtype, device=device)
             for i in range(count)
         ]
         return tensors, [torch.randn_like(t) for t in tensors]
@@ -34,8 +31,8 @@ class TestForeachMetadata(TestCase):
         for actual_t, expected_t in zip(actual, expected):
             self.assertEqual(actual_t, expected_t)
 
-    @dtypes(*DTYPES)
-    @parametrize("tensor_count", TENSOR_COUNTS)
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    @parametrize("tensor_count", (3, 257))
     def test_foreach_add_tensor_list(self, device, dtype, tensor_count):
         a, b = self._inputs(dtype, tensor_count, device)
         expected = [x + y for x, y in zip(a, b)]
@@ -52,8 +49,8 @@ class TestForeachMetadata(TestCase):
         self._check(inplace, expected)
         self._check(out_again, expected)
 
-    @dtypes(*DTYPES)
-    @parametrize("tensor_count", TENSOR_COUNTS)
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    @parametrize("tensor_count", (3, 257))
     def test_foreach_add_scalar_list(self, device, dtype, tensor_count):
         a, _ = self._inputs(dtype, tensor_count, device)
         scalars = [float(i % 7) / 2 for i in range(tensor_count)]
