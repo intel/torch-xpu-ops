@@ -217,7 +217,7 @@ runs:
         fi
         # E2E runs on numpy 1.x; reinstall its compiled dependents so they resolve to numpy-1 compatible builds.
         if [[ "${{ inputs.suite }}" =~ huggingface|timm_models|torchbench|pt2e ]];then
-          uv pip install "numpy<2" pandas scipy scikit-learn opencv-python numba
+          uv pip install "numpy<2" pandas scipy scikit-learn opencv-python numba ml_dtypes
         fi
     - name: Detect devices
       shell: bash -euo pipefail {0}
