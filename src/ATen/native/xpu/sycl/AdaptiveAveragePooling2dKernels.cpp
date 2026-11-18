@@ -89,7 +89,9 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
         oh_(gyacc.size(2)),
         ow_(gyacc.size(3)),
         numel_(static_cast<int64_t>(ib_) * ic_ * ih_ * iw_),
-        local_range_(syclMaxWorkItemsPerSubSlice()),
+        local_range_(
+            at::xpu::getDeviceMaxSubGroupSize() *
+            at::xpu::getDeviceEUCountPerXeCore()),
         gyacc_(gyacc),
         gxacc_(gxacc) {
     int total_item =
@@ -458,8 +460,10 @@ void adaptive_avg_pool2d_backward_kernel(
           {sizeC * isizeH * isizeW, 1, isizeW * sizeC, sizeC});
     }
 
-    int max_threads =
-        std::min<int>(syclMaxWorkItemsPerSubSlice(), XPU_MAX_THREADS);
+    int max_threads = std::min<int>(
+        at::xpu::getDeviceMaxSubGroupSize() *
+            at::xpu::getDeviceEUCountPerXeCore(),
+        XPU_MAX_THREADS);
     size_t sharedMemPerGroup = at::xpu::getDeviceLocalMemSize();
 
     bool done = false;
@@ -765,9 +769,11 @@ void launch_adaptive_avg_pool2d_kernel_cl(const Tensor& input, Tensor& output) {
   int64_t numel = ob * oc * oh * ow;
   int vec_size = 1;
   for (vec_size = std::min(
-           8,
-           memory::can_vectorize_up_to<scalar_t>(
-               (char*)output.mutable_data_ptr<scalar_t>()));
+           {8,
+            memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(
+                output.mutable_data_ptr<scalar_t>())),
+            memory::can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(
+                input.const_data_ptr<scalar_t>()))});
        vec_size > 1;
        vec_size /= 2) {
     if (oc % vec_size != 0)
@@ -872,7 +878,8 @@ void launch_adaptive_avg_pool2d_kernel(
 
   int64_t numel = ob * oc * oh * ow;
   int total_item = std::min<int64_t>(numel, at::xpu::getDeviceMaxWorkItems());
-  int local_range = syclMaxWorkItemsPerSubSlice();
+  int local_range = at::xpu::getDeviceMaxSubGroupSize() *
+      at::xpu::getDeviceEUCountPerXeCore();
   int global_range = total_item < local_range
       ? local_range
       : ((total_item + local_range - 1) / local_range) * local_range;

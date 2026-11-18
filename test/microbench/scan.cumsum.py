@@ -23,8 +23,7 @@ for shape in shape_list:
             input = torch.randn(shape, dtype=dtype, device=device)
 
             # warm up
-            torch.cumsum(input, 0)
-            torch.cumsum(input, 1)
+            torch.cumsum(input, dim)
 
             # go
             print(
@@ -42,14 +41,14 @@ for shape in shape_list:
                 record_shapes=True,
             ) as prof:
                 for i in range(num_iter):
-                    torch.cumsum(input, 0)
+                    torch.cumsum(input, dim)
             print(prof.key_averages().table(sort_by="xpu_time_total"))
 
             # E2E time
             torch.xpu.synchronize()
             t1 = time.time()
             for i in range(num_iter):
-                torch.cumsum(input, 0)
+                torch.cumsum(input, dim)
             torch.xpu.synchronize()
             t2 = time.time()
             e2e_time = (t2 - t1) / num_iter
