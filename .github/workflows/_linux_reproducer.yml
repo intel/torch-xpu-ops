@@ -39,7 +39,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     container:
-      image: intel/omix:0.5.0-devel-ubuntu26.04
+      image: ${{ contains(inputs.runner, 'bmg') && 'intel/omix:0.5.0-devel-ubuntu26.04' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
