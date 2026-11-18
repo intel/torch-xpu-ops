@@ -6,10 +6,10 @@
 Example: python run_ut.py --pytorch-root /work/pytorch inductor non-inductor
 Use --dry-run to inspect commands. Child output is written directly to per-file
 logs; follow a log with tail -f. PYTEST_ADDOPTS is inherited without modification.
-There is no per-file timeout; bound the whole run from the caller (CI step).
+Each file is killed after --file-timeout seconds and the run moves on.
 Exit codes: 0 all passed, 1 test failures, 2 usage/config error, 3 runner
 error, 130 interrupted. A file that fails without a failing case in its JUnit
-(crash, interrupt, no tests) gets a <name>_runner.xml error record.
+(crash, timeout, missing file, no tests) gets a <name>_runner.xml error record.
 """
 
 import argparse
@@ -109,7 +109,8 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                 if group not in selected:
                     continue
                 if not (root / path).is_file():
-                    raise ValueError(f"Test file does not exist: {root / path}")
+                    # Reported per file at run time so the other files still run.
+                    print(f"WARNING: test file does not exist: {root / path}", file=sys.stderr, flush=True)
                 name = f"{prefix}{group}__{repo}__{path.replace('/', '__')}_{run_id}"
                 junit = output / f"{name}.xml"
                 command = pytest_command() + [path, f"--rootdir={root}", f"--junit-xml={junit}"] + [
@@ -133,7 +134,7 @@ def build_plan(config, selected, roots, output, prefix, run_id):
     return tasks
 
 
-def run_task(task):
+def run_task(task, file_timeout=None):
     started = time.monotonic()
     result = {**asdict(task), "status": "failed", "returncode": None}
     print(
@@ -142,28 +143,11 @@ def run_task(task):
         flush=True,
     )
     with task.log.open("w", encoding="utf-8") as log:
-        try:
-            with subprocess.Popen(
-                task.command,
-                cwd=task.cwd,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
-                start_new_session=True,
-            ) as process:
-                try:
-                    result["returncode"] = process.wait()
-                    result["status"] = "passed" if process.returncode == 0 else "failed"
-                except KeyboardInterrupt:
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                    result["returncode"] = process.wait()
-                    result["status"] = "interrupted"
-        except OSError as error:
-            result["error"] = str(error)
-            log.write(f"ERROR: {error}\n")
+        if not (task.cwd / task.path).is_file():
+            result["status"] = "missing"
+            log.write(f"ERROR: test file does not exist: {task.cwd / task.path}\n")
+        else:
+            run_process(task, log, result, file_timeout)
     try:
         tree = ET.parse(task.junit).getroot()
         suites = [tree] if tree.tag == "testsuite" else tree.findall("testsuite")
@@ -187,6 +171,40 @@ def run_task(task):
         flush=True,
     )
     return result
+
+
+def run_process(task, log, result, file_timeout):
+    try:
+        with subprocess.Popen(
+            task.command,
+            cwd=task.cwd,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            start_new_session=True,
+        ) as process:
+            try:
+                result["returncode"] = process.wait(timeout=file_timeout)
+                result["status"] = "passed" if process.returncode == 0 else "failed"
+            except subprocess.TimeoutExpired:
+                kill_group(process)
+                result["returncode"] = process.wait()
+                result["status"] = "timeout"
+                log.write(f"\nERROR: killed after --file-timeout {file_timeout}s\n")
+            except KeyboardInterrupt:
+                kill_group(process)
+                result["returncode"] = process.wait()
+                result["status"] = "interrupted"
+    except OSError as error:
+        result["error"] = str(error)
+        log.write(f"ERROR: {error}\n")
+
+
+def kill_group(process):
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def show_tail(log, lines=50):
@@ -328,6 +346,12 @@ def main():
         help="Write per-repository reproduce commands to this file",
     )
     parser.add_argument(
+        "--file-timeout",
+        type=int,
+        default=int(os.environ.get("P0_FILE_TIMEOUT", "14400")),
+        help="Seconds before one test file is killed and the run continues; 0 disables",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate and print the plan without executing",
@@ -372,7 +396,7 @@ def main():
     results = []
     write_summary(summary, results, len(tasks))
     try:
-        return run_all(tasks, summary, results, args.reproduce_log)
+        return run_all(tasks, summary, results, args.reproduce_log, args.file_timeout or None)
     except KeyboardInterrupt:
         # A signal outside a running test (e.g. while writing reports).
         print("Interrupted", flush=True)
@@ -383,9 +407,9 @@ def main():
         return 3
 
 
-def run_all(tasks, summary, results, reproduce_log):
+def run_all(tasks, summary, results, reproduce_log, file_timeout=None):
     for task in tasks:
-        result = run_task(task)
+        result = run_task(task, file_timeout)
         if reproduce_log:
             write_reproduce(reproduce_log, tasks, results + [result])
         results.append(result)
