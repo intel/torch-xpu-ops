@@ -110,12 +110,14 @@ runs:
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
-        git checkout ${TORCH_COMMIT_ID}
         if [[ -n "${{ inputs.wheel_run_id }}" && "${{ inputs.pytorch }}" == *"@"* ]];then
-          # Reused wheel: test the latest source, overlaying its python test utils on the installed torch
+          # Reused wheel: test the latest source (its commit may be gone after a rebase)
+          # and overlay its python test utils on the installed torch
           git checkout "$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
           TORCH_DIR="$(cd .. && python -c 'import os, torch; print(os.path.dirname(torch.__file__))')"
           cp -r torch/testing/_internal/. "${TORCH_DIR}/testing/_internal/"
+        else
+          git checkout ${TORCH_COMMIT_ID}
         fi
         # apply extra PRs for stock pytorch
         uv pip install requests
