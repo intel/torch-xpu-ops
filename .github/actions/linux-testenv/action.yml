@@ -21,6 +21,10 @@ inputs:
     type: string
     default: ''
     description: 'Optional tag (e.g. target/baseline) used to select the matching wheel artifact'
+  wheel_run_id:
+    type: string
+    default: ''
+    description: Download the wheel artifact from this run id instead of the current run
 
 runs:
   using: composite
@@ -82,6 +86,8 @@ runs:
       uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
+        run-id: ${{ inputs.wheel_run_id || github.run_id }}
+        github-token: ${{ inputs.wheel_run_id != '' && github.token || '' }}
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |

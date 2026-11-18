@@ -54,6 +54,10 @@ on:
         type: boolean
         default: false
         description: Analyse this run's UT failures. Evidence only - an on-demand run files no issues
+      wheel_run_id:
+        type: string
+        default: ''
+        description: Reuse the Torch-XPU-Wheel artifact of this run id and skip the Linux build
 
 permissions: read-all
 
@@ -142,6 +146,7 @@ jobs:
 
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
+    if: ${{ inputs.wheel_run_id == '' }}
     name: linux-build
     secrets: inherit
     strategy:
@@ -159,7 +164,7 @@ jobs:
   Linux-Nightly-Ondemand-UT-Tests:
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
+    if: ${{ !cancelled() && needs.Conditions-Filter.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.Linux-Nightly-Ondemand-Build.result) && (github.event_name == 'schedule' || contains(inputs.ut, 'p')) }}
     secrets: inherit
     permissions:
       actions: read
@@ -177,6 +182,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
+      wheel_run_id: ${{ inputs.wheel_run_id }}
 
   Linux-Nightly-Ondemand-UT-Report:
     name: ut-report

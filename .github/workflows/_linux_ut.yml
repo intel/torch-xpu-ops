@@ -27,9 +27,14 @@ on:
         type: string
         default: ''
         description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
+      wheel_run_id:
+        type: string
+        default: ''
+        description: Download the Torch-XPU-Wheel artifact from this run id instead of the current run
 
 permissions:
   contents: read
+  actions: read
 
 defaults:
   run:
@@ -66,6 +71,7 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
+          wheel_run_id: ${{ inputs.wheel_run_id }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
@@ -111,6 +117,7 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
+          wheel_run_id: ${{ inputs.wheel_run_id }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
