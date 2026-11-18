@@ -1,0 +1,77 @@
+githubConfigUrl: https://github.com/intel/torch-xpu-ops
+githubConfigSecret: github-token
+
+# Dedicated scale set for loading E2E results into the database on this node
+# (.github/scripts/e2e_db). Unlike xpu-ubuntu-24.04 it advertises no generic ubuntu-* labels,
+# so only jobs that ask for it land here, and only these pods see the database socket.
+runnerScaleSetName: xpu-e2e-db
+
+minRunners: 0
+maxRunners: 2
+
+template:
+  spec:
+    automountServiceAccountToken: false
+    nodeSelector:
+      kubernetes.io/hostname: skx3725
+    securityContext:
+      # Run the pod as the host cache owner so no in-container root drop is needed.
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    containers:
+      - name: runner
+        image: arc-xpu-runner:ubuntu-24.04-tools
+        imagePullPolicy: IfNotPresent
+        command:
+          - /usr/local/bin/arc-runner-entrypoint.sh
+        env:
+          - name: ACTIONS_RUNNER_TOOL_CACHE
+            value: /opt/hostedtoolcache
+          - name: ARC_RUNNER_UID
+            value: "1000"
+          - name: ARC_RUNNER_GID
+            value: "1000"
+        securityContext:
+          privileged: false
+          # Runner image ships NOPASSWD sudo; escalation must stay enabled for it to work.
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+              - ALL
+            # DAC_OVERRIDE lets root enter apt's _apt-owned 0700 partial dirs;
+            # FSETID/SETFCAP keep dpkg setuid bits and file capabilities intact.
+            add:
+              - CHOWN
+              - DAC_OVERRIDE
+              - FOWNER
+              - FSETID
+              - SETFCAP
+              - SETGID
+              - SETUID
+              - AUDIT_WRITE
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: runner-home-cache
+            mountPath: /home/runner/.cache
+          # Only the PostgreSQL socket directory; the database container itself has no network.
+          # Logins still need the e2e_loader password (scram-sha-256).
+          - name: e2e-db-socket
+            mountPath: /var/run/e2e-db
+            readOnly: true
+    volumes:
+      - name: runner-home-cache
+        emptyDir: {}
+      - name: e2e-db-socket
+        hostPath:
+          path: /opt/e2e-db/run
+          type: Directory

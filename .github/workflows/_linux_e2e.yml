@@ -64,17 +64,23 @@ jobs:
   test:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
+    outputs:
+      artifact: ${{ steps.archive.outputs.name }}
+      started_at: ${{ steps.start.outputs.started_at }}
     container:
       image: ${{ contains(inputs.runner, 'bmg') && 'intel/omix:0.5.0-devel-ubuntu26.04' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
         - /opt/xpu-test/_dataset:/opt/_dataset/:rw
+        - /etc/hostname:/host/etc/hostname:ro
+        - /etc/os-release:/host/etc/os-release:ro
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
       env:
         MODEL_ONLY_NAME: ${{ inputs.model }}
+        E2E_CONTAINER_IMAGE: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -87,10 +93,12 @@ jobs:
           suite: ${{ inputs.suite }}
           category: ${{ inputs.category }}
       - name: Fixed frequency
+        id: start
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
           rm -rf ${{ github.workspace }}/pytorch/inductor_log
+          echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
 
       # CICD launch
       - name: CICD Test (p0)
@@ -171,6 +179,24 @@ jobs:
             artifact_name+="-${{ inputs.category }}"
           fi
           echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
+      # PT2E only runs the benchmarks; its results are not stored in the database.
+      - name: Collect test environment
+        if: ${{ ! cancelled() && ! contains(inputs.suite, 'pt2e') }}
+        continue-on-error: true
+        env:
+          E2E_DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD }}
+        run: |
+          if [ -z "${E2E_DB_PASSWORD}" ];then
+            echo "E2E_DB_PASSWORD is not available, skip"
+            exit 0
+          fi
+          python ${{ github.workspace }}/.github/scripts/e2e_db/collect_env.py \
+            --output /tmp/e2e-env.json --host-etc /host/etc \
+            --torch-name "${{ inputs.pytorch }}" --pytorch-dir pytorch --torchbench-dir benchmark
+          # The artifact is public; only the database job can decrypt the environment details.
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:E2E_DB_PASSWORD \
+            -in /tmp/e2e-env.json -out ${{ github.workspace }}/upload_files/e2e-env.json.enc
+          rm -f /tmp/e2e-env.json
       - name: Cleanup
         if: ${{ always() }}
         run: |
@@ -182,3 +208,74 @@ jobs:
         with:
           name: ${{ steps.archive.outputs.name }}
           path: ${{ github.workspace }}/upload_files
+
+  database:
+    name: Upload results to E2E database
+    needs: test
+    if: ${{ ! cancelled() && needs.test.outputs.artifact != '' && ! contains(inputs.suite, 'pt2e') }}
+    # Runs on the dedicated ARC scale set on the database node (.ci/arc/arc-xpu-e2e-db-values.yaml).
+    # Its pods mount only the PostgreSQL socket directory at /var/run/e2e-db; the database
+    # container has no network.
+    runs-on: ${{ vars.E2E_DB_RUNNER || 'xpu-e2e-db' }}
+    timeout-minutes: 30
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash -e {0}
+    env:
+      E2E_DB_HOST: /var/run/e2e-db
+      E2E_DB_USER: e2e_loader
+      E2E_DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD }}
+    steps:
+      - name: Check credentials
+        id: creds
+        run: |
+          if [ -z "${E2E_DB_PASSWORD}" ];then
+            echo "E2E_DB_PASSWORD is not available, skip"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+          elif [ ! -S "${E2E_DB_HOST}/.s.PGSQL.5432" ];then
+            echo "::warning::E2E database socket not found on this node, skip"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Checkout torch-xpu-ops
+        if: ${{ steps.creds.outputs.skip != 'true' }}
+        uses: actions/checkout@v7
+      - name: Setup python
+        if: ${{ steps.creds.outputs.skip != 'true' }}
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
+      - name: Download Inductor XPU E2E Data
+        if: ${{ steps.creds.outputs.skip != 'true' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.test.outputs.artifact }}
+          path: e2e_data
+      - name: Load results
+        if: ${{ steps.creds.outputs.skip != 'true' }}
+        run: |
+          case "${{ inputs.test_type }}" in
+            *nightly*) run_type=nightly ;;
+            *weekly*) run_type=weekly ;;
+            *ondemand*) run_type=on-demand ;;
+            *acceptance*) run_type=acceptance ;;
+            *) run_type=ci ;;
+          esac
+          # target/baseline jobs of one workflow run are separate runs
+          run_name="${GITHUB_RUN_ID}"
+          if [[ -n "${{ inputs.category }}" ]]; then
+            run_name+="-${{ inputs.category }}"
+          fi
+          if [ ! -f e2e_data/e2e-env.json.enc ];then
+            echo "No test environment in the artifact (collection failed or skipped), skip"
+            exit 0
+          fi
+          uv pip install 'psycopg[binary]'
+          meta="$(mktemp)"
+          trap 'rm -f "${meta}"' EXIT
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:E2E_DB_PASSWORD \
+            -in e2e_data/e2e-env.json.enc -out "${meta}"
+          python .github/scripts/e2e_db/load_results.py --run "${run_name}" --run-type "${run_type}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --started-at "${{ needs.test.outputs.started_at }}" \
+            --meta "${meta}" --input e2e_data
