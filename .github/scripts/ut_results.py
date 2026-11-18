@@ -1088,6 +1088,27 @@ REPORT_FAILURE_LIMIT = 100
 SUMMARY_TABLE_HEADER = ["OS", "Category", "Total cases", "Known failures",
                        "New failures", "New passes", "Result"]
 PASS_HEADER = ["Category", "Class name", "Test name"]
+# GPU health events written by detect-devices.sh and the pytest plugin.
+GPU_HEALTH_FILE = "xpu_health.jsonl"
+GPU_HEALTH_HEADER = ["Machine", "Card", "Event", "UT job", "Detail"]
+
+
+def read_gpu_health(paths: list[Path]) -> list[dict[str, str]]:
+    """GPU health events of a job, one per (machine, card, event, detail)."""
+    events: dict[tuple[str, ...], dict[str, str]] = {}
+    for path in paths:
+        for line in read_lines(path):
+            try:
+                raw = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(raw, dict):
+                continue
+            # Artifact content: keep plain short text, no table breakers.
+            event = {key: normalize(raw.get(key)).replace("|", "/")[:300]
+                     for key in ("machine", "card", "event", "detail")}
+            events.setdefault(tuple(event.values()), event)
+    return list(events.values())
 
 # What a check publishes per UT job; the report reads the same names.
 NEW_FAILURES_TXT = "new_failures.txt"
@@ -1107,6 +1128,7 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
         new_failures.txt  new_failures.csv  known_failures.csv  new_passes.csv
         cases/  per-category case logs and ut_failure_list.csv
 
+    verdict.json also carries the job's GPU health events (gpu_health).
     Fails when a category has a new failure or did not run healthily.
     """
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -1150,7 +1172,10 @@ def check_run(artifacts_dir: Path, snapshot_dir: Path, work_dir: Path, out_dir: 
         )
         verdict = {"ut_job": ut_job, "runner": meta.runner, "os": platform,
                    "attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT") or 0),
-                   "categories": []}
+                   "categories": [],
+                   "gpu_health": read_gpu_health(
+                       [p for artifact, _ in members
+                        for p in sorted(artifact.rglob(GPU_HEALTH_FILE))])}
         new_lines: list[tuple[str, str]] = []
         known_lines: list[tuple[str, str]] = []
         pass_lines: list[tuple[str, str]] = []
@@ -1209,8 +1234,13 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
     """
     # A rerun check merged every attempt's cases, so the latest one is final.
     best: dict[tuple[str, str, str], tuple[tuple[int, int], list[str], Path]] = {}
+    gpu_rows: dict[tuple[str, ...], list[str]] = {}
     for verdict_file in sorted(checks_dir.rglob("verdict.json")):
         verdict = json.loads(verdict_file.read_text(encoding="utf-8"))
+        for event in verdict.get("gpu_health", []):
+            row = [event["machine"], event["card"], event["event"],
+                   verdict["ut_job"], event["detail"]]
+            gpu_rows.setdefault(tuple(row[:4]), row)
         for entry in verdict["categories"]:
             result = entry.get("status") or ("passed" if entry["passed"] else "failed")
             mark = {"passed": "✅", "failed": "❌", "skipped": "⏭️"}.get(result, "❔")
@@ -1257,6 +1287,11 @@ def render_report(checks_dir: Path, out_dir: Path) -> int:
 
     report = ["## UT Report", "", "### Summary", "",
               *md_table(SUMMARY_TABLE_HEADER, rows)]
+    if gpu_rows:
+        report += ["", "### GPU health", "",
+                   "GPUs that broke during the run; excluded cards were not used "
+                   "for the remaining tests.", "",
+                   *md_table(GPU_HEALTH_HEADER, list(gpu_rows.values()))]
     report += fold("New failures", new_rows, ["OS", *FAILURE_HEADER])
     report += fold("Known failures", known_rows, ["OS", *FAILURE_HEADER, "Issue"])
     report += fold("New passes", pass_rows, ["OS", *PASS_HEADER, "Issue"])

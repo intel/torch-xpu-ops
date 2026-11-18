@@ -10,8 +10,14 @@ env_file="${GITHUB_ENV:-}"
 output_file="${GITHUB_OUTPUT:-}"
 PYTEST_BASE_ARGS="${PYTEST_BASE_ARGS:-${DEFAULT_PYTEST_ADDOPTS}}"
 pytest_others_args=""
+recover_bdf=""
+recover_root_bdf=""
 DETECTED_GPU_COUNT=0
 DETECTED_DEVICE_NAMES=""
+self_path="$(realpath "${BASH_SOURCE[0]}")"
+# GPU health events of this job, for the UT report.
+health_log="${XPU_HEALTH_LOG:-${GITHUB_WORKSPACE:+${GITHUB_WORKSPACE}/xpu_health.jsonl}}"
+readonly BDF_RE='^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$'
 
 log() {
   printf '%s\n' "$*" >&2
@@ -22,9 +28,13 @@ usage() {
 Usage: detect-devices.sh [options]
 
 Detect online XPU devices and produce pytest sharding environment variables.
+Before that, every Intel GPU on PCI that the compute runtime cannot use is
+recovered (driver unbind, PCI reset, rebind) or, failing that, excluded.
 
 Options:
   --pytest-others-args S     Extra PYTEST_ADDOPTS suffix to customize pytest behavior (e.g. for different workflows)
+  --recover BDF              Only recover the GPU at PCI address BDF (needs root or passwordless sudo,
+                             and a writable /sys); prints "RESULT <status> <detail>" and exits
   --help                   Show this message
 
 Environment overrides:
@@ -32,6 +42,7 @@ Environment overrides:
   GITHUB_OUTPUT
   NUM_GPUS
   PYTEST_BASE_ARGS
+  XPU_HEALTH_LOG
 
 Outputs:
   ZE_AFFINITY_MASK
@@ -41,6 +52,8 @@ Outputs:
   XPU_CPU_COUNT
   XPU_TOTAL_COUNT
   NUM_GPUS
+  XPU_RECOVER_CMD
+  XPU_HEALTH_LOG
 EOF
 }
 
@@ -62,6 +75,14 @@ parse_args() {
         pytest_others_args="$2"
         shift 2
         ;;
+      --recover)
+        recover_bdf="${2,,}"
+        shift 2
+        ;;
+      --recover-as-root)
+        recover_root_bdf="$2"
+        shift 2
+        ;;
       --help|-h)
         usage
         exit 0
@@ -72,6 +93,189 @@ parse_args() {
         exit 1
         ;;
     esac
+  done
+}
+
+health_event() {
+  local event="$1"
+  local card="$2"
+  local detail="$3"
+
+  [ -n "${health_log}" ] || return 0
+  detail="${detail//\\/\\\\}"
+  detail="${detail//\"/\\\"}"
+  detail="${detail//$'\n'/ }"
+  printf '{"time": %d, "machine": "%s", "card": "%s", "event": "%s", "detail": "%s", "source": "detect-devices"}\n' \
+    "$(date +%s)" "${RUNNER_NAME:-$(hostname)}" "${card}" "${event}" "${detail}" >> "${health_log}" || true
+}
+
+# Intel GPUs on PCI (same filter as get_device_rows), as full BDFs.
+pci_cards() {
+  lspci -D -nn 2>/dev/null | grep -Ei 'VGA|DISPLAY' | grep -v 'UHD' | grep '8086:' | awk '{print $1}' | sort || true
+}
+
+# Intel GPUs the compute runtime can use, as full BDFs.
+runtime_cards() {
+  timeout -k 5 60 clinfo 2>/dev/null \
+    | awk '/Platform Name/ {gpu = /Intel/ && /Graphics/} gpu && /PCI bus info \(KHR\)/ {print tolower($NF)}' \
+    | sort -u || true
+}
+
+runtime_device_count() {
+  timeout -k 5 60 clinfo -l 2>/dev/null \
+    | awk '/^Platform/ {gpu = /Intel/ && /Graphics/} gpu && /Device #/ {n++} END {print n + 0}' || echo 0
+}
+
+# Write a sysfs file in the background: a driver stuck in the kernel must not hang us.
+sysfs_write() {
+  local path="$1"
+  local value="$2"
+  local seconds="$3"
+  local pid
+  local i
+
+  ( printf '%s' "${value}" > "${path}" ) 2>/dev/null &
+  pid=$!
+  for ((i = 0; i < seconds; i++)); do
+    if ! kill -0 "${pid}" 2>/dev/null; then
+      wait "${pid}"
+      return
+    fi
+    sleep 1
+  done
+  return 124
+}
+
+recover_result() {
+  printf 'RESULT %s %s\n' "$1" "$2"
+  [ "$1" = ok ]
+  exit
+}
+
+card_holders() {
+  local node
+
+  for node in "$@"; do
+    find /proc/[0-9]*/fd -lname "${node}" 2>/dev/null
+  done | cut -d/ -f3 | sort -u | grep -vx "$$" || true
+}
+
+# Runs as root: kill what holds the card, unbind it, PCI reset, bind again.
+recover_as_root() {
+  local bdf="$1"
+  local dev="/sys/bus/pci/devices/$1"
+  local drv=""
+  local nodes=()
+  local node
+  local pids
+  local pid_list=()
+  local i
+
+  if ! [[ "${bdf}" =~ ${BDF_RE} ]] || [ ! -e "${dev}" ]; then
+    recover_result refused "no PCI device ${bdf}"
+  fi
+  if [ "$(cat "${dev}/vendor")" != 0x8086 ] || [[ "$(cat "${dev}/class")" != 0x03* ]]; then
+    recover_result refused "${bdf} is not an Intel GPU"
+  fi
+  if (( $(cat /proc/sys/kernel/tainted) & 128 )); then
+    recover_result reboot-required "kernel oopsed (taint D): unbinding ${bdf} would hang, reboot the node"
+  fi
+  if [ -e "${dev}/driver" ]; then
+    drv="$(basename "$(readlink -f "${dev}/driver")")"
+  elif [ -d /sys/bus/pci/drivers/xe ]; then
+    drv=xe
+  else
+    drv=i915
+  fi
+  case "${drv}" in
+    xe|i915) ;;
+    *) recover_result refused "${bdf} is bound to unexpected driver ${drv}" ;;
+  esac
+  [ -w "/sys/bus/pci/drivers/${drv}/bind" ] \
+    || recover_result no-privilege "/sys is read-only here (container without --privileged?)"
+
+  for node in "${dev}"/drm/card* "${dev}"/drm/renderD*; do
+    [ -e "${node}" ] && nodes+=("/dev/dri/$(basename "${node}")")
+  done
+  if ((${#nodes[@]} > 0)); then
+    pids="$(card_holders "${nodes[@]}")"
+    if [ -n "${pids}" ]; then
+      log "[Recover] ${bdf}: killing holders $(tr '\n' ' ' <<< "${pids}")"
+      mapfile -t pid_list <<< "${pids}"
+      kill -9 "${pid_list[@]}" 2>/dev/null || true
+    fi
+    for ((i = 0; i < 30; i++)); do
+      [ -z "$(card_holders "${nodes[@]}")" ] && break
+      sleep 1
+    done
+  fi
+  if [ -e "${dev}/driver" ]; then
+    sysfs_write "/sys/bus/pci/drivers/${drv}/unbind" "${bdf}" 120 \
+      || recover_result reboot-required "unbinding ${bdf} from ${drv} hung or failed: driver stuck, reboot the node"
+  fi
+  if [ -e "${dev}/reset" ] && ! sysfs_write "${dev}/reset" 1 60; then
+    log "[Recover] ${bdf}: PCI reset failed, binding anyway"
+  fi
+  sysfs_write "/sys/bus/pci/drivers/${drv}/bind" "${bdf}" 180 \
+    || recover_result failed "binding ${bdf} to ${drv} failed"
+  for ((i = 0; i < 60; i++)); do
+    compgen -G "${dev}/drm/renderD*" > /dev/null && break
+    sleep 1
+  done
+  if runtime_cards | grep -qx "${bdf}"; then
+    recover_result ok "${bdf} rebound to ${drv}"
+  fi
+  recover_result failed "${bdf} rebound to ${drv} but the compute runtime does not list it"
+}
+
+recover_card() {
+  local bdf="$1"
+
+  if ! [[ "${bdf}" =~ ${BDF_RE} ]]; then
+    printf 'RESULT refused bad PCI address %s\n' "${bdf}"
+    return 1
+  fi
+  if [ "$(id -u)" -eq 0 ]; then
+    bash "${self_path}" --recover-as-root "${bdf}"
+  elif sudo -n true 2>/dev/null; then
+    sudo -n bash "${self_path}" --recover-as-root "${bdf}"
+  else
+    printf 'RESULT no-privilege neither root nor passwordless sudo\n'
+    return 1
+  fi
+}
+
+# Recover every GPU on PCI the runtime cannot use; what stays broken is left out
+# of ZE_AFFINITY_MASK by detect_available_gpu_ids.
+check_cards() {
+  local pci
+  local runtime
+  local bdf
+  local out
+  local status
+  local detail
+
+  pci="$(pci_cards)"
+  [ -n "${pci}" ] || return 0
+  runtime="$(runtime_cards)"
+  if [ -z "${runtime}" ] && [ "$(runtime_device_count)" -gt 0 ]; then
+    log "[Warning] clinfo does not report PCI addresses, skipping the GPU card check"
+    return 0
+  fi
+  for bdf in $(comm -23 <(printf '%s\n' "${pci}") <(printf '%s\n' "${runtime}")); do
+    log "[Warning] GPU ${bdf} is on PCI but the compute runtime cannot use it, recovering it"
+    health_event unhealthy "${bdf}" "on PCI but not enumerated by the compute runtime"
+    out="$(recover_card "${bdf}" 2>&1 | tail -n 1 || true)"
+    status="$(awk '{print $2}' <<< "${out}")"
+    detail="${out#RESULT * }"
+    if [ "${status}" = ok ]; then
+      log "[Info] GPU ${bdf} recovered: ${detail}"
+      health_event recovered "${bdf}" "${detail}"
+    else
+      log "[Warning] GPU ${bdf} excluded from this run: ${status:-failed}: ${detail}"
+      health_event "${status:-failed}" "${bdf}" "${detail}"
+      health_event excluded "${bdf}" "not usable before the tests started"
+    fi
   done
 }
 
@@ -280,12 +484,26 @@ main() {
   local pytest_addopts
   local numactl_args
   local device_names
+  local pci_count
 
   parse_args "$@"
+
+  if [ -n "${recover_root_bdf}" ]; then
+    recover_as_root "${recover_root_bdf}"
+  fi
+  if [ -n "${recover_bdf}" ]; then
+    recover_card "${recover_bdf}"
+    return
+  fi
 
   require_command clinfo  clinfo
   require_command lspci   pciutils
   require_command numactl numactl
+
+  if [ -n "${health_log}" ]; then
+    : > "${health_log}"
+  fi
+  check_cards
 
   cpu_count="$(detect_cpu_count)"
   device_rows="$(get_device_rows)"
@@ -322,6 +540,14 @@ main() {
   emit_var XPU_CPU_COUNT "${cpu_count}"
   emit_var XPU_TOTAL_COUNT "${total_xpu_count}"
   emit_var NUM_GPUS "${online_xpu_count}"
+  emit_var XPU_RECOVER_CMD "bash ${self_path} --recover"
+  pci_count="$(pci_cards | wc -l)"
+  if [ "${pci_count}" -gt 0 ] && [ $((total_xpu_count % pci_count)) -eq 0 ]; then
+    emit_var XPU_TILES_PER_CARD "$((total_xpu_count / pci_count))"
+  fi
+  if [ -n "${health_log}" ]; then
+    emit_var XPU_HEALTH_LOG "${health_log}"
+  fi
 
   print_summary "${cpu_count}" "${total_xpu_count}" "${online_xpu_count}" "${ze_affinity_mask}" "${cpus_per_xpu}" "${device_names}"
 }
