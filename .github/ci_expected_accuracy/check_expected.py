@@ -5,6 +5,7 @@ Compares test results against reference data and calculates pass rates.
 Reference last updated: https://github.com/intel/torch-xpu-ops/pull/1223
 """
 
+import csv
 import json
 import argparse
 import pandas as pd
@@ -13,7 +14,16 @@ from pathlib import Path
 
 def load_data(csv_file):
     """Load CSV file with comment support."""
-    return pd.read_csv(csv_file, comment='#')
+    try:
+        return pd.read_csv(csv_file, comment='#')
+    except pd.errors.ParserError:
+        # Older runner CSVs have rows wider than the header; name the extra cells extra_<n>.
+        with open(csv_file, newline='', encoding='utf-8') as f:
+            rows = [r for r in csv.reader(f) if r and not r[0].startswith('#')]
+        header, data = rows[0], rows[1:]
+        width = max(len(r) for r in rows)
+        header += [f"extra_{i}" for i in range(len(header), width)]
+        return pd.DataFrame([r + [None] * (width - len(r)) for r in data], columns=header)
 
 
 def find_model_row(dataframe, model_name):
@@ -41,6 +51,14 @@ def get_test_result(data, suite, dtype, mode, model):
             if len(row) >= 6 and row[:4] == [suite, dtype, mode, model]:
                 return row[4]
     return "N/A"
+
+
+def is_tracked(data, suite, dtype, mode, model):
+    """Return True if an issue table lists this suite/dtype/mode/model."""
+    return any(
+        row[:4] == [suite, dtype, mode, model]
+        for issue in data for row in issue.get('table_rows', [])
+    )
 
 
 def load_known_data(issue_file):
@@ -147,6 +165,8 @@ def main():
     # Load data files
     test_data = load_data(args.csv_file)
     test_known_data = load_known_data(args.issue_file)
+    skip_labels = {'skipped', 'skipped_bmg', 'random'}
+    skip_data = [i for i in test_known_data if skip_labels & set(i.get('labels', []))]
     suite, dtype, mode = args.suite, args.dtype, args.mode
 
     # Load reference data
@@ -191,9 +211,12 @@ def main():
         # print(f"{model_name}: test={test_accuracy}, ref={refer_accuracy}, known={known_accuracy}")
 
         # Categorize model and determine if reference needs update
-        category, should_update = categorize_model(
-            model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models
-        )
+        if is_tracked(skip_data, suite, dtype, mode, model_name):
+            category, should_update = "skipped", False
+        else:
+            category, should_update = categorize_model(
+                model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models
+            )
 
         categories[category].append([model_name, test_accuracy])
 

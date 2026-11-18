@@ -16,28 +16,65 @@ from pathlib import Path
 
 from packaging import version
 
+from . import config
 from .config import BACKEND_FLAGS, TestTask, csv_lock
 from .log import log
 from .tasks import get_torch_version
 
-# Common leading columns shared by every result CSV.
-CSV_PREFIX = ["dev", "backend", "suite", "dtype", "mode", "name", "scenario", "batch_size", "elapsed"]
+# Common leading columns shared by every result CSV; "status" is "pass" or the failure reason.
+CSV_PREFIX = ["dev", "backend", "suite", "dtype", "mode", "name", "scenario", "batch_size", "elapsed", "status"]
+
+# Fixed result columns for suites whose output shape is known up front.
+INDUCTOR_PERFORMANCE_COLS = ["speedup", "abs_latency", "eager_latency"]
+PT2E_ACCURACY_COLS = ["top1", "top5"]
+PT2E_PERFORMANCE_COLS = ["throughput", "quantization"]
 
 
-def _prefix_row(device: str, task: TestTask, batch_size: str = "0", elapsed: float = 0.0) -> list[str]:
+def _prefix_row(device: str, task: TestTask, status: str, batch_size: str = "0", elapsed: float = 0.0) -> list[str]:
     """Build the leading CSV cells common to every suite."""
-    return [device, task.backend, task.suite, task.dt, task.mode, task.model, task.scenario, batch_size, f"{elapsed:.3f}"]
+    return [device, task.backend, task.suite, task.dt, task.mode, task.model, task.scenario,
+            batch_size, f"{elapsed:.3f}", status]
+
+
+# Columns identifying a task; a re-run replaces the existing row with the same key.
+_ROW_KEY = ["dev", "backend", "suite", "dtype", "mode", "name", "scenario", "quantization"]
 
 
 def _append_row(log_csv: Path, header: list[str], row: list[str]) -> None:
-    """Append *row* to *log_csv*, writing *header* first when the file is new."""
+    """Add *row* to *log_csv* so the header and every row share the same columns.
+
+    The file header is the union of all headers seen (i.e. the full success
+    shape); when a new column appears the file is rewritten and earlier rows
+    (e.g. a failed first row) are padded with ``0``. A row for a task already
+    in the file replaces the old one in place.
+    """
+    def key(rec: dict[str, str]) -> tuple:
+        return tuple(rec.get(c) or "0" for c in _ROW_KEY)
+
     with csv_lock:
-        write_header = not log_csv.exists()
-        with open(log_csv, "a", newline="", encoding="utf-8") as f:
+        records: list[dict[str, str]] = []
+        merged: list[str] = []
+        if log_csv.exists():
+            with open(log_csv, newline="", encoding="utf-8") as f:
+                lines = [r for r in csv.reader(f) if r]
+            if lines:
+                merged = list(lines[0])
+                records = [dict(zip(merged, r)) for r in lines[1:]]
+        merged += [c for c in header if c not in merged]
+        new = dict(zip(header, row))
+        idx = next((i for i, rec in enumerate(records) if key(rec) == key(new)), None)
+        if idx is None:
+            records.append(new)
+        else:
+            records[idx] = new
+        # Write to a sibling temp file and swap in so a crash never truncates results.
+        tmp_path = log_csv.with_name(log_csv.name + ".tmp")
+        with open(tmp_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            if write_header:
-                writer.writerow(header)
-            writer.writerow(row)
+            writer.writerow(merged)
+            for rec in records:
+                writer.writerow([rec.get(c) or "0" for c in merged])
+        os.replace(tmp_path, log_csv)
 
 
 class BenchmarkSuite(ABC):
@@ -103,64 +140,66 @@ class InductorSuite(BenchmarkSuite):
             " ".join(backend_flags),
             "--cold-start-latency",
             "-n10",
-            "--timeout=10800",
+            f"--timeout={config.task_timeout_seconds}",
             "--disable-cudagraphs",
             f"--output={output_csv}",
         ]
         return " ".join(p for p in parts if p)
 
     @staticmethod
-    def _check_status(log_file) -> tuple[str, bool]:
-        """Pass when the last log token is 'pass', 'pass_due_to_skip', or a speedup."""
+    def _last_log_token(log_file) -> str:
+        """Return the last whitespace-separated token of the run log, or ''."""
         if not log_file.exists():
-            return "None", False
+            return ""
         last = ""
-        with open(log_file) as f:
+        with open(log_file, errors="ignore") as f:
             for line in f:
                 if stripped := line.strip():
                     last = stripped
-        if not last:
-            return "None", False
-        test_result = last.split()[-1]
-        success = test_result in ("pass", "pass_due_to_skip") or bool(re.fullmatch(r"[0-9.]+x", test_result))
-        return test_result, success
+        return last.split()[-1] if last else ""
 
     def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed):
         header, row = self._read_last_matching_row(tmp_csv, device)
-        if task.scenario == "performance":
-            final_header, final_row = self._performance_row(header, row, device, task, elapsed)
-        elif row:
-            # Benchmark CSV row: dev, name, batch_size, <result_cols...>
-            # Reorder to the common prefix plus the result columns.
-            final_header = CSV_PREFIX + header[3:]
-            final_row = _prefix_row(device, task, row[2], elapsed) + row[3:]
-        else:
-            final_header, final_row = self._fallback_row(device, task, kill_reason, elapsed)
-        _append_row(log_csv, final_header, final_row)
-        # Success is judged from the run log's final line, independent of the CSV.
-        return self._check_status(log_file)
-
-    @staticmethod
-    def _performance_row(header, row, device, task, elapsed):
-        """Performance result columns: speedup, abs_latency (inductor latency),
-        eager_latency (= abs_latency * speedup)."""
-        perf_header = CSV_PREFIX + ["speedup", "abs_latency", "eager_latency"]
-        if not row:
-            return perf_header, _prefix_row(device, task, elapsed=elapsed) + ["0", "0", "0"]
 
         def _col(name):
             try:
-                return row[header.index(name)]
+                return row[header.index(name)] or "0"
             except (ValueError, IndexError):
                 return "0"
 
-        speedup, abs_latency = _col("speedup"), _col("abs_latency")
-        try:
-            eager = float(abs_latency) * float(speedup)
-        except ValueError:
-            eager = 0.0
-        return perf_header, _prefix_row(device, task, row[2], elapsed) + [speedup, abs_latency, f"{eager:.6f}"]
-
+        batch_size = _col("batch_size")
+        log_result = self._last_log_token(log_file)
+        # A failure keyword printed last by the benchmark (e.g. fail_to_run) beats a generic reason.
+        log_reason = log_result if re.fullmatch(r"\w*(fail|error)\w*|timeout|oom", log_result, re.I) else ""
+        failure = kill_reason or log_reason or ("fail_to_run" if row else "core_dump")
+        # The CSV is the single source of truth: a measured result wins over a late kill.
+        if task.scenario == "performance":
+            speedup, abs_latency = _col("speedup"), _col("abs_latency")
+            try:
+                ok = float(speedup) > 0 and float(abs_latency) > 0
+            except ValueError:
+                ok = False
+            if ok:
+                eager = f"{float(abs_latency) * float(speedup):.6f}"
+                values, status, result = [speedup, abs_latency, eager], "pass", f"{speedup}x"
+            else:
+                values, status, result = ["0", "0", "0"], failure, failure
+            final_header = CSV_PREFIX + INDUCTOR_PERFORMANCE_COLS
+        else:
+            # Benchmark CSV row: dev, name, batch_size, <result_cols...>
+            if row:
+                result_cols = header[3:]
+                values = [_col(c) for c in result_cols]
+                status = _col("accuracy")
+            else:
+                result_cols = ["accuracy"]
+                status = failure
+                values = [status]
+            final_header = CSV_PREFIX + result_cols
+            ok = status in ("pass", "pass_due_to_skip")
+            result = status
+        _append_row(log_csv, final_header, _prefix_row(device, task, status, batch_size, elapsed) + values)
+        return result, ok
 
     @staticmethod
     def _read_last_matching_row(tmp_csv, device):
@@ -177,15 +216,6 @@ class InductorSuite(BenchmarkSuite):
         except Exception as e:
             log(f"Error reading temp CSV {tmp_csv}: {e}", level="WARN")
             return [], []
-
-    @staticmethod
-    def _fallback_row(device, task, kill_reason, elapsed=0.0):
-        """Build a placeholder accuracy row when the benchmark produced no CSV output."""
-        fail_status = kill_reason or "core_dump"
-        return (
-            CSV_PREFIX + ["accuracy"],
-            _prefix_row(device, task, elapsed=elapsed) + [fail_status],
-        )
 
 
 class PT2ESuite(BenchmarkSuite):
@@ -232,9 +262,11 @@ class PT2ESuite(BenchmarkSuite):
     def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed):
         if task.scenario == "accuracy":
             acc1, acc5 = ("failed", "failed") if kill_reason else self._parse_accuracy(log_file)
-            header = CSV_PREFIX + ["top1", "top5"]
-            row = _prefix_row(device, task, elapsed=elapsed) + [acc1, acc5]
-            result = (f"acc1={acc1}", True) if acc1 != "failed" else ("failed", False)
+            ok = acc1 != "failed"
+            status = "pass" if ok else kill_reason or "failed"
+            header = CSV_PREFIX + PT2E_ACCURACY_COLS
+            row = _prefix_row(device, task, status, elapsed=elapsed) + ([acc1, acc5] if ok else ["0", "0"])
+            result = (f"acc1={acc1}", True) if ok else (status, False)
         else:  # performance
             output_dir = getattr(task, self._OUTPUT_ATTR, None)
             try:
@@ -246,9 +278,12 @@ class PT2ESuite(BenchmarkSuite):
                         onerror=lambda func, path, exc: log(
                             f"Failed to remove {path}: {exc[1]}", level="WARN"),
                     )
-            header = CSV_PREFIX + ["throughput", "quantization"]
-            row = _prefix_row(device, task, elapsed=elapsed) + [throughput, task.quant]
-            result = (throughput, True) if throughput != "failed" else ("failed", False)
+            ok = throughput != "failed"
+            status = "pass" if ok else kill_reason or "failed"
+            header = CSV_PREFIX + PT2E_PERFORMANCE_COLS
+            row = _prefix_row(device, task, status, elapsed=elapsed) + [
+                throughput if ok else "0", task.quant or "0"]
+            result = (throughput, True) if ok else (status, False)
         _append_row(log_csv, header, row)
         return result
 
