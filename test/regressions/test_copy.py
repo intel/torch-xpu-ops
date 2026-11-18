@@ -7,7 +7,10 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 # Owner(s): ["module: intel"]
+import unittest
+
 import torch
+from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
@@ -71,6 +74,42 @@ class TestSimpleCopy(TestCase):
         y_xpu = torch.empty_like(x_xpu)
         y_xpu.copy_(x_xpu)
         self.assertEqual(y_xpu, x_xpu)
+
+
+@unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
+class TestConvertingCopyVectorized(TestCase):
+    @unittest.skipIf(not torch.autograd.kineto_available(), "Kineto is required")
+    @unittest.skipIf(not hasattr(ProfilerActivity, "XPU"), "XPU profiler not available")
+    def test_emits_vectorized_kernel(self):
+        pairs = [
+            (torch.int32, torch.int64),
+            (torch.bool, torch.int64),
+            (torch.bool, torch.float64),
+        ]
+        for src_dtype, dst_dtype in pairs:
+            if src_dtype == torch.bool:
+                src = torch.randint(
+                    0, 256, (1024, 1024), dtype=torch.uint8, device=xpu_device
+                ).view(torch.bool)
+            elif src_dtype.is_floating_point:
+                src = torch.randn(1024, 1024, dtype=src_dtype, device=xpu_device)
+            else:
+                src = torch.randint(
+                    -1000, 1000, (1024, 1024), dtype=src_dtype, device=xpu_device
+                )
+
+            torch.xpu.synchronize()
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU]
+            ) as prof:
+                dst = src.to(dst_dtype)
+                torch.xpu.synchronize()
+            names = tuple(event.key for event in prof.key_averages())
+            self.assertTrue(
+                any("VectorizedElementwiseKernel" in name for name in names),
+                (src_dtype, dst_dtype, names),
+            )
+            self.assertEqual(dst.cpu(), src.cpu().to(dst_dtype))
 
 
 instantiate_device_type_tests(TestSimpleCopy, globals(), only_for="xpu", allow_xpu=True)
