@@ -206,32 +206,14 @@ skip_dict = {
         "test_fake_crossref_backward_no_amp_nn_functional_bilinear_xpu_float32",
     ),
     "test_optim_xpu.py": None,
-    "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
-    "test_scaled_matmul_cuda_xpu.py": {
-        # https://github.com/intel/torch-xpu-ops/issues/5339
-        # The operator 'aten::_scaled_addmm.out' is not currently implemented for the XPU device
-        "test_scaled_addmm_tensorwise",
-        "test_scaled_addmm_inplace_tunableop",
-        "test_scaled_addmm_wgrad_accumulation",
-        "test_scaled_addmm_scalar_semantics",
-        "test_scaled_addmm_empty",
-        "test_scaled_addmm_contraction_dim",
-        "test_scaled_addmm_validation",
-        "test_scaled_addmm_mxfp8",
-        "test_scaled_addmm_nvfp4",
-        "test_scaled_addmm_fullgraph",
-        "test_scaled_addmm_cudagraph",
-    },
     "test_schema_check_xpu.py": None,
     "test_segment_reductions_xpu.py": None,
-    "test_serialization_xpu.py": None,
     "test_shape_ops_xpu.py": (
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
         "test_flip_xpu_float32",
     ),
     "test_sort_and_select_xpu.py": None,
-    "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": (
         # BMG hang (>10 min) taking down the xdist worker
         # https://github.com/intel/torch-xpu-ops/issues/4947
@@ -442,8 +424,12 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": None,
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
+    f"{PYTORCH_TEST_DIR}/test_prims.py": None,
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
     f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
+    f"{PYTORCH_TEST_DIR}/test_scaled_matmul_cuda.py": None,
+    f"{PYTORCH_TEST_DIR}/test_serialization.py": None,
+    f"{PYTORCH_TEST_DIR}/test_sparse_csr.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
