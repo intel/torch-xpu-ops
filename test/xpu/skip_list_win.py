@@ -26,7 +26,7 @@ skip_dict = {
         "test_remove_pruning_exception",
     ),
     # xdist can't serialize builtin_function_or_method on Windows (#3797)
-    "test_autograd_xpu.py": (
+    f"{PYTORCH_TEST_DIR}/test_autograd.py": (
         "test_min_max_aminmax_median_backprops_to_all_values_xpu",
     ),
     # SYCL default context is not supported on Windows
