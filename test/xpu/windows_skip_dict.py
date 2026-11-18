@@ -38,4 +38,10 @@ skip_dict = {
     #     "test_dll_loading",
     #     "test_path_length",
     # ],
+    # CPU layer_norm reference is inaccurate under AVX2/MSVC on Windows
+    # Details: https://github.com/pytorch/pytorch/issues/204610
+    "test_nn_xpu.py": (
+        "test_LayerNorm_3d_no_affine_large_feature_xpu",
+        "test_LayerNorm_3d_no_affine_large_feature_eval_xpu",
+    ),
 }
