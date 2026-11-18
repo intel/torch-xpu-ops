@@ -217,7 +217,7 @@ jobs:
     runs-on: xpu-agent
     timeout-minutes: 120
     container:
-      image: intelgpu/ubuntu-26.04-rolling:26.18
+      image: intel/omix:0.5.0-devel-ubuntu26.04
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: >-
