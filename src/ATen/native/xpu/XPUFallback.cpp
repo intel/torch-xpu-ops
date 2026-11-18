@@ -36,7 +36,7 @@ static void check_device_consistency(
         " and ",
         cur_device,
         "! (Operator ",
-        op.schema().operator_name().name,
+        op.schema().name(),
         ")");
   };
 
@@ -253,9 +253,9 @@ static bool lazy_registration_and_redispatch(
 
   bool need_redispatch_after_lazy_registration =
       torchvision_ops_dispatching_table_.end() !=
-      torchvision_ops_dispatching_table_.find(op.schema().operator_name().name);
+      torchvision_ops_dispatching_table_.find(op.schema().name());
   bool is_cpu_fallback = need_redispatch_after_lazy_registration
-      ? torchvision_ops_dispatching_table_[op.schema().operator_name().name]
+      ? torchvision_ops_dispatching_table_[op.schema().name()]
       : true;
 
   if (need_redispatch_after_lazy_registration) {
@@ -359,7 +359,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
       "linalg_lu.out",
       "linalg_matrix_exp",
       "linalg_matrix_sqrth",
-      "linalg_polar.out",
       "_linalg_svd.U",
       "lu_unpack.out",
       "ormqr",

@@ -60,6 +60,7 @@ _XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
 )
 
 _XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
+_XPU_OVERHEAD_EVENT = "Instrumentation"  # Profiler overhead spans (cat="overhead")
 
 
 def _parse_event_name(line):
@@ -88,7 +89,7 @@ def _filter_xpu_runtime_events(actual_traces):
         if name in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
             kept.append(line)
             continue
-        if name.startswith(_XPU_RUNTIME_EVENT_PREFIXES):
+        if name.startswith(_XPU_RUNTIME_EVENT_PREFIXES) or name == _XPU_OVERHEAD_EVENT:
             continue
         kept.append(line)
     return "\n".join(kept)

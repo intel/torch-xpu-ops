@@ -19,6 +19,12 @@ TORCH_XPU_API std::vector<Tensor> foreach_norm_kernel(
     double p,
     std::optional<ScalarType> dtype);
 
+TORCH_XPU_API std::vector<Tensor> foreach_powsum_kernel(
+    TensorList tensors,
+    const Scalar& ord,
+    double p,
+    std::optional<ScalarType> dtype);
+
 TORCH_XPU_API std::vector<Tensor> foreach_max_kernel(TensorList tensors);
 
 } // namespace at::native::xpu

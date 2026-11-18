@@ -58,16 +58,33 @@ void error_handle(
   auto ids = be.ids();
 
   for (size_t i = 0; i < errs.size(); ++i) {
+    if (!errs[i]) {
+      info_cpu[ids[i]] = -1;
+      continue;
+    }
     try {
       std::rethrow_exception(errs[i]);
     } catch (const oneapi::mkl::lapack::exception& e) {
+#ifdef _WIN32
+      // what() returns a char* into mkl_sycl_lapack.dll's CRT heap; unsafe
+      // across DLL boundaries on Windows. info() and detail() return plain
+      // integers, safe.
       TORCH_WARN(
-          "Caught lapack exception:\nWhat: ",
+          "Caught lapack exception:",
+          "\nInfo: ",
+          e.info(),
+          "\nDetail: ",
+          e.detail());
+#else
+      TORCH_WARN(
+          "Caught lapack exception:",
+          "\nWhat: ",
           e.what(),
           "\nInfo: ",
           e.info(),
           "\nDetail: ",
           e.detail());
+#endif
       info_cpu[ids[i]] = e.info();
     } catch (const sycl::exception& e) {
       TORCH_WARN("Caught SYCL exception:\nWhat: ", e.what(), "\nInfo: -1");

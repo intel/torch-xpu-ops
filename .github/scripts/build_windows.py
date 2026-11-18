@@ -13,18 +13,23 @@ Environment variables (set by caller):
 """
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+from zipfile import ZipFile
+
+from checkout_torch_xpu_ops import xpu_ops_commit_from_version
 
 
 def main():
     workspace = Path(os.environ["WORKSPACE"])
     pytorch_root = workspace / "pytorch"
+    expected_xpu_ops = (pytorch_root / "third_party" / "xpu.txt").read_text().strip()
     os.chdir(pytorch_root)
 
-    win_ci_dir = pytorch_root / ".ci" / "pytorch" / "windows"
-    sys.path.insert(0, str(win_ci_dir))
+    win_wheel_dir = pytorch_root / ".ci" / "wheel" / "windows"
+    sys.path.insert(0, str(win_wheel_dir))
 
     # Set required env vars for XPU build
     os.environ["GPU_ARCH_TYPE"] = "xpu"
@@ -32,7 +37,7 @@ def main():
     os.environ["CUDA_VERSION"] = "xpu"
     os.environ["USE_SCCACHE"] = "0"
     os.environ["USE_XCCL"] = "0"
-    os.environ["TORCH_XPU_ARCH_LIST"] = "mtl-h,bmg,lnl-m"
+    os.environ["TORCH_XPU_ARCH_LIST"] = "bmg,ptl"
     os.environ["SKIP_SETUP_CLEAN"] = "1"
     os.environ["WERROR"] = "1"
 
@@ -74,8 +79,9 @@ def main():
     print("=== Step 2: build_install_deps ===", flush=True)
     import build_install_deps
 
-    build_install_deps.pip_install("-q", f"numpy=={build_install_deps.numpy_pin()}")
-    build_install_deps.pip_install("-q", *build_install_deps.PIP_PACKAGES)
+    build_flags = build_install_deps.preinstall_cp315_build_deps()
+    build_install_deps.install_numpy(*build_flags)
+    build_install_deps.pip_install("-q", *build_flags, *build_install_deps.PIP_PACKAGES)
     # Install libuv via conda (upstream uses 7z which may not be on our runners)
     conda_exe = os.environ.get("CONDA_EXE", "conda")
     subprocess.run([conda_exe, "install", "-y", "libuv"], check=True)
@@ -102,6 +108,23 @@ def main():
         check=True,
     )
     print("build_wheel complete", flush=True)
+    wheels = list(dist_dir.glob("torch-*.whl"))
+    if not wheels:
+        raise RuntimeError(f"No PyTorch wheel found in {dist_dir}")
+    for wheel in wheels:
+        with ZipFile(wheel) as archive:
+            version_source = archive.read("torch/version.py").decode()
+        built_xpu_ops = xpu_ops_commit_from_version(version_source)
+        if not built_xpu_ops:
+            # Compatibility with PyTorch versions before pytorch/pytorch#202608.
+            print(f"Warning: {wheel.name} has no xpu_ops_commit; skipping comparison", flush=True)
+            continue
+        if not re.fullmatch(r"[0-9a-f]{40}", expected_xpu_ops):
+            print(f"Source pin {expected_xpu_ops} is not a SHA; skipping comparison", flush=True)
+            continue
+        if built_xpu_ops != expected_xpu_ops:
+            raise RuntimeError(f"XPU SHA mismatch: wheel {built_xpu_ops}, prepared {expected_xpu_ops}")
+        print(f"{wheel.name}: verified XPU SHA {built_xpu_ops}", flush=True)
     print("Build completed successfully", flush=True)
 
 

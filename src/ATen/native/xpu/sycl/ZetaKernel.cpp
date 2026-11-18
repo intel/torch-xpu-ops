@@ -26,7 +26,6 @@ struct ZetaFunctor {
   }
 };
 
-constexpr char zeta_name[] = "zeta";
 void zeta_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "zeta_xpu", [&]() {
     gpu_kernel_with_scalars(iter, ZetaFunctor<scalar_t>());

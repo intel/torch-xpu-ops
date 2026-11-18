@@ -39,85 +39,66 @@ inline void philox_derive_key(
   *out_offset = static_cast<uint64_t>(r.z) | (static_cast<uint64_t>(r.w) << 32);
 }
 
-struct PhiloxKeySplitFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP(item, index, total_elements_) {
-      const int64_t split_idx = index / num_keys_;
-      const int64_t key_idx = index % num_keys_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void philox_key_split_kernel(
+    const uint64_t* input,
+    uint64_t* output,
+    int64_t num_keys,
+    int64_t total_elements) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-      const uint64_t seed = input_[key_idx * 2];
-      const uint64_t offset = input_[key_idx * 2 + 1];
-      const uint64_t split_offset = offset + static_cast<uint64_t>(split_idx);
+  XPU_KERNEL_LOOP(item, index, total_elements) {
+    const int64_t split_idx = index / num_keys;
+    const int64_t key_idx = index % num_keys;
 
-      const uint2 key = {
-          static_cast<uint32_t>(seed),
-          static_cast<uint32_t>(seed >> 32),
-      };
+    const uint64_t seed = input[key_idx * 2];
+    const uint64_t offset = input[key_idx * 2 + 1];
+    const uint64_t split_offset = offset + static_cast<uint64_t>(split_idx);
 
-      const uint4 counter = {
-          static_cast<uint32_t>(split_offset),
-          static_cast<uint32_t>(split_offset >> 32),
-          0,
-          0,
-      };
+    const uint2 key = {
+        static_cast<uint32_t>(seed),
+        static_cast<uint32_t>(seed >> 32),
+    };
 
-      const auto r = philox4x32_10(counter, key);
+    const uint4 counter = {
+        static_cast<uint32_t>(split_offset),
+        static_cast<uint32_t>(split_offset >> 32),
+        0,
+        0,
+    };
 
-      const int64_t out = index * 2;
-      philox_derive_key(r, &output_[out], &output_[out + 1]);
-    }
+    const auto r = philox4x32_10(counter, key);
+
+    const int64_t out = index * 2;
+    philox_derive_key(r, &output[out], &output[out + 1]);
   }
+}
 
-  PhiloxKeySplitFunctor(
-      const uint64_t* input,
-      uint64_t* output,
-      int64_t num_keys,
-      int64_t total_elements)
-      : input_(input),
-        output_(output),
-        num_keys_(num_keys),
-        total_elements_(total_elements) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void philox_key_fold_in_kernel(
+    const uint64_t* input,
+    uint64_t* output,
+    int64_t num_keys,
+    int64_t data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
- private:
-  const uint64_t* input_;
-  uint64_t* output_;
-  int64_t num_keys_;
-  int64_t total_elements_;
-};
+  XPU_KERNEL_LOOP(item, index, num_keys) {
+    uint64_t seed = input[index * 2];
+    uint64_t offset = input[index * 2 + 1];
 
-struct PhiloxKeyFoldInFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP(item, index, num_keys_) {
-      uint64_t seed = input_[index * 2];
-      uint64_t offset = input_[index * 2 + 1];
+    uint2 key = {
+        static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+    uint4 counter = {
+        static_cast<uint32_t>(offset + static_cast<uint64_t>(data)),
+        static_cast<uint32_t>((offset + static_cast<uint64_t>(data)) >> 32),
+        // restrict subsequence=0
+        0,
+        0};
 
-      uint2 key = {
-          static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
-      uint4 counter = {
-          static_cast<uint32_t>(offset + static_cast<uint64_t>(data_)),
-          static_cast<uint32_t>((offset + static_cast<uint64_t>(data_)) >> 32),
-          // restrict subsequence=0
-          0,
-          0};
-
-      auto r = philox4x32_10(counter, key);
-      philox_derive_key(r, &output_[index * 2], &output_[index * 2 + 1]);
-    }
+    auto r = philox4x32_10(counter, key);
+    philox_derive_key(r, &output[index * 2], &output[index * 2 + 1]);
   }
-
-  PhiloxKeyFoldInFunctor(
-      const uint64_t* input,
-      uint64_t* output,
-      int64_t num_keys,
-      int64_t data)
-      : input_(input), output_(output), num_keys_(num_keys), data_(data) {}
-
- private:
-  const uint64_t* input_;
-  uint64_t* output_;
-  int64_t num_keys_;
-  int64_t data_;
-};
+}
 
 Tensor _philox_key_split_xpu(const Tensor& key, int64_t num_splits) {
   TORCH_CHECK(
@@ -148,17 +129,16 @@ Tensor _philox_key_split_xpu(const Tensor& key, int64_t num_splits) {
   const int64_t work_group_num =
       xpuKernelLoopGroupRange(total_elements, work_group_size);
   auto key_contig = key.contiguous();
-  auto functor = PhiloxKeySplitFunctor(
+
+  sycl_kernel_submit<philox_key_split_kernel>(
+      sycl::range<1>(work_group_num * work_group_size),
+      sycl::range<1>(work_group_size),
+      at::xpu::getCurrentSYCLQueue(),
+      0,
       key_contig.data_ptr<uint64_t>(),
       output.data_ptr<uint64_t>(),
       num_keys,
       total_elements);
-
-  sycl_kernel_submit(
-      sycl::range<1>(work_group_num * work_group_size),
-      sycl::range<1>(work_group_size),
-      at::xpu::getCurrentSYCLQueue(),
-      functor);
 
   return output;
 }
@@ -184,17 +164,16 @@ Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data) {
   const int64_t work_group_num =
       xpuKernelLoopGroupRange(num_keys, work_group_size);
   auto key_contig = key.contiguous();
-  auto functor = PhiloxKeyFoldInFunctor(
+
+  sycl_kernel_submit<philox_key_fold_in_kernel>(
+      sycl::range<1>(work_group_num * work_group_size),
+      sycl::range<1>(work_group_size),
+      at::xpu::getCurrentSYCLQueue(),
+      0,
       key_contig.data_ptr<uint64_t>(),
       output.data_ptr<uint64_t>(),
       num_keys,
       data);
-
-  sycl_kernel_submit(
-      sycl::range<1>(work_group_num * work_group_size),
-      sycl::range<1>(work_group_size),
-      at::xpu::getCurrentSYCLQueue(),
-      functor);
 
   return output;
 }

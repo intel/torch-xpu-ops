@@ -9,6 +9,9 @@
  */
 
 #pragma once
+#include <type_traits>
+#include <utility>
+
 #include <comm/Macros.h>
 DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // Official suppression macro provided by Intel SYCL headers for
@@ -255,6 +258,39 @@ static inline void sycl_kernel_submit(
 //   2. Both forms are equivalent — `kernel_function<kptr>` simply evaluates to
 //      a default-constructed `kernel_function_s<kptr>` at compile time.
 
+namespace {
+
+template <typename Signature>
+struct KernelLaunch;
+
+template <typename... Params>
+struct KernelLaunch<void (*)(Params...)> {
+  template <typename Config, typename Kernel, typename... Args>
+  static void launch(
+      sycl::queue& queue,
+      const Config& config,
+      const Kernel& kernel,
+      Args&&... args) {
+    static_assert(
+        sizeof...(Params) == sizeof...(Args),
+        "Kernel argument count does not match its parameter count");
+    static_assert(
+        (std::is_convertible_v<Args&&, Params> && ...),
+        "Kernel arguments must be implicitly convertible to its parameters");
+    syclexp::nd_launch(
+        queue,
+        config,
+        kernel,
+        static_cast<Params>(std::forward<Args>(args))...);
+  }
+};
+
+template <typename... Params>
+struct KernelLaunch<void (*)(Params...) noexcept>
+    : KernelLaunch<void (*)(Params...)> {};
+
+} // namespace
+
 // TODO: unify and remove the if-else for slm_sz
 template <auto* kptr, typename... Kargs>
 static inline void sycl_kernel_submit(
@@ -273,11 +309,11 @@ static inline void sycl_kernel_submit(
         ::sycl::nd_range<1>(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
-    syclexp::nd_launch(q, cfg, ker, args...);
+    KernelLaunch<decltype(kptr)>::launch(q, cfg, ker, args...);
   } else {
     syclexp::launch_config cfg{::sycl::nd_range<1>(
         ::sycl::range<1>(global_range), ::sycl::range<1>(local_range))};
-    syclexp::nd_launch(q, cfg, ker, args...);
+    KernelLaunch<decltype(kptr)>::launch(q, cfg, ker, args...);
   }
 #else
   if (slm_sz != 0) {
@@ -285,9 +321,10 @@ static inline void sycl_kernel_submit(
         ::sycl::nd_range<1>(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
-    syclexp::nd_launch(q, cfg, syclexp::kernel_function<kptr>, args...);
+    KernelLaunch<decltype(kptr)>::launch(
+        q, cfg, syclexp::kernel_function<kptr>, args...);
   } else {
-    syclexp::nd_launch(
+    KernelLaunch<decltype(kptr)>::launch(
         q,
         ::sycl::nd_range<1>(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
@@ -315,20 +352,21 @@ static inline void sycl_kernel_submit(
         ::sycl::nd_range<dim>(
             ::sycl::range<dim>(global_range), ::sycl::range<dim>(local_range)),
         syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
-    syclexp::nd_launch(q, cfg, ker, args...);
+    KernelLaunch<decltype(kptr)>::launch(q, cfg, ker, args...);
   } else {
     syclexp::launch_config cfg{::sycl::nd_range<dim>(
         ::sycl::range<dim>(global_range), ::sycl::range<dim>(local_range))};
-    syclexp::nd_launch(q, cfg, ker, args...);
+    KernelLaunch<decltype(kptr)>::launch(q, cfg, ker, args...);
   }
 #else
   if (slm_sz != 0) {
     syclexp::launch_config cfg{
         ::sycl::nd_range<dim>(global_range, local_range),
         syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
-    syclexp::nd_launch(q, cfg, syclexp::kernel_function<kptr>, args...);
+    KernelLaunch<decltype(kptr)>::launch(
+        q, cfg, syclexp::kernel_function<kptr>, args...);
   } else {
-    syclexp::nd_launch(
+    KernelLaunch<decltype(kptr)>::launch(
         q,
         ::sycl::nd_range<dim>(global_range, local_range),
         syclexp::kernel_function<kptr>,

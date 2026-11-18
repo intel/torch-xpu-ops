@@ -8,6 +8,7 @@
 
 # Owner(s): ["module: intel"]
 
+import math
 import sys
 import unittest
 
@@ -106,6 +107,39 @@ _xpu_computation_ops_no_numpy_ref = [
 ]
 
 
+def _align_complex_log_branch(actual, expected):
+    # The imaginary part of a complex logarithm is only defined modulo 2*pi.
+    # logcumsumexp does not reduce it to the principal branch, so the branch
+    # it lands on depends on the scan's association order, which differs
+    # between the parallel XPU scan and the sequential CPU loop. Shift `actual`
+    # by the multiple of 2*pi that brings it closest to `expected`.
+    if not (
+        isinstance(actual, torch.Tensor)
+        and isinstance(expected, torch.Tensor)
+        and actual.is_complex()
+        and expected.is_complex()
+    ):
+        return actual
+    actual = actual.cpu()
+    k = torch.round((actual.imag - expected.imag) / (2 * math.pi))
+    k = torch.nan_to_num(k, nan=0.0, posinf=0.0, neginf=0.0)
+    return torch.complex(actual.real, actual.imag - 2 * math.pi * k)
+
+
+# test_compare_cpu exceptions, keyed by (op name, variant_test_name, dtype) so
+# that an entry applies only to the OpInfo variant it was measured on:
+#   "tol": (atol, rtol) replacing the default 1e-3, where the default is
+#          tighter than the dtype itself can represent;
+#   "align": transform applied to the XPU result before comparing.
+_compare_cpu_overrides = {
+    # Results differ from CPU by one bf16 ulp (bf16 relative precision ~4e-3);
+    # 1.6e-2 is the default bf16 rtol of torch.testing.
+    ("softmax", "", torch.bfloat16): {"tol": (1e-3, 1.6e-2)},
+    ("logcumsumexp", "", torch.complex64): {"align": _align_complex_log_branch},
+    ("logcumsumexp", "", torch.complex128): {"align": _align_complex_log_branch},
+}
+
+
 # NB: TestCommonProxy is a nested class. This prevents test runners from picking
 # it up and running it.
 class Namespace:
@@ -141,8 +175,31 @@ class Namespace:
                 xpu_results = sample.output_process_fn_grad(xpu_results)
                 cpu_results = cpu_sample.output_process_fn_grad(cpu_results)
 
-                # CHANGED: Use 1e-3 for all dtypes on XPU
-                self.assertEqual(xpu_results, cpu_results, atol=1e-3, rtol=1e-3)
+                # assertEqual cannot consume experimental BComplex32 (many
+                # ops it dispatches to, e.g. isclose/sub/abs, are not
+                # implemented for it). complex64 is a lossless widening, so
+                # the parity check still runs. Widen only when both sides
+                # agree, so a one-sided promotion still fails on dtype.
+                # Track: https://github.com/pytorch/pytorch/issues/177859
+                # TODO: Remove this widening after BComplex32 support is ready.
+                if (
+                    isinstance(xpu_results, torch.Tensor)
+                    and isinstance(cpu_results, torch.Tensor)
+                    and xpu_results.dtype is torch.bcomplex32
+                    and cpu_results.dtype is torch.bcomplex32
+                ):
+                    xpu_results = xpu_results.to(torch.complex64)
+                    cpu_results = cpu_results.to(torch.complex64)
+
+                override = _compare_cpu_overrides.get(
+                    (op.name, op.variant_test_name, dtype), {}
+                )
+                if "align" in override:
+                    xpu_results = override["align"](xpu_results, cpu_results)
+
+                # CHANGED: Use 1e-3 for all dtypes on XPU unless overridden
+                atol, rtol = override.get("tol", (1e-3, 1e-3))
+                self.assertEqual(xpu_results, cpu_results, atol=atol, rtol=rtol)
 
     class TestCompositeComplianceProxy(TestCase, TestCompositeComplianceBase):
         def __init__(self, test_case=None):
@@ -206,8 +263,10 @@ class TestCompositeCompliance(TestCase):
             skip(
                 "nn.functional.embedding_bag"
             ),  # "nn.functional.embedding_bag is not composite compliant"
+            skip("empty"),  # uninitialized output is not comparable
             skip("resize_"),  # "resize is not composite compliant"
             skip("resize_as_"),  # "resize_as is not composite compliant"
+            skip("nn.functional.multi_head_attention_forward"),
         }
     )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
@@ -250,6 +309,7 @@ class TestCompositeCompliance(TestCase):
         {
             skip("nn.functional.max_unpool2d"),
             skip("nn.functional.max_unpool3d"),
+            skip("nn.functional.multi_head_attention_forward"),
         }
     )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))

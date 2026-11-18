@@ -342,34 +342,25 @@ at::Tensor& _fill_mem_eff_dropout_mask_(
     double dropout_p,
     const int64_t seed,
     const int64_t offset) {
-  auto state = c10::make_intrusive<at::XPUGeneratorState>(
+  PhiloxXpuState philox_state(
       static_cast<uint64_t>(seed), static_cast<uint64_t>(offset));
-  auto gen = at::make_generator<at::XPUGeneratorImpl>(
-      self.device().index(), std::move(state));
   auto mask =
-      std::get<1>(xpu::fused_dropout_kernel(self, 1.0 - dropout_p, gen));
+      xpu::mem_eff_attention_dropout_mask_kernel(self, dropout_p, philox_state);
   self.copy_(mask);
   return self;
 }
 
-// Reproduces the dropout mask from device-side seed/offset tensors (graph
-// capture path). Constructs a temporary generator whose extragraph tensors
-// alias the provided device tensors so the SYCL kernel reads seed/offset
-// directly from device memory during graph replay — no D2H transfer.
 static at::Tensor& _fill_mem_eff_dropout_mask_from_device_tensors_(
     Tensor& self,
     double dropout_p,
     const Tensor& philox_seed_t,
     const Tensor& philox_offset_t) {
-  auto state = c10::make_intrusive<at::XPUGeneratorState>();
-  state->capturing_ = true;
-  state->seed_extragraph_ = philox_seed_t;
-  state->offset_extragraph_ = philox_offset_t;
-  state->offset_intragraph_ = 0;
-  auto gen = at::make_generator<at::XPUGeneratorImpl>(
-      self.device().index(), std::move(state));
+  PhiloxXpuState philox_state(
+      philox_seed_t.data_ptr<int64_t>(),
+      philox_offset_t.data_ptr<int64_t>(),
+      0);
   auto mask =
-      std::get<1>(xpu::fused_dropout_kernel(self, 1.0 - dropout_p, gen));
+      xpu::mem_eff_attention_dropout_mask_kernel(self, dropout_p, philox_state);
   self.copy_(mask);
   return self;
 }
@@ -477,6 +468,16 @@ _scaled_dot_product_efficient_attention_xpu(
       std::move(philox_offset_tensor));
 }
 
+// The meta kernel allocates the input gradients with
+// empty_permuted((B, H, S, D), (0, 2, 1, 3)) -- see
+// meta__scaled_dot_product_efficient_backward in
+// torch/_meta_registrations.py -- so compiled code asserts BHSD sizes over
+// BSHD-contiguous memory, while autograd hands back plain contiguous
+// tensors.
+static Tensor to_bshd_contiguous(const Tensor& t) {
+  return t.permute({0, 2, 1, 3}).contiguous().permute({0, 2, 1, 3});
+}
+
 /**
  * Fall back implementation of efficient attention backward.
  * Since the forward path uses _scaled_dot_product_attention_math (which is
@@ -543,8 +544,6 @@ _scaled_dot_product_efficient_attention_backward_xpu(
     attn_bias_opt = ab;
   }
 
-  // When dropout was used in the forward pass, rebuild the exact same mask
-  // using the captured philox seed/offset via a temporary generator.
   std::optional<Tensor> dropout_mask_opt;
   if (dropout_p > 0.0 && philox_seed.defined() && philox_offset.defined()) {
     int64_t B = query.size(0);
@@ -637,11 +636,11 @@ _scaled_dot_product_efficient_attention_backward_xpu(
 
   int idx = 0;
   if (grad_input_mask[0])
-    grad_q = grads[idx++];
+    grad_q = to_bshd_contiguous(grads[idx++]);
   if (grad_input_mask[1])
-    grad_k = grads[idx++];
+    grad_k = to_bshd_contiguous(grads[idx++]);
   if (grad_input_mask[2])
-    grad_v = grads[idx++];
+    grad_v = to_bshd_contiguous(grads[idx++]);
   if (grad_input_mask[3] && ab.defined())
     grad_bias = grads[idx++];
 

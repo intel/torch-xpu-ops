@@ -134,128 +134,83 @@ scalar_t bilinear_interpolate(
 }
 
 template <typename scalar_t, typename index_t>
-struct DeformableIm2ColKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP_TYPE(item, index, n, int64_t) {
-      const index_t out_x = index % out_w;
-      const index_t out_y = (index / out_w) % out_h;
-      const index_t out_b = (index / (out_w * out_h)) % batch_sz;
-      const index_t in_c = index / (out_w * out_h * batch_sz);
-      const index_t out_c = in_c * weight_h * weight_w;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void deformable_im2col_kernel(
+    index_t n,
+    const scalar_t* input_ptr,
+    const scalar_t* offset_ptr,
+    const scalar_t* mask_ptr,
+    index_t height,
+    index_t width,
+    index_t weight_h,
+    index_t weight_w,
+    index_t pad_h,
+    index_t pad_w,
+    index_t stride_h,
+    index_t stride_w,
+    index_t dilation_h,
+    index_t dilation_w,
+    index_t batch_sz,
+    index_t n_in_channels,
+    index_t n_offset_grps,
+    index_t out_h,
+    index_t out_w,
+    bool use_mask,
+    scalar_t* columns_ptr) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP_TYPE(item, index, n, int64_t) {
+    const index_t out_x = index % out_w;
+    const index_t out_y = (index / out_w) % out_h;
+    const index_t out_b = (index / (out_w * out_h)) % batch_sz;
+    const index_t in_c = index / (out_w * out_h * batch_sz);
+    const index_t out_c = in_c * weight_h * weight_w;
 
-      index_t c_per_offset_grp = n_in_channels / n_offset_grps;
-      const index_t grp_idx = in_c / c_per_offset_grp;
+    index_t c_per_offset_grp = n_in_channels / n_offset_grps;
+    const index_t grp_idx = in_c / c_per_offset_grp;
 
-      auto local_columns_ptr = columns_ptr +
-          (out_c * (batch_sz * out_h * out_w) + out_b * (out_h * out_w) +
-           out_y * out_w + out_x);
+    auto local_columns_ptr = columns_ptr +
+        (out_c * (batch_sz * out_h * out_w) + out_b * (out_h * out_w) +
+         out_y * out_w + out_x);
 
-      auto local_input_ptr = input_ptr +
-          (out_b * (n_in_channels * height * width) + in_c * (height * width));
+    auto local_input_ptr = input_ptr +
+        (out_b * (n_in_channels * height * width) + in_c * (height * width));
 
-      auto local_offset_ptr = offset_ptr +
-          (out_b * n_offset_grps + grp_idx) * 2 * weight_h * weight_w * out_h *
-              out_w;
+    auto local_offset_ptr = offset_ptr +
+        (out_b * n_offset_grps + grp_idx) * 2 * weight_h * weight_w * out_h *
+            out_w;
 
-      auto local_mask_ptr = mask_ptr;
-      if (use_mask) {
-        local_mask_ptr += (out_b * n_offset_grps + grp_idx) * weight_h *
-            weight_w * out_h * out_w;
-      }
+    auto local_mask_ptr = mask_ptr;
+    if (use_mask) {
+      local_mask_ptr += (out_b * n_offset_grps + grp_idx) * weight_h *
+          weight_w * out_h * out_w;
+    }
 
-      for (int i = 0; i < weight_h; ++i) {
-        for (int j = 0; j < weight_w; ++j) {
-          const index_t mask_idx = i * weight_w + j;
-          const index_t offset_idx = 2 * mask_idx;
+    for (int i = 0; i < weight_h; ++i) {
+      for (int j = 0; j < weight_w; ++j) {
+        const index_t mask_idx = i * weight_w + j;
+        const index_t offset_idx = 2 * mask_idx;
 
-          scalar_t mask_value = 1;
-          if (use_mask) {
-            mask_value = local_mask_ptr
-                [mask_idx * (out_h * out_w) + out_y * out_w + out_x];
-          }
-
-          const scalar_t offset_h = local_offset_ptr
-              [offset_idx * (out_h * out_w) + out_y * out_w + out_x];
-          const scalar_t offset_w = local_offset_ptr
-              [(offset_idx + 1) * (out_h * out_w) + out_y * out_w + out_x];
-          const scalar_t y =
-              (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
-          const scalar_t x =
-              (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
-          *local_columns_ptr = mask_value *
-              bilinear_interpolate(local_input_ptr, height, width, y, x);
-          local_columns_ptr += batch_sz * out_h * out_w;
+        scalar_t mask_value = 1;
+        if (use_mask) {
+          mask_value = local_mask_ptr
+              [mask_idx * (out_h * out_w) + out_y * out_w + out_x];
         }
+
+        const scalar_t offset_h = local_offset_ptr
+            [offset_idx * (out_h * out_w) + out_y * out_w + out_x];
+        const scalar_t offset_w = local_offset_ptr
+            [(offset_idx + 1) * (out_h * out_w) + out_y * out_w + out_x];
+        const scalar_t y =
+            (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
+        const scalar_t x =
+            (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
+        *local_columns_ptr = mask_value *
+            bilinear_interpolate(local_input_ptr, height, width, y, x);
+        local_columns_ptr += batch_sz * out_h * out_w;
       }
     }
   }
-  DeformableIm2ColKernel(
-      index_t n,
-      const scalar_t* input_ptr,
-      const scalar_t* offset_ptr,
-      const scalar_t* mask_ptr,
-      index_t height,
-      index_t width,
-      index_t weight_h,
-      index_t weight_w,
-      index_t pad_h,
-      index_t pad_w,
-      index_t stride_h,
-      index_t stride_w,
-      index_t dilation_h,
-      index_t dilation_w,
-      index_t batch_sz,
-      index_t n_in_channels,
-      index_t n_offset_grps,
-      index_t out_h,
-      index_t out_w,
-      bool use_mask,
-      scalar_t* columns_ptr)
-      : n(n),
-        input_ptr(input_ptr),
-        offset_ptr(offset_ptr),
-        mask_ptr(mask_ptr),
-        height(height),
-        width(width),
-        weight_h(weight_h),
-        weight_w(weight_w),
-        pad_h(pad_h),
-        pad_w(pad_w),
-        stride_h(stride_h),
-        stride_w(stride_w),
-        dilation_h(dilation_h),
-        dilation_w(dilation_w),
-        batch_sz(batch_sz),
-        n_in_channels(n_in_channels),
-        n_offset_grps(n_offset_grps),
-        out_h(out_h),
-        out_w(out_w),
-        use_mask(use_mask),
-        columns_ptr(columns_ptr) {}
-
- private:
-  index_t n;
-  const scalar_t* input_ptr;
-  const scalar_t* offset_ptr;
-  const scalar_t* mask_ptr;
-  index_t height;
-  index_t width;
-  index_t weight_h;
-  index_t weight_w;
-  index_t pad_h;
-  index_t pad_w;
-  index_t stride_h;
-  index_t stride_w;
-  index_t dilation_h;
-  index_t dilation_w;
-  index_t batch_sz;
-  index_t n_in_channels;
-  index_t n_offset_grps;
-  index_t out_h;
-  index_t out_w;
-  bool use_mask;
-  scalar_t* columns_ptr;
-};
+}
 
 void deformable_im2col(
     const at::Tensor& input,
@@ -300,7 +255,11 @@ void deformable_im2col(
   if (use_64bits_indexing) {
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
         input.scalar_type(), "deformable_im2col_xpu", ([&] {
-          auto kfn = DeformableIm2ColKernel<scalar_t, int64_t>(
+          sycl_kernel_submit<deformable_im2col_kernel<scalar_t, int64_t>>(
+              num_groups * group_size,
+              group_size,
+              at::xpu::getCurrentSYCLQueue(),
+              0,
               num_kernels,
               input.const_data_ptr<scalar_t>(),
               data_offset.const_data_ptr<scalar_t>(),
@@ -322,16 +281,15 @@ void deformable_im2col(
               out_w,
               use_mask,
               data_col.data_ptr<scalar_t>());
-          sycl_kernel_submit(
-              num_groups * group_size,
-              group_size,
-              at::xpu::getCurrentSYCLQueue(),
-              kfn);
         }));
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
         input.scalar_type(), "deformable_im2col_xpu", ([&] {
-          auto kfn = DeformableIm2ColKernel<scalar_t, int>(
+          sycl_kernel_submit<deformable_im2col_kernel<scalar_t, int>>(
+              num_groups * group_size,
+              group_size,
+              at::xpu::getCurrentSYCLQueue(),
+              0,
               num_kernels,
               input.const_data_ptr<scalar_t>(),
               data_offset.const_data_ptr<scalar_t>(),
@@ -353,11 +311,6 @@ void deformable_im2col(
               out_w,
               use_mask,
               data_col.data_ptr<scalar_t>());
-          sycl_kernel_submit(
-              num_groups * group_size,
-              group_size,
-              at::xpu::getCurrentSYCLQueue(),
-              kfn);
         }));
   }
 }
@@ -372,135 +325,86 @@ int get_greatest_divisor_below_bound(int n, int bound) {
 }
 
 template <typename scalar_t, typename index_t>
-struct DeformableCol2ImKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP_TYPE(item, index, n, int64_t) {
-      const index_t out_x = index % out_w;
-      const index_t out_y = (index / out_w) % out_h;
-      const index_t b = (index / (out_w * out_h)) % batch_sz;
-      const index_t j = (index / (out_w * out_h * batch_sz)) % kernel_w;
-      const index_t i =
-          (index / (out_w * out_h * batch_sz * kernel_w)) % kernel_h;
-      const index_t c =
-          index / (out_w * out_h * batch_sz * kernel_w * kernel_h);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void deformable_col2im_kernel(
+    index_t n,
+    const scalar_t* col,
+    const scalar_t* offset_ptr,
+    const scalar_t* mask_ptr,
+    index_t channels,
+    index_t height,
+    index_t width,
+    index_t kernel_h,
+    index_t kernel_w,
+    index_t pad_h,
+    index_t pad_w,
+    index_t stride_h,
+    index_t stride_w,
+    index_t dilation_h,
+    index_t dilation_w,
+    index_t batch_sz,
+    index_t n_offset_grps,
+    index_t out_h,
+    index_t out_w,
+    bool use_mask,
+    scalar_t* grad_im) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP_TYPE(item, index, n, int64_t) {
+    const index_t out_x = index % out_w;
+    const index_t out_y = (index / out_w) % out_h;
+    const index_t b = (index / (out_w * out_h)) % batch_sz;
+    const index_t j = (index / (out_w * out_h * batch_sz)) % kernel_w;
+    const index_t i =
+        (index / (out_w * out_h * batch_sz * kernel_w)) % kernel_h;
+    const index_t c = index / (out_w * out_h * batch_sz * kernel_w * kernel_h);
 
-      index_t c_per_offset_grp = channels / n_offset_grps;
-      const index_t offset_grp = c / c_per_offset_grp;
+    index_t c_per_offset_grp = channels / n_offset_grps;
+    const index_t offset_grp = c / c_per_offset_grp;
 
-      auto local_offset_ptr = offset_ptr +
-          (b * n_offset_grps + offset_grp) * 2 * kernel_h * kernel_w * out_h *
-              out_w;
+    auto local_offset_ptr = offset_ptr +
+        (b * n_offset_grps + offset_grp) * 2 * kernel_h * kernel_w * out_h *
+            out_w;
 
-      auto local_mask_ptr = mask_ptr;
-      if (use_mask) {
-        local_mask_ptr += (b * n_offset_grps + offset_grp) * kernel_h *
-            kernel_w * out_h * out_w;
-      }
+    auto local_mask_ptr = mask_ptr;
+    if (use_mask) {
+      local_mask_ptr += (b * n_offset_grps + offset_grp) * kernel_h * kernel_w *
+          out_h * out_w;
+    }
 
-      const index_t mask_idx = i * kernel_w + j;
-      const index_t offset_idx = 2 * mask_idx;
+    const index_t mask_idx = i * kernel_w + j;
+    const index_t offset_idx = 2 * mask_idx;
 
-      const index_t offset_h_ptr = ((offset_idx)*out_h + out_y) * out_w + out_x;
-      const index_t offset_w_ptr =
-          ((offset_idx + 1) * out_h + out_y) * out_w + out_x;
+    const index_t offset_h_ptr = ((offset_idx)*out_h + out_y) * out_w + out_x;
+    const index_t offset_w_ptr =
+        ((offset_idx + 1) * out_h + out_y) * out_w + out_x;
 
-      const scalar_t offset_h = local_offset_ptr[offset_h_ptr];
-      const scalar_t offset_w = local_offset_ptr[offset_w_ptr];
+    const scalar_t offset_h = local_offset_ptr[offset_h_ptr];
+    const scalar_t offset_w = local_offset_ptr[offset_w_ptr];
 
-      scalar_t mask_value = 1;
-      if (use_mask) {
-        mask_value = local_mask_ptr[(mask_idx * out_h + out_y) * out_w + out_x];
-      }
+    scalar_t mask_value = 1;
+    if (use_mask) {
+      mask_value = local_mask_ptr[(mask_idx * out_h + out_y) * out_w + out_x];
+    }
 
-      const scalar_t y = (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
-      const scalar_t x = (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
-      using opmath_t = at::opmath_type<scalar_t>;
+    const scalar_t y = (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
+    const scalar_t x = (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
 
-      for (index_t dy = -1; dy <= 1; dy++) {
-        for (index_t dx = -1; dx <= 1; dx++) {
-          index_t yp = (index_t)y + dy;
-          index_t xp = (index_t)x + dx;
-          if (0 <= yp && yp < height && 0 <= xp && xp < width &&
-              sycl::fabs(static_cast<opmath_t>(y - yp)) < 1 &&
-              sycl::fabs(static_cast<opmath_t>(x - xp)) < 1) {
-            index_t grad_pos = ((b * channels + c) * height + yp) * width + xp;
-            scalar_t weight = (1 - sycl::fabs(static_cast<opmath_t>(y - yp))) *
-                (1 - sycl::fabs(static_cast<opmath_t>(x - xp)));
-            atomicAdd(
-                sycl_global_ptr<scalar_t>(grad_im + grad_pos),
-                mask_value * weight * col[index]);
-          }
+    for (index_t dy = -1; dy <= 1; dy++) {
+      for (index_t dx = -1; dx <= 1; dx++) {
+        index_t yp = (index_t)y + dy;
+        index_t xp = (index_t)x + dx;
+        if (0 <= yp && yp < height && 0 <= xp && xp < width &&
+            std::abs(y - yp) < 1 && std::abs(x - xp) < 1) {
+          index_t grad_pos = ((b * channels + c) * height + yp) * width + xp;
+          scalar_t weight = (1 - std::abs(y - yp)) * (1 - std::abs(x - xp));
+          atomicAdd(
+              sycl_global_ptr<scalar_t>(grad_im + grad_pos),
+              mask_value * weight * col[index]);
         }
       }
     }
   }
-  DeformableCol2ImKernel(
-      index_t n,
-      const scalar_t* col,
-      const scalar_t* offset_ptr,
-      const scalar_t* mask_ptr,
-      index_t channels,
-      index_t height,
-      index_t width,
-      index_t kernel_h,
-      index_t kernel_w,
-      index_t pad_h,
-      index_t pad_w,
-      index_t stride_h,
-      index_t stride_w,
-      index_t dilation_h,
-      index_t dilation_w,
-      index_t batch_sz,
-      index_t n_offset_grps,
-      index_t out_h,
-      index_t out_w,
-      bool use_mask,
-      scalar_t* grad_im)
-      : n(n),
-        col(col),
-        offset_ptr(offset_ptr),
-        mask_ptr(mask_ptr),
-        channels(channels),
-        height(height),
-        width(width),
-        kernel_h(kernel_h),
-        kernel_w(kernel_w),
-        pad_h(pad_h),
-        pad_w(pad_w),
-        stride_h(stride_h),
-        stride_w(stride_w),
-        dilation_h(dilation_h),
-        dilation_w(dilation_w),
-        batch_sz(batch_sz),
-        n_offset_grps(n_offset_grps),
-        out_h(out_h),
-        out_w(out_w),
-        use_mask(use_mask),
-        grad_im(grad_im) {}
-
- private:
-  index_t n;
-  const scalar_t* col;
-  const scalar_t* offset_ptr;
-  const scalar_t* mask_ptr;
-  index_t channels;
-  index_t height;
-  index_t width;
-  index_t kernel_h;
-  index_t kernel_w;
-  index_t pad_h;
-  index_t pad_w;
-  index_t stride_h;
-  index_t stride_w;
-  index_t dilation_h;
-  index_t dilation_w;
-  index_t batch_sz;
-  index_t n_offset_grps;
-  index_t out_h;
-  index_t out_w;
-  bool use_mask;
-  scalar_t* grad_im;
-};
+}
 
 void compute_grad_input(
     const at::Tensor& columns,
@@ -546,7 +450,11 @@ void compute_grad_input(
   if (use_64bits_indexing) {
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
         columns.scalar_type(), "compute_grad_input", ([&] {
-          auto kfn = DeformableCol2ImKernel<scalar_t, int64_t>(
+          sycl_kernel_submit<deformable_col2im_kernel<scalar_t, int64_t>>(
+              num_groups * group_size,
+              group_size,
+              at::xpu::getCurrentSYCLQueue(),
+              0,
               num_kernels,
               columns.const_data_ptr<scalar_t>(),
               offset.const_data_ptr<scalar_t>(),
@@ -568,16 +476,15 @@ void compute_grad_input(
               out_w,
               use_mask,
               grad_im.data_ptr<scalar_t>());
-          sycl_kernel_submit(
-              num_groups * group_size,
-              group_size,
-              at::xpu::getCurrentSYCLQueue(),
-              kfn);
         }));
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
         columns.scalar_type(), "compute_grad_input", ([&] {
-          auto kfn = DeformableCol2ImKernel<scalar_t, int>(
+          sycl_kernel_submit<deformable_col2im_kernel<scalar_t, int>>(
+              num_groups * group_size,
+              group_size,
+              at::xpu::getCurrentSYCLQueue(),
+              0,
               num_kernels,
               columns.const_data_ptr<scalar_t>(),
               offset.const_data_ptr<scalar_t>(),
@@ -599,11 +506,6 @@ void compute_grad_input(
               out_w,
               use_mask,
               grad_im.data_ptr<scalar_t>());
-          sycl_kernel_submit(
-              num_groups * group_size,
-              group_size,
-              at::xpu::getCurrentSYCLQueue(),
-              kfn);
         }));
   }
 }
@@ -643,173 +545,120 @@ scalar_t get_coordinate_weight(
 }
 
 template <typename scalar_t, typename index_t>
-struct DeformableCol2ImCoordKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    XPU_KERNEL_LOOP_TYPE(item, index, n, int64_t) {
-      scalar_t grad_offset_val = 0;
-      scalar_t grad_mask_val = 0;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void deformable_col2im_coord_kernel(
+    index_t n,
+    const scalar_t* col_ptr,
+    const scalar_t* im_ptr,
+    const scalar_t* offset_ptr,
+    const scalar_t* mask_ptr,
+    index_t channels,
+    index_t height,
+    index_t width,
+    index_t weight_h,
+    index_t weight_w,
+    index_t pad_h,
+    index_t pad_w,
+    index_t stride_h,
+    index_t stride_w,
+    index_t dilation_h,
+    index_t dilation_w,
+    index_t batch_sz,
+    index_t offset_channels,
+    index_t n_offset_grps,
+    index_t out_h,
+    index_t out_w,
+    const bool use_mask,
+    scalar_t* grad_offset,
+    scalar_t* grad_mask) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  XPU_KERNEL_LOOP_TYPE(item, index, n, int64_t) {
+    scalar_t grad_offset_val = 0;
+    scalar_t grad_mask_val = 0;
 
-      index_t w = index % out_w;
-      index_t h = (index / out_w) % out_h;
-      index_t w_w = (index / (out_w * out_h * 2)) % weight_w;
-      index_t w_h = (index / (out_w * out_h * 2 * weight_w)) % weight_h;
-      index_t c = (index / (out_w * out_h)) % offset_channels;
-      index_t b = index / (out_w * out_h * offset_channels);
+    index_t w = index % out_w;
+    index_t h = (index / out_w) % out_h;
+    index_t w_w = (index / (out_w * out_h * 2)) % weight_w;
+    index_t w_h = (index / (out_w * out_h * 2 * weight_w)) % weight_h;
+    index_t c = (index / (out_w * out_h)) % offset_channels;
+    index_t b = index / (out_w * out_h * offset_channels);
 
-      const index_t offset_grp = c / (2 * weight_h * weight_w);
-      const index_t col_step = weight_h * weight_w;
+    const index_t offset_grp = c / (2 * weight_h * weight_w);
+    const index_t col_step = weight_h * weight_w;
 
-      index_t c_per_offset_grp = channels / n_offset_grps;
+    index_t c_per_offset_grp = channels / n_offset_grps;
 
-      auto local_col_ptr = col_ptr +
-          offset_grp * c_per_offset_grp * weight_h * weight_w * batch_sz *
-              out_w * out_h;
-      auto local_im_ptr = im_ptr +
-          (b * n_offset_grps + offset_grp) * c_per_offset_grp * height * width;
-      auto local_offset_ptr = offset_ptr +
-          (b * n_offset_grps + offset_grp) * 2 * weight_h * weight_w * out_h *
-              out_w;
+    auto local_col_ptr = col_ptr +
+        offset_grp * c_per_offset_grp * weight_h * weight_w * batch_sz * out_w *
+            out_h;
+    auto local_im_ptr = im_ptr +
+        (b * n_offset_grps + offset_grp) * c_per_offset_grp * height * width;
+    auto local_offset_ptr = offset_ptr +
+        (b * n_offset_grps + offset_grp) * 2 * weight_h * weight_w * out_h *
+            out_w;
 
-      auto local_mask_ptr = mask_ptr;
+    auto local_mask_ptr = mask_ptr;
+    if (use_mask) {
+      local_mask_ptr += (b * n_offset_grps + offset_grp) * weight_h * weight_w *
+          out_h * out_w;
+    }
+
+    const index_t offset_c = c - offset_grp * 2 * weight_h * weight_w;
+    const bool is_y_direction = offset_c % 2 == 0;
+
+    const index_t c_bound = c_per_offset_grp * weight_h * weight_w;
+    for (index_t col_c = (offset_c / 2); col_c < c_bound; col_c += col_step) {
+      const index_t col_pos =
+          (((col_c * batch_sz + b) * out_h) + h) * out_w + w;
+
+      index_t out_x = col_pos % out_w;
+      index_t out_y = (col_pos / out_w) % out_h;
+      index_t j = (col_pos / (out_w * out_h * batch_sz)) % weight_w;
+      index_t i = (col_pos / (out_w * out_h * batch_sz * weight_w)) % weight_h;
+
+      const index_t mask_idx = i * weight_w + j;
+
+      const index_t offset_h_ptr =
+          (((2 * mask_idx) * out_h + out_y) * out_w + out_x);
+      const index_t offset_w_ptr =
+          (((2 * mask_idx + 1) * out_h + out_y) * out_w + out_x);
+      const scalar_t offset_h = local_offset_ptr[offset_h_ptr];
+      const scalar_t offset_w = local_offset_ptr[offset_w_ptr];
+
+      scalar_t mask_value = 1;
       if (use_mask) {
-        local_mask_ptr += (b * n_offset_grps + offset_grp) * weight_h *
-            weight_w * out_h * out_w;
+        mask_value = local_mask_ptr[(mask_idx * out_h + out_y) * out_w + out_x];
       }
 
-      const index_t offset_c = c - offset_grp * 2 * weight_h * weight_w;
-      const bool is_y_direction = offset_c % 2 == 0;
+      scalar_t y = (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
+      scalar_t x = (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
 
-      const index_t c_bound = c_per_offset_grp * weight_h * weight_w;
-      for (index_t col_c = (offset_c / 2); col_c < c_bound; col_c += col_step) {
-        const index_t col_pos =
-            (((col_c * batch_sz + b) * out_h) + h) * out_w + w;
-
-        index_t out_x = col_pos % out_w;
-        index_t out_y = (col_pos / out_w) % out_h;
-        index_t j = (col_pos / (out_w * out_h * batch_sz)) % weight_w;
-        index_t i =
-            (col_pos / (out_w * out_h * batch_sz * weight_w)) % weight_h;
-
-        const index_t mask_idx = i * weight_w + j;
-
-        const index_t offset_h_ptr =
-            (((2 * mask_idx) * out_h + out_y) * out_w + out_x);
-        const index_t offset_w_ptr =
-            (((2 * mask_idx + 1) * out_h + out_y) * out_w + out_x);
-        const scalar_t offset_h = local_offset_ptr[offset_h_ptr];
-        const scalar_t offset_w = local_offset_ptr[offset_w_ptr];
-
-        scalar_t mask_value = 1;
-        if (use_mask) {
-          mask_value =
-              local_mask_ptr[(mask_idx * out_h + out_y) * out_w + out_x];
-        }
-
-        scalar_t y = (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
-        scalar_t x = (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
-
-        const scalar_t weight = get_coordinate_weight(
-            local_im_ptr, height, width, y, x, is_y_direction);
-        grad_offset_val += mask_value * weight * local_col_ptr[col_pos];
-
-        if (use_mask && is_y_direction) {
-          grad_mask_val += local_col_ptr[col_pos] *
-              bilinear_interpolate(local_im_ptr, height, width, y, x);
-        }
-
-        local_im_ptr += height * width;
-      }
-
-      grad_offset[index] = grad_offset_val;
+      const scalar_t weight = get_coordinate_weight(
+          local_im_ptr, height, width, y, x, is_y_direction);
+      grad_offset_val += mask_value * weight * local_col_ptr[col_pos];
 
       if (use_mask && is_y_direction) {
-        const index_t idx =
-            ((((b * n_offset_grps + offset_grp) * weight_h + w_h) * weight_w +
-              w_w) *
-                 out_h +
-             h) *
-                out_w +
-            w;
-        grad_mask[idx] = grad_mask_val;
+        grad_mask_val += local_col_ptr[col_pos] *
+            bilinear_interpolate(local_im_ptr, height, width, y, x);
       }
+
+      local_im_ptr += height * width;
+    }
+
+    grad_offset[index] = grad_offset_val;
+
+    if (use_mask && is_y_direction) {
+      const index_t idx =
+          ((((b * n_offset_grps + offset_grp) * weight_h + w_h) * weight_w +
+            w_w) *
+               out_h +
+           h) *
+              out_w +
+          w;
+      grad_mask[idx] = grad_mask_val;
     }
   }
-  DeformableCol2ImCoordKernel(
-      index_t n,
-      const scalar_t* col_ptr,
-      const scalar_t* im_ptr,
-      const scalar_t* offset_ptr,
-      const scalar_t* mask_ptr,
-      index_t channels,
-      index_t height,
-      index_t width,
-      index_t weight_h,
-      index_t weight_w,
-      index_t pad_h,
-      index_t pad_w,
-      index_t stride_h,
-      index_t stride_w,
-      index_t dilation_h,
-      index_t dilation_w,
-      index_t batch_sz,
-      index_t offset_channels,
-      index_t n_offset_grps,
-      index_t out_h,
-      index_t out_w,
-      const bool use_mask,
-      scalar_t* grad_offset,
-      scalar_t* grad_mask)
-      : n(n),
-        col_ptr(col_ptr),
-        im_ptr(im_ptr),
-        offset_ptr(offset_ptr),
-        mask_ptr(mask_ptr),
-        channels(channels),
-        height(height),
-        width(width),
-        weight_h(weight_h),
-        weight_w(weight_w),
-        pad_h(pad_h),
-        pad_w(pad_w),
-        stride_h(stride_h),
-        stride_w(stride_w),
-        dilation_h(dilation_h),
-        dilation_w(dilation_w),
-        batch_sz(batch_sz),
-        offset_channels(offset_channels),
-        n_offset_grps(n_offset_grps),
-        out_h(out_h),
-        out_w(out_w),
-        use_mask(use_mask),
-        grad_offset(grad_offset),
-        grad_mask(grad_mask) {}
-
- private:
-  index_t n;
-  const scalar_t* col_ptr;
-  const scalar_t* im_ptr;
-  const scalar_t* offset_ptr;
-  const scalar_t* mask_ptr;
-  index_t channels;
-  index_t height;
-  index_t width;
-  index_t weight_h;
-  index_t weight_w;
-  index_t pad_h;
-  index_t pad_w;
-  index_t stride_h;
-  index_t stride_w;
-  index_t dilation_h;
-  index_t dilation_w;
-  index_t batch_sz;
-  index_t offset_channels;
-  index_t n_offset_grps;
-  index_t out_h;
-  index_t out_w;
-  bool use_mask;
-  scalar_t* grad_offset;
-  scalar_t* grad_mask;
-};
+}
 
 void compute_grad_offset_and_mask(
     const at::Tensor& columns,
@@ -857,7 +706,11 @@ void compute_grad_offset_and_mask(
   if (use_64bits_indexing) {
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
         columns.scalar_type(), "compute_grad_offset_and_mask_xpu", ([&] {
-          auto kfn = DeformableCol2ImCoordKernel<scalar_t, int64_t>(
+          sycl_kernel_submit<deformable_col2im_coord_kernel<scalar_t, int64_t>>(
+              num_groups * group_size,
+              group_size,
+              at::xpu::getCurrentSYCLQueue(),
+              0,
               num_kernels,
               columns.const_data_ptr<scalar_t>(),
               input.const_data_ptr<scalar_t>(),
@@ -882,16 +735,15 @@ void compute_grad_offset_and_mask(
               use_mask,
               grad_offset.data_ptr<scalar_t>(),
               grad_mask.data_ptr<scalar_t>());
-          sycl_kernel_submit(
-              num_groups * group_size,
-              group_size,
-              at::xpu::getCurrentSYCLQueue(),
-              kfn);
         }));
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
         columns.scalar_type(), "compute_grad_offset_and_mask", ([&] {
-          auto kfn = DeformableCol2ImCoordKernel<scalar_t, int>(
+          sycl_kernel_submit<deformable_col2im_coord_kernel<scalar_t, int>>(
+              num_groups * group_size,
+              group_size,
+              at::xpu::getCurrentSYCLQueue(),
+              0,
               num_kernels,
               columns.const_data_ptr<scalar_t>(),
               input.const_data_ptr<scalar_t>(),
@@ -916,11 +768,6 @@ void compute_grad_offset_and_mask(
               use_mask,
               grad_offset.data_ptr<scalar_t>(),
               grad_mask.data_ptr<scalar_t>());
-          sycl_kernel_submit(
-              num_groups * group_size,
-              group_size,
-              at::xpu::getCurrentSYCLQueue(),
-              kfn);
         }));
   }
 }

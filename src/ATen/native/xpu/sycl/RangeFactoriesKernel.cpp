@@ -13,6 +13,7 @@
 #include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/detail/FunctionTraits.h>
+#include <ATen/native/RangeUtils.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
@@ -24,27 +25,19 @@ constexpr int nitem_per_wg = 256;
 constexpr int item_work_size = 1;
 constexpr int group_work_size = item_work_size * nitem_per_wg;
 
-template <typename index_t, typename func_t>
-struct ElementwiseKernelWithIndexFunctor {
-  using res_t = typename function_traits<func_t>::result_type;
-  void operator()(sycl::nd_item<1> item) const {
+template <typename index_t, typename func_t, typename data_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void element_wise_with_index_kernel_impl(index_t N, func_t f, data_t* data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 #pragma unroll
-    for (int i = 0; i < item_work_size; i++) {
-      index_t idx = group_work_size * item.get_group(0) + nitem_per_wg * i +
-          item.get_local_id(0);
-      if (idx < N_) {
-        data_[idx] = f_(idx);
-      }
+  for (int i = 0; i < item_work_size; i++) {
+    index_t idx = group_work_size * item.get_group(0) + nitem_per_wg * i +
+        item.get_local_id(0);
+    if (idx < N) {
+      data[idx] = f(idx);
     }
   }
-  ElementwiseKernelWithIndexFunctor(index_t N, func_t f, res_t* data)
-      : N_(N), f_(f), data_(data) {}
-
- private:
-  index_t N_;
-  func_t f_;
-  res_t* data_;
-};
+}
 
 template <typename func_t>
 void gpu_kernel_with_index(at::Tensor& output, func_t f) {
@@ -56,13 +49,25 @@ void gpu_kernel_with_index(at::Tensor& output, func_t f) {
   auto queue = at::xpu::getCurrentSYCLQueue();
   using scalar_t = typename function_traits<func_t>::result_type;
   if (N <= std::numeric_limits<int>::max()) {
-    auto caller = ElementwiseKernelWithIndexFunctor<int, func_t>(
-        N, f, output.mutable_data_ptr<scalar_t>());
-    sycl_kernel_submit(num_wg * nitem_per_wg, nitem_per_wg, queue, caller);
+    sycl_kernel_submit<
+        element_wise_with_index_kernel_impl<int, func_t, scalar_t>>(
+        num_wg * nitem_per_wg,
+        nitem_per_wg,
+        queue,
+        0,
+        N,
+        f,
+        output.mutable_data_ptr<scalar_t>());
   } else {
-    auto caller = ElementwiseKernelWithIndexFunctor<int64_t, func_t>(
-        N, f, output.mutable_data_ptr<scalar_t>());
-    sycl_kernel_submit(num_wg * nitem_per_wg, nitem_per_wg, queue, caller);
+    sycl_kernel_submit<
+        element_wise_with_index_kernel_impl<int64_t, func_t, scalar_t>>(
+        num_wg * nitem_per_wg,
+        nitem_per_wg,
+        queue,
+        0,
+        N,
+        f,
+        output.mutable_data_ptr<scalar_t>());
   }
 }
 
@@ -86,26 +91,55 @@ Tensor& arange_kernel(
     const Scalar& end,
     const Scalar& step,
     Tensor& result) {
-  AT_DISPATCH_ALL_TYPES_AND2(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       result.scalar_type(),
       "arange_xpu",
       [&]() {
-        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-        auto xstart = start.to<accscalar_t>();
-        auto xstep = step.to<accscalar_t>();
+        const int64_t size = compute_arange_size<scalar_t>(start, end, step);
+        const int64_t numel = result.numel();
+        if (numel != size) {
+          if (numel > 0) {
+            TORCH_WARN(
+                "The number of elements in the out tensor of shape ",
+                result.sizes(),
+                " is ",
+                numel,
+                " which does not match the computed number of elements ",
+                size,
+                ". Note that this may occur as a result of rounding error. "
+                "The out tensor will be resized to a tensor of shape (",
+                size,
+                ",).");
+          }
+          result.resize_({size});
+        }
 
-        bool is_contiguous = result.is_contiguous();
-        Tensor r = !is_contiguous
-            ? at::empty_like(result, LEGACY_CONTIGUOUS_MEMORY_FORMAT)
-            : result;
+        if constexpr (c10::is_complex<scalar_t>::value) {
+          if (size <= 1) {
+            result.fill_(start);
+          } else {
+            const auto endc = start.to<c10::complex<double>>() +
+                step.to<c10::complex<double>>() * static_cast<double>(size - 1);
+            linspace_kernel(start, Scalar(endc), size, result);
+          }
+        } else {
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+          auto xstart = start.to<accscalar_t>();
+          auto xstep = step.to<accscalar_t>();
 
-        auto f = ArangeFunctor<scalar_t, accscalar_t>(xstart, xstep);
-        gpu_kernel_with_index(r, f);
+          bool is_contiguous = result.is_contiguous();
+          Tensor r = !is_contiguous
+              ? at::empty_like(result, LEGACY_CONTIGUOUS_MEMORY_FORMAT)
+              : result;
 
-        if (!is_contiguous) {
-          result.copy_(r);
+          auto f = ArangeFunctor<scalar_t, accscalar_t>(xstart, xstep);
+          gpu_kernel_with_index(r, f);
+
+          if (!is_contiguous) {
+            result.copy_(r);
+          }
         }
       });
 
