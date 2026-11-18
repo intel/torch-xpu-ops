@@ -33,7 +33,7 @@ on:
       xpu_version:
         required: false
         type: string
-        default: '2026.1'
+        default: '2026.2'
         description: XPU version
 
 permissions: read-all
