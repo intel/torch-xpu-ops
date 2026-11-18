@@ -1633,6 +1633,73 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
         OpType::ALLGATHER,
         opts.asyncOp,
         "xccl:all_gather");
+  } else if (xcclActiveGroupCounter_ == 0) {
+    // Inside a group oneCCL defers the call, so a failure could not be retried.
+    TORCH_CHECK_WITH(
+        ValueError,
+        static_cast<int>(outputTensors_.size()) == size_,
+        "all_gather: expected ",
+        size_,
+        " output tensors, got ",
+        outputTensors_.size());
+    TORCH_CHECK_WITH(
+        ValueError,
+        inputTensor.numel() == outputTensors_[rank_].numel(),
+        "all_gather: input tensor has ",
+        inputTensor.numel(),
+        " elements but output tensor ",
+        rank_,
+        " has ",
+        outputTensors_[rank_].numel());
+    std::vector<size_t> recvCounts;
+    recvCounts.reserve(outputTensors_.size());
+    int64_t totalNumel = 0;
+    for (const auto& t : outputTensors_) {
+      recvCounts.push_back(static_cast<size_t>(t.numel()));
+      totalNumel += t.numel();
+    }
+    at::Tensor outputFlattened = at::empty({totalNumel}, inputTensor.options());
+    return collective(
+        inputTensor,
+        outputFlattened,
+        [&](at::Tensor& input,
+            at::Tensor& output,
+            onecclComm_t& comm,
+            at::xpu::XPUStream& stream) {
+          if (xccl::onecclAllGatherV(input, output, recvCounts, comm, stream)) {
+            return;
+          }
+          LOG(INFO) << "onecclAllGatherV unavailable, falling back to "
+                    << "one broadcast per rank";
+          OnecclGroupGuard group;
+          int64_t offset = 0;
+          for (const int i : c10::irange(size_)) {
+            const auto count = static_cast<int64_t>(recvCounts[i]);
+            at::Tensor chunk = output.narrow(0, offset, count);
+            at::Tensor src = (i == rank_) ? input : chunk;
+            xccl::onecclBroadcast(src, chunk, comm, i, stream);
+            offset += count;
+          }
+        },
+        [](at::xpu::XPUStream&,
+           c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {},
+        [&](at::xpu::XPUStream& Stream,
+            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
+          if (opts.asyncOp) {
+            work->stashed_for_allocator_safety_->stash(outputTensors_);
+          }
+          c10::StreamGuard guard(Stream);
+          int64_t offset = 0;
+          for (auto& t : outputTensors_) {
+            t.copy_(
+                outputFlattened.narrow(0, offset, t.numel()).view(t.sizes()),
+                true);
+            offset += t.numel();
+          }
+        },
+        OpType::ALLGATHER,
+        opts.asyncOp,
+        "xccl:all_gather");
   } else {
     const auto num_reduces = outputTensors_.size();
     startCoalescing();

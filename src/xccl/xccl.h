@@ -43,6 +43,11 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #define ENABLE_XCCL_PREMUL_SUM_SUPPORT
 #endif // oneCCL version >= 2022.0
 
+#if defined(ONECCL_MAJOR) && \
+    ((ONECCL_MAJOR > 2022) || (ONECCL_MAJOR == 2022) && (ONECCL_MINOR >= 3))
+#define XCCL_HAS_ALLGATHER_V
+#endif // oneCCL version >= 2022.3
+
 inline std::string reduceOpToString(const c10d::ReduceOp& op) {
   switch (op) {
     case c10d::ReduceOp::SUM:
@@ -336,6 +341,13 @@ void onecclReduceScatter(
 void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
+    onecclComm_t& comm,
+    at::xpu::XPUStream& stream);
+// Returns false, having enqueued nothing, when oneCCL cannot run it.
+bool onecclAllGatherV(
+    at::Tensor& input,
+    at::Tensor& output,
+    const std::vector<size_t>& recvCounts,
     onecclComm_t& comm,
     at::xpu::XPUStream& stream);
 void onecclSend(
