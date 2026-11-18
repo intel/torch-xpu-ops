@@ -35,14 +35,9 @@ skip_dict = {
     "export/test_export_opinfo_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_profiler_use_cases.py": None,
-    "profiler/test_profiler_xpu.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/5638 (not XPU-specific, fix: pytorch/pytorch#200914)
-        "test_source_multithreaded",
-    ),
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Tensor-likes are not close!
         # RuntimeError: value cannot be converted to type int without overflow
@@ -368,6 +363,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_multihead_attention.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_packed_sequence.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_execution_trace.py": None,
@@ -392,6 +388,7 @@ skip_dict = {
         "test_calling_custom_op_inside_script_module",
         "test_saving_and_loading_script_module_with_custom_op",
     },
+    f"{PYTORCH_TEST_DIR}/profiler/test_profiler.py": None,
     f"{PYTORCH_TEST_DIR}/test_bundled_images.py": {
         # This is a "Facebook" test requiring torch.ops.fb
         # and OpenCV. When run it raises:
