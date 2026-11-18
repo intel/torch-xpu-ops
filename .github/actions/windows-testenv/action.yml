@@ -12,7 +12,7 @@ inputs:
     default: ''
     description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
   xpu_version:
-    default: '2026.1'
+    default: '2026.2'
     description: XPU version
 
 runs:
