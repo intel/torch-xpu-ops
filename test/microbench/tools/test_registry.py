@@ -25,7 +25,7 @@ import yaml
 # allow `python test/microbench/tools/test_registry.py` from anywhere
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from microbench import CONFIG_DIR, REPO_ROOT
+from microbench import CONFIG_DIR, REPO_ROOT, run
 from microbench.case import (
     bench_code_hashes,
     canonical_params,
@@ -33,7 +33,7 @@ from microbench.case import (
     load_cases,
     make_case_id,
 )
-from microbench.run import lpt_shards, round_order
+from microbench.run import InfraError, lpt_shards, round_order, Scheduler
 
 
 @pytest.fixture(scope="module")
@@ -179,6 +179,29 @@ def test_lpt_and_round_order():
         ["P", "Pp", "N"],
         ["N", "Pp", "P"],
     ]
+
+
+def test_check_versions_xpu_ops(monkeypatch):
+    wheels = {"p": ("t1", "a" * 40), "n": ("t1", "b" * 40), "old": ("t1", None)}
+    monkeypatch.setattr(run, "torch_versions", lambda py: wheels[py])
+    sched = Scheduler.__new__(Scheduler)
+    sched.args = types.SimpleNamespace(allow_sha_mismatch=False, expect_torch_sha=None)
+    sched.meta = {}
+    sched.python = {"A": "p", "B": "n"}
+    sched.check_versions(side_info={"A": {"xpu_ops_sha": "a" * 40}, "B": {}})
+    assert sched.meta["xpu_ops_commit"] == {"A": "a" * 40, "B": "b" * 40}
+    sched.python = {"A": "n", "B": "n"}
+    with pytest.raises(InfraError, match="A=bbbb"):
+        sched.check_versions(side_info={"A": {"xpu_ops_sha": "aaaaaaaaaaaa"}})
+    # wheels before pytorch/pytorch#202608 record no torch-xpu-ops SHA
+    sched.python = {"A": "old"}
+    sched.check_versions(side_info={"A": {"xpu_ops_sha": "a" * 40}})
+    rec = run.case_records(
+        [{"type": "result", "case_id": "c", "side": "A", "stage": "s", "card": "0"}],
+        {"xpu_ops_commit": {"A": "a" * 40}},
+        {},
+    )
+    assert rec[0]["xpu_ops_sha"] == "a" * 40
 
 
 def run_tests(path):

@@ -476,12 +476,20 @@ def round_order(r, first="A", sides=("A", "B")):
     return order if r % 2 == 0 else order[::-1]
 
 
-def torch_git_version(python):
-    cmd = [python, "-c", "import torch; print(torch.version.git_version)"]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+def torch_versions(python):
+    """(PyTorch SHA, torch-xpu-ops SHA) of the wheel; the latter is None for
+    wheels built before pytorch/pytorch#202608 and for non-XPU wheels."""
+    code = (
+        "import torch; v = torch.version; "
+        "print(v.git_version, getattr(v, 'xpu_ops_commit', None) or '-')"
+    )
+    out = subprocess.run(
+        [python, "-c", code], capture_output=True, text=True, timeout=300
+    )
     if out.returncode != 0:
         raise InfraError(f"{python}: cannot import torch: {out.stderr.strip()[-500:]}")
-    return out.stdout.strip().splitlines()[-1]
+    torch_sha, xpu_ops_sha = out.stdout.strip().splitlines()[-1].split()
+    return torch_sha, None if xpu_ops_sha == "-" else xpu_ops_sha
 
 
 def _selection_list(path, key):
@@ -672,10 +680,14 @@ class Scheduler:
                 i for i in ids if i not in shard_map[str(c["index"])]
             ]
 
-    def check_versions(self, same=None):
-        """PyTorch SHA of every side; ``same`` lists sides that must agree."""
-        shas = {side: torch_git_version(py) for side, py in self.python.items()}
+    def check_versions(self, same=None, side_info=None):
+        """PyTorch and torch-xpu-ops SHAs of every side; ``same`` lists sides
+        that must agree in PyTorch; the torch-xpu-ops SHA recorded in a wheel
+        must match the side's ``xpu_ops_sha`` in ``side_info``."""
+        versions = {side: torch_versions(py) for side, py in self.python.items()}
+        shas = {side: v[0] for side, v in versions.items()}
         self.meta["torch_git_version"] = shas
+        self.meta["xpu_ops_commit"] = {side: v[1] for side, v in versions.items()}
         same = (
             same
             if same is not None
@@ -692,6 +704,15 @@ class Scheduler:
             shas[last].startswith(want[:12]) or want.startswith(shas[last][:12])
         ):
             raise InfraError(f"PyTorch SHA {shas[last]} != resolved SHA {want}")
+        wrong = []
+        for side, (_, got) in versions.items():
+            want = ((side_info or {}).get(side) or {}).get("xpu_ops_sha")
+            if got and want and not got.startswith(want.lower()):
+                wrong.append(f"{side}={got} (expected {want})")
+        if wrong:
+            raise InfraError(
+                "torch-xpu-ops SHA built into the wheel differs: " + ", ".join(wrong)
+            )
 
     def snapshot_env(self, key):
         self.meta[key] = {
@@ -826,10 +847,10 @@ class Scheduler:
                     sus.append(cid)
         return sus
 
-    def prepare(self, validate_ids=(), same_sha=None):
+    def prepare(self, validate_ids=(), same_sha=None, side_info=None):
         """Versions, environment check, validation. Raises InfraError; returns
         EXIT_VALIDATION when a changed case fails validation."""
-        self.check_versions(same_sha)
+        self.check_versions(same_sha, side_info)
         if self.args.env_check:
             problems, self.meta["env_check"] = check_host(
                 [c for c in self.cards if c.get("drm")],
@@ -895,9 +916,12 @@ class Scheduler:
         ids = _selection_list(a.cases, "cases")
         self.meta["selected"] = len(ids)
         status = EXIT_OK
+        side_info = load_json(a.side_info, {})
         try:
             same = [] if self.mode == "multi" else None
-            status = self.prepare(_selection_list(a.validate, "validate"), same)
+            status = self.prepare(
+                _selection_list(a.validate, "validate"), same, side_info
+            )
             if status == EXIT_OK and ids:
                 if self.mode == "single":
                     self.measure_single(ids, a.screen_rounds)
@@ -908,7 +932,7 @@ class Scheduler:
         except InfraError as e:
             self.meta["infra_errors"].append(str(e))
             status = EXIT_INFRA
-        return self.finish(status, load_json(a.side_info, {}))
+        return self.finish(status, side_info)
 
 
 # ---------------------------------------------------------------------------
@@ -965,6 +989,7 @@ def case_records(recs, meta, side_info, run_url=None):
     except Exception:  # noqa: BLE001 - records without case metadata
         manifest = {}
     shas = meta.get("torch_git_version") or {}
+    xpu_ops = meta.get("xpu_ops_commit") or {}
     out = []
     for (cid, side, stage), rs in sorted(
         groups.items(), key=lambda kv: tuple(map(str, kv[0]))
@@ -1008,7 +1033,7 @@ def case_records(recs, meta, side_info, run_url=None):
                 "side": side,
                 "stage": stage,
                 "role": info.get("role"),
-                "xpu_ops_sha": info.get("xpu_ops_sha"),
+                "xpu_ops_sha": info.get("xpu_ops_sha") or xpu_ops.get(side),
                 "pytorch_sha": shas.get(side),
                 "machine_id": meta.get("machine_id"),
                 "card": card,
@@ -1351,11 +1376,11 @@ def _write_json(path, obj):
         json.dump(obj, f, indent=1, default=str)
 
 
-def _measure(sched, ids, same_sha, body):
+def _measure(sched, ids, same_sha, body, side_info):
     """prepare, then ``body(sched)``; returns the exit status."""
     status = EXIT_OK
     try:
-        status = sched.prepare(same_sha=same_sha)
+        status = sched.prepare(same_sha=same_sha, side_info=side_info)
         if status == EXIT_OK and ids:
             body(sched)
     except InfraError as e:
@@ -1386,7 +1411,7 @@ def run_pr_vs_base(args, sel, cfg):
     }
     sched = Scheduler(args, {"A": args.python_base, "B": args.python}, "ab")
     sched.meta["selected"] = len(ids)
-    status = _measure(sched, ids, None, lambda s: s.measure_ab(ids, 3, 6))
+    status = _measure(sched, ids, None, lambda s: s.measure_ab(ids, 3, 6), side_info)
     status = sched.finish(status, side_info)
     _write_json(
         os.path.join(args.out_dir, "ab_cases.json"),
@@ -1402,7 +1427,7 @@ def run_ondemand(args, sel, cfg):
     }
     sched = Scheduler(args, {"A": args.python, "B": args.python}, "aa")
     sched.meta["selected"] = len(ids)
-    status = _measure(sched, ids, None, lambda s: s.measure_ab(ids, 3, 6))
+    status = _measure(sched, ids, None, lambda s: s.measure_ab(ids, 3, 6), side_info)
     status = sched.finish(status, side_info)
     _write_json(
         os.path.join(args.out_dir, "ab_cases.json"),
@@ -1462,7 +1487,9 @@ def run_nightly_vs_reference(args, sel, cfg):
     }
     sched = Scheduler(args, {"single": args.python}, "single")
     sched.meta.update(selected=len(ids), shard=args.shard, shards=args.shards)
-    status = _measure(sched, ids, [], lambda s: s.measure_single(ids, det["processes"]))
+    status = _measure(
+        sched, ids, [], lambda s: s.measure_single(ids, det["processes"]), side_info
+    )
     status = sched.finish(status, side_info)
     doc = {
         "scope": "nightly-vs-reference",
@@ -1490,14 +1517,11 @@ def run_nightly_vs_reference(args, sel, cfg):
             "aa",
         )
         aa.deadline = sched.deadline
-        st = _measure(aa, aa_ids, None, lambda s: s.measure_ab(aa_ids, 3, 0))
-        aa.finish(
-            st,
-            {
-                s: {"xpu_ops_sha": args.head_sha, "role": "nightly_aa"}
-                for s in ("A", "B")
-            },
-        )
+        aa_info = {
+            s: {"xpu_ops_sha": args.head_sha, "role": "nightly_aa"} for s in ("A", "B")
+        }
+        st = _measure(aa, aa_ids, None, lambda s: s.measure_ab(aa_ids, 3, 0), aa_info)
+        aa.finish(st, aa_info)
         doc["aa_cases"] = aa_ids
 
     # detection
@@ -1545,14 +1569,12 @@ def run_nightly_vs_reference(args, sel, cfg):
         rargs = _sub_args(args, rdir)
         rargs.budget_min = args.recheck_budget_min
         rc = Scheduler(rargs, {"A": args.python_prev, "B": args.python}, "ab")
-        st = _measure(rc, recheck, [], lambda s: s.measure_ab(recheck, 3, 6))
-        st = rc.finish(
-            st,
-            {
-                "A": {"xpu_ops_sha": args.prev_sha, "role": "recheck"},
-                "B": {"xpu_ops_sha": args.head_sha, "role": "recheck"},
-            },
-        )
+        rc_info = {
+            "A": {"xpu_ops_sha": args.prev_sha, "role": "recheck"},
+            "B": {"xpu_ops_sha": args.head_sha, "role": "recheck"},
+        }
+        st = _measure(rc, recheck, [], lambda s: s.measure_ab(recheck, 3, 6), rc_info)
+        st = rc.finish(st, rc_info)
         doc["prev"]["pytorch_sha"] = (rc.meta.get("torch_git_version") or {}).get("A")
         if st != EXIT_OK:
             doc["recheck_skipped"] = "; ".join(rc.meta["infra_errors"]) or f"exit {st}"
@@ -1637,7 +1659,9 @@ def run_attribution(args, sel, cfg):
     }
     sched = Scheduler(args, sides, "multi")
     sched.meta["selected"] = len(ids)
-    status = _measure(sched, ids, ["Pp", "N"], lambda s: s.measure_multi(ids, 6))
+    status = _measure(
+        sched, ids, ["Pp", "N"], lambda s: s.measure_multi(ids, 6), side_info
+    )
     status = sched.finish(status, side_info)
     _write_json(
         os.path.join(args.out_dir, "ab_cases.json"),
