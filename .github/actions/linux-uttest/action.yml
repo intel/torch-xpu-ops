@@ -234,7 +234,7 @@ runs:
         case "${ut_name}" in
           upstream_distributed) category="distributed" ;;
           upstream_inductor) category="inductor" ;;
-          *) category="default" ;;
+          *) category="default"; files_list=ww47_pytorch_updated_files.txt ;;
         esac
         # Distributed needs an etcd rendezvous and the XCCL topology
         if [[ "${category}" == 'distributed' ]]; then

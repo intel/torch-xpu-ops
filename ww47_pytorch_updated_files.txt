@@ -1,0 +1,15 @@
+test/complex_tensor/test_complex_tensor.py
+test/inductor/test_reorder_for_locality_in_training.py
+test/nn/test_parametrization.py
+test/profiler/test_cpp_thread.py
+test/profiler/test_kineto.py
+test/test_compile_benchmark_util.py
+test/test_complex.py
+test/test_matmul_cuda.py
+test/test_meta.py
+test/test_prims.py
+test/test_segment_reductions.py
+test/test_shape_ops.py
+test/test_testing.py
+test/test_type_promotion.py
+test/test_utils.py
