@@ -20,7 +20,6 @@ import os
 import signal
 import threading
 import time
-import types
 
 import pytest
 
@@ -472,4 +471,8 @@ def _drop_rerunfailures_crash_hook(pm):
                 n: getattr(plugin, n) for n in dir(plugin) if n.startswith("pytest_")
             }
             hooks.pop("pytest_handlecrashitem")
-            pm.register(types.SimpleNamespace(**hooks), name)
+            # pytest keys plugins by hash, so SimpleNamespace (unhashable) can't be used
+            shim = type("RerunfailuresWithoutCrashHook", (), {})()
+            for hook_name, hook in hooks.items():
+                setattr(shim, hook_name, hook)
+            pm.register(shim, name)

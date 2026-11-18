@@ -232,7 +232,7 @@ runs:
         ut_name="${{ inputs.ut_name }}"
         files_list=ww47_cuda_test_files_only.txt
         case "${ut_name}" in
-          upstream_distributed) category="distributed"; files_list=ww47_distributed_failed.txt ;;
+          upstream_distributed) category="distributed" ;;
           upstream_inductor) category="inductor" ;;
           *) category="default" ;;
         esac
