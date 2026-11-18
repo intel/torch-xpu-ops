@@ -155,16 +155,16 @@ def run_task(task, file_timeout=None):
             key: sum(int(suite.get(key, "0")) for suite in suites) for key in ("tests", "failures", "errors", "skipped")
         }
         result["failed_cases"] = failed_cases(tree, task.path)
-        if result["status"] == "passed" and (
-            not result["counts"]["tests"] or result["counts"]["failures"] or result["counts"]["errors"]
-        ):
+        ran = result["counts"]["tests"] - result["counts"]["skipped"]
+        if result["status"] == "passed" and (ran <= 0 or result["counts"]["failures"] or result["counts"]["errors"]):
             result["status"] = "failed"
     except (OSError, ET.ParseError, ValueError) as error:
         result["error"] = f"JUnit report unavailable or invalid: {error}"
         if result["status"] == "passed":
             result["status"] = "failed"
     result["seconds"] = round(time.monotonic() - started, 3)
-    if result["status"] != "passed" and not result.get("failed_cases"):
+    # Exit codes other than 0/1 (crash, timeout, internal error) may leave later cases unrun.
+    if result["status"] != "passed" and (not result.get("failed_cases") or result["returncode"] not in (0, 1)):
         write_file_error(task, result)
     print(
         f"{result['status'].upper()} ({result['seconds']}s, exit={result['returncode']})",
@@ -174,37 +174,42 @@ def run_task(task, file_timeout=None):
 
 
 def run_process(task, log, result, file_timeout):
+    # No `with Popen`: its exit waits forever on a child stuck in the GPU driver.
     try:
-        with subprocess.Popen(
+        process = subprocess.Popen(
             task.command,
             cwd=task.cwd,
             stdout=log,
             stderr=subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
             start_new_session=True,
-        ) as process:
-            try:
-                result["returncode"] = process.wait(timeout=file_timeout)
-                result["status"] = "passed" if process.returncode == 0 else "failed"
-            except subprocess.TimeoutExpired:
-                kill_group(process)
-                result["returncode"] = process.wait()
-                result["status"] = "timeout"
-                log.write(f"\nERROR: killed after --file-timeout {file_timeout}s\n")
-            except KeyboardInterrupt:
-                kill_group(process)
-                result["returncode"] = process.wait()
-                result["status"] = "interrupted"
+        )
     except OSError as error:
         result["error"] = str(error)
         log.write(f"ERROR: {error}\n")
+        return
+    try:
+        result["returncode"] = process.wait(timeout=file_timeout)
+        result["status"] = "passed" if process.returncode == 0 else "failed"
+    except subprocess.TimeoutExpired:
+        result["returncode"] = kill_group(process, log)
+        result["status"] = "timeout"
+        log.write(f"\nERROR: killed after --file-timeout {file_timeout}s\n")
+    except KeyboardInterrupt:
+        result["returncode"] = kill_group(process, log)
+        result["status"] = "interrupted"
 
 
-def kill_group(process):
+def kill_group(process, log):
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+    try:
+        return process.wait(timeout=60)
+    except subprocess.TimeoutExpired:
+        log.write(f"\nERROR: pid {process.pid} did not exit after SIGKILL (uninterruptible); abandoned\n")
+        return None
 
 
 def show_tail(log, lines=50):
@@ -348,7 +353,7 @@ def main():
     parser.add_argument(
         "--file-timeout",
         type=int,
-        default=int(os.environ.get("P0_FILE_TIMEOUT", "14400")),
+        default=os.environ.get("P0_FILE_TIMEOUT", "14400"),
         help="Seconds before one test file is killed and the run continues; 0 disables",
     )
     parser.add_argument(
@@ -361,6 +366,8 @@ def main():
         parser.error("--pytorch-root or PYTORCH_ROOT_DIR is required")
     if any(c in args.xml_prefix for c in "/\\\r\n\0"):
         parser.error("--xml-prefix must be a filename prefix")
+    if args.file_timeout < 0:
+        parser.error("--file-timeout must be >= 0")
     roots = {
         "pytorch": args.pytorch_root.resolve(),
         "xpu_ops": (args.xpu_ops_root or args.pytorch_root / "third_party/torch-xpu-ops").resolve(),
