@@ -182,12 +182,14 @@ struct VectorizedElementwiseKernel {
  private:
   [[no_unique_address]] std::conditional_t<full_tile, std::tuple<>, int> numel_;
   [[no_unique_address]] std::
-      conditional_t<is_stateless_functor_v<func_t>, std::tuple<>, func_t> f_;
+      conditional_t<is_stateless_functor_v<func_t>, std::tuple<>, func_t>
+          f_;
   array_t data_;
   [[no_unique_address]] std::conditional_t<
       is_trivial_offset_calculator_v<in_calc_t>,
       std::tuple<>,
-      in_calc_t> ic_;
+      in_calc_t>
+      ic_;
 };
 
 template <
