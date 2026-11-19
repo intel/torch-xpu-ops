@@ -80,6 +80,20 @@ class TestMinMaxReduce(TestCase):
                 actual_values[zeros].signbit(), expected.values[zeros].signbit()
             )
 
+    @dtypes(torch.float16, torch.bfloat16, torch.float32, torch.float64)
+    @parametrize("op", ("argmax", "argmin"))
+    @parametrize("shape", ((96, 128), (96, 126), (200, 128), (255, 127)))
+    def test_argminmax_dim0_non_pow2_group(self, device, dtype, op, shape):
+        # Regression for pytorch/pytorch#205114: on PTL the per-kernel max
+        # work-group size can be 768, which produced a non-power-of-two
+        # group_height and dropped partials in the halving group_y_reduce.
+        # Only fails on such hardware; a per-column permutation keeps values
+        # unique and exact in bf16.
+        cpu_input = torch.rand(shape).argsort(dim=0).to(dtype)
+        expected = getattr(torch, op)(cpu_input, dim=0)
+        actual = getattr(torch, op)(cpu_input.to(device), dim=0)
+        self.assertEqual(actual.cpu(), expected)
+
 
 instantiate_device_type_tests(
     TestMinMaxReduce, globals(), only_for="xpu", allow_xpu=True
