@@ -25,7 +25,7 @@
 
 namespace at::native::xpu {
 
-bool foreach_reduce_supports_sub_group_size_32() {
+bool is_sg32_supported() {
   const auto* device_prop =
       at::xpu::getDeviceProperties(at::xpu::current_device());
   const auto& sub_group_sizes = device_prop->sub_group_sizes;
