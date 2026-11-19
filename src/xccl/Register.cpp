@@ -358,6 +358,17 @@ c10::intrusive_ptr<Work> barrier_XPU(
 }
 
 TORCH_LIBRARY_IMPL(c10d, XPU, m) {
+  // Newer PyTorch registers hook-firing XPU kernels in c10d/Ops.cpp
+  // (libtorch_cpu, loaded first); overriding them would disable the hooks.
+  // TODO: delete this file once all supported PyTorch versions include
+  // https://github.com/pytorch/pytorch/pull/205423 (see
+  // https://github.com/intel/torch-xpu-ops/issues/6144).
+  // Ops.cpp registers every c10d op below for XPU in one change, so checking
+  // allreduce_ alone tells us whether all of them are already registered.
+  auto op = c10::Dispatcher::singleton().findOp({"c10d::allreduce_", ""});
+  if (op && op->hasKernelForDispatchKey(c10::DispatchKey::XPU)) {
+    return;
+  }
   m.impl("send", send_XPU);
   m.impl("recv_", recv_XPU);
   m.impl("recv_any_source_", recv_any_source_XPU);
