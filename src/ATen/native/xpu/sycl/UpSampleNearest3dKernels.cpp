@@ -162,8 +162,10 @@ void upsample_nearest3d_kernel(
         const float width_scale =
             compute_scales_value<float>(scales_w, input_width, output_width);
         AT_DISPATCH_INDEX_TYPES(
-            at::native::canUse32BitIndexMath(output) ? ScalarType::Int
-                                                     : ScalarType::Long,
+            (at::native::canUse32BitIndexMath(output) &&
+             at::native::canUse32BitIndexMath(input))
+                ? ScalarType::Int
+                : ScalarType::Long,
             "upsample_nearest3d_xpu_index",
             [&] {
               if (is_exact) {
@@ -371,8 +373,10 @@ void upsample_nearest3d_backward_kernel(
         float width_scale = compute_scales_value_backwards<float>(
             scales_w, output_width, input_width);
         AT_DISPATCH_INDEX_TYPES(
-            at::native::canUse32BitIndexMath(grad_input) ? ScalarType::Int
-                                                         : ScalarType::Long,
+            (at::native::canUse32BitIndexMath(grad_input) &&
+             at::native::canUse32BitIndexMath(grad_output))
+                ? ScalarType::Int
+                : ScalarType::Long,
             "upsample_nearest3d_backward_xpu_index",
             [&] {
               if (is_exact) {

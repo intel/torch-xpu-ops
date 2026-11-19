@@ -276,6 +276,58 @@ class TestTorchMethod(TestCase):
             self.assertEqual(grad_input[:, :, d : d + chunk], ref)
             del ref
 
+    # Regression tests for intel/torch-xpu-ops#6164: the index type must be
+    # chosen from both the read and the write tensor.
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest3d_fwd_large_input_small_output(self):
+        # Output fits in int32 but input does not.
+        x = torch.randint(0, 256, _LARGE_SIZE, dtype=torch.uint8, device="xpu")
+        y = torch.nn.functional.interpolate(x, size=_SMALL_SIZE[2:], mode="nearest")
+        self.assertEqual(y.shape, _SMALL_SIZE)
+
+        for b in range(_LARGE_SIZE[0]):
+            ref = torch.nn.functional.interpolate(
+                x[b : b + 1], size=_SMALL_SIZE[2:], mode="nearest"
+            )
+            self.assertEqual(y[b : b + 1], ref)
+            del ref
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest3d_bwd_large_grad_output_small_grad_input(self):
+        # grad_input fits in int32 but grad_output does not.
+        grad_output = torch.randint(0, 16, _LARGE_SIZE, dtype=torch.uint8, device="xpu")
+        grad_input = torch.ops.aten.upsample_nearest3d_backward(
+            grad_output, _LARGE_SIZE[2:], _SMALL_SIZE
+        )
+        self.assertEqual(grad_input.shape, _SMALL_SIZE)
+
+        for b in range(_SMALL_SIZE[0]):
+            ref = torch.ops.aten.upsample_nearest3d_backward(
+                grad_output[b : b + 1], _LARGE_SIZE[2:], (1, *_SMALL_SIZE[1:])
+            )
+            self.assertEqual(grad_input[b : b + 1], ref)
+            del ref
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_upsample_nearest2d_bwd_contiguous_large(self):
+        # Contiguous backward kernel: grad_output has more than INT32_MAX
+        # elements across batches.
+        in_size = (3, 1, 16384, 16384)
+        out_size = (3, 1, 32768, 32768)
+        grad_output = torch.randint(0, 16, out_size, dtype=torch.uint8, device="xpu")
+        grad_input = torch.ops.aten.upsample_nearest2d_backward(
+            grad_output, out_size[2:], in_size
+        )
+        self.assertEqual(grad_input.shape, in_size)
+
+        for b in range(in_size[0]):
+            ref = torch.ops.aten.upsample_nearest2d_backward(
+                grad_output[b : b + 1], out_size[2:], (1, *in_size[1:])
+            )
+            self.assertEqual(grad_input[b : b + 1], ref)
+            del ref
+
 
 if __name__ == "__main__":
     run_tests()
