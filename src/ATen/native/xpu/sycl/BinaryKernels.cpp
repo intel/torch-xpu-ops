@@ -21,6 +21,8 @@ namespace at::native::xpu {
 
 template <typename opmath_t>
 struct AddFunctor {
+  static constexpr bool prefer_wide_vectors = true;
+
   opmath_t operator()(opmath_t a, opmath_t b) const {
     return a + alpha_ * b;
   }

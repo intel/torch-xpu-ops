@@ -459,6 +459,21 @@ static inline bool has_dense_output(
   return true;
 }
 
+// TI normally rejects detectable internal/partial overlap, but permits exact
+// in-place aliasing and may report TooHard for strided views. The binary
+// broadcast paths additionally reject overlapping input/output bounding ranges.
+// This is a conservative fast-path guard, not a general alias-safety proof.
+// The caller must establish that the output is dense in iteration order.
+static inline bool overlaps_dense_output(
+    const TensorIteratorBase& iter,
+    const void* output,
+    uintptr_t input_begin,
+    uintptr_t input_end) {
+  const auto output_begin = reinterpret_cast<uintptr_t>(output);
+  const auto output_end = output_begin + iter.numel() * iter.element_size(0);
+  return input_begin < output_end && output_begin < input_end;
+}
+
 // How a work-item reads the inputs of its vec_size consecutive outputs. The
 // mode is uniform across the launch, so selecting it at runtime does not
 // diverge and keeps one kernel per functor.
@@ -609,19 +624,51 @@ static inline bool can_vectorize_for_non_contigouous(
   return vec_size > 1;
 }
 
-// Unary launch policy for the shared packed-strided framework.
+// Functors whose arithmetic costs little next to their memory traffic (add,
+// mul, ...) may declare `static constexpr bool prefer_wide_vectors = true;`,
+// which selects wide work-items where the launch depends on the functor cost.
+// The value may depend on the functor's template arguments, e.g. its dtype.
+template <typename func_t, typename = void>
+struct prefers_wide_vectors : std::false_type {};
+
+template <typename func_t>
+struct prefers_wide_vectors<
+    func_t,
+    std::void_t<decltype(func_t::prefer_wide_vectors)>>
+    : std::bool_constant<func_t::prefer_wide_vectors> {};
+
+// Arity determines row crossing and geometry; input modes stay runtime values.
 template <typename func_t>
 struct StridedElementwisePolicy {
   using traits = function_traits<func_t>;
-  static_assert(traits::arity == 1);
-  static constexpr bool cross_rows = true;
-  static constexpr int max_vec_size =
-      std::min<int>(8, 16 / sizeof(typename traits::result_type));
-  static constexpr bool supported = max_vec_size >= 2;
+  static constexpr bool cross_rows = traits::arity == 1;
+  static constexpr int max_vec_size = cross_rows
+      ? std::min<int>(8, 16 / sizeof(typename traits::result_type))
+      : std::min(8, 16 / max_scalar_size<func_t>());
+  static constexpr bool supported = max_vec_size >= 2 &&
+      (cross_rows ||
+       (prefers_wide_vectors<func_t>::value && max_scalar_size<func_t>() <= 4));
   static constexpr int work_group_size = 128;
   template <int vec_size>
-  static constexpr int sub_group_size = 32;
+  static constexpr int sub_group_size = cross_rows || vec_size == 2 ? 32 : 16;
 };
+
+// Reuse the outer quotient directly for a two-dimensional binary iterator.
+static inline auto strided_binary_offsets(
+    const OffsetCalculator<2>& ic,
+    uint32_t first) {
+  if (ic.dims == 2) {
+    const auto divmod = ic.sizes_[0].divmod(first);
+    OffsetCalculator<2>::offset_type offsets;
+#pragma unroll
+    for (int arg = 0; arg < 2; ++arg) {
+      offsets[arg] =
+          divmod.mod * ic.strides_[0][arg] + divmod.div * ic.strides_[1][arg];
+    }
+    return offsets;
+  }
+  return ic.get(first);
+}
 
 // Unary vectors may wrap once. Only gather/broadcast modes need a divider.
 template <int vec_size, typename input_t, typename in_calc_t>
@@ -668,6 +715,11 @@ static inline input_t strided_input_value(
   return input.val[i];
 }
 
+template <typename input_t>
+static inline input_t strided_input_value(const input_t& input, int) {
+  return input;
+}
+
 template <int vec_size, typename func_t, typename... inputs_t>
 static inline void apply_strided_vector(
     const func_t& f,
@@ -684,6 +736,45 @@ static inline void apply_strided_vector(
       results;
 }
 
+template <int vec_size, typename input_t, typename scalar_t>
+static inline auto load_row_or_scalar(const input_t* input, scalar_t) {
+  if constexpr (scalar_t::value) {
+    return c10::load(input);
+  } else {
+    return memory::load_vector<vec_size>(input, 0);
+  }
+}
+
+// Keep native scalar/vector values until applying the functor.
+template <
+    int vec_size,
+    typename input0_t,
+    typename input1_t,
+    typename func_t,
+    typename output_t>
+static inline void load_and_apply_strided_binary(
+    const input0_t* input0,
+    int broadcast_mask,
+    const input1_t* input1,
+    const func_t& f,
+    output_t* output,
+    int64_t index) {
+  auto apply = [&](auto scalar0, auto scalar1) {
+    const auto a = load_row_or_scalar<vec_size>(input0, scalar0);
+    const auto b = load_row_or_scalar<vec_size>(input1, scalar1);
+    apply_strided_vector<vec_size>(f, output, index, a, b);
+  };
+  if (broadcast_mask == 0) {
+    apply(std::false_type{}, std::false_type{});
+  } else if (broadcast_mask == 1) {
+    apply(std::true_type{}, std::false_type{});
+  } else if (broadcast_mask == 2) {
+    apply(std::false_type{}, std::true_type{});
+  } else {
+    apply(std::true_type{}, std::true_type{});
+  }
+}
+
 template <int vec_size, typename func_t, typename array_t, typename in_calc_t>
 static inline void launch_strided_elementwise_kernel(
     int numel,
@@ -698,6 +789,8 @@ static inline void launch_strided_elementwise_kernel(
   using policy = StridedElementwisePolicy<func_t>;
   constexpr bool cross_rows = policy::cross_rows;
   using input0_t = std::decay_t<typename traits::template arg<0>::type>;
+  using input1_t =
+      std::decay_t<typename traits::template arg<traits::arity - 1>::type>;
   using output_t = typename traits::result_type;
   constexpr int work_group_size = policy::work_group_size;
   constexpr int sub_group_size = policy::template sub_group_size<vec_size>;
@@ -705,8 +798,17 @@ static inline void launch_strided_elementwise_kernel(
   const int64_t items = vectors + (cross_rows && numel % vec_size != 0);
   const auto groups = ceil_div<int64_t>(items, work_group_size);
   const auto mode = modes[0];
+  const int broadcast_mask = [&] {
+    if constexpr (traits::arity == 2) {
+      return int(modes[0] == StridedInputMode::kBroadcastInner) |
+          (int(modes[1] == StridedInputMode::kBroadcastInner) << 1);
+    } else {
+      return 0;
+    }
+  }();
   const auto div0 = at::detail::IntDivider<uint32_t>(size0);
   const auto* input0 = reinterpret_cast<const input0_t*>(data[1]);
+  const auto* input1 = reinterpret_cast<const input1_t*>(data[traits::arity]);
   auto* output = reinterpret_cast<output_t*>(data[0]);
   getCurrentSYCLQueue().submit([&](sycl::handler& handler) {
     handler.parallel_for<
@@ -719,10 +821,26 @@ static inline void launch_strided_elementwise_kernel(
                   item.get_local_id(0);
               if (index < vectors) {
                 const uint32_t base = uint32_t(index) * vec_size;
-                const auto offsets = ic.get(base);
-                const auto a = load_strided_input<vec_size>(
-                    mode, input0, offsets[0], div0, base, size0, stride0, ic);
-                apply_strided_vector<vec_size>(f, output, index, a);
+                const auto offsets = [&] {
+                  if constexpr (cross_rows) {
+                    return ic.get(base);
+                  } else {
+                    return strided_binary_offsets(ic, base);
+                  }
+                }();
+                if constexpr (traits::arity == 1) {
+                  const auto a = load_strided_input<vec_size>(
+                      mode, input0, offsets[0], div0, base, size0, stride0, ic);
+                  apply_strided_vector<vec_size>(f, output, index, a);
+                } else {
+                  load_and_apply_strided_binary<vec_size>(
+                      input0 + offsets[0],
+                      broadcast_mask,
+                      input1 + offsets[1],
+                      f,
+                      output,
+                      index);
+                }
               } else if constexpr (cross_rows) {
                 if (index == vectors) {
                   for (int i = vectors * vec_size; i < numel; ++i) {
@@ -754,7 +872,8 @@ static inline bool is_aligned_strided_row(
   return true;
 }
 
-// Unary output is dense in TI order; a vector may gather or wrap once.
+// Dense output in TI order, with one mode per input. Unary may gather or wrap
+// once; binary requires complete aligned rows and rejects broadcast overlap.
 template <typename func_t, typename array_t>
 static inline bool try_launch_strided_elementwise_kernel(
     TensorIteratorBase& iter,
@@ -762,18 +881,34 @@ static inline bool try_launch_strided_elementwise_kernel(
     const array_t& data,
     bool dense_output) {
   using traits = function_traits<func_t>;
-  static_assert(traits::arity == 1);
+  static_assert(traits::arity == 1 || traits::arity == 2);
   using policy = StridedElementwisePolicy<func_t>;
   using output_t = typename traits::result_type;
   if constexpr (!policy::supported) {
     return false;
   } else {
-    if (iter.ndim() == 0 || !dense_output) {
+    if (iter.ndim() < (policy::cross_rows ? 1 : 2) || !dense_output) {
       return false;
     }
     const auto shape = iter.shape();
     const uint32_t size0 = shape[0];
-    const uint32_t stride0 = iter.strides(1)[0] / iter.element_size(1);
+    const uint32_t stride0 =
+        policy::cross_rows ? iter.strides(1)[0] / iter.element_size(1) : 0;
+    if (!policy::cross_rows) {
+      for (int input = 1; input <= traits::arity; ++input) {
+        const auto strides = iter.strides(input);
+        const auto begin = reinterpret_cast<uintptr_t>(data[input]);
+        auto end = begin + iter.element_size(input);
+        bool broadcast = false;
+        for (int dim = 0; dim < iter.ndim(); ++dim) {
+          broadcast |= shape[dim] > 1 && strides[dim] == 0;
+          end += (shape[dim] - 1) * strides[dim];
+        }
+        if (broadcast && overlaps_dense_output(iter, data[0], begin, end)) {
+          return false;
+        }
+      }
+    }
     at::detail::Array<StridedInputMode, traits::arity> modes;
     int vec_size = policy::max_vec_size;
     auto launch = [&](auto width) {
@@ -790,15 +925,17 @@ static inline bool try_launch_strided_elementwise_kernel(
       }
       return false;
     };
-    for (; vec_size > 1; vec_size = 1) {
-      bool valid = memory::can_vectorize_up_to<output_t>(data[0]) >= vec_size;
+    for (; vec_size > 1; vec_size = policy::cross_rows ? 1 : vec_size / 2) {
+      bool valid = memory::can_vectorize_up_to<output_t>(data[0]) >= vec_size &&
+          (policy::cross_rows || size0 % vec_size == 0);
       for (int arg = 0; arg < traits::arity; ++arg) {
         auto& mode = modes[arg];
         mode = is_aligned_strided_row(iter, arg + 1, vec_size)
             ? StridedInputMode::kRowVector
             : iter.strides(arg + 1)[0] == 0 ? StridedInputMode::kBroadcastInner
                                             : StridedInputMode::kStridedInner;
-        valid &= mode == StridedInputMode::kRowVector || size0 >= vec_size;
+        valid &= mode == StridedInputMode::kRowVector ||
+            (policy::cross_rows && size0 >= vec_size);
       }
       if (valid) {
         return launch(std::integral_constant<int, 8>{}) ||
@@ -847,8 +984,8 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
     launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
     return;
   } else {
-    const bool dense_output =
-        packed_strided_unary && has_dense_output(iter, sizeof(arg0_t));
+    const bool dense_output = (packed_strided_unary || traits::arity == 2) &&
+        has_dense_output(iter, sizeof(arg0_t));
     // Keep the legacy row-vector restrictions for split iterators. Packed
     // strided paths validate their own geometry and also serve split iterators.
     if constexpr (enable_broadcast_vec) {
@@ -859,8 +996,10 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
         return;
       }
     }
-    if constexpr (packed_strided_unary && traits::arity == 1) {
-      if (try_launch_strided_elementwise_kernel(iter, f, data, dense_output)) {
+    if constexpr (traits::arity == 2 || packed_strided_unary) {
+      // Unary packing does not bypass the binary latency gate.
+      if ((traits::arity == 1 || !latency_case) &&
+          try_launch_strided_elementwise_kernel(iter, f, data, dense_output)) {
         return;
       }
     }
@@ -1055,6 +1194,9 @@ struct BUnaryFunctor {
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
 struct BinaryFunctor {
+  static constexpr bool prefer_wide_vectors =
+      prefers_wide_vectors<func_t>::value;
+
   return_t operator()(arg1_t a, arg2_t b) const {
     return f(a, b);
   }
