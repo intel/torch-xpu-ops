@@ -297,7 +297,10 @@ struct ReduceConfig {
     int64_t max_sg_sz = at::xpu::getDeviceMinSubGroupSize() == 8
         ? at::xpu::getDeviceMinSubGroupSize()
         : at::xpu::getDeviceMaxSubGroupSize();
-    const int max_num_items = max_wg_sz / output_vec_size;
+    // Tree reductions in group_x/y_reduce halve the dimension, so every group
+    // dimension must be a power of two; the per-kernel max work-group size is
+    // not (e.g. 768 for ArgMin on PTL).
+    const int max_num_items = last_pow2(max_wg_sz / output_vec_size);
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
     int dim1_pow2 = dim1 < max_num_items ? static_cast<int>(last_pow2(dim1))
