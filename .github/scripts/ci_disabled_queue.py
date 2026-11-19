@@ -38,7 +38,6 @@ BOT_WORKFLOW, FIX_JOB = "bot.yml", "fix"
 START = "2026-09-22"
 
 ISSUE_RE = re.compile(r"https://github\.com/pytorch/pytorch/issues/(\d+)")
-DISABLE_HDR_RE = re.compile(r"\bdisabled?\s+issues?\b", re.I)
 # What bot.yml itself accepts as the command (`startsWith(comment.body,
 # '@torchxpubot')` plus `/^@torchxpubot\s+(\S+)/i`): start-anchored, so a comment
 # that merely quotes the command is not a trigger.
@@ -75,12 +74,8 @@ def disabled_issues(body):
     Comments without that header (the far more common "rerunning" notices) yield
     nothing, and the run URLs above the header are never mistaken for issues.
     """
-    # Any spelling of the header ("Disable issues:", "### Disable issues",
-    # "**Disabled issue**"), up to the next markdown heading.
-    m = DISABLE_HDR_RE.search(body)
-    if not m:
-        return []
-    tail = re.split(r"^#{1,6}\s", body[m.end():], maxsplit=1, flags=re.M)[0]
+    # Matches both "Disable issues:" and "### Disable issues" (since 2026-11-12).
+    _, _, tail = body.partition("Disable issues")
     return list(dict.fromkeys(ISSUE_RE.findall(tail)))
 
 
