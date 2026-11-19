@@ -3,23 +3,27 @@ Copyright 2020-2025 Intel Corporation
 Licensed under the Apache License, Version 2.0
 -->
 
-# Python Dependencies and Bundled Runtime Libraries
+# Stage One: Package Requirements and Bundled Libraries
 
-## 1. Read Requirement Sources
+## 1. Establish Package Declarations
 
 In the target interpreter, batch-read `Name`, `Version`, `Requires-Python`, `Requires-Dist`, `direct_url.json`, `WHEEL`, and `RECORD` through `importlib.metadata`. Importing torch is unnecessary. For legacy egg-info installations, also check `distribution.requires`.
 
-- **Official release declarations**: match version, channel, and platform in the [stable index](https://download.pytorch.org/whl/xpu/) or [nightly index](https://download.pytorch.org/whl/nightly/xpu/), retaining the artifact URL/hash. If the index provides `data-core-metadata` (formerly `data-dist-info-metadata`), remove the fragment from the wheel URL, append `.metadata`, retrieve it, and verify the digest. Otherwise read `METADATA` from the archive. Requirements that match the local metadata can be used to compare dependencies. This does not establish binary provenance, and established package constraints do not require file-by-file verification against the official `RECORD`.
-- **Local builds**: use this installation's metadata, build records, and actual source, labeling requirements “declared by this build.” A same-version official wheel is reference material only. Retain gaps when provenance is unknown or metadata is incomplete.
+- **Official artifacts:** match torch's version, channel, and platform in the [stable index](https://download.pytorch.org/whl/xpu/) or [nightly index](https://download.pytorch.org/whl/nightly/xpu/). Retain the artifact URL/hash and compare its dependency declarations with local metadata. If the index provides `data-core-metadata` (formerly `data-dist-info-metadata`), remove the wheel URL fragment, append `.metadata`, retrieve it, and verify the advertised metadata digest; otherwise read `METADATA` from the archive. For dependent packages, retrieve official metadata when local declarations are incomplete or need confirmation.
+- **Local builds:** use installed metadata, actual source, and build records; label their constraints “declared by this build.” A same-version official wheel is reference material, not a substitute for that build's declarations.
+
+Resolve declaration differences using artifact/build identity. If the governing requirement remains unclear, mark only that affected constraint Unresolved.
 
 When build-recipe differences need tracing, inspect the matching PyTorch commit's [tools/metadata/dependencies.py](https://github.com/pytorch/pytorch/blob/v2.15.0/tools/metadata/dependencies.py) for `BASE_DEPENDENCIES` / `dynamic_metadata` (older versions use `install_requires` in [setup.py](https://github.com/pytorch/pytorch/blob/v2.9.0/setup.py)), `PYTORCH_EXTRA_INSTALL_REQUIREMENTS` in [generate_binary_build_matrix.py](https://github.com/pytorch/pytorch/blob/v2.15.0/.github/scripts/generate_binary_build_matrix.py), and [.ci/pytorch/binary_populate_env.sh](https://github.com/pytorch/pytorch/blob/v2.15.0/.ci/pytorch/binary_populate_env.sh). Recipes do not replace the actual release artifact.
 
-## 2. Expand and Compare
+## 2. Traverse Dependencies
 
-1. Start with torch's `Requires-Dist`, retaining the parent package and original expression. Evaluate PEP 508 markers using the target interpreter's environment and requested extras to identify applicable dependency constraints.
-2. Match installed values by normalized package name. Use PEP 440 for ranges, exclusions, prereleases, and local versions; check `direct_url.json` for direct-URL dependencies. Mark missing or out-of-range packages Fail and stop that dependency edge. Do not use an incorrectly installed version's downstream requirements to judge the target environment. Missing necessary metadata or an unknown direct-URL identity is Unresolved. For dependencies without version constraints, check presence only. Ordinary version constraints do not require complete verification of installation provenance.
-3. Recursively expand only satisfied dependency edges, then use [torch-build.md](torch-build.md) to trace those components' requirements across layers. Prefer batch-reading local metadata; consult official artifacts when metadata is incomplete or release declarations need confirmation. Propagate extras along edges and deduplicate by package name, version, and extras. Use `python -m pip check` only as a cross-check, limiting its results to this dependency scope.
-4. Inventory bundled native libraries from `RECORD` or archive listings. Use file ownership to connect package versions to component versions. Do not substitute a package version for an independently versioned component inside it.
+Start with torch's `Requires-Dist`. Apply the branch continuation rules in [SKILL.md](../SKILL.md#2-stage-one-check-package-constraints), using these package-specific semantics:
+
+1. Evaluate PEP 508 markers in the target interpreter's environment and propagate requested extras along dependency edges.
+2. Match installed packages by normalized name. Use PEP 440 for ranges, exclusions, prereleases, and local versions; use `direct_url.json` for direct-URL requirements. An unknown required URL identity is Unresolved; an unversioned dependency checks presence only.
+3. Cache package metadata by name/version and accumulate extras. Evaluate every parent's constraint even when the dependency was already visited; expand newly activated extras without repeating settled checks. Use `python -m pip check` only as a cross-check limited to this dependency scope.
+4. Inventory XPU native libraries using `RECORD` or archive listings, retaining their owning packages for stage two. Independently versioned bundled components need their own version evidence.
 
 Focus on SYCL/JIT, UR loaders/adapters, oneMKL, oneCCL/MPI, PTI, Triton, and bundled libraries such as OFI/libfabric and hwloc. Actual package names come from dependency metadata; common distribution names are listed below. Package file indexes use `https://download.pytorch.org/whl/xpu/<normalized-package-name>/`, or `/whl/nightly/xpu/<normalized-package-name>/` for nightly; for example, [intel-sycl-rt](https://download.pytorch.org/whl/xpu/intel-sycl-rt/). Select the wheel for the actual version and platform, not the latest index entry.
 

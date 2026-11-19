@@ -1,6 +1,6 @@
 ---
 name: xpu-component-requirements
-description: "Check whether the Python dependencies, embedded components, runtime libraries, and GPU drivers actually used by the current PyTorch XPU installation meet their official requirements. Use for a full component version check or a targeted component check."
+description: "Check the Python packages, embedded components, runtime libraries, and GPU drivers used by a PyTorch XPU installation against their official version requirements. Use for a full component version check or a targeted dependency check."
 ---
 
 <!--
@@ -10,66 +10,74 @@ Licensed under the Apache License, Version 2.0
 
 # Check PyTorch XPU Component Versions
 
-Follow “identify the environment → trace components → compare requirements → report results.” Compare official requirements with local metadata and version queries. Do not compile or run test programs, investigate unit-test failures, or modify the environment. Batch independent local queries and document reads within each stage where possible.
+Identify the installation, check its package constraints, then follow component dependencies to their runtime and driver requirements. Compare official declarations with local metadata and version/interface queries. Do not compile or run test programs, investigate unit-test failures, or modify the environment. Batch independent reads and use timeouts for external queries.
 
-## 1. Identify the Environment
+## Scope
 
-Collect the following in the target server, container, and Python interpreter:
+The default scope is the target PyTorch installation's package dependencies, enabled XPU components, and their downstream runtime and driver dependencies. For a targeted request, follow only the relevant chains. Build toolchains, profiling functionality, and management tools enter scope only when requested or required by an in-scope dependency.
 
-- `sys.executable`, Python version, OS/architecture, GPU models, PCI IDs, and BDFs/UUIDs. Unless devices are specified, cover the distinct models visible to the target PyTorch installation. If querying fails, retain system enumeration results and mark the device scope as unconfirmed.
-- The full torch version, installation path, `git_version`, and installation source. Start with `importlib.metadata`, `direct_url.json`, and installation/build records. If importing fails, read `torch/version.py` directly and continue static checks.
-- Match official artifacts by channel, version, and platform, then compare their requirements with local metadata. For local builds, use the actual source, build cache, and artifacts. Record provenance evidence and its limitations; do not audit whole-package binary integrity by default.
+GPU, OS, and driver channel select the applicable requirements. OS/GPU support-list audits and independent kernel/firmware matrix checks are outside scope; a kernel or firmware version is checked only when an in-scope dependency explicitly requires it.
 
-By default, follow this installation's XPU runtime dependency chains and their explicit version/interface requirements. Use GPU, OS, and driver channel to select applicable requirements; do not audit OS/GPU support lists or independently expand kernel and firmware matrices. Check a kernel or firmware version only when an in-scope dependency explicitly requires it. Expand build toolchains, profiling, and management tools only when requested or explicitly required by a runtime dependency. For targeted checks, trace only the relevant dependency chains.
+## 1. Identify the Installation
 
-## 2. Trace Components and Official Requirements
+Collect in the target server/container and Python interpreter:
 
-First check Python packages against the version constraints of torch and applicable parent packages. Follow a branch's downstream requirements only after its package constraints pass. Mark missing or out-of-range packages as Fail and stop that branch. If a constraint cannot be established, pause only the affected dependency edge; continue other established requirements and independent dependency branches.
+- `sys.executable`, Python version, OS/architecture, and GPU models with PCI IDs and BDFs/UUIDs. Unless devices are specified, cover the distinct models visible to this installation. Retain system enumeration if a device query fails and identify the unconfirmed scope.
+- Full torch version, installation path, `git_version`, and installation source, using `importlib.metadata`, `direct_url.json`, and build records. If importing fails, read `torch/version.py` and continue static checks.
 
-Build a coverage inventory from the three sources below, extending it as dependencies are discovered. For each component, record its **actual version/revision, provider, applicability, and evidence**. Applicability is “included / not applicable / unconfirmed.” Default build options do not prove that a component is enabled. Keep uncertain components as unconfirmed rather than silently skipping them.
+Use the matching official artifact for release-package declarations and the actual source/build records for local builds. Record provenance limitations without making whole-package binary verification a prerequisite for version checks.
 
-| Source | Checks |
+## 2. Stage One: Check Package Constraints
+
+Use [wheel.md](references/wheel.md) to check torch and its applicable package dependencies: version constraints, environment markers/extras, Python compatibility, wheel ABI/platform tags, and declared glibc baselines. Inventory XPU native libraries and their owning packages for stage two.
+
+For each dependency edge, preserve the parent, original constraint, and installed value. Continue downstream only when the applicable parent-package constraints pass. A missing or out-of-range package is Fail; an unestablished constraint is Unresolved. Stop the affected branch and annotate that item with “downstream requirements not checked.” Continue independent branches, including direct PyTorch driver requirements. Never use an out-of-range package's requirements as the target installation's downstream baseline.
+
+## 3. Stage Two: Follow Component Requirements
+
+| Reference | Purpose |
 |---|---|
-| [Python packages and bundled libraries](references/wheel.md) | Expand applicable package dependencies, identify native-library ownership, and check Python/ABI compatibility and glibc baselines. |
-| [Embedded and cooperating components](references/torch-build.md) | Identify enabled embedded components and independent components whose package constraints passed. Read their version-specific IGC, runtime, and interface requirements. |
-| [Driver dependencies and interfaces](references/platform.md) | Extract PyTorch/component driver requirements and actual driver-package dependency constraints; map package versions to upstream component versions. |
+| [torch-build.md](references/torch-build.md) | Identify enabled embedded components and compliant runtime packages; extract their version-specific runtime, driver, and interface requirements. |
+| [platform.md](references/platform.md) | Extract direct PyTorch driver requirements, resolve actual driver/library providers, and follow driver-package dependencies and version mappings. |
 
-Select official documentation for the actual consumer version. A source SHA is unnecessary when requirements are published for the release version. Branches, tags, and latest pages in the references are entry points: select the matching revision on GitHub and the appropriate Version/archive entry in Intel documentation. Apply release-series documentation according to its declared scope and patch notes. A missing patch-specific page is not by itself Unresolved, and adjacent versions must not be assumed to share requirements.
+Build an inventory as dependencies are discovered: **component, actual version/revision, provider, applicability, and evidence**. Use “included / not applicable / unconfirmed” for applicability. Source presence or default build options do not establish enablement. Keep an unconfirmed in-scope component visible and identify the evidence needed to resolve it.
 
-If a page is unreadable, try a web tool or official source files and search by version, filename, or section. If a GitHub release is absent, check tags, commits, and channel package records. Record the specific unavailable source only after these alternatives fail; do not substitute the latest page for historical requirements.
+For each consumer, read documentation covering its actual release; resolve a source revision only for source-specific requirements or unclear release mappings. Reference URLs are entry points, not fixed version requirements: select the matching GitHub revision or Intel Version/archive entry. Use release-series documentation with its declared scope and patch notes; a separate page for every patch is unnecessary.
 
-## 3. Compare and Classify
+If a source is unavailable, try official mirrors/source files, tags, commits, archives, or channel package records. Record the specific gap when those alternatives fail. Do not substitute the latest or an adjacent release's requirements. Cache sources already resolved for the same version.
 
-For each check, record **consumer and version, required component, applicability conditions, original constraint, actual value, official source, local evidence, and result**.
+## 4. Compare Requirements
 
-- Select evidence for the requirement: use installed metadata for package constraints, the file and version resolved by the consumer for runtime-library constraints, and the target driver/device for interface requirements. A library appearing in a process does not prove that every consumer uses it. If multiple copies cannot be distinguished, mark only the affected runtime-library requirement Unresolved.
-- Preserve lower/upper bounds, alternatives, and conditions; compare within each version scheme. Treat driver package versions, upstream IGC versions, loader package versions, and API versions separately. Do not force a conversion when the mapping is unknown.
-- Use build pins to identify components. Explicit version bounds and mandatory dependency/interface conditions determine the result. Absence from an OS/GPU support list does not produce a version-check failure. Combinations listed only as tested, validated, or recommended are not hard constraints.
-- Deduplicate the same requirement; check requirements from different consumers separately. Before interpreting different documented values as conflicts, align revision, model, and purpose. Check all compatible hard requirements. Mark irreconcilable conflicts Unresolved and retain both sources.
+Keep one record per distinct **consumer/version → dependency → applicable constraint**, with the actual value, official source, local evidence, and result. Retain separate constraints from different consumers even when they share a dependency.
 
-| Result | Conditions |
+- **Evidence:** package metadata establishes installed package versions; resolved file paths and ownership establish runtime-library providers; target-device queries establish API/features. Ambiguous providers affect only requirements that need that distinction.
+- **Version semantics:** preserve bounds, alternatives, exclusions, and conditions. Compare package, upstream component, loader, and API versions within their own schemes; require evidence for cross-scheme mappings.
+- **Requirement strength:** build pins identify components; explicit version bounds and mandatory dependency/interface conditions determine compliance. Tested, validated, recommended, and OS/GPU support lists do not by themselves establish version constraints.
+- **Document differences:** align consumer revision, model, and purpose first. Check compatible requirements together. If sources still disagree about the same requirement, retain both and mark that requirement Unresolved; differing requirements from separate consumers remain separate checks.
+
+| Result | Meaning |
 |---|---|
-| Fail | An applicable requirement is clear, and the version is out of range, a mandatory component is missing, or a mandatory interface feature is unsupported. |
-| Pass | An applicable requirement is clear, and the observed version and relevant interface conditions meet it. |
-| Unresolved | Evidence is missing for a requirement's applicability, actual value, or provider; necessary documentation is unavailable; or the requirement is ambiguous/conflicting. Identify the affected check. |
-| No explicit requirement found | The applicable version's official requirements sections and relevant dependency declarations were checked, but no explicit constraint was found for the object. List the locations checked; do not also mark it Unresolved solely because its actual version is unknown. |
+| Fail | A clear applicable requirement is violated: a version is out of range, a mandatory dependency is missing, or a mandatory interface feature is unsupported. |
+| Pass | The observed value meets a clear applicable requirement. An unversioned dependency checks presence only. |
+| Unresolved | An in-scope check lacks necessary applicability, requirement, actual-value, or provider evidence, or its official requirement remains ambiguous/conflicting. State the specific gap. |
+| No explicit requirement found | The relevant version's requirements sections and dependency declarations were checked, but they declare no constraint for the identified in-scope relationship. List the sources checked; an unknown actual value alone does not add an Unresolved item. |
 
-## 4. Report Results
+Do not create check records for out-of-scope or confirmed inapplicable objects. Provenance limitations belong in the target description unless they prevent a particular version comparison.
 
-Put exceptions first. Derive counts from in-scope check records and summarize coverage for passing checks. Excluded platform audits do not contribute to Fail, Unresolved, or No explicit requirement found. Do not output a complete detail table or create an appendix file by default; expand only when requested.
+## 5. Report Exceptions and Coverage
 
-1. **Target and result**: list torch version/commit/source, GPU, OS, Python environment, and scope. Summarize Fail F, Pass P, Unresolved U, and No explicit requirement found N.
-2. **Failures**: one row per failure with “component | consumer and version / applicability | official requirement | actual value | official source | local evidence.” If F is zero, write “No confirmed failures found.”
-3. **Unresolved items and missing requirements**: use “consumer → required component | result (Unresolved / No explicit requirement found) | known requirement and actual value | specific evidence gap / locations checked without finding a constraint | sources.” Do not use catch-all entries such as “native components not fully verified” without identifying specific objects. If U + N is zero, write “None.”
-4. **Differences in official documentation**: include only when found, with “component and target | statement A and source | statement B and source | adopted requirement and rationale / unresolved reason.” Do not count these twice.
-5. **Covered components**: summarize names in the table below, deduplicating within each layer. Inclusion means the component was examined, not that every check passed; refer to the exception tables for results.
+Use the records above to produce a concise report. Summarize passing checks; provide a full detail table or appendix only when requested.
 
-| Coverage layer | Components included in this check |
+1. **Target and counts:** torch version/commit/source, Python environment, GPU, OS, scope, and counts for Fail F, Pass P, Unresolved U, and No explicit requirement found N.
+2. **Failures:** one row per failed check: “consumer/version → component | applicability | official requirement | actual value | official source | local evidence.” If F = 0, write “No confirmed failures found.”
+3. **Unresolved items and missing requirements:** one row per U or N record: “consumer/version → component | result | known requirement and actual value | specific evidence gap or sources checked | sources.” If U + N = 0, write “None.” Attach stopped-branch annotations to their triggering items.
+4. **Official-document differences:** only when present, show both statements/sources and the adopted requirement or unresolved reason. These explain existing records and add no counts.
+5. **Coverage:** summarize examined names in three rows below, noting confirmed inapplicable components and layers not examined. Inclusion here does not imply Pass.
+
+| Layer | Components examined |
 |---|---|
-| Python packages and bundled runtime libraries | <package and native-library names> |
-| Embedded and cooperating components | <consumers traced, such as SYCL-TLA, oneDNN, and Triton XPU> |
-| System, drivers, and device interfaces | <driver dependencies, IGC, loaders, APIs, and required tools> |
+| Python packages and bundled libraries | Package and native-library names |
+| Embedded and cooperating components | Consumers such as SYCL-TLA, oneDNN, and Triton XPU |
+| Driver dependencies and interfaces | Driver packages, IGC, loaders, APIs, and required tools |
 
-Write “Not examined in this check” for layers not covered. Briefly explain confirmed inapplicable components. Put limitations that affect only provenance confidence, not established version requirements, in the target description rather than separate Unresolved entries. Include affected requirements in the unresolved-items table. For stopped dependency edges, annotate the triggering item with “downstream requirements not checked.”
-
-Verify that F equals the failure-table row count and U + N equals the unresolved-items table row count. Count P by requirements passed, not component names. Conclude “All requirements within this check's scope are satisfied” only when all in-scope components and dependencies have been traced, P > 0, and F = U = N = 0.
+Count checks, not component names; F and U + N must match their detail-table row counts. Conclude “All requirements within this check's scope are satisfied” only when coverage is complete, no dependency branches remain stopped, P > 0, and F = U = N = 0.
