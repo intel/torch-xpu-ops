@@ -409,7 +409,7 @@ void _sparse_binary_op_intersection_kernel_impl(
       const auto sparse_dim_numel = std::accumulate(
           larger_sizes.begin(),
           larger_sizes.begin() + larger.sparse_dim(),
-          1,
+          static_cast<int64_t>(1),
           std::multiplies<int64_t>());
       // If nnz > prod(larger.shape[:sparse_dim]), by the pidgeonhole principle,
       // there is at least one bucket with nnz / prod(larger.shape[:sparse_dim])
@@ -418,7 +418,8 @@ void _sparse_binary_op_intersection_kernel_impl(
       // whether such an event actually occurred, although it is very likely
       // under a uniform distribution, the distribution with the highest
       // uncertainty (maximizes entropy).
-      const auto max_count_lower_bound = larger._nnz() / sparse_dim_numel;
+      const auto max_count_lower_bound =
+          sparse_dim_numel > 0 ? larger._nnz() / sparse_dim_numel : 0;
       constexpr int64_t MAX_COPIES_PER_THREAD = 50;
       return max_count_lower_bound > MAX_COPIES_PER_THREAD
           // coalesce invalidates hash values, so force-recompute

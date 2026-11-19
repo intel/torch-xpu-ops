@@ -12,7 +12,9 @@ on:
       - '.github/scripts/test_fold_details.js'
 
 env:
-  BEDROCK_MODEL: global.anthropic.claude-opus-5
+  # Default model for every AI task. Override with the AWS_BEDROCK_MODEL secret;
+  # each task can be overridden on its own with AWS_BEDROCK_MODEL_<TASK>.
+  AWS_BEDROCK_MODEL: ${{ secrets.AWS_BEDROCK_MODEL || 'global.anthropic.claude-opus-5-5' }}
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
   # Cost rows go to a tracker outside this repo so they do not add noise here.
   COST_TRACKING_REPO: torchxpubot/ci-infra
@@ -48,6 +50,7 @@ jobs:
       fixes: ${{ steps.parse.outputs.fixes }}
       fix_runner: ${{ steps.parse.outputs.fix_runner }}
       fix_image: ${{ steps.parse.outputs.fix_image }}
+      omix_note: ${{ steps.parse.outputs.omix_note }}
       dry_run: ${{ steps.parse.outputs.dry_run }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
       issue_number: ${{ steps.parse.outputs.issue_number }}
@@ -156,6 +159,7 @@ jobs:
             let fixes = '';
             let fixRunner = '';
             let fixImage = '';
+            let omixNote = '';
 
             if (command === 'merge') {
               if (args.includes('-f')) {
@@ -254,6 +258,13 @@ jobs:
               }
               fixRunner = runner;
               fixImage = `intel/omix:${tag}`;
+              // Report the real version behind `latest` and how it compares with PyTorch CI's pin.
+              const digest = (await res.json()).digest;
+              const hub = await fetch('https://hub.docker.com/v2/repositories/intel/omix/tags?page_size=100').then(r => r.json()).then(d => d.results, () => []);
+              const ver = hub.find(t => t.digest === digest && /^\d+\.\d+\.\d+-/.test(t.name))?.name.split('-')[0] || omix;
+              const ci = await github.rest.repos.getContent({ owner: 'pytorch', repo: 'pytorch', path: '.ci/docker/build.sh' })
+                .then(r => Buffer.from(r.data.content, 'base64').toString().match(/OMIX_VERSION=(\d+\.\d+\.\d+)/)?.[1], () => undefined) || 'unknown';
+              omixNote = `OMIX ${ver}${omix === 'latest' ? ' (`latest`)' : ''} · PyTorch CI: OMIX ${ci} · ${ver === ci ? 'same as CI' : '**differs from CI**'}`;
             }
 
             core.setOutput('command', normalizedCommand);
@@ -267,6 +278,7 @@ jobs:
             core.setOutput('fixes', fixes);
             core.setOutput('fix_runner', fixRunner);
             core.setOutput('fix_image', fixImage);
+            core.setOutput('omix_note', omixNote);
             core.setOutput('authorized', String(authorized));
 
   invalid-command:
@@ -915,7 +927,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_REVIEW || env.AWS_BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
             in the ${{ github.repository }} repository.
@@ -1062,7 +1074,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 40 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_UT_CHECK || env.AWS_BEDROCK_MODEL }} --max-turns 40 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /ut-check skill to analyze UT results for
             PR #${{ needs.parse-command.outputs.pr_number }} on ${{ github.repository }}.
@@ -1240,6 +1252,8 @@ jobs:
               --shm-size=8g --privileged -e ZE_AFFINITY_MASK
     env:
       ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+      OMIX_NOTE: ${{ needs.parse-command.outputs.omix_note }}
+      FIX_IMAGE: ${{ needs.parse-command.outputs.fix_image }}
       GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -1278,7 +1292,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: `Starting automated fix on this issue. Follow progress in the [workflow run](${runUrl}).`
+              body: `Starting automated fix on this issue. Follow progress in the [workflow run](${runUrl}).\n\n> **Environment:** ${process.env.OMIX_NOTE} · \`${process.env.FIX_IMAGE}\``
             });
             // Handed to the agent as SESSION_COMMENT_ID: the pipeline edits this
             // same comment at every stage, so a run leaves exactly one comment.
@@ -1362,7 +1376,7 @@ jobs:
                 }]
               }
             }
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 200 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }},Write,Edit"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_FIX || env.AWS_BEDROCK_MODEL }} --max-turns 200 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }},Write,Edit"
           prompt: |
             Use the /issue-handler skill in pipeline mode to fix issue
             #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
@@ -1563,6 +1577,8 @@ jobs:
           C="/repos/${{ github.repository }}/issues/comments/$ID"
           gh api "$C" --jq .body > body.md
           grep -q '<!-- agent:review -->' body.md && exit 0
+          # Stage 1 replaces the starting text, so restate the environment here.
+          printf '\n\n> **Environment:** %s · `%s`\n' "$OMIX_NOTE" "$FIX_IMAGE" >> body.md
           cat >> body.md <<'EOF'
 
           <!-- agent:review -->
@@ -1673,7 +1689,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot fix\` failed: ${reason}\n\nSee the [\`fix\` job](${jobUrl}) for details.`
+              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot fix\` failed: ${reason}\n\n> **Environment:** ${process.env.OMIX_NOTE} · \`${process.env.FIX_IMAGE}\`\n\nSee the [\`fix\` job](${jobUrl}) for details.`
             });
             if (outcome !== 'cancelled') {
               core.setFailed(`AI fix failed: ${reason}`);
@@ -1805,16 +1821,12 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.GITHUB_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 40 --allowedTools Bash,Read,Glob,Grep,Write,Skill"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_LABEL || env.AWS_BEDROCK_MODEL }} --max-turns 40 --allowedTools Bash,Read,Glob,Grep,Write,Skill"
           prompt: |
             Use the /label-issue skill with issue_ref=${{ needs.parse-command.outputs.issue_number }}
             on ${{ github.repository }}. Write its labels.md and stop there: do not
             apply anything, and do not run apply_labels.py. A later step applies it.
             If the skill produced no labels.md, say so and do not invent one.
-
-            Start your output with a single line `VERDICT: <one sentence>`
-            summarising the labels you propose. Everything after it is folded
-            behind a summary in the posted comment, so that line has to stand alone.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -1865,6 +1877,7 @@ jobs:
         env:
           DRY_RUN: ${{ needs.parse-command.outputs.dry_run }}
           APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          LABELS_MD: ${{ steps.apply.outputs.labels_md }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1874,6 +1887,18 @@ jobs:
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
             if (!result || result.is_error || !result.result) return;
+
+            // Post the on-disk labels.md verbatim, NOT the agent's final chat
+            // message (result.result). The model's reply varies run to run: it
+            // adds trailing commentary, or wraps the artifact in a ```markdown
+            // fence that stops the <details> from collapsing. The file is the
+            // exact artifact output_format.md defines, already wrapped in a
+            // collapsible <details>, so posting it keeps the comment hidden and
+            // free of stray prose.
+            const labelsMd = process.env.LABELS_MD;
+            if (!labelsMd || !fs.existsSync(labelsMd)) return;
+            const artifact = fs.readFileSync(labelsMd, 'utf8').trim();
+
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
             });
@@ -1898,8 +1923,19 @@ jobs:
               : outcome === 'success'
                 ? 'Applied to this issue.'
                 : `Nothing was written -- the apply step ${outcome}.`;
-            const applyBlock = applied
-              ? `\n\n<details><summary>apply_labels.py output</summary>\n\n\`\`\`\n${applied}\n\`\`\`\n\n</details>`
+            // apply_labels.py routes its human-actionable diagnostics (native
+            // Type/Priority mismatches it refused to overwrite, dropped
+            // allowlist labels, the label cap, a destructive-replace ERROR) to
+            // stderr, and --no-comment means it posts none of them itself. The
+            // raw log is not shown in the comment, so surface only those lines
+            // as a visible block. Mismatch notes continue onto
+            // `- **Field**: ...` lines, so carry those too.
+            const alertLines = applied
+              ? applied.split('\n').filter(l => /^(warning:|ERROR:|- \*\*)/.test(l.trim()))
+              : [];
+            const alertBlock = alertLines.length
+              ? `\n\n> [!WARNING]\n> apply_labels.py flagged items that need a human:\n`
+                + alertLines.map(l => `> - ${l.trim().replace(/^- /, '')}`).join('\n')
               : '';
             const footer = `\n\n---\n${mode} _Generated by [\`label\` job](${jobUrl})._`;
 
@@ -1909,7 +1945,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: header + result.result + applyBlock + footer
+              body: header + artifact + alertBlock + footer
             });
 
       - name: "Verify: AI labeling succeeded"
@@ -2025,7 +2061,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 20 --allowedTools Bash,Read,Glob,Grep"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_TRIAGE || env.AWS_BEDROCK_MODEL }} --max-turns 20 --allowedTools Bash,Read,Glob,Grep"
           prompt: |
             Use the /issue-triage skill to triage issue
             #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
@@ -2321,7 +2357,7 @@ jobs:
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 1"
+          claude_args: "--model ${{ env.AWS_BEDROCK_MODEL }} --max-turns 1"
           use_sticky_comment: "true"
           show_full_output: "true"
           prompt: |
