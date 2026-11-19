@@ -268,7 +268,8 @@ void cat_array_batched_copy_contig_kernel_impl(
               logicalSubgroupIndex - slice * logicalSubgroupsPerSlice;
           const IndexType inputBase = slice * sliceSize;
           const IndexType outputBase = dataOffset + slice * outputSliceSize;
-          const auto outputAddress = reinterpret_cast<uintptr_t>(output + outputBase);
+          const auto outputAddress =
+              reinterpret_cast<uintptr_t>(output + outputBase);
           // const IndexType prefix =
           //     ((sliceAlignmentBytes - outputAddress % sliceAlignmentBytes) %
           //      sliceAlignmentBytes) /
