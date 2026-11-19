@@ -14,7 +14,6 @@ runs:
       run: |
         which python && python -V
         uv pip list
-        rm -rf ${{ github.workspace }}/ut_log
     - name: Install pytest XPU custom plugin
       shell: bash -xe {0}
       run: |
