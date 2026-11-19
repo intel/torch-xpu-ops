@@ -1,8 +1,5 @@
 FROM ubuntu:24.04
 
-ARG ACTIONS_RUNNER_VERSION=2.336.0
-ARG ACTIONS_RUNNER_ARCH=x64
-
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -33,14 +30,25 @@ RUN (userdel -r ubuntu 2>/dev/null || true) && \
         > /etc/sudoers.d/runner && \
     chmod 0440 /etc/sudoers.d/runner
 
-RUN chmod -R 777 /var/ && \
-    setfacl -m u::rwx,g::rwx,o::rwx /var/ && \
-    setfacl -d -m u::rwx,g::rwx,o::rwx /var/
+RUN chmod -R 777 /var/cache/ && \
+    setfacl -m u::rwx,g::rwx,o::rwx /var/cache/ && \
+    setfacl -d -m u::rwx,g::rwx,o::rwx /var/cache/
 
 WORKDIR /home/runner
 
-RUN curl -fsSL \
-    "https://github.com/actions/runner/releases/download/v${ACTIONS_RUNNER_VERSION}/actions-runner-linux-${ACTIONS_RUNNER_ARCH}-${ACTIONS_RUNNER_VERSION}.tar.gz" \
+# Declared here so a runner bump keeps the dependency layers cached.
+# "latest" is cached by Docker; pass an explicit version to pick up new releases.
+ARG ACTIONS_RUNNER_VERSION=latest
+ARG ACTIONS_RUNNER_ARCH=x64
+
+RUN version="${ACTIONS_RUNNER_VERSION}" && \
+    if [ "${version}" = "latest" ]; then \
+        version=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+            https://github.com/actions/runner/releases/latest) && \
+        version="${version##*/v}"; \
+    fi && \
+    curl -fsSL \
+    "https://github.com/actions/runner/releases/download/v${version}/actions-runner-linux-${ACTIONS_RUNNER_ARCH}-${version}.tar.gz" \
     -o /tmp/actions-runner.tar.gz && \
     tar xzf /tmp/actions-runner.tar.gz && \
     rm -f /tmp/actions-runner.tar.gz && \

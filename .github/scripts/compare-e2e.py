@@ -74,6 +74,7 @@ def parse_filename(filename: str) -> tuple[str, str, str, str]:
     Supported patterns:
         inductor_<suite>_<data_type>_<mode>_xpu_<result_type>.csv
         inductor-results-<suite>-<data_type>-<mode>-xpu-<result_type>.csv
+        inductor-<suite>-<data_type>-<mode>-xpu-<result_type>.csv
 
     Raises ValueError on unrecognised filenames.
     """
@@ -81,13 +82,16 @@ def parse_filename(filename: str) -> tuple[str, str, str, str]:
         raise ValueError(f"Not a CSV file: {filename}")
 
     # ── Pattern 1: dash-separated ──
-    if "inductor-results-" in filename:
-        base = filename.split("inductor-results-")[-1][:-4]
+    for marker in ("inductor-results-", "inductor-"):
+        if not filename.startswith(marker):
+            continue
+        base = filename[len(marker):-4]
         parts = base.split("-")
         if len(parts) < 5:
             raise ValueError(f"Too few dash-separated parts in: {filename}")
         suite, data_type, mode, _, result_type = parts[:5]
-        # Handle underscore data types like amp_bf16 encoded as amp_bf16
+        if suite not in KNOWN_SUITES:
+            raise ValueError(f"Unknown suite '{suite}' in {filename}")
         if result_type not in ("accuracy", "performance"):
             raise ValueError(f"Unknown result type '{result_type}' in {filename}")
         return suite, data_type, mode, result_type

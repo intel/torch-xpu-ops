@@ -20,7 +20,7 @@ on:
         type: string
         required: false
         default: ''
-        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
 
       # ----- Test scope (command pattern) -----
       test_pattern:
@@ -94,12 +94,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Resolve CI defaults
+        id: defaults
+        uses: ./.github/actions/ci-config
+
       - name: Pick python version
         id: pick
         env:
           REQUESTED: ${{ inputs.python }}
+          DEFAULT_PYTHON: ${{ steps.defaults.outputs.python }}
         run: |
-          default=$(jq -r .python .github/ci-config/defaults.json)
+          default="${DEFAULT_PYTHON}"
           python="${REQUESTED:-$default}"
           valid=true
           [[ "$python" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || valid=false
@@ -136,6 +141,7 @@ jobs:
     needs: [resolve-python, target-build]
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
@@ -147,7 +153,6 @@ jobs:
       python: ${{ needs.resolve-python.outputs.python }}
       ut: ${{ inputs.test_pattern == 'test_pt_smoke' && 'op_regression' || 'xpu_p0'}}
       category: target
-      skip_summary: true
 
   target-e2e:
     name: target / e2e
@@ -159,6 +164,7 @@ jobs:
       runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ needs.resolve-python.outputs.python }}
       suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
@@ -188,6 +194,7 @@ jobs:
     needs: [resolve-python, baseline-build]
     secrets: inherit
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
@@ -199,7 +206,6 @@ jobs:
       python: ${{ needs.resolve-python.outputs.python }}
       ut: ${{ inputs.test_pattern == 'test_pt_smoke' && 'op_regression' || 'xpu_p0'}}
       category: baseline
-      skip_summary: true
 
   baseline-e2e:
     name: baseline / e2e
@@ -211,6 +217,7 @@ jobs:
       runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ needs.resolve-python.outputs.python }}
       suite: ${{ inputs.test_pattern == 'test_pt_smoke' && 'huggingface' || 'huggingface,timm_models,torchbench'}}
       scenario: accuracy,performance
@@ -263,13 +270,7 @@ jobs:
       - name: Download target UT logs
         uses: actions/download-artifact@v8
         with:
-          pattern: 'Inductor-XPU-UT-Data-*-target'
-          path: ${{ github.workspace }}/results/target/ut
-
-      - name: Download target UT failure lists
-        uses: actions/download-artifact@v8
-        with:
-          pattern: 'XPU-UT-Failure-List-*-target'
+          pattern: 'UT-Data-*-target-[0-9]*'
           path: ${{ github.workspace }}/results/target/ut
 
       - name: Download baseline E2E logs
@@ -281,13 +282,7 @@ jobs:
       - name: Download baseline UT logs
         uses: actions/download-artifact@v8
         with:
-          pattern: 'Inductor-XPU-UT-Data-*-baseline'
-          path: ${{ github.workspace }}/results/baseline/ut
-
-      - name: Download baseline UT failure lists
-        uses: actions/download-artifact@v8
-        with:
-          pattern: 'XPU-UT-Failure-List-*-baseline'
+          pattern: 'UT-Data-*-baseline-[0-9]*'
           path: ${{ github.workspace }}/results/baseline/ut
 
       - name: Ensure result directories exist
@@ -327,7 +322,7 @@ jobs:
   # ==================================================================
   report-back:
     name: report back
-    needs: [target-ut, target-e2e, baseline-ut, baseline-e2e, compare-results]
+    needs: [resolve-python, target-build, baseline-build, target-ut, target-e2e, baseline-ut, baseline-e2e, compare-results]
     if: ${{ !cancelled() && inputs.callback_repo != '' }}
     runs-on: ubuntu-24.04
     steps:
@@ -342,6 +337,9 @@ jobs:
           COMPONENT: ${{ inputs.test_component }}
           PATTERN: ${{ inputs.test_pattern }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          R_PY: ${{ needs.resolve-python.result }}
+          R_TB: ${{ needs.target-build.result }}
+          R_BB: ${{ needs.baseline-build.result }}
           R_TUT: ${{ needs.target-ut.result }}
           R_TE2E: ${{ needs.target-e2e.result }}
           R_BUT: ${{ needs.baseline-ut.result }}
@@ -364,9 +362,16 @@ jobs:
             fi
           fi
           state=success
-          for r in "$R_TUT" "$R_TE2E" "$R_BUT" "$R_BE2E" "$R_CMP"; do
-            case "$r" in success|skipped) ;; *) state=failure ;; esac
-          done
+          case "$PATTERN" in test_pt|test_pt_ut|test_pt_smoke) want_ut=true ;; *) want_ut=false ;; esac
+          case "$PATTERN" in test_pt|test_pt_e2e|test_pt_smoke) want_e2e=true ;; *) want_e2e=false ;; esac
+          # An in-scope job must succeed; skipped only counts as OK when out of scope.
+          check() {
+            if [ "$1" = true ]; then [ "$2" = success ] || state=failure
+            else case "$2" in success|skipped) ;; *) state=failure ;; esac; fi
+          }
+          for r in "$R_PY" "$R_TB" "$R_BB" "$R_CMP"; do check true "$r"; done
+          check "$want_ut" "$R_TUT"; check "$want_ut" "$R_BUT"
+          check "$want_e2e" "$R_TE2E"; check "$want_e2e" "$R_BE2E"
           GH_TOKEN="$CB_TOKEN" gh api -X POST "repos/${CB_REPO}/statuses/${CB_SHA}" \
             -f state="$state" \
             -f context="$CB_CONTEXT" \

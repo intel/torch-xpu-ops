@@ -18,8 +18,6 @@
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 
-#include <type_traits>
-
 namespace at::native::xpu {
 
 template <typename scalar_t>
@@ -33,17 +31,6 @@ template <typename in_scalar_t, typename out_scalar_t>
 struct CastScalarFunc {
   out_scalar_t operator()(in_scalar_t src_val) const {
     return (out_scalar_t)src_val;
-  }
-};
-
-// TODO: Avoid using sycl::half to prevent the fp16->fp32->fp8 fusion
-// from incorrectly converting -0.0 to NaN. This temporary fix should
-// be removed once the compiler/driver error is resolved.
-template <typename Float8DataType>
-struct CastScalarFunc<Half, Float8DataType> {
-  Float8DataType operator()(Half src_val) const {
-    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
-    return Float8DataType(val);
   }
 };
 
@@ -147,41 +134,18 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
   }
 }
 
-// Not CastScalarFunc: its <Half, Float8DataType> partial specialization has an
-// unconstrained second parameter, so CastScalarFunc<Half, float> would select
-// it and inherit the float8 workaround that maps -0.0 to +0.0.
-template <typename in_scalar_t, typename out_scalar_t>
-inline constexpr bool is_fp32_16bit_cast_v =
-    (std::is_same_v<in_scalar_t, float> &&
-     (std::is_same_v<out_scalar_t, Half> ||
-      std::is_same_v<out_scalar_t, BFloat16>)) ||
-    (std::is_same_v<out_scalar_t, float> &&
-     (std::is_same_v<in_scalar_t, Half> ||
-      std::is_same_v<in_scalar_t, BFloat16>));
-
-template <
-    typename in_scalar_t,
-    typename out_scalar_t,
-    typename =
-        std::enable_if_t<is_fp32_16bit_cast_v<in_scalar_t, out_scalar_t>>>
-struct FpCastFunc {
-  out_scalar_t operator()(in_scalar_t src_val) const {
-    return static_cast<out_scalar_t>(src_val);
-  }
-};
-
 void float16_bfloat16_copy_kernel_xpu(TensorIteratorBase& iter) {
   ScalarType dtype = iter.dtype(0);
   ScalarType other_dtype = iter.dtype(1);
 
   if (dtype == kHalf && other_dtype == kFloat) {
-    gpu_kernel_nocast(iter, FpCastFunc<float, Half>());
+    gpu_kernel_nocast(iter, CastScalarFunc<float, Half>());
   } else if (dtype == kBFloat16 && other_dtype == kFloat) {
-    gpu_kernel_nocast(iter, FpCastFunc<float, BFloat16>());
+    gpu_kernel_nocast(iter, CastScalarFunc<float, BFloat16>());
   } else if (dtype == kFloat && other_dtype == kHalf) {
-    gpu_kernel_nocast(iter, FpCastFunc<Half, float>());
+    gpu_kernel_nocast(iter, CastScalarFunc<Half, float>());
   } else if (dtype == kFloat && other_dtype == kBFloat16) {
-    gpu_kernel_nocast(iter, FpCastFunc<BFloat16, float>());
+    gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, float>());
   } else {
     TORCH_CHECK(
         false,
