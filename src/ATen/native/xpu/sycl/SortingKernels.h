@@ -519,33 +519,34 @@ void segmented_sort_pairs_(
     value_t* values_out,
     int num_segments,
     int num_elements) {
-  // Keep medium wide pairs local without retuning other sizes or payloads.
-  if constexpr (
-      sizeof(key_t) == 8 && sizeof(value_t) == 8 && SUBGROUP_SIZE == 32) {
-    if (num_elements > 2048 && num_elements <= 4096) {
-      segmented_group_radix_sort_pairs_kernel<
-          key_t,
-          value_t,
-          IS_DESCENDING,
-          4,
-          1024,
-          SUBGROUP_SIZE>(
-          keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-      return;
-    }
-  }
   constexpr int scaling_coef = sizeof(key_t) * sizeof(value_t) >= 64
       ? 2
       : 1; // Attempt to reduce register pressure for performance.
-  if (num_elements > 4096 / scaling_coef) {
-    // Considering register pressure, we use a problem size of 4096 to delineate
-    // the boundary between single tile sort and group sort.
+  constexpr int keys_per_item = 4 / scaling_coef;
+  // Wide pairs keep four keys per work-item in the 1024-thread work-group;
+  // other payloads stay at the default to bound register pressure.
+  constexpr int max_group_keys_per_item =
+      sizeof(key_t) == 8 && sizeof(value_t) == 8 && SUBGROUP_SIZE == 32
+      ? 4
+      : keys_per_item;
+
+  if (num_elements > 1024 * max_group_keys_per_item) {
+    // Larger inputs exceed one work-group tile and use the multi-tile kernel.
     segmented_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4 / scaling_coef,
+        keys_per_item,
         512,
+        SUBGROUP_SIZE>(
+        keys_in, keys_out, values_in, values_out, num_segments, num_elements);
+  } else if (num_elements > 1024 * keys_per_item) {
+    segmented_group_radix_sort_pairs_kernel<
+        key_t,
+        value_t,
+        IS_DESCENDING,
+        max_group_keys_per_item,
+        1024,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
   } else if (num_elements > 2048 / scaling_coef) {
@@ -553,7 +554,7 @@ void segmented_sort_pairs_(
         key_t,
         value_t,
         IS_DESCENDING,
-        4 / scaling_coef,
+        keys_per_item,
         1024,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
