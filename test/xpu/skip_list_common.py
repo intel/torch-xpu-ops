@@ -29,7 +29,6 @@ skip_dict = {
     "dynamo/test_deviceguard_xpu.py": None,
     "dynamo/test_export_xpu.py": None,
     "dynamo/test_logging_xpu.py": None,
-    "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
@@ -102,7 +101,6 @@ skip_dict = {
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_compile_benchmark_util_xpu.py": None,
     "test_complex_xpu.py": None,
-    "test_cpp_api_parity_xpu.py": None,
     "test_cuda_multigpu_xpu.py": None,
     "test_cuda_nvml_based_avail_xpu.py": None,
     "test_cuda_primary_ctx_xpu.py": None,
@@ -310,6 +308,7 @@ skip_dict = {
     ),
     f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_misc.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_recompiles.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
@@ -320,6 +319,10 @@ skip_dict = {
     ),
     f"{PYTORCH_TEST_DIR}/export/test_draft_export.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_experimental.py": None,
+    f"{PYTORCH_TEST_DIR}/export/test_export.py": (
+        # Order-dependent, not XPU-specific: https://github.com/intel/torch-xpu-ops/issues/5816
+        "(test_non_strict_export_distribution_validation and not xpu)",
+    ),
     f"{PYTORCH_TEST_DIR}/export/test_export_strict.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_export_training_ir_to_run_decomp.py": None,
     f"{PYTORCH_TEST_DIR}/export/test_hop.py": None,
@@ -419,11 +422,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
     f"{PYTORCH_TEST_DIR}/test_gpu_trace.py": None,
     f"{PYTORCH_TEST_DIR}/test_hub.py": None,
-    f"{PYTORCH_TEST_DIR}/test_indexing.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_index_add_fast_path_xpu_float64",
-    ),
+    f"{PYTORCH_TEST_DIR}/test_indexing.py": None,
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
     f"{PYTORCH_TEST_DIR}/test_modules.py": None,
