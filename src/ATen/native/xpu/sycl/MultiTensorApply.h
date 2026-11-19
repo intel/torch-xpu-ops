@@ -85,7 +85,7 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
 // functions marked with `nd_range_kernel` cannot be variadic.
 // Functors that reduce over a fixed sub-group width specialize this trait.
 template <typename T, typename = void>
-struct CallableSubGroupSize : std::integral_constant<int, 0> {};
+struct CallableSubGroupSize : std::integral_constant<int, -1> {};
 
 template <typename T, typename Y, typename U>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
@@ -95,7 +95,7 @@ void multi_tensor_apply_kernel(
     Y tlWGMeta,
     U callable) {
   static_assert(
-      CallableSubGroupSize<U>::value == 0,
+      CallableSubGroupSize<U>::value == -1,
       "callables with a fixed sub-group width must use the pinned kernel");
   auto item = syclext::this_work_item::get_nd_item<1>();
   callable(kChunkSize, tlAddressMeta, tlWGMeta, item);
@@ -116,11 +116,11 @@ void multi_tensor_apply_kernel_with_sub_group_size(
   callable(kChunkSize, tlAddressMeta, tlWGMeta, item);
 }
 
-// SG_SIZE == 0 keeps the default kernel for callables that are not templated
+// SG_SIZE == -1 keeps the default kernel for callables that are not templated
 // on the sub-group width.
 template <int SG_SIZE, typename T, typename Y, typename U>
 constexpr auto multi_tensor_apply_kernel_for() {
-  if constexpr (SG_SIZE == 0) {
+  if constexpr (SG_SIZE == -1) {
     return multi_tensor_apply_kernel<T, Y, U>;
   } else {
     return multi_tensor_apply_kernel_with_sub_group_size<SG_SIZE, T, Y, U>;
@@ -164,10 +164,10 @@ void launch_multi_tensor_apply_kernel(
     ArgTypes... args) {
   constexpr int SG_SIZE = CallableSubGroupSize<U>::value;
   static_assert(
-      !(fused_kernel && SG_SIZE != 0),
+      !(fused_kernel && SG_SIZE != -1),
       "fused optimizer kernels do not reduce over a fixed sub-group width");
   auto& q = getCurrentSYCLQueue();
-  int64_t simd = SG_SIZE == 0 ? at::xpu::getDeviceMaxSubGroupSize() : SG_SIZE;
+  int64_t simd = SG_SIZE == -1 ? at::xpu::getDeviceMaxSubGroupSize() : SG_SIZE;
   int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
   int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
@@ -209,7 +209,7 @@ void multi_tensor_apply(
 
   auto& q = getCurrentSYCLQueue();
   constexpr int SG_SIZE = CallableSubGroupSize<T>::value;
-  int64_t simd = SG_SIZE == 0 ? at::xpu::getDeviceMaxSubGroupSize() : SG_SIZE;
+  int64_t simd = SG_SIZE == -1 ? at::xpu::getDeviceMaxSubGroupSize() : SG_SIZE;
   int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   auto addressStorage = at::empty(
@@ -292,7 +292,7 @@ void multi_tensor_apply(
 
   auto& q = getCurrentSYCLQueue();
   constexpr int SG_SIZE = CallableSubGroupSize<T>::value;
-  int64_t simd = SG_SIZE == 0 ? at::xpu::getDeviceMaxSubGroupSize() : SG_SIZE;
+  int64_t simd = SG_SIZE == -1 ? at::xpu::getDeviceMaxSubGroupSize() : SG_SIZE;
   int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   auto addressStorage = at::empty(
