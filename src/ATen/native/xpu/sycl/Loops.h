@@ -19,6 +19,7 @@
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/DeviceGuard.h>
 
+#include <ATen/native/xpu/sycl/BinaryLayoutKernel.h>
 #include <ATen/native/xpu/sycl/ElementwiseInvoke.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
@@ -1316,6 +1317,11 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
       // Unary packing does not bypass the binary latency gate.
       if ((traits::arity == 1 || !latency_case) &&
           try_launch_strided_elementwise_kernel(iter, f, data, dense_output)) {
+        return;
+      }
+    }
+    if constexpr (traits::arity == 2) {
+      if (!latency_case && try_launch_layout_conflict_binary_kernel(iter, f)) {
         return;
       }
     }
