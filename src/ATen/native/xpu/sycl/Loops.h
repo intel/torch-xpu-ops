@@ -449,6 +449,7 @@ static inline void launch_vectorized_kernel(
     in_calc_t input_calc,
     int vec_size) {
   constexpr auto max_scalar_bytes = max_scalar_size<func_t>();
+  constexpr int specialized_wg_size = 256;
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
   using traits = function_traits<func_t>;
   int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
@@ -477,8 +478,8 @@ static inline void launch_vectorized_kernel(
           launch(std::false_type{});                                \
         }                                                           \
       };                                                            \
-      if (wg_sz == 256) {                                           \
-        submit(std::integral_constant<int, 256>{});                 \
+      if (wg_sz == specialized_wg_size) {                           \
+        submit(std::integral_constant<int, specialized_wg_size>{}); \
       } else {                                                      \
         submit(std::integral_constant<int, 0>{});                   \
       }                                                             \
