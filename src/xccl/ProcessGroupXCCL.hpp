@@ -493,6 +493,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   void attachRetireAndStatusCallback(
       c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
       std::shared_ptr<ProcessGroupStatus> pgStatus);
+  void attachRecordFunctionEndCallback(
+      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
