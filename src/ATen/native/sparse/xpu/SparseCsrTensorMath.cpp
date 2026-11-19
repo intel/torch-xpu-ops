@@ -207,6 +207,15 @@ Tensor& addmm_out_sparse_compressed_xpu(
     const Scalar& beta,
     const Scalar& alpha,
     Tensor& result) {
+  // addmm_out_sparse_csr materializes a dense product and writes it into
+  // result, and the zero/beta paths resize or zero result, all of which would
+  // drop a non-contiguous values view. Run on a contiguous clone and copy the
+  // result back through the strides instead, as CPU and CUDA do.
+  if (at::sparse_csr::has_noncontiguous_values(result)) {
+    return at::sparse_csr::run_on_contiguous_clone(result, [&](Tensor& r) {
+      addmm_out_sparse_compressed_xpu(self, mat1, mat2, beta, alpha, r);
+    });
+  }
   TORCH_CHECK(
       self.is_xpu(),
       "Expected all tensors to be on the same device. addmm expected self to be XPU tensor, but got ",
@@ -430,6 +439,19 @@ Tensor& add_out_sparse_compressed_xpu(
 
     if (only_sparse_compressed_add_trivial_cases(self, other, alpha, out)) {
       return out;
+    }
+
+    // add_out_sparse_csr_kernel replaces out's indices and values with freshly
+    // allocated ones, which would drop a non-contiguous values view and leave
+    // the storage between its elements untouched. Run on a contiguous clone
+    // and copy the result back through the strides instead, as the CPU and
+    // CUDA kernels do. When the result has a different nnz,
+    // resize_as_sparse_compressed_ raises "resizing the non-contiguous
+    // values ..." instead of restriding the view.
+    if (at::sparse_csr::has_noncontiguous_values(out)) {
+      return at::sparse_csr::run_on_contiguous_clone(out, [&](Tensor& r) {
+        add_out_sparse_compressed_xpu(self, other, alpha, r);
+      });
     }
 
     at::native::resize_as_sparse_compressed_(out, self);
