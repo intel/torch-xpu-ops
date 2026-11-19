@@ -217,6 +217,7 @@ Tensor& cholesky_inverse_kernel_fallback(
 }
 
 Tensor& cholesky_inverse_kernel_xpu(Tensor& input, Tensor& info, bool upper) {
+  // TODO: this is temporary fallback, needed for enabling cholesky_inverse in native_functions.yaml 
   return cholesky_inverse_kernel_fallback(input, info, upper);
 }
 
