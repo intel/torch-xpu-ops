@@ -47,7 +47,7 @@ void philox_key_split_kernel(
     int64_t total_elements) {
   auto item = syclext::this_work_item::get_nd_item<1>();
 
-  XPU_KERNEL_LOOP(item, index, total_elements) {
+  XPU_KERNEL_LOOP(item, index, total_elements, int64_t) {
     const int64_t split_idx = index / num_keys;
     const int64_t key_idx = index % num_keys;
 
@@ -105,7 +105,7 @@ void philox_key_fold_in_kernel(
     int64_t data) {
   auto item = syclext::this_work_item::get_nd_item<1>();
 
-  XPU_KERNEL_LOOP(item, index, num_keys) {
+  XPU_KERNEL_LOOP(item, index, num_keys, int64_t) {
     philox_key_fold_in_impl(input, output, index, static_cast<uint64_t>(data));
   }
 }
@@ -217,40 +217,33 @@ Tensor _philox_key_fold_in_tensor_xpu(const Tensor& key, const Tensor& data) {
       "_philox_key_fold_in: data must have dtype uint64, got ",
       data.scalar_type());
   TORCH_CHECK(
-      data.device() == key.device(),
-      "_philox_key_fold_in: Expected all tensors to be on the same device, "
-      "got ",
-      key.device(),
-      " and ",
-      data.device());
-  TORCH_CHECK(
       data.numel() == 1,
       "_philox_key_fold_in: data must be a single value, got ",
       data.numel(),
       " elements");
 
-  Tensor output = at::empty(key.sizes(), key.options());
+  Tensor output = at::empty(key);
   int64_t num_keys = key.numel() / 2;
   if (num_keys == 0) {
     return output;
   }
 
+  auto key_contig = key.contiguous();
+
   constexpr int64_t work_group_size =
       256; // TODO: wg_size 256 on performance of XPU remains to be investigated
   const int64_t work_group_num =
       xpuKernelLoopGroupRange(num_keys, work_group_size);
-  auto key_contig = key.contiguous();
-  auto data_contig = data.contiguous();
 
   sycl_kernel_submit<philox_key_fold_in_tensor_kernel>(
       sycl::range<1>(work_group_num * work_group_size),
       sycl::range<1>(work_group_size),
       at::xpu::getCurrentSYCLQueue(),
       0,
-      key_contig.data_ptr<uint64_t>(),
+      key_contig.const_data_ptr<uint64_t>(),
       output.data_ptr<uint64_t>(),
       num_keys,
-      data_contig.const_data_ptr<uint64_t>());
+      data.const_data_ptr<uint64_t>());
 
   return output;
 }
