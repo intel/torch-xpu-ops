@@ -149,6 +149,10 @@ class GroupRadixSort {
         } else {
           values_[ITEM] = values_group_in[offset];
         }
+      } else {
+        // Padding slots are exchanged alongside their keys, so initialize the
+        // payload instead of scattering an uninitialized register value.
+        values_[ITEM] = ValueT{};
       }
     }
   }
