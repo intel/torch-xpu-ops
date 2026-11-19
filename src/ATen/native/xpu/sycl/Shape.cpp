@@ -211,10 +211,10 @@ void cat_array_batched_copy_contig_kernel_impl(
       item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
   IndexType nElements = inputs.nElements[item.get_group(0)];
 
-  // Limit slice copy to large 1-/2-byte inputs on CRI.
+  // Limit slice copy to large 2-byte inputs on CRI.
   constexpr IndexType minElementsForSliceCopy = 1 << 20;
-  bool mayUseSliceCopy = (sizeof(T) == 1 || sizeof(T) == 2) &&
-      enableCriSliceCopy && nElements >= minElementsForSliceCopy;
+  bool mayUseSliceCopy = sizeof(T) == 2 && enableCriSliceCopy &&
+      nElements >= minElementsForSliceCopy;
 
   const T* data = inputs.input[item.get_group(0)];
   IndexType offset = inputs.offset[item.get_group(0)];
@@ -223,7 +223,7 @@ void cat_array_batched_copy_contig_kernel_impl(
 
   IndexType sliceSize = 0;
   IndexType outputSliceSize = 0;
-  if constexpr (sizeof(T) == 1 || sizeof(T) == 2) {
+  if constexpr (sizeof(T) == 2) {
     if (mayUseSliceCopy) {
       constexpr IndexType alignmentElements = 4 / sizeof(T);
       sliceSize = dimSize * dimStride;
@@ -238,13 +238,14 @@ void cat_array_batched_copy_contig_kernel_impl(
   }
 
   IndexType stride = item.get_group_range(1) * item.get_local_range(1);
-  // Optimize path for sub-dword aligned shapes: handle the sub-dword prefix
-  // separately.
-  if constexpr (sizeof(T) == 1 || sizeof(T) == 2) {
+  // Optimize path for sub-dword aligned shapes: cache line aligned
+  if constexpr (sizeof(T) == 2) {
     if (mayUseSliceCopy) {
       constexpr int minSliceUtilizationPercent = 95;
       const auto subgroup = item.get_sub_group();
       const IndexType subgroupSize = subgroup.get_local_range()[0];
+      const IndexType sliceAlignmentBytes = subgroupSize * sizeof(T);
+      // const IndexType sliceAlignmentBytes = 64;
       const IndexType logicalSubgroupsPerSlice =
           ceil_div(sliceSize, subgroupSize) + 1;
       // Require more than one subgroup of data and at least 95% utilization.
@@ -267,9 +268,13 @@ void cat_array_batched_copy_contig_kernel_impl(
               logicalSubgroupIndex - slice * logicalSubgroupsPerSlice;
           const IndexType inputBase = slice * sliceSize;
           const IndexType outputBase = dataOffset + slice * outputSliceSize;
-          const IndexType prefix =
-              ((4 - reinterpret_cast<uintptr_t>(output + outputBase) % 4) % 4) /
-              sizeof(T);
+          const auto outputAddress = reinterpret_cast<uintptr_t>(output + outputBase);
+          // const IndexType prefix =
+          //     ((sliceAlignmentBytes - outputAddress % sliceAlignmentBytes) %
+          //      sliceAlignmentBytes) /
+          //     sizeof(T);
+          const uintptr_t mask = sliceAlignmentBytes - 1;
+          const IndexType prefix = ((-outputAddress) & mask) / sizeof(T);
           if (logicalSubgroupInSlice == 0) {
             if (lane < prefix) {
               output[outputBase + lane] = data[inputBase + lane];
