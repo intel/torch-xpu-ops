@@ -182,6 +182,27 @@ def ci_verdict(jobs, ut_group, e2e):
     return False, blockers, tolerated
 
 
+def reviewers_to_request(body, reviews, author):
+    """Logins to ask once the PR is ready: the description's `Reviewers:` line
+    plus anyone whose latest review still requests changes (to re-review)."""
+    wanted = []
+    for m in re.finditer(r"^\s*Reviewers?:(.*)$", body or "", re.I | re.M):
+        for token in re.split(r"[\s,]+", m.group(1)):
+            token = token.strip(".;")
+            if re.fullmatch(r"@?[A-Za-z0-9][A-Za-z0-9-]*", token):  # teams (org/team) are skipped
+                wanted.append(token.lstrip("@"))
+    latest = {}
+    for r in reviews:
+        if r.get("user") and r["state"] != "COMMENTED":
+            latest[r["user"]["login"]] = r["state"]
+    wanted += [u for u, state in latest.items() if state == "CHANGES_REQUESTED"]
+    out = []
+    for u in wanted:
+        if u != author and u not in BOT_LOGINS and u.lower() not in {o.lower() for o in out}:
+            out.append(u)
+    return out
+
+
 def maintainer_logins_since(activity, since, author, role_of):
     """Maintainers (not the author or a bot) who commented/reviewed after `since`."""
     since_t = _ts(since)
@@ -280,6 +301,17 @@ def evaluate_ci(repo, sha, workdir):
     return ci_verdict(jobs, ut_group, e2e)
 
 
+def request_reviewers(repo, pr):
+    """Ask reviewers now that the PR is ready; only collaborators who can review."""
+    reviews = api_items(f"repos/{repo.name}/pulls/{pr['number']}/reviews?per_page=100")
+    logins = [u for u in reviewers_to_request(pr.get("body"), reviews, pr["user"]["login"])
+              if repo.role(u) in MAINTAINER_ROLES]
+    if logins:
+        gh("api", f"repos/{repo.name}/pulls/{pr['number']}/requested_reviewers",
+           *[arg for u in logins for arg in ("-f", f"reviewers[]={u}")], check=False)
+    return logins
+
+
 def comment_once(repo, pr, sha, kind, body):
     marker = f"<!-- bot-review-promote:{kind}:{sha} -->"
     existing = api_items(f"repos/{repo.name}/issues/{pr}/comments?per_page=100")
@@ -328,9 +360,10 @@ def promote(repo, pr_number, report_ci):
     gh("api", f"repos/{repo.name}/issues/{pr_number}/labels", "-f", f"labels[]={READY}")
     gh("api", "-X", "DELETE",
        f"repos/{repo.name}/issues/{pr_number}/labels/{urllib.parse.quote(IN_PROGRESS)}", check=False)
-    note = ""
+    asked = request_reviewers(repo, pr)
+    note = f" Requested review from {', '.join('@' + u for u in asked)}." if asked else ""
     if tolerated:
-        note = (f" {len(tolerated)} CI failure(s) also fail on main and were not counted: "
+        note += (f" {len(tolerated)} CI failure(s) also fail on main and were not counted: "
                 + ", ".join(f"`{t}`" for t in tolerated[:10]) + (" ..." if len(tolerated) > 10 else ""))
     gh("api", f"repos/{repo.name}/issues/{pr_number}/comments", "-f",
        f"body=Bot review passed and CI is clean: moved to `{READY}` for maintainers.{note}")
@@ -359,8 +392,14 @@ def main():
     parser.add_argument("--pr", type=int, required=True)
     parser.add_argument("--report-ci", action="store_true",
                         help="comment why CI blocks promotion (once per head commit)")
+    parser.add_argument("--request-reviewers", action="store_true",
+                        help="only request reviewers (for PRs promoted by the opt-out label)")
     args = parser.parse_args()
-    promote(Repo(args.repo), args.pr, args.report_ci)
+    repo = Repo(args.repo)
+    if args.request_reviewers:
+        print(request_reviewers(repo, api(f"repos/{repo.name}/pulls/{args.pr}")))
+    else:
+        promote(repo, args.pr, args.report_ci)
 
 
 if __name__ == "__main__":

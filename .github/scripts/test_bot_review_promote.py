@@ -154,8 +154,8 @@ def test_maintainer_activity_since_review():
 
 def run_promote(monkeypatch, labels, status, ci, activity=()):
     calls = []
-    pr = {"state": "open", "draft": False, "labels": [{"name": n} for n in labels],
-          "head": {"sha": "s" * 40}, "user": {"login": "author"}}
+    pr = {"number": 7, "state": "open", "draft": False, "labels": [{"name": n} for n in labels],
+          "head": {"sha": "s" * 40}, "user": {"login": "author"}, "body": "Reviewers: @alice"}
     monkeypatch.setattr(p, "api", lambda path: pr if "/pulls/" in path else {"statuses": status})
     monkeypatch.setattr(p, "api_items", lambda path, jq=".[]": [])
     monkeypatch.setattr(p, "gh", lambda *a, **k: calls.append(a) or "")
@@ -180,6 +180,8 @@ def test_promote_swaps_labels_when_review_and_ci_pass(monkeypatch):
     calls = run_promote(monkeypatch, ["in progress"], PASSED, (False, [], ["x"]))
     assert ("api", "repos/o/r/issues/7/labels", "-f", "labels[]=ready for review") in calls
     assert ("api", "-X", "DELETE", "repos/o/r/issues/7/labels/in%20progress") in calls
+    assert ("api", "repos/o/r/pulls/7/requested_reviewers", "-f", "reviewers[]=alice") in calls
+    assert "Requested review from @alice" in calls[-1][-1]
     assert "also fail on main" in calls[-1][-1]
 
 
@@ -193,3 +195,13 @@ def test_promote_holds_on_ci_review_or_maintainer(monkeypatch):
     late = [{"login": "maint", "type": "User", "at": "2026-11-20T08:00:00Z"}]
     held = run_promote(monkeypatch, ["in progress"], PASSED, (False, [], []), late)
     assert len(held) == 1 and "@maint commented after" in held[0][-1]
+
+
+def test_reviewers_from_description_and_change_requests():
+    body = "Fix foo.\n\nReviewers: @alice, bob @intel/xpu-team @Alice author\nreviewer: @carol."
+    reviews = [{"user": {"login": "dave"}, "state": "CHANGES_REQUESTED"},
+               {"user": {"login": "erin"}, "state": "CHANGES_REQUESTED"},
+               {"user": {"login": "erin"}, "state": "APPROVED"},
+               {"user": {"login": "dave"}, "state": "COMMENTED"}]
+    assert p.reviewers_to_request(body, reviews, "author") == ["alice", "bob", "carol", "dave"]
+    assert p.reviewers_to_request(None, [], "author") == []
