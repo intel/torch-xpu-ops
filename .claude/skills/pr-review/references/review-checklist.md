@@ -32,51 +32,49 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 ### Code Clarity
 
 - [ ] **Self-explanatory code** — Variable and function names convey intent; minimal comments needed
-- [ ] **Useful comments only** — Comments explain non-obvious context that cannot be inferred locally
+- [ ] **Useful comments only** — Comments explain non-obvious context that cannot be inferred locally. For large comments use `// Note [Good note title]` and `// See Note [Good note title]` (C++; use `# Note [...]` / `# See Note [...]` in Python) to write larger comments that can be referenced from multiple places in the codebase. Complex logic should have a comment explaining it
+- [ ] **No commented-out code** — Dead code left in comments must be removed, not kept "just in case"
+- [ ] **No stale comments** — Comments must match the code they describe; a comment contradicting its adjacent code is a bug signal, not just a style nit
 - [ ] **No backward-compatibility hacks** — Unused code is deleted completely, not renamed with underscores or marked with "removed" comments
-- [ ] **Documentation shows correct patterns only** — Code examples must have correct indentation, names, and syntax
+- [ ] **Appropriate complexity** — Solutions are as simple as possible for the current requirements
+- [ ] **Documentation shows correct patterns only** — Docs and markdown files should show the right way to do things directly, not anti-patterns followed by corrections. Code examples must have correct indentation, names, and syntax
+- [ ] **Non-trivial public functions have doc comments** — Public APIs with non-obvious behavior, preconditions, or side effects document them
 
-### Variable & Function Naming
+### Naming
 
-- [ ] **No single-letter variables** — except trivial loop counters (`i`, `j`, `k` in short loops)
-- [ ] **No ambiguous abbreviations** — `buf`, `tmp`, `val`, `res`, `ret`, `cnt` without context should use full words
-- [ ] **No type-encoded names** (Hungarian notation) — `iCount`, `strName`, `pPtr`
-- [ ] **Consistent casing** — no mixing `camelCase` and `snake_case` within the same scope/file
-- [ ] **Bool names read as predicates** — `is_ready`, `has_data`, `should_flush`, not `ready_flag`, `data_status`
-- [ ] **Name matches semantics** — a variable named `index` should not hold a count; `size` should not hold a capacity
+- [ ] **Naming conventions** — C++ functions/vars `snake_case`, types `PascalCase`, macros `UPPER_SNAKE_CASE`
+- [ ] **No vague or single-letter names** — except short loop indices; no vague `buf`/`tmp`/`val`/`res`/`ret`/`cnt` without context
+- [ ] **No Hungarian notation or mixed casing** — no `iCount`/`pPtr`; no mixing `camelCase` and `snake_case` in the same scope
+- [ ] **Bools read as predicates** — `is_contiguous`, `has_bias`
+- [ ] **Name matches meaning** — `size` vs `capacity`, `index` vs `count`
 
-### No Magic Numbers
+### Constants
 
-- [ ] **No unexplained numeric literals** — in conditionals, arithmetic, or indexing (0, 1, -1 in common idioms are OK)
-- [ ] **No repeated unnamed literals** — same magic number in multiple places must be a named constant
+- [ ] **No magic numbers** — unexplained numeric literals in conditionals, arithmetic, or indexing (0, 1, -1 in common idioms are OK); the same literal repeated in multiple places must become a named constant
 - [ ] **No unexplained bit operations** — bit shifts/masks must have named constants or comments
 - [ ] **No inline hardware constants** — register offsets, queue sizes, tile dimensions must be named
 
-### Comments & Readability
+### Intel GPU Terminology
 
-- [ ] **No commented-out code** — without explanation; should be deleted or have a TODO
-- [ ] **No stale comments** — comments must not contradict the code
-- [ ] **No parroting comments** — `i++; // increment i` adds nothing
-- [ ] **Complex logic is commented** — multi-step transformations, non-trivial math, bitwise operations need WHY comments
-- [ ] **Non-trivial public functions have doc comments** — purpose, params, return value
+- [ ] **SYCL programming terms used in code** — variable/function names, comments, logs, and test names use subgroup size (not SIMD width/length/simd_width), work-item (not SIMD lane), work-group (not thread block/threadblock); numeric SIMD-N becomes "subgroup size N"
+- [ ] **Hardware terms only in optimization comments** — EU → XVE (Xe Vector Engine), Systolic/DPAS → XMX (Xe Matrix eXtension), Subslice/DSS → XC (Xe-core), HW thread → XVE thread; these appear only in comments explaining WHY an optimization was chosen (occupancy, register pressure, alignment), never in identifiers or general code
+- [ ] **No deprecated hardware terms in identifiers** — e.g. `subslice_count` → `xc_count`/`xecore_count`, `getSimdWidth()` → `getSubgroupSize()`; also applies to GRF file/count (prefer "register file/count") and spell out SLM (Shared Local Memory) on first use
+- [ ] **API boundary legacy names are wrapped** — when the underlying API (Level Zero, OpenCL, SYCL extensions) still exposes old terms in function/enum names, it's acceptable to use them at the call site only, wrapped in a modern-named helper with a comment noting the legacy API name
 
-## Intel GPU Terminology — MANDATORY
-
-- [ ] **SYCL programming terms used in code** — subgroup size (not SIMD width), work-item (not SIMD lane), work-group (not thread block/threadblock)
-- [ ] **Hardware terms only in optimization comments** — XVE, XMX, XC terms appear only in comments explaining WHY an optimization was chosen
-- [ ] **No deprecated hardware terms** — EU → XVE, Subslice/DSS → Xe-core (XC), Systolic → XMX, HW thread → XVE thread
-- [ ] **API boundary legacy names are wrapped** — legacy API names at call site only, with modern-named helper and comment
-
-## General Code Quality
-
-Also flag during review:
+### Code Smells
 
 - [ ] **Dead code** — unreachable branches, unused variables, unused `#include`
 - [ ] **Error handling** — bare `catch(...)`, swallowed errors, missing return code checks
 - [ ] **Resource management** — raw `new`/`delete` without RAII in C++, unclosed handles
 - [ ] **Copy-paste patterns** — duplicated blocks that should be factored into a function
-- [ ] **Overly long functions** — >80 lines — suggest splitting
-- [ ] **Deep nesting** — >3 levels of `if/for` — suggest early returns or extraction
+- [ ] **Overly long functions** — functions longer than ~80 lines should be split
+- [ ] **Deep nesting** — more than 3 levels of `if`/`for` should use early returns or extraction
+
+### XPU (SYCL) Kernels
+
+- [ ] **Kernel style** — new kernels should prefer free functions over named functor structs, except for functors used with the `gpu_kernel`/`opmath_gpu_kernel_with_scalars` pattern.
+- [ ] **Kernel launch** — reuse `sycl_kernel_submit`, which supports both the functor and free-function kernel forms, rather than calling `.submit(...)` directly on a `sycl::queue` instance (e.g. `queue.submit(...)`, `q.submit(...)`).
+- [ ] **SYCL math functions** — for newly added or newly touched math calls, prefer `std::<fn>`; `sycl::<fn>` is also acceptable except for half-precision (`c10::Half`) inputs, which should use `std::<fn>`; `sycl::native::<fn>` only when it exists AND the matching CUDA kernel uses a fast intrinsic (e.g., `__expf`); use `sycl::ext::intel::math::<fn>` only when the function has no `std::`, `sycl::`, or `sycl::native::` equivalent. Does not apply to existing math calls left untouched by the PR
 
 ## Correctness And Semantics
 
@@ -110,11 +108,6 @@ Also flag during review:
 - [ ] Autocast behavior is covered when the operator participates in mixed precision
 - [ ] Test tolerances are chosen per dtype rather than copied blindly from another backend
 - [ ] **Type promotion** — Manual dtype promotion logic should use established utilities rather than hand-written if/else chains
-- [ ] **Math functions in SYCL device code**
-  - [ ] Real types use `sycl::<fn>` (e.g., `sycl::exp`), not `std::<fn>`
-  - [ ] `sycl::native::<fn>` is used only when it exists AND the matching CUDA kernel uses a fast intrinsic (e.g., `__expf`)
-  - [ ] Complex types use `std::<fn>`, not `sycl::<fn>` (see `src/ATen/native/xpu/sycl/UnaryKernels.cpp` for the real/complex split pattern)
-  - [ ] When `scalar_t` may be `c10::Half` and the `<fn>` has a `sycl::half` overload, arguments are cast to `at::opmath_type<scalar_t>` to avoid overload ambiguity (`c10::Half` converts to both `float` and `sycl::half`)
 
 ## Large Tensor Safety
 
@@ -135,10 +128,11 @@ Also flag during review:
   - [ ] Vector type declared as `using vec_t = memory::aligned_vector<scalar_t, vec_size>`
   - [ ] Loads use reinterpret cast + index: `const vec_t* RESTRICT input_vec = reinterpret_cast<const vec_t*>(input);` then `vec_t data = input_vec[i]`
   - [ ] Computation operates on the loaded `vec_t` local, not on raw pointer arithmetic
-- [ ] **No shift_group_left + reduction combiner** — Any `sycl::shift_group_left` combined with a reduction op (add, min, max, mean, product, etc.) must use `sycl::reduce_over_group` instead; the shift pattern generates excessive integer ALU instructions causing pipeline stalls. The loop may be at a different call site or inside a functor — trace callers if needed
+- [ ] **No shift_group_left + reduction combiner** — Any `sycl::shift_group_left` combined with a reduction combiner (add, min, max, mean, product, bitwise-or/and, etc.) must use `sycl::reduce_over_group` instead; the shift pattern generates excessive integer ALU instructions, stalling the ALU-INT pipeline. The true signal is the shift+combine pair, not the loop shape — it may run in either direction, live inside a vectorized inner loop, or have the shift+combine split into a functor/lambda with the loop elsewhere, so trace callers if needed. Common locations: reduction kernels, softmax, norm, and scan ops in `src/ATen/native/xpu/sycl/`
 - [ ] **Pointwise kernel iteration and launch range**
   - [ ] Internal grid-stride loops use `XPU_KERNEL_LOOP(item, index, bound)` rather than hand-written `get_global_id`/`get_global_range` iteration, unless a documented custom mapping is required
   - [ ] Grid-stride pointwise launches bound `global_range` by resident capacity with `xpuKernelLoopGroupRange(static_cast<int64_t>(tensor.numel()), work_group_size)`, rather than calculating one work-item per element with `ceil_div(numel, work_group_size)`
+
 ## Dispatch, Fallback, And Generated Wiring
 
 - [ ] Relevant yaml, native implementation, backward logic, and generated expectations move together
