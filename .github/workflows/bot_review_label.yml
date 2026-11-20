@@ -197,4 +197,4 @@ jobs:
         if: steps.pr.outputs.number != ''
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
-        run: python3 .github/scripts/bot_review_promote.py --repo ${{ github.repository }} --pr ${{ steps.pr.outputs.number }} --report-ci
+        run: python3 .github/scripts/bot_review_promote.py --repo ${{ github.repository }} --pr ${{ steps.pr.outputs.number }}
