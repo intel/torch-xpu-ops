@@ -42,6 +42,7 @@ MAINTAINER_ROLES = {"triage", "write", "maintain", "admin"}
 BOT_LOGINS = {"torchxpubot"}
 OK = {"success", "skipped", "neutral"}
 NIGHTLY_TITLE = "Build-from-source"
+NIGHTLY_LOOKBACK = 3  # a nightly that broke before testing uploads nothing
 
 # `linux-ut (basic) / check`, `linux-distributed (xpu_distributed) / check`,
 # `windows-ut (basic) / check`: one UT group per matrix entry.
@@ -73,20 +74,35 @@ def classify(lines, nightly_failed, nightly_passed):
     return out
 
 
+def latest_attempts(root):
+    """Artifact dirs under `root`, keeping only the highest `-<attempt>` of each.
+
+    A rerun uploads a new artifact per attempt; older attempts are stale.
+    """
+    best = {}
+    for d in sorted(p for p in Path(root).glob("*") if p.is_dir()):
+        m = re.fullmatch(r"(.+)-(\d+)", d.name)
+        key, attempt = (m.group(1), int(m.group(2))) if m else (d.name, 0)
+        if key not in best or attempt > best[key][0]:
+            best[key] = (attempt, d)
+    return [d for _, d in best.values()]
+
+
 def ut_baseline(root):
     """(failed, passed) case lines `category,class,test` from UT-Check case logs."""
     failed, passed = set(), set()
-    for path in Path(root).rglob("failures_*.log"):
-        failed |= _lines(path)
-    for path in Path(root).rglob("passed_*.log"):
-        passed |= _lines(path)
+    for art in latest_attempts(root):
+        for path in art.rglob("failures_*.log"):
+            failed |= _lines(path)
+        for path in art.rglob("passed_*.log"):
+            passed |= _lines(path)
     return failed, passed
 
 
 def ut_group_blockers(check_root, nightly_failed, nightly_passed, name="UT"):
     """Why one UT check artifact blocks; also the broken-trunk lines it tolerated."""
     blockers, tolerated = [], []
-    verdicts = list(Path(check_root).rglob("verdict.json"))
+    verdicts = [v for art in latest_attempts(check_root) for v in art.rglob("verdict.json")]
     if not verdicts:
         return [f"{name} check results are missing"], []
     for verdict_path in verdicts:
@@ -118,7 +134,7 @@ def ut_group_blockers(check_root, nightly_failed, nightly_passed, name="UT"):
 def e2e_accuracy(root):
     """(suite, dtype, mode, model) -> accuracy, from every *-accuracy.csv under root."""
     out = {}
-    for path in Path(root).rglob("*-accuracy.csv"):
+    for path in (p for art in latest_attempts(root) for p in art.rglob("*-accuracy.csv")):
         with open(path, newline="") as f:
             for row in csv.DictReader(f):
                 if row.get("name"):
@@ -260,11 +276,12 @@ class Repo:
         runs = [r for r in runs if r["path"].endswith("workflows/pull.yml")]
         return max(runs, key=lambda r: r["run_number"], default=None)
 
-    def nightly_run(self):
+    def nightly_runs(self):
+        """Recent build-from-source nightlies on main, newest first."""
         runs = api_items(f"repos/{self.name}/actions/workflows/nightly_ondemand.yml/runs"
                          "?event=schedule&branch=main&status=completed&per_page=20",
                          ".workflow_runs[]")
-        return next((r for r in runs if NIGHTLY_TITLE in r.get("display_title", "")), None)
+        return [r for r in runs if NIGHTLY_TITLE in r.get("display_title", "")][:NIGHTLY_LOOKBACK]
 
     def download(self, run_id, pattern, dest):
         gh("run", "download", str(run_id), "-R", self.name, "-p", pattern, "-D", str(dest),
@@ -280,10 +297,14 @@ def evaluate_ci(repo, sha, workdir):
     nightly = {}
 
     def nightly_dir(pattern):
+        """The newest nightly that uploaded `pattern`; empty dir if none did."""
         if pattern not in nightly:
-            night = repo.nightly_run()
             dest = Path(workdir, "nightly", str(len(nightly)))
-            nightly[pattern] = repo.download(night["id"], pattern, dest) if night else dest
+            for night in repo.nightly_runs():
+                repo.download(night["id"], pattern, dest)
+                if any(dest.glob("*")):
+                    break
+            nightly[pattern] = dest
         return nightly[pattern]
 
     def ut_group(platform, ut):
@@ -365,8 +386,8 @@ def promote(repo, pr_number, report_ci):
     if tolerated:
         note += (f" {len(tolerated)} CI failure(s) also fail on main and were not counted: "
                 + ", ".join(f"`{t}`" for t in tolerated[:10]) + (" ..." if len(tolerated) > 10 else ""))
-    gh("api", f"repos/{repo.name}/issues/{pr_number}/comments", "-f",
-       f"body=Bot review passed and CI is clean: moved to `{READY}` for maintainers.{note}")
+    comment_once(repo, pr_number, sha, "promoted",
+                 f"Bot review passed and CI is clean: moved to `{READY}` for maintainers.{note}")
     print("promoted")
 
 
