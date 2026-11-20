@@ -47,8 +47,12 @@ EOF
 require_command() {
   local cmd="$1"
   local package="$2"
-  sudo -E apt-get update -qq
-  sudo -E apt-get install -y -qq "${package}"
+  local sudo=""
+  command -v "$cmd" >/dev/null 2>&1 && return 0
+  # containers such as OMIX run as root without sudo
+  [ "$(id -u)" -eq 0 ] || sudo="sudo -E"
+  ${sudo} apt-get update -qq
+  ${sudo} apt-get install -y -qq "${package}"
   if ! command -v "$cmd" >/dev/null 2>&1; then
     log "[Error] Missing required command: ${cmd}"
     exit 1
