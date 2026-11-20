@@ -17,7 +17,6 @@ apt-get install -y --no-install-recommends \
     sudo \
     git \
     git-lfs \
-    gh \
     jq \
     rsync \
     tar \
@@ -36,6 +35,36 @@ apt-get install -y --no-install-recommends \
     gnupg \
     software-properties-common \
     lsb-release
+
+# ============================================================
+# GitHub CLI (latest official release; Ubuntu apt gh is outdated)
+# ============================================================
+
+GH_VERSION=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+    https://github.com/cli/cli/releases/latest)
+GH_VERSION="${GH_VERSION##*/v}"
+GH_ARCH=$(dpkg --print-architecture)
+GH_TMP="/tmp/gh"
+
+rm -rf "$GH_TMP"
+mkdir -p "$GH_TMP"
+
+curl -fsSL \
+    "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+    -o "$GH_TMP/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"
+
+curl -fsSL \
+    "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_checksums.txt" \
+    -o "$GH_TMP/checksums.txt"
+
+(cd "$GH_TMP" && grep " gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz\$" checksums.txt | sha256sum -c -)
+
+tar -xzf "$GH_TMP/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+    -C "$GH_TMP" --strip-components=1
+
+install -m 0755 "$GH_TMP/bin/gh" /usr/local/bin/gh
+
+rm -rf "$GH_TMP"
 
 # ============================================================
 # Build tools
@@ -283,3 +312,4 @@ echo
 echo "========================================"
 echo " Dependencies installed successfully."
 echo "========================================"
+
