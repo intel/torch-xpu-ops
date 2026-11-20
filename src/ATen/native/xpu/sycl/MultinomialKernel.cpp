@@ -26,6 +26,9 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
+#include <limits>
+#include <type_traits>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename item_t>
@@ -180,8 +183,14 @@ inline void sampleMultinomialWithReplacement(
          sample += thread_range * group_range_x) {
       // we are losing 3 out of 4 generated numbers but it's ok
       // this kernel is not very efficient anyway
-      auto rand = rand_uniform4(&state);
-      scalar_t r = static_cast<scalar_t>(rand.x);
+      scalar_t r;
+      if constexpr (std::is_same_v<scalar_t, double>) {
+        // A float uniform has only 24 bits of resolution, too coarse for a
+        // double CDF
+        r = rand_uniform2_double(&state).x;
+      } else {
+        r = static_cast<scalar_t>(rand_uniform4(&state).x);
+      }
 
       // Find the bucket that a uniform sample lies in
       int choice = binarySearchForMultinomial<scalar_t>(
@@ -377,25 +386,43 @@ void multinomial_kernel(
   // Restructure data for 2d
   auto self_v = inputSize == 1 ? self.view({numDist, numCategories}) : self;
 
+  // Half row sums overflow and bfloat16 CDFs are too coarse, so both build the
+  // CDF in float; a float CDF cannot give distinct buckets to more than 2^24
+  // categories
+  const auto inputType = self_v.scalar_type();
+  const bool needsDoubleCdf =
+      numCategories > (int64_t{1} << std::numeric_limits<float>::digits);
+  TORCH_CHECK(
+      !needsDoubleCdf || at::xpu::getCurrentDeviceProperties()->has_fp64,
+      "multinomial: sampling with replacement from more than 2^24 categories "
+      "requires a device with fp64 support");
+  const auto cdfType = needsDoubleCdf
+      ? kDouble
+      : (inputType == kHalf || inputType == kBFloat16 ? kFloat : inputType);
+
   result.resize_({numDist, n_sample});
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      self_v.scalar_type(),
-      "multinomial_kernel_xpu",
-      [&] {
-        using accscalar_t = acc_type_device<scalar_t, kXPU>;
-        int maxThreads = at::xpu::getKernelMaxWorkGroupSize<
-            sample_multinomial_once_kernel<scalar_t, accscalar_t>>();
-        int maxShared = at::xpu::getDeviceLocalMemSize();
+  bool sampledOnce = false;
+  if (n_sample == 1 && !needsDoubleCdf) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::BFloat16,
+        at::ScalarType::Half,
+        inputType,
+        "multinomial_kernel_xpu",
+        [&] {
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
+          int maxThreads = at::xpu::getKernelMaxWorkGroupSize<
+              sample_multinomial_once_kernel<scalar_t, accscalar_t>>();
+          int maxShared = at::xpu::getDeviceLocalMemSize();
 
-        int SubGroupSize = at::xpu::getDeviceMinSubGroupSize();
-        int requiredSubGroups = at::ceil_div(numCategories, SubGroupSize);
-        int requiredThreads =
-            std::min(maxThreads, requiredSubGroups * SubGroupSize);
-        int requiredShared = requiredThreads * sizeof(accscalar_t);
-        if (n_sample == 1 && maxShared >= requiredShared) {
+          int SubGroupSize = at::xpu::getDeviceMinSubGroupSize();
+          int requiredSubGroups = at::ceil_div(numCategories, SubGroupSize);
+          int requiredThreads =
+              std::min(maxThreads, requiredSubGroups * SubGroupSize);
+          int requiredShared = requiredThreads * sizeof(accscalar_t);
+          if (maxShared < requiredShared) {
+            return;
+          }
           // Break per source build. Build every kernel source file into a so.
           // libtorch_xpu.so which is the so of operator level depends the so
           // of kernels. Do not depends on libtorch_xpu.so inversively. Using
@@ -420,34 +447,21 @@ void multinomial_kernel(
               (int)self_v.stride(0),
               (int)self_v.stride(1),
               group_size);
-        } else {
-          Tensor origDist = native::empty_like(
-              self_v,
-              std::nullopt /* dtype */,
-              std::nullopt /* layout */,
-              std::nullopt /* device */,
-              std::nullopt /* pin_memory */,
-              LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-          origDist.copy_(self_v);
+          sampledOnce = true;
+        });
+  }
 
-          Tensor normDist = native::empty_like(
-              self_v,
-              std::nullopt /* dtype */,
-              std::nullopt /* layout */,
-              std::nullopt /* device */,
-              std::nullopt /* pin_memory */,
-              LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-
-          Tensor prefixSum = native::empty_like(
-              self_v,
-              std::nullopt /* dtype */,
-              std::nullopt /* layout */,
-              std::nullopt /* device */,
-              std::nullopt /* pin_memory */,
-              LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  if (!sampledOnce) {
+    AT_DISPATCH_FLOATING_TYPES(
+        cdfType, "multinomial_with_replacement_kernel_xpu", [&] {
+          // Using at::empty instead of at::detail::empty_xpu, see above.
+          Tensor normDist = at::empty(
+              {numDist, numCategories}, self_v.options().dtype(cdfType));
+          Tensor prefixSum =
+              at::empty({numDist, numCategories}, normDist.options());
 
           // Renorm along rows
-          normDist.copy_(origDist);
+          normDist.copy_(self_v);
           renormRows(normDist);
 
           // Prefix sum along rows
@@ -480,8 +494,8 @@ void multinomial_kernel(
               numCategories,
               prefixSum_ptr,
               normDist_ptr);
-        }
-      });
+        });
+  }
 
   if (inputSize == 1) {
     result.resize_({n_sample});
