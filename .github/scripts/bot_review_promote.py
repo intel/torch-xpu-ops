@@ -287,7 +287,12 @@ class Repo:
 
 def evaluate_ci(repo, sha, workdir):
     run = repo.pull_run(sha)
-    if run is None or run["status"] != "completed":
+    if run is None:
+        # `pull` did not run for this commit (e.g. a stacked PR whose base is
+        # not main). Like Dr.CI with no jobs, there is nothing to wait for; a
+        # run that was only queued would be listed here.
+        return False, [], []
+    if run["status"] != "completed":
         return True, [], []
     jobs = api_items(f"repos/{repo.name}/actions/runs/{run['id']}/jobs?per_page=100", ".jobs[]")
     nightly = {}
@@ -361,8 +366,10 @@ def promote(repo, pr_number):
         digest = hashlib.sha1("\n".join(blockers).encode()).hexdigest()[:8]
         comment_once(repo, pr_number, sha, f"ci:{digest}",
                      "Bot review passed, but CI blocks `ready for review`:\n\n"
-                     f"{shown}{more}\n\nFix new failures and push. Rerun jobs that failed for "
-                     "infrastructure reasons (`@torchxpubot rerun failed`).")
+                     f"{shown}{more}\n\n\"On main\" means the latest build-from-source nightly. Fix new "
+                     "failures and push; if your branch is far behind main, rebase first, since a "
+                     "fix already on main shows up here as a new failure. Rerun jobs that failed "
+                     "for infrastructure reasons (`@torchxpubot rerun failed`).")
         return
     gh("api", f"repos/{repo.name}/issues/{pr_number}/labels", "-f", f"labels[]={READY}")
     gh("api", "-X", "DELETE",

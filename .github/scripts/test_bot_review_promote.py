@@ -218,3 +218,11 @@ def test_nightly_baseline_is_at_most_five_days_old():
             {"id": 3, "display_title": "Weekly / Build-from-source", "created_at": "2026-11-15T16:10:00Z"},
             {"id": 4, "display_title": "Nightly / Build-from-source", "created_at": "2026-11-12T13:15:00Z"}]
     assert [r["id"] for r in p.recent_nightlies(runs, now)] == [1, 3]
+
+
+def test_no_pull_run_means_nothing_to_wait_for(tmp_path):
+    class NoRun(p.Repo):
+        def pull_run(self, sha):
+            return None
+
+    assert p.evaluate_ci(NoRun("o/r"), "s" * 40, tmp_path) == (False, [], [])
