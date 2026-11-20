@@ -495,6 +495,13 @@ void ProcessGroupXCCL::attachRecordFunctionEndCallback(
       /*use_future*/ false);
 }
 
+void ProcessGroupXCCL::trackInflightWork(
+    const c10::intrusive_ptr<WorkXCCL>& work) {
+  std::lock_guard<std::mutex> lock(inflightWorksMutex_);
+  std::erase_if(inflightWorks_, [](WorkXCCL& w) { return w.isCompleted(); });
+  inflightWorks_.emplace_back(*work);
+}
+
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
 uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
@@ -767,6 +774,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   if (capture_status == c10::xpu::CaptureStatus::Executing) {
     attachRetireAndStatusCallback(work, pgStatus_);
     setEnqueuedPgStatus(work);
+    if (coalescedAsync_) {
+      trackInflightWork(work);
+    }
   }
 
   coalescing_state_ = 0;
@@ -932,6 +942,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   if (capture_status == c10::xpu::CaptureStatus::Executing) {
     setEnqueuedPgStatus(work);
     attachRetireAndStatusCallback(work, pgStatus_);
+    if (asyncOp && !coalescing_state_) {
+      trackInflightWork(work);
+    }
   }
 
   return asyncOp ? work : nullptr;
