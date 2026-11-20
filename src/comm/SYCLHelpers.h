@@ -297,7 +297,7 @@ static inline void sycl_kernel_submit(
     int64_t global_range,
     int64_t local_range,
     ::sycl::queue q,
-    int slm_sz,
+    size_t slm_sz,
     Kargs... args) {
 #if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
   sycl::context ctxt = q.get_context();
@@ -340,7 +340,7 @@ static inline void sycl_kernel_submit(
     ::sycl::range<dim> global_range,
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
-    int slm_sz,
+    size_t slm_sz,
     Kargs... args) {
 #if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
   sycl::context ctxt = q.get_context();
