@@ -260,24 +260,12 @@ Branch on its verdict:
 - `REPRODUCED` → continue to Stage 3. Record the `refined_command`
   and `base` for downstream stages.
 - `NOT_REPRODUCED` → the issue is stale; Stage 6 Report with
-  `SKIPPED(reason=no_longer_reproduces)` — **unless the triggering
-  comment asks for a change that does not need the bug to reproduce**
-  (typically "add a regression test"). Then the change is the fix and
-  must leave a patch exactly like any other fix:
-  1. Create the fix branch as in Stage 3 (`target_repo` = where the
-     request says; for an upstream `pytorch/pytorch#<M>` issue default to
-     the upstream test file, `target_repo=pytorch`), from `$base`.
-  2. Make the change, then do the Stage 4 `READY` step unchanged:
-     commit onto the branch and write `fix_result.json`
-     (`verdict=PENDING_VERIFY`, `root_cause` = "no longer reproduces;
-     test-only change requested").
-  3. Stage 5 Verify: the new test must pass on the current base. When
-     an affected build is available (e.g. the version in the report),
-     also show it fails there, and report before/after.
-  4. Stage 6 Report `IMPLEMENTING(fix_verified)`, noting "test-only".
-  Never leave such a change uncommitted: the Export step only exports
-  `base_sha..branch`, so an edit without a commit yields no patch and
-  fails with "branch not found".
+  `SKIPPED(reason=no_longer_reproduces)` — unless the trigger asks for
+  a change that doesn't need a repro (e.g. "add a regression test").
+  Then run Stages 3–5 as normal (upstream issue → `target_repo=pytorch`;
+  `root_cause` = "no longer reproduces; test-only change"). The test must
+  pass on `$base`, and should fail on an affected build if one is
+  available. Report `IMPLEMENTING(fix_verified)` and note that it's test-only.
 - `NO_REPRODUCER` → Stage 6 Report with
   `NEEDS_HUMAN(reason=no_reproducer)`.
 - `CANNOT_VERIFY` → Stage 6 Report with
