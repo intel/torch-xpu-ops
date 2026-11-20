@@ -1115,7 +1115,16 @@ class TestCudaMultiGPU(TestCase):
                 GPU_TYPE
             ).mem_get_info(device)
 
-            self.assertLess(after_free_bytes, before_free_bytes)
+            if TEST_XPU:
+                # The SYCL runtime pools device allocations beneath the XPU
+                # caching allocator, so empty_cache() need not return memory to
+                # the driver and a same-sized re-allocation can be served from
+                # that pool, leaving the device-global free counter unchanged.
+                # Upstream's XPU-native test asserts the same weaker bound, see
+                # pytorch test/test_xpu.py TestXpu.test_mem_get_info.
+                self.assertLessEqual(after_free_bytes, before_free_bytes)
+            else:
+                self.assertLess(after_free_bytes, before_free_bytes)
             self.assertEqual(before_available_bytes, after_available_bytes)
 
         # Test calls with different device representations
