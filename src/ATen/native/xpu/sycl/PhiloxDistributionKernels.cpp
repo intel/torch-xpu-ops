@@ -11,9 +11,11 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/ExpandUtils.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/PhiloxStatelessRNG.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
@@ -22,29 +24,64 @@
 #include <c10/util/SmallVector.h>
 #include <comm/SYCLContext.h>
 
+#include <limits>
+#include <optional>
 #include <type_traits>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/_philox_normal_native.h>
+#include <ATen/ops/_philox_randint_native.h>
 #include <ATen/ops/_philox_uniform_native.h>
 #endif
 
 namespace at::native::xpu {
 
-// Elements produced per Philox 4x32 call:
-// 4 for float/half/bfloat16, 2 for double.
+enum class PhiloxDistributionKind { Uniform, Normal, Randint };
+
+// Types shared by every distribution for a given scalar type.
 template <typename scalar_t>
-constexpr int elems_per_call = std::is_same_v<scalar_t, double> ? 2 : 4;
+struct PhiloxSamplingWidth {
+  // Unsigned width used to reduce randint samples.
+  using philox_uint_t =
+      std::conditional_t<sizeof(scalar_t) == 8, uint64_t, uint32_t>;
+};
+
+// Per-distribution type traits.
+template <typename scalar_t, PhiloxDistributionKind kind>
+struct PhiloxDistributionTraits : PhiloxSamplingWidth<scalar_t> {};
+
+template <typename scalar_t>
+struct PhiloxDistributionTraits<scalar_t, PhiloxDistributionKind::Uniform>
+    : PhiloxSamplingWidth<scalar_t> {
+  // Bounds stay in the output precision, matching CPU/CUDA.
+  using param_t = scalar_t;
+};
+
+template <typename scalar_t>
+struct PhiloxDistributionTraits<scalar_t, PhiloxDistributionKind::Normal>
+    : PhiloxSamplingWidth<scalar_t> {
+  // Box-Muller runs in compute precision.
+  using param_t =
+      std::conditional_t<std::is_same_v<scalar_t, double>, double, float>;
+};
+
+template <typename scalar_t>
+struct PhiloxDistributionTraits<scalar_t, PhiloxDistributionKind::Randint>
+    : PhiloxSamplingWidth<scalar_t> {
+  // Keep lo and range in the sampled width so 64-bit ranges stay exact.
+  using param_t = typename PhiloxSamplingWidth<scalar_t>::philox_uint_t;
+};
 
 // --- Box-Muller normal transforms ---
 
 template <typename scalar_t>
-inline sycl::vec<scalar_t, elems_per_call<scalar_t>> box_muller(uint4 r) {
+inline sycl::vec<scalar_t, at::native::elems_per_call<scalar_t>> box_muller(
+    uint4 r) {
   static_assert(
       std::is_same_v<scalar_t, float> || std::is_same_v<scalar_t, double>);
-  constexpr int size = elems_per_call<scalar_t>;
+  constexpr int size = at::native::elems_per_call<scalar_t>;
   constexpr scalar_t M = static_cast<scalar_t>(2.3283064365386963e-10);
   constexpr scalar_t M_SQUARED = M * M;
   constexpr scalar_t TWO_PI = static_cast<scalar_t>(6.2831853071795864);
@@ -75,17 +112,16 @@ inline sycl::vec<scalar_t, elems_per_call<scalar_t>> box_muller(uint4 r) {
   return result;
 }
 
-template <typename scalar_t, bool is_uniform, typename key_offset_calc_t>
+template <
+    typename scalar_t,
+    PhiloxDistributionKind kind,
+    typename key_offset_calc_t>
 struct PhiloxDistributionFunctor {
-  // Uniform masks the raw bits against the output dtype's mantissa, so its
-  // bounds stay in scalar_t. Normal is transformed in compute precision.
-  using param_t = std::conditional_t<
-      is_uniform,
-      scalar_t,
-      std::conditional_t<std::is_same_v<scalar_t, double>, double, float>>;
-
+  using param_t = typename PhiloxDistributionTraits<scalar_t, kind>::param_t;
+  using philox_uint_t =
+      typename PhiloxDistributionTraits<scalar_t, kind>::philox_uint_t;
   void operator()(sycl::nd_item<1> item) const {
-    constexpr int epc = elems_per_call<scalar_t>;
+    constexpr int epc = at::native::elems_per_call<scalar_t>;
     XPU_KERNEL_LOOP_TYPE(item, index, total_chunks_, int64_t) {
       const int64_t key_idx = index / chunks_per_key_;
       const int64_t chunk = index % chunks_per_key_;
@@ -134,10 +170,12 @@ struct PhiloxDistributionFunctor {
 
  private:
   void write_values(uint4 r, int64_t base, int count) const {
-    if constexpr (is_uniform) {
+    if constexpr (kind == PhiloxDistributionKind::Uniform) {
       write_uniform(r, base, count);
-    } else {
+    } else if constexpr (kind == PhiloxDistributionKind::Normal) {
       write_normal(r, base, count);
+    } else {
+      write_randint(r, base, count);
     }
   }
 
@@ -173,12 +211,41 @@ struct PhiloxDistributionFunctor {
   }
 
   void write_normal(uint4 r, int64_t base, int count) const {
-    using compute_t =
-        std::conditional_t<std::is_same_v<scalar_t, double>, double, float>;
+    using compute_t = typename PhiloxDistributionTraits<
+        scalar_t,
+        PhiloxDistributionKind::Normal>::param_t;
     const auto normals = box_muller<compute_t>(r);
     for (int j = 0; j < count; j++) {
       output_[base + j] = static_cast<scalar_t>(normals[j] * param1_ + param0_);
     }
+  }
+
+  void write_randint(uint4 r, int64_t base, int count) const {
+    if constexpr (sizeof(scalar_t) == 8) {
+      // Pack pairs of uint32 for ~64 bits of randomness per element.
+      const philox_uint_t vals[2] = {
+          (static_cast<philox_uint_t>(r.x) << 32) | r.y,
+          (static_cast<philox_uint_t>(r.z) << 32) | r.w};
+      for (int j = 0; j < count; j++) {
+        output_[base + j] = transform_randint(vals[j]);
+      }
+    } else {
+      const philox_uint_t vals[4] = {r.x, r.y, r.z, r.w};
+      for (int j = 0; j < count; j++) {
+        output_[base + j] = transform_randint(vals[j]);
+      }
+    }
+  }
+
+  template <typename philox_uint_t>
+  scalar_t transform_randint(philox_uint_t rand) const {
+    // A zero range marks the full range of the dtype, where the raw bits are
+    // already the answer.
+    if (param1_ == 0) {
+      return static_cast<scalar_t>(rand);
+    }
+    return static_cast<scalar_t>(
+        static_cast<philox_uint_t>(param0_ + rand % param1_));
   }
 
   scalar_t* output_;
@@ -187,19 +254,14 @@ struct PhiloxDistributionFunctor {
   int64_t chunks_per_key_;
   int64_t total_chunks_;
   key_offset_calc_t key_offset_calc_;
-  param_t param0_; // low or mean
-  param_t param1_; // high or stddev
+  param_t param0_; // low or mean; randint low, or 0 for the full range
+  param_t param1_; // high or stddev; randint range, or 0 for the full range
 };
 
 void philox_distribution_validate(
     const char* op_name,
     const Tensor& self,
     const Tensor& key) {
-  TORCH_CHECK(
-      self.is_floating_point(),
-      op_name,
-      ": self must be a floating point tensor, got ",
-      self.scalar_type());
   TORCH_CHECK(
       key.scalar_type() == kUInt64,
       op_name,
@@ -238,19 +300,21 @@ void philox_distribution_validate(
   }
 }
 
-template <typename scalar_t, bool is_uniform, typename key_offset_calc_t>
+template <
+    typename scalar_t,
+    PhiloxDistributionKind kind,
+    typename key_offset_calc_t>
 void philox_distribution_kernel(
     Tensor& output,
     const Tensor& key,
     int64_t num_keys,
     int64_t elems_per_key,
     key_offset_calc_t key_offset_calc,
-    double param0,
-    double param1) {
+    typename PhiloxDistributionTraits<scalar_t, kind>::param_t param0,
+    typename PhiloxDistributionTraits<scalar_t, kind>::param_t param1) {
   using functor_t =
-      PhiloxDistributionFunctor<scalar_t, is_uniform, key_offset_calc_t>;
-  using param_t = typename functor_t::param_t;
-  constexpr int64_t epc = elems_per_call<scalar_t>;
+      PhiloxDistributionFunctor<scalar_t, kind, key_offset_calc_t>;
+  constexpr int64_t epc = at::native::elems_per_call<scalar_t>;
   const int64_t chunks_per_key = at::ceil_div(elems_per_key, epc);
   const int64_t total_chunks = num_keys * chunks_per_key;
   constexpr int64_t work_group_size =
@@ -265,8 +329,8 @@ void philox_distribution_kernel(
       chunks_per_key,
       total_chunks,
       key_offset_calc,
-      static_cast<param_t>(param0),
-      static_cast<param_t>(param1));
+      param0,
+      param1);
 
   sycl_kernel_submit(
       sycl::range<1>(work_group_num * work_group_size),
@@ -275,12 +339,12 @@ void philox_distribution_kernel(
       functor);
 }
 
-template <bool is_uniform>
+template <typename scalar_t, PhiloxDistributionKind kind>
 void philox_distribution_launch(
     Tensor& self,
     const Tensor& key,
-    double param0,
-    double param1) {
+    typename PhiloxDistributionTraits<scalar_t, kind>::param_t param0,
+    typename PhiloxDistributionTraits<scalar_t, kind>::param_t param1) {
   auto output = self.contiguous();
   const auto key_contig = key.contiguous();
 
@@ -300,43 +364,35 @@ void philox_distribution_launch(
   }
   const int64_t num_keys = self.numel() / elems_per_key;
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf,
-      kBFloat16,
-      self.scalar_type(),
-      is_uniform ? "_philox_uniform_" : "_philox_normal_",
-      [&] {
-        if (key.dim() == 1) {
-          philox_distribution_kernel<scalar_t, is_uniform>(
-              output,
-              key_contig,
-              num_keys,
-              elems_per_key,
-              TrivialOffsetCalculator<1, int64_t>(),
-              param0,
-              param1);
-        } else {
-          c10::SmallVector<int64_t, MAX_DIMS> key_sizes(key_dims);
-          c10::SmallVector<int64_t, MAX_DIMS> key_strides(key_dims);
-          for (int64_t i = 0; i < key_dims; i++) {
-            const int64_t dim = key_dims - 1 - i;
-            key_sizes[i] = self.size(dim);
-            key_strides[i] =
-                key_contig.size(dim) > 1 ? key_contig.stride(dim) : 0;
-          }
-          const int64_t* key_strides_ptr = key_strides.data();
-          const auto key_offset_calc = OffsetCalculator<1, int64_t>(
-              key_dims, key_sizes.data(), &key_strides_ptr);
-          philox_distribution_kernel<scalar_t, is_uniform>(
-              output,
-              key_contig,
-              num_keys,
-              elems_per_key,
-              key_offset_calc,
-              param0,
-              param1);
-        }
-      });
+  if (key.dim() == 1) {
+    philox_distribution_kernel<scalar_t, kind>(
+        output,
+        key_contig,
+        num_keys,
+        elems_per_key,
+        TrivialOffsetCalculator<1, int64_t>(),
+        param0,
+        param1);
+  } else {
+    c10::SmallVector<int64_t, MAX_DIMS> key_sizes(key_dims);
+    c10::SmallVector<int64_t, MAX_DIMS> key_strides(key_dims);
+    for (int64_t i = 0; i < key_dims; i++) {
+      const int64_t dim = key_dims - 1 - i;
+      key_sizes[i] = self.size(dim);
+      key_strides[i] = key_contig.size(dim) > 1 ? key_contig.stride(dim) : 0;
+    }
+    const int64_t* key_strides_ptr = key_strides.data();
+    const auto key_offset_calc = OffsetCalculator<1, int64_t>(
+        key_dims, key_sizes.data(), &key_strides_ptr);
+    philox_distribution_kernel<scalar_t, kind>(
+        output,
+        key_contig,
+        num_keys,
+        elems_per_key,
+        key_offset_calc,
+        param0,
+        param1);
+  }
 
   if (output.data_ptr() != self.data_ptr()) {
     self.copy_(output);
@@ -348,9 +404,20 @@ Tensor& _philox_uniform_xpu_(
     const Tensor& key,
     double low,
     double high) {
+  TORCH_CHECK(
+      self.is_floating_point(),
+      "_philox_uniform_: self must be a floating point tensor, got ",
+      self.scalar_type());
   philox_distribution_validate("_philox_uniform_", self, key);
   if (self.numel() > 0) {
-    philox_distribution_launch</*is_uniform=*/true>(self, key, low, high);
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, self.scalar_type(), "_philox_uniform_", [&] {
+          philox_distribution_launch<scalar_t, PhiloxDistributionKind::Uniform>(
+              self,
+              key,
+              static_cast<scalar_t>(low),
+              static_cast<scalar_t>(high));
+        });
   }
   return self;
 }
@@ -360,10 +427,104 @@ Tensor& _philox_normal_xpu_(
     const Tensor& key,
     double mean,
     double stddev) {
+  TORCH_CHECK(
+      self.is_floating_point(),
+      "_philox_normal_: self must be a floating point tensor, got ",
+      self.scalar_type());
   philox_distribution_validate("_philox_normal_", self, key);
   if (self.numel() > 0) {
-    philox_distribution_launch</*is_uniform=*/false>(self, key, mean, stddev);
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, self.scalar_type(), "_philox_normal_", [&] {
+          using compute_t = typename PhiloxDistributionTraits<
+              scalar_t,
+              PhiloxDistributionKind::Normal>::param_t;
+          philox_distribution_launch<scalar_t, PhiloxDistributionKind::Normal>(
+              self,
+              key,
+              static_cast<compute_t>(mean),
+              static_cast<compute_t>(stddev));
+        });
   }
+  return self;
+}
+
+Tensor& _philox_randint_xpu_(
+    Tensor& self,
+    const Tensor& key,
+    std::optional<int64_t> low,
+    std::optional<int64_t> high) {
+  const auto st = self.scalar_type();
+  TORCH_CHECK(
+      isIntegralType(st, /*includeBool=*/false),
+      "_philox_randint_: self must have an integer dtype, got ",
+      st);
+  philox_distribution_validate("_philox_randint_", self, key);
+
+  AT_DISPATCH_V2(
+      st,
+      "_philox_randint_",
+      AT_WRAP([&] {
+        // An absent high means the dtype's exclusive upper limit; callers pass
+        // it as None since max + 1 is not representable as int64 for every
+        // dtype.
+        constexpr int64_t dtype_low =
+            static_cast<int64_t>(std::numeric_limits<scalar_t>::min());
+        const bool spans_low = !low.has_value() || *low == dtype_low;
+        const bool spans_high = !high.has_value();
+        using philox_uint_t = typename PhiloxDistributionTraits<
+            scalar_t,
+            PhiloxDistributionKind::Randint>::philox_uint_t;
+
+        // A zero range marks the dtype's full range.
+        philox_uint_t lo = 0;
+        philox_uint_t range = 0;
+        if (!(spans_low && spans_high)) {
+          // Number of values the dtype holds, which wraps to 0 when the dtype
+          // fills the sampled width. Shifting in two steps keeps this
+          // well-defined.
+          constexpr philox_uint_t dtype_count =
+              (philox_uint_t{1} << (8 * sizeof(scalar_t) - 1)) << 1;
+          lo = low.has_value() ? static_cast<philox_uint_t>(*low)
+                               : static_cast<philox_uint_t>(dtype_low);
+          const philox_uint_t hi = high.has_value()
+              ? static_cast<philox_uint_t>(*high)
+              : static_cast<philox_uint_t>(
+                    static_cast<philox_uint_t>(dtype_low) + dtype_count);
+          range = hi - lo;
+          TORCH_CHECK(
+              range != 0,
+              "_philox_randint_: [low, high) must be non-empty; pass high=None "
+              "for the dtype's full range");
+          // Each element of a 32-bit sample draws 32 random bits, so reducing
+          // them modulo a large range noticeably oversamples the low end. A
+          // range that divides the sampled width evenly is exact at any size,
+          // so only guard the ranges that actually skew. (0 - range) is
+          // 2^32 - range, whose remainder is 2^32 % range without needing a
+          // literal that does not fit.
+          if constexpr (sizeof(philox_uint_t) == 4) {
+            const philox_uint_t remainder =
+                static_cast<philox_uint_t>(philox_uint_t{0} - range) % range;
+            TORCH_CHECK(
+                remainder == 0 ||
+                    static_cast<uint64_t>(range) < at::native::kMaxRange32,
+                "_philox_randint_: range (high - low = ",
+                range,
+                ") does not divide 2^32 evenly and is too large for the output "
+                "dtype ",
+                st,
+                ". Each element draws only 32 random bits, so a non-dividing "
+                "range >= 2^28 gives a significantly biased distribution. Use "
+                "a range that divides 2^32 (a power of two), or a 64-bit dtype "
+                "(torch.int64 or torch.uint64).");
+          }
+        }
+
+        if (self.numel() > 0) {
+          philox_distribution_launch<scalar_t, PhiloxDistributionKind::Randint>(
+              self, key, lo, range);
+        }
+      }),
+      AT_EXPAND(AT_INTEGRAL_TYPES_V2));
   return self;
 }
 
