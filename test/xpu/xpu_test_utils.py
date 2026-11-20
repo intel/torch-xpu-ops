@@ -384,6 +384,11 @@ _none_device_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
     ("_refs.true_divide", "test_python_ref_executor"),
+    # These ops are routed to the CPU fallback (see XPUFallback.cpp), which
+    # honors the out= stride contract, so test_out passes on XPU.
+    ("cholesky_inverse", "test_out"),
+    ("ormqr", "test_out"),
+    ("triangular_solve", "test_out"),
 ]
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
