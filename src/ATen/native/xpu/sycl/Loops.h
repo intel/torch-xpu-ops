@@ -115,6 +115,8 @@ namespace launch_config {
 constexpr int broadcast_work_group_size = 256;
 constexpr int broadcast_wide_work_group_size = 128;
 constexpr int broadcast_wide_sub_group_size = 16;
+
+constexpr int mixed_dtype_sub_group_size = 16;
 } // namespace launch_config
 
 template <
@@ -1128,12 +1130,14 @@ static inline void launch_strided_binary(
 static inline bool is_aligned_strided_row(
     const TensorIteratorBase& iter,
     int input,
-    int vec_size) {
+    int vec_size,
+    bool allow_1d_tail = false) {
   const auto element_size = iter.element_size(input);
   const auto strides = iter.strides(input);
   const auto vector_bytes = element_size * vec_size;
+  const bool needs_full_rows = iter.ndim() > 1 || !allow_1d_tail;
   if (vector_bytes > 16 || strides[0] != element_size ||
-      iter.shape()[0] % vec_size != 0 ||
+      (needs_full_rows && iter.shape()[0] % vec_size != 0) ||
       reinterpret_cast<uintptr_t>(iter.data_ptr(input)) % vector_bytes != 0) {
     return false;
   }
@@ -1317,6 +1321,241 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
 }
 
 template <
+    typename low_t,
+    int float_mask,
+    typename func_t,
+    typename calc_t,
+    bool scalar_broadcast = false>
+struct MixedDtypeVectorizedKernel {
+  using traits = function_traits<func_t>;
+  using output_t = typename traits::result_type;
+  static constexpr int arity = traits::arity;
+  // Only the compact layout broadcasts every FP32 input.
+  static constexpr int vec_size =
+      scalar_broadcast && sizeof(output_t) <= 2 ? 8 : 4;
+
+  template <size_t i>
+  using storage_t =
+      std::conditional_t<(float_mask & (1 << i)) != 0, float, low_t>;
+
+  template <size_t i>
+  using arg_t = typename traits::template arg<i>::type;
+
+  template <size_t i>
+  static arg_t<i> convert_input(storage_t<i> value) {
+    if constexpr (
+        std::is_same_v<storage_t<i>, float> && std::is_same_v<arg_t<i>, Half>) {
+      // Preserve the Half bits when the functor widens to FP32 for math.
+      return Half(
+          c10::detail::fp16_ieee_from_fp32_value(value), Half::from_bits());
+    }
+    return c10::convert<arg_t<i>>(value);
+  }
+
+  template <size_t i>
+  bool is_broadcast() const {
+    if constexpr (scalar_broadcast) {
+      return (float_mask & (1 << i)) != 0;
+    }
+    return (broadcast_mask & (1 << i)) != 0;
+  }
+
+  template <size_t i>
+  const storage_t<i>* input_ptr(uint32_t offset) const {
+    if constexpr (is_trivial_offset_calculator_v<calc_t>) {
+      offset = is_broadcast<i>() ? 0 : offset;
+    }
+    return reinterpret_cast<const storage_t<i>*>(data[i + 1]) + offset;
+  }
+
+  template <size_t i>
+  auto load_vector(uint32_t offset) const {
+    const auto* input = input_ptr<i>(offset);
+    memory::aligned_vector<arg_t<i>, vec_size> values;
+    if (is_broadcast<i>()) {
+      const auto value = convert_input<i>(c10::load(input));
+#pragma unroll
+      for (int j = 0; j < vec_size; ++j) {
+        values.val[j] = value;
+      }
+    } else {
+      const auto loaded = memory::load_vector<vec_size>(input, 0);
+#pragma unroll
+      for (int j = 0; j < vec_size; ++j) {
+        values.val[j] = convert_input<i>(loaded.val[j]);
+      }
+    }
+    return values;
+  }
+
+  template <size_t... i>
+  void apply_vector(uint32_t vector_index, std::index_sequence<i...>) const {
+    const auto offsets = calc.get(vector_index * vec_size);
+    auto* output = reinterpret_cast<output_t*>(data[0]);
+    apply_strided_vector<vec_size>(
+        f, output, vector_index, load_vector<i>(offsets[i])...);
+  }
+
+  template <size_t... i>
+  void apply_scalar(uint32_t index, std::index_sequence<i...>) const {
+    auto* output = reinterpret_cast<output_t*>(data[0]);
+    output[index] = f(convert_input<i>(c10::load(input_ptr<i>(index)))...);
+  }
+
+  [[sycl::reqd_sub_group_size(launch_config::mixed_dtype_sub_group_size)]] void
+  operator()(sycl::nd_item<1> item) const {
+    constexpr auto indices = std::make_index_sequence<arity>{};
+    const uint32_t vector_index = static_cast<uint32_t>(item.get_group(0)) *
+            launch_config::broadcast_work_group_size +
+        static_cast<uint32_t>(item.get_local_id(0));
+    const uint32_t full_vectors = numel / vec_size;
+    if (vector_index < full_vectors) {
+      apply_vector(vector_index, indices);
+    } else if constexpr (is_trivial_offset_calculator_v<calc_t>) {
+      if (vector_index == full_vectors) {
+        for (uint32_t index = vector_index * vec_size; index < numel; ++index) {
+          apply_scalar(index, indices);
+        }
+      }
+    }
+  }
+
+  at::detail::Array<char*, arity + 1> data;
+  calc_t calc;
+  func_t f;
+  int broadcast_mask;
+  uint32_t numel;
+};
+
+template <typename low_t, int mask = 1, typename func_t, typename calc_t>
+static inline void launch_mixed_dtype_kernel(
+    TensorIteratorBase& iter,
+    const func_t& f,
+    int float_mask,
+    int broadcast_mask,
+    bool wide_aligned,
+    const calc_t& calc) {
+  constexpr int arity = function_traits<func_t>::arity;
+  if (float_mask == mask) {
+    at::detail::Array<char*, arity + 1> data;
+    for (int i = 0; i <= arity; ++i) {
+      data[i] = static_cast<char*>(iter.data_ptr(i));
+    }
+    const auto numel = static_cast<uint32_t>(iter.numel());
+    auto submit = [&](auto kernel) {
+      constexpr int work_group_size = launch_config::broadcast_work_group_size;
+      constexpr int vec_size = decltype(kernel)::vec_size;
+      const auto groups = ceil_div<int64_t>(numel, work_group_size * vec_size);
+      sycl_kernel_submit(
+          groups * work_group_size,
+          work_group_size,
+          getCurrentSYCLQueue(),
+          kernel);
+    };
+    if constexpr (is_trivial_offset_calculator_v<calc_t>) {
+      using scalar_kernel_t =
+          MixedDtypeVectorizedKernel<low_t, mask, func_t, calc_t, true>;
+      if (broadcast_mask == mask &&
+          (scalar_kernel_t::vec_size == 4 || wide_aligned)) {
+        submit(scalar_kernel_t{data, calc, f, broadcast_mask, numel});
+        return;
+      }
+    }
+    using kernel_t = MixedDtypeVectorizedKernel<low_t, mask, func_t, calc_t>;
+    submit(kernel_t{data, calc, f, broadcast_mask, numel});
+  } else if constexpr (mask + 1 < (1 << arity) - 1) {
+    launch_mixed_dtype_kernel<low_t, mask + 1>(
+        iter, f, float_mask, broadcast_mask, wide_aligned, calc);
+  }
+}
+
+template <typename args_t>
+struct MixedDtypeArgsSupported;
+
+template <typename... args_t>
+struct MixedDtypeArgsSupported<std::tuple<args_t...>>
+    : std::bool_constant<(
+          (std::is_same_v<args_t, float> || std::is_same_v<args_t, Half> ||
+           std::is_same_v<args_t, BFloat16>)&&...)> {};
+
+// Load FP32 plus one low-precision storage type without dynamic dtype switches,
+// preserving each functor argument's conversion. Vectors require dense output
+// and aligned unit/zero inner strides. Only 1D layouts can have scalar tails.
+template <typename func_t, bool enable_broadcast_vec>
+static inline bool try_launch_mixed_dtype_kernel(
+    TensorIteratorBase& iter,
+    const func_t& f) {
+  using traits = function_traits<func_t>;
+  using output_t = typename traits::result_type;
+  constexpr int arity = traits::arity;
+  if constexpr (
+      (arity == 2 || arity == 3) &&
+      MixedDtypeArgsSupported<typename traits::ArgsTuple>::value &&
+      (std::is_same_v<output_t, float> || std::is_same_v<output_t, Half> ||
+       std::is_same_v<output_t, BFloat16> || std::is_same_v<output_t, bool>)) {
+    if (iter.dtype(0) != c10::CppTypeToScalarType<output_t>::value ||
+        iter.numel() < 4 || (!enable_broadcast_vec && !iter.is_contiguous())) {
+      return false;
+    }
+    int float_mask = 0;
+    int broadcast_mask = 0;
+    ScalarType low_dtype = kFloat;
+    for (int i = 0; i < arity; ++i) {
+      const auto dtype = iter.dtype(i + 1);
+      if (dtype == kFloat) {
+        float_mask |= 1 << i;
+      } else if (dtype == kHalf || dtype == kBFloat16) {
+        if (low_dtype != kFloat && low_dtype != dtype) {
+          return false;
+        }
+        low_dtype = dtype;
+      } else {
+        return false;
+      }
+    }
+    if (float_mask == 0 || float_mask == (1 << arity) - 1) {
+      return false;
+    }
+    if (!has_dense_output(iter, sizeof(output_t))) {
+      return false;
+    }
+    bool wide_aligned = iter.ndim() == 1 && sizeof(output_t) <= 2;
+    for (int i = 0; i <= arity; ++i) {
+      if (i != 0) {
+        if (broadcast_overlaps_output(iter, iter.data_ptr(0), i, true)) {
+          return false;
+        }
+        if (iter.strides(i)[0] == 0) {
+          broadcast_mask |= 1 << (i - 1);
+          continue;
+        }
+      }
+      if (!is_aligned_strided_row(iter, i, 4, /*allow_1d_tail=*/true)) {
+        return false;
+      }
+      wide_aligned = wide_aligned &&
+          is_aligned_strided_row(iter, i, 8, /*allow_1d_tail=*/true);
+    }
+    auto launch = [&](const auto& calc) {
+      if (low_dtype == kHalf) {
+        launch_mixed_dtype_kernel<Half>(
+            iter, f, float_mask, broadcast_mask, wide_aligned, calc);
+      } else {
+        launch_mixed_dtype_kernel<BFloat16>(
+            iter, f, float_mask, broadcast_mask, wide_aligned, calc);
+      }
+    };
+    if (iter.ndim() == 1) {
+      launch(TrivialOffsetCalculator<arity>{});
+    } else {
+      launch(make_input_offset_calculator<arity>(iter));
+    }
+    return true;
+  }
+  return false;
+}
+
+template <
     typename func_t,
     bool enable_broadcast_vec = true,
     bool packed_strided_unary = false>
@@ -1326,6 +1565,11 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
         func_t,
         enable_broadcast_vec,
         packed_strided_unary>(iter, f);
+  }
+  // Try typed mixed-storage vectors before dynamic casting; remaining casts
+  // use the FP-only switch when legal, then the generic loader/storer.
+  if (try_launch_mixed_dtype_kernel<func_t, enable_broadcast_vec>(iter, f)) {
+    return;
   }
   using traits = function_traits<func_t>;
   using arg0_t = typename traits::result_type;
@@ -1453,7 +1697,9 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
 
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
-      // Keep legacy row-vector restrictions for split iterators.
+      // Keep the legacy row-vector and mixed-storage strided restrictions for
+      // split iterators; iterator-local broadcast/packed-strided paths remain
+      // eligible and validate their own strides and pointers.
       gpu_kernel<func_t, false>(sub_iter, f);
     }
     return;
@@ -1504,11 +1750,76 @@ struct BinaryFunctor {
   func_t f;
 };
 
+template <typename func_t>
+bool opmath_gpu_kernel_with_mixed_types(
+    TensorIteratorBase& iter,
+    const func_t& f) {
+  if (iter.dtype(0) != kFloat || iter.dtype(1) == iter.dtype(2) ||
+      !iter.device(1).is_xpu() || !iter.device(2).is_xpu()) {
+    return false;
+  }
+
+  // Keep the casting fallback when a broadcast input overlaps the output.
+  if (iter.numel() > 1 && !iter.is_contiguous() &&
+      has_dense_output(iter, sizeof(float))) {
+    const auto* output = iter.data_ptr(0);
+    if (broadcast_overlaps_output(iter, output, 1, /*broadcast_only=*/true) ||
+        broadcast_overlaps_output(iter, output, 2, /*broadcast_only=*/true)) {
+      return false;
+    }
+  }
+
+  // Fix the storage types on the host so the existing nocast path can
+  // vectorize.
+  if (iter.dtype(1) == kFloat) {
+    if (iter.dtype(2) == kHalf) {
+      gpu_kernel(iter, BinaryFunctor<float, Half, float, func_t>(f));
+    } else if (iter.dtype(2) == kBFloat16) {
+      gpu_kernel(iter, BinaryFunctor<float, BFloat16, float, func_t>(f));
+    } else {
+      return false;
+    }
+  } else if (iter.dtype(2) == kFloat) {
+    if (iter.dtype(1) == kHalf) {
+      gpu_kernel(iter, BinaryFunctor<Half, float, float, func_t>(f));
+    } else if (iter.dtype(1) == kBFloat16) {
+      gpu_kernel(iter, BinaryFunctor<BFloat16, float, float, func_t>(f));
+    } else {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  return true;
+}
+
+template <
+    typename arg1_t,
+    typename arg2_t,
+    typename return_t,
+    bool enable_mixed_types = true,
+    typename func_t>
+void opmath_gpu_kernel_binary(TensorIteratorBase& iter, const func_t& f) {
+  using traits = function_traits<func_t>;
+  if constexpr (
+      enable_mixed_types && std::is_same_v<arg1_t, float> &&
+      std::is_same_v<arg2_t, float> && std::is_same_v<return_t, float> &&
+      std::is_same_v<typename traits::template arg<0>::type, float> &&
+      std::is_same_v<typename traits::template arg<1>::type, float> &&
+      std::is_same_v<typename traits::result_type, float>) {
+    if (opmath_gpu_kernel_with_mixed_types(iter, f)) {
+      return;
+    }
+  }
+  gpu_kernel(iter, BinaryFunctor<arg1_t, arg2_t, return_t, func_t>(f));
+}
+
 template <
     typename arg1_t,
     typename arg2_t = arg1_t,
     typename return_t = arg1_t,
-    typename func_t>
+    typename func_t,
+    bool enable_mixed_types = true>
 void opmath_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
   TORCH_INTERNAL_ASSERT(iter.ntensors() == 3);
 
@@ -1531,7 +1842,8 @@ void opmath_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
     iter.remove_operand(2);
     gpu_kernel(iter, bf);
   } else {
-    gpu_kernel(iter, BinaryFunctor<arg1_t, arg2_t, return_t, func_t>(f));
+    opmath_gpu_kernel_binary<arg1_t, arg2_t, return_t, enable_mixed_types>(
+        iter, f);
   }
 }
 
@@ -1566,7 +1878,7 @@ void opmath_symmetric_gpu_kernel_with_scalars(
   }
 
   if (iter.ninputs() == 2) {
-    gpu_kernel(iter, BinaryFunctor<scalar_t, scalar_t, return_t, func_t>(f));
+    opmath_gpu_kernel_binary<scalar_t, scalar_t, return_t>(iter, f);
   } else {
     AUnaryFunctor<scalar_t, scalar_t, return_t, func_t> unary_f(f, scalar_val);
     gpu_kernel(iter, unary_f);
@@ -1584,7 +1896,8 @@ void gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
   using arg1_t = typename traits::template arg<0>::type;
   using arg2_t = typename traits::template arg<1>::type;
   using return_t = typename traits::result_type;
-  opmath_gpu_kernel_with_scalars<arg1_t, arg2_t, return_t, func_t>(iter, f);
+  opmath_gpu_kernel_with_scalars<arg1_t, arg2_t, return_t, func_t, false>(
+      iter, f);
 }
 
 template <typename func_t>
