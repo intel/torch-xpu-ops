@@ -37,6 +37,21 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Install base packages
+      shell: bash -xe {0}
+      env:
+        GCC_VERSION: '13'
+        # keep the image's driver packages as shipped
+        APT_UPGRADE: '0'
+        INSTALL_BASE: ${{ github.action_path }}/../../../.ci/docker/common/install_base.sh
+      run: |
+        if [ ! -f /.dockerenv ]; then
+          echo "Not in a container, keeping the host packages"
+          exit 0
+        fi
+        SUDO=""
+        [ "$(id -u)" -eq 0 ] || SUDO="sudo -E"
+        ${SUDO} bash "${INSTALL_BASE}"
     - name: Check runner
       shell: bash -xe {0}
       run: |
@@ -233,7 +248,8 @@ runs:
           cd ../pytorch
         elif [[ "${{ inputs.suite }}" != *"huggingface"* && "${{ inputs.suite }}" != *"timm_models"* ]];then
           # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
-          sed -i '/mkl/d' .ci/docker/requirements-ci.txt
+          # Also drop the intel-openmp cap: it downgrades UR/UMF below the wheel's SYCL runtime
+          sed -i '/mkl\|intel-openmp/d' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
           uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
         fi
@@ -255,7 +271,7 @@ runs:
         fi
         # E2E runs on numpy 1.x; reinstall its compiled dependents so they resolve to numpy-1 compatible builds.
         if [[ "${{ inputs.suite }}" =~ huggingface|timm_models|torchbench|pt2e ]];then
-          uv pip install "numpy<2" pandas scipy scikit-learn opencv-python numba
+          uv pip install "numpy<2" pandas scipy scikit-learn opencv-python numba ml_dtypes
         fi
     - name: Detect devices
       shell: bash -euo pipefail {0}

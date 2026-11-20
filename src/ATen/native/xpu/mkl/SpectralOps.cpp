@@ -25,7 +25,7 @@
 #include <c10/util/strides.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
-#include <oneapi/mkl.hpp>
+#include <oneapi/mkl/dft.hpp>
 
 using namespace oneapi::mkl::dft;
 
