@@ -297,7 +297,10 @@ struct ReduceConfig {
     int64_t max_sg_sz = at::xpu::getDeviceMinSubGroupSize() == 8
         ? at::xpu::getDeviceMinSubGroupSize()
         : at::xpu::getDeviceMaxSubGroupSize();
-    const int max_num_items = max_wg_sz / output_vec_size;
+    // Tree reductions in group_x/y_reduce halve the dimension, so every group
+    // dimension must be a power of two; the per-kernel max work-group size is
+    // not (e.g. 768 for ArgMin on PTL).
+    const int max_num_items = last_pow2(max_wg_sz / output_vec_size);
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
     int dim1_pow2 = dim1 < max_num_items ? static_cast<int>(last_pow2(dim1))
@@ -910,6 +913,7 @@ struct ReduceOp {
   // In/out from slm pointers
   void mark_group_finished(sycl::nd_item<2> pos, sycl_local_ptr<bool> finished)
       const {
+    sycl::atomic_fence(sycl_mem_odr_rel, sycl_mem_scp_dev);
     sycl::group_barrier(pos.get_group());
 
     if (pos.get_local_linear_id() == 0) {
@@ -1029,6 +1033,7 @@ struct ReduceOp {
     mark_group_finished(pos, is_last_group_done);
 
     if (is_last_group_done[0]) {
+      sycl::atomic_fence(sycl_mem_odr_acq, sycl_mem_scp_dev);
       value = ident;
       if (config.should_group_x_reduce()) {
         index_t input_offset =
