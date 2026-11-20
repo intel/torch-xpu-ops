@@ -173,6 +173,25 @@ class TestTorchMethod(TestCase):
             test_upsamle_nearest(dtype)
             test_upsample_nearest_exact(dtype)
 
+    def test_upsample_nearest2d_large_grid_y(self):
+        # Same input as upstream test_nn.py::test_upsamplingNearest2d_launch_fail,
+        # which is expected to fail on CUDA (it needs grid_y == 2**16, over the
+        # 65535 limit). XPU has no such limit, so the result must match CPU.
+        m = torch.nn.Upsample(scale_factor=2)
+        input_cpu = torch.rand(1, 1, 2**15, 2**8, device=cpu_device)
+        input_xpu = input_cpu.to(device)
+        input_cpu.requires_grad = True
+        input_xpu.requires_grad = True
+
+        output_cpu = m(input_cpu)
+        output_xpu = m(input_xpu)
+        self.assertEqual(output_cpu, output_xpu.cpu())
+
+        grad_out_cpu = torch.rand_like(output_cpu)
+        output_cpu.backward(grad_out_cpu)
+        output_xpu.backward(grad_out_cpu.to(device))
+        self.assertEqual(input_cpu.grad, input_xpu.grad.cpu())
+
     def test_upsample_nearest2d_channels_last_many_channels(self):
         # The launch is clamped to getDeviceMaxWorkItems(), so the output must
         # exceed that for the grid-stride loop to be exercised (#5701).
