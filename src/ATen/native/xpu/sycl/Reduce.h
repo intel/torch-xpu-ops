@@ -297,7 +297,10 @@ struct ReduceConfig {
     int64_t max_sg_sz = at::xpu::getDeviceMinSubGroupSize() == 8
         ? at::xpu::getDeviceMinSubGroupSize()
         : at::xpu::getDeviceMaxSubGroupSize();
-    const int max_num_items = max_wg_sz / output_vec_size;
+    // Tree reductions in group_x/y_reduce halve the dimension, so every group
+    // dimension must be a power of two; the per-kernel max work-group size is
+    // not (e.g. 768 for ArgMin on PTL).
+    const int max_num_items = last_pow2(max_wg_sz / output_vec_size);
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
     int dim1_pow2 = dim1 < max_num_items ? static_cast<int>(last_pow2(dim1))
@@ -509,6 +512,19 @@ func_wrapper_t<out_scalar_t, func_t> func_wrapper(const func_t& op) {
   return func_wrapper_t<out_scalar_t, func_t>{op};
 }
 
+// Optional constexpr bool ops_t::single_accumulator defaults to false. When
+// true, each work-item shares one accumulator per output across vector/unrolled
+// elements; this must preserve the op's semantics. reduce() receives strictly
+// increasing indices per accumulator; combine() must handle unordered partials.
+template <typename ops_t, typename = void>
+struct single_accumulator : std::false_type {};
+
+template <typename ops_t>
+struct single_accumulator<
+    ops_t,
+    std::void_t<decltype(ops_t::single_accumulator)>>
+    : std::bool_constant<ops_t::single_accumulator> {};
+
 template <
     typename scalar_t,
     typename ops_t,
@@ -530,6 +546,9 @@ struct ReduceOp {
   static constexpr bool can_accumulate_in_output =
       std::is_convertible_v<arg_t, out_scalar_t> &&
       std::is_convertible_v<out_scalar_t, arg_t>;
+
+  static constexpr bool use_single_accumulator =
+      single_accumulator<ops_t>::value;
 
   static constexpr float acc_buffer_multiplier =
       (float)sizeof(arg_t) / sizeof(out_scalar_t);
@@ -740,6 +759,8 @@ struct ReduceOp {
   arg_t input_vectorized_item_reduce_impl(
       sycl::nd_item<2> pos,
       const scalar_t* data) const {
+    // Keep reduce() indices strictly increasing per accumulator through the
+    // head, vectorized body, and tail; index-free min/max relies on this.
     index_t end = config.num_inputs;
     // Handle the head of input slice where data is not aligned
     arg_t value = ident;
@@ -770,11 +791,13 @@ struct ReduceOp {
     const index_t stride = config.step_input;
 
     // multiple registers
-    arg_t value_list[input_vec_size];
+    constexpr int num_accumulators =
+        use_single_accumulator ? 1 : input_vec_size;
+    arg_t value_list[num_accumulators];
     value_list[0] = value;
 
 #pragma unroll
-    for (int i = 1; i < input_vec_size; ++i) {
+    for (int i = 1; i < num_accumulators; ++i) {
       value_list[i] = ident;
     }
 
@@ -782,8 +805,8 @@ struct ReduceOp {
       const auto values_vec = memory::load_vector<input_vec_size>(data, idx);
 #pragma unroll
       for (index_t i = 0; i < input_vec_size; ++i) {
-        value_list[i] = ops.reduce(
-            value_list[i], values_vec[i], shift + idx * input_vec_size + i);
+        auto& acc = value_list[use_single_accumulator ? 0 : i];
+        acc = ops.reduce(acc, values_vec[i], shift + idx * input_vec_size + i);
       }
       idx += stride;
     }
@@ -800,7 +823,7 @@ struct ReduceOp {
 
     // registers accumulation
 #pragma unroll
-    for (int i = 1; i < input_vec_size; ++i) {
+    for (int i = 1; i < num_accumulators; ++i) {
       value_list[0] = ops.combine(value_list[0], value_list[i]);
     }
     return value_list[0];
@@ -811,6 +834,8 @@ struct ReduceOp {
       sycl::nd_item<2> pos,
       const scalar_t* data_,
       offset_calc_t calc) const {
+    // Keep reduce() indices strictly increasing per accumulator through the
+    // unrolled body and tail; index-free min/max relies on this.
     index_t idx = config.input_idx(pos);
     const index_t end = config.num_inputs;
     const index_t stride = config.step_input;
@@ -819,10 +844,11 @@ struct ReduceOp {
     using load_t =
         at::native::memory::aligned_vector<scalar_t, output_vec_size>;
 
-    arg_vec_t value_list[vt0];
+    constexpr int num_accumulators = use_single_accumulator ? 1 : vt0;
+    arg_vec_t value_list[num_accumulators];
 
-#pragma unroll(vt0)
-    for (int i = 0; i < vt0; i++) {
+#pragma unroll
+    for (int i = 0; i < num_accumulators; i++) {
 #pragma unroll(output_vec_size)
       for (int j = 0; j < output_vec_size; ++j) {
         value_list[i][j] = ident;
@@ -841,8 +867,8 @@ struct ReduceOp {
       for (index_t i = 0; i < vt0; ++i) {
 #pragma unroll(output_vec_size)
         for (index_t j = 0; j < output_vec_size; ++j) {
-          value_list[i][j] =
-              ops.reduce(value_list[i][j], values[i][j], idx + i * stride);
+          auto& acc = value_list[use_single_accumulator ? 0 : i][j];
+          acc = ops.reduce(acc, values[i][j], idx + i * stride);
         }
       }
       idx += stride * vt0;
@@ -867,14 +893,15 @@ struct ReduceOp {
       }
 #pragma unroll(output_vec_size)
       for (index_t j = 0; j < output_vec_size; ++j) {
-        value_list[i][j] = ops.reduce(value_list[i][j], values[i][j], idx);
+        auto& acc = value_list[use_single_accumulator ? 0 : i][j];
+        acc = ops.reduce(acc, values[i][j], idx);
       }
       idx += stride;
     }
 
     // combine accumulators
-#pragma unroll(vt0)
-    for (int i = 1; i < vt0; ++i) {
+#pragma unroll
+    for (int i = 1; i < num_accumulators; ++i) {
 #pragma unroll(output_vec_size)
       for (index_t j = 0; j < output_vec_size; ++j) {
         value_list[0][j] = ops.combine(value_list[0][j], value_list[i][j]);
@@ -886,6 +913,7 @@ struct ReduceOp {
   // In/out from slm pointers
   void mark_group_finished(sycl::nd_item<2> pos, sycl_local_ptr<bool> finished)
       const {
+    sycl::atomic_fence(sycl_mem_odr_rel, sycl_mem_scp_dev);
     sycl::group_barrier(pos.get_group());
 
     if (pos.get_local_linear_id() == 0) {
@@ -1005,6 +1033,7 @@ struct ReduceOp {
     mark_group_finished(pos, is_last_group_done);
 
     if (is_last_group_done[0]) {
+      sycl::atomic_fence(sycl_mem_odr_acq, sycl_mem_scp_dev);
       value = ident;
       if (config.should_group_x_reduce()) {
         index_t input_offset =

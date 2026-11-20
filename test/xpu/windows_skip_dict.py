@@ -21,6 +21,8 @@ skip_dict = {
     # https://github.com/intel/torch-xpu-ops/issues/5726
     f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
         "(test_dynamo_set_recursion_limit and not test_dynamo_set_recursion_limit_usage)",
+        "test_namedtuple1_dynamic_shapes",
+        "test_reformer_train_dynamic_shapes",
     ),
     # Windows: Skip entire files using *.py:: pattern
     "test_decomp_xpu.py": [
@@ -36,4 +38,10 @@ skip_dict = {
     #     "test_dll_loading",
     #     "test_path_length",
     # ],
+    # CPU layer_norm reference is inaccurate under AVX2/MSVC on Windows
+    # Details: https://github.com/pytorch/pytorch/issues/204610
+    "test_nn_xpu.py": (
+        "test_LayerNorm_3d_no_affine_large_feature_xpu",
+        "test_LayerNorm_3d_no_affine_large_feature_eval_xpu",
+    ),
 }
