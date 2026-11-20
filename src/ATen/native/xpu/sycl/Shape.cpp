@@ -710,7 +710,7 @@ void parallel_cat(
         outputParam.tensorStride[mapped_dimension]);                        \
   } else if (isContig) {                                                    \
     auto& q = getCurrentSYCLQueue();                                        \
-    std::array<bool, batch_size> aligingCacheLineEligibility{};                    \
+    std::array<bool, batch_size> aligingCacheLineEligibility{};             \
     if constexpr (sizeof(scalar_t) == 2) {                                  \
       constexpr int64_t minElementsForSliceCopy = 1 << 20;                  \
       if (max_elements_per_tensor >= minElementsForSliceCopy) {             \
@@ -726,7 +726,7 @@ void parallel_cat(
                 catMetaData.offset[slot] * dimStride * sizeof(scalar_t);    \
             const int64_t sliceBytes =                                      \
                 catMetaData.dimSize[slot] * dimStride * sizeof(scalar_t);   \
-            aligingCacheLineEligibility[slot] = sliceBytes % 4 != 0 ||             \
+            aligingCacheLineEligibility[slot] = sliceBytes % 4 != 0 ||      \
                 outputSliceBytes % 4 != 0 || outputAddress % 4 != 0;        \
           }                                                                 \
         }                                                                   \
@@ -747,7 +747,7 @@ void parallel_cat(
         outputParam,                                                        \
         mapped_dimension,                                                   \
         outputParam.tensorStride[mapped_dimension],                         \
-        aligingCacheLineEligibility);                                              \
+        aligingCacheLineEligibility);                                       \
   } else {                                                                  \
     auto& q = getCurrentSYCLQueue();                                        \
     sycl_kernel_submit<cat_array_batched_copy_kernel_impl<                  \
