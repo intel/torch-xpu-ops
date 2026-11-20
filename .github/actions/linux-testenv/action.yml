@@ -32,8 +32,6 @@ runs:
         cat /etc/os-release
         gcc -v && g++ -v
         uname -a
-        sudo apt-get update
-        sudo apt-get upgrade -y
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
@@ -256,7 +254,7 @@ runs:
         name: triton-wheel-3.12-xpu-manylinux_2_28_x86_64
         github-token: ${{ github.token }}
         repository: pytorch/pytorch
-        run-id: 43202656314
+        run-id: 44636531322
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
