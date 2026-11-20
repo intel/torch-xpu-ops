@@ -205,3 +205,13 @@ def test_only_the_latest_attempt_counts(tmp_path):
     check(2, A)
     assert [d.name for d in p.latest_attempts(tmp_path)] == ["UT-Check-linux-basic-2"]
     assert p.ut_group_blockers(tmp_path, {A}, {B}) == ([], [A])
+
+
+def test_nightly_baseline_is_at_most_five_days_old():
+    from datetime import datetime, timezone
+    now = datetime(2026, 11, 20, 12, tzinfo=timezone.utc)
+    runs = [{"id": 1, "display_title": "Nightly / Build-from-source", "created_at": "2026-11-19T13:15:00Z"},
+            {"id": 2, "display_title": "Nightly / Nightly-wheel", "created_at": "2026-11-19T13:36:00Z"},
+            {"id": 3, "display_title": "Weekly / Build-from-source", "created_at": "2026-11-15T16:10:00Z"},
+            {"id": 4, "display_title": "Nightly / Build-from-source", "created_at": "2026-11-12T13:15:00Z"}]
+    assert [r["id"] for r in p.recent_nightlies(runs, now)] == [1, 3]

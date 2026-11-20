@@ -33,7 +33,7 @@ import sys
 import tempfile
 import urllib.parse
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 IN_PROGRESS, READY, OPT_OUT = "in progress", "ready for review", "no automated review"
@@ -42,7 +42,9 @@ MAINTAINER_ROLES = {"triage", "write", "maintain", "admin"}
 BOT_LOGINS = {"torchxpubot"}
 OK = {"success", "skipped", "neutral"}
 NIGHTLY_TITLE = "Build-from-source"
-NIGHTLY_LOOKBACK = 3  # a nightly that broke before testing uploads nothing
+# A nightly that broke before testing uploads nothing, so older ones are tried;
+# 5 days covers a weekend plus a broken night; older, main has moved too far.
+NIGHTLY_MAX_AGE = timedelta(days=5)
 
 # `linux-ut (basic) / check`, `linux-distributed (xpu_distributed) / check`,
 # `windows-ut (basic) / check`: one UT group per matrix entry.
@@ -198,6 +200,13 @@ def ci_verdict(jobs, ut_group, e2e):
     return False, blockers, tolerated
 
 
+def recent_nightlies(runs, now):
+    """Build-from-source nightlies younger than NIGHTLY_MAX_AGE, newest first."""
+    return sorted((r for r in runs if NIGHTLY_TITLE in r.get("display_title", "")
+                   and now - _ts(r["created_at"]) <= NIGHTLY_MAX_AGE),
+                  key=lambda r: r["created_at"], reverse=True)
+
+
 def maintainer_logins_since(activity, since, author, role_of):
     """Maintainers (not the author or a bot) who commented/reviewed after `since`."""
     since_t = _ts(since)
@@ -256,11 +265,12 @@ class Repo:
         return max(runs, key=lambda r: r["run_number"], default=None)
 
     def nightly_runs(self):
-        """Recent build-from-source nightlies on main, newest first."""
+        now = datetime.now(timezone.utc)
+        since = (now - NIGHTLY_MAX_AGE).strftime("%Y-%m-%d")
         runs = api_items(f"repos/{self.name}/actions/workflows/nightly_ondemand.yml/runs"
-                         "?event=schedule&branch=main&status=completed&per_page=20",
+                         f"?event=schedule&branch=main&status=completed&created=>={since}&per_page=100",
                          ".workflow_runs[]")
-        return [r for r in runs if NIGHTLY_TITLE in r.get("display_title", "")][:NIGHTLY_LOOKBACK]
+        return recent_nightlies(runs, now)
 
     def download(self, run_id, pattern, dest):
         gh("run", "download", str(run_id), "-R", self.name, "-p", pattern, "-D", str(dest),
