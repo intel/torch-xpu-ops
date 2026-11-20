@@ -229,6 +229,9 @@ class IndexKernel {
     }
     glb_batch_group = id.glb_batch / cfg_.index_num_;
     glb_batch_group_loc_off = cfg_.iinfo_.data[idx_off];
+    SYCL_KERNEL_ASSERT(
+        glb_batch_group_loc_off >= -cfg_.indexing_dimension_size_ &&
+        glb_batch_group_loc_off < cfg_.indexing_dimension_size_);
     glb_batch_group_loc_off = glb_batch_group_loc_off >= 0
         ? glb_batch_group_loc_off
         : cfg_.indexing_dimension_size_ + glb_batch_group_loc_off;
