@@ -172,8 +172,11 @@ void add_out_sparse_csr_kernel(
               auto a_col = A.col_indices().to(output_indices_dtype);
               auto b_crow = B.crow_indices().to(output_indices_dtype);
               auto b_col = B.col_indices().to(output_indices_dtype);
-              auto a_val = A.values().to(output_values_dtype);
-              auto b_val = B.values().to(output_values_dtype);
+              // The merge below reads the values as a flat contiguous buffer,
+              // so materialize a contiguous copy of non-contiguous input
+              // values (e.g. a stride-2 view of another tensor).
+              auto a_val = A.values().to(output_values_dtype).contiguous();
+              auto b_val = B.values().to(output_values_dtype).contiguous();
 
               const index_t* a_crow_ptr = a_crow.const_data_ptr<index_t>();
               const index_t* a_col_ptr = a_col.const_data_ptr<index_t>();
