@@ -6586,6 +6586,94 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 running_var=running_var,
             )
 
+    @unittest.skipIf(not TEST_XPU or device_type != "xpu", "XPU not available")
+    def test_batch_norm_channels_last_stats_accuracy(self):
+        cases = ((128, 96, 56, 56), (64, 768, 28, 28))
+        for dtype in (torch.float32, torch.float16, torch.bfloat16):
+            output_tol = 1e-4 if dtype == torch.float32 else 1e-2
+            stats_tol = 1e-5 if dtype == torch.float32 else 1e-4
+            shapes = cases if dtype == torch.float32 else cases + ((129, 128, 64, 64),)
+            for shape, offset in product(shapes, (0.0, 100.0)):
+                n, c, h, w = shape
+                generator = torch.Generator().manual_seed(0)
+                scale = 0.5 if offset and dtype != torch.float32 else 1.0
+                x = (
+                    (torch.randn(shape, generator=generator) * scale + offset)
+                    .to(dtype)
+                    .contiguous(memory_format=torch.channels_last)
+                )
+                weight = torch.randn(c, dtype=torch.float32, generator=generator)
+                bias = torch.randn(c, dtype=torch.float32, generator=generator)
+                running_mean = torch.randn(c, dtype=torch.float32, generator=generator)
+                running_var = (
+                    torch.rand(c, dtype=torch.float32, generator=generator) + 1
+                )
+
+                ref_mean = running_mean.double()
+                ref_var = running_var.double()
+                ref = F.batch_norm(
+                    x.double(),
+                    ref_mean,
+                    ref_var,
+                    weight.double(),
+                    bias.double(),
+                    training=True,
+                    momentum=0.1,
+                    eps=1e-5,
+                )
+
+                out_mean = running_mean.to(device_type)
+                out_var = running_var.to(device_type)
+                out = F.batch_norm(
+                    x.to(device_type),
+                    out_mean,
+                    out_var,
+                    weight.to(device_type),
+                    bias.to(device_type),
+                    training=True,
+                    momentum=0.1,
+                    eps=1e-5,
+                )
+                torch.xpu.synchronize()
+
+                self.assertEqual(
+                    out.cpu(), ref, atol=output_tol, rtol=output_tol, exact_dtype=False
+                )
+                self.assertEqual(
+                    out_mean.cpu(),
+                    ref_mean,
+                    atol=stats_tol,
+                    rtol=stats_tol,
+                    exact_dtype=False,
+                )
+                self.assertEqual(
+                    out_var.cpu(),
+                    ref_var,
+                    atol=stats_tol,
+                    rtol=stats_tol,
+                    exact_dtype=False,
+                )
+
+                # Standalone stats API returns invstd instead of var.
+                x_ref = x.double()
+                batch_mean = x_ref.mean(dim=(0, 2, 3))
+                batch_var = x_ref.var(dim=(0, 2, 3), unbiased=False)
+                mean, invstd = torch.batch_norm_stats(x.to(device_type), 1e-5)
+                self.assertEqual(
+                    mean.cpu(),
+                    batch_mean,
+                    atol=stats_tol,
+                    rtol=stats_tol,
+                    exact_dtype=False,
+                )
+                self.assertEqual(
+                    invstd.cpu(),
+                    (batch_var + 1e-5).rsqrt(),
+                    atol=stats_tol,
+                    rtol=stats_tol,
+                    exact_dtype=False,
+                )
+
     @unittest.skipIf(device_type != "xpu" or not TEST_XPU, "XPU not available")
     def test_batch_norm_backward_reduce_dispatch_boundaries(self):
         def reference(input, grad_output, weight):
@@ -6681,8 +6769,17 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                         )
                         torch.xpu.synchronize()
 
-                        tol = 2e-2 if dtype == torch.float16 else 2e-1
-                        for actual_value, reference_value in zip(actual, ref):
+                        # sum_dy and sum_dy_xmu are accumulated and returned in
+                        # FP32 regardless of the input dtype, so they are checked
+                        # at FP32 tolerances. grad_weight/grad_bias are cast back
+                        # to the weight dtype (FP32 for mixed-weight, else FP16/
+                        # BF16), so they need the lower-precision tolerance.
+                        fp32_tol = 1e-5
+                        grad_tol = 2e-2 if dtype == torch.float16 else 2e-1
+                        for index, (actual_value, reference_value) in enumerate(
+                            zip(actual, ref)
+                        ):
+                            tol = fp32_tol if index < 2 or mixed_weight else grad_tol
                             self.assertEqual(
                                 actual_value.cpu(),
                                 reference_value,
