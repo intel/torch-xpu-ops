@@ -146,8 +146,9 @@ def test_maintainer_activity_since_review():
         {"login": "torchxpubot", "type": "User", "at": "2026-11-20T08:00:00Z"},
         {"login": "ci[bot]", "type": "Bot", "at": "2026-11-20T08:00:00Z"},
         {"login": "outsider", "type": "User", "at": "2026-11-20T08:00:00Z"},
+        {"login": "maint2", "type": "User", "at": "2026-11-20T08:00:00Z", "body": " @torchxpubot rerun failed"},
     ]
-    roles = {"maint": "write", "old": "admin", "author": "admin", "outsider": "read"}
+    roles = {"maint": "write", "maint2": "write", "old": "admin", "author": "admin", "outsider": "read"}
     got = p.maintainer_logins_since(activity, "2026-11-20T07:00:00Z", "author", lambda u: roles.get(u, ""))
     assert got == ["maint"]
 
@@ -168,7 +169,7 @@ def run_promote(monkeypatch, labels, status, ci, activity=()):
         def role(self, login):
             return "write"
 
-    p.promote(FakeRepo("o/r"), 7, report_ci=True)
+    p.promote(FakeRepo("o/r"), 7)
     return calls
 
 
@@ -186,6 +187,8 @@ def test_promote_swaps_labels_when_review_and_ci_pass(monkeypatch):
 def test_promote_holds_on_ci_review_or_maintainer(monkeypatch):
     blocked = run_promote(monkeypatch, ["in progress"], PASSED, (False, ["job `x` failure"], []))
     assert len(blocked) == 1 and "CI blocks" in blocked[0][-1]          # one explanatory comment
+    other = run_promote(monkeypatch, ["in progress"], PASSED, (False, ["job `y` failure"], []))
+    assert blocked[0][-1].split("-->")[0] != other[0][-1].split("-->")[0]   # new reasons, new marker
     assert run_promote(monkeypatch, ["in progress"], PASSED, (True, [], [])) == []      # CI running
     failed = [{"context": "bot-review", "state": "failure", "description": ""}]
     assert run_promote(monkeypatch, ["in progress"], failed, (False, [], [])) == []

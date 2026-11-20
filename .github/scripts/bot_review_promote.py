@@ -18,14 +18,15 @@ Like pytorch's Dr.CI promotion, all of these must hold on the PR's head commit:
 Run when the review is posted and when `pull` completes; whichever comes last
 decides. Usage:
 
-    bot_review_promote.py --repo intel/torch-xpu-ops --pr 123 [--report-ci]
+    bot_review_promote.py --repo intel/torch-xpu-ops --pr 123
 
-`--report-ci` comments the reasons once per head commit when CI blocks;
-without it a blocked PR is left as is (CI may still be running).
+When finished CI blocks, the reasons are commented once per distinct set of
+reasons on the head commit; while CI is running nothing is said.
 """
 
 import argparse
 import csv
+import hashlib
 import json
 import re
 import subprocess
@@ -40,6 +41,7 @@ IN_PROGRESS, READY, OPT_OUT = "in progress", "ready for review", "no automated r
 STATUS_CONTEXT = "bot-review"
 MAINTAINER_ROLES = {"triage", "write", "maintain", "admin"}
 BOT_LOGINS = {"torchxpubot"}
+BOT_COMMAND = "@torchxpubot"
 OK = {"success", "skipped", "neutral"}
 NIGHTLY_TITLE = "Build-from-source"
 # A nightly that broke before testing uploads nothing, so older ones are tried;
@@ -214,6 +216,7 @@ def maintainer_logins_since(activity, since, author, role_of):
         a["login"] for a in activity
         if a.get("at") and _ts(a["at"]) > since_t and a["login"] != author
         and a["login"] not in BOT_LOGINS and a.get("type") != "Bot"
+        and not (a.get("body") or "").lstrip().startswith(BOT_COMMAND)  # e.g. `rerun failed`
     }
     return sorted(u for u in logins if role_of(u) in MAINTAINER_ROLES)
 
@@ -249,11 +252,15 @@ class Repo:
 
     def activity(self, pr, since):
         base = f"repos/{self.name}"
-        items = [{"login": c["user"]["login"], "type": c["user"]["type"], "at": c["created_at"]}
+        def item(c, at):
+            return {"login": c["user"]["login"], "type": c["user"]["type"], "at": c[at],
+                    "body": c.get("body")}
+
+        items = [item(c, "created_at")
                  for c in api_items(f"{base}/issues/{pr}/comments?since={since}&per_page=100")]
-        items += [{"login": c["user"]["login"], "type": c["user"]["type"], "at": c["created_at"]}
+        items += [item(c, "created_at")
                   for c in api_items(f"{base}/pulls/{pr}/comments?since={since}&per_page=100")]
-        items += [{"login": r["user"]["login"], "type": r["user"]["type"], "at": r["submitted_at"]}
+        items += [item(r, "submitted_at")
                   for r in api_items(f"{base}/pulls/{pr}/reviews?per_page=100")
                   if r.get("user") and (r["state"] != "APPROVED" or r.get("body"))]
         return items
@@ -319,7 +326,7 @@ def comment_once(repo, pr, sha, kind, body):
     gh("api", f"repos/{repo.name}/issues/{pr}/comments", "-f", f"body={marker}\n{body}")
 
 
-def promote(repo, pr_number, report_ci):
+def promote(repo, pr_number):
     pr = api(f"repos/{repo.name}/pulls/{pr_number}")
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "open" or pr["draft"] or IN_PROGRESS not in labels or labels & {READY, OPT_OUT}:
@@ -348,13 +355,14 @@ def promote(repo, pr_number, report_ci):
         return
     if blockers:
         print("CI blocks promotion:\n  " + "\n  ".join(blockers))
-        if report_ci:
-            shown = "\n".join(f"- {b}" for b in blockers[:30])
-            more = f"\n- ... and {len(blockers) - 30} more" if len(blockers) > 30 else ""
-            comment_once(repo, pr_number, sha, "ci",
-                         "Bot review passed, but CI blocks `ready for review`:\n\n"
-                         f"{shown}{more}\n\nFix new failures and push. Rerun jobs that failed for "
-                         "infrastructure reasons (`@torchxpubot rerun failed`).")
+        shown = "\n".join(f"- {b}" for b in blockers[:30])
+        more = f"\n- ... and {len(blockers) - 30} more" if len(blockers) > 30 else ""
+        # Keyed by the reasons too, so a rerun that changes them is reported again.
+        digest = hashlib.sha1("\n".join(blockers).encode()).hexdigest()[:8]
+        comment_once(repo, pr_number, sha, f"ci:{digest}",
+                     "Bot review passed, but CI blocks `ready for review`:\n\n"
+                     f"{shown}{more}\n\nFix new failures and push. Rerun jobs that failed for "
+                     "infrastructure reasons (`@torchxpubot rerun failed`).")
         return
     gh("api", f"repos/{repo.name}/issues/{pr_number}/labels", "-f", f"labels[]={READY}")
     gh("api", "-X", "DELETE",
@@ -388,10 +396,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--repo", required=True)
     parser.add_argument("--pr", type=int, required=True)
-    parser.add_argument("--report-ci", action="store_true",
-                        help="comment why CI blocks promotion (once per head commit)")
     args = parser.parse_args()
-    promote(Repo(args.repo), args.pr, args.report_ci)
+    promote(Repo(args.repo), args.pr)
 
 
 if __name__ == "__main__":
