@@ -342,8 +342,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
  */
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   std::vector<std::string> fallback_list = {
-      "cholesky_inverse",
-      "cholesky_inverse.out",
       "_cholesky_solve_helper",
       "_efficient_attention_forward",
       "hash_tensor.out",
