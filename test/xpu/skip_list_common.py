@@ -168,8 +168,6 @@ skip_dict = {
         "_tunableop_",
         "_tuning_tunableop_",
     ),
-    "test_masked_xpu.py": None,
-    "test_maskedtensor_xpu.py": None,
     "test_matmul_cuda_xpu.py": None,
     "test_meta_xpu.py": (
         # skipped due to #2309, unsupported ops: aten::narrow_copy, aten::_histogramdd_bin_edges
@@ -186,7 +184,6 @@ skip_dict = {
         "test_ctc_loss_cudnn_tensor_cuda_xpu",
     ),
     "test_numba_integration_xpu.py": None,
-    "test_numpy_interop_xpu.py": None,
     "test_ops_xpu.py": (
         "_jiterator_",
         # crash
@@ -424,11 +421,14 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_hub.py": None,
     f"{PYTORCH_TEST_DIR}/test_indexing.py": None,
     f"{PYTORCH_TEST_DIR}/test_legacy_vmap.py": None,
+    f"{PYTORCH_TEST_DIR}/test_masked.py": None,
+    f"{PYTORCH_TEST_DIR}/test_maskedtensor.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
     f"{PYTORCH_TEST_DIR}/test_modules.py": None,
     f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_mha.py": None,
+    f"{PYTORCH_TEST_DIR}/test_numpy_interop.py": None,
     f"{PYTORCH_TEST_DIR}/test_opaque_obj_v2.py": None,
     f"{PYTORCH_TEST_DIR}/test_ops_fwd_gradients.py": (
         # BMG hang (>10 min) taking down the xdist worker
