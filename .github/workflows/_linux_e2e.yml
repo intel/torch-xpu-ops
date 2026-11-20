@@ -160,6 +160,7 @@ jobs:
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/ut_log/env ${{ github.workspace }}/upload_files/env || true
           artifact_name="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data"
           artifact_name+="-${{ github.event.pull_request.number || github.sha }}"
           artifact_name+="-${{ inputs.suite }}"

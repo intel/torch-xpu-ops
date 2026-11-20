@@ -35,6 +35,7 @@ main() {
     echo "Processing test results..."
     echo "Results: $results_dir, Reference: $reference_dir"
 
+    check_accuracy_complete "$results_dir"
     process_accuracy "$results_dir"
     process_performance "$results_dir" "$reference_dir"
     generate_report
@@ -53,7 +54,27 @@ validate_directories() {
 
 cleanup_temp_files() {
     rm -rf /tmp/tmp-*.txt /tmp/tmp-*.json
-    rm -rf accuracy.*.html performance.*.html
+    rm -rf accuracy.*.html performance.*.html e2e-incomplete.txt
+}
+
+# A suite whose accuracy was never judged must not read as green. E2E_SUITES
+# lists the suites expected to have run accuracy; each needs a CSV and a
+# run_e2e.log (copied by the workflow to run_e2e/<artifact>.log) that reached
+# the runner's final summary for every task file.
+check_accuracy_complete() {
+    local results_dir="$1" suite log
+    for suite in $(echo "${E2E_SUITES:-}" | tr -c 'a-z_0-9\n' ' '); do
+        [[ "$suite" == pt2e ]] && continue
+        if [[ -z "$(find "$results_dir" -name "inductor-${suite}-*-accuracy.csv" -print -quit)" ]]; then
+            echo "${suite}: no accuracy CSV" >> e2e-incomplete.txt
+        fi
+        log="$(find "$results_dir/run_e2e" -name "*-${suite}-accuracy-*.log" 2>/dev/null | sort -V | tail -n 1 || true)"
+        if [[ -z "$log" ]]; then
+            echo "${suite}: no run_e2e.log" >> e2e-incomplete.txt
+        elif ! awk '/Wall time:/{w++} /^  Task file /{t++} END{exit !(w >= (t ? t : 1))}' "$log"; then
+            echo "${suite}: run_e2e exited before its final summary" >> e2e-incomplete.txt
+        fi
+    done
 }
 
 # Accuracy Processing
@@ -106,12 +127,17 @@ process_csv_file() {
 
     local tmp_file="/tmp/tmp-${suite}-${mode}-${dtype}.txt"
 
-    python "$check_file" \
+    if ! python "$check_file" \
+        --driver "${E2E_DRIVER:-rolling}" \
         --suite "$suite" \
         --mode "$mode" \
         --dtype "$dtype" \
         --issue_file /tmp/tmp-known-issue.json \
-        --csv_file "$csv_file" > "$tmp_file"
+        --csv_file "$csv_file" > "$tmp_file"; then
+        echo "${category}: check_expected.py failed" >> e2e-incomplete.txt
+        rm -f "$tmp_file"
+        return
+    fi
 
     local result
     result=$(parse_test_results "$tmp_file")
@@ -361,6 +387,11 @@ EOF
 }
 
 generate_highlights() {
+    if [[ -s e2e-incomplete.txt ]]; then
+        echo -e "### ⚠️ Accuracy not judged\n"
+        sed 's/^/- /' e2e-incomplete.txt
+        echo
+    fi
     if (( accuracy_regression + performance_regression > 0 )); then
         echo -e "### 🎯 Highlight regressions\n"
         if [[ $accuracy_regression -gt 0 ]];then
