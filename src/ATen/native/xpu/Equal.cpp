@@ -39,7 +39,10 @@ bool xpu_equal(const Tensor& self, const Tensor& src) {
       self.is_contiguous() == src.is_contiguous() &&
       self.strides().equals(src.strides()) && self.layout() == src.layout() &&
       self.is_neg() == src.is_neg() && self.is_conj() == src.is_conj()) {
-    return true;
+    if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/true)) {
+      return true;
+    }
+    return !self.isnan().any().item().to<bool>();
   }
 
   return at::xpu::eq(self, src).all().item().to<bool>();

@@ -61,13 +61,15 @@ class ReduceAdd {
       int64_t index,
       int64_t numel,
       const scalar_t* src_data) const {
-    atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)(self_data_start + index),
+        c10::load(src_data));
   }
 
   template <typename scalar_t>
   constexpr void operator()(scalar_t* self_data, const scalar_t* src_data)
       const {
-    atomicAdd((sycl_global_ptr<scalar_t>)self_data, *src_data);
+    atomicAdd((sycl_global_ptr<scalar_t>)self_data, c10::load(src_data));
   }
 };
 static ReduceAdd reduce_add;
@@ -160,19 +162,19 @@ struct alignas(N) OpaqueType {
 template <typename func_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void scatter_gather_elementwise_kernel(
-    int N_,
-    func_t f_,
-    int work_group_size_,
-    int thread_work_size_) {
+    int N,
+    func_t f,
+    int work_group_size,
+    int thread_work_size) {
   auto item = syclext::this_work_item::get_nd_item<1>();
-  int nv = work_group_size_ * thread_work_size_;
+  int nv = work_group_size * thread_work_size;
   auto wg_id = item.get_group_linear_id();
   auto local_id = item.get_local_linear_id();
   int idx = nv * wg_id + local_id;
-  for (int i = 0; i < thread_work_size_; ++i) {
-    if (idx < N_) {
-      f_(idx);
-      idx += work_group_size_;
+  for (int i = 0; i < thread_work_size; ++i) {
+    if (idx < N) {
+      f(idx);
+      idx += work_group_size;
     }
   }
 }
@@ -225,8 +227,8 @@ struct ScatterGatherInternalKernelLoopFunctor {
     auto offsets = offset_calc_.get(i);
 
     int64_t idx_dim = *(index_t*)(index_ptr_ + offsets[2]);
-    SYCL_KERNEL_ASSERT(
-        idx_dim >= 0 && idx_dim < index_size_ &&
+    XPU_KERNEL_ASSERT_WORKAROUND(
+        idx_dim >= 0 && idx_dim < index_size_,
         "scatter gather kernel index out of bounds");
 
     f_((scalar_t*)(self_ptr_ + offsets[0]),

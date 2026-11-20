@@ -27,8 +27,10 @@ from alignment_triage import (
     create_issue,
     fail,
     filed_body,
+    find_published_issue,
     find_run_note,
     find_unit_comments,
+    is_open_issue,
     list_comments,
     post_comment,
     render_draft,
@@ -238,6 +240,7 @@ def main() -> int:
     existing = list_comments(args.repo, args.triage_issue)
     existing_run_note = find_run_note(existing, run_id) if mode == "schedule" else None
     filed: list[tuple[str, str]] = []
+    reused_units: set[str] = set()
     publication_failures: list[str] = []
     for payload in payloads:
         unit_id = payload["unit_id"]
@@ -251,22 +254,43 @@ def main() -> int:
             dry_run=mode == "dry-run",
         )
         comments = find_unit_comments(existing, unit_id) if mode == "schedule" else []
-        filed_comment = next(
-            (comment for comment in reversed(comments) if FILED_MARKER_RE.search(comment["body"])),
-            None,
-        )
-        filed_issue_url = None
-        if filed_comment is not None:
-            filed_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
-            filed_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
-            if int(filed_comment["id"]) == int(comments[-1]["id"]):
+        try:
+            filed_comment = next(
+                (comment for comment in reversed(comments) if FILED_MARKER_RE.search(comment["body"])),
+                None,
+            )
+            filed_issue_url = None
+            previous_issue_url = None
+            if filed_comment is not None:
+                filed_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
+                previous_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
+                if is_open_issue(args.repo, filed_number):
+                    filed_issue_url = previous_issue_url
+            if verdict == "triage" and filed_issue_url is None:
+                published_issue = find_published_issue(args.repo, unit_id)
+                if published_issue is not None:
+                    previous_issue_url = str(published_issue["html_url"])
+                    if published_issue.get("state") == "open":
+                        filed_issue_url = previous_issue_url
+            if filed_issue_url is not None:
+                if verdict == "triage":
+                    reused_units.add(unit_id)
+                if comments and not FILED_MARKER_RE.search(comments[-1]["body"]):
+                    body = comments[-1]["body"] if verdict == "triage" else draft
+                    update_comment(
+                        args.repo,
+                        int(comments[-1]["id"]),
+                        filed_body(body, unit_id, filed_issue_url),
+                    )
                 if verdict == "auto-file":
                     filed.append((unit_id, filed_issue_url))
                 print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
                 continue
+            if previous_issue_url is not None:
+                draft += f"\nPreviously filed as {previous_issue_url} (closed).\n"
 
-        try:
-            if comments:
+            # Keep filed comments as history; refresh only an unfiled draft.
+            if comments and not FILED_MARKER_RE.search(comments[-1]["body"]):
                 comment_id = int(comments[-1]["id"])
                 update_comment(args.repo, comment_id, draft)
                 print(f"Updated the latest draft for {unit_id} on #{args.triage_issue}")
@@ -275,16 +299,6 @@ def main() -> int:
 
             if mode == "dry-run":
                 print(f"Posted dry-run draft for {unit_id} on #{args.triage_issue}")
-                continue
-            if filed_issue_url is not None:
-                update_comment(
-                    args.repo,
-                    comment_id,
-                    filed_body(draft, unit_id, filed_issue_url),
-                )
-                if verdict == "auto-file":
-                    filed.append((unit_id, filed_issue_url))
-                print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
                 continue
             if verdict == "triage":
                 print(f"Queued {unit_id} for manual triage on #{args.triage_issue}")
@@ -301,7 +315,10 @@ def main() -> int:
             )
 
     headline, lines, should_notify = run_note(
-        decision, payloads, filed, publication_failures
+        decision,
+        [payload for payload in payloads if payload["unit_id"] not in reused_units],
+        filed,
+        publication_failures,
     )
     summary = render_run_note(
         run_id,

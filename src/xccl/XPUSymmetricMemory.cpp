@@ -408,6 +408,9 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   sycl::context ctx = current_queue.get_context();
   sycl::device dev = current_queue.get_device();
 
+  // ipc_memory is deprecated in favor of ipc::memory since oneAPI 2026.2,
+  // which older toolchains lack; keep ipc_memory until 2026.1 is dropped.
+  C10_DIAGNOSTIC_PUSH_AND_IGNORED_IF_DEFINED("-Wdeprecated-declarations")
   namespace syclexp = sycl::ext::oneapi::experimental;
   syclexp::ipc_memory::handle local_handle =
       syclexp::ipc_memory::get(base_ptr, ctx);
@@ -444,6 +447,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     buffers[r] = remote_base;
     signal_pads[r] = (void*)((uintptr_t)remote_base + block->signal_pad_offset);
   }
+  C10_DIAGNOSTIC_POP()
   storeExchange.barrier(store, rank, world_size);
 
   std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs;

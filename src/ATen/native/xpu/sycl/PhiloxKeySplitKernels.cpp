@@ -235,12 +235,12 @@ Tensor _philox_key_fold_in_tensor_xpu(const Tensor& key, const Tensor& data) {
     return output;
   }
 
+  auto key_contig = key.contiguous();
+
   constexpr int64_t work_group_size =
       256; // TODO: wg_size 256 on performance of XPU remains to be investigated
   const int64_t work_group_num =
       xpuKernelLoopGroupRange(num_keys, work_group_size);
-  auto key_contig = key.contiguous();
-
   sycl_kernel_submit<philox_key_fold_in_tensor_kernel>(
       sycl::range<1>(work_group_num * work_group_size),
       sycl::range<1>(work_group_size),

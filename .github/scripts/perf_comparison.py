@@ -28,8 +28,8 @@ def multiple_replace(text: str) -> str:
         Processed text with replacements applied
     """
     regex_replacements = [
-        (r".*inductor_", ""),
-        (r"_xpu_performance.csv", ""),
+        (r".*inductor-", ""),
+        (r"-[^-]+-performance\.csv", ""),
     ]
     for old_pattern, new_pattern in regex_replacements:
         text = re.sub(old_pattern, new_pattern, text, flags=re.IGNORECASE)
@@ -75,6 +75,26 @@ def color_result(input_val: float) -> str:
         return f"🟢{input_val:.3f}"
     else:
         return f"{input_val:.3f}"
+
+
+def blank_invalid_values(dataframe: pd.DataFrame, numeric_columns: list[str]) -> pd.DataFrame:
+    """
+    Round numeric columns and blank out non-positive values.
+
+    Missing models are stored as -1 and models that failed to run report 0
+    latency/speedup; neither carries meaning in the rendered report.
+
+    Args:
+        dataframe: DataFrame to clean
+        numeric_columns: Columns holding latency/ratio values
+
+    Returns:
+        A copy of the DataFrame ready for rendering
+    """
+    cleaned = dataframe.copy()
+    values = cleaned[numeric_columns]
+    cleaned[numeric_columns] = values.round(3).mask(values <= 0, '')
+    return cleaned
 
 
 def write_report(cases: pd.DataFrame, filename: str,
@@ -175,7 +195,7 @@ def process_comparison_data(args: argparse.Namespace) -> tuple[list[list[Any]], 
     output_data = []
 
     # Process target files
-    xpu_files = find_files("*_xpu_performance.csv", args.target)
+    xpu_files = find_files("*-performance.csv", args.target)
 
     for xpu_file in xpu_files:
         try:
@@ -248,7 +268,7 @@ def process_baseline_only_models(args: argparse.Namespace,
     """
     Process models that only exist in baseline data.
     """
-    refer_files = find_files("*_xpu_performance.csv", args.baseline)
+    refer_files = find_files("*-performance.csv", args.baseline)
 
     for refer_file in refer_files:
         try:
@@ -348,7 +368,8 @@ def generate_regression_reports(output_data: pd.DataFrame, args: argparse.Namesp
         (output_data['Baseline inductor'] > 0)
     ]
 
-    write_report(regression_cases, 'performance.regression.html',
+    write_report(blank_invalid_values(regression_cases, list(regression_cases.columns[2:])),
+                 'performance.regression.html',
                  "#### Performance Regression", "w")
 
     # PR-specific reports
@@ -370,7 +391,7 @@ def generate_pr_report(output_data: pd.DataFrame, criteria_high: float,
     pr_data = pr_data[[
         "Category", "Model", "Target vs. Baseline [Eager]",
         "Target vs. Baseline [Inductor]"
-    ]]
+    ]].round(3)
 
     # High regression cases
     high_regression = pr_data.loc[
@@ -435,7 +456,7 @@ def main():
         f.write("\n\n#### Performance Summary\n\n" + summary_df.to_html(header=True) + "\n\n")
 
     # Generate detailed report
-    output_df_clean = output_df.replace(-1, '')
+    output_df_clean = blank_invalid_values(output_df, output_header[2:])
     with open('performance.details.html', 'w', encoding='utf-8') as f:
         f.write("\n\n#### Performance Details\n\n" + output_df_clean.to_html(index=False) + "\n\n")
 
