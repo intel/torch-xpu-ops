@@ -459,6 +459,21 @@ static inline bool has_dense_output(
   return true;
 }
 
+// TI normally rejects detectable internal/partial overlap, but permits exact
+// in-place aliasing and may report TooHard for strided views. The binary
+// broadcast paths additionally reject overlapping input/output bounding ranges.
+// This is a conservative fast-path guard, not a general alias-safety proof.
+// The caller must establish that the output is dense in iteration order.
+static inline bool overlaps_dense_output(
+    const TensorIteratorBase& iter,
+    const void* output,
+    uintptr_t input_begin,
+    uintptr_t input_end) {
+  const auto output_begin = reinterpret_cast<uintptr_t>(output);
+  const auto output_end = output_begin + iter.numel() * iter.element_size(0);
+  return input_begin < output_end && output_begin < input_end;
+}
+
 template <typename func_t, typename array_t, typename in_calc_t>
 static inline void launch_vectorized_kernel(
     int64_t N,
@@ -599,6 +614,23 @@ static inline bool can_vectorize_for_non_contigouous(
 
 constexpr int strided_work_group_size = 128;
 
+// Reuse the outer quotient directly for a two-dimensional binary iterator.
+static inline auto strided_binary_offsets(
+    const OffsetCalculator<2>& ic,
+    uint32_t first) {
+  if (ic.dims == 2) {
+    const auto divmod = ic.sizes_[0].divmod(first);
+    OffsetCalculator<2>::offset_type offsets;
+#pragma unroll
+    for (int arg = 0; arg < 2; ++arg) {
+      offsets[arg] =
+          divmod.mod * ic.strides_[0][arg] + divmod.div * ic.strides_[1][arg];
+    }
+    return offsets;
+  }
+  return ic.get(first);
+}
+
 // An inner broadcast may need values from two adjacent rows.
 template <int vec_size, typename input_t, typename in_calc_t>
 static inline auto load_strided_unary_input(
@@ -682,6 +714,40 @@ static inline void launch_strided_unary(
   });
 }
 
+template <int vec_size, typename func_t, typename array_t, typename in_calc_t>
+static inline void launch_strided_binary(
+    int numel,
+    const func_t& f,
+    const array_t& data,
+    const in_calc_t& ic) {
+  using traits = function_traits<func_t>;
+  using input0_t = std::decay_t<typename traits::template arg<0>::type>;
+  using input1_t = std::decay_t<typename traits::template arg<1>::type>;
+  using output_t = typename traits::result_type;
+  constexpr int work_group_size = strided_work_group_size;
+  const int vectors = numel / vec_size;
+  const auto groups = ceil_div<int64_t>(vectors, work_group_size);
+  const auto* input0 = reinterpret_cast<const input0_t*>(data[1]);
+  const auto* input1 = reinterpret_cast<const input1_t*>(data[2]);
+  auto* output = reinterpret_cast<output_t*>(data[0]);
+  using kernel_name =
+      StridedElementwiseKernel<vec_size, false, func_t, in_calc_t>;
+  const sycl::nd_range<1> range(groups * work_group_size, work_group_size);
+  getCurrentSYCLQueue().submit([&](sycl::handler& handler) {
+    handler.parallel_for<kernel_name>(range, [=](sycl::nd_item<1> item) {
+      const int64_t index =
+          int64_t(item.get_group(0)) * work_group_size + item.get_local_id(0);
+      if (index < vectors) {
+        const uint32_t base = uint32_t(index) * vec_size;
+        const auto offsets = strided_binary_offsets(ic, base);
+        const auto a = memory::load_vector<vec_size>(input0 + offsets[0], 0);
+        const auto b = memory::load_vector<vec_size>(input1 + offsets[1], 0);
+        apply_strided_vector<vec_size>(f, output, index, a, b);
+      }
+    });
+  });
+}
+
 static inline bool is_aligned_strided_row(
     const TensorIteratorBase& iter,
     int input,
@@ -732,6 +798,71 @@ static inline bool try_launch_strided_unary(
   }
 }
 
+// Binary vectors stay within one aligned row.
+template <typename func_t, typename array_t>
+static inline bool try_launch_strided_binary(
+    TensorIteratorBase& iter,
+    const func_t& f,
+    const array_t& data,
+    bool dense_output) {
+  using traits = function_traits<func_t>;
+  static_assert(traits::arity == 2);
+  using output_t = typename traits::result_type;
+  constexpr int max_bytes = max_scalar_size<func_t>();
+  if constexpr (max_bytes > 4) {
+    return false;
+  } else {
+    if (iter.ndim() < 2 || !dense_output) {
+      return false;
+    }
+    const auto shape = iter.shape();
+    for (int input = 1; input <= 2; ++input) {
+      const auto strides = iter.strides(input);
+      const auto begin = reinterpret_cast<uintptr_t>(data[input]);
+      auto end = begin + iter.element_size(input);
+      bool broadcast = false;
+      for (int dim = 0; dim < iter.ndim(); ++dim) {
+        broadcast |= shape[dim] > 1 && strides[dim] == 0;
+        end += (shape[dim] - 1) * strides[dim];
+      }
+      if (broadcast && overlaps_dense_output(iter, data[0], begin, end)) {
+        return false;
+      }
+    }
+    constexpr int max_vec_size = std::min(8, 16 / max_bytes);
+    const auto numel = iter.numel();
+    // Use the largest supported subgroup to size a wave of vectors. Require
+    // two waves for packing four 32-bit elements per work-item. Keep wider
+    // packed accesses for sub-dword elements with one wave.
+    const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
+    for (int vec_size = max_vec_size; vec_size > 1; vec_size /= 2) {
+      const int waves = max_bytes == 4 && vec_size == 4 ? 2 : 1;
+      if (numel / vec_size < waves * wave_items ||
+          memory::can_vectorize_up_to<output_t>(data[0]) < vec_size ||
+          shape[0] % vec_size != 0 ||
+          !is_aligned_strided_row(iter, 1, vec_size) ||
+          !is_aligned_strided_row(iter, 2, vec_size)) {
+        continue;
+      }
+      auto launch = [&](auto width) {
+        constexpr int width_v = decltype(width)::value;
+        if constexpr (width_v <= max_vec_size) {
+          if (vec_size == width_v) {
+            auto ic = make_input_offset_calculator<2>(iter);
+            launch_strided_binary<width_v>(numel, f, data, ic);
+            return true;
+          }
+        }
+        return false;
+      };
+      return launch(std::integral_constant<int, 8>{}) ||
+          launch(std::integral_constant<int, 4>{}) ||
+          launch(std::integral_constant<int, 2>{});
+    }
+    return false;
+  }
+}
+
 // Packed-strided unary dispatch is independent of contiguous launch geometry.
 // Captured CPU-scalar functors are unary here too.
 template <
@@ -769,6 +900,8 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
     launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
     return;
   } else {
+    const bool dense_output = (packed_strided_unary || traits::arity == 2) &&
+        has_dense_output(iter, sizeof(arg0_t));
     // Keep the legacy row-vector restrictions for split iterators. Packed
     // strided paths validate their own geometry and also serve split iterators.
     if constexpr (enable_broadcast_vec) {
@@ -779,9 +912,13 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
         return;
       }
     }
-    if constexpr (packed_strided_unary) {
-      if (try_launch_strided_unary(
-              iter, f, data, has_dense_output(iter, sizeof(arg0_t)))) {
+    if constexpr (traits::arity == 2) {
+      if (!latency_case &&
+          try_launch_strided_binary(iter, f, data, dense_output)) {
+        return;
+      }
+    } else if constexpr (packed_strided_unary) {
+      if (try_launch_strided_unary(iter, f, data, dense_output)) {
         return;
       }
     }
