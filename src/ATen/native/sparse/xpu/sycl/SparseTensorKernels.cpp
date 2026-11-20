@@ -81,7 +81,7 @@ void coalesce_values_kernel(
 
 #pragma unroll
       for (int ii = 0; ii < SZ; ii++) {
-        int featureDim = startFeature + ii * C10_WARP_SIZE;
+        int featureDim = startFeature + ii * item.get_local_range(1);
         if (featureDim < stride) {
           tmp[ii] += static_cast<Acctype>(values[valueRow + featureDim]);
         }
@@ -89,7 +89,7 @@ void coalesce_values_kernel(
     }
 #pragma unroll
     for (int ii = 0; ii < SZ; ii++) {
-      int featureDim = startFeature + ii * C10_WARP_SIZE;
+      int featureDim = startFeature + ii * item.get_local_range(1);
       if (featureDim < stride) {
         newValues[newValueRow + featureDim] = static_cast<Dtype>(tmp[ii]);
       }
