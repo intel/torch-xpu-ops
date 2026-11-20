@@ -12,6 +12,7 @@
 
 #include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
+#include <ATen/MemoryOverlap.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -73,6 +74,21 @@ inline sycl::vec<scalar_t, elems_per_call<scalar_t>> box_muller(uint4 r) {
     result[i + 1] = radius * sycl::sin(angle);
   }
   return result;
+}
+
+// Shared by scalar and tensor bounds so both round identically.
+template <typename scalar_t, typename rand_t>
+inline scalar_t philox_uniform_real(rand_t rand, scalar_t lo, scalar_t hi) {
+  if constexpr (
+      std::is_same_v<scalar_t, float> || std::is_same_v<scalar_t, double>) {
+    const auto unit = transformation::uniform_real(
+        rand, static_cast<scalar_t>(0), static_cast<scalar_t>(1));
+    // Preserve CPU's intermediate rounding instead of contracting the FMA.
+    volatile scalar_t scaled = unit * (hi - lo);
+    return scaled + lo;
+  } else {
+    return static_cast<scalar_t>(transformation::uniform_real(rand, lo, hi));
+  }
 }
 
 template <typename scalar_t, bool is_uniform, typename key_offset_calc_t>
@@ -159,17 +175,7 @@ struct PhiloxDistributionFunctor {
 
   template <typename rand_t>
   scalar_t transform_uniform(rand_t rand) const {
-    if constexpr (
-        std::is_same_v<scalar_t, float> || std::is_same_v<scalar_t, double>) {
-      const auto unit = transformation::uniform_real(
-          rand, static_cast<scalar_t>(0), static_cast<scalar_t>(1));
-      // Preserve CPU's intermediate rounding instead of contracting the FMA.
-      volatile scalar_t scaled = unit * (param1_ - param0_);
-      return scaled + param0_;
-    } else {
-      return static_cast<scalar_t>(
-          transformation::uniform_real(rand, param0_, param1_));
-    }
+    return philox_uniform_real<scalar_t>(rand, param0_, param1_);
   }
 
   void write_normal(uint4 r, int64_t base, int count) const {
@@ -189,6 +195,99 @@ struct PhiloxDistributionFunctor {
   key_offset_calc_t key_offset_calc_;
   param_t param0_; // low or mean
   param_t param1_; // high or stddev
+};
+
+// Uniform sampling with per-element bounds. The bounds are expanded to the
+// output shape and indexed with a two-operand OffsetCalculator, so they may
+// broadcast and have arbitrary strides.
+template <
+    typename scalar_t,
+    typename key_offset_calc_t,
+    typename bounds_offset_calc_t>
+struct PhiloxUniformTensorFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    constexpr int epc = elems_per_call<scalar_t>;
+    XPU_KERNEL_LOOP_TYPE(item, index, total_chunks_, int64_t) {
+      const int64_t key_idx = index / chunks_per_key_;
+      const int64_t chunk = index % chunks_per_key_;
+      const auto key_offset = key_offset_calc_.get(key_idx)[0];
+      const auto key_vec = memory::ld_vec<16>(keys_ + key_offset);
+      const auto* key_vals = reinterpret_cast<const uint64_t*>(&key_vec);
+      const uint64_t seed = key_vals[0];
+      const uint64_t offset = key_vals[1];
+      const int64_t chunk_offset = chunk * epc;
+      const int64_t base = key_idx * elems_per_key_ + chunk_offset;
+      const int64_t remaining = elems_per_key_ - chunk_offset;
+      const int count = static_cast<int>(remaining < epc ? remaining : epc);
+
+      const uint64_t chunk_seq = offset + static_cast<uint64_t>(chunk);
+      const uint2 philox_key = {
+          static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+      // Subsequence half is fixed to 0 so the 64-bit offset alone addresses
+      // the whole counter space, keeping values consistent across devices.
+      const uint4 counter = {
+          static_cast<uint32_t>(chunk_seq),
+          static_cast<uint32_t>(chunk_seq >> 32),
+          0,
+          0};
+      const auto r = philox4x32_10(counter, philox_key);
+      write_values(r, base, count);
+    }
+  }
+
+  PhiloxUniformTensorFunctor(
+      scalar_t* output,
+      const uint64_t* keys,
+      int64_t elems_per_key,
+      int64_t chunks_per_key,
+      int64_t total_chunks,
+      key_offset_calc_t key_offset_calc,
+      bounds_offset_calc_t bounds_offset_calc,
+      const scalar_t* low,
+      const scalar_t* high)
+      : output_(output),
+        keys_(keys),
+        elems_per_key_(elems_per_key),
+        chunks_per_key_(chunks_per_key),
+        total_chunks_(total_chunks),
+        key_offset_calc_(key_offset_calc),
+        bounds_offset_calc_(bounds_offset_calc),
+        low_(low),
+        high_(high) {}
+
+ private:
+  void write_values(uint4 r, int64_t base, int count) const {
+    if constexpr (sizeof(scalar_t) == 8) {
+      const uint64_t vals[2] = {
+          (static_cast<uint64_t>(r.x) << 32) | r.y,
+          (static_cast<uint64_t>(r.z) << 32) | r.w};
+      for (int j = 0; j < count; j++) {
+        write_one(vals[j], base + j);
+      }
+    } else {
+      const uint32_t vals[4] = {r.x, r.y, r.z, r.w};
+      for (int j = 0; j < count; j++) {
+        write_one(vals[j], base + j);
+      }
+    }
+  }
+
+  template <typename rand_t>
+  void write_one(rand_t rand, int64_t index) const {
+    const auto offsets = bounds_offset_calc_.get(index);
+    output_[index] = philox_uniform_real<scalar_t>(
+        rand, low_[offsets[0]], high_[offsets[1]]);
+  }
+
+  scalar_t* output_;
+  const uint64_t* keys_;
+  int64_t elems_per_key_;
+  int64_t chunks_per_key_;
+  int64_t total_chunks_;
+  key_offset_calc_t key_offset_calc_;
+  bounds_offset_calc_t bounds_offset_calc_;
+  const scalar_t* low_;
+  const scalar_t* high_;
 };
 
 void philox_distribution_validate(
@@ -352,6 +451,154 @@ Tensor& _philox_uniform_xpu_(
   if (self.numel() > 0) {
     philox_distribution_launch</*is_uniform=*/true>(self, key, low, high);
   }
+  return self;
+}
+
+void philox_check_bound(
+    const char* op_name,
+    const char* name,
+    const Tensor& bound,
+    const Tensor& self) {
+  TORCH_CHECK(
+      bound.is_floating_point(),
+      op_name,
+      ": ",
+      name,
+      " must be a floating point tensor, got ",
+      bound.scalar_type());
+  TORCH_CHECK(
+      bound.device() == self.device(),
+      op_name,
+      ": ",
+      name,
+      " and self must be on the same device, got ",
+      bound.device(),
+      " and ",
+      self.device());
+  TORCH_CHECK(
+      is_expandable_to(bound.sizes(), self.sizes()),
+      op_name,
+      ": ",
+      name,
+      " shape ",
+      bound.sizes(),
+      " is not broadcastable to the output shape ",
+      self.sizes());
+  at::assert_no_overlap(self, bound);
+}
+
+template <typename scalar_t, typename bounds_offset_calc_t>
+void philox_uniform_tensor_launch(
+    Tensor& self,
+    const Tensor& key,
+    const scalar_t* low,
+    const scalar_t* high,
+    bounds_offset_calc_t bounds_offset_calc) {
+  auto output = self.contiguous();
+  const auto key_contig = key.contiguous();
+
+  int64_t elems_per_key = 1;
+  int64_t key_dims = self.dim();
+  if (key.dim() == 1) {
+    elems_per_key = self.numel();
+    key_dims = 0;
+  } else {
+    for (int64_t dim = self.dim() - 1; dim >= 0; dim--) {
+      if (key.size(dim) != 1) {
+        break;
+      }
+      elems_per_key *= self.size(dim);
+      key_dims--;
+    }
+  }
+  const int64_t num_keys = self.numel() / elems_per_key;
+  constexpr int64_t epc = elems_per_call<scalar_t>;
+  const int64_t chunks_per_key = at::ceil_div(elems_per_key, epc);
+  const int64_t total_chunks = num_keys * chunks_per_key;
+  constexpr int64_t work_group_size =
+      256; // TODO: Investigate impact of wg_size 256 on XPU performance.
+  const int64_t work_group_num =
+      xpuKernelLoopGroupRange(total_chunks, work_group_size);
+
+  const auto submit = [&](auto key_offset_calc) {
+    using key_offset_calc_t = decltype(key_offset_calc);
+    const auto functor = PhiloxUniformTensorFunctor<
+        scalar_t,
+        key_offset_calc_t,
+        bounds_offset_calc_t>(
+        output.mutable_data_ptr<scalar_t>(),
+        key_contig.const_data_ptr<uint64_t>(),
+        elems_per_key,
+        chunks_per_key,
+        total_chunks,
+        key_offset_calc,
+        bounds_offset_calc,
+        low,
+        high);
+    sycl_kernel_submit(
+        sycl::range<1>(work_group_num * work_group_size),
+        sycl::range<1>(work_group_size),
+        at::xpu::getCurrentSYCLQueue(),
+        functor);
+  };
+
+  if (key.dim() == 1) {
+    submit(TrivialOffsetCalculator<1, int64_t>());
+  } else {
+    c10::SmallVector<int64_t, MAX_DIMS> key_sizes(key_dims);
+    c10::SmallVector<int64_t, MAX_DIMS> key_strides(key_dims);
+    for (int64_t i = 0; i < key_dims; i++) {
+      const int64_t dim = key_dims - 1 - i;
+      key_sizes[i] = self.size(dim);
+      key_strides[i] = key_contig.size(dim) > 1 ? key_contig.stride(dim) : 0;
+    }
+    const int64_t* key_strides_ptr = key_strides.data();
+    submit(
+        OffsetCalculator<1, int64_t>(
+            key_dims, key_sizes.data(), &key_strides_ptr));
+  }
+
+  if (output.data_ptr() != self.data_ptr()) {
+    self.copy_(output);
+  }
+}
+
+Tensor& _philox_uniform_tensor_xpu_(
+    Tensor& self,
+    const Tensor& key,
+    const Tensor& low,
+    const Tensor& high) {
+  philox_distribution_validate("_philox_uniform_", self, key);
+  philox_check_bound("_philox_uniform_", "low", low, self);
+  philox_check_bound("_philox_uniform_", "high", high, self);
+  if (self.numel() == 0) {
+    return self;
+  }
+
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf, kBFloat16, self.scalar_type(), "_philox_uniform_", [&] {
+        auto lo = low.to(self.scalar_type()).expand(self.sizes());
+        auto hi = high.to(self.scalar_type()).expand(self.sizes());
+        const int64_t ndim = self.dim();
+        c10::SmallVector<int64_t, MAX_DIMS> sizes(ndim);
+        c10::SmallVector<int64_t, MAX_DIMS> lo_strides(ndim);
+        c10::SmallVector<int64_t, MAX_DIMS> hi_strides(ndim);
+        for (int64_t i = 0; i < ndim; i++) {
+          const int64_t dim = ndim - 1 - i;
+          sizes[i] = lo.size(dim);
+          lo_strides[i] = lo.stride(dim);
+          hi_strides[i] = hi.stride(dim);
+        }
+        const int64_t* strides[2] = {lo_strides.data(), hi_strides.data()};
+        const auto bounds_offset_calc =
+            OffsetCalculator<2, int64_t>(ndim, sizes.data(), strides);
+        philox_uniform_tensor_launch<scalar_t>(
+            self,
+            key,
+            lo.const_data_ptr<scalar_t>(),
+            hi.const_data_ptr<scalar_t>(),
+            bounds_offset_calc);
+      });
   return self;
 }
 

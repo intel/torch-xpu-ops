@@ -21,6 +21,14 @@ Tensor& _philox_uniform_xpu_(
   return xpu::_philox_uniform_xpu_(self, key, low, high);
 }
 
+Tensor& _philox_uniform_tensor_xpu_(
+    Tensor& self,
+    const Tensor& key,
+    const Tensor& low,
+    const Tensor& high) {
+  return xpu::_philox_uniform_tensor_xpu_(self, key, low, high);
+}
+
 Tensor& _philox_normal_xpu_(
     Tensor& self,
     const Tensor& key,
