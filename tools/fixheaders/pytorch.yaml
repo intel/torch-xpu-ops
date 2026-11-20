@@ -17,7 +17,6 @@ exclude:
   - "test/xpu/functorch/test_vmap_xpu.py"
   - "test/xpu/run_test_with_windows_nightly.py"
   - "test/xpu/test_expanded_weights_xpu.py"
-  - "test/xpu/test_fake_tensor_xpu.py"
   - "test/xpu/test_meta_xpu.py"
   - "test/xpu/test_nn_xpu.py"
 
@@ -82,8 +81,6 @@ custom_headers:
       - "test/xpu/nn/test_pooling_xpu.py"
       - "test/xpu/quantization/core/test_quantized_tensor_xpu.py"
       - "test/xpu/quantization/core/test_workflow_ops_xpu.py"
-      - "test/xpu/test_autograd_xpu.py"
-      - "test/xpu/test_binary_ufuncs_xpu.py"
       - "test/xpu/test_dataloader_xpu.py"
       - "test/xpu/test_distributions_xpu.py"
       - "test/xpu/test_linalg_xpu.py"
