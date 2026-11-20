@@ -94,6 +94,9 @@ struct FlipKernelImplLoopFunctor {
     *out_data = *in_data;
   }
 
+  FlipKernelImplLoopFunctor& operator=(const FlipKernelImplLoopFunctor&) =
+      delete;
+
   FlipKernelImplLoopFunctor(
       char* const RESTRICT out_ptr,
       const char* const RESTRICT in_ptr,
