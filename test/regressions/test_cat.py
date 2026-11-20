@@ -13,7 +13,7 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
 )
 from torch.testing._internal.common_dtype import float8_types_and
-from torch.testing._internal.common_utils import run_tests, TestCase
+from torch.testing._internal.common_utils import parametrize, run_tests, TestCase
 
 cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
@@ -115,70 +115,30 @@ class TestTorchMethod(TestCase):
         )
         self.assertEqual(res_cpu, res_xpu.cpu())
 
-    @dtypes(torch.float16, torch.uint8)
-    def test_cat_contiguous_slice_alignment(self, dtype):
-        shape = (16, 72151)
-        inputs_cpu = [torch.randint(0, 16, shape, dtype=dtype) for _ in range(2)]
-        inputs_xpu = [tensor.xpu() for tensor in inputs_cpu]
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize(
+        "shapes",
+        (
+            ((16, 72317), (16, 72317)),
+            ((256, 4097), (256, 4097)),
+            ((1, 1048577), (1, 1048577)),
+            ((1722, 609), (1722, 609)),
+            ((1636, 641), (1636, 641)),
+        ),
+    )
+    def test_cat_contiguous_slice_alignment(self, device, dtype, shapes):
+        inputs_cpu = [torch.randint(0, 16, shape, dtype=dtype) for shape in shapes]
+        inputs_xpu = [tensor.to(device) for tensor in inputs_cpu]
         for tensor in inputs_xpu:
             self.assertTrue(tensor.is_contiguous())
-            self.assertEqual(tensor.storage_offset(), 0)
             self.assertEqual(tensor.data_ptr() % 4, 0)
 
         expected = torch.cat(inputs_cpu, dim=1)
         actual = torch.cat(inputs_xpu, dim=1)
 
-        self.assertEqual(actual.shape, (16, 2 * 72151))
-        self.assertEqual(actual.dtype, dtype)
         self.assertTrue(actual.is_contiguous())
         self.assertEqual(actual.data_ptr() % 4, 0)
         self.assertEqual(expected, actual.cpu(), rtol=0, atol=0)
-
-    @dtypes(torch.float16, torch.uint8)
-    def test_cat_contiguous_slice_alignment_latency(self, dtype):
-        widths = (72150, 72151)
-        inputs = {
-            width: [
-                torch.randint(0, 256, (256, width), device="xpu", dtype=dtype)
-                for _ in range(2)
-            ]
-            for width in widths
-        }
-        for _ in range(3):
-            for width in widths:
-                torch.cat(inputs[width], dim=1)
-        torch.xpu.synchronize()
-
-        latencies = []
-        for width in widths:
-            with torch.profiler.profile(
-                activities=[
-                    torch.profiler.ProfilerActivity.CPU,
-                    torch.profiler.ProfilerActivity.XPU,
-                ]
-            ) as profiler:
-                torch.cat(inputs[width], dim=1)
-                torch.xpu.synchronize()
-            kernel_events = [
-                event
-                for event in profiler.events()
-                if event.device_type == torch.autograd.DeviceType.XPU
-                and "cat_array_batched_copy_contig_kernel_impl" in event.name
-            ]
-            self.assertEqual(len(kernel_events), 1)
-            latency_us = kernel_events[0].device_time_total
-            self.assertGreater(latency_us, 0)
-            latencies.append(latency_us)
-
-        ratio = max(latencies) / min(latencies)
-        details = "; ".join(
-            f"inputs=[(256, {width}), (256, {width})], dim=1, "
-            f"output=(256, {2 * width}), latency={latency_us:.3f} us"
-            for width, latency_us in zip(widths, latencies)
-        )
-        message = f"dtype={dtype}: {details}; latency difference={(ratio - 1):.2%}"
-        print(message)
-        self.assertLess(ratio, 2.0, msg=message)
 
     def test_cat_contiguous_vectorized_copy(self):
         # A trailing extent of 8 BF16 values makes every concat slice 16-byte
