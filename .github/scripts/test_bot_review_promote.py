@@ -244,3 +244,11 @@ def test_request_reviewers_is_capped(monkeypatch):
 
     asked = p.request_reviewers(FakeRepo("o/r"), {"number": 7, "body": body, "user": {"login": "a"}})
     assert asked == [f"u{i}" for i in range(p.MAX_REVIEWERS)]
+
+
+def test_no_pull_run_means_nothing_to_wait_for(tmp_path):
+    class NoRun(p.Repo):
+        def pull_run(self, sha):
+            return None
+
+    assert p.evaluate_ci(NoRun("o/r"), "s" * 40, tmp_path) == (False, [], [])
