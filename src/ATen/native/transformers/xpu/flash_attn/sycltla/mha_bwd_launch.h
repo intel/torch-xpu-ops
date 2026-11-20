@@ -173,11 +173,29 @@ void compute_o_dot_do(
   }
 }
 
+// Varlen grids are sized from max_seqlen; replace the lengths in this
+// work-group's copy of param with those of document bidb.
+template <class T>
+void set_varlen_seqlen(Param<typename T::DType>& param, const int bidb) {
+  param.seq_len_q = param.cu_seqlens_q[bidb + 1] - param.cu_seqlens_q[bidb];
+  param.seq_len_kv = param.cu_seqlens_k[bidb + 1] - param.cu_seqlens_k[bidb];
+  param.m_block = ceil_div(param.seq_len_q, T::kBlockM);
+  param.tail_m = param.seq_len_q % T::kBlockM;
+  param.n_block = ceil_div(param.seq_len_kv, T::kBlockN);
+  param.tail_n = param.seq_len_kv % T::kBlockN;
+}
+
 template <class T>
 void mha_dot_do_o(T trait, Param<typename T::DType> param) {
   const int m_block = BlockIdxX();
   const int bidb = BlockIdxZ();
   const int bidh = BlockIdxY();
+  if (param.is_varlen) {
+    set_varlen_seqlen<T>(param, bidb);
+    if (m_block >= param.m_block) {
+      return;
+    }
+  }
   if (m_block == param.m_block - 1 and param.tail_m > 0) {
     compute_o_dot_do<false>(trait, param, m_block, bidb, bidh);
   } else {
@@ -832,6 +850,9 @@ void mha_backward_seq(T trait, Param<typename T::DType> param) {
   const int bidnblk = BlockIdxX();
   const int bidhkv = bidhq / param.num_qh_per_kvh;
   const bool is_dropout = param.p_dropout < 1.0f;
+  if (param.is_varlen) {
+    set_varlen_seqlen<T>(param, bidb);
+  }
   for (int n_block = bidnblk; n_block < param.n_block; n_block += GridDimX()) {
     if (param.tail_n > 0 and n_block == param.n_block - 1) {
       if (is_dropout)
@@ -970,6 +991,12 @@ void mhd_convert_dq(T trait, Param<typename T::DType> param) {
   const int m_block = BlockIdxX();
   const int bidb = BlockIdxZ();
   const int bidh = BlockIdxY();
+  if (param.is_varlen) {
+    set_varlen_seqlen<T>(param, bidb);
+    if (m_block >= param.m_block) {
+      return;
+    }
+  }
   if (param.tail_m > 0 and m_block == param.m_block - 1) {
     convert_dq<false>(trait, param, m_block, bidb, bidh);
   } else {

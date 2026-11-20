@@ -93,6 +93,31 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     const at::Tensor philox_seed,
     const at::Tensor philox_offset);
 
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_varlen_bwd(
+    const at::Tensor& dout, // total_q x num_heads x head_size
+    const at::Tensor& q, // total_q x num_heads x head_size
+    const at::Tensor& k, // total_k x num_heads_k x head_size
+    const at::Tensor& v, // total_k x num_heads_k x head_size
+    const at::Tensor& out, // total_q x num_heads x head_size
+    const at::Tensor& softmax_lse, // num_heads x total_q
+    std::optional<at::Tensor>& dq_, // total_q x num_heads x head_size
+    std::optional<at::Tensor>& dk_, // total_k x num_heads_k x head_size
+    std::optional<at::Tensor>& dv_, // total_k x num_heads_k x head_size
+    const at::Tensor& cu_seqlens_q, // batch_size + 1
+    const at::Tensor& cu_seqlens_k, // batch_size + 1
+    std::optional<at::Tensor>& alibi_slopes_,
+    const int max_seqlen_q,
+    const int max_seqlen_k,
+    const float p_dropout,
+    const float softmax_scale,
+    bool is_causal,
+    int window_size_left,
+    int window_size_right,
+    const float softcap,
+    const bool deterministic,
+    const at::Tensor philox_seed,
+    const at::Tensor philox_offset);
+
 // Deprecated: Use mha_fwd instead.
 std::tuple<
     at::Tensor,

@@ -198,36 +198,32 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> _flash_attention_backward(
   // We check the whether the cumulative_sequence_length_q is defined
   // in order to determine whether we are using varlen or dense backward
   if (cumulative_sequence_length_q.defined()) {
-    // auto [dQuery, dKey, dValue, dSoftmax] = mha_varlen_bwd(
-    //     contiguous_grad_out,
-    //     query,
-    //     key,
-    //     value,
-    //     out,
-    //     logsumexp,
-    //     dq,
-    //     dk,
-    //     dv,
-    //     cumulative_sequence_length_q,
-    //     cumulative_sequence_length_k,
-    //     alibi_slopes,
-    //     max_seqlen_batch_q,
-    //     max_seqlen_batch_k,
-    //     dropout_p,
-    //     softmax_scale,
-    //     false /*zero_tensors*/,
-    //     is_causal,
-    //     window_left,
-    //     window_right,
-    //     softcap,
-    //     deterministic,
-    //     philox_seed,
-    //     philox_offset);
-    // return std::make_tuple(std::move(dQuery), std::move(dKey),
-    // std::move(dValue));
-    TORCH_CHECK(
-        false,
-        "_flash_attention_backward: Varseqlen path is not implemented yet.");
+    auto [dQuery, dKey, dValue, dSoftmax] = mha_varlen_bwd(
+        contiguous_grad_out,
+        query,
+        key,
+        value,
+        out,
+        logsumexp,
+        dq,
+        dk,
+        dv,
+        cumulative_sequence_length_q,
+        cumulative_sequence_length_k,
+        alibi_slopes,
+        max_seqlen_batch_q,
+        max_seqlen_batch_k,
+        dropout_p,
+        softmax_scale,
+        is_causal,
+        window_left,
+        window_right,
+        softcap,
+        deterministic,
+        philox_seed,
+        philox_offset);
+    return std::make_tuple(
+        std::move(dQuery), std::move(dKey), std::move(dValue));
   } else {
     auto [dQuery, dKey, dValue, dSoftmax] = mha_bwd(
         contiguous_grad_out,
