@@ -19,6 +19,9 @@ inputs:
   category:
     default: ''
     description: Optional artifact tag of the run (dpclang, target, baseline, ...)
+  runner:
+    default: ''
+    description: Optional runner label to distinguish distributed UT artifacts
   pytorch:
     default: 'nightly_wheel'
     description: Pytorch version the UT job ran against, recorded in issue comments
@@ -46,15 +49,16 @@ runs:
       env:
         PLATFORM: ${{ inputs.platform }}
         UT: ${{ inputs.ut }}
+        RUNNER_TAG: ${{ inputs.runner != '' && format('-{0}', inputs.runner) || '' }}
         TAG: ${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
       run: |
         # [0-9]* pins the attempt, so a tagged artifact never matches an untagged pattern.
         {
-          echo "data=UT-Data-${PLATFORM}-${UT}${TAG}-[0-9]*"
+          echo "data=UT-Data-${PLATFORM}-${UT}${RUNNER_TAG}${TAG}-[0-9]*"
           # xpu_p0 runs its distributed group on a second machine, as <ut>_distributed.
-          echo "data_split=UT-Data-${PLATFORM}-${UT}_distributed${TAG}-[0-9]*"
+          echo "data_split=UT-Data-${PLATFORM}-${UT}_distributed${RUNNER_TAG}${TAG}-[0-9]*"
           echo "known_issues=UT-Known-Issues${TAG}"
-          echo "check=UT-Check-${PLATFORM}-${UT}${TAG}-${GITHUB_RUN_ATTEMPT}"
+          echo "check=UT-Check-${PLATFORM}-${UT}${RUNNER_TAG}${TAG}-${GITHUB_RUN_ATTEMPT}"
         } >> "${GITHUB_OUTPUT}"
         mkdir -p "${GITHUB_WORKSPACE}/ut-ci"/{data,known-issues,work,check}
     - name: Download UT data
