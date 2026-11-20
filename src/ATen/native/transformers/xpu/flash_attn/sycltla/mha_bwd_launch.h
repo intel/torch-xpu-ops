@@ -602,9 +602,7 @@ void dq_dk_dv_1colblock(
   const index_t dqaccum_offset = bofst.dqaccum_offset(bidb, bidh, first_m_row);
   const index_t lse_offset = bofst.lse_offset(bidb, bidh, first_m_row);
   const index_t pb_offset =
-      (bidb * param.num_head_q * param.seq_len_kv_pad * kBlockM +
-       bidh * param.seq_len_kv_pad * kBlockM + n_block * kBlockN * kBlockM) *
-      2;
+      bofst.pb_offset(bidb, bidh, n_block * kBlockN, kBlockM);
   const index_t dsb_offset = pb_offset + kBlockN * kBlockM;
 
   // P = S = Q * K^t
@@ -1054,6 +1052,15 @@ void run_mha_bwd_specialized(
   param.tail_m = tail_m;
   param.seq_len_kv_pad = flash_bwd_params.seqlen_kv_pad;
   param.seq_len_q_pad = flash_bwd_params.seqlen_qo_pad;
+
+  param.is_varlen = flash_bwd_params.is_varlen;
+  if (param.is_varlen) {
+    param.cu_seqlens_q = flash_bwd_params.cu_seqlens_q;
+    param.cu_seqlens_k = flash_bwd_params.cu_seqlens_k;
+    param.total_q = flash_bwd_params.total_q;
+    param.dqaccum_rows = flash_bwd_params.total_q + BATCH * kBwdMPad;
+    param.pb_rows = flash_bwd_params.total_k + BATCH * kBwdNPad;
+  }
 
   setup_stride(param, flash_bwd_params);
 

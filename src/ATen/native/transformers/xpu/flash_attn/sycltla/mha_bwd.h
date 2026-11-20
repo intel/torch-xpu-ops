@@ -177,6 +177,14 @@ struct Param {
   int num_qh_per_kvh;
   int num_nb_per_blk;
 
+  // varlen: cu_seqlens [batch + 1]; padded row counts of dqaccum / pb
+  bool is_varlen = false;
+  const int* cu_seqlens_q = nullptr;
+  const int* cu_seqlens_k = nullptr;
+  int total_q = 0;
+  int dqaccum_rows = 0; // total_q + batch * kBwdMPad
+  int pb_rows = 0; // total_k + batch * kBwdNPad
+
   // other params
   const float scale_softmax;
   const float scale_softmax_log2;
@@ -221,63 +229,107 @@ struct Param {
 template <typename T>
 struct Boffset {
   Boffset(Param<T>& param_) : param(param_) {}
+  // Start of sequence b: varlen tensors are packed [total, H, D], so sequence
+  // b starts at row cu_seqlens[b] instead of at b * batch_stride.
+  index_t q_start(
+      const index_t batch_stride,
+      const index_t row_stride,
+      const index_t b_id) {
+    return param.is_varlen ? param.cu_seqlens_q[b_id] * row_stride
+                           : b_id * batch_stride;
+  }
+  index_t k_start(
+      const index_t batch_stride,
+      const index_t row_stride,
+      const index_t b_id) {
+    return param.is_varlen ? param.cu_seqlens_k[b_id] * row_stride
+                           : b_id * batch_stride;
+  }
   index_t q_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
-    return b_id * param.q_b_stride + h_id * param.q_h_stride +
-        s_id * param.q_r_stride;
+    return q_start(param.q_b_stride, param.q_r_stride, b_id) +
+        h_id * param.q_h_stride + s_id * param.q_r_stride;
   }
   index_t k_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
-    return b_id * param.k_b_stride + h_id * param.k_h_stride +
-        s_id * param.k_r_stride;
+    return k_start(param.k_b_stride, param.k_r_stride, b_id) +
+        h_id * param.k_h_stride + s_id * param.k_r_stride;
   }
   index_t v_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
-    return b_id * param.v_b_stride + h_id * param.v_h_stride +
-        s_id * param.v_r_stride;
+    return k_start(param.v_b_stride, param.v_r_stride, b_id) +
+        h_id * param.v_h_stride + s_id * param.v_r_stride;
   }
   index_t dq_offset(
       const index_t b_id,
       const index_t h_id,
       const index_t s_id) {
-    return b_id * param.dq_b_stride + h_id * param.dq_h_stride +
-        s_id * param.dq_r_stride;
+    return q_start(param.dq_b_stride, param.dq_r_stride, b_id) +
+        h_id * param.dq_h_stride + s_id * param.dq_r_stride;
   }
   index_t dk_offset(
       const index_t b_id,
       const index_t h_id,
       const index_t s_id) {
-    return b_id * param.dk_b_stride + h_id * param.dk_h_stride +
-        s_id * param.dk_r_stride;
+    return k_start(param.dk_b_stride, param.dk_r_stride, b_id) +
+        h_id * param.dk_h_stride + s_id * param.dk_r_stride;
   }
   index_t dv_offset(
       const index_t b_id,
       const index_t h_id,
       const index_t s_id) {
-    return b_id * param.dv_b_stride + h_id * param.dv_h_stride +
-        s_id * param.dv_r_stride;
+    return k_start(param.dv_b_stride, param.dv_r_stride, b_id) +
+        h_id * param.dv_h_stride + s_id * param.dv_r_stride;
   }
   index_t o_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
-    return b_id * param.o_b_stride + h_id * param.o_h_stride +
-        s_id * param.o_r_stride;
+    return q_start(param.o_b_stride, param.o_r_stride, b_id) +
+        h_id * param.o_h_stride + s_id * param.o_r_stride;
   }
   index_t do_offset(
       const index_t b_id,
       const index_t h_id,
       const index_t s_id) {
-    return b_id * param.do_b_stride + h_id * param.do_h_stride +
-        s_id * param.do_r_stride;
+    return q_start(param.do_b_stride, param.do_r_stride, b_id) +
+        h_id * param.do_h_stride + s_id * param.do_r_stride;
   }
+  // lse and odo: dense [B, Hq, Sq], varlen [Hq, total_q].
   index_t lse_offset(
       const index_t b_id,
       const index_t h_id,
       const index_t s_id) {
+    if (param.is_varlen) {
+      return h_id * param.total_q + param.cu_seqlens_q[b_id] + s_id;
+    }
     return b_id * param.seq_len_q * param.num_head_q + h_id * param.seq_len_q +
         s_id;
   }
+  // Scratch buffers are written in whole tiles, so in varlen each sequence
+  // gets kBwdMPad / kBwdNPad spare rows: sequence b starts at cu[b] + b * pad.
+  // dqaccum: dense [B, Hq, Sq_pad, D], varlen [Hq, dqaccum_rows, D].
   index_t dqaccum_offset(
       const index_t b_id,
       const index_t h_id,
       const index_t s_id) {
+    if (param.is_varlen) {
+      return (h_id * param.dqaccum_rows + param.cu_seqlens_q[b_id] +
+              b_id * kBwdMPad + s_id) *
+          param.head_dim;
+    }
     return b_id * param.num_head_q * param.seq_len_q_pad * param.head_dim +
         h_id * param.seq_len_q_pad * param.head_dim + s_id * param.head_dim;
+  }
+  // P and dS tiles, by key row: dense [B, Hq, Skv_pad, 2 * kBlockM],
+  // varlen [Hq, pb_rows, 2 * kBlockM].
+  index_t pb_offset(
+      const index_t b_id,
+      const index_t h_id,
+      const index_t n_row,
+      const index_t block_m) {
+    if (param.is_varlen) {
+      return (h_id * param.pb_rows + param.cu_seqlens_k[b_id] +
+              b_id * kBwdNPad + n_row) *
+          block_m * 2;
+    }
+    return (b_id * param.num_head_q * param.seq_len_kv_pad * block_m +
+            h_id * param.seq_len_kv_pad * block_m + n_row * block_m) *
+        2;
   }
 
   Param<T>& param;

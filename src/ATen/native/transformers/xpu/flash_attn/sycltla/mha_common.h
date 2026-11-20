@@ -170,6 +170,9 @@ struct FLASH_BWD_params : public FLASH_FWD_params {
   // To reorder P and dP due to slm api not ready.
   void* pb_ptr;
 
+  // Varlen: total packed K rows (sizes pb_ptr).
+  int total_k = 0;
+
   // The stride between rows of the dO, dQ, dK and dV matrices.
   index_t do_batch_stride;
   index_t dq_batch_stride;
