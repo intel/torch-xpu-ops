@@ -66,6 +66,33 @@ class TestForeachMetadata(TestCase):
         self._check(inplace, expected)
         self._check(out_again, expected)
 
+    @dtypes(torch.float32)
+    def test_fused_adam_multi_chunk(self, device, dtype):
+        # 131073 exceeds the fused chunk size (max work-group size * kILP), so
+        # the fused optimizer path fills more than one work-group entry.
+        params = [
+            torch.randn(size, device=device, dtype=dtype, requires_grad=True)
+            for size in (0, 1, 17, 131073)
+        ]
+        ref_params = [param.detach().clone().requires_grad_(True) for param in params]
+        grads = [torch.randn_like(param) for param in params]
+        for param, ref_param, grad in zip(params, ref_params, grads):
+            param.grad = grad.clone()
+            ref_param.grad = grad.clone()
+
+        optimizer = torch.optim.Adam(params, lr=1e-3, fused=True)
+        ref_optimizer = torch.optim.Adam(ref_params, lr=1e-3, fused=False)
+        optimizer.step()
+        ref_optimizer.step()
+
+        for param, ref_param in zip(params, ref_params):
+            self.assertEqual(param, ref_param)
+            for state_key in ("exp_avg", "exp_avg_sq"):
+                self.assertEqual(
+                    optimizer.state[param][state_key],
+                    ref_optimizer.state[ref_param][state_key],
+                )
+
 
 instantiate_device_type_tests(
     TestForeachMetadata, globals(), only_for="xpu", allow_xpu=True
