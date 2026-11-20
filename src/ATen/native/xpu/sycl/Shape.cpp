@@ -206,13 +206,13 @@ void cat_array_batched_copy_contig_kernel_impl(
     TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os,
     const int concatDim,
     IndexType dimStride,
-    std::array<bool, batch_size> sliceCopyEligibility) {
+    std::array<bool, batch_size> aligingCacheLineEligibility) {
   auto item = syclext::this_work_item::get_nd_item<2>();
   IndexType tid =
       item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
   IndexType nElements = inputs.nElements[item.get_group(0)];
 
-  const bool mayUseSliceCopy = sliceCopyEligibility[item.get_group(0)];
+  const bool mayUseSliceCopy = aligingCacheLineEligibility[item.get_group(0)];
 
   const T* data = inputs.input[item.get_group(0)];
   IndexType offset = inputs.offset[item.get_group(0)];
@@ -237,8 +237,8 @@ void cat_array_batched_copy_contig_kernel_impl(
       // ceil(sliceSize / subgroupSize) >= 20.
       if (static_cast<int64_t>(sliceSize) >
           static_cast<int64_t>(subgroupSize) * 19) {
-      const IndexType logicalSubgroupsPerSlice =
-          ceil_div(sliceSize, subgroupSize) + 1;
+        const IndexType logicalSubgroupsPerSlice =
+            ceil_div(sliceSize, subgroupSize) + 1;
         const IndexType lane = subgroup.get_local_id()[0];
         const IndexType logicalSubgroupCount =
             (nElements / sliceSize) * logicalSubgroupsPerSlice;
@@ -669,102 +669,102 @@ void parallel_cat(
     }
 
 // Template Declarations for dim = 1, 2, 3, 4
-#define HANDLE_CASE(DIMS)                                                      \
-  if (isContig && isAligned && isOutputAligned && sizeof(scalar_t) > 2 &&      \
-      sizeof(scalar_t) <= 8) {                                                 \
-    auto& q = getCurrentSYCLQueue();                                           \
-    sycl_kernel_submit<cat_array_batched_copy_aligned_k_contig_kernel_impl<    \
-        scalar_t,                                                              \
-        unsigned int,                                                          \
-        DIMS,                                                                  \
-        batch_size,                                                            \
-        stride_size,                                                           \
-        ALIGNED_VEC_LOAD_BYTES_16>>(                                           \
-        catRange,                                                              \
-        applyGroup,                                                            \
-        q,                                                                     \
-        0,                                                                     \
-        data,                                                                  \
-        catMetaData,                                                           \
-        outputParam,                                                           \
-        mapped_dimension,                                                      \
-        outputParam.tensorStride[mapped_dimension]);                           \
-  } else if (                                                                  \
-      isContig && isAligned && isOutputAligned && sizeof(scalar_t) == 2) {     \
-    auto& q = getCurrentSYCLQueue();                                           \
-    sycl_kernel_submit<cat_array_batched_copy_aligned_k_contig_kernel_impl<    \
-        scalar_t,                                                              \
-        unsigned int,                                                          \
-        DIMS,                                                                  \
-        batch_size,                                                            \
-        stride_size,                                                           \
-        ALIGNED_VEC_LOAD_BYTES_8>>(                                            \
-        catRange,                                                              \
-        applyGroup,                                                            \
-        q,                                                                     \
-        0,                                                                     \
-        data,                                                                  \
-        catMetaData,                                                           \
-        outputParam,                                                           \
-        mapped_dimension,                                                      \
-        outputParam.tensorStride[mapped_dimension]);                           \
-  } else if (isContig) {                                                       \
-    auto& q = getCurrentSYCLQueue();                                           \
-    std::array<bool, batch_size> sliceCopyEligibility{};                       \
-    if constexpr (sizeof(scalar_t) == 2) {                                     \
-      constexpr int64_t minElementsForSliceCopy = 1 << 20;                     \
-      if (max_elements_per_tensor >= minElementsForSliceCopy) {                \
-        const bool enableCriSliceCopy =                                        \
-            q.get_device().ext_oneapi_architecture_is(                         \
-                syclexp::architecture::intel_gpu_cri);                         \
-        if (enableCriSliceCopy) {                                              \
-          for (int slot = 0; slot < batchCounter; ++slot) {                    \
-            if (catMetaData.nElements[slot] < minElementsForSliceCopy) {       \
-              break;                                                           \
-            }                                                                  \
-            const auto outputAddress = reinterpret_cast<uintptr_t>(data) +     \
-                catMetaData.offset[slot] * dimStride * sizeof(scalar_t);       \
-            const int64_t sliceBytes =                                         \
-                catMetaData.dimSize[slot] * dimStride * sizeof(scalar_t);      \
-            sliceCopyEligibility[slot] = sliceBytes % 4 != 0 ||                \
-                outputSliceBytes % 4 != 0 || outputAddress % 4 != 0;           \
-          }                                                                    \
-        }                                                                      \
-      }                                                                        \
-    }                                                                          \
-    sycl_kernel_submit<cat_array_batched_copy_contig_kernel_impl<              \
-        scalar_t,                                                              \
-        unsigned int,                                                          \
-        DIMS,                                                                  \
-        batch_size,                                                            \
-        stride_size>>(                                                         \
-        catRange,                                                              \
-        applyGroup,                                                            \
-        q,                                                                     \
-        0,                                                                     \
-        data,                                                                  \
-        catMetaData,                                                           \
-        outputParam,                                                           \
-        mapped_dimension,                                                      \
-        outputParam.tensorStride[mapped_dimension],                            \
-        enableCriSliceCopy);                                                   \
-  } else {                                                                     \
-    auto& q = getCurrentSYCLQueue();                                           \
-    sycl_kernel_submit<cat_array_batched_copy_kernel_impl<                     \
-        scalar_t,                                                              \
-        unsigned int,                                                          \
-        DIMS,                                                                  \
-        batch_size,                                                            \
-        stride_size>>(                                                         \
-        catRange,                                                              \
-        applyGroup,                                                            \
-        q,                                                                     \
-        0,                                                                     \
-        data,                                                                  \
-        catMetaData,                                                           \
-        outputParam,                                                           \
-        mapped_dimension,                                                      \
-        outputParam.tensorStride[mapped_dimension]);                           \
+#define HANDLE_CASE(DIMS)                                                   \
+  if (isContig && isAligned && isOutputAligned && sizeof(scalar_t) > 2 &&   \
+      sizeof(scalar_t) <= 8) {                                              \
+    auto& q = getCurrentSYCLQueue();                                        \
+    sycl_kernel_submit<cat_array_batched_copy_aligned_k_contig_kernel_impl< \
+        scalar_t,                                                           \
+        unsigned int,                                                       \
+        DIMS,                                                               \
+        batch_size,                                                         \
+        stride_size,                                                        \
+        ALIGNED_VEC_LOAD_BYTES_16>>(                                        \
+        catRange,                                                           \
+        applyGroup,                                                         \
+        q,                                                                  \
+        0,                                                                  \
+        data,                                                               \
+        catMetaData,                                                        \
+        outputParam,                                                        \
+        mapped_dimension,                                                   \
+        outputParam.tensorStride[mapped_dimension]);                        \
+  } else if (                                                               \
+      isContig && isAligned && isOutputAligned && sizeof(scalar_t) == 2) {  \
+    auto& q = getCurrentSYCLQueue();                                        \
+    sycl_kernel_submit<cat_array_batched_copy_aligned_k_contig_kernel_impl< \
+        scalar_t,                                                           \
+        unsigned int,                                                       \
+        DIMS,                                                               \
+        batch_size,                                                         \
+        stride_size,                                                        \
+        ALIGNED_VEC_LOAD_BYTES_8>>(                                         \
+        catRange,                                                           \
+        applyGroup,                                                         \
+        q,                                                                  \
+        0,                                                                  \
+        data,                                                               \
+        catMetaData,                                                        \
+        outputParam,                                                        \
+        mapped_dimension,                                                   \
+        outputParam.tensorStride[mapped_dimension]);                        \
+  } else if (isContig) {                                                    \
+    auto& q = getCurrentSYCLQueue();                                        \
+    std::array<bool, batch_size> aligingCacheLineEligibility{};                    \
+    if constexpr (sizeof(scalar_t) == 2) {                                  \
+      constexpr int64_t minElementsForSliceCopy = 1 << 20;                  \
+      if (max_elements_per_tensor >= minElementsForSliceCopy) {             \
+        const bool enableCriSliceCopy =                                     \
+            q.get_device().ext_oneapi_architecture_is(                      \
+                syclexp::architecture::intel_gpu_cri);                      \
+        if (enableCriSliceCopy) {                                           \
+          for (int slot = 0; slot < batchCounter; ++slot) {                 \
+            if (catMetaData.nElements[slot] < minElementsForSliceCopy) {    \
+              break;                                                        \
+            }                                                               \
+            const auto outputAddress = reinterpret_cast<uintptr_t>(data) +  \
+                catMetaData.offset[slot] * dimStride * sizeof(scalar_t);    \
+            const int64_t sliceBytes =                                      \
+                catMetaData.dimSize[slot] * dimStride * sizeof(scalar_t);   \
+            aligingCacheLineEligibility[slot] = sliceBytes % 4 != 0 ||             \
+                outputSliceBytes % 4 != 0 || outputAddress % 4 != 0;        \
+          }                                                                 \
+        }                                                                   \
+      }                                                                     \
+    }                                                                       \
+    sycl_kernel_submit<cat_array_batched_copy_contig_kernel_impl<           \
+        scalar_t,                                                           \
+        unsigned int,                                                       \
+        DIMS,                                                               \
+        batch_size,                                                         \
+        stride_size>>(                                                      \
+        catRange,                                                           \
+        applyGroup,                                                         \
+        q,                                                                  \
+        0,                                                                  \
+        data,                                                               \
+        catMetaData,                                                        \
+        outputParam,                                                        \
+        mapped_dimension,                                                   \
+        outputParam.tensorStride[mapped_dimension],                         \
+        aligingCacheLineEligibility);                                              \
+  } else {                                                                  \
+    auto& q = getCurrentSYCLQueue();                                        \
+    sycl_kernel_submit<cat_array_batched_copy_kernel_impl<                  \
+        scalar_t,                                                           \
+        unsigned int,                                                       \
+        DIMS,                                                               \
+        batch_size,                                                         \
+        stride_size>>(                                                      \
+        catRange,                                                           \
+        applyGroup,                                                         \
+        q,                                                                  \
+        0,                                                                  \
+        data,                                                               \
+        catMetaData,                                                        \
+        outputParam,                                                        \
+        mapped_dimension,                                                   \
+        outputParam.tensorStride[mapped_dimension]);                        \
   }
 
     switch (nDims) {
