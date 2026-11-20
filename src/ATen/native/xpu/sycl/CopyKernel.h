@@ -16,4 +16,9 @@ namespace at::native::xpu {
 
 TORCH_XPU_API void copy_kernel(TensorIteratorBase& iter);
 
+// Copies raw bytes between two device-accessible USM pointers. Both must be
+// reachable from the current device, i.e. device memory or host memory
+// allocated through SYCL (pinned memory).
+TORCH_XPU_API void copy_bytes_kernel(void* dst, const void* src, size_t nbytes);
+
 } // namespace at::native::xpu
