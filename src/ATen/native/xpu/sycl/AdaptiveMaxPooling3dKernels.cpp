@@ -409,8 +409,13 @@ void adaptive_max_pool3d_backward_kernel(
     const Tensor& indices,
     const Tensor& gradInput) {
   const Tensor gradOutput_ = gradOutput.contiguous();
+  const auto indices_ = indices.expect_contiguous();
+  const auto gradInput_ = gradInput.is_contiguous()
+      ? c10::MaybeOwned<Tensor>::borrowed(gradInput)
+      : c10::MaybeOwned<Tensor>::owned(
+            at::empty(gradInput.sizes(), gradInput.options()));
 
-  gradInput.zero_();
+  gradInput_->zero_();
 
   int64_t sizeD, isizeT, isizeH, isizeW;
   int64_t osizeT, osizeH, osizeW;
@@ -453,10 +458,10 @@ void adaptive_max_pool3d_backward_kernel(
         input.scalar_type(),
         "adaptive_max_pool3d_backward_xpu",
         [&] {
-          scalar_t* gradInput_data = gradInput.mutable_data_ptr<scalar_t>();
+          scalar_t* gradInput_data = gradInput_->mutable_data_ptr<scalar_t>();
           const scalar_t* gradOutput_data =
               gradOutput_.const_data_ptr<scalar_t>();
-          const int64_t* indices_data = indices.const_data_ptr<int64_t>();
+          const int64_t* indices_data = indices_->const_data_ptr<int64_t>();
 
           adaptive_max_pool3d_backward_atomic_template(
               gradInput_data,
@@ -477,10 +482,10 @@ void adaptive_max_pool3d_backward_kernel(
         input.scalar_type(),
         "adaptive_max_pool3d_backward_xpu",
         [&] {
-          scalar_t* gradInput_data = gradInput.mutable_data_ptr<scalar_t>();
+          scalar_t* gradInput_data = gradInput_->mutable_data_ptr<scalar_t>();
           const scalar_t* gradOutput_data =
               gradOutput_.const_data_ptr<scalar_t>();
-          const int64_t* indices_data = indices.const_data_ptr<int64_t>();
+          const int64_t* indices_data = indices_->const_data_ptr<int64_t>();
 
           adaptive_max_pool3d_backward_template(
               gradInput_data,
@@ -494,6 +499,10 @@ void adaptive_max_pool3d_backward_kernel(
               osizeH,
               osizeW);
         });
+  }
+
+  if (!gradInput.is_contiguous()) {
+    gradInput.copy_(*gradInput_);
   }
 }
 
