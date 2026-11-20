@@ -9,6 +9,8 @@ name: bot-review label
 # `no automated review` opts the PR out: it goes straight to `ready for review`.
 # A maintainer requesting changes on a `ready for review` PR sends it back to
 # `in progress`, which re-runs the review (see bot_review_demote.yml).
+# When the `pull` workflow finishes, `promote` re-evaluates CI for the PR
+# (.github/scripts/bot_review_promote.py).
 # No PR code is checked out here. Writes use MERGE_TOKEN because GITHUB_TOKEN
 # comments and labels do not trigger other workflows.
 
@@ -16,7 +18,7 @@ on:
   pull_request_target:
     types: [labeled, synchronize, reopened, ready_for_review]
   workflow_run:
-    workflows: ["bot-review demote capture"]
+    workflows: ["bot-review demote capture", "pull"]
     types: [completed]
 
 permissions: {}
@@ -80,6 +82,7 @@ jobs:
     if: |
       github.event_name == 'workflow_run' &&
       github.repository_owner == 'intel' &&
+      github.event.workflow_run.name == 'bot-review demote capture' &&
       github.event.workflow_run.event == 'pull_request_review' &&
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
@@ -117,3 +120,39 @@ jobs:
             await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'ready for review' }).catch(() => {});
             await github.rest.issues.createComment({ owner, repo, issue_number,
               body: `@${by} requested changes, so this PR is back to \`in progress\`. Address the requested changes and push; the bot review re-runs and must find them addressed before the PR returns to \`ready for review\`.` });
+
+  # CI finished: promote if the bot review passed and every CI failure also
+  # fails on main. Runs from the default branch; the PR is found from the run,
+  # and the script re-reads everything from the API.
+  promote:
+    if: |
+      github.event_name == 'workflow_run' &&
+      github.repository_owner == 'intel' &&
+      github.event.workflow_run.name == 'pull' &&
+      github.event.workflow_run.event == 'pull_request'
+    concurrency:
+      group: bot-review-promote-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Find the PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # pull_requests is empty for fork PRs, so look the PR up by head ref
+          # and keep it only if the run tested its current head.
+          pr=$(gh api -X GET "repos/${{ github.repository }}/pulls" -f state=open -f "head=${HEAD_OWNER}:${HEAD_BRANCH}" \
+               --jq ".[] | select(.head.sha == \"${HEAD_SHA}\") | .number" | head -n 1)
+          echo "number=${pr}" >> "$GITHUB_OUTPUT"
+      - name: Promote to ready for review
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: python3 .github/scripts/bot_review_promote.py --repo ${{ github.repository }} --pr ${{ steps.pr.outputs.number }} --report-ci
