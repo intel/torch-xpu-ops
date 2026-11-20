@@ -158,6 +158,31 @@ void onecclAllGather(
       &stream.queue());
 }
 
+bool onecclAllGatherV(
+    at::Tensor& input,
+    at::Tensor& output,
+    const std::vector<size_t>& recvCounts,
+    onecclComm_t& comm,
+    at::xpu::XPUStream& stream) {
+#ifdef XCCL_HAS_ALLGATHER_V
+  // CCL_C_API symbols are weak, so this is null on a libccl without the API.
+  if (!::onecclAllGatherV) {
+    return false;
+  }
+  auto xcclDataType = getXcclDataType(input.scalar_type(), false);
+  return ::onecclAllGatherV(
+             input.data_ptr(),
+             (size_t)input.numel(),
+             output.data_ptr(),
+             recvCounts.data(),
+             xcclDataType,
+             comm,
+             &stream.queue()) == onecclSuccess;
+#else
+  return false;
+#endif // XCCL_HAS_ALLGATHER_V
+}
+
 void onecclSend(
     at::Tensor& input,
     onecclComm_t& comm,

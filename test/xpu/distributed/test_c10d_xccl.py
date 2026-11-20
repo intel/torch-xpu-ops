@@ -869,6 +869,42 @@ class CommTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    def test_all_gather_uneven(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        device = torch.device("xpu", self.rank)
+
+        # Same split as oneCCL's allgatherv benchmark: weights 1..N, each count
+        # rounded down to 16 bytes, the remainder going to the last rank.
+        def uneven_counts(total, elt_size):
+            align = 16 // elt_size
+            weight_sum = self.world_size * (self.world_size + 1) // 2
+            counts = [
+                total * (r + 1) // weight_sum // align * align
+                for r in range(self.world_size)
+            ]
+            counts[-1] += total - sum(counts)
+            return counts
+
+        for total in (67, 1 << 20):
+            counts = uneven_counts(total, torch.float.itemsize)
+            inp = torch.arange(counts[self.rank], dtype=torch.float, device=device)
+            inp += self.rank * total
+            original = inp.clone()
+            outputs = [torch.empty(n, device=device) for n in counts]
+            dist.all_gather(outputs, inp)
+            for r, n in enumerate(counts):
+                expected = torch.arange(n, dtype=torch.float, device=device)
+                self.assertEqual(outputs[r], expected + r * total)
+            self.assertEqual(inp, original)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_reduction_rejects_float4(self):
         store = dist.FileStore(self.file_name, self.world_size)
         dist.init_process_group(
@@ -1465,20 +1501,14 @@ class XCCLTraceTest(XCCLTraceTestBase):
             time.sleep(1)
 
         t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
-        self.assertEqual(len(t["entries"]), self.world_size + 1)
-        for i in range(self.world_size):
-            self.assertEqual(t["entries"][i]["profiling_name"], "xccl:_broadcast_oop")
-            # collective_seq_id should be incremented once.
-            self.assertEqual(t["entries"][i]["collective_seq_id"], 1)
-            self.assertEqual(t["entries"][i]["input_sizes"], [[i + 1, 2]])
-            self.assertEqual(
-                t["entries"][i]["output_sizes"],
-                [[i + 1, 2]],
-            )
-            # self.assertEqual(t["entries"][i]["state"], "scheduled") # Watchdog will fix marking works completed
-            # No event is recorded for individual ops
-            self.assertTrue("time_discovered_completed_ns" in t["entries"][i])
-        # TODO: (frost-intel) Add coalesced op recording for FR
+        # A single collective, whether onecclAllGatherV or its fallback runs.
+        self.assertEqual(len(t["entries"]), 1)
+        entry = t["entries"][0]
+        self.assertEqual(entry["profiling_name"], "xccl:all_gather")
+        self.assertEqual(entry["collective_seq_id"], 1)
+        self.assertEqual(entry["input_sizes"], [[self.rank + 1, 2]])
+        self.assertEqual(entry["output_sizes"], [[sum_len * 2]])
+        self.assertTrue("time_discovered_completed_ns" in entry)
 
     # TODO(whc) test out other ops (And combinations of ops, if that's valid?)
     @requires_xccl()
