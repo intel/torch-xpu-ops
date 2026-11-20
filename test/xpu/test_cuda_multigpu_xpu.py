@@ -1006,49 +1006,6 @@ class TestCudaMultiGPU(TestCase):
         with torch.get_device_module(GPU_TYPE).device(d1):
             self.assertGreater(e0.elapsed_time(e2), 0)
 
-    @contextlib.contextmanager
-    def _get_external_stream(self, device):
-        cudart = torch.get_device_module(GPU_TYPE).cudart()
-        stream = ctypes.c_ulonglong(0)
-        stream_p = ctypes.POINTER(ctypes.c_void_p)(stream)
-        stream_p_int = ctypes.cast(stream_p, ctypes.c_void_p).value
-        with device:
-            try:
-                out = cudart.cudaStreamCreate(stream_p_int)
-                self.assertEqual(out, 0)
-                self.assertNotEqual(stream.value, 0)
-                yield stream.value
-            finally:
-                out = cudart.cudaStreamDestroy(stream.value)
-                self.assertEqual(out, 0)
-
-    def test_external_streams(self):
-        device = torch.get_device_module(GPU_TYPE).device(0)
-        with self._get_external_stream(device) as stream_v:
-            ext_stream = torch.get_device_module(GPU_TYPE).ExternalStream(stream_v)
-            self.assertEqual(stream_v, ext_stream.cuda_stream)
-            self.assertEqual(ext_stream.device.index, device.idx)
-            ext_stream = torch.get_device_module(GPU_TYPE).get_stream_from_external(
-                stream_v, device
-            )
-            self.assertEqual(stream_v, ext_stream.cuda_stream)
-            self.assertEqual(ext_stream.device.index, device.idx)
-
-    @unittest.skipIf(not TEST_MULTIGPU, "detected only one GPU")
-    def test_external_streams_multi_device(self):
-        device = torch.get_device_module(GPU_TYPE).device(1)
-        with self._get_external_stream(device) as stream_v:
-            ext_stream = torch.get_device_module(GPU_TYPE).ExternalStream(
-                stream_v, device=device
-            )
-            self.assertEqual(stream_v, ext_stream.cuda_stream)
-            self.assertEqual(ext_stream.device.index, device.idx)
-            ext_stream = torch.get_device_module(GPU_TYPE).get_stream_from_external(
-                stream_v, device
-            )
-            self.assertEqual(stream_v, ext_stream.cuda_stream)
-            self.assertEqual(ext_stream.device.index, device.idx)
-
     @unittest.skipIf(not TEST_MULTIGPU, "only one GPU detected")
     def test_caching_pinned_memory_multi_gpu(self):
         # checks that the events preventing pinned memory from being reused
@@ -1413,6 +1370,46 @@ t2.start()
                 for idx in range(1, device_count)
             )
         )
+
+
+@unittest.skipUnless(TEST_CUDA, "CUDA only tests!")
+class TestMultiGPUCudaOnly(TestCase):
+    @contextlib.contextmanager
+    def _get_external_stream(self, device):
+        cudart = torch.cuda.cudart()
+        stream = ctypes.c_ulonglong(0)
+        stream_p = ctypes.POINTER(ctypes.c_void_p)(stream)
+        stream_p_int = ctypes.cast(stream_p, ctypes.c_void_p).value
+        with device:
+            try:
+                out = cudart.cudaStreamCreate(stream_p_int)
+                self.assertEqual(out, 0)
+                self.assertNotEqual(stream.value, 0)
+                yield stream.value
+            finally:
+                out = cudart.cudaStreamDestroy(stream.value)
+                self.assertEqual(out, 0)
+
+    def test_external_streams(self):
+        device = torch.cuda.device(0)
+        with self._get_external_stream(device) as stream_v:
+            ext_stream = torch.cuda.ExternalStream(stream_v)
+            self.assertEqual(stream_v, ext_stream.cuda_stream)
+            self.assertEqual(ext_stream.device.index, device.idx)
+            ext_stream = torch.cuda.get_stream_from_external(stream_v, device)
+            self.assertEqual(stream_v, ext_stream.cuda_stream)
+            self.assertEqual(ext_stream.device.index, device.idx)
+
+    @unittest.skipIf(not TEST_MULTIGPU, "detected only one GPU")
+    def test_external_streams_multi_device(self):
+        device = torch.cuda.device(1)
+        with self._get_external_stream(device) as stream_v:
+            ext_stream = torch.cuda.ExternalStream(stream_v, device=device)
+            self.assertEqual(stream_v, ext_stream.cuda_stream)
+            self.assertEqual(ext_stream.device.index, device.idx)
+            ext_stream = torch.cuda.get_stream_from_external(stream_v, device)
+            self.assertEqual(stream_v, ext_stream.cuda_stream)
+            self.assertEqual(ext_stream.device.index, device.idx)
 
 
 class TestCudaComm(TestCase):
