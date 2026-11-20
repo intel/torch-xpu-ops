@@ -40,9 +40,13 @@ apt-get install -y --no-install-recommends \
 # GitHub CLI (latest official release; Ubuntu apt gh is outdated)
 # ============================================================
 
-GH_VERSION=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
-    https://github.com/cli/cli/releases/latest)
+GH_VERSION="${GH_VERSION:-latest}"
+if [[ "$GH_VERSION" == "latest" ]]; then
+    GH_VERSION=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+        https://github.com/cli/cli/releases/latest)
+fi
 GH_VERSION="${GH_VERSION##*/v}"
+GH_VERSION="${GH_VERSION#v}"
 GH_ARCH=$(dpkg --print-architecture)
 GH_TMP="/tmp/gh"
 

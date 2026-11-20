@@ -10,8 +10,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 COPY install-dependencies.sh /tmp/install-dependencies.sh
 
+# A new gh version busts this layer so the image picks it up.
+ARG GH_VERSION=latest
+
 RUN chmod +x /tmp/install-dependencies.sh && \
-    /tmp/install-dependencies.sh && \
+    GH_VERSION="${GH_VERSION}" /tmp/install-dependencies.sh && \
     rm -f /tmp/install-dependencies.sh
 
 # Runner user

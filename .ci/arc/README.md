@@ -20,7 +20,7 @@ Each runner pod defaults to `4` CPUs and `16Gi` memory. Override those with `--r
 - [arc-runner-cleanup.sh](arc-runner-cleanup.sh) restores cache ownership on shutdown for the root fallback.
 - [arc-xpu-ubuntu-24.04-values.yaml](arc-xpu-ubuntu-24.04-values.yaml) is the Helm values file for the runner scale set.
 - [setup-arc-runner.sh](setup-arc-runner.sh) installs and deploys everything on a stock Ubuntu host.
-- [update-arc-runner.sh](update-arc-runner.sh) keeps the image on the latest `actions/runner` and recovers an `Outdated` scale set.
+- [update-arc-runner.sh](update-arc-runner.sh) keeps the image on the latest `actions/runner` and `gh`, keeps ARC on the latest chart, recovers `Outdated` scale sets, and writes a health summary to `current.status`.
 - [github-token.secret.example.yaml](github-token.secret.example.yaml) documents the Kubernetes secret shape only. Do not put a real token in git.
 
 ## Quick setup on stock Ubuntu
@@ -205,13 +205,21 @@ The scale set also advertises `ubuntu-24.04` and `ubuntu-latest`, so jobs using 
 
 ### Runner version (automatic)
 
-GitHub rejects deprecated `actions/runner` versions. When that happens ARC marks the scale set `Outdated`, deletes the listener, and unregisters the scale set, so no runners start. [update-arc-runner.sh](update-arc-runner.sh) prevents and repairs this. It rebuilds and imports the image only when a newer runner exists, prunes superseded images, and recreates an `Outdated` scale set from the live Helm values.
+GitHub rejects deprecated `actions/runner` versions. When that happens ARC marks the scale set `Outdated`, deletes the listener, and unregisters the scale set, so no runners start. [update-arc-runner.sh](update-arc-runner.sh) prevents and repairs this. Each run covers every Helm release in `arc-runners`:
+
+- rebuilds and imports the image when a newer `actions/runner` or `gh` is released (tracked by the `arc.runner.version` and `arc.gh.version` image labels), and re-imports it if the K3s copy is missing or stale;
+- deletes `Failed` EphemeralRunners and recreates `Outdated` or missing scale sets from the live Helm values;
+- upgrades ARC when a newer chart is published (see [ARC version](#arc-version));
+- checks the controller and listeners, exits non-zero on any problem, and writes `current.status` (`OK`, `WARNING`, or `FAILED`, with versions, scale set state, issues, and recent listener logs).
 
 ```bash
 ./update-arc-runner.sh                  # one-off check/update
 ./update-arc-runner.sh --install-timer  # install the hourly systemd timer
+head -1 current.status                  # latest health result
 journalctl -u arc-runner-update         # timer run logs
 ```
+
+Runtime state (pending upgrade, drained scale sets, ARC values backups) is kept in `.state/`.
 
 ### Image or scripts
 
@@ -237,7 +245,9 @@ helm upgrade --install xpu-ubuntu-24-04 \
 
 ### ARC version
 
-Helm does not upgrade CRDs, so a new ARC chart version needs a reinstall. This interrupts running jobs; drain first by waiting until `kubectl -n arc-runners get pods` is empty.
+Helm does not upgrade CRDs, so a new ARC chart version needs a reinstall. [update-arc-runner.sh](update-arc-runner.sh) does this automatically once no runners are busy: it backs up the Helm values to `.state/arc-backup-<time>/`, uninstalls the scale sets and controller, deletes the ARC CRDs, reinstalls both at the new version, and rolls back to the previous version on failure. If runners stay busy for `--arc-drain-after` hours (default 24), it sets `maxRunners` to 0 so the node drains, then upgrades. Use `--arc-version VER` to pin a version or `--arc-version off` to disable upgrades.
+
+Manual equivalent (interrupts running jobs; drain first by waiting until `kubectl -n arc-runners get pods` is empty):
 
 ```bash
 helm uninstall xpu-ubuntu-24-04 -n arc-runners --wait
