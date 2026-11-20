@@ -678,6 +678,56 @@ std::shared_ptr<onecclComm_t> ProcessGroupXCCL::initXCCLComm(
   return XCCLComm;
 }
 
+void ProcessGroupXCCL::eagerConnectSingleDevice(at::Device device) {
+  const auto key = std::to_string(device.index());
+  LOG(INFO) << logPrefix() << "Eagerly connecting xccl backend with device "
+            << device;
+  initXCCLComm(key, device, OpType::ALLREDUCE);
+}
+
+// Nothing to do: split() below builds the child communicator from a
+// members-only Store rendezvous, not from `onecclCommSplit`, so there is no
+// collective on the parent for a non-member rank to join. The method exists
+// because c10d calls it on non-members of a new_group() whenever the parent
+// backend reports supportsSplitting().
+void ProcessGroupXCCL::performNocolorSplit(at::Device device) {}
+
+c10::intrusive_ptr<Backend> ProcessGroupXCCL::split(
+    const c10::intrusive_ptr<Store>& store,
+    const std::vector<int>& ranks,
+    const c10::intrusive_ptr<Backend::Options>& opts) {
+  auto it = std::find(ranks.begin(), ranks.end(), rank_);
+  if (it == ranks.end()) {
+    return nullptr;
+  }
+  auto groupRank = static_cast<int>(std::distance(ranks.begin(), it));
+
+  auto xcclOpts = c10::dynamic_intrusive_pointer_cast<Options>(opts);
+  TORCH_CHECK(xcclOpts != nullptr, "opts not a ProcessGroupXCCL::Options.");
+
+  // groupRanks() is empty for a default group that is not the first XCCL
+  // process group built in this process; its group ranks are the global ones.
+  const auto& parentRanks = groupRanks();
+  std::vector<uint64_t> globalRanksInGroup;
+  globalRanksInGroup.reserve(ranks.size());
+  for (auto rank : ranks) {
+    globalRanksInGroup.emplace_back(
+        parentRanks.empty() ? static_cast<uint64_t>(rank) : parentRanks[rank]);
+  }
+  xcclOpts->global_ranks_in_group = std::move(globalRanksInGroup);
+
+  // `ranks` is ordered: position in it is the rank in the child group, which
+  // `onecclCommSplit` cannot express -- it ignores its `key` argument and
+  // orders the child by parent rank, so any other order would leave c10d and
+  // oneCCL disagreeing about who is who. The child is therefore built like
+  // new_group() does, by rendezvous on the Store the caller prefixed for it.
+  // The communicator itself is created lazily on the child's first operation.
+  auto pg = c10::make_intrusive<ProcessGroupXCCL>(
+      store, groupRank, static_cast<int>(ranks.size()), xcclOpts);
+  pg->setGroupDesc(xcclOpts->group_desc);
+  return c10::static_intrusive_pointer_cast<Backend>(pg);
+}
+
 void ProcessGroupXCCL::groupStart() {
   xccl::oneccl_group_start();
   ++xcclActiveGroupCounter_;
