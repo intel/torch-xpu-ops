@@ -110,6 +110,13 @@ template <int N, typename index_t>
 constexpr bool
     is_trivial_offset_calculator_v<TrivialOffsetCalculator<N, index_t>> = true;
 
+namespace launch_config {
+// Wide and integral inner broadcasts fix their subgroup size.
+constexpr int broadcast_work_group_size = 256;
+constexpr int broadcast_wide_work_group_size = 128;
+constexpr int broadcast_wide_sub_group_size = 16;
+} // namespace launch_config
+
 template <
     int vec_size,
     typename func_t,
@@ -474,6 +481,23 @@ static inline bool overlaps_dense_output(
   return input_begin < output_end && output_begin < input_end;
 }
 
+static inline bool broadcast_overlaps_output(
+    const TensorIteratorBase& iter,
+    const void* output,
+    int input,
+    bool broadcast_only = false) {
+  const auto strides = iter.strides(input);
+  const auto input_begin = reinterpret_cast<uintptr_t>(iter.data_ptr(input));
+  auto input_end = input_begin + iter.element_size(input);
+  bool broadcast = !broadcast_only;
+  for (int dim = 0; dim < iter.ndim(); ++dim) {
+    broadcast |= iter.shape()[dim] > 1 && strides[dim] == 0;
+    input_end += (iter.shape()[dim] - 1) * strides[dim];
+  }
+  return broadcast &&
+      overlaps_dense_output(iter, output, input_begin, input_end);
+}
+
 template <typename func_t, typename array_t, typename in_calc_t>
 static inline void launch_vectorized_kernel(
     int64_t N,
@@ -614,6 +638,20 @@ static inline bool can_vectorize_for_non_contigouous(
 
 constexpr int strided_work_group_size = 128;
 
+// Where the inputs of the vector starting at output element `first` are, for
+// BroadcastElementwiseKernel: in a one-dimensional iterator the dense input
+// follows the output and the broadcast input is a single element.
+template <int broadcast_arg>
+struct SingleElementBroadcast {
+  at::detail::Array<uint32_t, 2> get(uint32_t first) const {
+    at::detail::Array<uint32_t, 2> offsets;
+    offsets[broadcast_arg] = 0;
+    offsets[1 - broadcast_arg] = first;
+    return offsets;
+  }
+  uint32_t numel;
+};
+
 // Reuse the outer quotient directly for a two-dimensional binary iterator.
 static inline auto strided_binary_offsets(
     const OffsetCalculator<2>& ic,
@@ -629,6 +667,345 @@ static inline auto strided_binary_offsets(
     return offsets;
   }
   return ic.get(first);
+}
+
+// Otherwise each innermost row of the broadcast input is a single element.
+struct InnerBroadcast {
+  template <int broadcast_arg>
+  OffsetCalculator<2>::offset_type get(uint32_t first) const {
+    if (calc.dims != 2) {
+      return calc.get(first);
+    }
+    const auto& divider = calc.sizes_[0];
+    const uint32_t row = divider.div(first);
+    constexpr int dense_arg = 1 - broadcast_arg;
+    OffsetCalculator<2>::offset_type offsets;
+    offsets[broadcast_arg] = row * calc.strides_[1][broadcast_arg];
+    // This equals row * pitch + column, including zero outer pitch. The
+    // difference and addition use unsigned offsets in element units.
+    offsets[dense_arg] =
+        first + row * (calc.strides_[1][dense_arg] - divider.divisor);
+    return offsets;
+  }
+  uint32_t numel;
+  OffsetCalculator<2> calc;
+};
+
+// For a binary functor whose output is dense, one input is dense along the
+// innermost dimension and the other broadcasts along it (stride 0), e.g.
+// Tensor op single-element XPU Tensor or [M, N] op [M, 1]. Vectors never cross
+// an innermost row, so each takes one vector of the dense input and one
+// element of the broadcast input. The functor and its argument order are
+// unchanged. The broadcast position is a template parameter so both loads are
+// issued back to back, and the pointers and the functor come first so they
+// stay in the inline kernel payload. Scalar FP16/BF16 vec8 uses WG128 and
+// SIMD16. Integral inner broadcasts use SIMD32, and the compiler selects SIMD
+// for other widths.
+// Single-element broadcasts may have an ordinary tail. With full_waves, all
+// work-items after the whole waves of two-element vectors take one element
+// each (see BroadcastLaunchConfig).
+template <
+    int vec_size,
+    int broadcast_arg,
+    bool small_work_group,
+    typename func_t,
+    typename layout_t,
+    bool full_waves = false>
+struct BroadcastElementwiseKernel {
+  static_assert(!full_waves || vec_size == 2);
+  static constexpr int work_group_size = small_work_group
+      ? launch_config::broadcast_wide_work_group_size
+      : launch_config::broadcast_work_group_size;
+  using traits = function_traits<func_t>;
+  using dense_t =
+      std::decay_t<typename traits::template arg<1 - broadcast_arg>::type>;
+  using broadcast_t =
+      std::decay_t<typename traits::template arg<broadcast_arg>::type>;
+  using return_t = typename traits::result_type;
+
+  return_t apply(dense_t value, broadcast_t broadcast) const {
+    if constexpr (broadcast_arg == 0) {
+      return f_(broadcast, value);
+    } else {
+      return f_(value, broadcast);
+    }
+  }
+
+  auto get_offsets(uint32_t first) const {
+    if constexpr (std::is_same_v<layout_t, InnerBroadcast>) {
+      return layout_.template get<broadcast_arg>(first);
+    } else {
+      return layout_.get(first);
+    }
+  }
+
+  // A constant group size keeps the index free of payload loads. With
+  // full_waves, layout_.numel holds the number of vectors instead of
+  // elements, and the launch has exactly one work-item per later element.
+  void operator()(sycl::nd_item<1> item) const {
+    const uint32_t index = uint32_t(item.get_group(0)) * work_group_size +
+        uint32_t(item.get_local_id(0));
+    const uint32_t vectors =
+        full_waves ? layout_.numel : layout_.numel / vec_size;
+    if (index < vectors) {
+      const auto offsets = get_offsets(index * vec_size);
+      const auto values =
+          memory::load_vector<vec_size>(dense_ + offsets[1 - broadcast_arg], 0);
+      const broadcast_t broadcast =
+          c10::load(broadcast_ + offsets[broadcast_arg]);
+      memory::aligned_vector<return_t, vec_size> results;
+#pragma unroll
+      for (int j = 0; j < vec_size; ++j) {
+        results.val[j] = apply(values.val[j], broadcast);
+      }
+      reinterpret_cast<memory::aligned_vector<return_t, vec_size>*>(
+          output_)[index] = results;
+    } else if constexpr (
+        full_waves || !std::is_same_v<layout_t, InnerBroadcast>) {
+      if (full_waves || index < vectors + layout_.numel % vec_size) {
+        const uint32_t k = vectors * (vec_size - 1) + index;
+        const auto offsets = get_offsets(k);
+        output_[k] = apply(
+            c10::load(dense_ + offsets[1 - broadcast_arg]),
+            c10::load(broadcast_ + offsets[broadcast_arg]));
+      }
+    }
+  }
+
+  auto get(sycl::ext::oneapi::experimental::properties_tag) const {
+    if constexpr (small_work_group) {
+      return sycl::ext::oneapi::experimental::properties{
+          sycl::ext::oneapi::experimental::sub_group_size<
+              launch_config::broadcast_wide_sub_group_size>};
+    } else if constexpr (
+        std::is_same_v<layout_t, InnerBroadcast> &&
+        std::is_integral_v<dense_t> && std::is_integral_v<broadcast_t> &&
+        std::is_integral_v<return_t>) {
+      return sycl::ext::oneapi::experimental::properties{
+          sycl::ext::oneapi::experimental::sub_group_size<32>};
+    } else {
+      return sycl::ext::oneapi::experimental::properties{};
+    }
+  }
+
+  BroadcastElementwiseKernel(
+      const dense_t* dense,
+      const broadcast_t* broadcast,
+      return_t* output,
+      const func_t& f,
+      const layout_t& layout)
+      : dense_(dense),
+        broadcast_(broadcast),
+        output_(output),
+        f_(f),
+        layout_(layout) {}
+
+ private:
+  const dense_t* dense_;
+  const broadcast_t* broadcast_;
+  return_t* output_;
+  func_t f_;
+  layout_t layout_;
+};
+
+// Launch configuration of BroadcastElementwiseKernel. Only the output and the
+// dense input are streamed; the broadcast input takes one element per vector,
+// so its type does not size the vectors (a bool mask must not widen int64
+// work-items).
+template <typename func_t, int broadcast_arg, bool single_element>
+struct BroadcastLaunchConfig {
+  using traits = function_traits<func_t>;
+  using dense_t =
+      std::decay_t<typename traits::template arg<1 - broadcast_arg>::type>;
+  using broadcast_t =
+      std::decay_t<typename traits::template arg<broadcast_arg>::type>;
+  using output_t = typename traits::result_type;
+  static constexpr bool same_storage = std::is_same_v<dense_t, output_t> &&
+      std::is_same_v<broadcast_t, output_t>;
+  static constexpr bool low_precision = same_storage &&
+      (std::is_same_v<output_t, at::Half> ||
+       std::is_same_v<output_t, at::BFloat16>);
+  static constexpr bool float_storage =
+      same_storage && std::is_same_v<output_t, float>;
+  template <int vec_size>
+  static constexpr bool small_work_group =
+      single_element && low_precision && vec_size == 8;
+  static constexpr int dense_bytes = sizeof(dense_t);
+  static constexpr int output_bytes = sizeof(output_t);
+  static constexpr int min_bytes = std::min(dense_bytes, output_bytes);
+  static constexpr int max_bytes = std::max(dense_bytes, output_bytes);
+  // Wide scalar broadcasts take 16 bytes of the widest streamed operand.
+  // In the adaptive path, a work-item takes 8 bytes when there is enough work
+  // for every hardware thread, twice over when 4 bytes hold several elements.
+  // The narrowest operand, e.g. a bool output, keeps at least 4 bytes.
+  static constexpr int narrow_vec = std::max(1, 4 / min_bytes);
+  static constexpr int wide_vec = std::max(8 / max_bytes, narrow_vec);
+  static constexpr int waves = narrow_vec > 1 ? 2 : 1;
+  // When adaptive work changes from single elements to two-element vectors,
+  // process the remaining elements individually after the full vector waves.
+  static constexpr bool full_waves = narrow_vec == 1 && wide_vec == 2;
+  // Broadcast rows gain from vectors only when a streamed operand is narrower
+  // than 8 bytes; otherwise the generic kernel already accesses 8 bytes per
+  // work-item, and its grid-stride loop suits long write streams.
+  static constexpr bool vectorize_rows = min_bytes < 8;
+
+  static bool wide(int64_t numel) {
+    return numel / wide_vec >=
+        waves * int64_t(at::xpu::getDeviceMaxWorkItems());
+  }
+};
+
+// Pack a device scalar or a single innermost stride-zero operand.
+template <typename func_t, typename array_t>
+static inline bool try_launch_broadcast_kernel(
+    TensorIteratorBase& iter,
+    const func_t& f,
+    const array_t& data,
+    bool dense_output) {
+  static_assert(function_traits<func_t>::arity == 2);
+  const int ndim = iter.ndim();
+  const int numel = iter.numel();
+  if (ndim == 0 || numel < 2 || !dense_output) {
+    return false;
+  }
+  auto launch_arg = [&](auto arg, auto single) {
+    constexpr int broadcast_arg = decltype(arg)::value;
+    constexpr bool single_element = decltype(single)::value;
+    constexpr int dense = 2 - broadcast_arg;
+    // A broadcast input stored in the output would be read while written.
+    if (iter.strides(broadcast_arg + 1)[0] != 0 ||
+        iter.strides(dense)[0] != iter.element_size(dense) ||
+        broadcast_overlaps_output(iter, data[0], broadcast_arg + 1)) {
+      return false;
+    }
+    using config = BroadcastLaunchConfig<func_t, broadcast_arg, single_element>;
+    if constexpr (!single_element) {
+      if (!config::vectorize_rows ||
+          broadcast_overlaps_output(iter, data[0], dense, true)) {
+        return false;
+      }
+    }
+
+    auto launch_layout = [&](auto vec, const auto& layout) {
+      auto submit = [&](auto whole_waves) {
+        constexpr int vec_v = decltype(vec)::value;
+        constexpr bool full_waves = decltype(whole_waves)::value;
+        using kernel_t = BroadcastElementwiseKernel<
+            vec_v,
+            broadcast_arg,
+            config::template small_work_group<vec_v>,
+            func_t,
+            std::decay_t<decltype(layout)>,
+            full_waves>;
+        constexpr int64_t wg_size = kernel_t::work_group_size;
+        int64_t items = numel / vec_v;
+        if constexpr (single_element) {
+          items += numel % vec_v;
+        }
+        auto kernel_layout = layout;
+        if constexpr (full_waves) {
+          // A wide launch has at least one whole wave of vectors. A
+          // multiple of the group size of work-items with numel - items vectors
+          // leaves exactly one element per later work-item.
+          const int64_t capacity = at::xpu::getDeviceMaxWorkItems();
+          const int64_t vectors = numel / 2 / capacity * capacity;
+          items = ceil_div<int64_t>(numel - vectors, wg_size) * wg_size;
+          kernel_layout.numel = uint32_t(numel - items);
+        }
+        sycl_kernel_submit(
+            ceil_div(items, wg_size) * wg_size,
+            wg_size,
+            getCurrentSYCLQueue(),
+            kernel_t(
+                reinterpret_cast<const typename kernel_t::dense_t*>(
+                    data[dense]),
+                reinterpret_cast<const typename kernel_t::broadcast_t*>(
+                    data[broadcast_arg + 1]),
+                reinterpret_cast<typename kernel_t::return_t*>(data[0]),
+                f,
+                kernel_layout));
+      };
+      if constexpr (config::full_waves && decltype(vec)::value == 2) {
+        // Whole vector waves keep the original kernel and its payload
+        // scheduling.
+        if (numel % (2 * int64_t(at::xpu::getDeviceMaxWorkItems())) != 0) {
+          return submit(std::true_type{});
+        }
+      }
+      submit(std::false_type{});
+    };
+    auto launch_vector = [&](auto vec) {
+      constexpr int vec_size = decltype(vec)::value;
+      constexpr int vec_bytes = vec_size * config::dense_bytes;
+      if (reinterpret_cast<uintptr_t>(data[0]) %
+                  (vec_size * config::output_bytes) !=
+              0 ||
+          reinterpret_cast<uintptr_t>(data[dense]) % vec_bytes != 0) {
+        return false;
+      }
+      if constexpr (single_element) {
+        launch_layout(
+            vec, SingleElementBroadcast<broadcast_arg>{uint32_t(numel)});
+        return true;
+      } else if constexpr (config::vectorize_rows) {
+        if (iter.shape()[0] % vec_size != 0) {
+          return false;
+        }
+        for (int dim = 1; dim < ndim; ++dim) {
+          if (iter.strides(dense)[dim] % vec_bytes != 0) {
+            return false;
+          }
+        }
+        launch_layout(
+            vec,
+            InnerBroadcast{
+                uint32_t(numel), make_input_offset_calculator<2>(iter)});
+        return true;
+      }
+      return false;
+    };
+    if constexpr (config::low_precision) {
+      const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
+      int64_t vec8_items = wave_items;
+      if constexpr (single_element) {
+        // In-place scalar broadcasts can pack wider once the grid can offer
+        // one work-group per Xe core.
+        if (data[0] == data[dense]) {
+          vec8_items = launch_config::broadcast_wide_work_group_size *
+              int64_t(at::xpu::getDeviceXeCoreCount());
+        }
+      }
+      constexpr int vec4_waves = single_element ? 2 : 1;
+      return (numel / 8 >= vec8_items &&
+              launch_vector(std::integral_constant<int, 8>{})) ||
+          (numel / 4 >= vec4_waves * wave_items &&
+           launch_vector(std::integral_constant<int, 4>{})) ||
+          launch_vector(std::integral_constant<int, 2>{});
+    } else if constexpr (!single_element && config::float_storage) {
+      const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
+      return (numel / 4 >= 2 * wave_items &&
+              launch_vector(std::integral_constant<int, 4>{})) ||
+          (numel / 2 >= wave_items &&
+           launch_vector(std::integral_constant<int, 2>{})) ||
+          launch_vector(std::integral_constant<int, 1>{});
+    } else {
+      if constexpr (config::wide_vec == config::narrow_vec) {
+        return launch_vector(std::integral_constant<int, config::wide_vec>{});
+      } else if (config::wide(numel)) {
+        const bool launched =
+            launch_vector(std::integral_constant<int, config::wide_vec>{});
+        if (single_element || launched) {
+          return launched;
+        }
+      }
+      return launch_vector(std::integral_constant<int, config::narrow_vec>{});
+    }
+  };
+  auto launch = [&](auto single) {
+    return launch_arg(std::integral_constant<int, 0>{}, single) ||
+        launch_arg(std::integral_constant<int, 1>{}, single);
+  };
+  return ndim == 1 ? launch(std::true_type{}) : launch(std::false_type{});
 }
 
 // An inner broadcast may need values from two adjacent rows.
@@ -904,6 +1281,11 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
         has_dense_output(iter, sizeof(arg0_t));
     // Keep the legacy row-vector restrictions for split iterators. Packed
     // strided paths validate their own geometry and also serve split iterators.
+    if constexpr (traits::arity == 2) {
+      if (try_launch_broadcast_kernel(iter, f, data, dense_output)) {
+        return;
+      }
+    }
     if constexpr (enable_broadcast_vec) {
       if (!latency_case &&
           can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
