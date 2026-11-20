@@ -121,7 +121,7 @@ only the diff and commit log need to be fetched via git.
 2. **Investigate, don't guess** — When uncertain whether a checklist item applies, spawn a sub-agent to read the relevant code. A reviewer who guesses wrong provides negative value.
 3. **Review the design, not just the implementation** — A PR can have perfectly correct implementation of a bad design. Question side-channel communication, on/off private flags, and demand concrete interface documentation for new contracts between components.
 4. **Focus on what CI cannot check** — Don't comment on formatting, linting, type errors, or CI failures. Focus on design quality, interface correctness, thread safety, BC implications, test adequacy, and pattern adherence.
-5. **Separate blocking from non-blocking** — A point is blocking when the PR should not land until it is fixed: a correctness or security bug, a backward-compatibility break, a design problem that needs another look once addressed, an unaddressed maintainer comment, a performance regression on a hot path, a missing test (see Recommendation), or anything this skill marks **🔴 Must Fix**. Everything else worth mentioning (naming, small refactors, consistency with nearby code, wording of comments and docs) is non-blocking: write "non-blocking" in it. Do not stretch a point to make it blocking.
+5. **Separate blocking from non-blocking** — A point is blocking when the PR should not land until it is fixed: a correctness or security bug, a backward-compatibility break, a design problem that needs another look once addressed, an unaddressed maintainer comment, a performance regression on a hot path, a missing test (see Recommendation), or anything this skill marks as a **blocking category** (Intel GPU terminology, subgroup reduction anti-pattern). Everything else worth mentioning (naming, small refactors, consistency with nearby code, wording of comments and docs) is non-blocking: write "non-blocking" in it. Do not stretch a point to make it blocking.
 6. **Be specific and actionable** — Reference file paths and line numbers. Name the function/class/file the author should use.
 7. **Match the immediate context** — Read how similar features are already implemented in the same file. A pattern mismatch within a file is always worth raising; it is blocking only when principle 5 says so.
 8. **Assume competence** — The author knows PyTorch; explain only non-obvious context.
@@ -180,7 +180,7 @@ Use `gh api` or spawn a sub-agent to fetch the upstream file content. Do NOT pro
 
 Go through **every changed line** in the diff and evaluate against the review checklist in [review-checklist.md](references/review-checklist.md).
 
-If the diff adds or modifies any agent instruction files (`SKILL.md`, `AGENTS.md`, `claude.md`, `copilot-instructions.md`, or files under `.claude/` / `.github/`), load the skill-writer skill and evaluate those changes against its guidelines. Do NOT skip this — treat it as a blocking gate for those files.
+If the diff adds or modifies any agent instruction files (`SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, files under `.github/instructions/`, or files under `.claude/`), load the skill-writer skill and evaluate those changes against its guidelines. Do NOT skip this — treat it as a blocking gate for those files. CI workflows and scripts under `.github/` are not instruction files; review them as code.
 
 Pay special attention to XPU-specific risks:
 - **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
@@ -249,37 +249,30 @@ Recommend **Request Changes** only for a blocking point. Recommend **Needs Discu
 
 **Only include this section if the user requests a "detailed" or "in depth" review.**
 
-When performing a detailed review, group findings by severity:
-- **🔴 Must Fix** — Incorrect terminology, bugs, magic numbers in logic, correctness issues
-- **🟡 Should Fix** — Naming inconsistency, missing comments on non-obvious logic
-- **🟢 Suggestion** — Style nits, minor improvements
+When performing a detailed review, group findings by the same two levels as the rest of the review (see principle 5):
+- **Blocking** — e.g. bugs, correctness issues, incorrect terminology, missing tests
+- **Non-blocking** — e.g. magic numbers in logic, naming inconsistency, missing comments on non-obvious logic, style nits
 
 For each finding, quote the offending line and provide a concrete fix.
 
 ```markdown
-### 🔴 Must Fix (N issues)
+### Blocking (N issues)
 
 **[Category] file.cpp:42** — <description>
   <quoted code>
   → <suggested fix>
 
-### 🟡 Should Fix (N issues)
+### Non-blocking (N issues)
 ...
-
-### 🟢 Suggestions (N issues)
-...
-
-### ✅ What looks good
-<briefly note well-written parts — good reviews are balanced>
 ```
 
-If there are zero issues in a severity level, omit that section. Always include the "What looks good" section in detailed reviews.
+If there are zero issues in a level, omit that section.
 
 ## Intel GPU Terminology
 
 **Principle: For SYCL programming, always use SYCL programming model terms. Hardware architecture terms should only appear in comments explaining the motivation for a particular optimization.**
 
-This is a **🔴 Must Fix** category.
+This is a **blocking** category.
 
 ### SYCL Programming Model Terms
 
@@ -340,7 +333,7 @@ int xecore_count = zeDeviceGetSubsliceCount(device);  // legacy API name
 
 **Principle: Never use `sycl::shift_group_left` combined with a reduction operation to perform subgroup reductions. Always use `sycl::reduce_over_group` instead.**
 
-This is a **🔴 Must Fix** category.
+This is a **blocking** category.
 
 ### Detection Criterion
 
