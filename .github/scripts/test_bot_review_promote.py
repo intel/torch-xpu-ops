@@ -73,12 +73,12 @@ def test_ut_group_unhealthy_or_unexplained_blocks(tmp_path):
 
 def test_e2e_compares_models_with_nightly(tmp_path):
     header = "dev,backend,suite,dtype,mode,name,scenario,batch_size,elapsed,status,accuracy\n"
-    write(tmp_path / "pr" / "x-accuracy.csv", header
+    write(tmp_path / "pr" / "E2E-Data-1" / "x-accuracy.csv", header
           + "xpu,d,timm,bf16,training,m1,accuracy,8,1,pass,fail_accuracy\n"
           + "xpu,d,timm,bf16,training,m2,accuracy,8,1,pass,fail_accuracy\n"
           + "xpu,d,timm,bf16,training,m3,accuracy,8,1,pass,pass\n"
           + "xpu,d,timm,bf16,training,m4,accuracy,8,1,pass,timeout\n")
-    write(tmp_path / "main" / "y-accuracy.csv", header
+    write(tmp_path / "main" / "E2E-Data-1" / "y-accuracy.csv", header
           + "xpu,d,timm,bf16,training,m1,accuracy,8,1,pass,fail_accuracy\n"
           + "xpu,d,timm,bf16,training,m2,accuracy,8,1,pass,pass\n")
     blockers, tolerated = p.e2e_blockers(p.e2e_accuracy(tmp_path / "pr"), p.e2e_accuracy(tmp_path / "main"))
@@ -180,7 +180,7 @@ def test_promote_swaps_labels_when_review_and_ci_pass(monkeypatch):
     calls = run_promote(monkeypatch, ["in progress"], PASSED, (False, [], ["x"]))
     assert ("api", "repos/o/r/issues/7/labels", "-f", "labels[]=ready for review") in calls
     assert ("api", "-X", "DELETE", "repos/o/r/issues/7/labels/in%20progress") in calls
-    assert "also fail on main" in calls[-1][-1]
+    assert "also fail on main" in calls[-1][-1] and "bot-review-promote:promoted:" in calls[-1][-1]
 
 
 def test_promote_holds_on_ci_review_or_maintainer(monkeypatch):
@@ -193,3 +193,15 @@ def test_promote_holds_on_ci_review_or_maintainer(monkeypatch):
     late = [{"login": "maint", "type": "User", "at": "2026-11-20T08:00:00Z"}]
     held = run_promote(monkeypatch, ["in progress"], PASSED, (False, [], []), late)
     assert len(held) == 1 and "@maint commented after" in held[0][-1]
+
+
+def test_only_the_latest_attempt_counts(tmp_path):
+    def check(attempt, new):
+        d = tmp_path / f"UT-Check-linux-basic-{attempt}" / "basic"
+        write(d / "verdict.json", json.dumps({"categories": [{"category": "op_extended", "passed": False}]}))
+        write(d / "new_failures.txt", new)
+
+    check(1, B)  # stale attempt: B passes on main, would block
+    check(2, A)
+    assert [d.name for d in p.latest_attempts(tmp_path)] == ["UT-Check-linux-basic-2"]
+    assert p.ut_group_blockers(tmp_path, {A}, {B}) == ([], [A])
