@@ -5,6 +5,8 @@ Licensed under the Apache License, Version 2.0
 
 # Stage Two: Driver Dependencies and Interfaces
 
+Versioned URLs and `master` branch links in this file are structural entry points; always substitute the release or tag matching the installed component.
+
 ## 1. Identify Providers
 
 Start with direct PyTorch driver requirements and dependencies reached from [component consumers](torch-build.md). Query only the providers and interfaces relevant to those checks, in the environment where the target installation runs.

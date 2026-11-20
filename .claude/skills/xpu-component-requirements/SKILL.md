@@ -1,6 +1,6 @@
 ---
 name: xpu-component-requirements
-description: "Check the Python packages, embedded components, runtime libraries, and GPU drivers used by a PyTorch XPU installation against their official version requirements. Use for a full component version check or a targeted dependency check."
+description: "Check whether the Python packages, embedded components (SYCL-TLA, oneDNN, Triton XPU, oneMKL, oneCCL), runtime libraries, and Intel GPU drivers (Compute Runtime/NEO, IGC, Level Zero, OpenCL) used by a PyTorch XPU installation meet official version requirements. Use when verifying PyTorch XPU prerequisites, auditing an XPU environment, or checking if IGC, Compute Runtime, Level Zero, or oneAPI versions are compatible or too old. Do not use for unit-test root-cause analysis or code fixes."
 ---
 
 <!--
@@ -23,7 +23,24 @@ GPU, OS, and driver channel select the applicable requirements. OS/GPU support-l
 Collect in the target server/container and Python interpreter:
 
 - `sys.executable`, Python version, OS/architecture, and GPU models with PCI IDs and BDFs/UUIDs. Unless devices are specified, cover the distinct models visible to this installation. Retain system enumeration if a device query fails and identify the unconfirmed scope.
-- Full torch version, installation path, `git_version`, and installation source, using `importlib.metadata`, `direct_url.json`, and build records. If importing fails, read `torch/version.py` and continue static checks.
+- Full torch version, installation path, `git_version`, and installation source, read statically via `importlib.metadata`, `direct_url.json`, `torch/version.py`, and build records without importing `torch`.
+
+Example read-only collection commands (adapt the interpreter path as needed):
+
+```bash
+lspci -nn -D | grep -i -E 'vga|display|3d'
+timeout 10s sycl-ls
+python - <<'PY'
+import importlib.metadata as m, importlib.util as u, pathlib, sys
+d = m.distribution("torch")
+print(sys.executable, d.version, d.read_text("direct_url.json") or "")
+spec = u.find_spec("torch")
+for root in (spec.submodule_search_locations or []) if spec else []:
+    vp = pathlib.Path(root) / "version.py"
+    if vp.is_file():
+        print("\n".join(l for l in vp.read_text().splitlines() if "git_version" in l or "__version__" in l))
+PY
+```
 
 Use the matching official artifact for release-package declarations and the actual source/build records for local builds. Record provenance limitations without making whole-package binary verification a prerequisite for version checks.
 
@@ -80,4 +97,33 @@ Use the records above to produce a concise report. Summarize passing checks; pro
 | Embedded and cooperating components | Consumers such as SYCL-TLA, oneDNN, and Triton XPU |
 | Driver dependencies and interfaces | Driver packages, IGC, loaders, APIs, and required tools |
 
-Count checks, not component names; F and U + N must match their detail-table row counts. Conclude “All requirements within this check's scope are satisfied” only when coverage is complete, no dependency branches remain stopped, P > 0, and F = U = N = 0.
+Count checks, not component names; F and U + N must match their detail-table row counts. When coverage is complete, no dependency branches remain stopped, P > 0, and F = U = 0: conclude “All requirements within this check's scope are satisfied” if N = 0, or “All explicit requirements within this check's scope are satisfied (N relationships have no declared constraint)” if N > 0.
+
+### Sample Report
+
+```markdown
+**Target:** torch 2.15.0+xpu (git `abc1234`, official wheel) · Intel Data Center GPU Max 1550 (`8086:0bd5`) · Ubuntu 24.04 x86_64 · Python 3.11 (`/opt/venv/bin/python`) · Default XPU runtime scope
+**Result:** Fail 1, Pass 42, Unresolved 1, No explicit requirement found 0.
+
+### Failures
+| Consumer/version → Component | Applicability | Official requirement | Actual value | Official source | Local evidence |
+|---|---|---|---|---|---|
+| SYCL-TLA v0.9 → IGC | Max Series (PVC) | IGC v2.27.10 or later | 2.10.10 (`intel-igc-core-2 2.10.10-1082`) | [SYCL-TLA v0.9 README](https://github.com/intel/sycl-tla/blob/b4f7216580a48b1d443d0c6e85dc7a72105bbdbb/README.md#compatibility) | `dpkg-query` + IGC package record |
+
+### Unresolved Items and Missing Requirements
+| Consumer/version → Component | Result | Known requirement and actual value | Evidence gap / sources checked | Sources |
+|---|---|---|---|---|
+| GPU oneDNN v3.13 → OpenCL C 2.0 | Unresolved | Requires OpenCL C 2.0; device lists 1.2 & 3.0 with `__opencl_c_subgroups` | Upstream wording leaves OpenCL C 3.0 acceptance unclear | [oneDNN v3.13 README](https://github.com/uxlfoundation/oneDNN/blob/v3.13/README.md); `clinfo` |
+
+### Official-Document Differences
+| Component and target | Statement A and source | Statement B and source | Adopted requirement and rationale |
+|---|---|---|---|
+| SYCL-TLA v0.9 → IGC (PVC) | `IGC v2.27.10 or later` ([v0.9 README](https://github.com/intel/sycl-tla/blob/b4f7216580a48b1d443d0c6e85dc7a72105bbdbb/README.md#compatibility)) | `Compute Runtime 25.13 (with IGC 2.10.10)` ([v0.9 build guide](https://github.com/intel/sycl-tla/blob/b4f7216580a48b1d443d0c6e85dc7a72105bbdbb/media/docs/cpp/build/building_with_sycl_support.md)) | Adopted README model-specific minimum; build guide lists a paired combination without an independent IGC lower bound. |
+
+### Coverage
+| Layer | Components examined |
+|---|---|
+| Python packages and bundled libraries | `torch`, `intel-sycl-rt`, `dpcpp-cpp-rt`, `onemkl-sycl-*`, `oneccl`, `impi-rt`, `triton-xpu`, `intel-pti` |
+| Embedded and cooperating components | `torch-xpu-ops`, `SYCL-TLA`, `GPU oneDNN`, `SYCL/UR`, `oneMKL`, `oneCCL/MPI`, `Triton XPU` |
+| Driver dependencies and interfaces | `intel-level-zero-gpu`, `intel-opencl-icd`, `IGC`, `GmmLib`, `Level Zero API`, `OpenCL C`, `ocloc` |
+```

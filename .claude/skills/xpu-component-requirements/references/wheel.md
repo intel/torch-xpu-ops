@@ -5,6 +5,8 @@ Licensed under the Apache License, Version 2.0
 
 # Stage One: Package Requirements and Bundled Libraries
 
+Versioned links in this file are structural entry points; substitute the target PyTorch commit or release tag when inspecting source recipes.
+
 ## 1. Establish Package Declarations
 
 In the target interpreter, batch-read `Name`, `Version`, `Requires-Python`, `Requires-Dist`, `direct_url.json`, `WHEEL`, and `RECORD` through `importlib.metadata`. Importing torch is unnecessary. For legacy egg-info installations, also check `distribution.requires`.
@@ -39,5 +41,19 @@ Focus on SYCL/JIT, UR loaders/adapters, oneMKL, oneCCL/MPI, PTI, Triton, and bun
 Compare `Requires-Python` where declared; an absent field does not count as a passed requirement. For each wheel, expand all `Tag` values into a set and intersect it with the target interpreter's `packaging.tags.sys_tags()`. A nonempty intersection means compatibility. Count once per package; do not mark unmatched alternative tags as failures.
 
 On Linux, interpret `manylinux_<major>_<minor>_<arch>` and legacy aliases as glibc lower bounds according to [PEP 600](https://peps.python.org/pep-0600/). Query `getconf GNU_LIBC_VERSION` in the container/host containing the target Python. A plain `linux_<arch>` tag declares no glibc baseline; use actual build evidence for local builds.
+
+Example compatibility and glibc check:
+
+```bash
+getconf GNU_LIBC_VERSION
+python - <<'PY'
+import importlib.metadata as m
+from packaging.tags import parse_tag, sys_tags
+d = m.distribution("torch")
+w_tags = {t for l in (d.read_text("WHEEL") or "").splitlines() if l.startswith("Tag:") for t in parse_tag(l.split(":", 1)[1].strip())}
+print("Requires-Python:", d.metadata.get("Requires-Python") or "not declared")
+print("Wheel tag compatibility:", ("match" if (w_tags & set(sys_tags())) else "mismatch") if w_tags else "no WHEEL tags")
+PY
+```
 
 Specification entry points: [Core Metadata](https://packaging.python.org/en/latest/specifications/core-metadata/), [Dependency Specifiers](https://packaging.python.org/en/latest/specifications/dependency-specifiers/), and [Simple Repository API](https://packaging.python.org/en/latest/specifications/simple-repository-api/).

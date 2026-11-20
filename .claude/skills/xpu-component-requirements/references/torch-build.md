@@ -5,13 +5,15 @@ Licensed under the Apache License, Version 2.0
 
 # Stage Two: Embedded and Cooperating Components
 
+Versioned URLs and branch links (`main`, `master`, `sycl`) in this file are structural entry points; always substitute the tag or commit matching the actual installed or built component.
+
 ## 1. Identify Consumers
 
 Use stage one's accepted packages and the actual torch build to identify consumers. The main workflow defines source selection, branch continuation, and result classification; this reference locates component-specific evidence.
 
 - **Embedded components**: start from the torch commit's [c10/xpu/CMakeLists.txt](https://github.com/pytorch/pytorch/blob/v2.15.0/c10/xpu/CMakeLists.txt), [caffe2/CMakeLists.txt](https://github.com/pytorch/pytorch/blob/v2.15.0/caffe2/CMakeLists.txt), and `third_party` pins. Follow `include`, `find_package`, `target_link_libraries`, and download declarations. Confirm versions through component version output, release build records, or local `CMakeCache.txt`/logs. A pin confirmed as used by this build is version evidence; static artifacts need not independently report a SHA. If only the parent repository's pin is known, label it the expected version and check overrides and actual enablement.
 - **Independent packages**: use the compliant installed release and its release records. Where source mapping is needed, resolve commit suffixes in the official repository or use `direct_url.json`/build records. CI pins identify the installed component only when tied to its artifact; the torch commit is not the version identity of Triton or another independent package.
-- **Enablement**: use actual build options and recorded configuration. Resolve static/header dependencies through build targets and link declarations; resolve shared-library providers through [platform.md](platform.md#1-identify-providers).
+- **Enablement**: for local builds, use `CMakeCache.txt` and build logs; for prebuilt wheels, inspect bundled headers/configs (such as `torch/include/ATen/Config.h` and `torch/share/cmake/Torch/TorchConfig.cmake`) and shared-library linkage/symbols (for example, `readelf -d` on `torch/lib/libtorch_xpu.so` and `libtorch_cpu.so`, or `dumpbin /dependents` on Windows) to confirm enabled components statically without importing `torch`. Resolve static/header dependencies through build targets and link declarations; resolve shared-library providers through [platform.md](platform.md#1-identify-providers).
 
 ## 2. Component Entry Points
 
@@ -29,9 +31,9 @@ Use this table to locate enabled consumers and their requirements. The inventory
 
 Stable Triton packages may use compatible-version ranges; nightly packages may use commit pins. The recipe version is in `.ci/docker/triton_xpu_version.txt`, and the SHA is in [triton-xpu.txt](https://github.com/pytorch/pytorch/blob/v2.15.0/.ci/docker/ci_commit_pins/triton-xpu.txt). Use the matching [binary_populate_env.sh](https://github.com/pytorch/pytorch/blob/v2.15.0/.ci/pytorch/binary_populate_env.sh) and artifact metadata as evidence.
 
-## 3. SYCL-TLA Model-Specific Requirements
+## 3. SYCL-TLA Model-Specific Requirements (v0.9 Example)
 
-At the actual TLA revision, cross-read README minimum requirements, the build guide, and validated configurations, retaining each statement's scope. For example, the [v0.9 README](https://github.com/intel/sycl-tla/blob/b4f7216580a48b1d443d0c6e85dc7a72105bbdbb/README.md#compatibility) explicitly requires **IGC >= 2.27.10** for PVC. The Runtime 25.13 / IGC 2.10.10 combination in the [same-version build guide](https://github.com/intel/sycl-tla/blob/b4f7216580a48b1d443d0c6e85dc7a72105bbdbb/media/docs/cpp/build/building_with_sycl_support.md) does not override that model-specific minimum. Preserve the difference in the report. For B580 and other build conditions, record the combination as stated in the guide's Requirements section; do not rewrite a parenthesized IGC version as an independent lower bound.
+At the actual TLA revision, cross-read README minimum requirements, the build guide, and validated configurations, retaining each statement's scope. As an illustrative example for v0.9, the [v0.9 README](https://github.com/intel/sycl-tla/blob/b4f7216580a48b1d443d0c6e85dc7a72105bbdbb/README.md#compatibility) explicitly requires **IGC >= 2.27.10** for PVC. The Runtime 25.13 / IGC 2.10.10 combination in the [same-version build guide](https://github.com/intel/sycl-tla/blob/b4f7216580a48b1d443d0c6e85dc7a72105bbdbb/media/docs/cpp/build/building_with_sycl_support.md) does not override that model-specific minimum. Preserve the difference in the report. For B580 and other build conditions, record the combination as stated in the guide's Requirements section; do not rewrite a parenthesized IGC version as an independent lower bound.
 
 Apply that threshold only to the matching revision and model. If another GPU, such as B70 in this version, appears only in a validation table or [CMake device targets](https://github.com/intel/sycl-tla/blob/b4f7216580a48b1d443d0c6e85dc7a72105bbdbb/CMakeLists.txt), do not infer its IGC minimum. After checking the corresponding sources, classify the absence of an explicit requirement as No explicit requirement found.
 
