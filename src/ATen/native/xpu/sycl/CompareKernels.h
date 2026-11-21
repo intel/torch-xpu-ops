@@ -28,6 +28,8 @@ TORCH_XPU_API void gt_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void ge_kernel(TensorIteratorBase& iter);
 
+TORCH_XPU_API void isinf_kernel(TensorIteratorBase& iter);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
