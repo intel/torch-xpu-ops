@@ -11,6 +11,14 @@ on:
         type: string
         default: 'main'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      pytorch_artifact_run_id:
+        type: string
+        default: ''
+        description: Optional PyTorch Actions run ID to download a wheel artifact from
+      pytorch_artifact_name:
+        type: string
+        default: ''
+        description: Optional PyTorch wheel artifact name
       torch_xpu_ops:
         type: string
         default: 'pinned'
@@ -62,6 +70,9 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
+          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
+          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
+          pytorch_artifact_token: ${{ secrets.MERGE_TOKEN }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
@@ -97,7 +108,7 @@ jobs:
     if: ${{ contains(inputs.ut, 'distributed') || inputs.ut == 'xpu_p0' }}
     runs-on: ${{ inputs.runner }}
     env:
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      PYTEST_ADDOPTS: -v
       # xpu_p0 is split: the distributed group runs here (baremetal), the rest in the container job.
       UT_LABEL: ${{ inputs.ut == 'xpu_p0' && 'xpu_p0_distributed' || inputs.ut }}
     steps:
@@ -107,6 +118,9 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
+          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
+          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
+          pytorch_artifact_token: ${{ secrets.MERGE_TOKEN }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
