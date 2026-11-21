@@ -121,9 +121,9 @@ only the diff and commit log need to be fetched via git.
 2. **Investigate, don't guess** — When uncertain whether a checklist item applies, spawn a sub-agent to read the relevant code. A reviewer who guesses wrong provides negative value.
 3. **Review the design, not just the implementation** — A PR can have perfectly correct implementation of a bad design. Question side-channel communication, on/off private flags, and demand concrete interface documentation for new contracts between components.
 4. **Focus on what CI cannot check** — Don't comment on formatting, linting, type errors, or CI failures. Focus on design quality, interface correctness, thread safety, BC implications, test adequacy, and pattern adherence.
-5. **Everything is a must-fix** — There are no "nits." If it's worth mentioning, it's worth fixing. Every inconsistency degrades the codebase over time.
+5. **Separate blocking from non-blocking** — A point is blocking when the PR should not land until it is fixed: a correctness or security bug, a backward-compatibility break, a design problem that needs another look once addressed, an unaddressed maintainer comment, a performance regression on a hot path, a missing test (see Recommendation), or anything this skill marks as a **blocking category** (Intel GPU terminology, subgroup reduction anti-pattern). Everything else worth mentioning (naming, small refactors, consistency with nearby code, wording of comments and docs) is non-blocking: write "non-blocking" in it. Do not stretch a point to make it blocking.
 6. **Be specific and actionable** — Reference file paths and line numbers. Name the function/class/file the author should use.
-7. **Match the immediate context** — Read how similar features are already implemented in the same file. Pattern mismatches within a file are always wrong.
+7. **Match the immediate context** — Read how similar features are already implemented in the same file. A pattern mismatch within a file is always worth raising; it is blocking only when principle 5 says so.
 8. **Assume competence** — The author knows PyTorch; explain only non-obvious context.
 9. **No repetition** — Each observation appears in exactly one section of the review output.
 10. **Verify CPU/CUDA parity from source** — Do not infer behavior from memory. Inspect the actual upstream implementation from `pytorch/pytorch`.
@@ -131,6 +131,30 @@ only the diff and commit log need to be fetched via git.
 ### Using sub-agents
 
 The review checklist is large. **Spawn sub-agents** to investigate whether checklist items apply: read surrounding code, check upstream PyTorch implementation for parity, or verify tests exist. Spawn them in parallel for independent areas.
+
+## Maintainer Comments
+
+When reviewing a PR, check that every comment from a maintainer has been addressed. A maintainer is a user with triage access or above on the repository; the PR author, `torchxpubot` and other bots do not count. A comment is addressed when the code at HEAD fixes the specific problem it raises, or when the author replied explaining why no change is needed and no maintainer pushed back afterwards. Approvals, praise, and questions already answered in the thread need nothing. Report each unaddressed maintainer comment as a blocking finding that names the maintainer and states what they asked.
+
+Fetch the conversation and check each commenter's access:
+
+```bash
+gh api --paginate repos/intel/torch-xpu-ops/issues/<PR_NUMBER>/comments
+gh api --paginate repos/intel/torch-xpu-ops/pulls/<PR_NUMBER>/reviews
+gh api --paginate repos/intel/torch-xpu-ops/pulls/<PR_NUMBER>/comments
+gh api repos/intel/torch-xpu-ops/collaborators/<LOGIN>/permission --jq .role_name
+```
+
+A `role_name` of `triage`, `write`, `maintain` or `admin` means a maintainer. If the permission call fails, treat a comment whose `author_association` is `OWNER`, `MEMBER` or `COLLABORATOR` as a maintainer's. Skip this check only if you have no `gh` access, and say so in the Summary.
+
+## Re-reviews converge
+
+The review re-runs on every push, and the author is fixing what the last review asked for, so each round should leave fewer blocking findings, not new ones. When the PR already has an automated review:
+
+1. **Settle the earlier blocking findings first.** The earlier review is a single comment, so objections to a finding come as PR comments that name it. Check each finding at HEAD: report it again if still present; drop it if fixed, or if a maintainer (see "Maintainer Comments") replied that it does not apply. A reply from the author is a claim to verify at HEAD: drop the finding only if the claim holds, otherwise report it again and address the reply.
+2. **Review what changed since the last review in full**, with the same scrutiny as a first review.
+3. **Don't move the goalposts on code the last review already covered.** A new blocking finding on unchanged code needs a concrete failure (wrong result, crash, security or BC break); say why it was not raised before. Any other new point there is non-blocking.
+4. **Keep earlier non-blocking points non-blocking** unless the code changed in a way that makes them worse.
 
 ## Review Workflow
 
@@ -156,7 +180,7 @@ Use `gh api` or spawn a sub-agent to fetch the upstream file content. Do NOT pro
 
 Go through **every changed line** in the diff and evaluate against the review checklist in [review-checklist.md](references/review-checklist.md).
 
-If the diff adds or modifies any agent instruction files (`SKILL.md`, `AGENTS.md`, `claude.md`, `copilot-instructions.md`, or files under `.claude/` / `.github/`), load the skill-writer skill and evaluate those changes against its guidelines. Do NOT skip this — treat it as a blocking gate for those files.
+If the diff adds or modifies any agent instruction files (`SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, files under `.github/instructions/`, or files under `.claude/`), load the skill-writer skill and evaluate those changes against its guidelines. Do NOT skip this — treat it as a blocking gate for those files. CI workflows and scripts under `.github/` are not instruction files; review them as code.
 
 Pay special attention to XPU-specific risks:
 - **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
@@ -184,6 +208,7 @@ After drafting the review, spawn a sub-agent per reported issue (in parallel) to
 
 ```markdown
 VERDICT: <one sentence — the outcome and why>
+GATE: <ready_for_human_review | changes_requested>
 
 ## PR Review: #<number>
 <!-- Or for local branch reviews: -->
@@ -213,7 +238,9 @@ What the PR does (1 sentence), then the overall verdict.
 ### Recommendation
 **Approve** / **Request Changes** / **Needs Discussion**
 
-Missing tests (new functionality without tests, bug fixes without regression tests) always means **Request Changes**.
+Recommend **Request Changes** only for a blocking point. Recommend **Needs Discussion** when the decision depends on maintainers rather than on a fix (open design question, potentially breaking change). Otherwise, with only non-blocking points, recommend **Approve**. Missing tests (new functionality without tests, bug fixes without regression tests) and an unaddressed maintainer comment always mean **Request Changes**.
+
+`GATE` is `changes_requested` under **Request Changes**, else `ready_for_human_review`. Keep non-blocking points out of the justification.
 
 [Brief justification — focus on what blocks approval. IMPORTANT: Do NOT use `#N` (e.g., #1, #2, #3) to reference findings — GitHub auto-links these to real issues/PRs. Instead use descriptive references like "the step numbering issue", "the stale path in auto-labeling", or inline the file path.]
 ```
@@ -222,37 +249,30 @@ Missing tests (new functionality without tests, bug fixes without regression tes
 
 **Only include this section if the user requests a "detailed" or "in depth" review.**
 
-When performing a detailed review, group findings by severity:
-- **🔴 Must Fix** — Incorrect terminology, bugs, magic numbers in logic, correctness issues
-- **🟡 Should Fix** — Naming inconsistency, missing comments on non-obvious logic
-- **🟢 Suggestion** — Style nits, minor improvements
+When performing a detailed review, group findings by the same two levels as the rest of the review (see principle 5):
+- **Blocking** — e.g. bugs, correctness issues, incorrect terminology, missing tests
+- **Non-blocking** — e.g. magic numbers in logic, naming inconsistency, missing comments on non-obvious logic, style nits
 
 For each finding, quote the offending line and provide a concrete fix.
 
 ```markdown
-### 🔴 Must Fix (N issues)
+### Blocking (N issues)
 
 **[Category] file.cpp:42** — <description>
   <quoted code>
   → <suggested fix>
 
-### 🟡 Should Fix (N issues)
+### Non-blocking (N issues)
 ...
-
-### 🟢 Suggestions (N issues)
-...
-
-### ✅ What looks good
-<briefly note well-written parts — good reviews are balanced>
 ```
 
-If there are zero issues in a severity level, omit that section. Always include the "What looks good" section in detailed reviews.
+If there are zero issues in a level, omit that section.
 
 ## Intel GPU Terminology
 
 **Principle: For SYCL programming, always use SYCL programming model terms. Hardware architecture terms should only appear in comments explaining the motivation for a particular optimization.**
 
-This is a **🔴 Must Fix** category.
+This is a **blocking** category.
 
 ### SYCL Programming Model Terms
 
@@ -313,7 +333,7 @@ int xecore_count = zeDeviceGetSubsliceCount(device);  // legacy API name
 
 **Principle: Never use `sycl::shift_group_left` combined with a reduction operation to perform subgroup reductions. Always use `sycl::reduce_over_group` instead.**
 
-This is a **🔴 Must Fix** category.
+This is a **blocking** category.
 
 ### Detection Criterion
 
