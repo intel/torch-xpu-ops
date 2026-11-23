@@ -361,10 +361,10 @@ class IndexKernel {
   IdxConfig cfg_;
 };
 
-template <typename func_t>
+template <typename kernel_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void index_kernel_impl(func_t i) {
-  i.run();
+void index_kernel_impl(kernel_t kernel) {
+  kernel.run();
 }
 
 template <
@@ -917,7 +917,7 @@ void launch_index_put_deterministic_kernel(
 
 template <int vt, typename func_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void index_elemnentwise_kernel_impl(const int64_t N, const func_t f) {
+void index_elementwise_kernel_impl(const int64_t N, const func_t f) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int wg_sz = item.get_local_range(0);
   auto tid = item.get_local_id(0);
@@ -941,7 +941,7 @@ static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
   int wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
       at::xpu::getDeviceEUCountPerXeCore();
   int num_wg = (N + wg_sz * vt - 1) / (wg_sz * vt);
-  sycl_kernel_submit<index_elemnentwise_kernel_impl<vt, func_t>, 1>(
+  sycl_kernel_submit<index_elementwise_kernel_impl<vt, func_t>, 1>(
       wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, f);
 }
 

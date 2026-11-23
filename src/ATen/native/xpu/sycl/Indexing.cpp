@@ -963,6 +963,12 @@ void index_func_small_index_kernel_impl(
 
 #define SMEM_SIZE 4096
 
+template <typename T>
+constexpr bool is_smem_coalescing_supported() {
+  return !(
+      std::is_same_v<T, double> || std::is_same_v<T, c10::complex<double>>);
+}
+
 template <
     typename T,
     typename IndicesType,
@@ -971,7 +977,8 @@ template <
     int SrcDim,
     int IdxDim,
     bool IndexIsMajor,
-    typename func_t>
+    typename func_t,
+    bool use_smem_coalescing>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void index_func_large_index_kernel_impl(
@@ -990,9 +997,8 @@ void index_func_large_index_kernel_impl(
   // We stride over the output including the indexed dimension
   // (totalSize), and calculate the destination index point based on that
   auto local_range = item.get_local_range(0);
-  IndexType* smem_offsets =
-      (IndexType*)syclexp::get_work_group_scratch_memory();
-  T* smem_values = (T*)(smem_offsets + SMEM_SIZE);
+  IndexType* smem_offsets = nullptr;
+  T* smem_values = nullptr;
 
   T identity = (T)0;
 
@@ -1002,10 +1008,10 @@ void index_func_large_index_kernel_impl(
   // (intel/torch-xpu-ops#4184), so for 64-bit floating point skip the
   // optimization and accumulate directly through the global-memory atomic op
   // (this matches the CUDA implementation, which has no local coalescing path).
-  constexpr bool use_smem_coalescing =
-      !(std::is_same_v<T, double> || std::is_same_v<T, c10::complex<double>>);
-
   if constexpr (use_smem_coalescing) {
+    smem_offsets = (IndexType*)syclexp::get_work_group_scratch_memory();
+    smem_values = (T*)(smem_offsets + SMEM_SIZE);
+
     for (int i = item.get_local_id(0); i < SMEM_SIZE; i += local_range) {
       smem_offsets[i] = (IndexType)-1;
       smem_values[i] = identity;
@@ -1261,44 +1267,44 @@ void index_reduce_add_xpu_template(
       func,                                                                 \
       alpha_value)
 
-#define LARGE_INDEX(                                                  \
-    TENSOR_TYPE,                                                      \
-    INDICES_TYPE,                                                     \
-    TYPE,                                                             \
-    SELF_DIM,                                                         \
-    SOURCE_DIM,                                                       \
-    IDX_DIM,                                                          \
-    IDX_IS_MAJOR,                                                     \
-    FUNC_T)                                                           \
-  do {                                                                \
-    constexpr bool use_smem_coalescing =                              \
-        !(std::is_same_v<TENSOR_TYPE, double> ||                      \
-          std::is_same_v<TENSOR_TYPE, c10::complex<double>>);         \
-    constexpr size_t smem_size = use_smem_coalescing ? SMEM_SIZE : 1; \
-    sycl_kernel_submit<index_func_large_index_kernel_impl<            \
-        TENSOR_TYPE,                                                  \
-        INDICES_TYPE,                                                 \
-        TYPE,                                                         \
-        SELF_DIM,                                                     \
-        SOURCE_DIM,                                                   \
-        IDX_DIM,                                                      \
-        IDX_IS_MAJOR,                                                 \
-        FUNC_T>>(                                                     \
-        num_wg * wg_size,                                             \
-        wg_size,                                                      \
-        getCurrentSYCLQueue(),                                        \
-        (sizeof(TYPE) + sizeof(TENSOR_TYPE)) * smem_size,             \
-        selfInfo,                                                     \
-        sourceInfo,                                                   \
-        indexInfo,                                                    \
-        selfAddDim,                                                   \
-        sourceAddDim,                                                 \
-        static_cast<TYPE>(sourceTotalSize),                           \
-        (IDX_IS_MAJOR) ? sliceSize : numIndex,                        \
-        selfAddDimSize,                                               \
-        selfNumel,                                                    \
-        func,                                                         \
-        alpha_value);                                                 \
+#define LARGE_INDEX(                                                     \
+    TENSOR_TYPE,                                                         \
+    INDICES_TYPE,                                                        \
+    TYPE,                                                                \
+    SELF_DIM,                                                            \
+    SOURCE_DIM,                                                          \
+    IDX_DIM,                                                             \
+    IDX_IS_MAJOR,                                                        \
+    FUNC_T,                                                              \
+    USE_SMEM_COALESCING)                                                 \
+  do {                                                                   \
+    constexpr size_t smem_size = (USE_SMEM_COALESCING ? SMEM_SIZE : 1) * \
+        (sizeof(TYPE) + sizeof(TENSOR_TYPE));                            \
+    sycl_kernel_submit<index_func_large_index_kernel_impl<               \
+        TENSOR_TYPE,                                                     \
+        INDICES_TYPE,                                                    \
+        TYPE,                                                            \
+        SELF_DIM,                                                        \
+        SOURCE_DIM,                                                      \
+        IDX_DIM,                                                         \
+        IDX_IS_MAJOR,                                                    \
+        FUNC_T,                                                          \
+        USE_SMEM_COALESCING>>(                                           \
+        num_wg * wg_size,                                                \
+        wg_size,                                                         \
+        getCurrentSYCLQueue(),                                           \
+        smem_size,                                                       \
+        selfInfo,                                                        \
+        sourceInfo,                                                      \
+        indexInfo,                                                       \
+        selfAddDim,                                                      \
+        sourceAddDim,                                                    \
+        static_cast<TYPE>(sourceTotalSize),                              \
+        (IDX_IS_MAJOR) ? sliceSize : numIndex,                           \
+        selfAddDimSize,                                                  \
+        selfNumel,                                                       \
+        func,                                                            \
+        alpha_value);                                                    \
   } while (0)
 
   if (canUse32BitIndexMath(result) && canUse32BitIndexMath(source) &&
@@ -1355,30 +1361,80 @@ void index_reduce_add_xpu_template(
               size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
                   ? sourceTotalSize
                   : defaultMaxGroupThreads;
+              constexpr bool use_smem_coalescing =
+                  is_smem_coalescing_supported<scalar_t>();
               if (selfInfo.dims == 1 && sourceInfo.dims == 1 && indContig) {
                 LARGE_INDEX(
-                    scalar_t, index_t, unsigned int, 1, 1, -2, true, func_t);
+                    scalar_t,
+                    index_t,
+                    unsigned int,
+                    1,
+                    1,
+                    -2,
+                    true,
+                    func_t,
+                    use_smem_coalescing);
               } else if (
                   selfInfo.dims == 2 && sourceInfo.dims == 2 && indContig) {
                 if (indexIsMajor) {
                   LARGE_INDEX(
-                      scalar_t, index_t, unsigned int, 2, 2, -2, true, func_t);
+                      scalar_t,
+                      index_t,
+                      unsigned int,
+                      2,
+                      2,
+                      -2,
+                      true,
+                      func_t,
+                      use_smem_coalescing);
                 } else {
                   LARGE_INDEX(
-                      scalar_t, index_t, unsigned int, 2, 2, -2, false, func_t);
+                      scalar_t,
+                      index_t,
+                      unsigned int,
+                      2,
+                      2,
+                      -2,
+                      false,
+                      func_t,
+                      use_smem_coalescing);
                 }
               } else if (
                   selfInfo.dims == 3 && sourceInfo.dims == 3 && indContig) {
                 if (indexIsMajor) {
                   LARGE_INDEX(
-                      scalar_t, index_t, unsigned int, 3, 3, -2, true, func_t);
+                      scalar_t,
+                      index_t,
+                      unsigned int,
+                      3,
+                      3,
+                      -2,
+                      true,
+                      func_t,
+                      use_smem_coalescing);
                 } else {
                   LARGE_INDEX(
-                      scalar_t, index_t, unsigned int, 3, 3, -2, false, func_t);
+                      scalar_t,
+                      index_t,
+                      unsigned int,
+                      3,
+                      3,
+                      -2,
+                      false,
+                      func_t,
+                      use_smem_coalescing);
                 }
               } else {
                 LARGE_INDEX(
-                    scalar_t, index_t, unsigned int, -1, -1, -1, true, func_t);
+                    scalar_t,
+                    index_t,
+                    unsigned int,
+                    -1,
+                    -1,
+                    -1,
+                    true,
+                    func_t,
+                    use_smem_coalescing);
               }
             }
           });
@@ -1402,6 +1458,9 @@ void index_reduce_add_xpu_template(
           const int sourceAddDim = sourceInfo.collapseDims(dim);
           sourceInfo.reduceDim(sourceAddDim);
 
+          constexpr bool use_smem_coalescing =
+              is_smem_coalescing_supported<scalar_t>();
+
           AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu_", [&]() {
             TensorInfo<const index_t, uint64_t> indexInfo =
                 getTensorInfo<const index_t, uint64_t>(index);
@@ -1414,7 +1473,16 @@ void index_reduce_add_xpu_template(
             size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
                 ? sourceTotalSize
                 : defaultMaxGroupThreads;
-            LARGE_INDEX(scalar_t, index_t, uint64_t, -1, -1, -1, true, func_t);
+            LARGE_INDEX(
+                scalar_t,
+                index_t,
+                uint64_t,
+                -1,
+                -1,
+                -1,
+                true,
+                func_t,
+                use_smem_coalescing);
           });
         });
   }
@@ -1535,44 +1603,44 @@ void index_reduce_func_xpu_template(
       reduce_func,                                                          \
       alpha_value)
 
-#define LARGE_INDEX(                                                  \
-    TENSOR_TYPE,                                                      \
-    INDICES_TYPE,                                                     \
-    TYPE,                                                             \
-    SELF_DIM,                                                         \
-    SOURCE_DIM,                                                       \
-    IDX_DIM,                                                          \
-    IDX_IS_MAJOR,                                                     \
-    FUNC_T)                                                           \
-  do {                                                                \
-    constexpr bool use_smem_coalescing =                              \
-        !(std::is_same_v<TENSOR_TYPE, double> ||                      \
-          std::is_same_v<TENSOR_TYPE, c10::complex<double>>);         \
-    constexpr size_t smem_size = use_smem_coalescing ? SMEM_SIZE : 1; \
-    sycl_kernel_submit<index_func_large_index_kernel_impl<            \
-        TENSOR_TYPE,                                                  \
-        INDICES_TYPE,                                                 \
-        TYPE,                                                         \
-        SELF_DIM,                                                     \
-        SOURCE_DIM,                                                   \
-        IDX_DIM,                                                      \
-        IDX_IS_MAJOR,                                                 \
-        FUNC_T>>(                                                     \
-        num_wg * wg_size,                                             \
-        wg_size,                                                      \
-        getCurrentSYCLQueue(),                                        \
-        (sizeof(TYPE) + sizeof(TENSOR_TYPE)) * smem_size,             \
-        selfInfo,                                                     \
-        sourceInfo,                                                   \
-        indexInfo,                                                    \
-        selfReduceDim,                                                \
-        sourceReduceDim,                                              \
-        static_cast<TYPE>(sourceTotalSize),                           \
-        (IDX_IS_MAJOR) ? sliceSize : numIndex,                        \
-        selfReduceDimSize,                                            \
-        selfNumel,                                                    \
-        reduce_func,                                                  \
-        alpha_value);                                                 \
+#define LARGE_INDEX(                                                     \
+    TENSOR_TYPE,                                                         \
+    INDICES_TYPE,                                                        \
+    TYPE,                                                                \
+    SELF_DIM,                                                            \
+    SOURCE_DIM,                                                          \
+    IDX_DIM,                                                             \
+    IDX_IS_MAJOR,                                                        \
+    FUNC_T,                                                              \
+    USE_SMEM_COALESCING)                                                 \
+  do {                                                                   \
+    constexpr size_t smem_size = (USE_SMEM_COALESCING ? SMEM_SIZE : 1) * \
+        (sizeof(TYPE) + sizeof(TENSOR_TYPE));                            \
+    sycl_kernel_submit<index_func_large_index_kernel_impl<               \
+        TENSOR_TYPE,                                                     \
+        INDICES_TYPE,                                                    \
+        TYPE,                                                            \
+        SELF_DIM,                                                        \
+        SOURCE_DIM,                                                      \
+        IDX_DIM,                                                         \
+        IDX_IS_MAJOR,                                                    \
+        FUNC_T,                                                          \
+        USE_SMEM_COALESCING>>(                                           \
+        num_wg * wg_size,                                                \
+        wg_size,                                                         \
+        getCurrentSYCLQueue(),                                           \
+        smem_size,                                                       \
+        selfInfo,                                                        \
+        sourceInfo,                                                      \
+        indexInfo,                                                       \
+        selfReduceDim,                                                   \
+        sourceReduceDim,                                                 \
+        static_cast<TYPE>(sourceTotalSize),                              \
+        (IDX_IS_MAJOR) ? sliceSize : numIndex,                           \
+        selfReduceDimSize,                                               \
+        selfNumel,                                                       \
+        reduce_func,                                                     \
+        alpha_value);                                                    \
   } while (0)
 
   int xecore_count = at::xpu::getDeviceXeCoreCount();
@@ -1639,6 +1707,9 @@ void index_reduce_func_xpu_template(
                   bool indexIsMajor =
                       indexShouldBeMajor(selfInfo, selfReduceDim);
 
+                  constexpr bool use_smem_coalescing =
+                      is_smem_coalescing_supported<scalar_t>();
+
                   if (selfInfo.dims == 1 && sourceInfo.dims == 1 && indContig) {
                     int defaultMaxGroupThreads =
                         at::xpu::getKernelMaxWorkGroupSize<
@@ -1650,7 +1721,8 @@ void index_reduce_func_xpu_template(
                                 1,
                                 -2,
                                 true,
-                                func_t>>();
+                                func_t,
+                                use_smem_coalescing>>();
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
                         (uint64_t)(xecore_count * 8));
@@ -1665,7 +1737,8 @@ void index_reduce_func_xpu_template(
                         1,
                         -2,
                         true,
-                        func_t);
+                        func_t,
+                        use_smem_coalescing);
                   } else if (
                       selfInfo.dims == 2 && sourceInfo.dims == 2 && indContig) {
                     if (indexIsMajor) {
@@ -1679,7 +1752,8 @@ void index_reduce_func_xpu_template(
                                   2,
                                   -2,
                                   true,
-                                  func_t>>();
+                                  func_t,
+                                  use_smem_coalescing>>();
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(xecore_count * 8));
@@ -1695,7 +1769,8 @@ void index_reduce_func_xpu_template(
                           2,
                           -2,
                           true,
-                          func_t);
+                          func_t,
+                          use_smem_coalescing);
                     } else {
                       int defaultMaxGroupThreads =
                           at::xpu::getKernelMaxWorkGroupSize<
@@ -1707,7 +1782,8 @@ void index_reduce_func_xpu_template(
                                   2,
                                   -2,
                                   false,
-                                  func_t>>();
+                                  func_t,
+                                  use_smem_coalescing>>();
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(xecore_count * 8));
@@ -1723,7 +1799,8 @@ void index_reduce_func_xpu_template(
                           2,
                           -2,
                           false,
-                          func_t);
+                          func_t,
+                          use_smem_coalescing);
                     }
                   } else if (
                       selfInfo.dims == 3 && sourceInfo.dims == 3 && indContig) {
@@ -1738,7 +1815,8 @@ void index_reduce_func_xpu_template(
                                   3,
                                   -2,
                                   true,
-                                  func_t>>();
+                                  func_t,
+                                  use_smem_coalescing>>();
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(xecore_count * 8));
@@ -1754,7 +1832,8 @@ void index_reduce_func_xpu_template(
                           3,
                           -2,
                           true,
-                          func_t);
+                          func_t,
+                          use_smem_coalescing);
                     } else {
                       int defaultMaxGroupThreads =
                           at::xpu::getKernelMaxWorkGroupSize<
@@ -1766,7 +1845,8 @@ void index_reduce_func_xpu_template(
                                   3,
                                   -2,
                                   false,
-                                  func_t>>();
+                                  func_t,
+                                  use_smem_coalescing>>();
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(xecore_count * 8));
@@ -1782,7 +1862,8 @@ void index_reduce_func_xpu_template(
                           3,
                           -2,
                           false,
-                          func_t);
+                          func_t,
+                          use_smem_coalescing);
                     }
                   } else {
                     int defaultMaxGroupThreads =
@@ -1795,7 +1876,8 @@ void index_reduce_func_xpu_template(
                                 -1,
                                 -1,
                                 true,
-                                func_t>>();
+                                func_t,
+                                use_smem_coalescing>>();
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
                         (uint64_t)(xecore_count * 8));
@@ -1810,7 +1892,8 @@ void index_reduce_func_xpu_template(
                         -1,
                         -1,
                         true,
-                        func_t);
+                        func_t,
+                        use_smem_coalescing);
                   }
                 }
               });
@@ -1838,6 +1921,10 @@ void index_reduce_func_xpu_template(
                 TensorInfo<const index_t, uint64_t> indexInfo =
                     getTensorInfo<const index_t, uint64_t>(index);
                 indexInfo.collapseDims();
+
+                constexpr bool use_smem_coalescing =
+                    is_smem_coalescing_supported<scalar_t>();
+
                 int defaultMaxGroupThreads = at::xpu::getKernelMaxWorkGroupSize<
                     index_func_large_index_kernel_impl<
                         scalar_t,
@@ -1847,7 +1934,8 @@ void index_reduce_func_xpu_template(
                         -1,
                         -1,
                         true,
-                        func_t>>();
+                        func_t,
+                        use_smem_coalescing>>();
                 size_t num_wg = std::min(
                     ceil_div(sourceTotalSize, (uint64_t)128),
                     (uint64_t)(xecore_count * 8));
@@ -1855,7 +1943,15 @@ void index_reduce_func_xpu_template(
                     ? sourceTotalSize
                     : defaultMaxGroupThreads;
                 LARGE_INDEX(
-                    scalar_t, index_t, uint64_t, -1, -1, -1, true, func_t);
+                    scalar_t,
+                    index_t,
+                    uint64_t,
+                    -1,
+                    -1,
+                    -1,
+                    true,
+                    func_t,
+                    use_smem_coalescing);
               });
         });
   }
