@@ -94,9 +94,6 @@ struct FlipKernelImplLoopFunctor {
     *out_data = *in_data;
   }
 
-  FlipKernelImplLoopFunctor& operator=(const FlipKernelImplLoopFunctor&) =
-      delete;
-
   FlipKernelImplLoopFunctor(
       char* const RESTRICT out_ptr,
       const char* const RESTRICT in_ptr,
@@ -106,7 +103,8 @@ struct FlipKernelImplLoopFunctor {
  private:
   char* const RESTRICT out_ptr;
   const char* const RESTRICT in_ptr;
-  const offset_calc_t offset_calc;
+  // Non-const so the functor stays trivially copyable for SYCL set_arg.
+  std::remove_const_t<offset_calc_t> offset_calc;
 };
 
 template <typename scalar_t>
