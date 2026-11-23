@@ -40,6 +40,7 @@ from pathlib import Path
 IN_PROGRESS, READY, OPT_OUT = "in progress", "ready for review", "no automated review"
 STATUS_CONTEXT = "bot-review"
 MAINTAINER_ROLES = {"triage", "write", "maintain", "admin"}
+UNKNOWN_ROLE = "unknown"  # permission lookup failed
 BOT_LOGINS = {"torchxpubot"}
 BOT_COMMAND = "@torchxpubot"
 MAX_REVIEWERS = 5  # from the description; the author picks them, keep it to a few
@@ -232,7 +233,10 @@ def recent_nightlies(runs, now):
 
 
 def maintainer_logins_since(activity, since, author, role_of):
-    """Maintainers (not the author or a bot) who commented/reviewed after `since`."""
+    """Maintainers (not the author or a bot) who commented/reviewed after `since`.
+
+    A failed permission lookup counts as a maintainer: fail closed, no promotion.
+    """
     since_t = _ts(since)
     logins = {
         a["login"] for a in activity
@@ -240,7 +244,7 @@ def maintainer_logins_since(activity, since, author, role_of):
         and a["login"] not in BOT_LOGINS and a.get("type") != "Bot"
         and not (a.get("body") or "").lstrip().startswith(BOT_COMMAND)  # e.g. `rerun failed`
     }
-    return sorted(u for u in logins if role_of(u) in MAINTAINER_ROLES)
+    return sorted(u for u in logins if role_of(u) in MAINTAINER_ROLES | {UNKNOWN_ROLE})
 
 
 # --------------------------------------------------------------------------- #
@@ -270,7 +274,7 @@ class Repo:
     def role(self, login):
         r = subprocess.run(["gh", "api", f"repos/{self.name}/collaborators/{login}/permission",
                             "--jq", ".role_name"], capture_output=True, text=True)
-        return r.stdout.strip() if r.returncode == 0 else ""
+        return r.stdout.strip() if r.returncode == 0 else UNKNOWN_ROLE
 
     def activity(self, pr, since):
         base = f"repos/{self.name}"
@@ -383,8 +387,9 @@ def promote(repo, pr_number):
         if maintainers:
             comment_once(repo, pr_number, sha, "maintainer",
                          f"{', '.join('@' + u for u in maintainers)} commented after the bot review "
-                         "started. Address those comments, then push or comment "
-                         "`@torchxpubot review` to re-run the review.")
+                         "started (or their access could not be checked). Address those comments, "
+                         "then push, or ask a maintainer to comment `@torchxpubot review`, to "
+                         "re-run the review.")
             return
     with tempfile.TemporaryDirectory() as workdir:
         pending, blockers, tolerated = evaluate_ci(repo, sha, workdir)

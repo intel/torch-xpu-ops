@@ -47,9 +47,19 @@ jobs:
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            // Queued events can be stale (opted out, drafted, closed since).
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            if (pr.state !== 'open' || pr.draft || labels.includes('no automated review') || !labels.includes('in progress')) return;
+            // `in progress` added to a ready PR: drop `ready for review`, or a
+            // failing review leaves both labels and later pushes are ignored.
+            if (labels.includes('ready for review')) {
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'ready for review' }).catch(() => {});
+            }
             await github.rest.issues.createComment({
-              ...context.repo,
-              issue_number: context.payload.pull_request.number,
+              owner, repo, issue_number,
               body: `@torchxpubot review\n\n_Automated review (\`${context.payload.action}\` by @${context.payload.sender.login})._`
             });
 
@@ -153,8 +163,11 @@ jobs:
             let by = null;
             for (const [username, state] of latest) {
               if (state !== 'CHANGES_REQUESTED' || username === pr.user.login) continue;
-              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username }).catch(() => ({ data: {} }));
-              if (['triage', 'write', 'maintain', 'admin'].includes(data.role_name)) { by = username; break; }
+              // Fail closed: an unknown role still demotes (a re-review is cheap).
+              const role = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username }).then(
+                r => r.data.role_name,
+                e => { core.warning(`permission lookup for ${username} failed: ${e.message}`); return 'unknown'; });
+              if (['triage', 'write', 'maintain', 'admin', 'unknown'].includes(role)) { by = username; break; }
             }
             if (!by) return;
             // Add before removing so the PR always carries a status label.
