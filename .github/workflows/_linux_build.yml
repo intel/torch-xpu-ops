@@ -154,7 +154,7 @@ jobs:
           export IS_XPU_CI=1
           # PR CI needs pvc (e2e/perf jobs) and bmg (UT jobs) AOT targets.
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            export TORCH_XPU_ARCH_LIST='pvc,bmg'
+            export TORCH_XPU_ARCH_LIST='bmg'
           fi
           source /opt/rh/gcc-toolset-${GCC_VERSION}/enable
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
