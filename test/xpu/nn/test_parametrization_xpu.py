@@ -15,11 +15,11 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from .xpu_test_utils import XPUPatchForImport
-except Exception as e:
-    from ..xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUImportCtx
+except Exception:
+    from ..xpu_test_utils import XPUImportCtx
 
-with XPUPatchForImport(False):
+with XPUImportCtx(False):
     from test_parametrization import TestNNParametrization, TestNNParametrizationDevice
 
 
