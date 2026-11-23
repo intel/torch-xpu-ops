@@ -332,7 +332,7 @@ jobs:
   # ==================================================================
   report-back:
     name: report back
-    needs: [resolve-python, target-build, baseline-build, target-ut, target-e2e, baseline-ut, baseline-e2e, compare-results]
+    needs: [config, target-build, baseline-build, target-ut, target-e2e, baseline-ut, baseline-e2e, compare-results]
     if: ${{ !cancelled() && inputs.callback_repo != '' }}
     runs-on: ubuntu-24.04
     steps:
@@ -347,7 +347,7 @@ jobs:
           COMPONENT: ${{ inputs.test_component }}
           PATTERN: ${{ inputs.test_pattern }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          R_PY: ${{ needs.resolve-python.result }}
+          R_PY: ${{ needs.config.result }}
           R_TB: ${{ needs.target-build.result }}
           R_BB: ${{ needs.baseline-build.result }}
           R_TUT: ${{ needs.target-ut.result }}
