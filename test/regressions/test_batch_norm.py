@@ -24,6 +24,11 @@ were contiguous, producing incorrect values.
 """
 
 import torch
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+    onlyXPU,
+)
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 xpu_device = torch.device("xpu")
@@ -267,7 +272,6 @@ class TestBatchNormBackwardElemtChannelsLast(TestCase):
         (2, 1026, 3, 3),  # even C >= 1024 -> non-SLM vec2
         (1, 1025, 3, 3),  # odd C >= 1024, odd total -> scalar
     ]
-    DTYPES = [torch.float32, torch.float16, torch.bfloat16]
 
     def _tol(self, dtype):
         if dtype == torch.float32:
@@ -348,20 +352,26 @@ class TestBatchNormBackwardElemtChannelsLast(TestCase):
         atol, rtol = self._tol(dtype)
         self.assertEqual(gi.cpu().double(), ref, atol=atol, rtol=rtol)
 
-    def _run(self, checker):
+    def _run(self, checker, dtype):
         for shape in self.SHAPES:
-            for dtype in self.DTYPES:
-                for in_off, go_off in [(0, 0), (1, 0), (0, 1)]:
-                    with self.subTest(
-                        shape=shape, dtype=dtype, in_off=in_off, go_off=go_off
-                    ):
-                        checker(shape, dtype, in_off, go_off)
+            for in_off, go_off in [(0, 0), (1, 0), (0, 1)]:
+                with self.subTest(shape=shape, in_off=in_off, go_off=go_off):
+                    checker(shape, dtype, in_off, go_off)
 
-    def test_native_backward_channels_last(self):
-        self._run(self._check_native_backward)
+    @onlyXPU
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    def test_native_backward_channels_last(self, device, dtype):
+        self._run(self._check_native_backward, dtype)
 
-    def test_backward_elemt_count_channels_last(self):
-        self._run(self._check_backward_elemt_count)
+    @onlyXPU
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    def test_backward_elemt_count_channels_last(self, device, dtype):
+        self._run(self._check_backward_elemt_count, dtype)
+
+
+instantiate_device_type_tests(
+    TestBatchNormBackwardElemtChannelsLast, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

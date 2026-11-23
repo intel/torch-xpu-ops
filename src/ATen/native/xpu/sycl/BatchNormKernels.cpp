@@ -376,6 +376,14 @@ constexpr int ELEMENTS_PER_ITER =
     4; // enables concurrency within each thread to hide latency
 constexpr int ELEMENTS_PER_WORK_ITEM = 4;
 
+// Upper bound on the channel count for which the channels-last SLM staging
+// path is used. Each work-group stages 4 * C * sizeof(accscalar_t) bytes of
+// per-channel data in local memory; beyond this many channels that footprint,
+// multiplied by the work-groups that can be co-resident, starts to limit
+// occupancy and the extra staging traffic outweighs the SLM reuse, so larger
+// channel counts take the direct (non-SLM) vectorized path instead.
+constexpr int MAX_SLM_STRIDE = 1024;
+
 std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
     const int max_wg_size,
     const int reduction,
@@ -1614,8 +1622,8 @@ static void launch_batch_norm_transform_channels_last_1d(
 // Selects vector width and SLM usage for the channels-last forward transform.
 //   - vec2 is used only for 2-byte types when input/output/z are 2-element
 //     aligned (e.g. an odd storage_offset view falls back to scalar).
-//   - SLM path (vec2 only): C < 1024 and 4 * C * sizeof(accscalar_t) fits in
-//     the device local memory. Handles odd C via channel wrap-around.
+//   - SLM path (vec2 only): C < MAX_SLM_STRIDE and 4 * C * sizeof(accscalar_t)
+//     fits in the device local memory. Handles odd C via channel wrap-around.
 //   - Non-SLM vec2 path additionally requires even C to keep the parameter
 //     gather monotone; otherwise scalar.
 template <
@@ -1674,7 +1682,7 @@ static void batch_norm_transform_channels_last_1d(
         memory::can_vectorize_up_to<scalar_t>((char*)output_ptr) >= 2 &&
         (z_ptr == nullptr ||
          memory::can_vectorize_up_to<scalar_t>((char*)z_ptr) >= 2);
-    const bool use_slm = stride < 1024 &&
+    const bool use_slm = stride < MAX_SLM_STRIDE &&
         4 * stride * static_cast<int64_t>(sizeof(accscalar_t)) <=
             static_cast<int64_t>(at::xpu::getDeviceLocalMemSize());
     if (can_vec && use_slm) {
@@ -3366,7 +3374,7 @@ static void launch_batch_norm_backward_elemt_channels_last_1d(
 // pass, mirroring batch_norm_transform_channels_last_1d:
 //   - vec2 is used only for 2-byte types when grad_output/input/grad_input are
 //     2-element aligned (an odd storage_offset view falls back to scalar).
-//   - SLM path (vec2 only): C < 1024 and the SLM footprint
+//   - SLM path (vec2 only): C < MAX_SLM_STRIDE and the SLM footprint
 //     4 * C * sizeof(accscalar_t) of all work-groups that can be co-resident
 //     on a sub-slice fits in local memory, so SLM does not cap occupancy.
 //     Handles odd C via channel wrap-around; the odd-total scalar tail is
@@ -3433,7 +3441,8 @@ static void batch_norm_backward_elemt_channels_last_1d(
         4 * stride * static_cast<int64_t>(sizeof(accscalar_t));
     const bool has_tail = (reduction_size * stride) % 2 != 0;
     bool use_slm = false;
-    if (can_vec && stride < 1024 && slm_bytes_per_wg <= syclLocalMemSize()) {
+    if (can_vec && stride < MAX_SLM_STRIDE &&
+        slm_bytes_per_wg <= syclLocalMemSize()) {
       auto slm_wg_size = [&](auto tail_tag) {
         using Kernel = BatchNormBackwardElemtChannelsLast1DKernelFunctor<
             scalar_t,
