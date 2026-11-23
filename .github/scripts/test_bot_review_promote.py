@@ -151,6 +151,9 @@ def test_maintainer_activity_since_review():
     roles = {"maint": "write", "maint2": "write", "old": "admin", "author": "admin", "outsider": "read"}
     got = p.maintainer_logins_since(activity, "2026-11-20T07:00:00Z", "author", lambda u: roles.get(u, ""))
     assert got == ["maint"]
+    # a failed lookup fails closed
+    failed = p.maintainer_logins_since(activity[:1], "2026-11-20T07:00:00Z", "author", lambda u: p.UNKNOWN_ROLE)
+    assert failed == ["maint"]
 
 
 def run_promote(monkeypatch, labels, status, ci, activity=()):
