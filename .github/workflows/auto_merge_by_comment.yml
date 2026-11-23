@@ -124,7 +124,8 @@ jobs:
               github.rest.repos.getCombinedStatusForRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: sha
+                ref: sha,
+                per_page: 100
               })
             ]);
 

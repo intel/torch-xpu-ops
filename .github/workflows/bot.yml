@@ -26,8 +26,10 @@ permissions:
 # GitHub keeps only one pending run per group and cancels older pending ones.
 # #5272 receives every DISABLED-queue trigger, so give each comment its own group
 # there; runs then wait on the xpu-agent runner pool instead of cancelling each other.
+# Non-command comments (including the bot's own review replies) also get their own
+# group, so they cannot replace a queued `@torchxpubot review` and skip it.
 concurrency:
-  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ github.event.issue.number == 5272 && format('-{0}', github.event.comment.id) || '' }}
+  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ (github.event.issue.number == 5272 || !startsWith(github.event.comment.body, '@torchxpubot')) && format('-{0}', github.event.comment.id) || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -464,7 +466,7 @@ jobs:
                 owner: context.repo.owner, repo: context.repo.repo, ref: sha, per_page: 100
               }),
               github.rest.repos.getCombinedStatusForRef({
-                owner: context.repo.owner, repo: context.repo.repo, ref: sha
+                owner: context.repo.owner, repo: context.repo.repo, ref: sha, per_page: 100
               })
             ]);
             const latestByName = new Map();
@@ -964,11 +966,28 @@ jobs:
       # Hand the result to `review-post` as data. Steps that hold MERGE_TOKEN run
       # in a separate job on a fresh runner, so nothing the model did on this
       # runner (edited files, leftover processes) can reach that token.
+      # The transcript holds tool outputs (e.g. `env`), and artifacts are not
+      # masked: keep only the final result entry and redact secrets from it.
       - name: Save review output
+        id: save
         if: always() && steps.ai-review.outputs.execution_file
-        run: mkdir -p review-output && cp "${{ steps.ai-review.outputs.execution_file }}" review-output/execution.json
+        env:
+          TRANSCRIPT: ${{ steps.ai-review.outputs.execution_file }}
+          SECRETS: |
+            ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+            ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p review-output
+          out=review-output/execution.json
+          jq '[.[] | select(.type == "result")] | .[-1:] | map({type, is_error, result, total_cost_usd, modelUsage})' "$TRANSCRIPT" > "$out"
+          while IFS= read -r secret; do
+            [ -n "$secret" ] || continue
+            b64="$(printf 'x-access-token:%s' "$secret" | base64 -w0)"
+            SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$out"
+            SECRET="$b64"    perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$out"
+          done <<< "$SECRETS"
       - name: Upload review output
-        if: always() && steps.ai-review.outputs.execution_file
+        if: always() && steps.save.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: review-output
@@ -1012,7 +1031,13 @@ jobs:
             // PR from `in progress` to `ready for review`; otherwise it stays.
             const { owner, repo } = context.repo;
             const issue_number = ${{ needs.parse-command.outputs.pr_number }};
-            const ready = /^\**GATE:\**\s*ready_for_human_review/im.test(result.result);
+            // Only the GATE line right after VERDICT counts; a quoted example
+            // further down must not flip the verdict. VERDICT may follow a short
+            // preamble (same window as fold_details.js).
+            const lines = result.result.trim().split('\n').map(l => l.trim()).filter(Boolean);
+            const verdictAt = lines.findIndex(l => /^\**VERDICT:/i.test(l));
+            const gateLine = verdictAt >= 0 && verdictAt < 6 ? lines[verdictAt + 1] || '' : '';
+            const ready = /^\**GATE:\**\s*[`*]*ready_for_human_review[`*]*$/i.test(gateLine);
             // Per-commit record of the verdict for the promotion check. Not a
             // required check: it never blocks merging.
             const sha = '${{ needs.review.outputs.head_sha }}';
@@ -1028,9 +1053,15 @@ jobs:
             // Like pytorch's promotion: a maintainer comment posted after the
             // review started was not seen by it, so do not promote on this verdict.
             let maintainerActivity = [];
+            let skipReason = '';
             const startedAt = '${{ needs.review.outputs.started_at }}';
             if (ready) {
+              // Promote only the commit that was reviewed, and only PRs in the gate.
               const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+              const labels = pr.labels.map(l => l.name);
+              if (pr.head.sha !== sha) skipReason = `new commits were pushed after the reviewed ${sha.slice(0, 7)}`;
+              else if (pr.state !== 'open' || pr.draft) skipReason = 'the PR is not an open, non-draft PR';
+              else if (!labels.includes('in progress') || labels.includes('no automated review')) skipReason = 'the PR is not `in progress` in the bot review gate';
               const since = startedAt || new Date(0).toISOString();
               const [comments, reviews, reviewComments] = await Promise.all([
                 github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, since, per_page: 100 }),
@@ -1047,17 +1078,22 @@ jobs:
                   && a.user.login !== pr.user.login && a.user.login !== 'torchxpubot' && a.user.type !== 'Bot')
                 .map(a => a.user.login));
               for (const username of logins) {
-                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username }).catch(() => ({ data: {} }));
-                if (['triage', 'write', 'maintain', 'admin'].includes(data.role_name)) maintainerActivity.push(username);
+                // Fail closed: an unknown role blocks promotion but still posts the review.
+                const role = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username }).then(
+                  r => r.data.role_name,
+                  e => { core.warning(`permission lookup for ${username} failed: ${e.message}`); return 'unknown'; });
+                if (['triage', 'write', 'maintain', 'admin', 'unknown'].includes(role)) maintainerActivity.push(username);
               }
             }
-            const promote = ready && maintainerActivity.length === 0;
+            const promote = ready && !skipReason && maintainerActivity.length === 0;
             if (promote) {
               await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['ready for review'] });
               await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'in progress' }).catch(() => {});
             }
             const banner = promote
               ? '**Bot review: no blocking issues.** Labeled `ready for review` for maintainers.\n\n'
+              : ready && skipReason
+              ? `**Bot review: no blocking issues, but labels unchanged: ${skipReason}.**\n\n`
               : ready
               ? `**Bot review: no blocking issues, but ${maintainerActivity.map(u => '@' + u).join(', ')} commented after this review started.** Address those comments, then push or comment \`@torchxpubot review\` to re-run the review.\n\n`
               : '**Bot review: blocking issues found.** Fix them and push; the review re-runs while the PR is `in progress`. If a finding does not apply, reply in a PR comment naming it and saying why; the next review reads it.\n\n';
