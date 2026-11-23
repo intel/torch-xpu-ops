@@ -597,6 +597,7 @@ static inline bool can_vectorize_for_non_contigouous(
   return vec_size > 1;
 }
 
+// WG128 was slightly faster than WG256 in local strided unary tests.
 constexpr int strided_work_group_size = 128;
 
 // An inner broadcast may need values from two adjacent rows.
