@@ -378,11 +378,13 @@ constexpr int ELEMENTS_PER_ITER =
 constexpr int ELEMENTS_PER_WORK_ITEM = 4;
 
 // Upper bound on the channel count for which the channels-last SLM staging
-// path is used. Each work-group stages 4 * C * sizeof(accscalar_t) bytes of
-// per-channel data in local memory; beyond this many channels that footprint,
-// multiplied by the work-groups that can be co-resident, starts to limit
-// occupancy and the extra staging traffic outweighs the SLM reuse, so larger
-// channel counts take the direct (non-SLM) vectorized path instead.
+// path is used by both the forward and backward elementwise kernels. Each
+// work-group stages 4 * C * sizeof(accscalar_t) bytes of per-channel data in
+// local memory; beyond this many channels the per-channel staging traffic
+// outweighs the SLM reuse and the extra local-memory pressure can limit
+// occupancy, so larger channel counts take the direct (non-SLM) vectorized
+// path. The per-work-group footprint must also fit in local memory; see the
+// dispatch helpers for that check.
 constexpr int MAX_SLM_STRIDE = 1024;
 
 std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
@@ -3132,10 +3134,10 @@ Tensor batch_norm_backward_elemt_template(
 }
 
 // Channels-last backward elementwise using a 1D linearized grid-stride loop.
-// Mirrors the forward BatchNormTransformInputChannelsLast1DKernelFunctor: the
-// per-channel derived factors are optionally cached in SLM so each element only
-// does flat vector loads/stores. Implemented as a SYCL free function kernel;
-// see the launch config below for how VEC_SIZE and USE_SLM are chosen.
+// Like the forward channels-last elementwise kernel, the per-channel derived
+// factors are optionally cached in SLM so each element only does flat vector
+// loads/stores. Implemented as a SYCL free function kernel; see the launch
+// config below for how VEC_SIZE and USE_SLM are chosen.
 //
 // Use the fast 32-bit divider only on the int32 index path; the int64 path must
 // divide in 64 bits so linear indices > UINT32_MAX are not truncated.
@@ -3214,7 +3216,7 @@ void batch_norm_backward_elemt_channels_last_1d_kernel(
   auto item = sycl::ext::oneapi::this_work_item::get_nd_item<1>();
 
   // SLM layout (only present when USE_SLM): four accscalar_t arrays of `stride`
-  // elements each, mirroring the functor's local accessors.
+  // elements each, carved out of the work-group scratch memory.
   accscalar_t* slm_mean = nullptr;
   accscalar_t* slm_m_dy = nullptr;
   accscalar_t* slm_factor1 = nullptr;
@@ -3362,7 +3364,7 @@ static void launch_batch_norm_backward_elemt_channels_last_1d(
       1,
       std::min<int64_t>(
           at::ceil_div(work_items, wg_size),
-          syclMaxWorkItemsPerTile() / wg_size));
+          at::xpu::getDeviceMaxWorkItems() / wg_size));
   const size_t slm_sz =
       USE_SLM ? static_cast<size_t>(4 * stride * sizeof(accscalar_t)) : 0;
   sycl_kernel_submit<kptr, 1>(
@@ -3391,11 +3393,10 @@ static void launch_batch_norm_backward_elemt_channels_last_1d(
 // pass, mirroring batch_norm_transform_channels_last_1d:
 //   - vec2 is used only for 2-byte types when grad_output/input/grad_input are
 //     2-element aligned (an odd storage_offset view falls back to scalar).
-//   - SLM path (vec2 only): C < MAX_SLM_STRIDE and the SLM footprint
-//     4 * C * sizeof(accscalar_t) of all work-groups that can be co-resident
-//     on a sub-slice fits in local memory, so SLM does not cap occupancy.
-//     Handles odd C via channel wrap-around; the odd-total scalar tail is
-//     selected on host via HAS_TAIL.
+//   - SLM path (vec2 only): C < MAX_SLM_STRIDE and one work-group's SLM
+//     footprint 4 * C * sizeof(accscalar_t) fits in local memory. Handles odd
+//     C via channel wrap-around; the odd-total scalar tail is selected on host
+//     via HAS_TAIL.
 //   - Non-SLM vec2 path additionally requires even C to keep the parameter
 //     gather monotone; otherwise scalar.
 template <
@@ -3451,36 +3452,15 @@ static void batch_norm_backward_elemt_channels_last_1d(
         memory::can_vectorize_up_to<scalar_t>((char*)grad_output_ptr) >= 2 &&
         memory::can_vectorize_up_to<scalar_t>((char*)input_ptr) >= 2 &&
         memory::can_vectorize_up_to<scalar_t>((char*)grad_input_ptr) >= 2;
-    // SLM is only worthwhile if it does not limit occupancy: require that the
-    // SLM footprint of all work-groups that can be resident on one sub-slice
-    // (bounded by HW threads) fits in the sub-slice local memory.
+    // SLM is used for the same rule as the forward channels-last kernel: the
+    // channel count stays under MAX_SLM_STRIDE and one work-group's staging
+    // footprint fits in local memory.
     const int64_t slm_bytes_per_wg =
         4 * stride * static_cast<int64_t>(sizeof(accscalar_t));
     const bool has_tail = (reduction_size * stride) % 2 != 0;
-    bool use_slm = false;
-    if (can_vec && stride < MAX_SLM_STRIDE &&
-        slm_bytes_per_wg <= syclLocalMemSize()) {
-      auto slm_wg_size = [&](auto tail_tag) {
-        constexpr auto kptr = batch_norm_backward_elemt_channels_last_1d_kernel<
-            scalar_t,
-            accscalar_t,
-            layerscalar_t,
-            2,
-            true,
-            USE_COUNTS,
-            decltype(tail_tag)::value,
-            index_t>;
-        return std::min<int64_t>(
-            1024, at::xpu::getKernelMaxWorkGroupSize<kptr>());
-      };
-      const int64_t wg_size = has_tail ? slm_wg_size(std::true_type{})
-                                       : slm_wg_size(std::false_type{});
-      const int64_t max_items_per_ss =
-          syclGpuEUCountPerSubslice() * syclMaxWorkItemsPerEU();
-      const int64_t active_wgs_per_ss =
-          std::max<int64_t>(1, max_items_per_ss / wg_size);
-      use_slm = slm_bytes_per_wg * active_wgs_per_ss <= syclLocalMemSize();
-    }
+    const bool use_slm = stride < MAX_SLM_STRIDE &&
+        slm_bytes_per_wg <=
+            static_cast<int64_t>(at::xpu::getDeviceLocalMemSize());
     if (can_vec && use_slm) {
       if (has_tail) {
         LAUNCH_BN_BWD_CL_1D(2, true, true);
@@ -3518,7 +3498,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
   // terminating increment forces this headroom check before the int32 path.
   const int64_t index32_limit =
       static_cast<int64_t>(std::numeric_limits<int32_t>::max()) -
-      syclMaxWorkItemsPerTile();
+      at::xpu::getDeviceMaxWorkItems();
   const bool can_use_32bit_index = canUse32BitIndexMath(input, index32_limit);
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -3639,7 +3619,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
   // terminating increment forces this headroom check before the int32 path.
   const int64_t index32_limit =
       static_cast<int64_t>(std::numeric_limits<int32_t>::max()) -
-      syclMaxWorkItemsPerTile();
+      at::xpu::getDeviceMaxWorkItems();
   const bool can_use_32bit_index = canUse32BitIndexMath(input, index32_limit);
 
   if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
