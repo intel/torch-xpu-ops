@@ -153,7 +153,7 @@ The review re-runs on every push, and the author is fixing what the last review 
 
 1. **Settle the earlier blocking findings first.** The earlier review is a single comment, so objections to a finding come as PR comments that name it. Check each finding at HEAD: report it again if still present; drop it if fixed, or if a maintainer (see "Maintainer Comments") replied that it does not apply. A reply from the author is a claim to verify at HEAD: drop the finding only if the claim holds, otherwise report it again and address the reply.
 2. **Review what changed since the last review in full**, with the same scrutiny as a first review.
-3. **Don't move the goalposts on code the last review already covered.** A new blocking finding on unchanged code needs a concrete failure (wrong result, crash, security or BC break); say why it was not raised before. Any other new point there is non-blocking.
+3. **Don't move the goalposts on code the last review already covered.** A new blocking finding on unchanged code needs a concrete failure (wrong result, crash, security or BC break); say why it was not raised before. Any other new point there is non-blocking, except an unaddressed maintainer comment, which always blocks (see "Maintainer Comments") whatever code it is on.
 4. **Keep earlier non-blocking points non-blocking** unless the code changed in a way that makes them worse.
 
 ## Review Workflow
