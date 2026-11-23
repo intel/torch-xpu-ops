@@ -26,8 +26,10 @@ bool is_grouped_mm_available();
 //   * mat_a [K, M] M-contiguous (a transposed row-major activation), mat_b
 //     [M, N] row-major, out [E, K, N] -> groups partition the contraction dim.
 // Leading dimensions must be multiples of 64 bytes and base pointers 64-byte
-// aligned (Xe 2D block message requirements). Anything else returns false so
-// the caller can fall back.
+// aligned, and every operand must fit an Xe 2D block surface: row width and
+// row pitch at most 2^24 - 1 bytes, at most 2^24 - 1 rows (Xe 2D block
+// message requirements). Anything else returns false so the caller can fall
+// back.
 // When it returns false and `why_not` is non-null, *why_not gets a short
 // human-readable reason (used for dispatch logging).
 bool can_use_grouped_mm(

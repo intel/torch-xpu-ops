@@ -53,6 +53,23 @@ bool fits_int32(int64_t v) {
   return v >= 0 && v <= int64_t(std::numeric_limits<int32_t>::max());
 }
 
+// Xe 2D block messages describe a surface by its width and row pitch in bytes
+// and its height in rows, each a 24-bit field (SYCL-TLA Xe2DTraitsBase). The
+// kernels also pass the leading dimensions as int. Every operand the kernels
+// address through a 2D block surface must satisfy this; a pitch within the
+// limit also keeps the int leading dimensions exact.
+constexpr int64_t kMax2DBlockField = (int64_t(1) << 24) - 1;
+constexpr int64_t kElemBytes = 2; // bf16 / fp16
+
+// A surface of `height` rows of `width` contiguous elements, `pitch` elements
+// apart. Grouped heights are bounded by the full extent of the operand, so
+// this never needs the (device-side) offs values.
+bool fits_2d_block_surface(int64_t width, int64_t height, int64_t pitch) {
+  return width >= 0 && height >= 0 && pitch >= width &&
+      width * kElemBytes <= kMax2DBlockField && height <= kMax2DBlockField &&
+      pitch * kElemBytes <= kMax2DBlockField;
+}
+
 struct Plan {
   bool k_grouped = false;
   char layout_b = 'C';
@@ -149,6 +166,16 @@ std::string build_plan(
         p.ldd % kLdAlignElems != 0 || p.group_stride_b % kLdAlignElems != 0) {
       return "leading dimensions must be multiples of 64 bytes";
     }
+    // A: [rows_g <= M, K] row-major. B_g: [N, K] rows K-contiguous ('R') or
+    // [K, N] rows N-contiguous ('C'). D: [rows_g <= M, N] row-major.
+    const bool b_fits = plan.layout_b == 'R'
+        ? fits_2d_block_surface(K, N, p.ldb)
+        : fits_2d_block_surface(N, K, p.ldb);
+    if (!fits_2d_block_surface(K, M, p.lda) || !b_fits ||
+        !fits_2d_block_surface(N, M, p.ldd)) {
+      return "operand exceeds the 2D block surface limits (2^24 bytes per row "
+             "pitch / width, 2^24 rows)";
+    }
     return "";
   }
 
@@ -189,6 +216,14 @@ std::string build_plan(
     if (p.lda % kLdAlignElems != 0 || p.ldb % kLdAlignElems != 0 ||
         p.ldd % kLdAlignElems != 0 || p.group_stride_d % kLdAlignElems != 0) {
       return "leading dimensions must be multiples of 64 bytes";
+    }
+    // A: [rows_g <= R, M] (the M-contiguous [M, R] operand, one row per
+    // contraction index). B: [rows_g <= R, N] row-major. D_g: [M, N].
+    if (!fits_2d_block_surface(M, R, p.lda) ||
+        !fits_2d_block_surface(N, R, p.ldb) ||
+        !fits_2d_block_surface(N, M, p.ldd)) {
+      return "operand exceeds the 2D block surface limits (2^24 bytes per row "
+             "pitch / width, 2^24 rows)";
     }
     return "";
   }
