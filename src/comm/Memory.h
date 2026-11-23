@@ -13,6 +13,7 @@
 #include <ATen/detail/XPUHooksInterface.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <c10/core/ScalarType.h>
+#include <comm/GPUTrace.h>
 #include <comm/SYCLContext.h>
 
 using namespace at;
@@ -34,6 +35,7 @@ inline void memcpyHostToDevice(
   auto e = queue.memcpy(dst, src, n_bytes);
   if (!async) {
     e.wait();
+    traceStreamSynchronization();
   } else {
     if (is_pinned) {
       at::getHostAllocator(at::kXPU)->record_event(
@@ -75,6 +77,7 @@ inline void memcpyDeviceToHost(
 
   if (!async) {
     e.wait();
+    traceStreamSynchronization();
   } else if (is_pinned) {
     at::getHostAllocator(at::kXPU)->record_event(
         dst, const_cast<void*>(hctx), at::xpu::getCurrentXPUStream());
@@ -94,6 +97,7 @@ inline void memcpyDeviceToDevice(
 
   if (!async) {
     e.wait();
+    traceStreamSynchronization();
   }
 }
 

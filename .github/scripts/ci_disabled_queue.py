@@ -74,7 +74,8 @@ def disabled_issues(body):
     Comments without that header (the far more common "rerunning" notices) yield
     nothing, and the run URLs above the header are never mistaken for issues.
     """
-    _, _, tail = body.partition("Disable issues:")
+    # Matches both "Disable issues:" and "### Disable issues" (since 2026-11-12).
+    _, _, tail = body.partition("Disable issues")
     return list(dict.fromkeys(ISSUE_RE.findall(tail)))
 
 
@@ -225,6 +226,7 @@ def self_test():
         "- https://github.com/pytorch/pytorch/issues/197334\n"
     )
     assert disabled_issues(batch) == ["197334", "197335"], "listed once, in order"
+    assert disabled_issues("### Disable issues\n| a | https://github.com/pytorch/pytorch/issues/7 |") == ["7"]
 
     body = trigger_body(
         {
