@@ -238,6 +238,18 @@ runs:
     - name: Detect devices
       shell: bash -euo pipefail {0}
       run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'
+    - name: Replace torch with pytorch run 44455726062 wheel
+      shell: bash -xe {0}
+      run: |
+        rm -rf manywheel-py3_12-xpu
+        if [ -d /workspace/local/manywheel-py3_12-xpu ]; then
+          ln -s /workspace/local/manywheel-py3_12-xpu manywheel-py3_12-xpu
+        else
+          gh --repo pytorch/pytorch run download 44455726062 -p "manywheel-py3_12-xpu"
+        fi
+        uv pip install numpy triton-xpu manywheel-py3_12-xpu/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl --index-url https://download.pytorch.org/whl/nightly/xpu --pre
+        TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> "${GITHUB_ENV}"
     - name: Torch Config
       shell: bash -xe {0}
       run: |
