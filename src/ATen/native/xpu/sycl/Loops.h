@@ -703,18 +703,13 @@ struct InnerBroadcast {
 // stay in the inline kernel payload. Scalar FP16/BF16 vec8 uses WG128 and
 // SIMD16. Integral inner broadcasts use SIMD32, and the compiler selects SIMD
 // for other widths.
-// Single-element broadcasts may have an ordinary tail. With full_waves, all
-// work-items after the whole waves of two-element vectors take one element
-// each (see BroadcastLaunchConfig).
 template <
     int vec_size,
     int broadcast_arg,
     bool small_work_group,
     typename func_t,
-    typename layout_t,
-    bool full_waves = false>
+    typename layout_t>
 struct BroadcastElementwiseKernel {
-  static_assert(!full_waves || vec_size == 2);
   static constexpr int work_group_size = small_work_group
       ? launch_config::broadcast_wide_work_group_size
       : launch_config::broadcast_work_group_size;
@@ -741,14 +736,11 @@ struct BroadcastElementwiseKernel {
     }
   }
 
-  // A constant group size keeps the index free of payload loads. With
-  // full_waves, layout_.numel holds the number of vectors instead of
-  // elements, and the launch has exactly one work-item per later element.
+  // A constant group size keeps the index free of payload loads.
   void operator()(sycl::nd_item<1> item) const {
     const uint32_t index = uint32_t(item.get_group(0)) * work_group_size +
         uint32_t(item.get_local_id(0));
-    const uint32_t vectors =
-        full_waves ? layout_.numel : layout_.numel / vec_size;
+    const uint32_t vectors = layout_.numel / vec_size;
     if (index < vectors) {
       const auto offsets = get_offsets(index * vec_size);
       const auto values =
@@ -762,9 +754,8 @@ struct BroadcastElementwiseKernel {
       }
       reinterpret_cast<memory::aligned_vector<return_t, vec_size>*>(
           output_)[index] = results;
-    } else if constexpr (
-        full_waves || !std::is_same_v<layout_t, InnerBroadcast>) {
-      if (full_waves || index < vectors + layout_.numel % vec_size) {
+    } else if constexpr (!std::is_same_v<layout_t, InnerBroadcast>) {
+      if (index < vectors + layout_.numel % vec_size) {
         const uint32_t k = vectors * (vec_size - 1) + index;
         const auto offsets = get_offsets(k);
         output_[k] = apply(
@@ -843,17 +834,152 @@ struct BroadcastLaunchConfig {
   static constexpr int narrow_vec = std::max(1, 4 / min_bytes);
   static constexpr int wide_vec = std::max(8 / max_bytes, narrow_vec);
   static constexpr int waves = narrow_vec > 1 ? 2 : 1;
-  // When adaptive work changes from single elements to two-element vectors,
-  // process the remaining elements individually after the full vector waves.
-  static constexpr bool full_waves = narrow_vec == 1 && wide_vec == 2;
   // Broadcast rows gain from vectors only when a streamed operand is narrower
   // than 8 bytes; otherwise the generic kernel already accesses 8 bytes per
   // work-item, and its grid-stride loop suits long write streams.
   static constexpr bool vectorize_rows = min_bytes < 8;
 
+  static constexpr int dense = 2 - broadcast_arg;
+
   static bool wide(int64_t numel) {
     return numel / wide_vec >=
         waves * int64_t(at::xpu::getDeviceMaxWorkItems());
+  }
+
+  template <int vec_size, typename array_t, typename layout_t>
+  static void submit_kernel(
+      int64_t numel,
+      const func_t& f,
+      const array_t& data,
+      const layout_t& layout) {
+    using kernel_t = BroadcastElementwiseKernel<
+        vec_size,
+        broadcast_arg,
+        small_work_group<vec_size>,
+        func_t,
+        layout_t>;
+    constexpr int64_t wg_size = kernel_t::work_group_size;
+    int64_t items = numel / vec_size;
+    if constexpr (single_element) {
+      items += numel % vec_size;
+    }
+    sycl_kernel_submit(
+        ceil_div(items, wg_size) * wg_size,
+        wg_size,
+        getCurrentSYCLQueue(),
+        kernel_t(
+            reinterpret_cast<const dense_t*>(data[dense]),
+            reinterpret_cast<const broadcast_t*>(data[broadcast_arg + 1]),
+            reinterpret_cast<output_t*>(data[0]),
+            f,
+            layout));
+  }
+
+  template <int vec_size, typename array_t>
+  static bool check_vector_alignment(
+      const TensorIteratorBase& iter,
+      const array_t& data) {
+    constexpr int vec_bytes = vec_size * dense_bytes;
+    if (reinterpret_cast<uintptr_t>(data[0]) % (vec_size * output_bytes) != 0 ||
+        reinterpret_cast<uintptr_t>(data[dense]) % vec_bytes != 0) {
+      return false;
+    }
+    if constexpr (!single_element) {
+      if (iter.shape()[0] % vec_size != 0) {
+        return false;
+      }
+      const int ndim = iter.ndim();
+      for (int dim = 1; dim < ndim; ++dim) {
+        if (iter.strides(dense)[dim] % vec_bytes != 0) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  template <int vec_size, typename array_t>
+  static bool launch_vector(
+      TensorIteratorBase& iter,
+      const func_t& f,
+      const array_t& data,
+      int64_t numel) {
+    if (!check_vector_alignment<vec_size>(iter, data)) {
+      return false;
+    }
+    if constexpr (single_element) {
+      submit_kernel<vec_size>(
+          numel,
+          f,
+          data,
+          SingleElementBroadcast<broadcast_arg>{uint32_t(numel)});
+    } else {
+      submit_kernel<vec_size>(
+          numel,
+          f,
+          data,
+          InnerBroadcast{
+              uint32_t(numel), make_input_offset_calculator<2>(iter)});
+    }
+    return true;
+  }
+
+  template <typename array_t>
+  static bool dispatch(
+      TensorIteratorBase& iter,
+      const func_t& f,
+      const array_t& data,
+      int64_t numel) {
+    if constexpr (!single_element && !vectorize_rows) {
+      return false;
+    } else {
+      // A broadcast input stored in the output would be read while written.
+      if (iter.strides(broadcast_arg + 1)[0] != 0 ||
+          iter.strides(dense)[0] != iter.element_size(dense) ||
+          broadcast_overlaps_output(iter, data[0], broadcast_arg + 1)) {
+        return false;
+      }
+      if constexpr (!single_element) {
+        if (broadcast_overlaps_output(iter, data[0], dense, true)) {
+          return false;
+        }
+      }
+      if constexpr (low_precision) {
+        const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
+        int64_t vec8_items = wave_items;
+        if constexpr (single_element) {
+          // In-place scalar broadcasts can pack wider once the grid can offer
+          // one work-group per Xe core.
+          if (data[0] == data[dense]) {
+            vec8_items = launch_config::broadcast_wide_work_group_size *
+                int64_t(at::xpu::getDeviceXeCoreCount());
+          }
+        }
+        constexpr int vec4_waves = single_element ? 2 : 1;
+        return (numel / 8 >= vec8_items &&
+                launch_vector<8>(iter, f, data, numel)) ||
+            (numel / 4 >= vec4_waves * wave_items &&
+             launch_vector<4>(iter, f, data, numel)) ||
+            launch_vector<2>(iter, f, data, numel);
+      } else if constexpr (!single_element && float_storage) {
+        const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
+        return (numel / 4 >= 2 * wave_items &&
+                launch_vector<4>(iter, f, data, numel)) ||
+            (numel / 2 >= wave_items &&
+             launch_vector<2>(iter, f, data, numel)) ||
+            launch_vector<1>(iter, f, data, numel);
+      } else {
+        if constexpr (wide_vec == narrow_vec) {
+          return launch_vector<wide_vec>(iter, f, data, numel);
+        } else if (wide(numel)) {
+          const bool launched = launch_vector<wide_vec>(iter, f, data, numel);
+          if (single_element || launched) {
+            return launched;
+          }
+        }
+        return launch_vector<narrow_vec>(iter, f, data, numel);
+      }
+    }
   }
 };
 
@@ -863,151 +989,21 @@ static inline bool try_launch_broadcast_kernel(
     TensorIteratorBase& iter,
     const func_t& f,
     const array_t& data,
+    int64_t numel,
     bool dense_output) {
   static_assert(function_traits<func_t>::arity == 2);
   const int ndim = iter.ndim();
-  const int numel = iter.numel();
   if (ndim == 0 || numel < 2 || !dense_output) {
     return false;
   }
-  auto launch_arg = [&](auto arg, auto single) {
-    constexpr int broadcast_arg = decltype(arg)::value;
-    constexpr bool single_element = decltype(single)::value;
-    constexpr int dense = 2 - broadcast_arg;
-    // A broadcast input stored in the output would be read while written.
-    if (iter.strides(broadcast_arg + 1)[0] != 0 ||
-        iter.strides(dense)[0] != iter.element_size(dense) ||
-        broadcast_overlaps_output(iter, data[0], broadcast_arg + 1)) {
-      return false;
-    }
-    using config = BroadcastLaunchConfig<func_t, broadcast_arg, single_element>;
-    if constexpr (!single_element) {
-      if (!config::vectorize_rows ||
-          broadcast_overlaps_output(iter, data[0], dense, true)) {
-        return false;
-      }
-    }
-
-    auto launch_layout = [&](auto vec, const auto& layout) {
-      auto submit = [&](auto whole_waves) {
-        constexpr int vec_v = decltype(vec)::value;
-        constexpr bool full_waves = decltype(whole_waves)::value;
-        using kernel_t = BroadcastElementwiseKernel<
-            vec_v,
-            broadcast_arg,
-            config::template small_work_group<vec_v>,
-            func_t,
-            std::decay_t<decltype(layout)>,
-            full_waves>;
-        constexpr int64_t wg_size = kernel_t::work_group_size;
-        int64_t items = numel / vec_v;
-        if constexpr (single_element) {
-          items += numel % vec_v;
-        }
-        auto kernel_layout = layout;
-        if constexpr (full_waves) {
-          // A wide launch has at least one whole wave of vectors. A
-          // multiple of the group size of work-items with numel - items vectors
-          // leaves exactly one element per later work-item.
-          const int64_t capacity = at::xpu::getDeviceMaxWorkItems();
-          const int64_t vectors = numel / 2 / capacity * capacity;
-          items = ceil_div<int64_t>(numel - vectors, wg_size) * wg_size;
-          kernel_layout.numel = uint32_t(numel - items);
-        }
-        sycl_kernel_submit(
-            ceil_div(items, wg_size) * wg_size,
-            wg_size,
-            getCurrentSYCLQueue(),
-            kernel_t(
-                reinterpret_cast<const typename kernel_t::dense_t*>(
-                    data[dense]),
-                reinterpret_cast<const typename kernel_t::broadcast_t*>(
-                    data[broadcast_arg + 1]),
-                reinterpret_cast<typename kernel_t::return_t*>(data[0]),
-                f,
-                kernel_layout));
-      };
-      if constexpr (config::full_waves && decltype(vec)::value == 2) {
-        // Whole vector waves keep the original kernel and its payload
-        // scheduling.
-        if (numel % (2 * int64_t(at::xpu::getDeviceMaxWorkItems())) != 0) {
-          return submit(std::true_type{});
-        }
-      }
-      submit(std::false_type{});
-    };
-    auto launch_vector = [&](auto vec) {
-      constexpr int vec_size = decltype(vec)::value;
-      constexpr int vec_bytes = vec_size * config::dense_bytes;
-      if (reinterpret_cast<uintptr_t>(data[0]) %
-                  (vec_size * config::output_bytes) !=
-              0 ||
-          reinterpret_cast<uintptr_t>(data[dense]) % vec_bytes != 0) {
-        return false;
-      }
-      if constexpr (single_element) {
-        launch_layout(
-            vec, SingleElementBroadcast<broadcast_arg>{uint32_t(numel)});
-        return true;
-      } else if constexpr (config::vectorize_rows) {
-        if (iter.shape()[0] % vec_size != 0) {
-          return false;
-        }
-        for (int dim = 1; dim < ndim; ++dim) {
-          if (iter.strides(dense)[dim] % vec_bytes != 0) {
-            return false;
-          }
-        }
-        launch_layout(
-            vec,
-            InnerBroadcast{
-                uint32_t(numel), make_input_offset_calculator<2>(iter)});
-        return true;
-      }
-      return false;
-    };
-    if constexpr (config::low_precision) {
-      const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
-      int64_t vec8_items = wave_items;
-      if constexpr (single_element) {
-        // In-place scalar broadcasts can pack wider once the grid can offer
-        // one work-group per Xe core.
-        if (data[0] == data[dense]) {
-          vec8_items = launch_config::broadcast_wide_work_group_size *
-              int64_t(at::xpu::getDeviceXeCoreCount());
-        }
-      }
-      constexpr int vec4_waves = single_element ? 2 : 1;
-      return (numel / 8 >= vec8_items &&
-              launch_vector(std::integral_constant<int, 8>{})) ||
-          (numel / 4 >= vec4_waves * wave_items &&
-           launch_vector(std::integral_constant<int, 4>{})) ||
-          launch_vector(std::integral_constant<int, 2>{});
-    } else if constexpr (!single_element && config::float_storage) {
-      const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
-      return (numel / 4 >= 2 * wave_items &&
-              launch_vector(std::integral_constant<int, 4>{})) ||
-          (numel / 2 >= wave_items &&
-           launch_vector(std::integral_constant<int, 2>{})) ||
-          launch_vector(std::integral_constant<int, 1>{});
-    } else {
-      if constexpr (config::wide_vec == config::narrow_vec) {
-        return launch_vector(std::integral_constant<int, config::wide_vec>{});
-      } else if (config::wide(numel)) {
-        const bool launched =
-            launch_vector(std::integral_constant<int, config::wide_vec>{});
-        if (single_element || launched) {
-          return launched;
-        }
-      }
-      return launch_vector(std::integral_constant<int, config::narrow_vec>{});
-    }
-  };
-  auto launch = [&](auto single) {
-    return launch_arg(std::integral_constant<int, 0>{}, single) ||
-        launch_arg(std::integral_constant<int, 1>{}, single);
-  };
-  return ndim == 1 ? launch(std::true_type{}) : launch(std::false_type{});
+  if (ndim == 1) {
+    return BroadcastLaunchConfig<func_t, 0, true>::dispatch(
+               iter, f, data, numel) ||
+        BroadcastLaunchConfig<func_t, 1, true>::dispatch(iter, f, data, numel);
+  }
+  return BroadcastLaunchConfig<func_t, 0, false>::dispatch(
+             iter, f, data, numel) ||
+      BroadcastLaunchConfig<func_t, 1, false>::dispatch(iter, f, data, numel);
 }
 
 // An inner broadcast may need values from two adjacent rows.
@@ -1286,7 +1282,7 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
     // Keep the legacy row-vector restrictions for split iterators. Packed
     // strided paths validate their own geometry and also serve split iterators.
     if constexpr (traits::arity == 2) {
-      if (try_launch_broadcast_kernel(iter, f, data, dense_output)) {
+      if (try_launch_broadcast_kernel(iter, f, data, numel, dense_output)) {
         return;
       }
     }
