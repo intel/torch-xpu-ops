@@ -88,28 +88,6 @@ class BatchKernelConfig {
       int64_t stride,
       int64_t problem_batch,
       bool problem_along_x,
-      Policy policy = Policy::pSegment,
-      int64_t prefer_wg_size = 0) {
-    BatchKernelConfig cfg = {
-        batch,
-        problem,
-        stride,
-        problem_batch,
-        problem_along_x,
-        policy,
-        prefer_wg_size};
-    cfg.template build<kptr>();
-
-    return cfg;
-  }
-
-  template <auto* kptr>
-  static BatchKernelConfig make_config(
-      int64_t batch,
-      int64_t problem,
-      int64_t stride,
-      int64_t problem_batch,
-      bool problem_along_x,
       std::vector<Policy> policies,
       int64_t prefer_wg_size = 0) {
     BatchKernelConfig cfg = {
