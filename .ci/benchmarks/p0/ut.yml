@@ -72,13 +72,13 @@ groups:
 
   non-inductor:
     pytorch:
+      test/test_masked.py: {}
       test/test_view_ops.py: {}
       test/xpu/test_conv.py: {}
       test/xpu/test_fusion.py: {}
       test/xpu/test_gemm.py: {}
     xpu_ops:
       test/xpu/test_binary_ufuncs_xpu.py: {}
-      test/xpu/test_masked_xpu.py: {}
       test/xpu/test_ops_xpu.py:
         skip:
           - "TestFakeTensorXPU::test_fake_crossref_backward_amp_torch_ops_aten__efficient_attention_forward_xpu_float32"
