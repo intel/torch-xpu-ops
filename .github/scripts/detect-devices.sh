@@ -125,6 +125,13 @@ detect_device_info() {
     joined_names="${joined_names%; }"
   fi
 
+  # In a container (e.g. Kubernetes DRA / devctl), lspci sees all host PCIe GPUs
+  # while only allocated /dev/dri/renderD* nodes are mounted into the container.
+  local render_nodes=(/dev/dri/renderD*)
+  if [ -e "${render_nodes[0]}" ] && ((${#render_nodes[@]} < total_count)); then
+    total_count="${#render_nodes[@]}"
+  fi
+
   DETECTED_GPU_COUNT="${total_count}"
   DETECTED_DEVICE_NAMES="${joined_names}"
 }
@@ -137,7 +144,7 @@ detect_available_gpu_ids() {
   local joined_ids=""
 
   for ((gpu_id = 0; gpu_id < total_count; gpu_id++)); do
-    probe_output="$(ZE_AFFINITY_MASK=${gpu_id} clinfo --list | grep 'Graphics' || true)"
+    probe_output="$(ZE_AFFINITY_MASK=${gpu_id} clinfo --list | grep -E 'Device #[0-9]+' || true)"
     if [ -n "${probe_output}" ] && [[ "${probe_output}" != *" UHD "* ]]; then
       gpu_ids+=("${gpu_id}")
     fi
@@ -315,7 +322,9 @@ main() {
     pytest_addopts="${PYTEST_BASE_ARGS} ${pytest_others_args} ${pytest_extra_args}"
   fi
 
-  emit_var ZE_AFFINITY_MASK "${ze_affinity_mask}"
+  if [ -n "${ze_affinity_mask}" ]; then
+    emit_var ZE_AFFINITY_MASK "${ze_affinity_mask}"
+  fi
   emit_var NUMACTL_ARGS "${numactl_args}"
   emit_var PYTEST_EXTRA_ARGS "${pytest_extra_args}"
   emit_var PYTEST_ADDOPTS "${pytest_addopts}"

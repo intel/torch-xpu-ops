@@ -29,18 +29,21 @@ runs:
         export PATH="${HOME}/.local/bin:${PATH}"
         echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
         uv python install "${{ steps.config.outputs.python }}"
+        VENV_DIR="${RUNNER_TEMP:-/tmp}/uv-venv"
+        echo "VIRTUAL_ENV=${VENV_DIR}" >> "${GITHUB_ENV}"
+        echo "UV_PROJECT_ENVIRONMENT=${VENV_DIR}" >> "${GITHUB_ENV}"
+        echo "${VENV_DIR}/bin" >> "${GITHUB_PATH}"
     - name: Clear venv
       shell: bash -xe {0}
       run: |
-        uv venv --clear --python ${{ steps.config.outputs.python }}
+        uv venv --clear --seed --python "${{ steps.config.outputs.python }}" "${VIRTUAL_ENV}"
         uv pip install -U pip wheel "setuptools<81"
     - name: Setup venv paths
       shell: bash -xe {0}
       run: |
-        PYTHON_CMD="$(command -v python || command -v python3)"
-        PYTHON_BIN="$("${PYTHON_CMD}" -c 'import sys; print(sys.executable)')"
-        BIN_DIR="$(dirname "${PYTHON_BIN}")"
-        VENV_ROOT="$(realpath "${BIN_DIR}/..")"
+        BIN_DIR="${VIRTUAL_ENV}/bin"
+        VENV_ROOT="$(realpath "${VIRTUAL_ENV}")"
+        PY_LIBDIR="$("${BIN_DIR}/python" -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR") or "")')"
         # ensure both python/python3 and pip/pip3 are available in the venv
         [ -e "${BIN_DIR}/python3" ] || ln -s python "${BIN_DIR}/python3"
         [ -e "${BIN_DIR}/python" ] || ln -s python3 "${BIN_DIR}/python"
@@ -48,7 +51,8 @@ runs:
         [ -e "${BIN_DIR}/pip" ] || ln -s pip3 "${BIN_DIR}/pip"
         echo "${BIN_DIR}" >> "${GITHUB_PATH}"
         echo "VENV_ROOT=${VENV_ROOT}" >> "${GITHUB_ENV}"
-        echo "LD_LIBRARY_PATH=${VENV_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" >> "${GITHUB_ENV}"
+        NEW_LD="${VENV_ROOT}/lib${PY_LIBDIR:+:${PY_LIBDIR}}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+        echo "LD_LIBRARY_PATH=${NEW_LD}" >> "${GITHUB_ENV}"
     - name: Check python and pip version
       shell: bash -xe {0}
       run: |
