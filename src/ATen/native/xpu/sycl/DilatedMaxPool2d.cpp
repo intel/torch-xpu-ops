@@ -36,7 +36,6 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/DilatedMaxPool2d.h>
 #include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
-#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #ifdef USE_SYCLTLA
 #define CUTLASS_SYCL_BUILTIN_ENABLE
 // Keep dependency-header diagnostics separate from kernel diagnostics.
@@ -736,8 +735,7 @@ template <
 struct BackwardTile {
   auto get(sycl::ext::oneapi::experimental::properties_tag) const {
     return sycl::ext::oneapi::experimental::properties{
-        sycl::ext::oneapi::experimental::sub_group_size<16>,
-        sycl::ext::intel::experimental::grf_size<128>};
+        sycl::ext::oneapi::experimental::sub_group_size<16>};
   }
   static constexpr int tiles = WholeRow ? 9 : 7;
   static_assert(!WholeRow || (K == 3 && P == 0 && Aligned && !Packed));
@@ -1325,7 +1323,7 @@ bool dispatch_backward(
     if (can_launch(S == 1 ? 256 : 128, 16) &&
         (S != 1 || C != 216 || can_launch(256, 32))) {
       if (K == 3 && S == 2 && P == 0 && W == 17 && OW == 8 && C >= 128 &&
-          C % 32 == 0 && CS % 8 == 0 && out.numel() >= (10LL << 20)) {
+          C % 32 == 0 && CS % 8 == 0) {
         backward_tile_impl<scalar_t, 3, 0, true, false, true>(x, v, idx, out);
         return true;
       }
