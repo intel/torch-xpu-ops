@@ -225,7 +225,7 @@ static inline BinaryLayoutTile make_binary_layout_tile(
 
   // Cover the short axis when it benefits from staging a whole extent.
   auto pow2_floor = [](uint32_t x) { return 1u << c10::llvm::Log2_32(x); };
-  if (short_rows && d.rows >= 3 && d.rows != 4 && d.rows % 16 != 0) {
+  if (short_rows && d.rows >= 3) {
     return make_tile(d.rows, std::min(d.cols, pow2_floor(budget / d.rows)));
   }
   if (!short_rows && d.cols <= 256 && d.cols % 32 != 0) {
