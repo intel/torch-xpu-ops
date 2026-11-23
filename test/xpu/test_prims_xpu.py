@@ -12,13 +12,13 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUImportCtx
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUImportCtx
 
 # TestPrimsPhiloxOnCUDA is deliberately not ported: rngprims.philox_rand has no
 # XPU implementation (torch/_prims/rng_prims.py raises throw_on_non_cuda).
-with XPUPatchForImport(False):
+with XPUImportCtx(False):
     from test_prims import TestDecomp, TestPrimsDevice, TestRefs
 
 
