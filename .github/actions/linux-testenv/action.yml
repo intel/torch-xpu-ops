@@ -30,8 +30,9 @@ runs:
     - name: Install base packages
       shell: bash -xe {0}
       env:
+        DEBIAN_FRONTEND: noninteractive
         GCC_VERSION: '13'
-        APT_UPGRADE: '0'
+        APT_UPGRADE: '1'
         INSTALL_BASE: ${{ github.action_path }}/../../../.ci/docker/common/install_base.sh
       run: |
         if [ ! -f /.dockerenv ]; then
@@ -66,8 +67,10 @@ runs:
               exit 1
               ;;
           esac
+          export DEBIAN_FRONTEND=noninteractive
           echo "deb [trusted=yes] https://laurentides.igk.intel.com/repositories/ubuntu ${OMIX_DIST} unified" | ${SUDO} tee /etc/apt/sources.list.d/omix.list
           ${SUDO} apt-get update
+          ${SUDO} apt-get dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
           ${SUDO} apt-get install -y --no-install-recommends \
             intel-omix-dev \
             xpu-smi \
