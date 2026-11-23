@@ -64,8 +64,8 @@ skip_files_list = [
     f"{PYTORCH_TEST_DIR}/test_dynamic_shapes.py",
     f"{PYTORCH_TEST_DIR}/test_foreach.py",
     "test_linalg_xpu.py",
-    "test_maskedtensor_xpu.py",
-    # "test_masked_xpu.py",
+    f"{PYTORCH_TEST_DIR}/test_maskedtensor.py",
+    # f"{PYTORCH_TEST_DIR}/test_masked.py",
     "test_matmul_cuda_xpu.py",
     "test_meta_xpu.py",
     "test_native_functions_xpu.py",
@@ -89,7 +89,7 @@ skip_files_list = [
     "test_type_promotion_xpu.py",
     # "test_unary_ufuncs_xpu.py",
     # f"{PYTORCH_TEST_DIR}/test_view_ops.py",
-    "functorch/test_ops_xpu.py",
+    f"{PYTORCH_TEST_DIR}/functorch/test_ops.py",
 ]
 
 print("Current working directory:", os.getcwd())
