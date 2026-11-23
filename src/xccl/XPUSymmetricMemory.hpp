@@ -8,9 +8,17 @@
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryTypes.hpp>
 
+#include <optional>
 #include <shared_mutex>
 
 namespace c10d::symmetric_memory {
+
+// Physical memory shared through ipc::physical_memory needs oneAPI 2026.2.
+#if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION >= 20260200
+#define XPU_SYMM_MEM_PHYSICAL_IPC 1
+#else
+#define XPU_SYMM_MEM_PHYSICAL_IPC 0
+#endif
 
 // Resource wrapper that owns a (vaddr, allocation handle) pair. Upon
 // destruction, it unmaps the vaddr and releases the allocation handle.
@@ -20,6 +28,11 @@ struct AllocationRef : public c10::intrusive_ptr_target {
   size_t block_size;
   int device_idx;
   bool local_allocation;
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  // Set when `ptr` is this process's mapping of a physical memory object,
+  // local or imported from a peer; the mapping is released on destruction.
+  std::optional<sycl::ext::oneapi::experimental::physical_mem> physmem;
+#endif
 
   AllocationRef(
       void* ptr,
@@ -27,6 +40,14 @@ struct AllocationRef : public c10::intrusive_ptr_target {
       size_t block_size,
       int device_idx,
       bool local_allocation);
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  AllocationRef(
+      void* ptr,
+      size_t block_size,
+      int device_idx,
+      bool local_allocation,
+      sycl::ext::oneapi::experimental::physical_mem physmem);
+#endif
 
   ~AllocationRef();
 };
@@ -114,6 +135,13 @@ struct Block : public c10::intrusive_ptr_target {
   size_t signal_pad_offset;
   std::optional<std::string> default_group_name;
   std::map<std::string, c10::intrusive_ptr<XPUPeerAllocInfo>> symm_mems;
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  // IPC handle of a physical memory block, exported by the first rendezvous
+  // and shared by every later one, then released with the block. Exporting
+  // again after ipc::physical_memory::put returns the released handle, which
+  // peers cannot open (SYCL runtime bug, CMPLRLLVM-80058).
+  std::optional<sycl::ext::oneapi::experimental::ipc::handle> exported_handle;
+#endif
 
   Block(
       c10::intrusive_ptr<AllocationRef> alloc_ref,
@@ -122,6 +150,9 @@ struct Block : public c10::intrusive_ptr_target {
       size_t buffer_size,
       size_t signal_pad_offset,
       const std::optional<std::string>& group_name);
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  ~Block() override;
+#endif
 };
 
 class XPUSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
