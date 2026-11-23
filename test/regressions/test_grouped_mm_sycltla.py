@@ -82,9 +82,7 @@ def capture_dispatch_log(fn):
             os.close(saved)
         tmp.seek(0)
         text = tmp.read().decode(errors="replace")
-    lines = [
-        line for line in text.splitlines() if line.startswith("[xpu grouped_mm]")
-    ]
+    lines = [line for line in text.splitlines() if line.startswith("[xpu grouped_mm]")]
     return result, lines
 
 
@@ -125,7 +123,7 @@ def reference(x, b, go, rows):
 
 
 def tolerances(dtype, ref):
-    scale = max(ref.abs().max().item(), 1.0)
+    scale = max(ref.abs().max().item(), 1.0) if ref.numel() else 1.0
     if dtype == torch.bfloat16:
         return dict(rtol=2e-2, atol=1e-2 * scale)
     return dict(rtol=4e-3, atol=2e-3 * scale)
