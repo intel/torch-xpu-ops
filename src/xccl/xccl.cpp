@@ -280,6 +280,21 @@ static std::pair<bool, size_t> checkUniformAllToAll(
   return {uniformCount > 0, uniformCount};
 }
 
+// onecclAllToAllV derives displacements as the prefix sums of the counts.
+static bool checkPackedDispls(
+    const size_t* counts,
+    const size_t* displs,
+    int numranks) {
+  size_t expected = 0;
+  for (int r = 0; r < numranks; ++r) {
+    if (displs[r] != expected) {
+      return false;
+    }
+    expected += counts[r];
+  }
+  return true;
+}
+
 void onecclAllToAll(
     void* sendbuff,
     const size_t* sendcounts,
@@ -304,6 +319,23 @@ void onecclAllToAll(
         sendbuff, recvbuff, uniformCount, xcclDataType, comm, &stream.queue());
     return;
   }
+
+#ifdef XCCL_HAS_ALLTOALLV
+  // CCL_C_API symbols are weak, so this is null on a libccl without the API.
+  if (::onecclAllToAllV &&
+      checkPackedDispls(sendcounts, senddispls, numranks) &&
+      checkPackedDispls(recvcounts, recvdispls, numranks) &&
+      ::onecclAllToAllV(
+          sendbuff,
+          sendcounts,
+          recvbuff,
+          recvcounts,
+          xcclDataType,
+          comm,
+          &stream.queue()) == onecclSuccess) {
+    return;
+  }
+#endif // XCCL_HAS_ALLTOALLV
 
   // Fallback to send/recv based implementation for non-uniform case
   xccl::oneccl_group_start();
