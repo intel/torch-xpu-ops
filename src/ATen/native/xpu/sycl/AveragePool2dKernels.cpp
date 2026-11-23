@@ -49,17 +49,11 @@ namespace at::native {
 namespace xpu {
 
 namespace avg_pool_backward {
+constexpr int kLinearGroupElements = 256 * 8;
 #ifdef USE_SYCLTLA
 bool can_use_tla_block_io() {
-  const auto arch =
-      c10::xpu::getCurrentXPUStream()
-          .queue()
-          .get_device()
-          .get_info<
-              sycl::ext::oneapi::experimental::info::device::architecture>();
-  using Architecture = sycl::ext::oneapi::experimental::architecture;
-  return arch == Architecture::intel_gpu_bmg_g21 ||
-      arch == Architecture::intel_gpu_bmg_g31;
+  return at::xpu::getDeviceProperties(at::xpu::current_device())
+      ->has_subgroup_2d_block_io;
 }
 #endif
 
@@ -302,7 +296,7 @@ template <typename scalar_t, int K, int S, int P, bool Include>
 void planar_launch(at::Tensor go, at::Tensor out) {
   int H = out.size(2), W = out.size(3), n = out.numel();
   c10::xpu::getCurrentXPUStream().queue().parallel_for(
-      sycl::nd_range<1>((n + 2047) / 2048 * 256, 256),
+      sycl::nd_range<1>(at::ceil_div(n, kLinearGroupElements) * 256, 256),
       Planar<scalar_t, K, S, P, Include>{
           reinterpret_cast<const scalar_t*>(go.data_ptr()),
           reinterpret_cast<scalar_t*>(out.data_ptr()),
@@ -376,7 +370,7 @@ template <typename scalar_t, int K, int S, int P, bool Include>
 void packed_launch(at::Tensor go, at::Tensor out) {
   int n = out.numel(), C = out.size(1), H = out.size(2), W = out.size(3);
   c10::xpu::getCurrentXPUStream().queue().parallel_for(
-      sycl::nd_range<1>((n + 2047) / 2048 * 256, 256),
+      sycl::nd_range<1>(at::ceil_div(n, kLinearGroupElements) * 256, 256),
       PackedLinear<scalar_t, K, S, P, Include>{
           reinterpret_cast<const scalar_t*>(go.data_ptr()),
           reinterpret_cast<scalar_t*>(out.data_ptr()),
@@ -1029,7 +1023,7 @@ void planar7_launch(const Tensor& go, const Tensor& out) {
 #endif
   const int count = out.numel();
   c10::xpu::getCurrentXPUStream().queue().parallel_for(
-      sycl::nd_range<1>((count + 2047) / 2048 * 128, 128),
+      sycl::nd_range<1>(at::ceil_div(count, kLinearGroupElements) * 128, 128),
       AvgPoolPlanar7<scalar_t>{
           reinterpret_cast<const scalar_t*>(go.data_ptr()),
           reinterpret_cast<scalar_t*>(out.data_ptr()),
@@ -1233,7 +1227,7 @@ inline bool try_backward(
   }
   const int C = input.size(1), H = input.size(2), W = input.size(3);
   // Leave room for launch rounding and the planar kernel's halo indices.
-  if (out.numel() > INT_MAX - 2048) {
+  if (out.numel() > INT_MAX - kLinearGroupElements) {
     return false;
   }
   const bool cl = input.suggest_memory_format() == MemoryFormat::ChannelsLast;
@@ -1284,15 +1278,15 @@ inline bool try_backward(
       return false;
     }
   }
-  const auto device = c10::xpu::getCurrentXPUStream().queue().get_device();
-  const auto subgroup_sizes =
-      device.get_info<sycl::info::device::sub_group_sizes>();
+  const auto* properties = at::xpu::getDeviceProperties(at::xpu::current_device());
+  const auto& subgroup_sizes = properties->sub_group_sizes;
   // The largest supported portable mixed tile is W=56, S=1: 35904 bytes.
   constexpr size_t local_memory_bytes =
       16 * AvgPoolMixedTile<sycl::half, 56, 1>::Plane * sizeof(uint32_t);
-  if (device.get_info<sycl::info::device::max_work_group_size>() < 256 ||
-      device.get_info<sycl::info::device::local_mem_size>() <
-          local_memory_bytes ||
+  const bool may_use_local_memory = out.stride(1) != 1 &&
+      (go.stride(1) == 1 || (pool3 && sh == 1 && !include));
+  if (properties->max_work_group_size < 256 ||
+      (may_use_local_memory && properties->local_mem_size < local_memory_bytes) ||
       std::find(subgroup_sizes.begin(), subgroup_sizes.end(), 16) ==
           subgroup_sizes.end()) {
     return false;
