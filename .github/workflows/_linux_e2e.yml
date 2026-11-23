@@ -64,17 +64,8 @@ jobs:
   test:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
-    container:
-      image: ${{ contains(inputs.runner, 'bmg') && 'intel/omix:0.5.0-devel-ubuntu26.04' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-        - /opt/xpu-test/_cache:/github/home/.cache/:rw
-        - /opt/xpu-test/_dataset:/opt/_dataset/:rw
-      options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
-              -e ZE_AFFINITY_MASK
-      env:
-        MODEL_ONLY_NAME: ${{ inputs.model }}
+    env:
+      MODEL_ONLY_NAME: ${{ inputs.model }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -88,8 +79,8 @@ jobs:
           category: ${{ inputs.category }}
       - name: Fixed frequency
         run: |
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock || echo "::warning::Skipping frequency lock (running inside container)"
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status || true
           rm -rf ${{ github.workspace }}/pytorch/inductor_log
 
       # CICD launch
@@ -174,8 +165,7 @@ jobs:
       - name: Cleanup
         if: ${{ always() }}
         run: |
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock
-          chown 1000:1000 /__w /github ./ -R
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock || true
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7

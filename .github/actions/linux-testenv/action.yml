@@ -33,7 +33,7 @@ runs:
         APT_UPGRADE: '0'
         INSTALL_BASE: ${{ github.action_path }}/../../../.ci/docker/common/install_base.sh
       run: |
-        if [ ! -f /.dockerenv ]; then
+        if [ ! -f /.dockerenv ] && [ -z "${KUBERNETES_SERVICE_HOST:-}" ] && ! grep -qaE 'docker|kubepods|containerd' /proc/1/cgroup 2>/dev/null; then
           echo "Not in a container, keeping the host packages"
           exit 0
         fi

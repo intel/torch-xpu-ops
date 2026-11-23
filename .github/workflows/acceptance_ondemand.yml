@@ -16,6 +16,11 @@ name: OnDemand Acceptance Comparison
 on:
   workflow_dispatch:
     inputs:
+      runner:
+        type: string
+        required: false
+        default: 'cri-xpu'
+        description: Runner label for Linux UT and E2E acceptance jobs
       python:
         type: string
         required: false
@@ -147,7 +152,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: acceptance
+      runner: ${{ inputs.runner != '' && inputs.runner || 'acceptance' }}
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ needs.resolve-python.outputs.python }}
@@ -161,7 +166,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: acceptance
+      runner: ${{ inputs.runner != '' && inputs.runner || 'acceptance' }}
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
@@ -200,7 +205,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: acceptance
+      runner: ${{ inputs.runner != '' && inputs.runner || 'acceptance' }}
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ needs.resolve-python.outputs.python }}
@@ -214,7 +219,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: acceptance
+      runner: ${{ inputs.runner != '' && inputs.runner || 'acceptance' }}
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
