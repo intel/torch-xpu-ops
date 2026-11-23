@@ -127,7 +127,7 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: UT-Data-linux-${{ env.UT_LABEL }}${{ inputs.ut == 'xpu_distributed' && format('-{0}', inputs.runner) || '' }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}-${{ github.run_attempt }}
+          name: UT-Data-linux-${{ env.UT_LABEL }}${{ inputs.ut == 'xpu_distributed' && inputs.runner == 'bmg-test' && format('-{0}', inputs.runner) || '' }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
 
@@ -149,7 +149,7 @@ jobs:
         with:
           ut: ${{ inputs.ut }}
           category: ${{ inputs.category }}
-          runner: ${{ inputs.ut == 'xpu_distributed' && inputs.runner || '' }}
+          runner: ${{ inputs.ut == 'xpu_distributed' && inputs.runner == 'bmg-test' && inputs.runner || '' }}
           pytorch: ${{ inputs.pytorch }}
           known_issues_snapshot: 'true'
       - name: Fail on new failures

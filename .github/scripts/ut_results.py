@@ -99,7 +99,10 @@ MAIN_CATEGORIES = (
 
 # A UT job name maps to the categories its reports carry, per platform.
 JOB_CATEGORIES = {
-    "linux": {"basic": ("op_regression", "op_extended", "op_regression_dev1")},
+    "linux": {
+        "basic": ("op_regression", "op_extended", "op_regression_dev1"),
+        "xpu_distributed_weekly": ("xpu_distributed",),
+    },
     "windows": {"basic": ("op_extended", "test_xpu", "test_cpp_extensions_aot_xpu")},
 }
 
