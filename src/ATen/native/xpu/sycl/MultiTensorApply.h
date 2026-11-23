@@ -77,7 +77,7 @@ struct MultiTensorApplyMetadata {
   MultiTensorApplyMetadata(size_t n_tensors, uint64_t total_wg)
       : addr_bytes_(sizeof(address_meta_t) * n_tensors),
         wg_bytes_(sizeof(TLMetaForWG) * total_wg),
-        device_(c10::GetAllocator(kXPU)->allocate(addr_bytes_ + wg_bytes_)),
+        device_(c10::GetAllocator(at::kXPU)->allocate(addr_bytes_ + wg_bytes_)),
         host_(
             at::getHostAllocator(at::kXPU)->allocate(addr_bytes_ + wg_bytes_)) {
   }
@@ -121,9 +121,9 @@ struct MultiTensorApplyMetadata {
         "Work group index dose not equal to the allocated memory size, segment fault might occur");
   }
 
-  // Submits the packed metadata and keeps the pinned host block alive until
-  // the copy completes.
-  void submit() {
+  // Copies the packed metadata to the device and keeps the pinned host block
+  // alive until the copy completes.
+  void copy_to_device() {
     getCurrentSYCLQueue().memcpy(
         device_.get(), host_.get(), addr_bytes_ + wg_bytes_);
     at::getHostAllocator(at::kXPU)->record_event(
@@ -267,7 +267,7 @@ void multi_tensor_apply(
     }
   }
   metadata.build_work_group_table(tensor_lists[0], kChunkSize);
-  metadata.submit();
+  metadata.copy_to_device();
 
   launch_multi_tensor_apply_kernel<false>(
       metadata.address_meta(),
@@ -303,7 +303,7 @@ void multi_tensor_apply(
     }
   }
   metadata.build_work_group_table(tensor_lists[0], kChunkSize);
-  metadata.submit();
+  metadata.copy_to_device();
 
   launch_multi_tensor_apply_kernel<false>(
       metadata.address_meta(),
@@ -340,7 +340,7 @@ void multi_tensor_apply_for_fused_optimizer(
     }
   }
   metadata.build_work_group_table(tensor_lists[0], kChunkSize);
-  metadata.submit();
+  metadata.copy_to_device();
 
   launch_multi_tensor_apply_kernel<true>(
       metadata.address_meta(),
