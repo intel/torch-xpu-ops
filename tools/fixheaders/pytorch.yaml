@@ -85,7 +85,6 @@ custom_headers:
       - "test/xpu/test_autograd_xpu.py"
       - "test/xpu/test_binary_ufuncs_xpu.py"
       - "test/xpu/test_dataloader_xpu.py"
-      - "test/xpu/test_distributions_xpu.py"
       - "test/xpu/test_linalg_xpu.py"
       - "test/xpu/test_modules_xpu.py"
       - "test/xpu/test_nestedtensor_xpu.py"
