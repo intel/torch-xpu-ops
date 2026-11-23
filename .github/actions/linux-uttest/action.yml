@@ -248,3 +248,15 @@ runs:
           --log-dir "${UT_LOG_DIR}" \
           --xml-dir "${UT_JUNIT_DIR}" || rc=$?
         [ "${rc}" -le 1 ]
+
+    - name: Collect GPU health events
+      if: ${{ always() }}
+      shell: bash -e {0}
+      run: |
+        # Cards detect-devices.sh or the pytest plugin found broken, recovered or excluded;
+        # ut_results.py lists them in the UT report.
+        if [ -s "${XPU_HEALTH_LOG:-}" ]; then
+          mkdir -p "${GITHUB_WORKSPACE}/ut_log/env"
+          cp "${XPU_HEALTH_LOG}" "${GITHUB_WORKSPACE}/ut_log/env/xpu_health.jsonl"
+          cat "${XPU_HEALTH_LOG}"
+        fi
