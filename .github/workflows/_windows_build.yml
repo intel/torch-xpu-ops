@@ -22,7 +22,7 @@ on:
         required: false
         type: string
         default: ''
-        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.json
+        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
       runner:
         required: true
         type: string
@@ -32,7 +32,7 @@ permissions: read-all
 
 env:
   USE_XPU: 1
-  XPU_VERSION: "2026.1"
+  XPU_VERSION: "2026.2"
 
 jobs:
   build:
@@ -44,25 +44,34 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
+      # -NoProfile: `conda init powershell` hooks the profile and would activate base again.
+      - name: Clean job environment
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .github\scripts\windows_env_check.ps1 -Fix
       - name: Resolve python version
         uses: ./.github/actions/ci-config
         with:
           python: ${{ inputs.python }}
-      - name: Setup conda environment
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v9.0.0
+      - name: Setup Python Environment
         shell: cmd
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          if exist "C:\ProgramData\miniforge3\envs\windows_ci" (
-              rmdir /s /q "C:\ProgramData\miniforge3\envs\windows_ci"
-          )
-          call conda clean -ay
-          call conda remove --all -y -n windows_ci
-          call conda create -n windows_ci python=%PYTHON_VERSION% cmake ninja -y
+          set "VENV=%RUNNER_TEMP%\venv"
+          REM only-managed: a conda base Python would make torch register its Library\bin as a DLL dir.
+          uv venv --clear --python-preference only-managed --python %PYTHON_VERSION% "%VENV%" || exit /b 1
+          uv pip install --python "%VENV%\Scripts\python.exe" -U pip wheel "setuptools<81" || exit /b 1
+          >>"%GITHUB_PATH%" echo %VENV%\Scripts
+          >>"%GITHUB_ENV%" echo VIRTUAL_ENV=%VENV%
+      - name: Check Python Environment
+        shell: cmd
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .github\scripts\windows_env_check.ps1 || exit /b 1
+          where python
+          python -c "import os, sys; print('base_prefix', sys.base_prefix); assert os.path.samefile(sys.prefix, os.environ['VIRTUAL_ENV']), 'python on PATH is not the venv'; assert not os.path.isdir(os.path.join(sys.base_prefix, 'Library', 'bin')), 'base Python has Library\\bin'" || exit /b 1
       - name: Prepare Pytorch Source
         shell: cmd
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call conda activate windows_ci
           set WORKSPACE=${{ github.workspace }}\..
           set pytorch=${{ inputs.pytorch }}
           set torch_xpu_ops=${{ inputs.torch_xpu_ops }}
@@ -114,8 +123,6 @@ jobs:
       - name: Build Pytorch XPU
         shell: cmd
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call conda activate windows_ci
           set WORKSPACE=${{ github.workspace }}\..
           python .github\scripts\build_windows.py > %WORKSPACE%\pytorch\build_torch_wheel_log.log 2>&1
           set BUILD_ERR=%ERRORLEVEL%
@@ -132,8 +139,6 @@ jobs:
       - name: Download Triton
         shell: cmd
         run: |
-          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call conda activate windows_ci
           cd ..\pytorch
           set TRITON_COMMIT_ID=${{ inputs.triton }}
           if "%TRITON_COMMIT_ID%" == "" set TRITON_COMMIT_ID=pinned
