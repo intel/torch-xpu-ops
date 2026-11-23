@@ -19,6 +19,7 @@
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/DeviceGuard.h>
 
+#include <ATen/native/xpu/sycl/BinaryLayoutKernel.h>
 #include <ATen/native/xpu/sycl/ElementwiseInvoke.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
@@ -1300,7 +1301,9 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
     }
     if constexpr (traits::arity == 2) {
       if (!latency_case &&
-          try_launch_strided_binary(iter, f, data, dense_output)) {
+          (try_launch_strided_binary(iter, f, data, dense_output) ||
+           (dense_output &&
+            try_launch_layout_conflict_binary_kernel(iter, f)))) {
         return;
       }
     } else if constexpr (packed_strided_unary) {
