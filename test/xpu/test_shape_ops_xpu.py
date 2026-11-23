@@ -8,16 +8,30 @@
 
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
+import torch
+from torch.testing._internal.common_device_type import (
+    dtypesIfXPU,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_dtype import all_passthru_types_and
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
-except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUImportCtx
+except Exception:
+    from .xpu_test_utils import XPUImportCtx
 
-with XPUPatchForImport(False):
+with XPUImportCtx(False):
     from test_shape_ops import TestShapeOps
+
+
+# ======================================================================
+# dtypesIfXPU decorator additions
+# ======================================================================
+
+TestShapeOps.test_flip = dtypesIfXPU(*all_passthru_types_and(torch.chalf))(
+    TestShapeOps.test_flip
+)
 
 instantiate_device_type_tests(TestShapeOps, globals(), only_for="xpu", allow_xpu=True)
 
