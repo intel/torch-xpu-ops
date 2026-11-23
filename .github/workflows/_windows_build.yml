@@ -32,7 +32,7 @@ permissions: read-all
 
 env:
   USE_XPU: 1
-  XPU_VERSION: "2026.1"
+  XPU_VERSION: "2026.2"
 
 jobs:
   build:

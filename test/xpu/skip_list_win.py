@@ -98,4 +98,10 @@ skip_dict = {
         "test_reference_numerics_large_sin_xpu_complex64",
         "test_reference_numerics_small_acos_xpu_complex32",
     ),
+    # CPU layer_norm reference is inaccurate under AVX2/MSVC on Windows
+    # Details: https://github.com/pytorch/pytorch/issues/204610
+    "test_nn_xpu.py": (
+        "test_LayerNorm_3d_no_affine_large_feature_xpu",
+        "test_LayerNorm_3d_no_affine_large_feature_eval_xpu",
+    ),
 }
