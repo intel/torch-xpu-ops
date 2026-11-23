@@ -11,6 +11,16 @@ on:
         required: true
         type: string
         description: Test container image, the `<type>_image` output of .github/actions/ci-config
+      omix_version:
+        required: false
+        type: string
+        default: '0.6.0'
+        description: OMIX version (0.6.0 or 0.5.0)
+      expected_sycl_ver:
+        required: false
+        type: string
+        default: ''
+        description: Expected SYCL_COMPILER_VERSION in torch.__config__.show()
       pytorch:
         type: string
         default: 'main'
@@ -49,15 +59,17 @@ jobs:
     timeout-minutes: 2880
     env:
       TORCH_SERIALIZATION_DEBUG: '1'
-    if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
       image: ${{ inputs.image }}
+      env:
+        no_proxy: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
+        NO_PROXY: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
       options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --cap-add=SYS_ADMIN --shm-size=16g --privileged
               -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops
@@ -69,6 +81,8 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
+          omix_version: ${{ inputs.omix_version }}
+          expected_sycl_ver: ${{ inputs.expected_sycl_ver }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
@@ -99,7 +113,7 @@ jobs:
 
   test-in-baremetal:
     timeout-minutes: 600
-    if: ${{ contains(inputs.ut, 'distributed') || inputs.ut == 'xpu_p0' }}
+    if: false
     runs-on: ${{ inputs.runner }}
     env:
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000

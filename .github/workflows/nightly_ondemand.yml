@@ -1,77 +1,80 @@
 name: Nightly-OnDemand Tests
 
 on:
-  schedule:
-    # GMT+8 21:00 every workday
-    - cron: '10 13 * * 0-4' # build from source
-    - cron: '30 13 * * 0-4' # nightly wheel
-    # GMT+8 00:00 Saturday
-    - cron: '10 16 * * 5' # build from source
-    - cron: '30 16 * * 5' # nightly wheel
   workflow_dispatch:
     inputs:
-      pytorch:
-        type: string
-        default: 'main'
-        description: Pytorch version, or 'commit/branch', or 'repo@commit/repo@branch'
-      torch_xpu_ops:
-        type: string
-        default: ''
-        description: Torch-xpu-ops by default is the run triggered branch, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
-      triton:
-        type: string
-        default: ''
-        description: Triton by default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch'
-      python:
-        type: string
-        default: ''
-        description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
+      omix_version:
+        type: choice
+        options:
+          - '0.6.0'
+          - '0.5.0'
+        default: '0.6.0'
+        description: 'OMIX version under test (0.6.0 from run 45097895764, 0.5.0 from run 45097842215)'
       runner:
         type: string
-        default: ''
-        description: Linux test runner label for UT, E2E and microbench. Empty uses the `runner` entries of .github/ci-config/defaults.yaml
+        default: 'bmg-b60'
+        description: 'Linux test runner label for UT and E2E (e.g. bmg-b60, pvc-1550)'
+      pytorch:
+        type: string
+        default: 'f571bf6d01e3167d21de5ed3de34be52a47a9d0a'
+        description: Pytorch commit matching prebuilt OMIX wheel
+      torch_xpu_ops:
+        type: string
+        default: 'a6aeb5ecf35'
+        description: Torch-xpu-ops commit matching prebuilt OMIX wheel
+      triton:
+        type: string
+        default: 'nightly_wheel'
+        description: Triton-XPU nightly wheel
+      python:
+        type: string
+        default: '3.12.15'
+        description: Python version matching cp312 OMIX wheel
       ut:
         type: string
-        default: ''
-        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,upstream_distributed,upstream_inductor,upstream_default,microbench,windows'. Delimiter is comma
+        default: 'basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed,upstream_distributed,upstream_inductor,upstream_default'
+        description: Weekly UT scope
       suite:
         type: string
-        default: ''
-        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench'. Delimiter is comma
+        default: 'huggingface,timm_models,torchbench'
+        description: Dynamo benchmarks test suite
       dt:
         type: string
         default: ''
-        description: Data precision of the test. 'float32,bfloat16,float16,amp_bf16,amp_fp16,int8'. Delimiter is comma
+        description: Data precision filter (empty runs full weekly config)
       mode:
         type: string
         default: ''
-        description: Test mode. 'inference,training'. Delimiter is comma
+        description: Test mode filter (empty runs full weekly config)
       scenario:
         type: string
-        default: ''
-        description: Test scenario. 'accuracy,performance'. Delimiter is comma
+        default: 'accuracy,performance'
+        description: Test scenario
       model:
         type: string
         default: ''
-        description: Model. Will only run this one mode if set
+        description: Model filter (empty runs full weekly scope)
       ut_auto_issue:
         type: boolean
         default: false
-        description: Analyse this run's UT failures. Evidence only - an on-demand run files no issues
+        description: Analyse this run's UT failures (evidence only, never files issues)
 
 permissions: read-all
 
-run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}
+run-name: Acceptance / OMIX ${{ inputs.omix_version }} (${{ inputs.runner }}) / Weekly
 
 jobs:
   config:
     name: config
-    if: ${{ github.repository_owner == 'intel' || github.event_name != 'schedule' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      # (build|wheel)-(nightly|weekly|ondemand)
       test_type: ${{ steps.scope.outputs.test_type }}
+      omix_version: ${{ steps.scope.outputs.omix_version }}
+      wheel_run_id: ${{ steps.scope.outputs.wheel_run_id }}
+      wheel_artifact: ${{ steps.scope.outputs.wheel_artifact }}
+      rhel_omix_repo: ${{ steps.scope.outputs.rhel_omix_repo }}
+      expected_sycl_ver: ${{ steps.scope.outputs.expected_sycl_ver }}
       pytorch: ${{ steps.scope.outputs.pytorch }}
       torch_xpu_ops: ${{ steps.scope.outputs.torch_xpu_ops }}
       triton: ${{ steps.scope.outputs.triton }}
@@ -81,30 +84,18 @@ jobs:
       scenario: ${{ steps.scope.outputs.scenario }}
       run_ut: ${{ steps.scope.outputs.run_ut }}
       run_e2e: ${{ steps.scope.outputs.run_e2e }}
-      run_microbench: ${{ steps.scope.outputs.run_microbench }}
-      run_windows: ${{ steps.scope.outputs.run_windows }}
-      runner_ut: ${{ steps.ci-config.outputs.ut }}
-      image_ut: ${{ steps.ci-config.outputs.ut_image }}
-      runner_accuracy: ${{ steps.ci-config.outputs.accuracy }}
-      image_accuracy: ${{ steps.ci-config.outputs.accuracy_image }}
-      runner_performance: ${{ steps.ci-config.outputs.performance }}
-      image_performance: ${{ steps.ci-config.outputs.performance_image }}
+      runner_ut: ${{ steps.scope.outputs.runner_label }}
+      image_ut: ${{ steps.scope.outputs.container_image }}
+      runner_accuracy: ${{ steps.scope.outputs.runner_label }}
+      image_accuracy: ${{ steps.scope.outputs.container_image }}
+      runner_performance: ${{ steps.scope.outputs.runner_label }}
+      image_performance: ${{ steps.scope.outputs.container_image }}
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v7
-        with:
-          sparse-checkout: .github
-      - name: Select runners
-        id: ci-config
-        uses: ./.github/actions/ci-config
-        with:
-          runner: ${{ inputs.runner }}
-      - name: Resolve test scope
+      - name: Resolve OMIX acceptance config and weekly scope
         id: scope
         env:
-          EVENT: ${{ github.event_name }}
-          SCHEDULE: ${{ github.event.schedule }}
-          REF_NAME: ${{ github.ref_name }}
+          IN_OMIX: ${{ inputs.omix_version }}
+          IN_RUNNER: ${{ inputs.runner }}
           IN_PYTORCH: ${{ inputs.pytorch }}
           IN_TORCH_XPU_OPS: ${{ inputs.torch_xpu_ops }}
           IN_TRITON: ${{ inputs.triton }}
@@ -113,62 +104,69 @@ jobs:
           IN_SUITE: ${{ inputs.suite }}
           IN_SCENARIO: ${{ inputs.scenario }}
         run: |
-          # comma list -> JSON array, dropping empty and the given non-matrix entries
           to_json() { tr ',' '\n' <<< "$1" | { grep -vxE "${2:-}|" || true; } | jq -Rnc '[inputs]'; }
-          has() { tr ',' '\n' <<< "$1" | grep -qx "$2" && echo true || echo false; }
-          if [ "${EVENT}" == "schedule" ]; then
-            case "${SCHEDULE}" in
-              "10 13 * * 0-4") test_type="build-nightly" ;;
-              "30 13 * * 0-4") test_type="wheel-nightly" ;;
-              "10 16 * * 5")   test_type="build-weekly" ;;
-              "30 16 * * 5")   test_type="wheel-weekly" ;;
-              *) echo "No such scheduler: ${SCHEDULE}"; exit 1 ;;
-            esac
-            if [[ "${test_type}" == build-* ]]; then
-              pytorch="main"; torch_xpu_ops="main"
-            else
-              pytorch="nightly_wheel"; torch_xpu_ops="pinned"
-            fi
-            ut_list="basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed"
-            # weekly also runs the upstream UT scopes
-            if [[ "${test_type}" == *-weekly ]]; then
-              ut_list+=",upstream_distributed,upstream_inductor,upstream_default"
-            fi
-            ut="$(to_json "${ut_list}")"
-            suite="$(to_json huggingface,timm_models,torchbench)"
-            scenario="$(to_json accuracy,performance)"
-            triton=""; python=""
-            run_microbench=false; run_windows=true
-          else
-            pytorch="${IN_PYTORCH}"
-            torch_xpu_ops="${IN_TORCH_XPU_OPS:-${REF_NAME}}"
-            [[ "${pytorch}" == *_wheel ]] && test_type="wheel-ondemand" || test_type="build-ondemand"
-            ut="$(to_json "${IN_UT}" 'microbench|windows')"
-            suite="$(to_json "${IN_SUITE}")"
-            scenario="$(to_json "${IN_SCENARIO:-accuracy,performance}")"
-            triton="${IN_TRITON}"; python="${IN_PYTHON}"
-            run_microbench="$(has "${IN_UT}" microbench)"
-            run_windows="$(has "${IN_UT}" windows)"
-          fi
+
+          case "${IN_OMIX}" in
+            0.6|0.6.0)
+              omix_version="0.6.0"
+              wheel_run_id="45097895764"
+              wheel_artifact="Torch-XPU-Wheel-a4e2d2f8c4ce73a8bc375cb49c655f98ff5fc4ca-45097895764-1"
+              rhel_omix_repo="https://laurentides.igk.intel.com/repositories/rhel/8.10/testing-intel-omix/20.0/unified/intel-gpu-8.10.repo"
+              expected_sycl_ver="20260300"
+              if [[ "${IN_RUNNER}" == *pvc* ]]; then
+                container_image="ubuntu:24.04"
+              else
+                container_image="ubuntu:26.04"
+              fi
+              ;;
+            0.5|0.5.0)
+              omix_version="0.5.0"
+              wheel_run_id="45097842215"
+              wheel_artifact="Torch-XPU-Wheel-a4e2d2f8c4ce73a8bc375cb49c655f98ff5fc4ca-45097842215-1"
+              rhel_omix_repo="https://repositories.intel.com/gpu/rhel/8.10/intel-omix/0.5/unified/intel-gpu-8.10.repo"
+              expected_sycl_ver="20260200"
+              if [[ "${IN_RUNNER}" == *pvc* ]]; then
+                container_image="intel/omix:0.5.0-devel-ubuntu24.04"
+              else
+                container_image="intel/omix:0.5.0-devel-ubuntu26.04"
+              fi
+              ;;
+            *)
+              echo "Unsupported omix_version: ${IN_OMIX}" >&2
+              exit 1
+              ;;
+          esac
+
+          ut="$(to_json "${IN_UT}" 'microbench|windows')"
+          suite="$(to_json "${IN_SUITE}")"
+          scenario="$(to_json "${IN_SCENARIO:-accuracy,performance}")"
+
           {
-            echo "test_type=${test_type}"
-            echo "pytorch=${pytorch}"
-            echo "torch_xpu_ops=${torch_xpu_ops}"
-            echo "triton=${triton}"
-            echo "python=${python}"
+            echo "test_type=build-ondemand"
+            echo "omix_version=${omix_version}"
+            echo "wheel_run_id=${wheel_run_id}"
+            echo "wheel_artifact=${wheel_artifact}"
+            echo "rhel_omix_repo=${rhel_omix_repo}"
+            echo "expected_sycl_ver=${expected_sycl_ver}"
+            echo "runner_label=${IN_RUNNER}"
+            echo "container_image=${container_image}"
+            echo "pytorch=${IN_PYTORCH}"
+            echo "torch_xpu_ops=${IN_TORCH_XPU_OPS}"
+            echo "triton=${IN_TRITON}"
+            echo "python=${IN_PYTHON}"
             echo "ut=${ut}"
             echo "suite=${suite}"
             echo "scenario=${scenario}"
             echo "run_ut=$([ "${ut}" != "[]" ] && echo true || echo false)"
             echo "run_e2e=$([ "${suite}" != "[]" ] && echo true || echo false)"
-            echo "run_microbench=${run_microbench}"
-            echo "run_windows=${run_windows}"
           } | tee -a "${GITHUB_OUTPUT}"
 
   linux-build:
     name: linux-build
     needs: config
-    secrets: inherit
+    secrets:
+      WHEEL_DOWNLOAD_TOKEN: ${{ secrets.WHEEL_DOWNLOAD_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -176,6 +174,11 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
+      omix_version: ${{ needs.config.outputs.omix_version }}
+      wheel_run_id: ${{ needs.config.outputs.wheel_run_id }}
+      wheel_artifact: ${{ needs.config.outputs.wheel_artifact }}
+      rhel_omix_repo: ${{ needs.config.outputs.rhel_omix_repo }}
+      expected_sycl_ver: ${{ needs.config.outputs.expected_sycl_ver }}
       pytorch: ${{ needs.config.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
       triton: ${{ needs.config.outputs.triton }}
@@ -185,7 +188,9 @@ jobs:
     name: linux-ut
     needs: [config, linux-build]
     if: ${{ needs.config.outputs.run_ut == 'true' }}
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     permissions:
       actions: read
       contents: read
@@ -199,6 +204,8 @@ jobs:
     with:
       runner: ${{ needs.config.outputs.runner_ut }}
       image: ${{ needs.config.outputs.image_ut }}
+      omix_version: ${{ needs.config.outputs.omix_version }}
+      expected_sycl_ver: ${{ needs.config.outputs.expected_sycl_ver }}
       pytorch: ${{ needs.config.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
       python: ${{ needs.config.outputs.python }}
@@ -208,7 +215,9 @@ jobs:
     name: linux-e2e
     needs: [config, linux-build]
     if: ${{ needs.config.outputs.run_e2e == 'true' }}
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -218,6 +227,8 @@ jobs:
     with:
       runner: ${{ needs.config.outputs[format('runner_{0}', matrix.scenario)] }}
       image: ${{ needs.config.outputs[format('image_{0}', matrix.scenario)] }}
+      omix_version: ${{ needs.config.outputs.omix_version }}
+      expected_sycl_ver: ${{ needs.config.outputs.expected_sycl_ver }}
       test_type: ${{ needs.config.outputs.test_type }}
       pytorch: ${{ needs.config.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
@@ -228,90 +239,17 @@ jobs:
       mode: ${{ inputs.mode }}
       model: ${{ inputs.model }}
 
-  linux-microbench:
-    name: linux-microbench
-    needs: [config, linux-build]
-    # Temporarily disabled; re-enable with: needs.config.outputs.run_microbench == 'true'
-    if: false
-    secrets: inherit
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-    uses: ./.github/workflows/_linux_op_benchmark.yml
-    with:
-      runner: ${{ needs.config.outputs.runner_performance }}
-      image: ${{ needs.config.outputs.image_performance }}
-      pytorch: ${{ needs.config.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
-      python: ${{ needs.config.outputs.python }}
-
-  windows-build:
-    name: windows-build
-    needs: config
-    if: ${{ needs.config.outputs.run_windows == 'true' }}
-    secrets: inherit
-    uses: ./.github/workflows/_windows_build.yml
-    with:
-      runner: windows-build
-      pytorch: ${{ needs.config.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
-      triton: ${{ needs.config.outputs.triton }}
-      python: ${{ needs.config.outputs.python }}
-
-  windows-ut:
-    name: windows-ut
-    needs: [config, windows-build]
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        ut_name: [basic, op_ut]
-    uses: ./.github/workflows/_windows_ut.yml
-    with:
-      runner: windows-test
-      ut: ${{ matrix.ut_name }}
-      pytorch: ${{ needs.config.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
-      python: ${{ needs.config.outputs.python }}
-
   ut-report:
     name: ut-report
-    needs: [linux-ut, windows-ut]
-    # run when at least one UT job finished with success or failure
-    if: >-
-      ${{ !cancelled()
-      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.windows-ut.result, 'ed')) }}
-    secrets: inherit
+    needs: [linux-ut]
+    if: ${{ !cancelled() && !endsWith(needs.linux-ut.result, 'ed') }}
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
     permissions:
       actions: read
       contents: read
       pull-requests: write
     uses: ./.github/workflows/_ut_report.yml
-
-  ut-auto-issue:
-    name: ut-auto-issue
-    needs: [config, linux-ut, ut-report]
-    # Not success(): the UT job fails whenever there are new failures, which is
-    # precisely when this needs to run.
-    if: >-
-      ${{ !cancelled()
-      && needs.config.outputs.run_ut == 'true'
-      && needs.config.outputs.pytorch != 'nightly_wheel'
-      && (github.event_name == 'schedule' || inputs.ut_auto_issue) }}
-    secrets: inherit
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-    uses: ./.github/workflows/_ut_auto_issue.yml
-    with:
-      run_id: ${{ github.run_id }}
-      test_type: ${{ needs.config.outputs.test_type }}
-      # Off unless the repo variable is set to 'true', so filing can be stopped
-      # without a PR. Never on for on-demand runs: their torch commit is
-      # arbitrary, so the baseline comparison means nothing.
-      create_issues: ${{ github.event_name == 'schedule' && vars.UT_AUTO_ISSUE_ENABLED == 'true' }}
 
   linux-e2e-summary:
     name: linux-e2e-summary

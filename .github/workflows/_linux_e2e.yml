@@ -11,6 +11,16 @@ on:
         required: true
         type: string
         description: Test container image, the `<type>_image` output of .github/actions/ci-config
+      omix_version:
+        required: false
+        type: string
+        default: '0.6.0'
+        description: OMIX version (0.6.0 or 0.5.0)
+      expected_sycl_ver:
+        required: false
+        type: string
+        default: ''
+        description: Expected SYCL_COMPILER_VERSION in torch.__config__.show()
       test_type:
         type: string
         default: "build-cicd"
@@ -75,10 +85,12 @@ jobs:
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
         - /opt/xpu-test/_dataset:/opt/_dataset/:rw
       options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=16g --privileged
               -e ZE_AFFINITY_MASK
       env:
         MODEL_ONLY_NAME: ${{ inputs.model }}
+        no_proxy: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
+        NO_PROXY: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -90,6 +102,8 @@ jobs:
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
           category: ${{ inputs.category }}
+          omix_version: ${{ inputs.omix_version }}
+          expected_sycl_ver: ${{ inputs.expected_sycl_ver }}
       - name: Fixed frequency
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
