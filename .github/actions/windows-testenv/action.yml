@@ -54,7 +54,12 @@ runs:
         call .github\scripts\install_xpu.bat
         if errorlevel 1 exit /b 1
     - name: Setup uv
-      uses: astral-sh/setup-uv@v9.0.0
+      shell: powershell
+      run: |
+        if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+          irm https://astral.sh/uv/install.ps1 | iex
+        }
+        Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.local\bin"
     - name: Setup Python Environment
       shell: cmd
       run: |

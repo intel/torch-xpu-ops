@@ -21,10 +21,14 @@ runs:
           const { resolve } = require(`${process.env.ACTION_PATH}/../../ci-config/resolve.js`);
           resolve({ core, overrides: { python: process.env.OVERRIDE_PYTHON } });
     - name: Setup python-${{ steps.config.outputs.python }}
-      uses: astral-sh/setup-uv@v9.0.0
-      with:
-        python-version: ${{ steps.config.outputs.python }}
-        activate-environment: true
+      shell: bash -xe {0}
+      run: |
+        if ! command -v uv >/dev/null 2>&1; then
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+        fi
+        export PATH="${HOME}/.local/bin:${PATH}"
+        echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+        uv python install "${{ steps.config.outputs.python }}"
     - name: Clear venv
       shell: bash -xe {0}
       run: |
