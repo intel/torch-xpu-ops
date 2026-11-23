@@ -28,8 +28,11 @@ permissions:
 # there; runs then wait on the xpu-agent runner pool instead of cancelling each other.
 # Non-command comments (including the bot's own review replies) also get their own
 # group, so they cannot replace a queued `@torchxpubot review` and skip it.
+# The gate's automatic `@torchxpubot review` (bot_review_label.yml, marked by its
+# `_Automated review (` footer) queues apart from other commands, so a push
+# cannot replace a pending maintainer command such as `merge` or `rebase`.
 concurrency:
-  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ (github.event.issue.number == 5272 || !startsWith(github.event.comment.body, '@torchxpubot')) && format('-{0}', github.event.comment.id) || '' }}
+  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ (github.event.issue.number == 5272 || !startsWith(github.event.comment.body, '@torchxpubot')) && format('-{0}', github.event.comment.id) || contains(github.event.comment.body, '_Automated review (') && '-auto-review' || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -1027,21 +1030,36 @@ jobs:
             const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            // require() reads the tree actions/checkout populated, and that
+            // checkout pins no ref -- so on issue_comment it lands on the default
+            // branch, and a helper added by a PR is absent until that PR merges.
+            // Fall back to raw text: losing the fold beats losing the comment.
+            // Without parseGate the verdict cannot be read, so the gate fails closed.
+            let foldDetails = (text) => text;
+            let parseGate = () => null;
+            try {
+              ({ foldDetails, parseGate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/fold_details.js`));
+            } catch (error) {
+              core.warning(`fold_details.js unavailable (${error.message}); posting unfolded`);
+            }
             // Bot review gate, same labels as pytorch: a passing review moves the
             // PR from `in progress` to `ready for review`; otherwise it stays.
             const { owner, repo } = context.repo;
             const issue_number = ${{ needs.parse-command.outputs.pr_number }};
-            // Only the GATE line right after VERDICT counts; a quoted example
-            // further down must not flip the verdict. VERDICT may follow a short
-            // preamble (same window as fold_details.js).
-            const lines = result.result.trim().split('\n').map(l => l.trim()).filter(Boolean);
-            const verdictAt = lines.findIndex(l => /^\**VERDICT:/i.test(l));
-            const gateLine = verdictAt >= 0 && verdictAt < 6 ? lines[verdictAt + 1] || '' : '';
-            const ready = /^\**GATE:\**\s*[`*]*ready_for_human_review[`*]*$/i.test(gateLine);
+            // Only the GATE line right after VERDICT counts (tested in test_fold_details.js).
+            const ready = parseGate(result.result) === 'ready_for_human_review';
+            const sha = '${{ needs.review.outputs.head_sha }}';
+            // The gate covers open, non-draft PRs labeled `in progress`. A manual
+            // review elsewhere still gets its comment, but no status or labels.
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            const inGate = pr.state === 'open' && !pr.draft
+              && labels.includes('in progress') && !labels.includes('no automated review');
             // Per-commit record of the verdict for the promotion check. Not a
             // required check: it never blocks merging.
-            const sha = '${{ needs.review.outputs.head_sha }}';
-            if (/^[0-9a-f]{40}$/.test(sha)) {
+            if (!inGate) {
+              core.info('PR is not in the bot review gate; no bot-review status');
+            } else if (/^[0-9a-f]{40}$/.test(sha)) {
               await github.rest.repos.createCommitStatus({
                 owner, repo, sha, context: 'bot-review', target_url: jobUrl,
                 state: ready ? 'success' : 'failure',
@@ -1057,11 +1075,8 @@ jobs:
             const startedAt = '${{ needs.review.outputs.started_at }}';
             if (ready) {
               // Promote only the commit that was reviewed, and only PRs in the gate.
-              const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
-              const labels = pr.labels.map(l => l.name);
               if (pr.head.sha !== sha) skipReason = `new commits were pushed after the reviewed ${sha.slice(0, 7)}`;
-              else if (pr.state !== 'open' || pr.draft) skipReason = 'the PR is not an open, non-draft PR';
-              else if (!labels.includes('in progress') || labels.includes('no automated review')) skipReason = 'the PR is not `in progress` in the bot review gate';
+              else if (!inGate) skipReason = 'the PR is not `in progress` in the bot review gate';
               const since = startedAt || new Date(0).toISOString();
               const [comments, reviews, reviewComments] = await Promise.all([
                 github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, since, per_page: 100 }),
@@ -1095,19 +1110,9 @@ jobs:
               : ready && skipReason
               ? `**Bot review: no blocking issues, but labels unchanged: ${skipReason}.**\n\n`
               : ready
-              ? `**Bot review: no blocking issues, but ${maintainerActivity.map(u => '@' + u).join(', ')} commented after this review started.** Address those comments, then push or comment \`@torchxpubot review\` to re-run the review.\n\n`
+              ? `**Bot review: no blocking issues, but ${maintainerActivity.map(u => '@' + u).join(', ')} commented after this review started (or their access could not be checked).** Address those comments, then push, or ask a maintainer to comment \`@torchxpubot review\`, to re-run the review.\n\n`
               : '**Bot review: blocking issues found.** Fix them and push; the review re-runs while the PR is `in progress`. If a finding does not apply, reply in a PR comment naming it and saying why; the next review reads it.\n\n';
             const footer = `\n\n---\n_Generated by [\`review\` job](${jobUrl})._`;
-            // require() reads the tree actions/checkout populated, and that
-            // checkout pins no ref -- so on issue_comment it lands on the default
-            // branch, and a helper added by a PR is absent until that PR merges.
-            // Fall back to raw text: losing the fold beats losing the comment.
-            let foldDetails = (text) => text;
-            try {
-              ({ foldDetails } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/fold_details.js`));
-            } catch (error) {
-              core.warning(`fold_details.js unavailable (${error.message}); posting unfolded`);
-            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
