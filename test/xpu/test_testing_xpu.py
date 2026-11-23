@@ -27,10 +27,6 @@ except Exception:
 with XPUImportCtx(False):
     import test_testing as _test_testing_mod
     from test_testing import (
-        expectedFailureMeta,
-        onlyNativeDeviceTypes,
-        op_db,
-        opinfo,
         TestAssertClose,
         TestAssertCloseContainer,
         TestAssertCloseErrorMessage,
@@ -64,39 +60,6 @@ with XPUImportCtx(False):
 
 _test_testing_mod.instantiate_parametrized_tests = instantiate_parametrized_tests
 _test_testing_mod.instantiate_device_type_tests = instantiate_device_type_tests
-
-
-# ======================================================================
-# XPU-specific method override: test_get_supported_dtypes
-# Upstream only handles cpu/cuda.  Add the xpu branch so
-# dtypesIfXPU is checked when running on XPU device.
-# ======================================================================
-
-
-@expectedFailureMeta
-@onlyNativeDeviceTypes
-def _test_get_supported_dtypes(self, device):
-    ops_to_test = list(
-        filter(lambda op: op.formatted_name in ["atan2", "topk", "xlogy"], op_db)
-    )
-
-    for op in ops_to_test:
-        dynamic_dtypes = opinfo.utils.get_supported_dtypes(
-            op, op.sample_inputs_func, self.device_type
-        )
-        dynamic_dispatch = opinfo.utils.dtypes_dispatch_hint(dynamic_dtypes)
-        if self.device_type == "cpu":
-            dtypes = op.dtypes
-        elif self.device_type == "xpu":
-            dtypes = op.dtypesIfXPU
-        else:
-            dtypes = op.dtypesIfCUDA
-
-        self.assertTrue(set(dtypes) == set(dynamic_dtypes))
-        self.assertTrue(set(dtypes) == set(dynamic_dispatch.dispatch_fn()))
-
-
-TestTesting.test_get_supported_dtypes = _test_get_supported_dtypes
 
 
 # ======================================================================
