@@ -64,7 +64,6 @@ jobs:
       image: ${{ inputs.image }}
       env:
         no_proxy: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
-        NO_PROXY: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw

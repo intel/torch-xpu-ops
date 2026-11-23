@@ -90,7 +90,6 @@ jobs:
       env:
         MODEL_ONLY_NAME: ${{ inputs.model }}
         no_proxy: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
-        NO_PROXY: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
