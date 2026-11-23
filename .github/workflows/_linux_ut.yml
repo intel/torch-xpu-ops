@@ -42,6 +42,12 @@ on:
         default: ''
         description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
 
+    secrets:
+      DOCKER_HUB_TOKEN:
+        required: false
+      HUGGING_FACE_HUB_TOKEN:
+        required: false
+
 permissions:
   contents: read
 

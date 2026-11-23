@@ -8,6 +8,10 @@ on:
         default: ''
         description: 'Artifact tag of the UT checks to report on (empty means every one of the run)'
 
+    secrets:
+      COPILOT_TOKEN:
+        required: false
+
 permissions:
   contents: read
 

@@ -63,6 +63,12 @@ on:
         default: ''
         description: 'Optional tag (e.g. target/baseline) appended to the artifact name'
 
+    secrets:
+      DOCKER_HUB_TOKEN:
+        required: false
+      HUGGING_FACE_HUB_TOKEN:
+        required: false
+
 permissions: read-all
 
 defaults:
