@@ -11,15 +11,15 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
-except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUImportCtx
+except Exception:
+    from .xpu_test_utils import XPUImportCtx
 
-with XPUPatchForImport(False):
-    from test_type_promotion import TestTypePromotion
+with XPUImportCtx(False):
+    from test_type_promotion import TestTypePromotion, TestTypePromotionDevice
 
 instantiate_device_type_tests(
-    TestTypePromotion, globals(), only_for=("xpu"), allow_xpu=True
+    TestTypePromotionDevice, globals(), only_for="xpu", allow_xpu=True
 )
 
 if __name__ == "__main__":
