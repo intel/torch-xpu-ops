@@ -27,7 +27,6 @@ import torch
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
-    onlyXPU,
 )
 from torch.testing._internal.common_utils import run_tests, TestCase
 
@@ -236,12 +235,10 @@ class TestBatchNormContiguous(TestCase):
         self.assertEqual(rv_cpu, rv_xpu.cpu(), atol=1e-4, rtol=1e-4)
 
 
-def _channels_last_with_offset(src, offset, device=None):
+def _channels_last_with_offset(src, offset, device):
     """Copy *src* (NCHW logical) to an XPU channels-last tensor whose
     storage_offset is *offset* elements, so offset=1 breaks 2-element
     alignment for 16-bit dtypes and forces the scalar fallback."""
-    if device is None:
-        device = xpu_device
     numel = src.numel()
     buf = torch.empty(numel + offset, dtype=src.dtype, device=device)
     _, C, H, W = src.shape
@@ -292,25 +289,14 @@ class TestBatchNormBackwardElemtChannelsLast(TestCase):
         b = torch.randn(C).to(dtype)
         return x, go, w, b
 
-    # Weight variants. The autograd forward (F.batch_norm) requires matching
-    # dtypes, so the mixed-dtype weight branch is only exercised through the
-    # direct batch_norm_backward_elemt API below. "none" covers the nullptr
-    # weight path in both kernels.
-    def _native_backward_weight_variants(self, dtype):
-        return ["same", "none"]
-
-    def _elemt_count_weight_variants(self, dtype):
-        variants = ["same", "none"]
-        if dtype != torch.float32:
-            variants.append("mixed")
-        return variants
-
+    # The autograd forward (F.batch_norm) requires matching dtypes, so the
+    # native-backward test only covers the matching-weight and no-weight
+    # (nullptr) cases; the mixed-dtype weight branch is only reachable through
+    # the direct batch_norm_backward_elemt API below.
     def _check_native_backward(self, device, shape, dtype, weight_kind, in_off, go_off):
         x, go, w, b = self._inputs(shape, dtype)
         if weight_kind == "none":
             w = None
-        elif weight_kind == "mixed":
-            w = w.float()
 
         # Reference: CPU fp64 NCHW.
         xr = x.double().requires_grad_()
@@ -393,25 +379,16 @@ class TestBatchNormBackwardElemtChannelsLast(TestCase):
                     ):
                         checker(device, shape, dtype, weight_kind, in_off, go_off)
 
-    @onlyXPU
     @dtypes(torch.float32, torch.float16, torch.bfloat16)
     def test_native_backward_channels_last(self, device, dtype):
-        self._run(
-            self._check_native_backward,
-            device,
-            dtype,
-            self._native_backward_weight_variants(dtype),
-        )
+        self._run(self._check_native_backward, device, dtype, ["same", "none"])
 
-    @onlyXPU
     @dtypes(torch.float32, torch.float16, torch.bfloat16)
     def test_backward_elemt_count_channels_last(self, device, dtype):
-        self._run(
-            self._check_backward_elemt_count,
-            device,
-            dtype,
-            self._elemt_count_weight_variants(dtype),
-        )
+        weight_variants = ["same", "none"]
+        if dtype != torch.float32:
+            weight_variants.append("mixed")
+        self._run(self._check_backward_elemt_count, device, dtype, weight_variants)
 
 
 instantiate_device_type_tests(
