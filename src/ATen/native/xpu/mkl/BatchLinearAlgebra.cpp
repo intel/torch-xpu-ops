@@ -390,7 +390,11 @@ void linalg_lstsq_gels_mkl(const Tensor& A, const Tensor& B) {
 
     B.copy_(at::matmul(Q.mH(), B));
 
-    const Tensor R_top = R.narrow(-2, 0, n);
+    // triangular_solve_mkl takes a batched column-major A with
+    // lda == A.size(-2); the narrowed view's leading dimension is m, so copy
+    // it. B needs no narrowing: trsm touches only its first n rows, and rows
+    // n..m keep Q^H b, which linalg_lstsq reads back as the residuals.
+    const Tensor R_top = cloneBatchedColumnMajor(R.narrow(-2, 0, n));
     triangular_solve_mkl(
         R_top,
         B,
@@ -407,7 +411,9 @@ void linalg_lstsq_gels_mkl(const Tensor& A, const Tensor& B) {
 
     auto qr = at::linalg_qr(Ah_expanded, "reduced");
     const Tensor& Q = std::get<0>(qr);
-    const Tensor& R = std::get<1>(qr);
+    // triangular_solve_mkl takes a batched column-major A; do not rely on the
+    // layout linalg_qr happens to return.
+    const Tensor R = cloneBatchedColumnMajor(std::get<1>(qr));
 
     const auto trans = R.is_complex() ? TransposeType::ConjTranspose
                                       : TransposeType::Transpose;
