@@ -7,6 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 # Owner(s): ["module: intel"]
+# ruff: noqa: F401
 
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests
