@@ -185,8 +185,7 @@ inline void sampleMultinomialWithReplacement(
       // this kernel is not very efficient anyway
       scalar_t r;
       if constexpr (std::is_same_v<scalar_t, double>) {
-        // A float uniform has only 24 bits of resolution, too coarse for a
-        // double CDF
+        // Match RNG precision to double CDF
         r = rand_uniform2_double(&state).x;
       } else {
         r = static_cast<scalar_t>(rand_uniform4(&state).x);
