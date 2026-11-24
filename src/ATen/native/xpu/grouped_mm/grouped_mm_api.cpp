@@ -11,7 +11,19 @@
 #include <ATen/native/xpu/grouped_mm/grouped_mm_api.h>
 
 #include <c10/util/Exception.h>
+#include <comm/Macros.h>
+
+// This file is compiled by the host compiler (no -fsycl) but needs the SYCL
+// queue / device types; suppress the host-only <sycl/sycl.hpp> diagnostics
+// the same way as the other host-side XPU sources (e.g. Copy.cpp).
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <c10/xpu/XPUStream.h>
+#ifdef USE_SYCLTLA
+#include <ATen/native/xpu/grouped_mm/sycltla/grouped_mm_kernels.h>
+#endif
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 
 #include <cstdint>
 #include <cstdio>
@@ -20,10 +32,6 @@
 #include <mutex>
 #include <string>
 #include <unordered_set>
-
-#ifdef USE_SYCLTLA
-#include <ATen/native/xpu/grouped_mm/sycltla/grouped_mm_kernels.h>
-#endif
 
 namespace sycltla {
 
