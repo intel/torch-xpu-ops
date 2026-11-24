@@ -58,7 +58,13 @@ class TestLayerNorm(TestCase):
         x_cpu = torch.randn(rows, norm, dtype=torch.float32)
 
         layer_cpu = nn.LayerNorm(norm, dtype=torch.float32)
-        y_cpu = layer_cpu(x_cpu)
+        # nn.LayerNorm() returns wrong results on CPU for vectorized path (AVX)
+        # so the step-by-step calculation is needed. More details:
+        # https://github.com/pytorch/pytorch/issues/204610
+        x64 = x_cpu.double()
+        var, mean = torch.var_mean(x64, dim=-1, correction=0, keepdim=True)
+        y_cpu = ((x64 - mean) * torch.rsqrt(var + layer_cpu.eps)).float()
+        y_cpu = y_cpu * layer_cpu.weight.data + layer_cpu.bias.data
 
         layer_xpu = nn.LayerNorm(norm, dtype=dtype).to(xpu_device)
         layer_xpu.weight.data.copy_(layer_cpu.weight.data)
