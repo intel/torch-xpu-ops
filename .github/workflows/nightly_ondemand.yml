@@ -182,7 +182,7 @@ jobs:
   # the other side's report.
   Linux-Nightly-Ondemand-UT-Report:
     name: linux-ut-report
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
+    needs: [Linux-Nightly-Ondemand-UT-Tests]
     if: ${{ !cancelled() && !endsWith(needs.Linux-Nightly-Ondemand-UT-Tests.result, 'ed') }}
     secrets: inherit
     permissions:
@@ -310,7 +310,7 @@ jobs:
 
   Windows-Nightly-Ondemand-UT-Report:
     name: windows-ut-report
-    needs: [Conditions-Filter, Windows-Nightly-Ondemand-UT-Tests]
+    needs: [Windows-Nightly-Ondemand-UT-Tests]
     if: ${{ !cancelled() && !endsWith(needs.Windows-Nightly-Ondemand-UT-Tests.result, 'ed') }}
     secrets: inherit
     permissions:

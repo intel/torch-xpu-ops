@@ -53,7 +53,8 @@ runs:
         CHECKS: ${{ steps.names.outputs.checks }}
       run: |
         gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
-          --dir "${GITHUB_WORKSPACE}/ut-ci/checks" -p "${CHECKS}"
+          --dir "${GITHUB_WORKSPACE}/ut-ci/checks" -p "${CHECKS}" || \
+          echo "::warning::no artifact matches ${CHECKS}"
         ls -al "${GITHUB_WORKSPACE}/ut-ci/checks"
     - name: Render the report
       id: report
