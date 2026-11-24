@@ -51,6 +51,11 @@ if(BUILD_SEPARATE_OPS)
       SHARED
       SYCL_SOURCES ${sycl_src})
 
+    if(USE_SYCLTLA AND name STREQUAL "AveragePool2dKernels")
+      target_include_directories(${sycl_lib} SYSTEM PRIVATE ${SYCLTLA_INCLUDE_DIRS})
+      target_compile_definitions(${sycl_lib} PRIVATE USE_SYCLTLA ${SYCLTLA_COMPILE_DEFINITIONS})
+    endif()
+
     # Sleep.cpp provides at::xpu::sleep, used by libtorch_python but not by any
     # operator in libtorch_xpu. Since no symbol is referenced within
     # libtorch_xpu, --as-needed drops it, leaving at::xpu::sleep unresolved at
@@ -80,7 +85,8 @@ else()
   endif()
 
   if(USE_SYCLTLA)
-    target_compile_definitions(torch_xpu_ops PRIVATE USE_SYCLTLA)
+    target_include_directories(torch_xpu_ops SYSTEM PRIVATE ${SYCLTLA_INCLUDE_DIRS})
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_SYCLTLA ${SYCLTLA_COMPILE_DEFINITIONS})
   endif()
 
   install(TARGETS torch_xpu_ops DESTINATION "${TORCH_INSTALL_LIB_DIR}")
