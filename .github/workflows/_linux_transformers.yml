@@ -8,7 +8,12 @@ on:
     branches:
       - main
     paths:
+      - '.github/actions/ci-config/**'
+      - '.github/actions/print-environment/**'
+      - '.github/actions/setup-python/**'
+      - '.github/ci-config/**'
       - '.github/scripts/check-transformers.py'
+      - '.github/scripts/detect-devices.sh'
       - '.github/scripts/spec.py'
       - '.github/workflows/_linux_transformers.yml'
   workflow_dispatch:
@@ -21,18 +26,13 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc'
+        default: 'bmg'
         description: Runner label
-      driver:
-        required: false
-        type: string
-        default: 'lts'
-        description: Driver lts/rolling
       nightly_whl:
         required: false
         type: string
         default: ''
-        description: Pytorch nightly wheel version
+        description: PyTorch nightly version to test, e.g. 2.11.0.dev20261115. Empty uses the latest
       accelerate:
         required: false
         type: string
@@ -42,7 +42,7 @@ on:
         required: false
         type: string
         default: 'v3.6.0'
-        description: Accelerate version
+        description: Datasets version
       transformers:
         required: false
         type: string
@@ -62,17 +62,11 @@ env:
   accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.7.0'}}
   datasets: ${{ inputs.datasets != '' && inputs.datasets || 'v3.6.0'}}
   transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
+  # No libav*-dev: they conflict with the LTS2 image's Intel libva2, and PyAV wheels bundle FFmpeg.
   PACKAGES: |
     espeak-ng
     git-lfs
     pkg-config
-    libavcodec-dev
-    libavdevice-dev
-    libavfilter-dev
-    libavformat-dev
-    libavutil-dev
-    libswresample-dev
-    libswscale-dev
     pciutils
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
 
@@ -81,8 +75,27 @@ defaults:
     shell: bash {0}
 
 jobs:
+  config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      runner: ${{ steps.runner.outputs.ut }}
+      image: ${{ steps.runner.outputs.ut_image }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - name: Select runner and image
+        id: runner
+        uses: ./.github/actions/ci-config
+        with:
+          runner: ${{ inputs.runner }}
+
   prepare:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc' }}
+    # only resolves wheel versions, no GPU needed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'disable_all')
@@ -93,29 +106,46 @@ jobs:
       torchaudio: ${{ steps.getver.outputs.torchaudio }}
       triton: ${{ steps.getver.outputs.triton }}
     steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      # same python as the tests job so the resolved wheels match its ABI
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
       - id: getver
+        shell: bash -e {0}
+        env:
+          NIGHTLY_WHL: ${{ inputs.nightly_whl }}
         run: |
           # We can't just `pip index version...` and get the last available
           # version as pytorch packages may have tricky dependencies. Instead
           # we dry run install packages and get versions which would be installed.
           # See: https://github.com/pytorch/pytorch/issues/154687
+          torch_spec="torch${NIGHTLY_WHL:+==${NIGHTLY_WHL}}"
           pip install --dry-run --ignore-installed $TORCH_INDEX \
-            torch torchvision torchaudio pytorch-triton-xpu >_log.txt
+            "${torch_spec}" torchvision torchaudio pytorch-triton-xpu >_log.txt
 
-          torch=$(cat _log.txt | grep "Would install" | sed -E "s/.*torch-([^ ]*).*/\1/")
-          torchvision=$(cat _log.txt | grep "Would install" | sed -E "s/.*torchvision-([^ ]*).*/\1/")
-          torchaudio=$(cat _log.txt | grep "Would install" | sed -E "s/.*torchaudio-([^ ]*).*/\1/")
-          triton=$(cat _log.txt | grep "Would install" | sed -E "s/.*pytorch-triton-xpu-([^ ]*).*/\1/")
-          echo "torch=$torch" | tee -a "$GITHUB_OUTPUT"
-          echo "torchvision=$torchvision" | tee -a "$GITHUB_OUTPUT"
-          echo "torchaudio=$torchaudio" | tee -a "$GITHUB_OUTPUT"
-          echo "triton=$triton" | tee -a "$GITHUB_OUTPUT"
+          line=" $(grep 'Would install' _log.txt)"
+          for pkg in torch torchvision torchaudio pytorch-triton-xpu; do
+            version=$(sed -nE "s/.* ${pkg}-([^ ]+).*/\1/p" <<<"${line}")
+            if [ -z "${version}" ]; then
+              echo "::error::Failed to resolve ${pkg} from ${TORCH_INDEX}"
+              cat _log.txt
+              exit 1
+            fi
+            [ "${pkg}" == "pytorch-triton-xpu" ] && pkg=triton
+            echo "${pkg}=${version}" | tee -a "$GITHUB_OUTPUT"
+          done
 
   tests:
-    needs: prepare
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc' }}
+    needs: [config, prepare]
+    runs-on: ${{ needs.config.outputs.runner }}
+    timeout-minutes: 240
     container:
-      image: ${{ contains(inputs.runner || 'pvc', 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-26.04-rolling:26.14' }}
+      image: ${{ needs.config.outputs.image }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
@@ -194,27 +224,37 @@ jobs:
             du -sh ${{ env.HF_HOME }}
           fi
       - name: Prepare OS environment
+        timeout-minutes: 10
         run: |
           # as jobs might run in parallel on the same system, apt-get might
           # step into the lock hold by other job
           start_time=$SECONDS
-          while ! sudo apt-get update; do
+          # the OMIX image runs as root and has no sudo
+          SUDO=""
+          [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          while ! ${SUDO} apt-get update; do
             sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
+            if (( $SECONDS - start_time > 60 )); then exit 1; fi
           done
-          while ! sudo apt-get install -y $PACKAGES; do
+          while ! ${SUDO} apt-get install -y $PACKAGES; do
             sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
+            if (( $SECONDS - start_time > 60 )); then exit 1; fi
           done
           while ! git lfs install; do
             sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
+            if (( $SECONDS - start_time > 60 )); then exit 1; fi
           done
       - name: Setup python
         uses: ./torch-xpu-ops/.github/actions/setup-python
         with:
           python: ${{ inputs.python }}
+      - name: Setup gcc
+        uses: ./torch-xpu-ops/.github/actions/ci-config
+        with:
+          python: ${{ inputs.python }}
+          setup_gcc: 'true'
       - name: Prepare pytorch and deps
+        shell: bash -e {0}
         run: |
           uv pip install junitparser
           uv pip install $TORCH_INDEX \
@@ -223,12 +263,13 @@ jobs:
             torchaudio==${{ needs.prepare.outputs.torchaudio }} \
             pytorch-triton-xpu==${{needs.prepare.outputs.triton }}
       - name: Prepare Transformers
+        shell: bash -e {0}
         run: |
           pwd
           cd transformers
           uv pip install \
-            accelerate==${{ env.accelerate }} \
-            datasets==${{ env.datasets }}
+            "accelerate==${accelerate}" \
+            "datasets==${datasets}"
           uv pip install -e .
           uv pip install -e ".[dev-torch,testing,video]"
           rm -rf logs && mkdir -p logs
@@ -246,6 +287,7 @@ jobs:
           echo "xpu-smi output:"
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
+        shell: bash -e {0}
         run: |
           # Use latest pytest
           uv pip install -U pytest pytest-timeout pytest-xdist pytest-shard
@@ -277,7 +319,8 @@ jobs:
             du -sh ${{ env.HF_HOME }}
             rm -rf ${{ env.HF_HOME }}
           fi
-          chown 1000:1000 /__w /github ./ -R
+          # Runner user's uid differs per node; /__e is its read-only externals mount.
+          chown "$(stat -c %u:%g /__e)" /__w /github ./ -R
       - name: Upload reports
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
@@ -414,6 +457,7 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           first_md=$(find transformers/logs -name "environment-*.md" | head -1)
+          [ -n "$first_md" ] || exit 0
           cat $first_md >> $GITHUB_STEP_SUMMARY
           # we expect environments to be identical except for the ZE_AFFINITY_MASK line
           find transformers/logs -name "environment-*.md" | xargs sed -i '/ZE_AFFINITY_MASK/d'
