@@ -454,6 +454,8 @@ static inline void launch_vectorized_kernel(
     in_calc_t input_calc,
     int vec_size) {
   constexpr auto max_scalar_bytes = max_scalar_size<func_t>();
+  // Common wg_sz from getDeviceMaxSubGroupSize() * getDeviceEUCountPerXeCore()
+  // (e.g., 32 * 8 on PVC/BMG), specialized for compile-time offset math.
   constexpr int specialized_wg_size = 256;
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
   using traits = function_traits<func_t>;
