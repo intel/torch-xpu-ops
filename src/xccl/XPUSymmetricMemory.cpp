@@ -448,6 +448,9 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     // until a kernel takes it as a direct argument. The signal kernels only
     // reach peer memory through pointers loaded from signal_pads_dev_, so
     // without this their first access page-faults and the device is lost.
+    // This relies on opening peer memory on this device: opened on the
+    // exporting device, residency calls on later blocks of a pooled
+    // allocation map the first block's memory (driver bug, GSD-14207).
     ze_result_t ze_status =
         at::globalContext().getLevelZero().zeContextMakeMemoryResident(
             sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx),
