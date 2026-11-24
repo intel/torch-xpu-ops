@@ -50,16 +50,6 @@ if(BUILD_SEPARATE_OPS)
       ${sycl_lib}
       SHARED
       SYCL_SOURCES ${sycl_src})
-
-    # Sleep.cpp provides at::xpu::sleep, used by libtorch_python but not by any
-    # operator in libtorch_xpu. Since no symbol is referenced within
-    # libtorch_xpu, --as-needed drops it, leaving at::xpu::sleep unresolved at
-    # load time. Force-keep it as a NEEDED dependency.
-    if(name STREQUAL "Sleep")
-      target_link_libraries(torch_xpu_ops PUBLIC "-Wl,--no-as-needed" ${sycl_lib} "-Wl,--as-needed")
-    else()
-      target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
-    endif()
     target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
     target_link_libraries(${sycl_lib} PUBLIC torch-xpu-ops-sycl-Comm-kernels)
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
@@ -109,6 +99,18 @@ if(USE_SYCLTLA)
   set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
   set_build_flags()
 endif()
+
+set(REPLACE_FLAGS_FOR_SLEEP TRUE)
+set_build_flags()
+set(sycl_lib torch-xpu-ops-sycl-Sleep)
+sycl_add_library(
+  ${sycl_lib}
+  STATIC
+  SYCL_SOURCES ${ATen_XPU_SLEEP_SRCS})
+target_link_libraries(torch_xpu_ops PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,${sycl_lib}>")
+list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+set(REPLACE_FLAGS_FOR_SLEEP FALSE)
+set_build_flags()
 
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 

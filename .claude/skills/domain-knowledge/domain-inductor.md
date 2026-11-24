@@ -27,7 +27,7 @@ confirmed with caches disabled.
 ## CUDA cross-reference
 
 Compare against upstream CUDA/generic Inductor test behavior in
-`agent_space_xpu/pytorch/test/inductor/` before concluding an
+`$PYTORCH_DIR/test/inductor/` before concluding an
 XPU-specific root cause.
 
 ## Common signatures that belong here
