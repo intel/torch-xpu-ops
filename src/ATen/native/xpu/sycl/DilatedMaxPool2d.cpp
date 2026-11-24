@@ -214,7 +214,7 @@ struct LargeForward : LargeForwardConfig {
         }
       }
     }
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     ValuePair row_values[kInputHeight];
     IndexPair row_indices[kInputHeight];
 #pragma unroll
@@ -386,7 +386,7 @@ struct BlockBackward {
         }
       }
     }
-    it.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(it.get_group());
     for (int j = it.get_local_id(0); j < XB * CB / 2; j += 256) {
       int c = j % (CB / 2) * 2, xx = j / (CB / 2), pwbase = xb + xx,
           iy = yb * 2, ix = pwbase * 2;
