@@ -1,4 +1,4 @@
-# BMG (Arc Pro B60) accuracy reference, run 45102486992 (source build from main, full p0+p1+p2).
+# BMG (Arc Pro B60) accuracy reference, run 45102486992 + standalone verification on 816791 (full p0+p1+p2).
 # Comment lines above a model explain its non-pass results.
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 AlbertForMaskedLM,pass,pass,pass,pass,pass
@@ -11,7 +11,7 @@ BertForQuestionAnswering,pass,pass,pass,pass,pass
 BlenderbotForCausalLM,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 BlenderbotSmallForCausalLM,pass,pass,pass,pass,pass
 BlenderbotSmallForConditionalGeneration,pass,pass,pass,pass,pass
-# DebertaV2ForQuestionAnswering float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC
+# DebertaV2ForQuestionAnswering float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6203
 DebertaV2ForQuestionAnswering,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 DistilBertForMaskedLM,pass,pass,pass,pass,pass
 DistilBertForQuestionAnswering,pass,pass,pass,pass,pass
