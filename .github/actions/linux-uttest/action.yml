@@ -93,11 +93,11 @@ runs:
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        cd pytorch
-        test_cmd="python test/run_test.py --include "
-        for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
-        for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
-        if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
+        cd pytorch/test
+        test_cmd="python run_test.py --include "
+        for test in $(ls inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
+        for test in $(ls xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
+        if [ -f "test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
         eval $test_cmd 2>&1 | \
           tee ${UT_LOG_DIR}/torch_xpu_test.log
     - name: xpu_profiling
@@ -191,7 +191,7 @@ runs:
         XML_PREFIX: xpu_p0_with_
       run: |
         export XML_OUTPUT_DIR="${UT_JUNIT_DIR}"
-        cd "${GITHUB_WORKSPACE}/pytorch/"
+        cd "${GITHUB_WORKSPACE}/pytorch/test"
         # JUnit reports test failures; only runner errors fail this step.
         rc=0
         python "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.py" inductor non-inductor profiling \
@@ -212,7 +212,7 @@ runs:
         XML_PREFIX: xpu_p0_with_
       run: |
         export XML_OUTPUT_DIR="${UT_JUNIT_DIR}"
-        cd "${GITHUB_WORKSPACE}/pytorch/"
+        cd "${GITHUB_WORKSPACE}/pytorch/test"
         xpu-smi topology -m || true
         # JUnit reports test failures; only runner errors fail this step.
         rc=0
@@ -243,8 +243,9 @@ runs:
         fi
         # Exit code 1 means test failures, which the check job reports; fail only on setup errors
         rc=0
-        python .github/scripts/run_upstream_ut.py "${category}" --ut-name "${ut_name}" \
-          --pytorch-dir pytorch \
+        cd "${GITHUB_WORKSPACE}/pytorch/test"
+        python "${GITHUB_WORKSPACE}/.github/scripts/run_upstream_ut.py" "${category}" --ut-name "${ut_name}" \
+          --pytorch-dir "${GITHUB_WORKSPACE}/pytorch" \
           --log-dir "${UT_LOG_DIR}" \
           --xml-dir "${UT_JUNIT_DIR}" || rc=$?
         [ "${rc}" -le 1 ]

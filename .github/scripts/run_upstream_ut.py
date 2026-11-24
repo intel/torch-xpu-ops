@@ -112,19 +112,22 @@ class Job:
 
 
 def file_jobs(args, env, files):
-    """One plain pytest run per file, from the current directory."""
+    """One plain pytest run per file, from test/ like run_test.py does."""
+    test_dir = (args.pytorch_dir / "test").resolve()
+    xml_dir = args.xml_dir.resolve()
     jobs = []
     for test_file in files:
         name = test_file.replace("/", "_")
+        rel = test_file.removeprefix("test/")
         cmd = [
             sys.executable,
             "-m",
             "pytest",
             "-v",
-            str(args.pytorch_dir / test_file),
-            f"--junit-xml={args.xml_dir / f'{args.ut_name}_{name}.xml'}",
+            rel,
+            f"--junit-xml={xml_dir / f'{args.ut_name}_{name}.xml'}",
         ]
-        jobs.append(Job(name, test_file, cmd, env))
+        jobs.append(Job(name, test_file, cmd, env, test_dir))
     return jobs
 
 
@@ -260,7 +263,8 @@ def distributed_files(args):
 
 def distributed_jobs(args, env, files):
     env = {**env, **DISTRIBUTED_ENV, "ZE_AFFINITY_MASK": ",".join(args.gpus)}
-    pipelining = (args.pytorch_dir / "test" / "distributed" / "pipelining").resolve()
+    test_dir = (args.pytorch_dir / "test").resolve()
+    pipelining = (test_dir / "distributed" / "pipelining").resolve()
     env["PYTHONPATH"] = os.pathsep.join(
         p for p in (env.get("PYTHONPATH"), str(pipelining)) if p
     )
@@ -274,6 +278,7 @@ def distributed_jobs(args, env, files):
                 "import torch;print(torch.distributed.is_xccl_available())",
             ],
             env=env,
+            cwd=test_dir,
             capture_output=True,
             text=True,
             check=True,

@@ -141,9 +141,11 @@ pytest --collect-only <node_id>
 ```
 
 Cwd:
-- `needs_tree=yes` → from the tree just prepared (for `test/xpu/...`
-  targets, that's `$PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/`)
-- `needs_tree=no` → from any non-pytorch directory (the reproducer's
+- `needs_tree=yes` -> from `$PYTORCH_DIR/test/` for upstream PyTorch `test/...`
+  targets (strip the leading `test/` from the node id), or
+  `$PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/` for `torch-xpu-ops`
+  `test/xpu/...` targets
+- `needs_tree=no` -> from any non-pytorch directory (the reproducer's
   absolute path resolves on its own)
 
 Output shows `collected 0 items`? → `NO_REPRODUCER(reason=collected_zero)`.
@@ -212,14 +214,14 @@ so downstream stages and re-verifications know which nightly was tested.
 
 ### Working directory
 
-Do NOT run the nightly-wheel reproducer with `cwd` inside any pytorch
-source checkout. Python resolves `import torch` against the local `torch/`
-package before site-packages, so it will load the in-tree `torch/_C.so`
-built at whatever revision that tree happens to be — typically stale
-relative to the installed wheel — and fail with
-`ImportError: undefined symbol: ...`. Either `cd $(mktemp -d)` (or any
-non-pytorch dir) before running, or invoke the reproducer with an
-absolute path from outside the tree.
+Do NOT run the nightly-wheel reproducer with `cwd` at a pytorch source
+checkout root (`$PYTORCH_DIR`). Python (and any child `python -c "import torch"`
+subprocess a test spawns) resolves `import torch` against the local `torch/`
+package before site-packages, so it will load the unbuilt or stale in-tree
+`torch/` instead of the installed wheel and fail with `ModuleNotFoundError:
+No module named 'torch.version'` or `ImportError: undefined symbol: ...`.
+Run upstream PyTorch `test/...` targets from `$PYTORCH_DIR/test/` (strip any
+leading `test/`), or for standalone scripts `cd $(mktemp -d)` before running.
 
 ### torch-xpu-ops test invocation
 
