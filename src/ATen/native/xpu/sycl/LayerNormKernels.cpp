@@ -1124,6 +1124,58 @@ struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<accscalar_t, 1> local_sum_gamma_;
 };
 
+constexpr int kGammaBetaFinalizeRows = 8;
+constexpr int kGammaBetaFinalizeCols = 32;
+
+// Sums the [num_rows, N] per-tile partials of GammaBetaReduceFunctor into
+// dgamma / dbeta; a null pointer skips that gradient.
+template <typename accscalar_t, typename weight_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void gamma_beta_finalize_kernel(
+    const weight_t* dg_blocks,
+    const weight_t* db_blocks,
+    weight_t* dg_out,
+    weight_t* db_out,
+    int64_t num_rows,
+    int64_t N) {
+  constexpr int kRows = kGammaBetaFinalizeRows;
+  constexpr int kCols = kGammaBetaFinalizeCols;
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  syclexp::work_group_static<accscalar_t[kRows * kCols]> local_gamma;
+  syclexp::work_group_static<accscalar_t[kRows * kCols]> local_beta;
+
+  const int local_m = item.get_local_id(0);
+  const int local_n = item.get_local_id(1);
+  const int64_t col = item.get_group(1) * kCols + local_n;
+  accscalar_t sum_gamma = accscalar_t(0);
+  accscalar_t sum_beta = accscalar_t(0);
+  if (col < N) {
+    for (int64_t r = local_m; r < num_rows; r += kRows) {
+      if (dg_blocks != nullptr) {
+        sum_gamma += static_cast<accscalar_t>(dg_blocks[r * N + col]);
+      }
+      if (db_blocks != nullptr) {
+        sum_beta += static_cast<accscalar_t>(db_blocks[r * N + col]);
+      }
+    }
+  }
+  local_gamma[local_m * kCols + local_n] = sum_gamma;
+  local_beta[local_m * kCols + local_n] = sum_beta;
+  sycl::group_barrier(item.get_group());
+  if (local_m == 0 && col < N) {
+    for (int i = 1; i < kRows; ++i) {
+      sum_gamma += local_gamma[i * kCols + local_n];
+      sum_beta += local_beta[i * kCols + local_n];
+    }
+    if (dg_out != nullptr) {
+      dg_out[col] = static_cast<weight_t>(sum_gamma);
+    }
+    if (db_out != nullptr) {
+      db_out[col] = static_cast<weight_t>(sum_beta);
+    }
+  }
+}
+
 template <
     typename scalar_t,
     typename accscalar_t,
@@ -1561,11 +1613,6 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      // sum(0) is flat {N}; the gradient may be multi-dimensional.
-      *dgamma = dgamma_blocks.sum(0).view_as(*dgamma);
-      if constexpr (!rms_norm) {
-        *dbeta = dbeta_blocks.sum(0).view_as(*dbeta);
-      }
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1608,7 +1655,6 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      *dgamma = dgamma_blocks.sum(0).view_as(*dgamma);
     } else if (!dgamma->defined() && dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1651,12 +1697,24 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      if constexpr (!rms_norm) {
-        *dbeta = dbeta_blocks.sum(0).view_as(*dbeta);
-      }
     } else {
       return;
     }
+
+    const size_t finalize_cols =
+        (N + kGammaBetaFinalizeCols - 1) / kGammaBetaFinalizeCols *
+        kGammaBetaFinalizeCols;
+    sycl_kernel_submit<gamma_beta_finalize_kernel<accscalar_t, weight_t>>(
+        sycl::range<2>(kGammaBetaFinalizeRows, finalize_cols),
+        sycl::range<2>(kGammaBetaFinalizeRows, kGammaBetaFinalizeCols),
+        getCurrentSYCLQueue(),
+        0,
+        dgamma_blocks_ptr,
+        dbeta_blocks_ptr,
+        dgamma_blocks_ptr ? dgamma->data_ptr<weight_t>() : nullptr,
+        dbeta_blocks_ptr ? dbeta->data_ptr<weight_t>() : nullptr,
+        int64_t(num_tile_m),
+        N);
 
   } else {
     gamma_beta_bwd_simple_kernel<
