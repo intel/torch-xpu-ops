@@ -769,8 +769,6 @@ struct BroadcastElementwiseKernel {
   layout_t layout_;
 };
 
-// Base vector widths depend on the streamed dense input and output. Selected
-// same-dtype floating-point layouts also try a 16-byte vector first.
 template <typename func_t, int broadcast_arg, bool single_element>
 struct BroadcastLaunchConfig {
   using traits = function_traits<func_t>;
@@ -791,8 +789,10 @@ struct BroadcastLaunchConfig {
   static constexpr int min_bytes = std::min(dense_bytes, output_bytes);
   static constexpr int max_bytes = std::max(dense_bytes, output_bytes);
   // The narrowest streamed operand uses at least four bytes per vector.
-  static constexpr int narrow_vec = std::max(1, 4 / min_bytes);
-  static constexpr int wide_vec = 8 / max_bytes;
+  static constexpr int min_vec = std::max(1, 4 / min_bytes);
+  static constexpr int vector_bytes =
+      low_precision || (!single_element && float_storage) ? 16 : 8;
+  static constexpr int max_vec = std::max(min_vec, vector_bytes / max_bytes);
   // Broadcast rows gain from vectors only when a streamed operand is narrower
   // than 8 bytes; otherwise the generic kernel already accesses 8 bytes per
   // work-item, and its grid-stride loop suits long write streams.
@@ -855,6 +855,9 @@ struct BroadcastLaunchConfig {
       const array_t& data,
       int64_t numel) {
     if (!check_vector_alignment<vec_size>(iter, data)) {
+      if constexpr (vec_size > min_vec) {
+        return launch_vector<vec_size / 2>(iter, f, data, numel);
+      }
       return false;
     }
     if constexpr (single_element) {
@@ -889,17 +892,7 @@ struct BroadcastLaunchConfig {
           return false;
         }
       }
-      if constexpr (low_precision || (!single_element && float_storage)) {
-        if (launch_vector<16 / dense_bytes>(iter, f, data, numel)) {
-          return true;
-        }
-      }
-      if constexpr (wide_vec > narrow_vec) {
-        if (launch_vector<wide_vec>(iter, f, data, numel)) {
-          return true;
-        }
-      }
-      return launch_vector<narrow_vec>(iter, f, data, numel);
+      return launch_vector<max_vec>(iter, f, data, numel);
     }
   }
 };
