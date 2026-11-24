@@ -9,10 +9,10 @@
 
 #include <xccl/ProcessGroupXCCL.hpp>
 
-#include <ATen/Context.h>
+#include <ATen/Context.h> // Residency workaround only
 #include <ATen/ceil_div.h>
 #include <ATen/xpu/XPUContext.h>
-#include <ATen/xpu/level_zero_stub/ATenLevelZero.h>
+#include <ATen/xpu/level_zero_stub/ATenLevelZero.h> // Residency workaround only
 #include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
@@ -451,6 +451,10 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     // This relies on opening peer memory on this device: opened on the
     // exporting device, residency calls on later blocks of a pooled
     // allocation map the first block's memory (driver bug, GSD-14207).
+    // TODO: Remove this workaround, and the includes marked for it, once
+    // oneAPI n-1 is 2026.2 or later, so that every build shares symmetric
+    // memory as physical memory, or once IPC imports are usable through
+    // indirect access.
     ze_result_t ze_status =
         at::globalContext().getLevelZero().zeContextMakeMemoryResident(
             sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx),
