@@ -135,6 +135,17 @@ class TestSimpleUnary(TestCase):
     def test_neg_out(self, dtype):
         self._test_unary_out_ops("neg", dtype)
 
+    def test_neg_full_and_partial_tiles(self):
+        # At WG256, contiguous float32 uses four elements per lane (1024 per tile).
+        for numel in (2048, 2049):
+            with self.subTest(numel=numel):
+                x = torch.arange(numel, dtype=torch.float32)
+                out = torch.ones(numel + 1, device="xpu", dtype=x.dtype)
+                torch.neg(x.xpu(), out=out[:numel])
+                result = out.cpu()
+                self.assertEqual(result[:numel], -x)
+                self.assertEqual(result[numel].item(), 1.0)
+
     @Dtypes(floating_and_complex_types)
     def test_reciprocal_out(self, dtype):
         self._test_unary_out_ops("reciprocal", dtype)
