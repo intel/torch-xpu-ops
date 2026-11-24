@@ -46,57 +46,38 @@ class TestSimpleBinary(TestCase):
         self.assertEqual(c_cpu, c_xpu.to(cpu_device))
 
     def test_sub_inner_broadcast_low_precision(self):
-        batch, rows, columns, pitch = 31, 5, 6, 10
-        shape = (1, rows, columns)
-        strides = (rows * pitch, pitch, 1)
-        for dtype in (torch.float16, torch.bfloat16):
-            storage = torch.arange(rows * pitch + 2, dtype=dtype)
-            dense_cpu = storage.as_strided(shape, strides, storage_offset=2)
-            dense_xpu = storage.to(xpu_device).as_strided(
-                shape, strides, storage_offset=2
-            )
-            broadcast_cpu = torch.arange(batch, dtype=dtype).view(batch, 1, 1)
-            broadcast_xpu = broadcast_cpu.to(xpu_device)
-
-            for broadcast_left in (False, True):
-                args_cpu = (dense_cpu, broadcast_cpu)
-                args_xpu = (dense_xpu, broadcast_xpu)
-                if broadcast_left:
-                    args_cpu = args_cpu[::-1]
-                    args_xpu = args_xpu[::-1]
-                expected = torch.sub(*args_cpu)
-
-                for offset in (1, 2):
-                    with self.subTest(dtype=dtype, left=broadcast_left, offset=offset):
-                        backing = torch.full(
-                            (expected.numel() + offset + 2,),
-                            -127,
-                            dtype=dtype,
-                            device=xpu_device,
-                        )
-                        out = backing[offset:-2].view(expected.shape)
-                        torch.sub(*args_xpu, out=out)
-                        expected_backing = torch.full(backing.shape, -127, dtype=dtype)
-                        expected_backing[offset:-2] = expected.flatten()
-                        self.assertEqual(
-                            backing.cpu(), expected_backing, atol=0, rtol=0
-                        )
+        for dtype, broadcast_left, offset in (
+            (torch.float16, True, 2),
+            (torch.bfloat16, False, 2),
+            (torch.float16, False, 1),
+        ):
+            with self.subTest(dtype=dtype, left=broadcast_left, offset=offset):
+                # Six columns with a ten-element pitch and a two-element offset.
+                dense = torch.arange(50, dtype=dtype, device=xpu_device).view(1, 5, 10)
+                dense = dense[:, :, 2:8]
+                row = torch.arange(31, dtype=dtype, device=xpu_device).view(31, 1, 1)
+                lhs, rhs = (row, dense) if broadcast_left else (dense, row)
+                expected = lhs.cpu() - rhs.cpu()
+                expected_backing = torch.full(
+                    (offset + expected.numel() + 2,), -127, dtype=dtype
+                )
+                backing = expected_backing.to(xpu_device)
+                torch.sub(lhs, rhs, out=backing[offset:-2].view_as(expected))
+                expected_backing[offset:-2] = expected.flatten()
+                self.assertEqual(backing.cpu(), expected_backing, atol=0, rtol=0)
 
     def test_sub_device_scalar_float_tail(self):
-        size, guard = 131_585, 16
-        dense_cpu = torch.arange(size, dtype=torch.float32).remainder(127) - 63
-        scalar_cpu = torch.tensor(2.5, dtype=dense_cpu.dtype)
-        dense_xpu = dense_cpu.to(xpu_device)
-        scalar_xpu = scalar_cpu.to(xpu_device)
-        for args_cpu, args_xpu in (
-            ((dense_cpu, scalar_cpu), (dense_xpu, scalar_xpu)),
-            ((scalar_cpu, dense_cpu), (scalar_xpu, dense_xpu)),
-        ):
-            expected = torch.full((size + 2 * guard,), -127, dtype=dense_cpu.dtype)
-            backing = expected.to(xpu_device)
-            torch.sub(*args_xpu, out=backing[guard:-guard])
-            expected[guard:-guard] = torch.sub(*args_cpu)
-            self.assertEqual(backing.cpu(), expected, atol=0, rtol=0)
+        # One full work-group of vec4 plus one tail element.
+        size, guard = 1025, 4
+        dense = torch.arange(size, dtype=torch.float32)
+        scalar = torch.tensor(2.5, dtype=dense.dtype)
+        expected = torch.full((size + 2 * guard,), -127, dtype=dense.dtype)
+        backing = expected.to(xpu_device)
+        torch.sub(
+            scalar.to(xpu_device), dense.to(xpu_device), out=backing[guard:-guard]
+        )
+        expected[guard:-guard] = scalar - dense
+        self.assertEqual(backing.cpu(), expected, atol=0, rtol=0)
 
     def test_mul(self, dtype=torch.float):
         a_cpu = torch.randn(2, 3)

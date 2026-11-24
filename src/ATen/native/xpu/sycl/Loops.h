@@ -110,15 +110,6 @@ template <int N, typename index_t>
 constexpr bool
     is_trivial_offset_calculator_v<TrivialOffsetCalculator<N, index_t>> = true;
 
-namespace launch_config {
-// Wide and integral inner broadcasts fix their subgroup size.
-constexpr int broadcast_work_group_size = 256;
-constexpr int broadcast_wide_work_group_size = 128;
-constexpr int broadcast_wide_sub_group_size = 16;
-
-constexpr int mixed_dtype_sub_group_size = 16;
-} // namespace launch_config
-
 template <
     int vec_size,
     typename func_t,
@@ -643,8 +634,8 @@ constexpr int strided_work_group_size = 128;
 // Where the inputs of the vector starting at output element `first` are, for
 // BroadcastElementwiseKernel: in a one-dimensional iterator the dense input
 // follows the output and the broadcast input is a single element.
-template <int broadcast_arg>
 struct SingleElementBroadcast {
+  template <int broadcast_arg>
   at::detail::Array<uint32_t, 2> get(uint32_t first) const {
     at::detail::Array<uint32_t, 2> offsets;
     offsets[broadcast_arg] = 0;
@@ -700,19 +691,10 @@ struct InnerBroadcast {
 // element of the broadcast input. The functor and its argument order are
 // unchanged. The broadcast position is a template parameter so both loads are
 // issued back to back, and the pointers and the functor come first so they
-// stay in the inline kernel payload. Scalar FP16/BF16 vec8 uses WG128 and
-// SIMD16. Integral inner broadcasts use SIMD32, and the compiler selects SIMD
-// for other widths.
-template <
-    int vec_size,
-    int broadcast_arg,
-    bool small_work_group,
-    typename func_t,
-    typename layout_t>
+// stay in the inline kernel payload.
+template <int vec_size, int broadcast_arg, typename func_t, typename layout_t>
 struct BroadcastElementwiseKernel {
-  static constexpr int work_group_size = small_work_group
-      ? launch_config::broadcast_wide_work_group_size
-      : launch_config::broadcast_work_group_size;
+  static constexpr int work_group_size = 256;
   using traits = function_traits<func_t>;
   using dense_t =
       std::decay_t<typename traits::template arg<1 - broadcast_arg>::type>;
@@ -728,21 +710,14 @@ struct BroadcastElementwiseKernel {
     }
   }
 
-  auto get_offsets(uint32_t first) const {
-    if constexpr (std::is_same_v<layout_t, InnerBroadcast>) {
-      return layout_.template get<broadcast_arg>(first);
-    } else {
-      return layout_.get(first);
-    }
-  }
-
   // A constant group size keeps the index free of payload loads.
   void operator()(sycl::nd_item<1> item) const {
     const uint32_t index = uint32_t(item.get_group(0)) * work_group_size +
         uint32_t(item.get_local_id(0));
     const uint32_t vectors = layout_.numel / vec_size;
     if (index < vectors) {
-      const auto offsets = get_offsets(index * vec_size);
+      const auto offsets =
+          layout_.template get<broadcast_arg>(index * vec_size);
       const auto values =
           memory::load_vector<vec_size>(dense_ + offsets[1 - broadcast_arg], 0);
       const broadcast_t broadcast =
@@ -754,23 +729,16 @@ struct BroadcastElementwiseKernel {
       }
       reinterpret_cast<memory::aligned_vector<return_t, vec_size>*>(
           output_)[index] = results;
-    } else if constexpr (!std::is_same_v<layout_t, InnerBroadcast>) {
+    } else if constexpr (std::is_same_v<layout_t, SingleElementBroadcast>) {
       if (index < vectors + layout_.numel % vec_size) {
         const uint32_t k = vectors * (vec_size - 1) + index;
-        const auto offsets = get_offsets(k);
-        output_[k] = apply(
-            c10::load(dense_ + offsets[1 - broadcast_arg]),
-            c10::load(broadcast_ + offsets[broadcast_arg]));
+        output_[k] = apply(c10::load(dense_ + k), c10::load(broadcast_));
       }
     }
   }
 
   auto get(sycl::ext::oneapi::experimental::properties_tag) const {
-    if constexpr (small_work_group) {
-      return sycl::ext::oneapi::experimental::properties{
-          sycl::ext::oneapi::experimental::sub_group_size<
-              launch_config::broadcast_wide_sub_group_size>};
-    } else if constexpr (
+    if constexpr (
         std::is_same_v<layout_t, InnerBroadcast> &&
         std::is_integral_v<dense_t> && std::is_integral_v<broadcast_t> &&
         std::is_integral_v<return_t>) {
@@ -801,10 +769,6 @@ struct BroadcastElementwiseKernel {
   layout_t layout_;
 };
 
-// Launch configuration of BroadcastElementwiseKernel. Only the output and the
-// dense input are streamed; the broadcast input takes one element per vector,
-// so its type does not size the vectors (a bool mask must not widen int64
-// work-items).
 template <typename func_t, int broadcast_arg, bool single_element>
 struct BroadcastLaunchConfig {
   using traits = function_traits<func_t>;
@@ -813,27 +777,14 @@ struct BroadcastLaunchConfig {
   using broadcast_t =
       std::decay_t<typename traits::template arg<broadcast_arg>::type>;
   using output_t = typename traits::result_type;
-  static constexpr bool same_storage = std::is_same_v<dense_t, output_t> &&
-      std::is_same_v<broadcast_t, output_t>;
-  static constexpr bool low_precision = same_storage &&
-      (std::is_same_v<output_t, at::Half> ||
-       std::is_same_v<output_t, at::BFloat16>);
-  static constexpr bool float_storage =
-      same_storage && std::is_same_v<output_t, float>;
-  template <int vec_size>
-  static constexpr bool small_work_group =
-      single_element && low_precision && vec_size == 8;
   static constexpr int dense_bytes = sizeof(dense_t);
   static constexpr int output_bytes = sizeof(output_t);
   static constexpr int min_bytes = std::min(dense_bytes, output_bytes);
   static constexpr int max_bytes = std::max(dense_bytes, output_bytes);
-  // Wide scalar broadcasts take 16 bytes of the widest streamed operand.
-  // In the adaptive path, a work-item takes 8 bytes when there is enough work
-  // for every hardware thread, twice over when 4 bytes hold several elements.
-  // The narrowest operand, e.g. a bool output, keeps at least 4 bytes.
-  static constexpr int narrow_vec = std::max(1, 4 / min_bytes);
-  static constexpr int wide_vec = std::max(8 / max_bytes, narrow_vec);
-  static constexpr int waves = narrow_vec > 1 ? 2 : 1;
+  // The narrowest streamed operand uses at least four bytes per vector.
+  static constexpr int min_vec = std::max(1, 4 / min_bytes);
+  // Prefer up to 16 bytes per vector for the widest streamed operand.
+  static constexpr int max_vec = std::max(min_vec, 16 / max_bytes);
   // Broadcast rows gain from vectors only when a streamed operand is narrower
   // than 8 bytes; otherwise the generic kernel already accesses 8 bytes per
   // work-item, and its grid-stride loop suits long write streams.
@@ -841,23 +792,14 @@ struct BroadcastLaunchConfig {
 
   static constexpr int dense = 2 - broadcast_arg;
 
-  static bool wide(int64_t numel) {
-    return numel / wide_vec >=
-        waves * int64_t(at::xpu::getDeviceMaxWorkItems());
-  }
-
   template <int vec_size, typename array_t, typename layout_t>
   static void submit_kernel(
-      int64_t numel,
       const func_t& f,
       const array_t& data,
       const layout_t& layout) {
-    using kernel_t = BroadcastElementwiseKernel<
-        vec_size,
-        broadcast_arg,
-        small_work_group<vec_size>,
-        func_t,
-        layout_t>;
+    const int64_t numel = layout.numel;
+    using kernel_t =
+        BroadcastElementwiseKernel<vec_size, broadcast_arg, func_t, layout_t>;
     constexpr int64_t wg_size = kernel_t::work_group_size;
     int64_t items = numel / vec_size;
     if constexpr (single_element) {
@@ -905,17 +847,15 @@ struct BroadcastLaunchConfig {
       const array_t& data,
       int64_t numel) {
     if (!check_vector_alignment<vec_size>(iter, data)) {
+      if constexpr (vec_size > min_vec) {
+        return launch_vector<vec_size / 2>(iter, f, data, numel);
+      }
       return false;
     }
     if constexpr (single_element) {
-      submit_kernel<vec_size>(
-          numel,
-          f,
-          data,
-          SingleElementBroadcast<broadcast_arg>{uint32_t(numel)});
+      submit_kernel<vec_size>(f, data, SingleElementBroadcast{uint32_t(numel)});
     } else {
       submit_kernel<vec_size>(
-          numel,
           f,
           data,
           InnerBroadcast{
@@ -944,41 +884,7 @@ struct BroadcastLaunchConfig {
           return false;
         }
       }
-      if constexpr (low_precision) {
-        const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
-        int64_t vec8_items = wave_items;
-        if constexpr (single_element) {
-          // In-place scalar broadcasts can pack wider once the grid can offer
-          // one work-group per Xe core.
-          if (data[0] == data[dense]) {
-            vec8_items = launch_config::broadcast_wide_work_group_size *
-                int64_t(at::xpu::getDeviceXeCoreCount());
-          }
-        }
-        constexpr int vec4_waves = single_element ? 2 : 1;
-        return (numel / 8 >= vec8_items &&
-                launch_vector<8>(iter, f, data, numel)) ||
-            (numel / 4 >= vec4_waves * wave_items &&
-             launch_vector<4>(iter, f, data, numel)) ||
-            launch_vector<2>(iter, f, data, numel);
-      } else if constexpr (!single_element && float_storage) {
-        const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
-        return (numel / 4 >= 2 * wave_items &&
-                launch_vector<4>(iter, f, data, numel)) ||
-            (numel / 2 >= wave_items &&
-             launch_vector<2>(iter, f, data, numel)) ||
-            launch_vector<1>(iter, f, data, numel);
-      } else {
-        if constexpr (wide_vec == narrow_vec) {
-          return launch_vector<wide_vec>(iter, f, data, numel);
-        } else if (wide(numel)) {
-          const bool launched = launch_vector<wide_vec>(iter, f, data, numel);
-          if (single_element || launched) {
-            return launched;
-          }
-        }
-        return launch_vector<narrow_vec>(iter, f, data, numel);
-      }
+      return launch_vector<max_vec>(iter, f, data, numel);
     }
   }
 };
@@ -992,11 +898,10 @@ static inline bool try_launch_broadcast_kernel(
     int64_t numel,
     bool dense_output) {
   static_assert(function_traits<func_t>::arity == 2);
-  const int ndim = iter.ndim();
-  if (ndim == 0 || numel < 2 || !dense_output) {
+  if (numel < 2 || !dense_output) {
     return false;
   }
-  if (ndim == 1) {
+  if (iter.ndim() == 1) {
     return BroadcastLaunchConfig<func_t, 0, true>::dispatch(
                iter, f, data, numel) ||
         BroadcastLaunchConfig<func_t, 1, true>::dispatch(iter, f, data, numel);
@@ -1194,15 +1099,7 @@ static inline bool try_launch_strided_binary(
     }
     const auto shape = iter.shape();
     for (int input = 1; input <= 2; ++input) {
-      const auto strides = iter.strides(input);
-      const auto begin = reinterpret_cast<uintptr_t>(data[input]);
-      auto end = begin + iter.element_size(input);
-      bool broadcast = false;
-      for (int dim = 0; dim < iter.ndim(); ++dim) {
-        broadcast |= shape[dim] > 1 && strides[dim] == 0;
-        end += (shape[dim] - 1) * strides[dim];
-      }
-      if (broadcast && overlaps_dense_output(iter, data[0], begin, end)) {
+      if (broadcast_overlaps_output(iter, data[0], input, true)) {
         return false;
       }
     }
@@ -1323,6 +1220,7 @@ template <
     typename calc_t,
     bool scalar_broadcast = false>
 struct MixedDtypeVectorizedKernel {
+  static constexpr int work_group_size = 256;
   using traits = function_traits<func_t>;
   using output_t = typename traits::result_type;
   static constexpr int arity = traits::arity;
@@ -1398,11 +1296,10 @@ struct MixedDtypeVectorizedKernel {
     output[index] = f(convert_input<i>(c10::load(input_ptr<i>(index)))...);
   }
 
-  [[sycl::reqd_sub_group_size(launch_config::mixed_dtype_sub_group_size)]] void
-  operator()(sycl::nd_item<1> item) const {
+  void operator()(sycl::nd_item<1> item) const {
     constexpr auto indices = std::make_index_sequence<arity>{};
-    const uint32_t vector_index = static_cast<uint32_t>(item.get_group(0)) *
-            launch_config::broadcast_work_group_size +
+    const uint32_t vector_index =
+        static_cast<uint32_t>(item.get_group(0)) * work_group_size +
         static_cast<uint32_t>(item.get_local_id(0));
     const uint32_t full_vectors = numel / vec_size;
     if (vector_index < full_vectors) {
@@ -1439,7 +1336,7 @@ static inline void launch_mixed_dtype_kernel(
     }
     const auto numel = static_cast<uint32_t>(iter.numel());
     auto submit = [&](auto kernel) {
-      constexpr int work_group_size = launch_config::broadcast_work_group_size;
+      constexpr int work_group_size = decltype(kernel)::work_group_size;
       constexpr int vec_size = decltype(kernel)::vec_size;
       const auto groups = ceil_div<int64_t>(numel, work_group_size * vec_size);
       sycl_kernel_submit(
