@@ -330,7 +330,9 @@ class TestBatchNormBackwardElemtChannelsLast(TestCase):
         atol, rtol = self._tol(dtype)
         self.assertEqual(xx.grad.cpu().double(), ref, atol=atol, rtol=rtol)
 
-    def _check_backward_elemt_count(self, device, shape, dtype, weight_kind, in_off, go_off):
+    def _check_backward_elemt_count(
+        self, device, shape, dtype, weight_kind, in_off, go_off
+    ):
         x, go, w, _ = self._inputs(shape, dtype)
         if weight_kind == "none":
             w = None
