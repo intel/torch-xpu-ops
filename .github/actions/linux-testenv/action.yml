@@ -1,5 +1,5 @@
 name: Setup Test Environment
-description: Install python, gcc, OMIX, PyTorch and torch-xpu-ops for Linux XPU tests
+description: Activate pre-baked OMIX environment and checkout PyTorch + torch-xpu-ops for Linux XPU tests
 
 inputs:
   pytorch:
@@ -19,7 +19,7 @@ inputs:
     description: 'Optional tag (e.g. target/baseline) used to select the matching wheel artifact'
   omix_version:
     default: '0.6.0'
-    description: 'OMIX version to install inside container (0.6.0 or 0.5.0)'
+    description: 'OMIX version inside pre-baked container (0.6.0 or 0.5.0)'
   expected_sycl_ver:
     default: ''
     description: 'Expected SYCL_COMPILER_VERSION in torch.__config__.show()'
@@ -27,72 +27,25 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install base packages
-      shell: bash -xe {0}
-      env:
-        DEBIAN_FRONTEND: noninteractive
-        GCC_VERSION: '13'
-        APT_UPGRADE: '1'
-        INSTALL_BASE: ${{ github.action_path }}/../../../.ci/docker/common/install_base.sh
-      run: |
-        if [ ! -f /.dockerenv ]; then
-          echo "Not in a container, keeping the host packages"
-          exit 0
-        fi
-        SUDO=""
-        [ "$(id -u)" -eq 0 ] || SUDO="sudo -E"
-        ${SUDO} bash "${INSTALL_BASE}"
-    - name: Install OMIX ${{ inputs.omix_version }} and configure setvars.sh
+    - name: Activate pre-baked OMIX ${{ inputs.omix_version }} environment
       shell: bash -xe {0}
       run: |
-        if [ -f /.dockerenv ]; then
-          SUDO=""
-          [ "$(id -u)" -eq 0 ] || SUDO="sudo -E"
-          . /etc/os-release
-          ${SUDO} tee /etc/apt/apt.conf.d/99laurentides > /dev/null <<'APTCONF'
-        Acquire::https::laurentides.igk.intel.com::Verify-Peer "false";
-        Acquire::https::laurentides.igk.intel.com::Verify-Host "false";
-        Acquire::http::Proxy::laurentides.igk.intel.com "DIRECT";
-        Acquire::https::Proxy::laurentides.igk.intel.com "DIRECT";
-        APTCONF
-          case "${{ inputs.omix_version }}" in
-            0.6|0.6.0)
-              OMIX_DIST="${VERSION_CODENAME}/testing-intel-omix/20.0"
-              ;;
-            0.5|0.5.0)
-              OMIX_DIST="${VERSION_CODENAME}/intel-omix/0.5.0"
-              ;;
-            *)
-              echo "Unsupported omix_version: ${{ inputs.omix_version }}" >&2
-              exit 1
-              ;;
-          esac
-          export DEBIAN_FRONTEND=noninteractive
-          echo "deb [trusted=yes] https://laurentides.igk.intel.com/repositories/ubuntu ${OMIX_DIST} unified" | ${SUDO} tee /etc/apt/sources.list.d/omix.list
-          ${SUDO} apt-get update
-          ${SUDO} apt-get dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
-          ${SUDO} apt-get install -y --no-install-recommends \
-            intel-omix-dev \
-            xpu-smi \
-            clinfo \
-            opencl-headers \
-            ocl-icd-opencl-dev \
-            pciutils
-        fi
         test -f /opt/intel/oneapi/setvars.sh
-        echo "XPU_ONEAPI_PATH=/opt/intel/oneapi" >> "${GITHUB_ENV}"
-        cat <<'EOF' > "${RUNNER_TEMP}/oneapi_env.sh"
-        if [ -f /opt/intel/oneapi/setvars.sh ] && [ "${SETVARS_COMPLETED:-}" != "1" ]; then
-          case "$-" in
-            *u*) set +u; source /opt/intel/oneapi/setvars.sh > /dev/null 2>&1 || true; set -u ;;
-            *)   source /opt/intel/oneapi/setvars.sh > /dev/null 2>&1 || true ;;
-          esac
-          if [ -n "${VENV_ROOT:-}" ] && [ -d "${VENV_ROOT}/bin" ]; then
-            export PATH="${VENV_ROOT}/bin:${PATH}"
-          fi
-        fi
-        EOF
-        echo "BASH_ENV=${RUNNER_TEMP}/oneapi_env.sh" >> "${GITHUB_ENV}"
+        test -f /etc/oneapi_env.sh
+        test -f /etc/torch-pin-constraints.txt
+        test -f /etc/torch_expected.env
+        echo "/opt/venv/bin" >> "${GITHUB_PATH}"
+        {
+          echo "VENV_ROOT=/opt/venv"
+          echo "VIRTUAL_ENV=/opt/venv"
+          echo "XPU_ONEAPI_PATH=/opt/intel/oneapi"
+          echo "BASH_ENV=/etc/oneapi_env.sh"
+          echo "UV_CONSTRAINT=/etc/torch-pin-constraints.txt"
+          echo "PIP_CONSTRAINT=/etc/torch-pin-constraints.txt"
+          cat /etc/torch_expected.env
+        } >> "${GITHUB_ENV}"
+        cat /etc/torch-pin-constraints.txt
+        cat /etc/torch_expected.env
     - name: Check runner
       shell: bash -xe {0}
       run: |
@@ -101,79 +54,44 @@ runs:
         gcc -v && g++ -v
         icpx --version
         uname -a
-        dpkg -l |grep -E 'intel-omix|libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd|xpu-smi'
+        dpkg -l | grep -E 'intel-omix|intel-oneapi-compiler-dpcpp-cpp|libigc-dev|libze1|libze-dev|intel-opencl-icd|xpu-smi' || true
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
-        rm -rf Torch-XPU-Wheel-*
-    - name: Setup python
-      uses: ./.github/actions/setup-python
-      with:
-        python: ${{ inputs.python }}
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v7
       with:
         path: torch-xpu-ops
-    - name: Download Pytorch wheel
-      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-      uses: actions/download-artifact@v8
-      with:
-        pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
-        latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
-        ls -lh "${latest_dir}"/*.whl
-        # Install OMIX torch wheel first for pure-python deps, then install pinned
-        # torchvision/torchaudio and nightly triton-xpu with --no-deps so torch is never replaced.
-        uv pip install "${latest_dir}"/torch-*.whl
-        uv pip install --no-deps "${latest_dir}"/torchvision-*.whl "${latest_dir}"/torchaudio-*.whl "${latest_dir}"/*triton*.whl
-        uv pip install pillow numpy filelock
-
-        TORCH_COMMIT_ID="$(python -c 'import torch; print(torch.version.git_version)')"
-        TORCH_SO_SHA256="$(python -c 'import hashlib, pathlib, torch; p = pathlib.Path(torch.__file__).parent / "lib/libtorch_xpu.so"; print(hashlib.sha256(p.read_bytes()).hexdigest())')"
-        CONSTRAINT_FILE="/tmp/torch-pin-constraints.txt"
-        python - <<'PY' > "${CONSTRAINT_FILE}"
-        import importlib.metadata as md
-        print("setuptools<81")
-        for pkg in ("torch", "torchvision", "torchaudio", "triton-xpu"):
-            print(f"{pkg}=={md.version(pkg)}")
-        PY
-        cat "${CONSTRAINT_FILE}"
-        {
-          echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}"
-          echo "TORCH_SO_SHA256=${TORCH_SO_SHA256}"
-          echo "UV_CONSTRAINT=${CONSTRAINT_FILE}"
-          echo "PIP_CONSTRAINT=${CONSTRAINT_FILE}"
-        } >> "${GITHUB_ENV}"
-        export UV_CONSTRAINT="${CONSTRAINT_FILE}"
-        export PIP_CONSTRAINT="${CONSTRAINT_FILE}"
-
-        if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+        export UV_CONSTRAINT="/etc/torch-pin-constraints.txt"
+        export PIP_CONSTRAINT="/etc/torch-pin-constraints.txt"
+        if [[ "${{ inputs.pytorch }}" == *"https://"* ]]; then
+          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} | sed 's/@.*//')"
         else
           PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
         fi
-        git clone ${PYTORCH_REPO} pytorch
+        rm -rf pytorch
+        git clone "${PYTORCH_REPO}" pytorch
         cd pytorch
-        git checkout ${TORCH_COMMIT_ID}
+        git checkout "${TORCH_COMMIT_ID}"
         # apply extra PRs for stock pytorch
-        uv pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
-        if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-          TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-          TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
+        if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]]; then
+          TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} | sed 's/@.*//')"
+          TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} | sed 's/.*@//')"
         else
           TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
           TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
         fi
         SOURCE_ARG=()
-        if [ "${{ github.event_name }}" == "pull_request" ];then
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
           SOURCE_ARG=(--source "${{ github.workspace }}/torch-xpu-ops")
         fi
-        if [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
+        if [[ "${{ inputs.pytorch }}" != *"_wheel" ]]; then
           SOURCE_ARG+=(--built-wheel)
         fi
         python torch-xpu-ops/.github/scripts/checkout_torch_xpu_ops.py \
@@ -181,51 +99,44 @@ runs:
           --repo "${TORCH_XPU_OPS_REPO}" \
           --ref "${TORCH_XPU_OPS_COMMIT}" \
           --prefer-wheel "${SOURCE_ARG[@]}"
-    - name: Install E2E Requirements
+    - name: Install Suite Requirements
       shell: bash -xe {0}
       run: |
-        export UV_CONSTRAINT="/tmp/torch-pin-constraints.txt"
-        export PIP_CONSTRAINT="/tmp/torch-pin-constraints.txt"
-        # common
-        uv pip install pandas psutil scipy pyyaml
+        export UV_CONSTRAINT="/etc/torch-pin-constraints.txt"
+        export PIP_CONSTRAINT="/etc/torch-pin-constraints.txt"
         cd pytorch
         # huggingface, timm_models and torchbench all run against the transformers/timm
         # versions pinned by pytorch, so the three suites stay comparable.
         if [[ "${{ inputs.suite }}" == *"huggingface"* || \
               "${{ inputs.suite }}" == *"timm_models"* || \
-              "${{ inputs.suite }}" == *"torchbench"* ]];then
-          # for new LLM models
+              "${{ inputs.suite }}" == *"torchbench"* ]]; then
           uv pip install accelerate
           uv pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt
           TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
-          uv pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
-          # chdir avoids importing the checkout instead of the installed package
+          uv pip install "git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}"
           PINNED_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
           echo "Pinned by pytorch: transformers/timm ${PINNED_VERSIONS}"
         fi
-        if [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+        if [[ "${{ inputs.suite }}" == *"torchbench"* ]]; then
           TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
           cd ../
           rm -rf ./benchmark
           git clone https://github.com/pytorch/benchmark benchmark
           cd benchmark
-          git checkout ${TORCHBENCH_COMMIT_ID}
-          # newer PyTorch drops torch.jit.interface; fall back to a no-op decorator
+          git checkout "${TORCHBENCH_COMMIT_ID}"
           grep -rlE '^\s*@torch\.jit\.interface\s*$' torchbenchmark | xargs -r sed -i -E \
             's/^(\s*)@torch\.jit\.interface\s*$/\1@getattr(torch.jit, "interface", lambda c: c)/'
-          # torchbench carries its own transformers/timm pins, drop them for the pytorch ones
           sed -i -E '/^[[:space:]]*(pynvml|transformers|timm|torch|torchvision|torchaudio|triton)([[:space:]]*[<>=!~;[].*)?[[:space:]]*$/d' requirements.txt
           export PIP_NO_BUILD_ISOLATION=1
           uv pip install -U "pip" "setuptools<81" "wheel"
-          # Follow with standard installation path
           uv pip install -r requirements.txt
-          if [ "${{ github.event_name }}" == "pull_request" ];then
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
             models=$(python -c "import yaml; cfg=yaml.safe_load(open('${{ github.workspace }}/torch-xpu-ops/.ci/benchmarks/p0/config.yaml')); print(' '.join(dict.fromkeys(m for mode in ('inference', 'training') for m in (cfg['models']['torchbench'].get(mode) or []))))")
             python install.py ${models}
           else
-            python install.py --continue_on_fail $(echo "${MODEL_ONLY_NAME}" |sed 's/,/ /g')
+            python install.py --continue_on_fail $(echo "${MODEL_ONLY_NAME}" | sed 's/,/ /g')
           fi
-          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> "${GITHUB_ENV}"
           # for dlrm (exclude bare torch so custom OMIX torch is never touched)
           uv pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt | grep -vxE 'torch|torchvision|torchaudio' | xargs uv pip install
@@ -233,16 +144,14 @@ runs:
           # for soft_actor_critic, temp fix
           uv pip install git+https://github.com/nocoding03/gym@fix-np
           cd ../pytorch
-        elif [[ "${{ inputs.suite }}" != *"huggingface"* && "${{ inputs.suite }}" != *"timm_models"* ]];then
-          # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel
-          # Also drop the intel-openmp cap: it downgrades UR/UMF below the wheel's SYCL runtime
+        elif [[ "${{ inputs.suite }}" != *"huggingface"* && "${{ inputs.suite }}" != *"timm_models"* ]]; then
           sed -i '/mkl\|intel-openmp/d' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
           uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
         fi
-        if [ -n "${PINNED_VERSIONS:-}" ];then
+        if [ -n "${PINNED_VERSIONS:-}" ]; then
           CURRENT_VERSIONS="$(python -c 'import os; os.chdir("/tmp"); import transformers, timm; print(transformers.__version__, timm.__version__)')"
-          if [ "${CURRENT_VERSIONS}" != "${PINNED_VERSIONS}" ];then
+          if [ "${CURRENT_VERSIONS}" != "${PINNED_VERSIONS}" ]; then
             echo "::error::transformers/timm changed from '${PINNED_VERSIONS}' to '${CURRENT_VERSIONS}' while installing suite requirements"
             exit 1
           fi
@@ -251,7 +160,7 @@ runs:
         uv pip uninstall torchao || true
         uv pip install --no-deps torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         # E2E runs on numpy 1.x; reinstall its compiled dependents so they resolve to numpy-1 compatible builds.
-        if [[ "${{ inputs.suite }}" =~ huggingface|timm_models|torchbench|pt2e ]];then
+        if [[ "${{ inputs.suite }}" =~ huggingface|timm_models|torchbench|pt2e ]]; then
           uv pip install "numpy<2" pandas scipy scikit-learn opencv-python numba ml_dtypes
         fi
     - name: Detect devices
@@ -271,17 +180,18 @@ runs:
         python -c "import torchvision; print(torchvision.__version__)"
         python -c "import torchaudio; print(torchaudio.__version__)"
         python -c "import triton; print(triton.__version__)"
+        python -c "import numpy; print('numpy:', numpy.__version__)"
         mkdir -p "${{ github.workspace }}/ut_log/env"
-        python pytorch/torch/utils/collect_env.py |tee "${{ github.workspace }}/ut_log/env/collect_env.log"
+        python pytorch/torch/utils/collect_env.py | tee "${{ github.workspace }}/ut_log/env/collect_env.log"
         printf 'torch=%s\ntorch_xpu_ops=%s\nomix=%s\n' \
           "${TORCH_COMMIT_ID}" \
           "$(git -C pytorch/third_party/torch-xpu-ops rev-parse HEAD 2>/dev/null || echo unknown)" \
           "${{ inputs.omix_version }}" \
           > "${{ github.workspace }}/ut_log/env/versions.txt"
-        uv pip list |grep -E 'torch|intel|triton'
+        uv pip list | grep -E 'torch|intel|triton|numpy'
         TORCH_CHECK_ID="$(python -c 'import torch; print(torch.version.git_version)')"
         TORCH_SO_SHA256_AFTER="$(python -c 'import hashlib, pathlib, torch; p = pathlib.Path(torch.__file__).parent / "lib/libtorch_xpu.so"; print(hashlib.sha256(p.read_bytes()).hexdigest())')"
-        if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ] || [ "${TORCH_SO_SHA256_AFTER}" != "${TORCH_SO_SHA256}" ];then
+        if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ] || [ "${TORCH_SO_SHA256_AFTER}" != "${TORCH_SO_SHA256}" ]; then
           echo "::error::Torch wheel was replaced during env setup! commit: ${TORCH_COMMIT_ID} -> ${TORCH_CHECK_ID}, sha256: ${TORCH_SO_SHA256} -> ${TORCH_SO_SHA256_AFTER}"
           exit 1
         fi

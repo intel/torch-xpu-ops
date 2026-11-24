@@ -47,6 +47,9 @@ EOF
 require_command() {
   local cmd="$1"
   local package="$2"
+  if command -v "$cmd" >/dev/null 2>&1; then
+    return 0
+  fi
   sudo -E apt-get update -qq
   sudo -E apt-get install -y -qq "${package}"
   if ! command -v "$cmd" >/dev/null 2>&1; then

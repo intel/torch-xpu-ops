@@ -67,13 +67,13 @@ jobs:
   config:
     name: config
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
     outputs:
       test_type: ${{ steps.scope.outputs.test_type }}
       omix_version: ${{ steps.scope.outputs.omix_version }}
-      wheel_run_id: ${{ steps.scope.outputs.wheel_run_id }}
-      wheel_artifact: ${{ steps.scope.outputs.wheel_artifact }}
-      rhel_omix_repo: ${{ steps.scope.outputs.rhel_omix_repo }}
       expected_sycl_ver: ${{ steps.scope.outputs.expected_sycl_ver }}
       pytorch: ${{ steps.scope.outputs.pytorch }}
       torch_xpu_ops: ${{ steps.scope.outputs.torch_xpu_ops }}
@@ -91,6 +91,12 @@ jobs:
       runner_performance: ${{ steps.scope.outputs.runner_label }}
       image_performance: ${{ steps.scope.outputs.container_image }}
     steps:
+      - name: Checkout ut_known_issues helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/scripts/ut_known_issues.sh
+          sparse-checkout-cone-mode: false
       - name: Resolve OMIX acceptance config and weekly scope
         id: scope
         env:
@@ -109,26 +115,20 @@ jobs:
           case "${IN_OMIX}" in
             0.6|0.6.0)
               omix_version="0.6.0"
-              wheel_run_id="45097895764"
-              wheel_artifact="Torch-XPU-Wheel-a4e2d2f8c4ce73a8bc375cb49c655f98ff5fc4ca-45097895764-1"
-              rhel_omix_repo="https://laurentides.igk.intel.com/repositories/rhel/8.10/testing-intel-omix/20.0/unified/intel-gpu-8.10.repo"
               expected_sycl_ver="20260300"
               if [[ "${IN_RUNNER}" == *pvc* ]]; then
-                container_image="ubuntu:24.04"
+                container_image="127.0.0.1:5000/omix-acceptance:pvc-0.6.0"
               else
-                container_image="ubuntu:26.04"
+                container_image="127.0.0.1:5000/omix-acceptance:bmg-0.6.0"
               fi
               ;;
             0.5|0.5.0)
               omix_version="0.5.0"
-              wheel_run_id="45097842215"
-              wheel_artifact="Torch-XPU-Wheel-a4e2d2f8c4ce73a8bc375cb49c655f98ff5fc4ca-45097842215-1"
-              rhel_omix_repo="https://repositories.intel.com/gpu/rhel/8.10/intel-omix/0.5/unified/intel-gpu-8.10.repo"
               expected_sycl_ver="20260200"
               if [[ "${IN_RUNNER}" == *pvc* ]]; then
-                container_image="intel/omix:0.5.0-devel-ubuntu24.04"
+                container_image="127.0.0.1:5000/omix-acceptance:pvc-0.5.0"
               else
-                container_image="intel/omix:0.5.0-devel-ubuntu26.04"
+                container_image="127.0.0.1:5000/omix-acceptance:bmg-0.5.0"
               fi
               ;;
             *)
@@ -144,9 +144,6 @@ jobs:
           {
             echo "test_type=build-ondemand"
             echo "omix_version=${omix_version}"
-            echo "wheel_run_id=${wheel_run_id}"
-            echo "wheel_artifact=${wheel_artifact}"
-            echo "rhel_omix_repo=${rhel_omix_repo}"
             echo "expected_sycl_ver=${expected_sycl_ver}"
             echo "runner_label=${IN_RUNNER}"
             echo "container_image=${container_image}"
@@ -160,33 +157,30 @@ jobs:
             echo "run_ut=$([ "${ut}" != "[]" ] && echo true || echo false)"
             echo "run_e2e=$([ "${suite}" != "[]" ] && echo true || echo false)"
           } | tee -a "${GITHUB_OUTPUT}"
-
-  linux-build:
-    name: linux-build
-    needs: config
-    secrets:
-      WHEEL_DOWNLOAD_TOKEN: ${{ secrets.WHEEL_DOWNLOAD_TOKEN }}
-      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-    strategy:
-      fail-fast: false
-      matrix:
-        build: [build]
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      runner: build
-      omix_version: ${{ needs.config.outputs.omix_version }}
-      wheel_run_id: ${{ needs.config.outputs.wheel_run_id }}
-      wheel_artifact: ${{ needs.config.outputs.wheel_artifact }}
-      rhel_omix_repo: ${{ needs.config.outputs.rhel_omix_repo }}
-      expected_sycl_ver: ${{ needs.config.outputs.expected_sycl_ver }}
-      pytorch: ${{ needs.config.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.config.outputs.torch_xpu_ops }}
-      triton: ${{ needs.config.outputs.triton }}
-      python: ${{ needs.config.outputs.python }}
+      - name: Snapshot open skipped issues
+        if: ${{ steps.scope.outputs.run_ut == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          touch known_issue_static.log issues_snapshot.log issues_snapshot_bmg.log issues_snapshot_dpclang.log
+          bash .github/scripts/ut_known_issues.sh static > known_issue_static.log
+          bash .github/scripts/ut_known_issues.sh open "" > issues_snapshot.log
+          bash .github/scripts/ut_known_issues.sh open "" "bmg-test" "extra-only" > issues_snapshot_bmg.log
+          bash .github/scripts/ut_known_issues.sh open "dpclang" "" "extra-only" > issues_snapshot_dpclang.log
+      - name: Upload known issues snapshot
+        if: ${{ ! cancelled() && steps.scope.outputs.run_ut == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: UT-Known-Issues
+          path: |
+            known_issue_static.log
+            issues_snapshot.log
+            issues_snapshot_bmg.log
+            issues_snapshot_dpclang.log
 
   linux-ut:
     name: linux-ut
-    needs: [config, linux-build]
+    needs: [config]
     if: ${{ needs.config.outputs.run_ut == 'true' }}
     secrets:
       DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
@@ -213,7 +207,7 @@ jobs:
 
   linux-e2e:
     name: linux-e2e
-    needs: [config, linux-build]
+    needs: [config]
     if: ${{ needs.config.outputs.run_e2e == 'true' }}
     secrets:
       DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}

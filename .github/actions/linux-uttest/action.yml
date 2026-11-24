@@ -237,8 +237,10 @@ runs:
         esac
         # Distributed needs an etcd rendezvous and the XCCL topology
         if [[ "${category}" == 'distributed' ]]; then
-          sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends etcd-server
-          uv pip install python-etcd
+          if ! command -v etcd >/dev/null 2>&1; then
+            sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends etcd-server
+          fi
+          python -c "import etcd" 2>/dev/null || uv pip install python-etcd
           xpu-smi topology -m
         fi
         # Exit code 1 means test failures, which the check job reports; fail only on setup errors
