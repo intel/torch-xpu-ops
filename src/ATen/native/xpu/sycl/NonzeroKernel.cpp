@@ -12,6 +12,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/xpu/XPUContext.h>
+#include <c10/util/llvmMathExtras.h>
 
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/Memory.h>
@@ -276,8 +277,9 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
   // ---- Pass 1: count nonzeros per chunk via work-group reduction ----
   using CountFunctor = CountNonzerosKernelFunctor<scalar_t>;
-  const int64_t count_wg_size =
-      at::xpu::getKernelMaxWorkGroupSize<CountFunctor>();
+  // The count reduction halves the work-group, so it must be a power of two.
+  const int64_t count_wg_size = c10::llvm::PowerOf2Floor(
+      at::xpu::getKernelMaxWorkGroupSize<CountFunctor>());
 
   // Pre-allocate a single device buffer wide enough to hold every WG's partial
   // sum for every chunk. All count kernels are enqueued without blocking so

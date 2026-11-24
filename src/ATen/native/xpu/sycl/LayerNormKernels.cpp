@@ -15,6 +15,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/xpu/XPUContext.h>
+#include <c10/util/llvmMathExtras.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -879,8 +880,13 @@ void launch_vectorized_layer_norm_kernel(
   }
 
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
+  // compute_stats tree-reduces subgroups by halving, so keep wg_size a power
+  // of two even if the kernel max work-group size is not (e.g. 768).
   auto wg_size = layer_norm_wg_size_select(
-      at::xpu::getKernelMaxWorkGroupSize<KernelClass>(), M, N / vec_size<T>);
+      c10::llvm::PowerOf2Floor(
+          at::xpu::getKernelMaxWorkGroupSize<KernelClass>()),
+      M,
+      N / vec_size<T>);
   KernelClass kfn(
       N,
       eps,
