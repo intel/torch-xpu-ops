@@ -88,7 +88,7 @@ sub-item is labeled; the loop is identical.
 
 - A GitHub issue on `intel/torch-xpu-ops` or `pytorch/pytorch` (URL,
   number, or raw body).
-- `pytorch_dir` — path to a local pytorch checkout, resolved as
+- `PYTORCH_DIR` — path to a local pytorch checkout, resolved as
   described in `fix-reproduce` Prepare. If absent, this skill lets
   `fix-reproduce` / `fix-root-cause` clone it into
   `$XPU_OPS_ROOT/agent_space_xpu/pytorch/`.
@@ -260,7 +260,12 @@ Branch on its verdict:
 - `REPRODUCED` → continue to Stage 3. Record the `refined_command`
   and `base` for downstream stages.
 - `NOT_REPRODUCED` → the issue is stale; Stage 6 Report with
-  `SKIPPED(reason=no_longer_reproduces)`.
+  `SKIPPED(reason=no_longer_reproduces)` — unless the trigger asks for
+  a change that doesn't need a repro (e.g. "add a regression test").
+  Then run Stages 3–5 as normal (upstream issue → `target_repo=pytorch`;
+  `root_cause` = "no longer reproduces; test-only change"). The test must
+  pass on `$base`, and should fail on an affected build if one is
+  available. Report `IMPLEMENTING(fix_verified)` and note that it's test-only.
 - `NO_REPRODUCER` → Stage 6 Report with
   `NEEDS_HUMAN(reason=no_reproducer)`.
 - `CANNOT_VERIFY` → Stage 6 Report with
@@ -410,10 +415,10 @@ For each sub-item:
 3. **Root-cause, then branch.** Run **Stage 3** (`fix-root-cause`)
    first — it returns `target_repo`, which decides *which* checkout the
    fix (and thus the branch) lives in:
-   - `target_repo=pytorch` → `target_repo_dir = pytorch_dir`, base is
+   - `target_repo=pytorch` → `target_repo_dir = PYTORCH_DIR`, base is
      the reproduce `base` on the pytorch tree.
    - `target_repo=torch-xpu-ops` →
-     `target_repo_dir = pytorch_dir/third_party/torch-xpu-ops`, base is
+     `target_repo_dir = PYTORCH_DIR/third_party/torch-xpu-ops`, base is
      `xpu_ops_base` (the submodule's pinned commit from the shared
      recipe). `fix-implement` / `fix-verify` handle the `xpu.txt` pin
      rewrite internally; the orchestrator only creates the branch.
@@ -611,7 +616,7 @@ Branch on its `verdict`:
 
 ## Stage 4 — Implement (`fix-implement`)
 
-Call `fix-implement` with `triage_result`, `pytorch_dir`,
+Call `fix-implement` with `triage_result`, `PYTORCH_DIR`,
 `target_repo_dir` (derived from `target_repo`), and `allow_skip`:
 
 `allow_skip` follows the issue:

@@ -49,7 +49,7 @@ the result.
 - `ci_commit` — upstream commit hash from the CI report. Only used as a
   fallback base when `origin/main` fails to build (optional; ignored when
   `stage=nightly`).
-- `pytorch_dir` — path to a local PyTorch checkout (optional). Used
+- `PYTORCH_DIR` — path to a local PyTorch checkout (optional). Used
   whenever Prepare determines `needs_tree=yes` (any pytest form with a
   repo-relative path) as well as by Stage 2's source build. If absent,
   clone to `<torch-xpu-ops-repo-root>/agent_space_xpu/pytorch/`
@@ -84,7 +84,7 @@ Some reproducer forms need a pytorch source tree even at Stage 1
 `pytorch/test/` or because it lives under `torch-xpu-ops/test/xpu/`
 and imports common test utilities via
 `sys.path.append("../../../../test/functorch")` relative paths that
-only resolve from `<pytorch_dir>/third_party/torch-xpu-ops/test/xpu/`.
+only resolve from `<PYTORCH_DIR>/third_party/torch-xpu-ops/test/xpu/`.
 
 ### When to prepare
 
@@ -102,20 +102,20 @@ If `needs_tree=no`, skip this section and go to Stage 1.
 
 ### Get the pytorch tree
 
-If `pytorch_dir` was provided as input: `git -C $pytorch_dir fetch origin`.
+If `PYTORCH_DIR` was provided as input: `git -C $PYTORCH_DIR fetch origin`.
 
 If not provided, clone into the torch-xpu-ops repo's gitignored scratch
 dir. Resolve the path explicitly rather than relying on cwd:
 
 ```bash
 XPU_OPS_ROOT=$(git -C <path-to-torch-xpu-ops-checkout> rev-parse --show-toplevel)
-pytorch_dir="$XPU_OPS_ROOT/agent_space_xpu/pytorch"
-if [[ ! -d "$pytorch_dir/.git" ]]; then
-  git clone --filter=blob:none https://github.com/pytorch/pytorch.git "$pytorch_dir"
+PYTORCH_DIR="$XPU_OPS_ROOT/agent_space_xpu/pytorch"
+if [[ ! -d "$PYTORCH_DIR/.git" ]]; then
+  git clone --filter=blob:none https://github.com/pytorch/pytorch.git "$PYTORCH_DIR"
 fi
-git -C "$pytorch_dir" fetch origin
-git -C "$pytorch_dir" checkout --detach origin/main
-git -C "$pytorch_dir" submodule update --init --recursive
+git -C "$PYTORCH_DIR" fetch origin
+git -C "$PYTORCH_DIR" checkout --detach origin/main
+git -C "$PYTORCH_DIR" submodule update --init --recursive
 ```
 
 The tree is **not built** here — Stage 1 uses the nightly wheel for the
@@ -125,10 +125,10 @@ Stage 2 reuses the same tree and builds it there.
 ### torch-xpu-ops test path
 
 If the reproducer targets `test/xpu/...`, make the working torch-xpu-ops
-tree available at `$pytorch_dir/third_party/torch-xpu-ops`. The build's
+tree available at `$PYTORCH_DIR/third_party/torch-xpu-ops`. The build's
 dev-override recipe (symlink or replace-clone) applies; see
 `xpu-build-pytorch`. From here on, Stage 1's cwd for pytest is
-`$pytorch_dir/third_party/torch-xpu-ops/test/xpu/`.
+`$PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/`.
 
 ### Collect-only check (pytest form)
 
@@ -142,7 +142,7 @@ pytest --collect-only <node_id>
 
 Cwd:
 - `needs_tree=yes` → from the tree just prepared (for `test/xpu/...`
-  targets, that's `$pytorch_dir/third_party/torch-xpu-ops/test/xpu/`)
+  targets, that's `$PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/`)
 - `needs_tree=no` → from any non-pytorch directory (the reproducer's
   absolute path resolves on its own)
 
@@ -224,10 +224,10 @@ absolute path from outside the tree.
 ### torch-xpu-ops test invocation
 
 **Applies when the reproducer targets a test under `torch-xpu-ops/test/xpu/`.**
-Prepare has already ensured the pytorch tree exists at `$pytorch_dir`
+Prepare has already ensured the pytorch tree exists at `$PYTORCH_DIR`
 with the working torch-xpu-ops tree at
-`$pytorch_dir/third_party/torch-xpu-ops`. Invoke the reproducer from
-`$pytorch_dir/third_party/torch-xpu-ops/test/xpu/` — the relative
+`$PYTORCH_DIR/third_party/torch-xpu-ops`. Invoke the reproducer from
+`$PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/` — the relative
 `sys.path.append("../../../../test/functorch")` in those tests only
 resolves from that cwd.
 
@@ -318,12 +318,12 @@ stages branch off it.
 
 ### Prepare pytorch checkout
 
-If Prepare (above) already ran (`needs_tree=yes`), `$pytorch_dir` is
+If Prepare (above) already ran (`needs_tree=yes`), `$PYTORCH_DIR` is
 detached at `origin/main` with submodules initialized — skip to
 "Build and run".
 
 Otherwise (Prepare was skipped because `needs_tree=no`), run Prepare's
-"Get the pytorch tree" recipe now: resolve `$pytorch_dir` (from input
+"Get the pytorch tree" recipe now: resolve `$PYTORCH_DIR` (from input
 or `$XPU_OPS_ROOT/agent_space_xpu/pytorch`), clone if missing, fetch,
 `checkout --detach origin/main`, `submodule update --init --recursive`.
 
@@ -341,8 +341,8 @@ If the `origin/main` build fails for a reason unrelated to the bug
 available, fall back once:
 
 ```bash
-git -C $pytorch_dir checkout --detach $ci_commit
-git -C $pytorch_dir submodule update --init --recursive
+git -C $PYTORCH_DIR checkout --detach $ci_commit
+git -C $PYTORCH_DIR submodule update --init --recursive
 ```
 
 Rebuild via `xpu-build-pytorch`. If this succeeds, proceed with the
@@ -396,14 +396,14 @@ reproducer runs.
 
 ```bash
 # Restore xpu.txt to origin's pinned commit (in case Stage 2 rewrote it).
-git -C "$pytorch_dir" checkout -- third_party/xpu.txt
+git -C "$PYTORCH_DIR" checkout -- third_party/xpu.txt
 # Discard stage-2 build outputs. `git clean` does not recurse into
 # nested repositories by default, so third_party/torch-xpu-ops (a
 # separate git repo) is preserved without needing `-e`.
-git -C "$pytorch_dir" clean -fdx
+git -C "$PYTORCH_DIR" clean -fdx
 ```
 
-Alternatively, run the reproducer with `cwd` outside `$pytorch_dir`
+Alternatively, run the reproducer with `cwd` outside `$PYTORCH_DIR`
 (e.g. `cd /tmp`) so `import torch` resolves against site-packages,
 matching Stage 1's "Working directory" rule. Do at least one.
 
@@ -598,14 +598,14 @@ pip install --force-reinstall "$WHEELS_DIR"/*.whl
 
 Align the pytorch source tree to the wheel's commit so tests that
 import support modules from `pytorch/test/` see matching code (Prepare
-left `$pytorch_dir` detached at `origin/main`, which is not the wheel's
+left `$PYTORCH_DIR` detached at `origin/main`, which is not the wheel's
 commit):
 
 ```bash
 TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-git -C "$pytorch_dir" fetch origin
-git -C "$pytorch_dir" checkout --detach "$TORCH_COMMIT_ID"
-git -C "$pytorch_dir" submodule update --init --recursive
+git -C "$PYTORCH_DIR" fetch origin
+git -C "$PYTORCH_DIR" checkout --detach "$TORCH_COMMIT_ID"
+git -C "$PYTORCH_DIR" submodule update --init --recursive
 ```
 
 Do not shallow-fetch (`--depth 1`) here — pytorch's nested submodules
@@ -621,7 +621,7 @@ off `origin/main` (see Stage 2), so this stage still reports
 `base=origin/main`; `TORCH_COMMIT_ID` stays internal to Stage 3.
 
 For torch-xpu-ops test paths, ensure the working torch-xpu-ops tree is
-at `$pytorch_dir/third_party/torch-xpu-ops` (Prepare already handled
+at `$PYTORCH_DIR/third_party/torch-xpu-ops` (Prepare already handled
 this if `needs_tree=yes`; if it didn't, do it now via the
 `xpu-build-pytorch` dev-override recipe).
 
@@ -629,7 +629,7 @@ this if `needs_tree=yes`; if it didn't, do it now via the
 
 Run in the current shell — no `docker run` wrapper. Working-directory
 rule from Stage 1 applies: for torch-xpu-ops tests use
-`$pytorch_dir/third_party/torch-xpu-ops/test/xpu/`; for a
+`$PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/`; for a
 non-test-file reproducer, `cd /tmp` (or any non-pytorch dir).
 
 Result interpretation is the form-specific rule from Stage 1 "Run

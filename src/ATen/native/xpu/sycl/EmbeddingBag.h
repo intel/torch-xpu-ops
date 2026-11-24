@@ -207,8 +207,8 @@ void embedding_bag_per_sample_weights_backward_kernel(
   int num_sg = num_group * max_group_size / sgSize; // number of sub-groups
   for (int sample_idx = sgId; sample_idx < num_samples; sample_idx += num_sg) {
     accscalar_t result = 0.;
-    const int bag_idx = (int)offset2bag[sample_idx];
-    const int embedding_idx = (int)indices[sample_idx];
+    const index_t bag_idx = offset2bag[sample_idx];
+    const index_t embedding_idx = indices[sample_idx];
     if (embedding_idx != padding_idx) {
       for (int feature_idx = sglid; feature_idx < embedding_features;
            feature_idx += sgSize) {

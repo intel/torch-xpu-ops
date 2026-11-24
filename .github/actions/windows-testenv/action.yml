@@ -1,5 +1,5 @@
 name: Windows Test Environment
-description: Install oneAPI, a fresh conda env, the torch wheel and the pytorch / torch-xpu-ops sources for Windows UT
+description: Install oneAPI, a fresh uv venv, the torch wheel and the pytorch / torch-xpu-ops sources for Windows UT
 
 inputs:
   pytorch:
@@ -12,12 +12,16 @@ inputs:
     default: ''
     description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
   xpu_version:
-    default: '2026.1'
+    default: '2026.2'
     description: XPU version
 
 runs:
   using: composite
   steps:
+    # -NoProfile: `conda init powershell` hooks the profile and would activate base again.
+    - name: Clean job environment
+      shell: cmd
+      run: powershell -NoProfile -ExecutionPolicy Bypass -File .github\scripts\windows_env_check.ps1 -Fix
     - name: Clean compile caches
       shell: cmd
       run: |
@@ -49,29 +53,27 @@ runs:
         set XPU_VERSION=${{ inputs.xpu_version }}
         call .github\scripts\install_xpu.bat
         if errorlevel 1 exit /b 1
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v9.0.0
     - name: Setup Python Environment
       shell: cmd
       run: |
-        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-        rmdir /s /q "C:\ProgramData\miniforge3\envs\windows_ut"
-        call conda clean -ay
-        call conda remove --all -y -n windows_ut
-        call conda create -n windows_ut python=%PYTHON_VERSION% -y
-        if errorlevel 1 exit /b 1
-        call conda activate windows_ut
-        REM Without this, a failed activate leaves base active and everything below lands there.
-        if /i not "%CONDA_DEFAULT_ENV%" == "windows_ut" echo ::error::conda env windows_ut is not active
-        if /i not "%CONDA_DEFAULT_ENV%" == "windows_ut" exit /b 1
+        set "VENV=%RUNNER_TEMP%\venv"
+        REM only-managed: a conda base Python would make torch register its Library\bin as a DLL dir.
+        uv venv --clear --python-preference only-managed --python %PYTHON_VERSION% "%VENV%" || exit /b 1
+        uv pip install --python "%VENV%\Scripts\python.exe" -U pip wheel "setuptools<81" || exit /b 1
+        >>"%GITHUB_PATH%" echo %VENV%\Scripts
+        >>"%GITHUB_ENV%" echo VIRTUAL_ENV=%VENV%
+    - name: Check Python Environment
+      shell: cmd
+      run: |
+        powershell -NoProfile -ExecutionPolicy Bypass -File .github\scripts\windows_env_check.ps1 || exit /b 1
+        where python
+        python -c "import os, sys; print('base_prefix', sys.base_prefix); assert os.path.samefile(sys.prefix, os.environ['VIRTUAL_ENV']), 'python on PATH is not the venv'; assert not os.path.isdir(os.path.join(sys.base_prefix, 'Library', 'bin')), 'base Python has Library\\bin'" || exit /b 1
         python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist || exit /b 1
-        call conda install -y libuv
-        if errorlevel 1 exit /b 1
-        call conda install -y rust
-        if errorlevel 1 exit /b 1
     - name: Install PyTorch Wheel
       shell: cmd
       run: |
-        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-        call conda activate windows_ut
         set PYTORCH_INPUT=${{ inputs.pytorch }}
         echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul
         if errorlevel 1 goto :install_built
@@ -93,8 +95,6 @@ runs:
     - name: Prepare PyTorch and torch-xpu-ops Source
       shell: cmd
       run: |
-        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-        call conda activate windows_ut
         REM Test sources must match the installed torch, whether it is a nightly
         REM wheel or the wheel windows-build made from an earlier main.
         for /f "delims=" %%v in ('python -c "import torch; print(torch.version.git_version)"') do set TORCH_COMMIT_ID=%%v
@@ -119,7 +119,7 @@ runs:
         git checkout %TORCH_COMMIT_ID% || exit /b 1
         git show -s
 
-        REM A wheel built in this run records its exact commit (torch/xpu.txt);
+        REM A wheel built in this run records its exact commit (torch.version.xpu_ops_commit);
         REM use it for any ref. Published wheels only consult it for `pinned`.
         set BUILT_ARG=--built-wheel
         echo %PYTORCH_INPUT% | findstr /C:"_wheel" >nul && set BUILT_ARG=
@@ -136,16 +136,12 @@ runs:
     - name: Install XPU worker restart pytest plugin
       shell: cmd
       run: |
-        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-        call conda activate windows_ut
         REM Global pytest plugin: auto-registered via pytest11 entry point,
         REM restarts an xdist worker on fatal XPU failures (device lost/OOM/crash).
         python -m pip install "%GITHUB_WORKSPACE%\.github\scripts\pytest_custom_config" || exit /b 1
     - name: Torch Config Check
       shell: cmd
       run: |
-        call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-        call conda activate windows_ut
         python -c "import torch; print(torch.__config__.show())"
         python -c "import torch; print(torch.__config__.parallel_info())"
         python -c "import torch; print(torch.xpu.device_count())"
