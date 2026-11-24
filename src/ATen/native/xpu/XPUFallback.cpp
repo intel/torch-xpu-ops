@@ -346,6 +346,7 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
       "cholesky_inverse.out",
       "_cholesky_solve_helper",
       "_efficient_attention_forward",
+      "hash_tensor.out",
       "linalg_cholesky_ex.L",
       "linalg_eig",
       "linalg_eig.out",
