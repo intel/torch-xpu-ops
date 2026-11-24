@@ -238,16 +238,26 @@ runs:
     - name: Detect devices
       shell: bash -euo pipefail {0}
       run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'
-    - name: Replace torch with pytorch run 44455726062 wheel
+    - name: Replace torch with pytorch run 44455726062 wheel and triton with pytorch run 45280070281 wheel
       shell: bash -xe {0}
       run: |
-        rm -rf manywheel-py3_12-xpu
+        rm -rf manywheel-py3_12-xpu triton-wheel-3.12-xpu-manylinux_2_28_x86_64
         if [ -d /workspace/local/manywheel-py3_12-xpu ]; then
           ln -s /workspace/local/manywheel-py3_12-xpu manywheel-py3_12-xpu
         else
           gh --repo pytorch/pytorch run download 44455726062 -p "manywheel-py3_12-xpu"
         fi
-        uv pip install numpy triton-xpu manywheel-py3_12-xpu/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl --index-url https://download.pytorch.org/whl/nightly/xpu --pre
+        if [ -d /workspace/local/triton-wheel-3.12-xpu-manylinux_2_28_x86_64 ]; then
+          ln -s /workspace/local/triton-wheel-3.12-xpu-manylinux_2_28_x86_64 triton-wheel-3.12-xpu-manylinux_2_28_x86_64
+        else
+          gh --repo pytorch/pytorch run download 45280070281 -n "triton-wheel-3.12-xpu-manylinux_2_28_x86_64" -D triton-wheel-3.12-xpu-manylinux_2_28_x86_64
+        fi
+        if [[ "${{ inputs.suite }}" =~ huggingface|timm_models|torchbench|pt2e ]]; then
+          uv pip install "numpy<2" triton-xpu pyelftools manywheel-py3_12-xpu/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl --index-url https://download.pytorch.org/whl/nightly/xpu --pre
+        else
+          uv pip install numpy triton-xpu pyelftools manywheel-py3_12-xpu/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl --index-url https://download.pytorch.org/whl/nightly/xpu --pre
+        fi
+        uv pip install --no-deps --force-reinstall triton-wheel-3.12-xpu-manylinux_2_28_x86_64/triton_xpu-*.whl
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> "${GITHUB_ENV}"
     - name: Torch Config
@@ -270,7 +280,7 @@ runs:
           "${TORCH_COMMIT_ID}" \
           "$(git -C pytorch/third_party/torch-xpu-ops rev-parse HEAD 2>/dev/null || echo unknown)" \
           > "${{ github.workspace }}/ut_log/env/versions.txt"
-        uv pip list |grep -E 'torch|intel'
+        uv pip list |grep -E 'torch|intel|triton'
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
           echo "Torch is re-installed when installing deps, please check"
