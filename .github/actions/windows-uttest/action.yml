@@ -42,8 +42,8 @@ runs:
       continue-on-error: true
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-        cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
-        python run_test_win_with_skip_mtl.py
+        cd ../pytorch/test/
+        python ../third_party/torch-xpu-ops/test/xpu/run_test_win_with_skip_mtl.py
 
         if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
         copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y

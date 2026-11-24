@@ -1287,34 +1287,49 @@ def launch_test(test_case, skip_list=None, exe_list=None, xml_prefix="op_ut"):
 
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
+    norm_case = test_case.replace("\\", "/")
+    pytorch_test_prefix = "../../../../test/"
+    if norm_case.startswith(pytorch_test_prefix):
+        # Launch stock PyTorch UTs from pytorch/test/ while keeping the JUnit
+        # XML report in the caller's working directory.
+        run_cwd = os.path.abspath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../test")
+        )
+        run_target = norm_case[len(pytorch_test_prefix) :]
+    else:
+        run_cwd = None
+        run_target = test_case
     # check-ut.py derives the result category from this prefix, so it must match
     # the UT job name that runs the test.
     if skip_list is not None and len(skip_list) > 0:
         k_expr = "not " + " and not ".join(skip_list)
+        xml_path = os.path.abspath(f"./{xml_prefix}_with_skip.{module_name}.xml")
         cmd_args = [
             "pytest",
-            f"--junit-xml=./{xml_prefix}_with_skip.{module_name}.xml",
-            test_case,
+            f"--junit-xml={xml_path}",
+            run_target,
             "-k",
             k_expr,
         ]
     elif exe_list is not None and len(exe_list) > 0:
         k_expr = " or ".join(exe_list)
+        xml_path = os.path.abspath(f"./{xml_prefix}_with_exe.{module_name}.xml")
         cmd_args = [
             "pytest",
-            f"--junit-xml=./{xml_prefix}_with_exe.{module_name}.xml",
-            test_case,
+            f"--junit-xml={xml_path}",
+            run_target,
             "-k",
             k_expr,
         ]
     else:
+        xml_path = os.path.abspath(f"./{xml_prefix}_with_all.{module_name}.xml")
         cmd_args = [
             "pytest",
-            f"--junit-xml=./{xml_prefix}_with_all.{module_name}.xml",
-            test_case,
+            f"--junit-xml={xml_path}",
+            run_target,
         ]
     # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows
-    result = subprocess.run(cmd_args)
+    result = subprocess.run(cmd_args, cwd=run_cwd)
     return result.returncode
 
 

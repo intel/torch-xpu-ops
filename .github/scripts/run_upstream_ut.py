@@ -111,14 +111,33 @@ class Job:
     allow_empty: bool = False  # pytest exit code 5: nothing selected
 
 
+def normalize_test_file(test_file, pytorch_dir, test_dir):
+    """Normalize a CLI or issue test file path to ('test/...', '<rel-to-test>')."""
+    candidate = Path(test_file)
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+        if resolved.is_relative_to(test_dir):
+            rel = resolved.relative_to(test_dir).as_posix()
+            return f"test/{rel}", rel
+    raw = test_file.replace("\\", "/")
+    while raw.startswith("./"):
+        raw = raw[2:]
+    if not pytorch_dir.is_absolute():
+        pt_prefix = pytorch_dir.as_posix().strip("./")
+        if pt_prefix and raw.startswith(f"{pt_prefix}/"):
+            raw = raw[len(pt_prefix) + 1 :]
+    rel = raw.removeprefix("test/")
+    return f"test/{rel}", rel
+
+
 def file_jobs(args, env, files):
     """One plain pytest run per file, from test/ like run_test.py does."""
     test_dir = (args.pytorch_dir / "test").resolve()
     xml_dir = args.xml_dir.resolve()
     jobs = []
-    for test_file in files:
+    for raw_file in files:
+        test_file, rel = normalize_test_file(raw_file, args.pytorch_dir, test_dir)
         name = test_file.replace("/", "_")
-        rel = test_file.removeprefix("test/")
         cmd = [
             sys.executable,
             "-m",

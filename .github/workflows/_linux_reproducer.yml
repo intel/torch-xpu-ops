@@ -74,13 +74,12 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          cd pytorch
+          cd pytorch/third_party/torch-xpu-ops
           echo "=== Running changed reproducer files ==="
-          # Convert file paths to pytest-compatible paths under third_party/torch-xpu-ops/
           REPRO_FILES=""
           while IFS= read -r f; do
             [ -z "$f" ] && continue
-            REPRO_FILES="$REPRO_FILES third_party/torch-xpu-ops/$f"
+            REPRO_FILES="$REPRO_FILES $f"
           done <<< "${{ steps.changed-repro.outputs.files }}"
           echo "Files: $REPRO_FILES"
           pytest $REPRO_FILES -v 2>&1 | tee ${{ github.workspace }}/reproducer_output.txt

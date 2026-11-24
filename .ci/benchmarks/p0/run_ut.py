@@ -97,17 +97,18 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                     or any(c in path for c in "\r\n\0:")
                 ):
                     raise ValueError(f"Invalid test path: {path!r}")
+                posix_path = Path(path).as_posix()
                 if repo == "pytorch":
                     # Launch stock PyTorch UTs from pytorch/test/ rather than the
                     # repo root so child `python -c "import torch"` subprocesses do
                     # not shadow an installed wheel with the unbuilt source `torch/`.
-                    if Path(path).parts[:1] != ("test",) or len(Path(path).parts) < 2:
+                    if Path(posix_path).parts[:1] != ("test",) or len(Path(posix_path).parts) < 2:
                         raise ValueError(f"PyTorch test path must be under test/: {path!r}")
                     cwd = root / "test"
-                    target = Path(path).relative_to("test").as_posix()
+                    target = Path(posix_path).relative_to("test").as_posix()
                 else:
                     cwd = root
-                    target = path
+                    target = posix_path
                 require_mapping(options, path)
                 if set(options) - {"skip"}:
                     raise ValueError(f"Unknown options for {path}: {set(options)}")
@@ -121,16 +122,16 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                 if not (cwd / target).is_file():
                     # Reported per file at run time so the other files still run.
                     print(f"WARNING: test file does not exist: {cwd / target}", file=sys.stderr, flush=True)
-                name = f"{prefix}{group}__{repo}__{path.replace('/', '__')}_{run_id}"
+                name = f"{prefix}{group}__{repo}__{posix_path.replace('/', '__')}_{run_id}"
                 junit = output / f"{name}.xml"
                 command = pytest_command() + [target, f"--rootdir={root}", f"--junit-xml={junit}"] + [
-                    f"--deselect={path}::{case}" for case in cases
+                    f"--deselect={posix_path}::{case}" for case in cases
                 ]
                 tasks.append(
                     Task(
                         group,
                         repo,
-                        path,
+                        posix_path,
                         target,
                         cwd,
                         command,
@@ -186,6 +187,11 @@ def run_task(task, file_timeout=None):
 
 def run_process(task, log, result, file_timeout):
     # No `with Popen`: its exit waits forever on a child stuck in the GPU driver.
+    popen_kwargs = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        if sys.platform == "win32"
+        else {"start_new_session": True}
+    )
     try:
         process = subprocess.Popen(
             task.command,
@@ -193,7 +199,7 @@ def run_process(task, log, result, file_timeout):
             stdout=log,
             stderr=subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
-            start_new_session=True,
+            **popen_kwargs,
         )
     except OSError as error:
         result["error"] = str(error)
@@ -212,14 +218,22 @@ def run_process(task, log, result, file_timeout):
 
 
 def kill_group(process, log):
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
     try:
         return process.wait(timeout=60)
     except subprocess.TimeoutExpired:
-        log.write(f"\nERROR: pid {process.pid} did not exit after SIGKILL (uninterruptible); abandoned\n")
+        log.write(f"\nERROR: pid {process.pid} did not exit after kill (uninterruptible); abandoned\n")
         return None
 
 

@@ -19,7 +19,15 @@ fail_test = []
 
 # -rA prints PASSED lines, which the UT check needs to collect passing cases.
 os.environ.setdefault("PYTEST_ADDOPTS", "-rA")
-os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
+_pipelining_dir = os.path.abspath(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../../../../test/distributed/pipelining",
+    )
+)
+os.environ["PYTHONPATH"] = os.pathsep.join(
+    p for p in (os.environ.get("PYTHONPATH"), _pipelining_dir) if p
+)
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
 if ret == 0:
