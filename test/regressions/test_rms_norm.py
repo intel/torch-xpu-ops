@@ -10,7 +10,7 @@
 import torch
 import torch.nn as nn
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_utils import parametrize, TestCase
 
 xpu_device = torch.device("xpu")
 
@@ -162,6 +162,40 @@ class TestRMSNorm(TestCase):
         )
 
 
+class TestRMSNormBackwardFp16(TestCase):
+    @parametrize("n", [8192, 20001, 65536])
+    @parametrize("affine", [True, False])
+    def test_backward_large_n(self, device, n, affine):
+        """Regression test for https://github.com/intel/torch-xpu-ops/issues/6310.
+
+        rms_norm backward shares the fH * gamma * dY expression that overflowed
+        float16 for large N.
+        """
+        torch.manual_seed(0)
+        shape, normalized_shape = (2, n), (n,)
+        x = torch.randn(shape, dtype=torch.half)
+        grad = torch.randn(shape, dtype=torch.half)
+        weight = torch.randn(normalized_shape, dtype=torch.half) if affine else None
+
+        def grads(dev, dtype):
+            tensors = [t for t in (x, weight) if t is not None]
+            inputs = [t.to(dev, dtype).requires_grad_() for t in tensors]
+            out = nn.functional.rms_norm(
+                inputs[0], normalized_shape, *inputs[1:], eps=1e-6
+            )
+            return torch.autograd.grad(out, inputs, grad.to(dev, dtype))
+
+        for actual, expected in zip(
+            grads(device, torch.half), grads("cpu", torch.float)
+        ):
+            self.assertEqual(
+                actual.cpu().float(),
+                expected,
+                atol=2e-3 * expected.abs().max().item(),
+                rtol=0,
+            )
+
+
 class TestRMSNormMultidimBackward(TestCase):
     def test_rms_norm_backward_multidim_normalized_shape_large_rows(self, device):
         """Multidimensional input and weight gradients match the CPU reference."""
@@ -191,4 +225,7 @@ class TestRMSNormMultidimBackward(TestCase):
 
 instantiate_device_type_tests(
     TestRMSNormMultidimBackward, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestRMSNormBackwardFp16, globals(), only_for="xpu", allow_xpu=True
 )
