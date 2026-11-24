@@ -2,7 +2,7 @@
 """
 Accuracy Check Script
 Compares test results against reference data and calculates pass rates.
-Reference: bmg/, from BMG B60 run 44046677101 (full p0+p1+p2)
+Reference: bmg/, from BMG B60 run 45102486992 (full p0+p1+p2)
 """
 
 import csv

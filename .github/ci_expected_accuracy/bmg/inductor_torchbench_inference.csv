@@ -1,4 +1,4 @@
-# BMG (Arc Pro B60) accuracy reference, run 44046677101 (release wheel, full p0+p1+p2).
+# BMG (Arc Pro B60) accuracy reference, run 45102486992 (source build from main, full p0+p1+p2).
 # Comment lines above a model explain its non-pass results.
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 BERT_pytorch,pass,pass,pass,pass,pass
@@ -12,15 +12,10 @@ basic_gnn_gin,pass,pass,pass,pass,pass
 basic_gnn_sage,pass,pass,pass,pass,pass
 cm3leon_generate,pass,pass,pass,pass,pass
 dcgan,pass,pass,pass,pass,pass
-demucs,pass,pass,pass,pass,pass
+# demucs float16: fail_to_run - BMG only, #6273
+demucs,pass,pass,fail_to_run,pass,pass
 densenet121,pass,pass,pass,pass,pass
-# detectron2_fcos_r_50_fpn amp_bf16: fail_accuracy - also fails on PVC
-detectron2_fcos_r_50_fpn,pass,pass,pass,fail_accuracy,pass
-# detectron2_maskrcnn_r_50_c4 float32: out of memory - out of memory on B60 (24 GB)
-# detectron2_maskrcnn_r_50_c4 bfloat16/float16/amp_bf16/amp_fp16: fail_accuracy - also fails on PVC
-detectron2_maskrcnn_r_50_c4,out of memory,fail_accuracy,fail_accuracy,fail_accuracy,fail_accuracy
-# dlrm float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - env: NumPy ABI mismatch, #6273
-dlrm,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+dlrm,pass,pass,pass,pass,pass
 doctr_det_predictor,pass,pass,pass,pass,pass
 doctr_reco_predictor,pass,pass,pass,pass,pass
 drq,pass,pass,pass,pass,pass
@@ -31,15 +26,17 @@ hf_Albert,pass,pass,pass,pass,pass
 hf_Bart,pass,pass,pass,pass,pass
 hf_Bert,pass,pass,pass,pass,pass
 hf_Bert_large,pass,pass,pass,pass,pass
-# hf_BigBird float32/amp_bf16/amp_fp16: fail_accuracy - BMG only, #6273
-hf_BigBird,fail_accuracy,pass,pass,fail_accuracy,fail_accuracy
+# hf_BigBird float32/bfloat16/float16/amp_bf16/amp_fp16: UR_RESULT_ERROR - BMG only, #6273
+hf_BigBird,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR
 hf_DistilBert,pass,pass,pass,pass,pass
 hf_GPT2,pass,pass,pass,pass,pass
-hf_GPT2_large,pass,pass,pass,pass,pass
-# hf_Longformer float32: fail_accuracy - BMG only, #6273
-hf_Longformer,fail_accuracy,pass,pass,pass,pass
+# hf_GPT2_large float32: UR_RESULT_ERROR - BMG only, #6273
+hf_GPT2_large,UR_RESULT_ERROR,pass,pass,pass,pass
+# hf_Longformer float32/float16/amp_bf16/amp_fp16: UR_RESULT_ERROR - BMG only, #6273
+hf_Longformer,UR_RESULT_ERROR,pass,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR
 hf_Reformer,pass,pass,pass,pass,pass
-hf_Roberta_base,pass,pass,pass,pass,pass
+# hf_Roberta_base float16/amp_bf16: UR_RESULT_ERROR - BMG only, #6273
+hf_Roberta_base,pass,pass,UR_RESULT_ERROR,UR_RESULT_ERROR,pass
 hf_T5,pass,pass,pass,pass,pass
 hf_T5_base,pass,pass,pass,pass,pass
 hf_T5_generate,pass,pass,pass,pass,pass
@@ -56,7 +53,8 @@ maml,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_du
 maml_omniglot,pass,pass,pass,pass,pass
 microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
 mnasnet1_0,pass,pass,pass,pass,pass
-mobilenet_v2,pass,pass,pass,pass,pass
+# mobilenet_v2 amp_fp16: fail_to_run - BMG only, #6273
+mobilenet_v2,pass,pass,pass,pass,fail_to_run
 # mobilenet_v2_quantized_qat float32/bfloat16/float16/amp_bf16/amp_fp16: model_fail_to_load - model fails to load (also on PVC)
 mobilenet_v2_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 mobilenet_v3_large,pass,pass,pass,pass,pass
@@ -85,8 +83,8 @@ shufflenet_v2_x1_0,pass,pass,pass,pass,pass
 soft_actor_critic,pass,pass,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
 squeezenet1_1,pass,pass,pass,pass,pass
-# timm_efficientdet float32/bfloat16/float16/amp_bf16/amp_fp16: model_fail_to_load - model fails to load (also on PVC)
-timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
+# timm_efficientdet float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC
+timm_efficientdet,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 timm_efficientnet,pass,pass,pass,pass,pass
 timm_nfnet,pass,pass,pass,pass,pass
 timm_regnet,pass,pass,pass,pass,pass

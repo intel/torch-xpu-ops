@@ -1,4 +1,4 @@
-# BMG (Arc Pro B60) accuracy reference, run 44046677101 (release wheel, full p0+p1+p2).
+# BMG (Arc Pro B60) accuracy reference, run 45102486992 (source build from main, full p0+p1+p2).
 # Comment lines above a model explain its non-pass results.
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 BERT_pytorch,pass,pass,pass,pass,pass
@@ -15,10 +15,7 @@ dcgan,pass,pass,pass,pass,pass
 # demucs amp_bf16/amp_fp16: eager_fail_to_run - out of memory on B60 (24 GB)
 demucs,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 densenet121,pass,pass,pass,pass,pass
-# detectron2_maskrcnn_r_50_c4 float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC
-detectron2_maskrcnn_r_50_c4,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-# dlrm float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - env: NumPy ABI mismatch, #6273
-dlrm,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+dlrm,pass,pass,pass,pass,pass
 drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
 # functorch_dp_cifar10 float32/bfloat16/float16: fail_accuracy - also fails on PVC
@@ -31,23 +28,22 @@ hf_Bert_large,pass,pass,pass,pass,pass
 hf_BigBird,pass,pass,pass,pass,pass
 hf_DistilBert,pass,pass,pass,pass,pass
 hf_GPT2,pass,pass,pass,pass,pass
-# hf_GPT2_large float32/amp_bf16/amp_fp16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
-# hf_GPT2_large bfloat16/float16: out of memory - out of memory on B60 (24 GB)
-hf_GPT2_large,UR_RESULT_ERROR,out of memory,out of memory,UR_RESULT_ERROR,UR_RESULT_ERROR
+# hf_GPT2_large float32/bfloat16/float16/amp_bf16/amp_fp16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
+hf_GPT2_large,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR
 hf_Longformer,pass,pass,pass,pass,pass
 hf_Reformer,pass,pass,pass,pass,pass
-# hf_Roberta_base amp_bf16/amp_fp16: timeout - BMG only, #6273
-hf_Roberta_base,pass,pass,pass,timeout,timeout
+# hf_Roberta_base float32/bfloat16/float16/amp_bf16/amp_fp16: UR_RESULT_ERROR - BMG only, #6273
+hf_Roberta_base,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR
 hf_T5,pass,pass,pass,pass,pass
-# hf_T5_base float32/bfloat16/amp_bf16/amp_fp16: out of memory - out of memory on B60 (24 GB)
-# hf_T5_base float16: eager_1st_run_fail - out of memory on B60 (24 GB)
-hf_T5_base,out of memory,out of memory,eager_1st_run_fail,out of memory,out of memory
+# hf_T5_base float32/bfloat16/float16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
+# hf_T5_base amp_bf16/amp_fp16: out of memory - out of memory on B60 (24 GB)
+hf_T5_base,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,out of memory,out of memory
 # hf_T5_generate float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC
 hf_T5_generate,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 # hf_T5_large float32: out of memory - out of memory on B60 (24 GB)
-# hf_T5_large bfloat16: eager_1st_run_fail - out of memory on B60 (24 GB)
-# hf_T5_large float16/amp_bf16/amp_fp16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
-hf_T5_large,out of memory,eager_1st_run_fail,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR
+# hf_T5_large bfloat16/amp_bf16/amp_fp16: eager_1st_run_fail - out of memory on B60 (24 GB)
+# hf_T5_large float16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
+hf_T5_large,out of memory,eager_1st_run_fail,UR_RESULT_ERROR,eager_1st_run_fail,eager_1st_run_fail
 hf_Whisper,pass,pass,pass,pass,pass
 # hf_distil_whisper float32/bfloat16/float16/amp_bf16/amp_fp16: model_fail_to_load - model fails to load (also on PVC)
 hf_distil_whisper,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
@@ -81,24 +77,26 @@ shufflenet_v2_x1_0,pass,pass,pass,pass,pass
 soft_actor_critic,pass,pass,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
 squeezenet1_1,pass,pass,pass,pass,pass
-# timm_efficientdet float32/bfloat16/float16/amp_bf16/amp_fp16: model_fail_to_load - model fails to load (also on PVC)
-timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
-# timm_efficientnet bfloat16: fail_accuracy - BMG only, #6273
-timm_efficientnet,pass,fail_accuracy,pass,pass,pass
-# timm_nfnet float16: timeout - BMG only, #6273
-timm_nfnet,pass,pass,timeout,pass,pass
+# timm_efficientdet float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC
+timm_efficientdet,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+timm_efficientnet,pass,pass,pass,pass,pass
+# timm_nfnet amp_bf16: fail_to_run - BMG only, #6273
+timm_nfnet,pass,pass,pass,fail_to_run,pass
 # timm_regnet amp_bf16: fail_accuracy - BMG only, #6273
 timm_regnet,pass,pass,pass,fail_accuracy,pass
 timm_resnest,pass,pass,pass,pass,pass
 timm_vision_transformer,pass,pass,pass,pass,pass
-# timm_vision_transformer_large float32/amp_bf16/amp_fp16: eager_1st_run_fail - out of memory on B60 (24 GB)
-# timm_vision_transformer_large bfloat16/float16: eager_2nd_run_fail - out of memory on B60 (24 GB)
-timm_vision_transformer_large,eager_1st_run_fail,eager_2nd_run_fail,eager_2nd_run_fail,eager_1st_run_fail,eager_1st_run_fail
+# timm_vision_transformer_large float32: eager_1st_run_fail - out of memory on B60 (24 GB)
+# timm_vision_transformer_large bfloat16: eager_2nd_run_fail - out of memory on B60 (24 GB)
+# timm_vision_transformer_large float16: Memory>1.0 - out of memory on B60 (24 GB)
+# timm_vision_transformer_large amp_bf16/amp_fp16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
+timm_vision_transformer_large,eager_1st_run_fail,eager_2nd_run_fail,Memory>1.0,UR_RESULT_ERROR,UR_RESULT_ERROR
 timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 # torchrec_dlrm float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - env: fbgemm_gpu not available
 torchrec_dlrm,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
-vision_maskrcnn,pass,pass,pass,pass,pass
+# vision_maskrcnn float32: fail_to_run - BMG only, #6273
+vision_maskrcnn,fail_to_run,pass,pass,pass,pass
 yolov3,pass,pass,pass,pass,pass

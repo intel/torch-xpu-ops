@@ -1,10 +1,11 @@
-# BMG (Arc Pro B60) accuracy reference, run 44046677101 (release wheel, full p0+p1+p2).
+# BMG (Arc Pro B60) accuracy reference, run 45102486992 (source build from main, full p0+p1+p2).
 # Comment lines above a model explain its non-pass results.
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 adv_inception_v3,pass,pass,pass,pass,pass
 beit_base_patch16_224,pass,pass,pass,pass,pass
 botnet26t_256,pass,pass,pass,pass,pass
-cait_m36_384,pass,pass,pass,pass,pass
+# cait_m36_384 amp_bf16: UR_RESULT_ERROR - BMG only, #6273
+cait_m36_384,pass,pass,pass,UR_RESULT_ERROR,pass
 coat_lite_mini,pass,pass,pass,pass,pass
 convit_base,pass,pass,pass,pass,pass
 convmixer_768_32,pass,pass,pass,pass,pass
