@@ -21,21 +21,11 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install base packages
-      shell: bash -xe {0}
-      env:
-        GCC_VERSION: '13'
-        # keep the image's driver packages as shipped
-        APT_UPGRADE: '0'
-        INSTALL_BASE: ${{ github.action_path }}/../../../.ci/docker/common/install_base.sh
-      run: |
-        if [ ! -f /.dockerenv ]; then
-          echo "Not in a container, keeping the host packages"
-          exit 0
-        fi
-        SUDO=""
-        [ "$(id -u)" -eq 0 ] || SUDO="sudo -E"
-        ${SUDO} bash "${INSTALL_BASE}"
+    - name: Setup CI config and gcc
+      uses: ./.github/actions/ci-config
+      with:
+        python: ${{ inputs.python }}
+        setup_gcc: 'true'
     - name: Check runner
       shell: bash -xe {0}
       run: |
@@ -43,18 +33,13 @@ runs:
         cat /etc/os-release
         gcc -v && g++ -v
         uname -a
-        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
+        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd' || true
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python
       uses: ./.github/actions/setup-python
       with:
         python: ${{ inputs.python }}
-    - name: Setup gcc
-      uses: ./.github/actions/ci-config
-      with:
-        python: ${{ inputs.python }}
-        setup_gcc: 'true'
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v7
       with:

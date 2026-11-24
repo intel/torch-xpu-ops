@@ -152,7 +152,7 @@ jobs:
         run: |
           export USE_XCCL=1
           export IS_XPU_CI=1
-          # PR CI needs pvc (e2e/perf jobs) and bmg (UT jobs) AOT targets.
+          # PR CI runs all GPU jobs on BMG, so only build BMG AOT targets.
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='bmg'
           fi

@@ -23,7 +23,7 @@ These labels control which CI jobs run, reducing unnecessary CI load.
 | `disable_win` | Skip Windows CI jobs |
 | `disable_build` | Skip source build, use nightly wheel |
 
-Note: Only labels consumed by `pull.yml` are in scope. Other labels (`disable_accelerate`, `disable_transformers`) are used by separate workflows and not managed here.
+Note: Only labels consumed by `pull.yml` are in scope. Other labels (`disable_accelerate`, `disable_transformers`, `disable_dpclang`) are used by separate workflows and not managed here.
 
 ## Decision Rules
 
@@ -32,22 +32,23 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 ### Rule 1: Pure CI metadata (no functional logic change)
 
-**Condition:** ALL changed files match `.github/ISSUE_TEMPLATE/`, `.github/copilot-instructions.md`, `.claude/`, `test/agentic/`, or other non-functional metadata files. No `.github/workflows/`, `.github/actions/`, or `.github/scripts/` changes.
+**Condition:** ALL changed files match `.github/ISSUE_TEMPLATE/`, `.github/copilot-instructions.md`, `.claude/`, `test/agentic/`, or other non-functional metadata files. No `.github/workflows/`, `.github/actions/`, `.github/scripts/`, `.github/ci-config/`, `.github/ci_expected_accuracy/`, or `.ci/` changes.
 
 **Labels:** `disable_all`
 
 **Examples:** Updating issue templates, adding skills docs, agentic test fixtures.
 
-### Rule 2: CI workflow / action / script changes
+### Rule 2: CI workflow / action / script / config changes
 
-**Condition:** Changed files include `.github/workflows/`, `.github/actions/`, or `.github/scripts/`.
+**Condition:** Changed files include `.github/workflows/`, `.github/actions/`, `.github/scripts/`, `.github/ci-config/`, `.github/ci_expected_accuracy/`, or `.ci/`.
 
-**Labels:** Determined by WHICH workflows/actions/scripts are modified:
+**Labels:** Determined by WHICH workflows/actions/scripts/configs are modified:
 
 - If modifying `_linux_build.yml` or build-related actions/scripts → keep linux-build running, disable others: `disable_ut,disable_e2e,disable_distributed,disable_win`
 - If modifying `_linux_ut.yml` or UT-related actions/scripts → keep linux-ut running: `disable_e2e,disable_distributed,disable_win`
-- If modifying `_linux_e2e.yml` or e2e-related actions/scripts → keep linux-e2e running: `disable_ut,disable_distributed,disable_win`
+- If modifying `_linux_e2e.yml`, `.github/ci_expected_accuracy/`, `.ci/benchmarks/`, or e2e-related actions/scripts → keep linux-e2e running: `disable_ut,disable_distributed,disable_win`
 - If modifying `_windows_*.yml` or `.github/actions/windows-*` → keep windows jobs running, add `windows_ci`: `disable_ut,disable_e2e,disable_distributed`
+- If modifying `.github/ci-config/` or `.ci/docker/` → shared CI config/image changes affect multiple pipelines: `none`
 - If modifying `pull.yml` only (trigger/condition/concurrency changes) → `disable_all`
 - If modifying only non-functional workflows (`auto_label.yml`, `auto_merge_by_comment.yml`, `issue_operator.yml`, `bot.yml`) or bot scripts (`.github/scripts/bot_*.py`) → `disable_all`
 - If modifying MULTIPLE workflow areas or unclear scope → run full CI: `none`

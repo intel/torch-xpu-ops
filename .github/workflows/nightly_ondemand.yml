@@ -168,6 +168,10 @@ jobs:
   linux-build:
     name: linux-build
     needs: config
+    if: >-
+      ${{ needs.config.outputs.run_ut == 'true'
+      || needs.config.outputs.run_e2e == 'true'
+      || needs.config.outputs.run_microbench == 'true' }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -262,6 +266,7 @@ jobs:
   windows-ut:
     name: windows-ut
     needs: [config, windows-build]
+    if: ${{ needs.config.outputs.run_windows == 'true' }}
     secrets: inherit
     strategy:
       fail-fast: false

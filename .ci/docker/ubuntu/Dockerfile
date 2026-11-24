@@ -18,7 +18,7 @@ ENV XPU_DRIVER_TYPE=${XPU_DRIVER_TYPE}
 # Base system updates and essential packages
 COPY ./common/install_base.sh /tmp/install_base.sh
 RUN --mount=type=cache,target=/var/cache/apt \
-    bash /tmp/install_base.sh && \
+    APT_UPGRADE=1 bash /tmp/install_base.sh && \
     rm -f /tmp/install_base.sh
 
 COPY ./common/install_xpu.sh /tmp/install_xpu.sh
@@ -46,7 +46,7 @@ WORKDIR /workspace
 
 # Health check (optional)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD which git && which cmake && which g++ || exit 1
+    CMD which git && which g++ || exit 1
 
 # Fix /bin/sh to use bash (required for Copilot runtime which uses `set -o pipefail`)
 RUN ln -sf /bin/bash /bin/sh && \

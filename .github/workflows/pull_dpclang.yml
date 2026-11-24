@@ -20,12 +20,17 @@ on:
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   config:
-    if: ${{ github.repository_owner == 'intel' }}
+    if: >-
+      ${{ github.repository_owner == 'intel'
+      && (github.event_name != 'pull_request'
+          || (!github.event.pull_request.draft
+              && !contains(github.event.pull_request.labels.*.name, 'disable_all')
+              && !contains(github.event.pull_request.labels.*.name, 'disable_dpclang'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -43,7 +48,6 @@ jobs:
 
   build-prereq:
     needs: config
-    if: ${{ github.repository_owner == 'intel' }}
     runs-on: build
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
@@ -164,7 +168,6 @@ jobs:
 
   build-wheels:
     needs: build-prereq
-    if: ${{ github.repository_owner == 'intel' }}
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
@@ -175,6 +178,7 @@ jobs:
 
   linux-ut:
     needs: [config, build-wheels]
+    if: ${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
     permissions:
       actions: read

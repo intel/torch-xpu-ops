@@ -6,7 +6,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc-1100'
+        default: 'bmg'
         description: Test node
       search_commits:
         required: true
@@ -55,22 +55,24 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
       env:
         SEARCH_COMMITS: ${{ inputs.search_commits }}
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}
         SEARCH_CRITERIA: ${{ inputs.search_criteria }}
-        TORCH_XPU_ARCH_LIST: pvc
+        TORCH_XPU_ARCH_LIST: ${{ contains(inputs.runner, 'pvc') && 'pvc' || 'bmg' }}
         USE_XCCL: 0
         USE_KINETO: 0
     steps:
-      # linux-testenv resolves its nested actions from ./.github
+      # linux-testenv resolves its nested actions and install_base.sh from the workspace root
       - name: Checkout CI actions
         uses: actions/checkout@v7
         with:
-          sparse-checkout: .github
+          sparse-checkout: |
+            .github
+            .ci/docker/common
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:

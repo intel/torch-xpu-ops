@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - '.ci/docker/common/install_base.sh'
       - '.ci/docker/common/install_xpu.sh'
       - '.ci/docker/ubuntu/Dockerfile'
       - '.github/workflows/_linux_test_image.yml'
@@ -67,7 +68,11 @@ env:
 jobs:
   build-image:
     runs-on: build
-    if: ${{ github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch' }}
+    if: >-
+      ${{ github.repository_owner == 'intel'
+      && (github.event_name == 'workflow_dispatch'
+          || (!github.event.pull_request.draft
+              && !contains(github.event.pull_request.labels.*.name, 'disable_all'))) }}
     steps:
       - name: Cleanup
         run: |
