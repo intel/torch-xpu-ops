@@ -48,4 +48,19 @@ function foldDetails(text, onMissingVerdict) {
   return `${verdict}\n\n<details><summary>Details</summary>\n\n${detail}\n\n</details>`;
 }
 
-module.exports = { foldDetails };
+// The bot review gate's verdict: the first non-blank line after the VERDICT
+// line, found the same way foldDetails finds VERDICT. Only that line counts, so
+// a `GATE: ready_for_human_review` quoted further down cannot flip a failing
+// review. Returns "ready_for_human_review", "changes_requested" or null.
+const GATE_RE = /^\**GATE:\**\s*[`*]*(ready_for_human_review|changes_requested)[`*]*\.?$/i;
+
+function parseGate(text) {
+  const lines = String(text).trim().split("\n");
+  const at = lines.findIndex((l) => VERDICT_RE.test(l.trim()));
+  if (at === -1 || at >= SEARCH_LINES) return null;
+  const next = lines.slice(at + 1).find((l) => l.trim());
+  const m = GATE_RE.exec((next || "").trim());
+  return m ? m[1].toLowerCase() : null;
+}
+
+module.exports = { foldDetails, parseGate };
