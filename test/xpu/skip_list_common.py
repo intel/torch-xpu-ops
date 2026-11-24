@@ -387,14 +387,6 @@ skip_dict = {
         "test_calling_custom_op_inside_script_module",
         "test_saving_and_loading_script_module_with_custom_op",
     },
-    f"{PYTORCH_TEST_DIR}/test_bundled_images.py": {
-        # This is a "Facebook" test requiring torch.ops.fb
-        # and OpenCV. When run it raises:
-        # raise RuntimeError(
-        #   "This test is not currently used and should be "
-        #   "enabled in discover_tests.py if required."
-        "test_single_tensors",
-    },
     f"{PYTORCH_TEST_DIR}/test_ci_sanity_check_fail.py": {
         # Comment above both cases:
         # "This check should fail and trigger reruns.  If it passes, something is wrong"
