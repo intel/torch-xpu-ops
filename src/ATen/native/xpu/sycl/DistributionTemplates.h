@@ -82,9 +82,10 @@ void distribution_elementwise_kernel(
   rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
 
   int full_tile_work_size = group_size * num_groups * unroll_factor;
-  int rounded_size =
-      ((numel - 1) / full_tile_work_size + 1) * full_tile_work_size;
-  for (int linear_index = idx; linear_index < rounded_size;
+  // Elements li = linear_index + i * stride only grow with i, so a work-item
+  // whose linear_index is past numel writes nothing and can stop. Each
+  // work-item owns its Philox subsequence, so this does not change any value.
+  for (int linear_index = idx; linear_index < numel;
        linear_index += full_tile_work_size) { // global range stride
     auto rand = dist_func(&state);
 #pragma unroll

@@ -58,7 +58,13 @@ class TestLayerNorm(TestCase):
         x_cpu = torch.randn(rows, norm, dtype=torch.float32)
 
         layer_cpu = nn.LayerNorm(norm, dtype=torch.float32)
-        y_cpu = layer_cpu(x_cpu)
+        # nn.LayerNorm() returns wrong results on CPU for vectorized path (AVX)
+        # so the step-by-step calculation is needed. More details:
+        # https://github.com/pytorch/pytorch/issues/204610
+        x64 = x_cpu.double()
+        var, mean = torch.var_mean(x64, dim=-1, correction=0, keepdim=True)
+        y_cpu = ((x64 - mean) * torch.rsqrt(var + layer_cpu.eps)).float()
+        y_cpu = y_cpu * layer_cpu.weight.data + layer_cpu.bias.data
 
         layer_xpu = nn.LayerNorm(norm, dtype=dtype).to(xpu_device)
         layer_xpu.weight.data.copy_(layer_cpu.weight.data)
@@ -108,6 +114,121 @@ class TestLayerNorm(TestCase):
         rtol = 1e-3 if dtype == torch.float16 else 1e-2
         self.assertEqual(actual, baseline, atol=atol, rtol=rtol)
 
+    # The multi-row work-group kernel needs M > getDeviceHWThreads() (4096 on
+    # PVC-per-tile and A770) and N / vec_size <= SIMD / 2; vec_size is 4 for
+    # fp32 and 8 for fp16/bf16, so N=128 only takes that path in low precision.
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @parametrize("M,N", [(8192, 24), (6272, 64), (16384, 128)])
+    @parametrize("has_weight,has_bias", [(True, True), (True, False), (False, False)])
+    def test_layer_norm_multi_row_wg_accuracy(self, dtype, M, N, has_weight, has_bias):
+        generator = torch.Generator().manual_seed(0)
+        normalized_shape = (N,)
+        x = torch.randn((M, N), generator=generator).to(dtype)
+        weight = torch.randn(normalized_shape, generator=generator).to(dtype)
+        bias = torch.randn(normalized_shape, generator=generator).to(dtype)
+        if not has_weight:
+            weight = None
+        if not has_bias:
+            bias = None
+
+        def to_xpu(t):
+            return None if t is None else t.to(xpu_device)
+
+        baseline = nn.functional.layer_norm(
+            x.float(),
+            normalized_shape,
+            None if weight is None else weight.float(),
+            None if bias is None else bias.float(),
+            eps=1e-5,
+        )
+        actual = nn.functional.layer_norm(
+            x.to(xpu_device), normalized_shape, to_xpu(weight), to_xpu(bias), eps=1e-5
+        )
+
+        atol = 1e-5
+        rtol = {torch.float32: 1e-5, torch.float16: 1e-3, torch.bfloat16: 1e-2}[dtype]
+        self.assertEqual(actual.float().cpu(), baseline, atol=atol, rtol=rtol)
+
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @parametrize("M,N", [(8192, 24), (6272, 64), (16384, 128)])
+    def test_rms_norm_multi_row_wg_accuracy(self, dtype, M, N):
+        """Same shapes, rms_norm instantiation."""
+        generator = torch.Generator().manual_seed(0)
+        x = torch.randn((M, N), generator=generator).to(dtype)
+
+        layer_cpu = nn.RMSNorm(N, eps=1e-6, dtype=torch.float32)
+        baseline = layer_cpu(x.float())
+
+        layer_xpu = nn.RMSNorm(N, eps=1e-6, dtype=dtype).to(xpu_device)
+        layer_xpu.weight.data.copy_(layer_cpu.weight.data)
+        actual = layer_xpu(x.to(xpu_device))
+
+        atol = 1e-5
+        rtol = {torch.float32: 1e-5, torch.float16: 1e-3, torch.bfloat16: 1e-2}[dtype]
+        self.assertEqual(actual.float().cpu(), baseline, atol=atol, rtol=rtol)
+
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    def test_layer_norm_multi_row_wg_partial_group(self, dtype):
+        """M not a multiple of SIMD, so the last work-group has invalid lanes.
+
+        Those lanes must still enter the sub-group shuffles but must not store
+        mean/rstd.
+        """
+        generator = torch.Generator().manual_seed(0)
+        M, N = 8193, 24
+        normalized_shape = (N,)
+        x = torch.randn((M, N), generator=generator).to(dtype)
+        weight = torch.randn(normalized_shape, generator=generator).to(dtype)
+        bias = torch.randn(normalized_shape, generator=generator).to(dtype)
+
+        baseline = nn.functional.layer_norm(
+            x.float(), normalized_shape, weight.float(), bias.float(), eps=1e-5
+        )
+        actual = nn.functional.layer_norm(
+            x.to(xpu_device),
+            normalized_shape,
+            weight.to(xpu_device),
+            bias.to(xpu_device),
+            eps=1e-5,
+        )
+
+        atol = 1e-5
+        rtol = {torch.float32: 1e-5, torch.float16: 1e-3, torch.bfloat16: 1e-2}[dtype]
+        self.assertEqual(actual.float().cpu(), baseline, atol=atol, rtol=rtol)
+
+
+class TestLayerNormBackwardFp16(TestCase):
+    @parametrize("n", [8192, 20001, 65536])
+    @parametrize("affine", [True, False])
+    def test_backward_large_n(self, device, n, affine):
+        """Regression test for https://github.com/intel/torch-xpu-ops/issues/6310.
+
+        fH * gamma * dY used to be evaluated in float16 and overflowed to inf
+        for N >= 8192; only the input gradient was affected.
+        """
+        torch.manual_seed(0)
+        shape, normalized_shape = (2, n), (n,)
+        x = torch.randn(shape, dtype=torch.half)
+        grad = torch.randn(shape, dtype=torch.half)
+        weight = torch.randn(normalized_shape, dtype=torch.half) if affine else None
+        bias = torch.randn(normalized_shape, dtype=torch.half) if affine else None
+
+        def grads(dev, dtype):
+            tensors = [t for t in (x, weight, bias) if t is not None]
+            inputs = [t.to(dev, dtype).requires_grad_() for t in tensors]
+            out = nn.functional.layer_norm(inputs[0], normalized_shape, *inputs[1:])
+            return torch.autograd.grad(out, inputs, grad.to(dev, dtype))
+
+        for actual, expected in zip(
+            grads(device, torch.half), grads("cpu", torch.float)
+        ):
+            self.assertEqual(
+                actual.cpu().float(),
+                expected,
+                atol=2e-3 * expected.abs().max().item(),
+                rtol=0,
+            )
+
 
 class TestLayerNormMultidimBackward(TestCase):
     @parametrize("has_weight,has_bias", [(True, True), (True, False), (False, True)])
@@ -152,6 +273,9 @@ class TestLayerNormMultidimBackward(TestCase):
 
 instantiate_device_type_tests(
     TestLayerNormMultidimBackward, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestLayerNormBackwardFp16, globals(), only_for="xpu", allow_xpu=True
 )
 
 

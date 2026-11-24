@@ -19,6 +19,10 @@ on:
         type: string
         default: ''
         description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
+      torch_xpu_ops:
+        type: string
+        default: 'pinned'
+        description: Torch-xpu-ops wheel/source pin, or a ref, or 'repo@ref'
       suite:
         type: string
         default: 'huggingface'
@@ -61,7 +65,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
     container:
-      image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+      image: ${{ contains(inputs.runner, 'bmg') && 'intel/omix:0.5.0-devel-ubuntu26.04' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw
@@ -78,6 +82,7 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
           category: ${{ inputs.category }}
