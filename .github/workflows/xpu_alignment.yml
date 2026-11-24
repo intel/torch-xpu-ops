@@ -35,7 +35,7 @@ env:
 jobs:
   collect:
     name: Collect immutable upstream inventory
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 30
     outputs:
       scan_date: ${{ steps.context.outputs.scan_date }}
@@ -78,7 +78,7 @@ jobs:
   scan-prepare:
     name: Prepare XPU alignment scan
     needs: collect
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: read
@@ -335,7 +335,7 @@ jobs:
     name: Finalize scan from runner evidence
     needs: [collect, scan-prepare, run-reproducers]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 60
     outputs:
       usage: ${{ steps.usage.outputs.usage }}
@@ -458,7 +458,7 @@ jobs:
     name: Independent alignment review
     needs: [collect, scan-prepare, run-reproducers, scan-finalize]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: read
@@ -598,7 +598,7 @@ jobs:
     name: Gate and publish
     needs: [collect, scan-prepare, run-reproducers, scan-finalize, independent-review]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     concurrency:
       group: xpu-alignment-filing
       cancel-in-progress: false

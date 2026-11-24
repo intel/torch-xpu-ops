@@ -58,6 +58,10 @@ on:
         type: boolean
         default: false
         description: Analyse this run's UT failures. Evidence only - an on-demand run files no issues
+      ut_data_run_id:
+        type: string
+        default: ''
+        description: Optional run ID to reuse UT-Data artifacts from (runs UT check and ut-report without re-running UT)
 
 permissions: read-all
 
@@ -67,7 +71,7 @@ jobs:
   Conditions-Filter:
     name: conditions-filter
     if: ${{ github.repository_owner == 'intel' || github.event_name != 'schedule' }}
-    runs-on: ubuntu-24.04
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 3
     outputs:
       # Test type, (build or wheel)-(nightly, weekly or ondemand)
@@ -181,6 +185,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
+      ut_data_run_id: ${{ github.event_name == 'schedule' && '' || inputs.ut_data_run_id }}
 
   Linux-Nightly-Ondemand-UT-Report:
     name: ut-report

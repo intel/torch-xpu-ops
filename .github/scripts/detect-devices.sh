@@ -91,7 +91,7 @@ detect_cpu_count() {
 }
 
 get_device_rows() {
-  lspci -nn | grep -Ei 'VGA|DISPLAY' | grep -v 'UHD' | grep '8086:' || true
+  lspci -nn | grep -Ei 'VGA|DISPLAY|Processing accelerators' | grep -v 'UHD' | grep '8086:' || true
 }
 
 detect_device_info() {

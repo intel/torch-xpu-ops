@@ -51,7 +51,7 @@ concurrency:
 
 jobs:
   queue:
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v7
@@ -67,7 +67,7 @@ jobs:
         run: python3 .github/scripts/ci_disabled_queue.py
 
   self-test:
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v7

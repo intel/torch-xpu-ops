@@ -6,7 +6,8 @@ set -o pipefail
 UT_SKIP_ISSUE=1624
 
 fetch_static() {
-  gh --repo intel/torch-xpu-ops issue view "$UT_SKIP_ISSUE" --json body -q .body \
+  (gh --repo intel/torch-xpu-ops issue view "$UT_SKIP_ISSUE" --json body -q .body \
+    || env -u GH_TOKEN -u GITHUB_TOKEN gh api "repos/intel/torch-xpu-ops/issues/${UT_SKIP_ISSUE}" --jq .body) \
     | sed -E '/^(#|$)/d'
 }
 

@@ -21,7 +21,7 @@ defaults:
 
 jobs:
   summary:
-    runs-on: ubuntu-24.04
+    runs-on: xpu-ubuntu-24.04
     permissions:
       actions: read
       contents: read
@@ -39,8 +39,10 @@ jobs:
           python: ${{ inputs.python }}
       - name: Install gh-cli
         run: |
-          sudo apt-get update
-          sudo apt-get install gh rsync ca-certificates -y
+          if ! command -v gh >/dev/null 2>&1 || ! command -v rsync >/dev/null 2>&1; then
+            sudo -E apt-get update
+            sudo -E apt-get install gh rsync ca-certificates -y
+          fi
           uv pip install pandas requests pygithub
       - name: Download Target Artifact
         run: |
@@ -59,13 +61,18 @@ jobs:
           else
             artifact_type="${{ inputs.test_type }}"
           fi
-          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
+          (gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body \
+            || env -u GH_TOKEN -u GITHUB_TOKEN gh api "repos/intel/torch-xpu-ops/issues/${REFERENCE_ISSUE_ID}" --jq .body \
+            || true) 2>&1 |tee body.txt
           REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
           if [ "${REFERENCE_RUN_ID}" != "" ];then
-            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
-            find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
-                    while read line; do rsync -az $line/ $(basename $line)/; done
-            rm -rf Inductor-*-XPU-E2E-* || true
+            if gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"; then
+              find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
+                      while read line; do rsync -az $line/ $(basename $line)/; done
+              rm -rf Inductor-*-XPU-E2E-* || true
+            else
+              echo "::warning::Skipping baseline artifact download from intel/torch-xpu-ops run ${REFERENCE_RUN_ID}"
+            fi
           fi
       - name: Get summary
         id: summary

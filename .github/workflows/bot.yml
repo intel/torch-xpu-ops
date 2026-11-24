@@ -32,7 +32,7 @@ concurrency:
 
 jobs:
   parse-command:
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: >-
       github.event_name == 'issue_comment'
       && startsWith(github.event.comment.body, '@torchxpubot')
@@ -283,7 +283,7 @@ jobs:
 
   invalid-command:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: needs.parse-command.outputs.command == 'invalid'
     steps:
       - name: Post invalid command message
@@ -305,7 +305,7 @@ jobs:
 
   permission-denied:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: >-
       needs.parse-command.outputs.command != 'invalid'
       && needs.parse-command.outputs.command != 'help'
@@ -335,7 +335,7 @@ jobs:
 
   help:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: needs.parse-command.outputs.command == 'help'
     steps:
       - name: Post help message
@@ -403,7 +403,7 @@ jobs:
 
   merge:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: >-
       needs.parse-command.outputs.command == 'merge'
       && needs.parse-command.outputs.authorized == 'true'
@@ -551,7 +551,7 @@ jobs:
 
   revert:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: >-
       needs.parse-command.outputs.command == 'revert'
       && needs.parse-command.outputs.authorized == 'true'
@@ -589,7 +589,7 @@ jobs:
 
   rebase:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: >-
       needs.parse-command.outputs.command == 'rebase'
       && needs.parse-command.outputs.authorized == 'true'
@@ -685,7 +685,7 @@ jobs:
 
   lint:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: >-
       needs.parse-command.outputs.command == 'lint'
       && needs.parse-command.outputs.authorized == 'true'
@@ -783,7 +783,7 @@ jobs:
 
   rerun:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: >-
       needs.parse-command.outputs.command == 'rerun'
       && needs.parse-command.outputs.authorized == 'true'
@@ -911,7 +911,7 @@ jobs:
 
   review:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 45
     if: >-
       needs.parse-command.outputs.command == 'review'
@@ -1047,7 +1047,7 @@ jobs:
 
   ut-check:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 25
     if: >-
       needs.parse-command.outputs.command == 'ut-check'
@@ -1206,7 +1206,7 @@ jobs:
 
   cherry-pick:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 15
     if: >-
       needs.parse-command.outputs.command == 'cherry-pick'
@@ -1796,7 +1796,7 @@ jobs:
 
   label:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -2045,7 +2045,7 @@ jobs:
 
   triage:
     needs: parse-command
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 15
     if: >-
       needs.parse-command.outputs.command == 'triage'
@@ -2271,7 +2271,7 @@ jobs:
   # Pure python, no GPU, seconds -- so a regression in it is caught on the PR
   # that introduces it instead of by losing a fix in production.
   script-tests:
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout repository
@@ -2287,7 +2287,7 @@ jobs:
           node .github/scripts/test_fold_details.js
 
   token-permission-test:
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout repository

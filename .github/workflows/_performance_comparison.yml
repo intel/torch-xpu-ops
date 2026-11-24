@@ -20,7 +20,7 @@ jobs:
   Performance-Comparison:
     env:
       GH_TOKEN: ${{ github.token }}
-    runs-on: ubuntu-24.04
+    runs-on: xpu-ubuntu-24.04
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7

@@ -92,7 +92,7 @@ jobs:
   # ==================================================================
   resolve-python:
     name: resolve python
-    runs-on: ubuntu-24.04
+    runs-on: xpu-ubuntu-24.04
     outputs:
       python: ${{ steps.pick.outputs.python }}
     steps:
@@ -236,7 +236,7 @@ jobs:
     name: Compare results
     needs: [resolve-python, target-ut, target-e2e, baseline-ut, baseline-e2e]
     if: ${{ always() && !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: xpu-ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -329,7 +329,7 @@ jobs:
     name: report back
     needs: [resolve-python, target-build, baseline-build, target-ut, target-e2e, baseline-ut, baseline-e2e, compare-results]
     if: ${{ !cancelled() && inputs.callback_repo != '' }}
-    runs-on: ubuntu-24.04
+    runs-on: xpu-ubuntu-24.04
     steps:
       - name: Post result commit status to caller
         env:

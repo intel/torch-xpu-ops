@@ -90,21 +90,33 @@ def main():
 
     args = parser.parse_args()
 
-    # Quick token check
+    # Quick token check (fall back to unauthenticated public read if cross-org token is rejected)
     token = os.getenv('GH_TOKEN')
-    auth = Auth.Token(token)
     global g
-    g = Github(auth=auth)
+    g = Github(auth=Auth.Token(token)) if token else Github()
 
     print(f"Fetching known issues from {args.repo_owner}/{args.repo_name}...")
 
     # Time the operation
-    issues_data = get_github_issues(
-        repo_owner=args.repo_owner,
-        repo_name=args.repo_name,
-        labels=args.labels,
-        state=args.state
-    )
+    try:
+        issues_data = get_github_issues(
+            repo_owner=args.repo_owner,
+            repo_name=args.repo_name,
+            labels=args.labels,
+            state=args.state
+        )
+    except Exception as exc:
+        if token:
+            print(f"Token auth failed for {args.repo_owner}/{args.repo_name} ({exc}); retrying unauthenticated...")
+            g = Github()
+            issues_data = get_github_issues(
+                repo_owner=args.repo_owner,
+                repo_name=args.repo_name,
+                labels=args.labels,
+                state=args.state
+            )
+        else:
+            raise
 
     # Save results
     with open(args.output, "w") as f:

@@ -27,6 +27,10 @@ on:
         type: string
         default: ''
         description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
+      ut_data_run_id:
+        type: string
+        default: ''
+        description: 'Optional run ID to reuse UT-Data artifacts from (skips test execution and runs check only)'
 
 permissions:
   contents: read
@@ -45,7 +49,7 @@ jobs:
     timeout-minutes: 2880
     env:
       TORCH_SERIALIZATION_DEBUG: '1'
-    if: ${{ ! contains(inputs.ut, 'distributed') }}
+    if: ${{ inputs.ut_data_run_id == '' && ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Checkout torch-xpu-ops
@@ -82,7 +86,7 @@ jobs:
 
   test-in-baremetal:
     timeout-minutes: 600
-    if: ${{ contains(inputs.ut, 'distributed') || inputs.ut == 'xpu_p0' }}
+    if: ${{ inputs.ut_data_run_id == '' && (contains(inputs.ut, 'distributed') || inputs.ut == 'xpu_p0') }}
     runs-on: ${{ inputs.runner }}
     env:
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
@@ -121,8 +125,8 @@ jobs:
 
   check:
     needs: [test-in-container, test-in-baremetal]
-    if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
-    runs-on: ubuntu-24.04
+    if: ${{ ! cancelled() && (inputs.ut_data_run_id != '' || ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed'))) }}
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 30
     permissions:
       actions: read
@@ -139,6 +143,7 @@ jobs:
           category: ${{ inputs.category }}
           pytorch: ${{ inputs.pytorch }}
           known_issues_snapshot: 'true'
+          run_id: ${{ inputs.ut_data_run_id }}
       - name: Fail on new failures
         if: ${{ steps.ut.outputs.passed != 'true' }}
         shell: bash {0}

@@ -25,6 +25,9 @@ inputs:
   known_issues_snapshot:
     default: 'false'
     description: "'true' to use the known-failure snapshot taken at build start"
+  run_id:
+    default: ''
+    description: 'Optional workflow run ID to download UT-Data artifacts from (defaults to current run)'
 
 outputs:
   passed:
@@ -62,11 +65,12 @@ runs:
       env:
         DATA: ${{ steps.names.outputs.data }}
         DATA_SPLIT: ${{ steps.names.outputs.data_split }}
+        SOURCE_RUN_ID: ${{ inputs.run_id != '' && inputs.run_id || github.run_id }}
       run: |
-        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+        gh --repo "${GITHUB_REPOSITORY}" run download "${SOURCE_RUN_ID}" \
           --dir "${GITHUB_WORKSPACE}/ut-ci/data" -p "${DATA}" || \
           echo "::warning::no artifact matches ${DATA}"
-        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+        gh --repo "${GITHUB_REPOSITORY}" run download "${SOURCE_RUN_ID}" \
           --dir "${GITHUB_WORKSPACE}/ut-ci/data" -p "${DATA_SPLIT}" || true
         ls -al "${GITHUB_WORKSPACE}/ut-ci/data"
     - name: Download known issues snapshot
@@ -74,10 +78,11 @@ runs:
       shell: bash -xe {0}
       env:
         KNOWN_ISSUES: ${{ steps.names.outputs.known_issues }}
+        SOURCE_RUN_ID: ${{ inputs.run_id != '' && inputs.run_id || github.run_id }}
       run: |
         # Without it the check falls back to the live issue list, which misses
         # issues closed while the run was going.
-        gh --repo "${GITHUB_REPOSITORY}" run download "${GITHUB_RUN_ID}" \
+        gh --repo "${GITHUB_REPOSITORY}" run download "${SOURCE_RUN_ID}" \
           --dir "${GITHUB_WORKSPACE}/ut-ci/known-issues" -n "${KNOWN_ISSUES}" || \
           echo "::warning::no ${KNOWN_ISSUES} artifact; using the live issue list only"
     - name: Check UT failures

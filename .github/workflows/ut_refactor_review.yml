@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   ut-review:
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout pytorch/pytorch (provides the /pr-review skill)
