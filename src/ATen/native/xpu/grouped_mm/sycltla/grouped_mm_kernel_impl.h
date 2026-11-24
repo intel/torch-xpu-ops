@@ -29,8 +29,17 @@
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
+// SYCL-TLA headers are third party: keep their diagnostics (e.g. unused
+// variables in the sm120 MMA atoms) from failing WERROR builds, as the
+// FlashAttention kernels do in mha_fwd.h.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-local-typedefs"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
 #include <cute/tensor.hpp>
 #include <cute/util/compat.hpp>
+#pragma clang diagnostic pop
 
 #include <ATen/native/xpu/grouped_mm/sycltla/grouped_mm_kernels.h>
 
