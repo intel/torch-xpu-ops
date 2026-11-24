@@ -289,14 +289,19 @@ class TestBatchNormBackwardElemtChannelsLast(TestCase):
         b = torch.randn(C).to(dtype)
         return x, go, w, b
 
-    # The autograd forward (F.batch_norm) requires matching dtypes, so the
-    # native-backward test only covers the matching-weight and no-weight
-    # (nullptr) cases; the mixed-dtype weight branch is only reachable through
-    # the direct batch_norm_backward_elemt API below.
+    # F.batch_norm accepts a mixed-dtype weight/bias pair on XPU (fp16/bf16
+    # input with fp32 weight and bias, the standard mixed pattern), so the
+    # native-backward test also covers the mixed-dtype weight branch of the
+    # non-count backward template. Both weight and bias must be upcast: a
+    # half bias with a float weight fails in the forward with "expected
+    # scalar type Float but found Half".
     def _check_native_backward(self, device, shape, dtype, weight_kind, in_off, go_off):
         x, go, w, b = self._inputs(shape, dtype)
         if weight_kind == "none":
             w = None
+        elif weight_kind == "mixed":
+            w = w.float()
+            b = b.float()
 
         # Reference: CPU fp64 NCHW.
         xr = x.double().requires_grad_()
@@ -381,7 +386,10 @@ class TestBatchNormBackwardElemtChannelsLast(TestCase):
 
     @dtypes(torch.float32, torch.float16, torch.bfloat16)
     def test_native_backward_channels_last(self, device, dtype):
-        self._run(self._check_native_backward, device, dtype, ["same", "none"])
+        weight_variants = ["same", "none"]
+        if dtype != torch.float32:
+            weight_variants.append("mixed")
+        self._run(self._check_native_backward, device, dtype, weight_variants)
 
     @dtypes(torch.float32, torch.float16, torch.bfloat16)
     def test_backward_elemt_count_channels_last(self, device, dtype):
