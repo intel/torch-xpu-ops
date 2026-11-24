@@ -33,7 +33,6 @@ skip_dict = {
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_profiler_use_cases.py": None,
@@ -213,7 +212,6 @@ skip_dict = {
     },
     "test_schema_check_xpu.py": None,
     "test_segment_reductions_xpu.py": None,
-    "test_serialization_xpu.py": None,
     "test_shape_ops_xpu.py": (
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
         "test_flip_xpu_float32",
@@ -358,6 +356,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_multihead_attention.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_packed_sequence.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_execution_trace.py": None,
@@ -437,6 +436,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
     f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/test_serialization.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
