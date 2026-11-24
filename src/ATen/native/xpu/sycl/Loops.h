@@ -825,24 +825,15 @@ struct BroadcastLaunchConfig {
   static constexpr int output_bytes = sizeof(output_t);
   static constexpr int min_bytes = std::min(dense_bytes, output_bytes);
   static constexpr int max_bytes = std::max(dense_bytes, output_bytes);
-  // Wide scalar broadcasts take 16 bytes of the widest streamed operand.
-  // In the adaptive path, a work-item takes 8 bytes when there is enough work
-  // for every hardware thread, twice over when 4 bytes hold several elements.
-  // The narrowest operand, e.g. a bool output, keeps at least 4 bytes.
+  // The narrowest streamed operand uses at least four bytes per vector.
   static constexpr int narrow_vec = std::max(1, 4 / min_bytes);
   static constexpr int wide_vec = std::max(8 / max_bytes, narrow_vec);
-  static constexpr int waves = narrow_vec > 1 ? 2 : 1;
   // Broadcast rows gain from vectors only when a streamed operand is narrower
   // than 8 bytes; otherwise the generic kernel already accesses 8 bytes per
   // work-item, and its grid-stride loop suits long write streams.
   static constexpr bool vectorize_rows = min_bytes < 8;
 
   static constexpr int dense = 2 - broadcast_arg;
-
-  static bool wide(int64_t numel) {
-    return numel / wide_vec >=
-        waves * int64_t(at::xpu::getDeviceMaxWorkItems());
-  }
 
   template <int vec_size, typename array_t, typename layout_t>
   static void submit_kernel(
@@ -942,41 +933,17 @@ struct BroadcastLaunchConfig {
           return false;
         }
       }
-      if constexpr (low_precision) {
-        const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
-        int64_t vec8_items = wave_items;
-        if constexpr (single_element) {
-          // In-place scalar broadcasts can pack wider once the grid can offer
-          // one work-group per Xe core.
-          if (data[0] == data[dense]) {
-            vec8_items = launch_config::broadcast_wide_work_group_size *
-                int64_t(at::xpu::getDeviceXeCoreCount());
-          }
+      if constexpr (low_precision || (!single_element && float_storage)) {
+        if (launch_vector<16 / dense_bytes>(iter, f, data, numel)) {
+          return true;
         }
-        constexpr int vec4_waves = single_element ? 2 : 1;
-        return (numel / 8 >= vec8_items &&
-                launch_vector<8>(iter, f, data, numel)) ||
-            (numel / 4 >= vec4_waves * wave_items &&
-             launch_vector<4>(iter, f, data, numel)) ||
-            launch_vector<2>(iter, f, data, numel);
-      } else if constexpr (!single_element && float_storage) {
-        const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
-        return (numel / 4 >= 2 * wave_items &&
-                launch_vector<4>(iter, f, data, numel)) ||
-            (numel / 2 >= wave_items &&
-             launch_vector<2>(iter, f, data, numel)) ||
-            launch_vector<1>(iter, f, data, numel);
-      } else {
-        if constexpr (wide_vec == narrow_vec) {
-          return launch_vector<wide_vec>(iter, f, data, numel);
-        } else if (wide(numel)) {
-          const bool launched = launch_vector<wide_vec>(iter, f, data, numel);
-          if (single_element || launched) {
-            return launched;
-          }
-        }
-        return launch_vector<narrow_vec>(iter, f, data, numel);
       }
+      if constexpr (wide_vec > narrow_vec) {
+        if (launch_vector<wide_vec>(iter, f, data, numel)) {
+          return true;
+        }
+      }
+      return launch_vector<narrow_vec>(iter, f, data, numel);
     }
   }
 };
