@@ -903,7 +903,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
       rp = rp * (x * x) + RP[index];
     }
 
-    scalar_t rq = 0.0;
+    scalar_t rq = 1.0;
 
     for (uint8_t index = 0; index <= 7; index++) {
       rq = rq * (x * x) + RQ[index];
@@ -931,7 +931,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
     qp = qp * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + QP[index];
   }
 
-  scalar_t qq = 0.0;
+  scalar_t qq = 1.0;
 
   for (uint8_t index = 0; index <= 6; index++) {
     qq = qq * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + QQ[index];
@@ -1023,7 +1023,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
       yp = yp * (x * x) + YP[index];
     }
 
-    scalar_t yq = 0.0;
+    scalar_t yq = 1.0;
 
     for (uint8_t index = 0; index <= 7; index++) {
       yq = yq * (x * x) + YQ[index];
@@ -1052,7 +1052,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
     qp = qp * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + QP[index];
   }
 
-  scalar_t qq = 0.0;
+  scalar_t qq = 1.0;
 
   for (uint8_t index = 0; index <= 6; index++) {
     qq = qq * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + QQ[index];

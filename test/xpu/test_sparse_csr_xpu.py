@@ -12,6 +12,8 @@
 
 # Owner(s): ["module: sparse"]
 
+import functools
+
 import torch
 from torch.testing import make_tensor
 from torch.testing._internal.common_device_type import (
@@ -110,6 +112,120 @@ def _test_spsolve_xpu_errors(self, device, dtype):
 
 TestSparseCSRDevice.test_spsolve_xpu = _test_spsolve_xpu
 TestSparseCSRDevice.test_spsolve_xpu_errors = _test_spsolve_xpu_errors
+
+
+# ======================================================================
+# Sparse CSR ops with non-contiguous values views (gh-201268 / issue #6173)
+#
+# The XPU kernels used to allocate fresh indices/values and drop a
+# non-contiguous `out.values()` view instead of writing the result through
+# it.
+#
+# The write-through helpers (_with_strided_values, _check_written_through_view,
+# etc.) are inherited from upstream TestSparseCSRDevice (imported above from
+# test_sparse_csr), so they are not duplicated here.
+# ======================================================================
+
+
+@onlyXPU
+@dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
+def _test_sparse_csr_add_noncontiguous_xpu(self, device, dtype):
+    fill = -99
+
+    def gen(nnz, index_dtype):
+        return self.genSparseCSRTensor(
+            [5, 5], nnz, dtype=dtype, device=device, index_dtype=index_dtype
+        )
+
+    for index_dtype in (torch.int32, torch.int64):
+        # Identical operands with a distinct strided output. The guard runs
+        # before the trivial-case handler (deliberately, unlike CPU/CUDA;
+        # tracked by https://github.com/intel/torch-xpu-ops/issues/6333), so
+        # the result is written through the view.
+        a = gen(7, index_dtype)
+        out, buf = self._with_strided_values(gen(7, index_dtype), fill)
+        values = out.values()
+        torch.add(a, a, alpha=0.5, out=out)
+        self._check_written_through_view(out, buf, values, (1.5 * a.to_dense()), fill)
+
+        # nnz change: raising is the other new behaviour here (CPU/CUDA
+        # silently mis-handle this case).
+        out, buf = self._with_strided_values(gen(3, index_dtype), fill)
+        self._check_nnz_change_rejected(
+            out, buf, lambda o: torch.add(a, a, alpha=0.5, out=o), fill
+        )
+
+        # Result nnz 0.
+        z = gen(0, index_dtype)
+        out, buf = self._with_strided_values(gen(7, index_dtype), fill)
+        self._check_nnz_zero_result(out, buf, lambda o: torch.add(z, z, out=o))
+
+
+# TODO: delete this test when https://github.com/intel/torch-xpu-ops/issues/6173
+# is fully resolved and the upstream skipXPUIf on
+# test_mm_addmm_out_noncontiguous_values is removed. It is a temporary copy of
+# that upstream test so that the XPU path is covered in this CI until then.
+@onlyXPU
+@dtypes(torch.float64)
+def _test_sparse_csr_mm_addmm_noncontiguous_out_xpu(self, device, dtype):
+    fill = -99.0
+    for index_dtype in (torch.int32, torch.int64):
+        gen = functools.partial(
+            self.genSparseCSRTensor,
+            dtype=dtype,
+            device=device,
+            index_dtype=index_dtype,
+        )
+        a, b = gen((4, 6), 9), gen((6, 5), 11)
+        nnz = torch.mm(a, b)._nnz()
+        expected_mm = a.to_dense() @ b.to_dense()
+        spy_a, spy_b = (
+            torch.sparse_csr_tensor(
+                t.crow_indices(),
+                t.col_indices(),
+                torch.ones_like(t.values()),
+                size=t.shape,
+            ).to_dense()
+            for t in (a, b)
+        )
+        pattern = (spy_a @ spy_b).to_sparse_csr()
+        c = torch.sparse_csr_tensor(
+            pattern.crow_indices().to(index_dtype),
+            pattern.col_indices().to(index_dtype),
+            make_tensor((nnz,), dtype=dtype, device=device),
+            size=pattern.shape,
+        )
+        expected_addmm = 0.5 * c.to_dense() + 2 * expected_mm
+
+        for fn, expected in (
+            (lambda o: torch.mm(a, b, out=o), expected_mm),
+            (lambda o: torch.addmm(c, a, b, beta=0.5, alpha=2, out=o), expected_addmm),
+        ):
+            out, buf = self._with_strided_values(gen((4, 5), nnz), fill)
+            values = out.values()
+            fn(out)
+            self._check_written_through_view(out, buf, values, expected, fill)
+
+            out, buf = self._with_strided_values(
+                gen((4, 5), 2 if nnz != 2 else 3), fill
+            )
+            self._check_nnz_change_rejected(out, buf, fn, fill)
+
+        a0 = gen((4, 6), 0)
+        for fn in (
+            lambda o: torch.mm(a0, b, out=o),
+            lambda o: torch.addmm(gen((4, 5), 0), a0, b, out=o),
+        ):
+            out, buf = self._with_strided_values(gen((4, 5), 3), fill)
+            self._check_nnz_zero_result(out, buf, fn)
+
+
+TestSparseCSRDevice.test_sparse_csr_add_noncontiguous_xpu = (
+    _test_sparse_csr_add_noncontiguous_xpu
+)
+TestSparseCSRDevice.test_sparse_csr_mm_addmm_noncontiguous_out_xpu = (
+    _test_sparse_csr_mm_addmm_noncontiguous_out_xpu
+)
 
 
 # ======================================================================
