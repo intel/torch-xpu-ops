@@ -42,7 +42,7 @@ struct MaximumFunctor {
     } else if (b != b) {
       return b;
     } else {
-      return std::max(a, b);
+      return std::fmax(a, b);
     }
   }
 };
@@ -97,7 +97,7 @@ struct MinimumFunctor {
     } else if (b != b) {
       return b;
     } else {
-      return std::min(a, b);
+      return std::fmin(a, b);
     }
   }
 };
