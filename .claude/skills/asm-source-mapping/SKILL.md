@@ -19,10 +19,12 @@ construct label.
 Debug line info flows: `C++ source → LLVM IR !dbg → SPIR-V OpLine → IGC vISA
 DebugLoc → zebin .debug_line` (byte offset → file:line). The zebin's
 `.debug_line` section maps GPU ISA offsets to source, and is the primary data
-source for this skill. Requires `-g` at compile time (`-gline-tables-only` is
-**not supported** for `spir64_gen` AOT targets and is silently ignored by the
-compiler now and may fix it in the future version). oneDNN ngen has no `.debug_line` — pattern recognition is the only
-option.
+source for this skill. Requires `-g` at compile time. `-gline-tables-only` is
+**not supported** for SYCL device code (JIT `spir64` and AOT `spir64_gen`
+alike): the compiler ignores it (`-Woption-ignored`, "only supported for host
+compilation"), so it yields neither `.debug_line` nor IGC line comments. A
+future compiler version may change this. oneDNN ngen has no `.debug_line` —
+pattern recognition is the only option.
 
 ## When to use
 
@@ -51,8 +53,7 @@ attribution. Only add an optional construct label as enrichment.**
 ## Method 1 — Zebin `.debug_line` (primary)
 
 The zebin ELF (e.g. `dumped_zebin_module_0.elf`) must contain a `.debug_line`
-section (present when
-compiled with `-g` or `-gline-tables-only`).
+section (present only when compiled with `-g`, see Background).
 
 1. **Locate the zebin ELF.**
 
@@ -112,7 +113,9 @@ inline source comments. Two formats exist depending on IGC version:
 ```
 
 Scan for `// Line <N>:` or `// <file>:<line>` patterns. For each IP,
-walk backward to the nearest preceding annotated line.
+walk backward to the nearest preceding annotated line. In Format A the file
+comes from the nearest preceding `// File: <path>` comment; inlined code
+switches files, so track file and line together.
 
 ## Method 3 — Pattern Recognition (fallback only)
 

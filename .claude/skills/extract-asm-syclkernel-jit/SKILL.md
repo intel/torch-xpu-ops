@@ -70,12 +70,16 @@ be invoked at runtime.
    SYCL_UR_TRACE=-1 <repro_cmd> 2>&1 | grep -oP 'pKernelName = 0x[0-9a-f]+ \(\K[^)]+' | sort -u
    ```
 
-   Pick the hot kernel name (`<KERNEL>`).
+   Pick the hot kernel name and keep it for step 3:
+
+   ```bash
+   KERNEL="<hot-kernel-name>"
+   ```
 
 2. **Re-run with IGC dump (cold cache).**
 
    ```bash
-   OUT="<workdir>/$(basename "$BIN")_$(date +%Y%m%d_%H%M%S)"
+   OUT="<workdir>/jit_$(date +%Y%m%d_%H%M%S)"
    mkdir -p "$OUT/igc"
 
    NEO_CACHE_PERSISTENT=0 \

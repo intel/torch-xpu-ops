@@ -15,7 +15,7 @@ ze.zeDeviceGet.restype = c_uint32
 
 ZE_DEVICE_TYPE_GPU = 1
 ZE_DEVICE_PROPERTY_FLAG_INTEGRATED = 0x1
-ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES = 0x2
+ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES = 0x3
 
 
 class ze_device_properties_t(Structure):
