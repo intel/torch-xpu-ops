@@ -777,22 +777,14 @@ struct BroadcastLaunchConfig {
   using broadcast_t =
       std::decay_t<typename traits::template arg<broadcast_arg>::type>;
   using output_t = typename traits::result_type;
-  static constexpr bool same_storage = std::is_same_v<dense_t, output_t> &&
-      std::is_same_v<broadcast_t, output_t>;
-  static constexpr bool low_precision = same_storage &&
-      (std::is_same_v<output_t, at::Half> ||
-       std::is_same_v<output_t, at::BFloat16>);
-  static constexpr bool float_storage =
-      same_storage && std::is_same_v<output_t, float>;
   static constexpr int dense_bytes = sizeof(dense_t);
   static constexpr int output_bytes = sizeof(output_t);
   static constexpr int min_bytes = std::min(dense_bytes, output_bytes);
   static constexpr int max_bytes = std::max(dense_bytes, output_bytes);
   // The narrowest streamed operand uses at least four bytes per vector.
   static constexpr int min_vec = std::max(1, 4 / min_bytes);
-  static constexpr int vector_bytes =
-      low_precision || (!single_element && float_storage) ? 16 : 8;
-  static constexpr int max_vec = std::max(min_vec, vector_bytes / max_bytes);
+  // Prefer up to 16 bytes per vector for the widest streamed operand.
+  static constexpr int max_vec = std::max(min_vec, 16 / max_bytes);
   // Broadcast rows gain from vectors only when a streamed operand is narrower
   // than 8 bytes; otherwise the generic kernel already accesses 8 bytes per
   // work-item, and its grid-stride loop suits long write streams.
