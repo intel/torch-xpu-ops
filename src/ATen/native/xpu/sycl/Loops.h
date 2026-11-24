@@ -24,6 +24,12 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
+#if defined(_MSC_VER) && !defined(__SYCL_DEVICE_ONLY__)
+#define XPU_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#define XPU_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#endif
+
 using namespace at::xpu;
 
 namespace at {
@@ -180,12 +186,11 @@ struct VectorizedElementwiseKernel {
         ic_(capture<is_trivial_offset_calculator_v<in_calc_t>>(ic)) {}
 
  private:
-  [[no_unique_address]] std::conditional_t<full_tile, std::tuple<>, int> numel_;
-  [[no_unique_address]] std::
-      conditional_t<is_stateless_functor_v<func_t>, std::tuple<>, func_t>
-          f_;
+  XPU_NO_UNIQUE_ADDRESS std::conditional_t<full_tile, std::tuple<>, int> numel_;
+  XPU_NO_UNIQUE_ADDRESS
+  std::conditional_t<is_stateless_functor_v<func_t>, std::tuple<>, func_t> f_;
   array_t data_;
-  [[no_unique_address]] std::conditional_t<
+  XPU_NO_UNIQUE_ADDRESS std::conditional_t<
       is_trivial_offset_calculator_v<in_calc_t>,
       std::tuple<>,
       in_calc_t>
@@ -778,7 +783,7 @@ struct AUnaryFunctor {
   AUnaryFunctor(func_t f_, opmath_arg1_t a_) : f(f_), a(a_) {}
 
  private:
-  [[no_unique_address]] func_t f;
+  XPU_NO_UNIQUE_ADDRESS func_t f;
   opmath_arg1_t a;
 };
 
@@ -792,7 +797,7 @@ struct BUnaryFunctor {
   BUnaryFunctor(func_t f_, opmath_arg2_t b_) : f(f_), b(b_) {}
 
  private:
-  [[no_unique_address]] func_t f;
+  XPU_NO_UNIQUE_ADDRESS func_t f;
   opmath_arg2_t b;
 };
 
@@ -946,3 +951,5 @@ void gpu_kernel_multiple_outputs(TensorIteratorBase& iter, const func_t& f) {
 } // namespace xpu
 } // namespace native
 } // namespace at
+
+#undef XPU_NO_UNIQUE_ADDRESS
