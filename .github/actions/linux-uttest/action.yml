@@ -35,58 +35,58 @@ runs:
       shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
       run: |
-        cd pytorch/third_party/torch-xpu-ops/test/regressions
-        pytest --junit-xml=${UT_JUNIT_DIR}/op_regression.xml \
+        cd pytorch/third_party/torch-xpu-ops/test
+        pytest regressions --junit-xml=${UT_JUNIT_DIR}/op_regression.xml \
           2>&1 |tee ${UT_LOG_DIR}/op_regression_test.log
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${UT_LOG_DIR}/reproduce_op_regression.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_regression.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test" | tee -a ${UT_LOG_DIR}/reproduce_op_regression.log
+        echo -e "Reproduce Command: pytest -sv regressions/failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_regression.log
     - name: op_regression_dev1
       shell: timeout 300 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
       run: |
-        cd pytorch/third_party/torch-xpu-ops/test/regressions
-        timeout 180 pytest test_operation_on_device_1.py \
+        cd pytorch/third_party/torch-xpu-ops/test
+        timeout 180 pytest regressions/test_operation_on_device_1.py \
           --junit-xml=${UT_JUNIT_DIR}/op_regression_dev1.xml \
           2>&1 |tee ${UT_LOG_DIR}/op_regression_dev1_test.log
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${UT_LOG_DIR}/reproduce_op_regression_dev1.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_regression_dev1.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test" | tee -a ${UT_LOG_DIR}/reproduce_op_regression_dev1.log
+        echo -e "Reproduce Command: pytest -sv regressions/failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_regression_dev1.log
     - name: op_extended
       shell: timeout 7200 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
-        cd pytorch/third_party/torch-xpu-ops/test/xpu/extended
-        python run_test_with_skip.py \
+        cd pytorch/third_party/torch-xpu-ops/test
+        python xpu/extended/run_test_with_skip.py \
           2>&1 |tee ${UT_LOG_DIR}/op_extended_test.log
         ls -al
-        cp *.xml ${UT_JUNIT_DIR}
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a ${UT_LOG_DIR}/reproduce_op_extended.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_extended.log
+        cp op_extended*.xml ${UT_JUNIT_DIR}
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test" | tee -a ${UT_LOG_DIR}/reproduce_op_extended.log
+        echo -e "Reproduce Command: pytest -sv xpu/extended/failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_extended.log
     - name: op_ut
       shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
-        cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_test_with_skip.py \
+        cd pytorch/third_party/torch-xpu-ops/test
+        python xpu/run_test_with_skip.py \
           2>&1 | \
           tee ${UT_LOG_DIR}/op_ut_with_skip_test.log
         find . -type f -name "op_ut_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_op_ut.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_ut.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test" | tee -a ${UT_LOG_DIR}/reproduce_op_ut.log
+        echo -e "Reproduce Command: pytest -sv xpu/failed_case" | tee -a ${UT_LOG_DIR}/reproduce_op_ut.log
     - name: skipped_ut
       shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'skipped_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTEST_ADDOPTS="$(echo "${PYTEST_ADDOPTS}" | sed 's/--timeout 600/--timeout 3600/')"
-        cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_test_with_skip.py --test-cases skipped \
+        cd pytorch/third_party/torch-xpu-ops/test
+        python xpu/run_test_with_skip.py --test-cases skipped \
           2>&1 | \
           tee ${UT_LOG_DIR}/skipped_ut_with_skip_test.log
         find . -type f -name "op_ut_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_skipped_ut.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_skipped_ut.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test" | tee -a ${UT_LOG_DIR}/reproduce_skipped_ut.log
+        echo -e "Reproduce Command: pytest -sv xpu/failed_case" | tee -a ${UT_LOG_DIR}/reproduce_skipped_ut.log
     - name: torch_xpu
       shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}
@@ -105,7 +105,7 @@ runs:
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
         mkdir -p ${UT_LOG_DIR}/issue_reproduce
-        cd pytorch/third_party/torch-xpu-ops
+        cd pytorch/third_party/torch-xpu-ops/test
         # xdist (-n / --tx from detect-devices.sh) captures stdout and would drop
         # the profiler tables the cases print for manual check
         export PYTEST_ADDOPTS="-v --timeout 3600 --timeout_method=thread"
@@ -114,52 +114,52 @@ runs:
         # it also fails the check when any --junitxml report listed here is missing
         python -m pytest -s -v \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_rn50.xml \
-          test/profiling/test_rn50_profiling.py | \
+          profiling/test_rn50_profiling.py | \
           tee ${UT_LOG_DIR}/rn50.log
         cp profiling.fp32.train.pt ${UT_LOG_DIR} || true
         # All Issue Reproduce UT (-s keeps the profiler tables in the log for manual check)
         python -m pytest -s -v \
           --junitxml=${UT_LOG_DIR}/issue_reproduce/xpu_profiling_test_issue_reproducers.xml \
-          test/profiling/test_issue_reproducers.py | \
+          profiling/test_issue_reproducers.py | \
           tee ${UT_LOG_DIR}/issue_reproduce/test_issue_reproducers.log
         python -m pytest -s \
           --junitxml=${UT_LOG_DIR}/issue_reproduce/xpu_profiling_test_profiler_correctness.xml \
-          test/profiling/test_profiler_correctness.py | \
+          profiling/test_profiler_correctness.py | \
           tee ${UT_LOG_DIR}/issue_reproduce/test_profiler_correctness.log
         # Overlapping kernels test (depends on rn50.log.json from RN50 run above)
         python -m pytest -s \
           --junitxml=${UT_LOG_DIR}/issue_reproduce/xpu_profiling_test_for_overlapping_kernels.xml \
-          test/profiling/test_for_overlapping_kernels.py | \
+          profiling/test_for_overlapping_kernels.py | \
           tee ${UT_LOG_DIR}/issue_reproduce/test_for_overlapping_kernels.log
         python -m pytest -s \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_test_profiler_use_cases.xml \
-          test/xpu/profiler/test_profiler_use_cases.py | \
+          xpu/profiler/test_profiler_use_cases.py | \
           tee ${UT_LOG_DIR}/test_profiler_use_cases.log
 
         # llama case for calls number test
         uv pip install "transformers>=5.19"
         python -m pytest -s -v \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_llama.xml \
-          test/profiling/test_llama_profiling.py | \
+          profiling/test_llama_profiling.py | \
           tee ${UT_LOG_DIR}/llama.log
 
-        # All xpu ut under test/profiler
-        cd ../../test/profiler
+        # All xpu ut under pytorch/test/profiler
+        cd "${GITHUB_WORKSPACE}/pytorch/test"
         python -m pytest -s \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_test_execution_trace.xml \
-          test_execution_trace.py | \
+          profiler/test_execution_trace.py | \
           tee ${UT_LOG_DIR}/test_execution_trace.log
         python -m pytest -s \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_test_memory_profiler.xml \
-          test_memory_profiler.py | \
+          profiler/test_memory_profiler.py | \
           tee ${UT_LOG_DIR}/test_memory_profiler.log
         python -m pytest -s \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_test_profiler_tree.xml \
-          test_profiler_tree.py | \
+          profiler/test_profiler_tree.py | \
           tee ${UT_LOG_DIR}/test_profiler_tree.log
         python -m pytest -s \
           --junitxml=${UT_LOG_DIR}/xpu_profiling_test_xpu_profiler.xml \
-          test_xpu_profiler.py | \
+          profiler/test_xpu_profiler.py | \
           tee ${UT_LOG_DIR}/test_xpu_profiler.log
 
         find ${UT_LOG_DIR} -type f -name "*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
@@ -169,18 +169,18 @@ runs:
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
+        cd pytorch/third_party/torch-xpu-ops/test
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
           exit 1
         fi
-        cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_distributed.py \
+        python xpu/run_distributed.py \
           2>&1 | \
           tee ${UT_LOG_DIR}/xpu_distributed_test.log
-        find ../ -type f -name "xpu_distributed_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
-        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${UT_LOG_DIR}/reproduce_xpu_distributed.log
-        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${UT_LOG_DIR}/reproduce_xpu_distributed.log
+        find . -type f -name "xpu_distributed_with_*.xml" -exec mv {} ${UT_JUNIT_DIR}/ \; || true
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test" | tee -a ${UT_LOG_DIR}/reproduce_xpu_distributed.log
+        echo -e "Reproduce Command: pytest -sv xpu/failed_case" | tee -a ${UT_LOG_DIR}/reproduce_xpu_distributed.log
 
     - name: xpu_p0
       shell: timeout 72000 bash -xe -o pipefail {0}

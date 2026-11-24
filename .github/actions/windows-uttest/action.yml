@@ -17,8 +17,8 @@ runs:
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
         set PYTORCH_TEST_WITH_SLOW=1
         set PYTEST_ADDOPTS=-v
-        cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
-        python run_test_with_skip_mtl.py
+        cd ../pytorch/third_party/torch-xpu-ops/test/
+        python xpu/extended/run_test_with_skip_mtl.py
 
         if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
         copy op_extended*.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
@@ -31,8 +31,8 @@ runs:
         call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
         call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
         call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
-        cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
-        python -m pytest test_cpp_extensions_aot_xpu.py -v --junit-xml=test_cpp_extensions_aot_xpu.xml
+        cd ../pytorch/third_party/torch-xpu-ops/test/
+        python -m pytest xpu/test_cpp_extensions_aot_xpu.py -v --junit-xml=test_cpp_extensions_aot_xpu.xml
 
         if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
         copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log\junit /Y
@@ -55,7 +55,7 @@ runs:
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
         set PYTORCH_TEST_WITH_SLOW=1
         set PYTEST_ADDOPTS=-v --timeout 600 --timeout_method=thread --max-worker-restart 1000000 -n 1 --only-rerun crashed.*while.*running --reruns 2
-        cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
-        python run_test_with_windows_nightly.py
+        cd ../pytorch/third_party/torch-xpu-ops/test/
+        python xpu/run_test_with_windows_nightly.py
         if not exist "%GITHUB_WORKSPACE%\ut_log\junit" mkdir "%GITHUB_WORKSPACE%\ut_log\junit"
         for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\junit\" >nul 2>&1 || echo "File move completed"

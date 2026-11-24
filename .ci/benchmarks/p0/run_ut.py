@@ -98,17 +98,13 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                 ):
                     raise ValueError(f"Invalid test path: {path!r}")
                 posix_path = Path(path).as_posix()
-                if repo == "pytorch":
-                    # Launch stock PyTorch UTs from pytorch/test/ rather than the
-                    # repo root so child `python -c "import torch"` subprocesses do
-                    # not shadow an installed wheel with the unbuilt source `torch/`.
-                    if Path(posix_path).parts[:1] != ("test",) or len(Path(posix_path).parts) < 2:
-                        raise ValueError(f"PyTorch test path must be under test/: {path!r}")
-                    cwd = root / "test"
-                    target = Path(posix_path).relative_to("test").as_posix()
-                else:
-                    cwd = root
-                    target = posix_path
+                # Launch all UTs from <repo>/test/ rather than the repo root so
+                # child `python -c "import torch"` subprocesses do not shadow an
+                # installed wheel with an unbuilt source `torch/` directory.
+                if Path(posix_path).parts[:1] != ("test",) or len(Path(posix_path).parts) < 2:
+                    raise ValueError(f"Test path must be under test/: {path!r}")
+                cwd = root / "test"
+                target = Path(posix_path).relative_to("test").as_posix()
                 require_mapping(options, path)
                 if set(options) - {"skip"}:
                     raise ValueError(f"Unknown options for {path}: {set(options)}")

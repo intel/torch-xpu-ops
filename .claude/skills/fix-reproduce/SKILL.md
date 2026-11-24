@@ -225,13 +225,11 @@ leading `test/`), or for standalone scripts `cd $(mktemp -d)` before running.
 
 ### torch-xpu-ops test invocation
 
-**Applies when the reproducer targets a test under `torch-xpu-ops/test/xpu/`.**
+**Applies when the reproducer targets a test under `torch-xpu-ops/test/`.**
 Prepare has already ensured the pytorch tree exists at `$PYTORCH_DIR`
 with the working torch-xpu-ops tree at
 `$PYTORCH_DIR/third_party/torch-xpu-ops`. Invoke the reproducer from
-`$PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/` — the relative
-`sys.path.append("../../../../test/functorch")` in those tests only
-resolves from that cwd.
+`$PYTORCH_DIR/third_party/torch-xpu-ops/test/` (strip any leading `test/`).
 
 The pytorch tree does NOT need to be built for the nightly-wheel path —
 the wheel provides the runtime, the source tree only supplies test
@@ -631,8 +629,9 @@ this if `needs_tree=yes`; if it didn't, do it now via the
 
 Run in the current shell — no `docker run` wrapper. Working-directory
 rule from Stage 1 applies: for torch-xpu-ops tests use
-`$PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/`; for a
-non-test-file reproducer, `cd /tmp` (or any non-pytorch dir).
+`$PYTORCH_DIR/third_party/torch-xpu-ops/test/`; for upstream PyTorch tests
+use `$PYTORCH_DIR/test/`; for a non-test-file reproducer, `cd /tmp` (or any
+non-pytorch dir).
 
 Result interpretation is the form-specific rule from Stage 1 "Run
 test" — pytest FAILED / all skipped / xfailed, or non-pytest exit code

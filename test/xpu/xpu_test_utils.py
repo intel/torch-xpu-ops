@@ -1288,17 +1288,25 @@ def launch_test(test_case, skip_list=None, exe_list=None, xml_prefix="op_ut"):
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
     norm_case = test_case.replace("\\", "/")
+    xpu_dir = os.path.dirname(os.path.abspath(__file__))
+    ops_test_dir = os.path.dirname(xpu_dir)
     pytorch_test_prefix = "../../../../test/"
     if norm_case.startswith(pytorch_test_prefix):
         # Launch stock PyTorch UTs from pytorch/test/ while keeping the JUnit
         # XML report in the caller's working directory.
-        run_cwd = os.path.abspath(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../test")
-        )
+        run_cwd = os.path.abspath(os.path.join(xpu_dir, "../../../../test"))
         run_target = norm_case[len(pytorch_test_prefix) :]
     else:
-        run_cwd = None
-        run_target = test_case
+        # Launch torch-xpu-ops UTs from torch-xpu-ops/test/.
+        run_cwd = ops_test_dir
+        if os.path.isabs(test_case):
+            run_target = test_case
+        elif norm_case.startswith("xpu/") or os.path.exists(
+            os.path.join(ops_test_dir, norm_case)
+        ):
+            run_target = norm_case
+        else:
+            run_target = f"xpu/{norm_case}"
     # check-ut.py derives the result category from this prefix, so it must match
     # the UT job name that runs the test.
     if skip_list is not None and len(skip_list) > 0:
