@@ -1278,7 +1278,8 @@ inline bool try_backward(
       return false;
     }
   }
-  const auto* properties = at::xpu::getDeviceProperties(at::xpu::current_device());
+  const auto* properties =
+      at::xpu::getDeviceProperties(at::xpu::current_device());
   const auto& subgroup_sizes = properties->sub_group_sizes;
   // The largest supported portable mixed tile is W=56, S=1: 35904 bytes.
   constexpr size_t local_memory_bytes =
@@ -1286,7 +1287,8 @@ inline bool try_backward(
   const bool may_use_local_memory = out.stride(1) != 1 &&
       (go.stride(1) == 1 || (pool3 && sh == 1 && !include));
   if (properties->max_work_group_size < 256 ||
-      (may_use_local_memory && properties->local_mem_size < local_memory_bytes) ||
+      (may_use_local_memory &&
+       properties->local_mem_size < local_memory_bytes) ||
       std::find(subgroup_sizes.begin(), subgroup_sizes.end(), 16) ==
           subgroup_sizes.end()) {
     return false;
