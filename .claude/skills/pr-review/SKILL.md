@@ -117,6 +117,8 @@ only the diff and commit log need to be fetched via git.
 
 ## Review Philosophy
 
+A single line of code can have deep cross-cutting implications: a missing device guard causes silent data corruption on multi-GPU, a manual dtype check instead of `TensorIterator` silently skips type promotion. **Treat every line as potentially load-bearing.**
+
 1. **Only report problems** — The review output must contain only issues, concerns, and actionable suggestions. Do NOT mention things that are done correctly, do NOT praise good decisions, do NOT explain why something is fine. If a section has no problems, omit it entirely. The reader's time is precious — every sentence must point to something that needs fixing or further discussion.
 2. **Investigate, don't guess** — When uncertain whether a checklist item applies, spawn a sub-agent to read the relevant code. A reviewer who guesses wrong provides negative value.
 3. **Review the design, not just the implementation** — A PR can have perfectly correct implementation of a bad design. Question side-channel communication, on/off private flags, and demand concrete interface documentation for new contracts between components.
@@ -132,6 +134,12 @@ only the diff and commit log need to be fetched via git.
 
 The review checklist is large. **Spawn sub-agents** to investigate whether checklist items apply: read surrounding code, check upstream PyTorch implementation for parity, or verify tests exist. Spawn them in parallel for independent areas.
 
+A sub-agent only knows what its prompt tells it. Give every sub-agent the paths of any `REVIEW.md` files covering the files it is reviewing (Step 1, item 5) — otherwise those directories' rules will silently go unenforced.
+
+## Directory Review Guides (`REVIEW.md`)
+
+Any directory may contain a `REVIEW.md` with review rules for code under it. It applies to every changed file under that directory at any depth; for renames and deletions, check both the old and new paths.
+
 ## Review Workflow
 
 ### Step 1: Understand Context
@@ -141,6 +149,7 @@ Before reviewing, build understanding of what the PR touches and why:
 2. Group changes by type (new code, tests, config, docs)
 3. Note the scope of changes (files affected, lines changed)
 4. Spawn sub-agents to read the unchanged code surrounding each significantly changed file to understand existing patterns and infrastructure
+5. List the `REVIEW.md` files that apply to each changed file (see "Directory Review Guides" above); leave reading them to sub-agents unless you review or fact-check a file yourself
 
 ### Step 2: Verify Upstream Semantics
 
@@ -158,13 +167,10 @@ Go through **every changed line** in the diff and evaluate against the review ch
 
 If the diff adds or modifies any agent instruction files (`SKILL.md`, `AGENTS.md`, `claude.md`, `copilot-instructions.md`, or files under `.claude/` / `.github/`), load the skill-writer skill and evaluate those changes against its guidelines. Do NOT skip this — treat it as a blocking gate for those files.
 
-Pay special attention to XPU-specific risks:
-- **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
-- **Indexing**: 32-bit vs 64-bit indexing, large tensor overflow risk
-- **Layout**: contiguous vs non-contiguous, channels_last handling
-- **Precision**: FP32 / BF16 / FP16 behavior, accumulation dtype, AMP impact
-- **Kernel efficiency**: branch divergence, work-group choice, unnecessary copies
-- **Fallback/dispatch**: wrong registration, silent fallback, inconsistent path coverage
+- **Correctness and security:** Semantic parity with the upstream CUDA implementation (edge cases and behavioral differences); stream misuse that can silently corrupt data across streams; 32-bit vs 64-bit indexing and large tensor overflow risk; contiguous vs non-contiguous / channels_last layout handling; FP32 / BF16 / FP16 precision behavior (accumulation dtype, AMP impact); dispatch/fallback correctness (wrong registration, silent fallback, inconsistent path coverage); and, for workflow/CI changes, the checklist's CI/CD And Workflow Security items.
+- **Performance and efficiency:** Consider memory access patterns (e.g., memory coalescing, bank conflicts) and potential bottlenecks, including hidden host sync / unnecessary synchronize calls and kernel efficiency (branch divergence, work-group choice, unnecessary copies).
+- **Readability and maintainability:** Ensure code is clear, well-structured, and follows project conventions — see the Code Quality section of [review-checklist.md](references/review-checklist.md).
+- **Tests:** how the PR's tests are written: tests that cannot fail or do not check what they claim, flakiness, and the checklist's Test Coverage items.
 
 ### Step 4: Check Backward Compatibility
 
@@ -176,7 +182,7 @@ Structure your review with actionable feedback organized by category. Every find
 
 ### Step 6: Fact-Check
 
-After drafting the review, spawn a sub-agent per reported issue (in parallel) to independently verify the claim by re-reading the relevant code. Drop invalid issues, reword uncertain ones with a note about confidence level.
+After drafting the review, spawn a sub-agent per reported issue (in parallel) to independently verify the claim by re-reading the relevant code, giving it the path of any `REVIEW.md` covering the finding's file. Drop invalid issues, reword uncertain ones with a note about confidence level.
 
 ## Output Format
 
@@ -192,22 +198,19 @@ VERDICT: <one sentence — the outcome and why>
 ### Summary
 What the PR does (1 sentence), then the overall verdict.
 
-### Correctness
-[Problems only — semantic parity, edge cases, behavioral issues]
+### Correctness and security
+[Problems only — semantic parity, edge cases, behavioral issues, stream misuse, indexing/overflow, layout handling, precision, dispatch/fallback correctness, CI/CD and workflow security]
 
-### XPU-Specific Risks
-[Problems only — synchronization, indexing, precision, kernel issues]
+### Performance and efficiency
+[Problems only — memory access patterns, hidden host sync, kernel efficiency]
 
-### Dispatch & Registration
-[Problems only — yaml wiring, fallback, backend path]
+### Readability and maintainability
+[Problems only — code clarity, structure, code quality]
 
 ### Testing
-[Problems only — missing tests, wrong patterns, inadequate coverage]
+[Problems only — tests that do not follow the checklist, as adjusted by any applicable `REVIEW.md`]
 
 ### Backward Compatibility
-[Problems only]
-
-### Performance
 [Problems only]
 
 ### Recommendation
@@ -248,134 +251,7 @@ For each finding, quote the offending line and provide a concrete fix.
 
 If there are zero issues in a severity level, omit that section. Always include the "What looks good" section in detailed reviews.
 
-## Intel GPU Terminology
-
-**Principle: For SYCL programming, always use SYCL programming model terms. Hardware architecture terms should only appear in comments explaining the motivation for a particular optimization.**
-
-This is a **🔴 Must Fix** category.
-
-### SYCL Programming Model Terms
-
-Use these terms in all code, variable names, and function names:
-
-| ❌ Deprecated Term | ✅ Current Term | Notes |
-|---|---|---|
-| SIMD width / SIMD length / simd_width | **subgroup size** | SYCL/oneAPI standard term |
-| SIMD lane | **work-item (within subgroup)** | Aligns with SYCL spec |
-| SIMD-8 / SIMD-16 / SIMD-32 | **subgroup size 8 / 16 / 32** | Use numeric subgroup size |
-| thread block / threadblock | **work-group** | SYCL/oneAPI standard term |
-
-### Hardware Architecture Terms (comments/documentation only)
-
-Use these **only in comments** to explain why a particular optimization choice was made (e.g., occupancy, register pressure, memory alignment). They must NOT appear in variable names, function names, or general code.
-
-| ❌ Deprecated Term | ✅ Current Intel Term | Generic Term | Abbreviation |
-|---|---|---|---|
-| Execution Unit (EU) | **Xe Vector Engine** | Vector Engine | **XVE** |
-| Systolic / "DPAS part of EU" | **Xe Matrix eXtension** | Matrix Engine | **XMX** |
-| Subslice (SS) / Dual Subslice (DSS) | **Xe-core** | — | **XC** |
-| HW thread | **XVE thread** | — | Each XVE thread executes a subgroup (subgroup size 16 or 32) |
-| SIMD-16 / SIMD-32 (hardware context) | **XVE thread width** | — | The number of data elements processed per thread; maps to subgroup size |
-| GRF file / GRF count | **register file / register count** | — | Use architecture-neutral where possible |
-| SLM (ambiguous) | **SLM (Shared Local Memory)** | — | Spell out on first use |
-
-### Where to check:
-- Variable names: `subslice_count` → `xc_count` or `xecore_count`
-- Function names: `getSimdWidth()` → `getSubgroupSize()`
-- Comments and docstrings
-- Log/error messages
-- Test names and descriptions
-
-### Examples
-
-```
-// 🔴 Bad
-int num_subslices = device.get_info<ext::info::device::gpu_subslices_per_slice>();
-int simd_len = 16;
-// Each EU has 8 HW threads
-
-// ✅ Good
-int num_xecores = device.get_info<ext::info::device::gpu_subslices_per_slice>();
-// Note: API name still uses "subslices" — wrap in a helper if possible
-int subgroup_size = 16;
-// Each XVE supports 8 concurrent threads
-```
-
-**Edge case — API boundaries:** When the underlying API (Level Zero, OpenCL, SYCL extensions) still uses old terms in function/enum names, it's acceptable to use them **at the call site only**. Wrap in a helper with modern naming, and add a comment:
-
-```
-// ✅ OK — API uses legacy name, but our abstraction uses modern term
-// Level Zero API still exposes "subslice" in its info query
-int xecore_count = zeDeviceGetSubsliceCount(device);  // legacy API name
-```
-
-## Subgroup Reduction Anti-Pattern
-
-**Principle: Never use `sycl::shift_group_left` combined with a reduction operation to perform subgroup reductions. Always use `sycl::reduce_over_group` instead.**
-
-This is a **🔴 Must Fix** category.
-
-### Detection Criterion
-
-Flag any code where `sycl::shift_group_left` is combined with a reduction combiner (any binary operation that accumulates values: add, min, max, mean, product, bitwise-or/and, etc.). The true signal is the **shift + combine** combination, not the loop itself — the loop may be at a different call site or abstracted behind a helper.
-
-### The Problem
-
-`sycl::shift_group_left` produces excessive integer ALU instructions for index manipulation, which stalls the ALU-INT pipeline and degrades performance. The SYCL runtime's built-in `reduce_over_group` can use hardware-optimized reduction paths.
-
-```cpp
-// 🔴 Bad — shift_group_left generates massive int-related instructions,
-// causing ALU-INT pipe stall
-for (int offset = 1; offset < sg_size; offset <<= 1) {
-  arg_t other = sycl::shift_group_left(sg, value[i], offset);
-  value[i] = combine(value[i], other);  // combine = any reduction op
-}
-```
-
-### The Fix
-
-Replace with `sycl::reduce_over_group` using the appropriate SYCL binary operation:
-
-```cpp
-// ✅ Good — uses hardware-optimized reduction
-value[i] = sycl::reduce_over_group(sg, value[i], sycl::plus<arg_t>());    // for sum/mean
-value[i] = sycl::reduce_over_group(sg, value[i], sycl::minimum<arg_t>()); // for min
-value[i] = sycl::reduce_over_group(sg, value[i], sycl::maximum<arg_t>()); // for max
-```
-
-### Variants to Flag
-
-All of these are the same anti-pattern:
-
-```cpp
-// 🔴 Bad — inline loop (any direction)
-for (int offset = 1; offset < sg_size; offset <<= 1) { ... shift_group_left ... }
-for (int offset = (sg_size >> 1); offset > 0; offset >>= 1) { ... shift_group_left ... }
-
-// 🔴 Bad — shift+combine split into a functor (loop lives elsewhere)
-struct ShiftAndCombine {
-  arg_t operator()(sycl::sub_group sg, arg_t value, int offset) const {
-    arg_t other = sycl::shift_group_left(sg, value, offset);
-    return combine_(value, other);
-  }
-  BinaryOp combine_;
-};
-
-// 🔴 Bad — with vectorized inner loop
-for (int offset = 1; offset < sg_size; offset <<= 1) {
-  for (int i = 0; i < out_vec_sz; ++i) {
-    arg_t other = sycl::shift_group_left(sg, value[i], offset);
-    value[i] = combine(value[i], other);
-  }
-}
-```
-
-### Where to Check
-
-- `src/ATen/native/xpu/sycl/` — All SYCL kernel files
-- Any file using `sycl::shift_group_left` in combination with a reduction combiner
-- Reduction kernels, softmax, norm, and scan operations are common locations
-- Functors or lambdas whose body contains shift+combine — trace callers for the loop
+Both the Intel GPU Terminology rules and the `shift_group_left` + reduction anti-pattern are **🔴 Must Fix** categories detailed in [review-checklist.md](references/review-checklist.md) (Intel GPU Terminology section, and the "No shift_group_left + reduction combiner" bullet under Kernel Mapping And Performance).
 
 ## Files to Reference
 
