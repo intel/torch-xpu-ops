@@ -232,7 +232,7 @@ struct FlattenIndicesFunctor {
   const index_t* ptr_indices_;
   int64_t indices_nnz_stride_;
   int64_t sparse_dim_;
-  hash_coeffs_t hash_coeffs_;
+  std::remove_cv_t<hash_coeffs_t> hash_coeffs_;
   int64_t indices_dim_stride_;
 };
 
