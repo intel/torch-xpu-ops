@@ -1052,6 +1052,10 @@ void group_norm_kernel_impl(
   constexpr int64_t kElemsPerWorkItem = 16;
 
   T* Y_data = Y.mutable_data_ptr<T>();
+  // The fused paths vector-load X and vector-store Y at identical offsets, so
+  // a single alignment fixup cannot satisfy both unless they already agree.
+  const bool fused_vec_ok = can_use_vectorization(X_data, FUSED_VEC_SIZE) &&
+      can_use_vectorization(Y_data, FUSED_VEC_SIZE);
   const bool gamma_beta_defined = gamma.defined() && beta.defined();
   const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
   const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
@@ -1073,6 +1077,8 @@ void group_norm_kernel_impl(
   // WG = 1 SG, flat mapping over (N, G) with grid-stride loop.
   auto try_small_path = [&](auto index_tag) -> bool {
     if (!gamma_beta_defined)
+      return false;
+    if (!fused_vec_ok)
       return false;
     if (simd != SIMD32)
       return false;
@@ -1156,6 +1162,8 @@ void group_norm_kernel_impl(
   auto try_medium_path = [&](auto index_tag) -> bool {
     if (!gamma_beta_defined)
       return false;
+    if (!fused_vec_ok)
+      return false;
     if (simd != SIMD32)
       return false;
     using index_t = decltype(index_tag);
@@ -1214,7 +1222,8 @@ void group_norm_kernel_impl(
   int64_t n_groups = N * G;
   int64_t max_wg_est = std::min((int64_t)1024, DS / FUSED_VEC_SIZE);
   bool fused_has_occupancy = (n_groups * max_wg_est >= thread_slots / 2);
-  if (fused_has_occupancy && simd == SIMD32 && gamma_beta_defined) {
+  if (fused_has_occupancy && simd == SIMD32 && gamma_beta_defined &&
+      fused_vec_ok) {
     constexpr int64_t wg_choices[] = {32, 64, 128, 256, 512, 1024};
     int64_t wg_size = 32;
     auto launch = [&](auto index_tag) {
