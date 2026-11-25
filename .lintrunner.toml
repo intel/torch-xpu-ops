@@ -704,7 +704,6 @@ include_patterns = [
 ]
 exclude_patterns = [
     'tools/linter/adapters/*.py',
-    'test/xpu/test_autograd_xpu.py',
 ]
 command = [
     'uv',
