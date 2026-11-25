@@ -1120,32 +1120,24 @@ inline void index_copy_kernel_fn(
 }
 
 template <typename output_t, typename index_t>
-struct CountBySegmentOffsetsKernelFunctor {
-  void operator()(sycl::item<1> item) const {
-    const auto id = item.get_linear_id();
-    if (gmask_ptr_[id]) {
-      offsets_[tpos_ptr_[id]] = id;
-    }
-    if (id == numel_ - 1) {
-      offsets_[tpos_ptr_[id] + 1] = numel_;
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+inline void count_by_segment_offsets_kernel_fn(
+    const index_t* gmask_ptr,
+    const index_t* tpos_ptr,
+    output_t* offsets,
+    int64_t numel) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t id = item.get_global_linear_id();
+  if (id >= numel) {
+    return;
   }
-  CountBySegmentOffsetsKernelFunctor(
-      const index_t* gmask_ptr,
-      const index_t* tpos_ptr,
-      output_t* offsets,
-      int64_t numel)
-      : gmask_ptr_(gmask_ptr),
-        tpos_ptr_(tpos_ptr),
-        offsets_(offsets),
-        numel_(numel) {}
-
- private:
-  const index_t* gmask_ptr_;
-  const index_t* tpos_ptr_;
-  output_t* offsets_;
-  int64_t numel_;
-};
+  if (gmask_ptr[id]) {
+    offsets[tpos_ptr[id]] = id;
+  }
+  if (id == numel - 1) {
+    offsets[tpos_ptr[id] + 1] = numel;
+  }
+}
 
 template <
     typename input_t,
@@ -1195,9 +1187,20 @@ OutputIt count_by_segment(
 
   Tensor range = at::empty({N + 1}, options);
   output_t* range_ptr = range.data_ptr<output_t>();
-  auto offsets_kfn = CountBySegmentOffsetsKernelFunctor<output_t, index_t>(
-      gmask_ptr, tpos_ptr, range_ptr, N);
-  sycl_kernel_submit(sycl::range<1>(N), q, offsets_kfn);
+  {
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+        count_by_segment_offsets_kernel_fn<output_t, index_t>>();
+    int64_t num_groups = (N + wg_size - 1) / wg_size;
+    sycl_kernel_submit<count_by_segment_offsets_kernel_fn<output_t, index_t>>(
+        num_groups * wg_size,
+        wg_size,
+        q,
+        0,
+        gmask_ptr,
+        tpos_ptr,
+        range_ptr,
+        static_cast<int64_t>(N));
+  }
 
   // 3. flush range to every elements of counts
   {
