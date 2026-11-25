@@ -14,6 +14,7 @@
 
 #ifdef USE_C10D_XCCL
 
+#include <c10/util/thread_name.h>
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <xccl/NanCheck_XPU.hpp>
@@ -24,6 +25,9 @@ namespace c10d {
 using FlightRecorderXCCL = FlightRecorder<at::xpu::XPUEvent>;
 
 namespace {
+
+// Same cadence as ProcessGroupNCCL's watchdog (kWatchdogThreadSleepMillis).
+constexpr auto kInflightWorksPollInterval = std::chrono::milliseconds(100);
 
 bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
   for (const auto& input_tensor : input_tensors) {
@@ -373,6 +377,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       options_(std::move(options)) {
   this->setGroupUid(options_->group_name);
   logPrefix_ = createLogPrefix();
+  inflightWorks_ = std::make_unique<InflightWorks>(logPrefix_);
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   xpuEventCacheEnabled_.store(getCvarBool(TORCH_XCCL_XPU_EVENT_CACHE, true));
   traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 0);
@@ -495,11 +500,40 @@ void ProcessGroupXCCL::attachRecordFunctionEndCallback(
       /*use_future*/ false);
 }
 
-void ProcessGroupXCCL::trackInflightWork(
+ProcessGroupXCCL::InflightWorks::InflightWorks(std::string logPrefix)
+    : logPrefix_(std::move(logPrefix)),
+      thread_(&ProcessGroupXCCL::InflightWorks::runLoop, this) {}
+
+ProcessGroupXCCL::InflightWorks::~InflightWorks() {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    terminate_ = true;
+  }
+  cv_.notify_one();
+  thread_.join();
+}
+
+void ProcessGroupXCCL::InflightWorks::track(
     const c10::intrusive_ptr<WorkXCCL>& work) {
-  std::lock_guard<std::mutex> lock(inflightWorksMutex_);
-  std::erase_if(inflightWorks_, [](WorkXCCL& w) { return w.isCompleted(); });
-  inflightWorks_.emplace_back(*work);
+  std::lock_guard<std::mutex> lock(mutex_);
+  std::erase_if(works_, [](WorkXCCL& w) { return w.isCompleted(); });
+  works_.emplace_back(*work);
+}
+
+void ProcessGroupXCCL::InflightWorks::runLoop() {
+  c10::setThreadName("pt_xccl_inflight");
+  std::unique_lock<std::mutex> lock(mutex_);
+  while (!cv_.wait_for(
+      lock, kInflightWorksPollInterval, [this] { return terminate_; })) {
+    try {
+      std::erase_if(works_, [](WorkXCCL& w) { return w.isCompleted(); });
+    } catch (const std::exception& e) {
+      // Completed works are then still released at the next async launch.
+      LOG(ERROR) << logPrefix_
+                 << "Stopping in-flight work cleanup thread: " << e.what();
+      return;
+    }
+  }
 }
 
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
@@ -775,7 +809,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
     attachRetireAndStatusCallback(work, pgStatus_);
     setEnqueuedPgStatus(work);
     if (coalescedAsync_) {
-      trackInflightWork(work);
+      inflightWorks_->track(work);
     }
   }
 
@@ -943,7 +977,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     setEnqueuedPgStatus(work);
     attachRetireAndStatusCallback(work, pgStatus_);
     if (asyncOp && !coalescing_state_) {
-      trackInflightWork(work);
+      inflightWorks_->track(work);
     }
   }
 
