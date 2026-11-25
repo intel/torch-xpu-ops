@@ -506,13 +506,44 @@ void _transform_bias_rescale_qkv_kernel(
       });
 }
 
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
+void unpack_philox_sycl_kernel(
+    bool captured,
+    int64_t* seed_dev_ptr,
+    int64_t* offset_dev_ptr,
+    uint64_t offset_intragraph,
+    uint64_t seed_val,
+    uint64_t offset_val,
+    int64_t* seed_ptr,
+    int64_t* offset_ptr) {
+  if (captured) {
+    *seed_ptr = static_cast<int64_t>(*seed_dev_ptr);
+    *offset_ptr = static_cast<int64_t>(
+        *offset_dev_ptr + static_cast<int64_t>(offset_intragraph));
+  } else {
+    *seed_ptr = static_cast<int64_t>(seed_val);
+    *offset_ptr = static_cast<int64_t>(offset_val);
+  }
+}
+
 void unpack_philox_kernel(
     at::PhiloxXpuState arg,
     int64_t* seed_ptr,
     int64_t* offset_ptr) {
-  auto [seed, offset] = at::xpu::philox::unpack(arg);
-  *seed_ptr = static_cast<int64_t>(seed);
-  *offset_ptr = static_cast<int64_t>(offset);
+  sycl_kernel_submit<unpack_philox_sycl_kernel>(
+      1,
+      1,
+      getCurrentSYCLQueue(),
+      0,
+      arg.captured_,
+      arg.captured_ ? arg.seed_.ptr : nullptr,
+      arg.captured_ ? arg.offset_.ptr : nullptr,
+      arg.offset_intragraph_,
+      arg.captured_ ? 0ULL : arg.seed_.val,
+      arg.captured_ ? 0ULL : arg.offset_.val,
+      seed_ptr,
+      offset_ptr);
 }
 
 } // namespace at::native::xpu
