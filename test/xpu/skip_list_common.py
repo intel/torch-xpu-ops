@@ -420,7 +420,6 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
     f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scaled_matmul_cuda.py": None,
-    f"{PYTORCH_TEST_DIR}/test_serialization.py": None,
     f"{PYTORCH_TEST_DIR}/test_sparse_csr.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
     f"{PYTORCH_TEST_DIR}/test_serialization.py": None,
