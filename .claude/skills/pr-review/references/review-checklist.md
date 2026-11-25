@@ -125,7 +125,7 @@ Also flag during review:
 ## Kernel Mapping And Performance
 
 - [ ] Work-group or subgroup decisions look deliberate rather than arbitrary
-- [ ] **Power-of-two work-group for tree reductions** — any size taken from `getKernelMaxWorkGroupSize` / `syclMaxWorkGroupSize` (or derived from it) that feeds a halving tree reduction is rounded with `last_pow2` / `c10::llvm::PowerOf2Floor`; the per-kernel max can be 768 or 640 on PTL. See "Work-group size is not always a power of two" in `.claude/skills/domain-knowledge/domain-xpu-kernel.md`
+- [ ] Sizes from `getKernelMaxWorkGroupSize` that feed a halving tree reduction are rounded to a power of two (see `domain-xpu-kernel.md`)
 - [ ] The hot path is not made branch-heavy just to support rare cases
 - [ ] Expensive queue, context, descriptor, or host-side setup is not repeated unnecessarily
 - [ ] Claimed optimizations come with benchmark evidence or at least a concrete design rationale
