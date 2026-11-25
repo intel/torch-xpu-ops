@@ -21,10 +21,12 @@
 #define CCL_ENABLE_SYCL
 
 #include <xccl/xccl.h>
+#include <condition_variable>
 #include <exception>
 #include <future>
 #include <list>
 #include <mutex>
+#include <thread>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
@@ -154,6 +156,28 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     c10::intrusive_ptr<at::ivalue::Future> future_;
     bool timingEnabled_;
     friend class ProcessGroupXCCL;
+  };
+
+  // Keeps copies of in-flight async works, which share their tensor shelf, so
+  // the tensors outlive a dropped Work handle. A thread drops completed works.
+  class InflightWorks {
+   public:
+    explicit InflightWorks(std::string logPrefix);
+    // TODO: add stop() for future ProcessGroupXCCL::abort()/shutdown().
+    ~InflightWorks();
+
+    void track(const c10::intrusive_ptr<WorkXCCL>& work);
+
+   private:
+    void runLoop();
+
+    std::string logPrefix_;
+    std::list<WorkXCCL> works_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool terminate_ = false;
+    // Last member: starts runLoop, which uses the members above.
+    std::thread thread_;
   };
 
   struct Options : public Backend::Options {
@@ -518,6 +542,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::shared_ptr<onecclComm_t> coalescedComm_ = nullptr;
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
+  std::unique_ptr<InflightWorks> inflightWorks_;
   bool blockingWait_ = false;
   std::atomic<bool> enableTiming_;
   static thread_local uint64_t xcclActiveGroupCounter_;
