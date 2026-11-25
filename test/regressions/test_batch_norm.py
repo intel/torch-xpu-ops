@@ -24,7 +24,11 @@ were contiguous, producing incorrect values.
 """
 
 import torch
-from torch.testing._internal.common_utils import run_tests, TestCase
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_utils import parametrize, run_tests, TestCase
 
 xpu_device = torch.device("xpu")
 
@@ -229,6 +233,47 @@ class TestBatchNormContiguous(TestCase):
 
         self.assertEqual(rm_cpu, rm_xpu.cpu(), atol=1e-4, rtol=1e-4)
         self.assertEqual(rv_cpu, rv_xpu.cpu(), atol=1e-4, rtol=1e-4)
+
+
+class TestBatchNormNonPow2WorkGroup(TestCase):
+    # The channels-last launch config derives group_y from the kernel max
+    # work-group size, which is not always a power of two (768 with 160 GRF).
+    # C >= 128 gives group_x = 32, so a 768 max would give group_y = 24.
+    @dtypes(torch.float32, torch.bfloat16, torch.float64)
+    @parametrize("channels", (128, 256, 512))
+    def test_batch_norm_stats_channels_last(self, device, dtype, channels):
+        x = torch.randn(32, channels, 32, 32, dtype=dtype)
+        x_dev = x.to(device).contiguous(memory_format=torch.channels_last)
+        mean, invstd = torch.batch_norm_stats(x_dev, 1e-5)
+        x_ref = x.double()
+        self.assertEqual(
+            mean.cpu().double(), x_ref.mean((0, 2, 3)), atol=1e-4, rtol=1e-4
+        )
+        self.assertEqual(
+            invstd.cpu().double(),
+            (x_ref.var((0, 2, 3), unbiased=False) + 1e-5).rsqrt(),
+            atol=1e-3,
+            rtol=1e-3,
+        )
+
+    @dtypes(torch.float32, torch.bfloat16)
+    @parametrize("channels", (128, 256))
+    def test_batch_norm_train_channels_last(self, device, dtype, channels):
+        x = torch.randn(16, channels, 32, 32, dtype=dtype)
+        bn = torch.nn.BatchNorm2d(channels, momentum=1.0).to(device)
+        bn(x.to(device).contiguous(memory_format=torch.channels_last))
+        x_ref = x.double()
+        self.assertEqual(
+            bn.running_mean.cpu().double(), x_ref.mean((0, 2, 3)), atol=1e-4, rtol=1e-4
+        )
+        self.assertEqual(
+            bn.running_var.cpu().double(), x_ref.var((0, 2, 3)), atol=1e-3, rtol=1e-3
+        )
+
+
+instantiate_device_type_tests(
+    TestBatchNormNonPow2WorkGroup, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

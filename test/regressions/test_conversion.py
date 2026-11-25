@@ -48,6 +48,12 @@ class TestSimpleConversion(TestCase):
         y = x.nonzero()
         self.assertEqual(y.stride(), (1, 1))
 
+    def test_nonzero_chunked(self):
+        # N > 2**25 takes the chunked count path, a halving reduction sized
+        # from the kernel max work-group size (not always a power of two).
+        x = torch.rand((1 << 25) + 12345) < 0.3
+        self.assertEqual(torch.nonzero(x.to(xpu_device)).cpu(), torch.nonzero(x))
+
 
 instantiate_device_type_tests(
     TestSimpleConversion, globals(), only_for="xpu", allow_xpu=True
