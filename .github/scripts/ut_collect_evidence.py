@@ -87,6 +87,7 @@ UT_JOB_CATEGORIES = {
     "basic": ["op_regression", "op_regression_dev1", "op_extended"],
     "op_ut": ["op_ut"],
     "xpu_profiling": ["xpu_profiling"],
+    "xpu_distributed_weekly": ["xpu_distributed"],
     "xpu_distributed": ["xpu_distributed"],
     "upstream_default": ["upstream_default"],
     "upstream_inductor": ["upstream_inductor"],

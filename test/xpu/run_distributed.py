@@ -49,6 +49,21 @@ if ret == 0:
         if len(value) > len(max_affinity):
             max_affinity = value
 
+    # BMG has no XL-linked GPU groups (all-SYS topology); use the first
+    # WORLD_SIZE devices reported by xpu-smi when no linked group exists.
+    if "," not in max_affinity:
+        if not gpu_dict:
+            print("No GPUs found in xpu-smi topology output.")
+            sys.exit(255)
+
+        world_size = int(os.environ.get("WORLD_SIZE", "4"))
+        gpu_ids = sorted(gpu_dict, key=int)
+        if len(gpu_ids) < world_size:
+            print(f"Found {len(gpu_ids)} GPUs, but WORLD_SIZE={world_size}.")
+            sys.exit(255)
+        max_affinity = ",".join(gpu_ids[:world_size])
+        print(f"No multi-GPU XELINK group found; falling back to {max_affinity}.")
+
     os.environ["ZE_AFFINITY_MASK"] = str(max_affinity)
     print(str("ZE_AFFINITY_MASK=" + os.environ.get("ZE_AFFINITY_MASK")))
 
