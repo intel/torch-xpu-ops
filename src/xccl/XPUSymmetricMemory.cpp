@@ -9,8 +9,10 @@
 
 #include <xccl/ProcessGroupXCCL.hpp>
 
+#include <ATen/Context.h> // Residency workaround only
 #include <ATen/ceil_div.h>
 #include <ATen/xpu/XPUContext.h>
+#include <ATen/xpu/level_zero_stub/ATenLevelZero.h> // Residency workaround only
 #include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
@@ -442,6 +444,29 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
         reinterpret_cast<const std::byte*>(payload.data()),
         reinterpret_cast<const std::byte*>(payload.data()) + payload.size());
     void* remote_base = syclexp::ipc_memory::open(peer_bytes, ctx, dev);
+    // L0 does not make an imported IPC allocation resident on this device
+    // until a kernel takes it as a direct argument. The signal kernels only
+    // reach peer memory through pointers loaded from signal_pads_dev_, so
+    // without this their first access page-faults and the device is lost.
+    // This relies on opening peer memory on this device: opened on the
+    // exporting device, residency calls on later blocks of a pooled
+    // allocation map the first block's memory (driver bug, GSD-14207).
+    // TODO: Remove this workaround, and the includes marked for it, once
+    // oneAPI n-1 is 2026.2 or later, so that every build shares symmetric
+    // memory as physical memory, or once IPC imports are usable through
+    // indirect access.
+    ze_result_t ze_status =
+        at::globalContext().getLevelZero().zeContextMakeMemoryResident(
+            sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx),
+            sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev),
+            remote_base,
+            block->block_size);
+    TORCH_CHECK(
+        ze_status == ZE_RESULT_SUCCESS,
+        "zeContextMakeMemoryResident failed for peer ",
+        r,
+        " with error ",
+        ze_status);
 
     handles[r] = remote_base;
     buffers[r] = remote_base;
