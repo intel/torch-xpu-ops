@@ -13,14 +13,21 @@ Environment variables (set by caller):
 """
 
 import os
+import re
+import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
+from zipfile import ZipFile
+
+from checkout_torch_xpu_ops import xpu_ops_commit_from_version
 
 
 def main():
     workspace = Path(os.environ["WORKSPACE"])
     pytorch_root = workspace / "pytorch"
+    expected_xpu_ops = (pytorch_root / "third_party" / "xpu.txt").read_text().strip()
     os.chdir(pytorch_root)
 
     win_wheel_dir = pytorch_root / ".ci" / "wheel" / "windows"
@@ -77,11 +84,14 @@ def main():
     build_flags = build_install_deps.preinstall_cp315_build_deps()
     build_install_deps.install_numpy(*build_flags)
     build_install_deps.pip_install("-q", *build_flags, *build_install_deps.PIP_PACKAGES)
-    # Install libuv via conda (upstream uses 7z which may not be on our runners)
-    conda_exe = os.environ.get("CONDA_EXE", "conda")
-    subprocess.run([conda_exe, "install", "-y", "libuv"], check=True)
-    conda_prefix = os.environ.get("CONDA_PREFIX", "")
-    os.environ["libuv_ROOT"] = str(Path(conda_prefix) / "Library")
+    # Not upstream's 7z (absent on our runners); kept out of the venv so its uv.dll can't mask the wheel's.
+    libuv_dir = workspace / "libuv"
+    tarball = workspace / build_install_deps.LIBUV_URL.rsplit("/", 1)[-1]
+    build_install_deps.download(build_install_deps.LIBUV_URL, tarball)
+    shutil.rmtree(libuv_dir, ignore_errors=True)
+    with tarfile.open(tarball, "r:bz2") as archive:
+        archive.extractall(libuv_dir, filter="data")
+    os.environ["libuv_ROOT"] = str(libuv_dir / "Library")
     print(f"libuv_ROOT={os.environ['libuv_ROOT']}", flush=True)
     print("build_install_deps complete", flush=True)
 
@@ -103,6 +113,23 @@ def main():
         check=True,
     )
     print("build_wheel complete", flush=True)
+    wheels = list(dist_dir.glob("torch-*.whl"))
+    if not wheels:
+        raise RuntimeError(f"No PyTorch wheel found in {dist_dir}")
+    for wheel in wheels:
+        with ZipFile(wheel) as archive:
+            version_source = archive.read("torch/version.py").decode()
+        built_xpu_ops = xpu_ops_commit_from_version(version_source)
+        if not built_xpu_ops:
+            # Compatibility with PyTorch versions before pytorch/pytorch#202608.
+            print(f"Warning: {wheel.name} has no xpu_ops_commit; skipping comparison", flush=True)
+            continue
+        if not re.fullmatch(r"[0-9a-f]{40}", expected_xpu_ops):
+            print(f"Source pin {expected_xpu_ops} is not a SHA; skipping comparison", flush=True)
+            continue
+        if built_xpu_ops != expected_xpu_ops:
+            raise RuntimeError(f"XPU SHA mismatch: wheel {built_xpu_ops}, prepared {expected_xpu_ops}")
+        print(f"{wheel.name}: verified XPU SHA {built_xpu_ops}", flush=True)
     print("Build completed successfully", flush=True)
 
 

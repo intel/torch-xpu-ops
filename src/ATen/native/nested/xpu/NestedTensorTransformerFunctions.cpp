@@ -13,6 +13,8 @@
 #include <ATen/native/nested/NestedTensorTransformerFunctions.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/nested/xpu/sycl/NestedTensorTransformerFunctionKernels.h>
+#include <ATen/ops/_scaled_dot_product_efficient_attention_native.h>
+#include <ATen/ops/_scaled_dot_product_flash_attention_native.h>
 
 namespace at::native {
 
@@ -244,6 +246,210 @@ Tensor _padded_dense_to_jagged_forward_symint_xpu(
 
   return at::native::xpu::dense_to_jagged_forward_kernel(
       padded, offsets_list, total_L);
+}
+
+// Materializes one SDPA operand, laid out as (batch, num_heads, {seq_len},
+// head_dim), at the attention's output batch and num_heads. CUDA instead folds
+// the broadcast into strides over the nested buffer
+// (sdpa_nested_preprocessing_with_broadcast in
+// aten/src/ATen/native/nested/cuda/NestedTensorTransformerUtils.cpp:210-365),
+// because its varlen kernels consume a packed (Nnz, num_heads, head_dim) view.
+// XPU has no varlen kernel, so the operands have to end up as plain
+// equally-shaped contiguous nested tensors for the fallbacks below.
+static Tensor broadcast_nested_sdpa_input(
+    const Tensor& t,
+    int64_t batch_size,
+    int64_t num_heads) {
+  // The operands are (batch, num_heads, seq_len, head_dim) views over
+  // (batch, seq_len, num_heads, head_dim) nested storage whose metadata can
+  // still carry the transpose. Transposing back is a metadata identity and
+  // gives the physically packed (seq_len, num_heads, head_dim) constituents,
+  // which are permuted and broadcast as plain dense tensors to rebuild a
+  // self-consistent (batch, num_heads, seq_len, head_dim) nested tensor.
+  auto constituents = t.transpose(1, 2).unbind();
+  std::vector<Tensor> aligned;
+  aligned.reserve(constituents.size());
+  for (const auto& seq : constituents) {
+    aligned.push_back(seq.transpose(0, 1).expand({num_heads, -1, -1}));
+  }
+  if (t.size(0) == 1 && batch_size != 1) {
+    TORCH_INTERNAL_ASSERT(constituents.size() == 1);
+    auto seq = aligned[0];
+    aligned.assign(batch_size, std::move(seq));
+  }
+  return at::_nested_tensor_from_tensor_list(aligned);
+}
+
+// Sequence lengths of a broadcast nested operand, read from its
+// (batch, num_heads, seq_len, head_dim) nested sizes. The nested sizes view is
+// not contiguous, so it is materialized before the lengths are read through a
+// raw pointer.
+static std::vector<int64_t> nested_seq_lens(const Tensor& t) {
+  const auto lens_cpu = get_nested_tensor_impl(t)
+                            ->get_nested_sizes()
+                            .select(1, 1)
+                            .contiguous()
+                            .cpu();
+  const int64_t* lens = lens_cpu.const_data_ptr<int64_t>();
+  return std::vector<int64_t>(lens, lens + lens_cpu.numel());
+}
+
+/**
+ * Fall back implementation of nested efficient attention, mirroring the dense
+ * _scaled_dot_product_efficient_attention_xpu: XPU has no fused nested
+ * attention kernel, so this broadcasts the operands, materializes them to
+ * padded dense tensors, and runs the dense math kernel once per constituent.
+ * The math kernel has no nested-tensor support on XPU, so it is called on the
+ * plain dense per-constituent tensors instead of the broadcast operands.
+ */
+std::tuple<Tensor, Tensor, Tensor, Tensor>
+_scaled_dot_product_efficient_attention_nestedtensor_xpu(
+    const Tensor& query,
+    const Tensor& key,
+    const Tensor& value,
+    const std::optional<at::Tensor>& attn_bias,
+    [[maybe_unused]] bool compute_log_sumexp,
+    double dropout_p,
+    bool is_causal,
+    std::optional<double> scale) {
+  TORCH_CHECK(
+      !attn_bias.has_value(),
+      "Nested tensor inputs are not supported with an attn_mask on XPU yet");
+  const int64_t batch_size =
+      std::max({query.size(0), key.size(0), value.size(0)});
+  const int64_t num_heads =
+      std::max({query.size(1), key.size(1), value.size(1)});
+
+  auto broadcasted_query =
+      broadcast_nested_sdpa_input(query, batch_size, num_heads);
+  auto broadcasted_key =
+      broadcast_nested_sdpa_input(key, batch_size, num_heads);
+  auto broadcasted_value =
+      broadcast_nested_sdpa_input(value, batch_size, num_heads);
+
+  // The nested sizes view is not contiguous, so materialize it before reading
+  // the lengths through a raw pointer.
+  const auto query_lens = nested_seq_lens(broadcasted_query);
+  const auto key_lens = nested_seq_lens(broadcasted_key);
+  const auto value_lens = nested_seq_lens(broadcasted_value);
+
+  auto padded_query = broadcasted_query.to_padded_tensor(0);
+  auto padded_key = broadcasted_key.to_padded_tensor(0);
+  auto padded_value = broadcasted_value.to_padded_tensor(0);
+
+  std::vector<Tensor> attention_constituents;
+  attention_constituents.reserve(batch_size);
+  for (const auto i : c10::irange(batch_size)) {
+    // Dense kernels, not the dispatcher: the broadcast operands are nested,
+    // so dispatching on them would recurse into this function.
+    auto attention = std::get<0>(at::native::_scaled_dot_product_attention_math(
+        padded_query.select(0, i).narrow(1, 0, query_lens[i]).unsqueeze(0),
+        padded_key.select(0, i).narrow(1, 0, key_lens[i]).unsqueeze(0),
+        padded_value.select(0, i).narrow(1, 0, value_lens[i]).unsqueeze(0),
+        attn_bias,
+        dropout_p,
+        is_causal,
+        std::nullopt, /*dropout_mask*/
+        scale,
+        false /*enable_gqa, num_heads already equalized*/));
+    attention_constituents.push_back(attention.squeeze(0));
+  }
+
+  auto attention = at::_nested_tensor_from_tensor_list(attention_constituents);
+
+  // The math kernel produces no logsumexp, and the seed/offset pair only exists
+  // so backward can replay dropout. Neither is reachable: sdp_params rejects
+  // nested inputs that require grad, so there is no backward for this path.
+  return std::make_tuple(
+      std::move(attention),
+      at::empty({0}, query.options()),
+      at::scalar_tensor(int64_t(0), query.options().dtype(at::kLong)),
+      at::scalar_tensor(int64_t(0), query.options().dtype(at::kLong)));
+}
+
+/**
+ * Fall back implementation of nested flash attention, mirroring the dense
+ * _scaled_dot_product_flash_attention_xpu: XPU has no varlen flash kernel to
+ * consume the packed buffers CUDA's nested preprocessing produces
+ * (sdpa_nested_preprocessing), so this broadcasts the operands, materializes
+ * them to padded dense tensors in (batch, num_heads, seq_len, head_dim)
+ * order, and runs the dense kernel once per constituent. The output nested
+ * tensor is built from the per-batch results, so it stays in the same
+ * (batch, num_heads, seq_len, head_dim) order the dense kernel returns.
+ */
+std::tuple<
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    c10::SymInt,
+    c10::SymInt,
+    Tensor,
+    Tensor,
+    Tensor>
+_scaled_dot_product_flash_attention_nestedtensor_xpu(
+    const Tensor& query,
+    const Tensor& key,
+    const Tensor& value,
+    double dropout_p,
+    bool is_causal,
+    [[maybe_unused]] bool return_debug_mask,
+    std::optional<double> scale) {
+  const int64_t batch_size =
+      std::max({query.size(0), key.size(0), value.size(0)});
+  const int64_t num_heads =
+      std::max({query.size(1), key.size(1), value.size(1)});
+
+  auto broadcasted_query =
+      broadcast_nested_sdpa_input(query, batch_size, num_heads);
+  auto broadcasted_key =
+      broadcast_nested_sdpa_input(key, batch_size, num_heads);
+  auto broadcasted_value =
+      broadcast_nested_sdpa_input(value, batch_size, num_heads);
+
+  // The nested sizes view is not contiguous, so materialize it before reading
+  // the lengths through a raw pointer.
+  const auto query_lens = nested_seq_lens(broadcasted_query);
+  const auto key_lens = nested_seq_lens(broadcasted_key);
+  const auto value_lens = nested_seq_lens(broadcasted_value);
+
+  auto padded_query = broadcasted_query.to_padded_tensor(0);
+  auto padded_key = broadcasted_key.to_padded_tensor(0);
+  auto padded_value = broadcasted_value.to_padded_tensor(0);
+
+  std::vector<Tensor> attention_constituents;
+  attention_constituents.reserve(batch_size);
+  for (const auto i : c10::irange(batch_size)) {
+    // Dense kernels, not the dispatcher: the broadcast operands are nested,
+    // so dispatching on them would recurse into this function.
+    auto attention =
+        std::get<0>(at::native::_scaled_dot_product_flash_attention_xpu(
+            padded_query.select(0, i).narrow(1, 0, query_lens[i]).unsqueeze(0),
+            padded_key.select(0, i).narrow(1, 0, key_lens[i]).unsqueeze(0),
+            padded_value.select(0, i).narrow(1, 0, value_lens[i]).unsqueeze(0),
+            dropout_p,
+            is_causal,
+            false, /*return_debug_mask, per-constituent masks do not merge*/
+            scale));
+    attention_constituents.push_back(attention.squeeze(0));
+  }
+
+  auto attention = at::_nested_tensor_from_tensor_list(attention_constituents);
+
+  // The flash kernel produces no logsumexp here, and the seed/offset pair
+  // only exists so backward can replay dropout. Neither is reachable: the
+  // sdp gate rejects nested inputs that require grad or dropout, so there is
+  // no backward for this path.
+  return std::make_tuple(
+      std::move(attention),
+      at::empty({0}, query.options()),
+      at::empty({0}, query.options().dtype(at::kInt)),
+      at::empty({0}, query.options().dtype(at::kInt)),
+      int64_t(0),
+      int64_t(0),
+      at::scalar_tensor(int64_t(0), query.options().dtype(at::kLong)),
+      at::scalar_tensor(int64_t(0), query.options().dtype(at::kLong)),
+      at::empty({0}, query.options()));
 }
 
 } // namespace at::native

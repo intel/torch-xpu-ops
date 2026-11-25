@@ -9,7 +9,8 @@
 # Owner(s): ["module: intel"]
 import torch
 import torch.nn as nn
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_utils import parametrize, TestCase
 
 xpu_device = torch.device("xpu")
 
@@ -33,14 +34,15 @@ def _assert_close_relative_l2(actual, expected, tol, msg=""):
         raise AssertionError(f"{msg}relative L2 error {rel:.3e} exceeds {tol:.3e}")
 
 
-def _over_threshold_rows():
-    """Row count above the kernel's two-stage column-reduction threshold.
+def _over_threshold_rows(device=xpu_device):
+    """Row count above the two-stage column reduction's row threshold.
 
     The kernel gates on `M > xe_core_count * 1024`, where its `xe_core_count` is
     `gpu_eu_count / gpu_eu_count_per_subslice` -- the same quotient PyTorch
-    exposes as `gpu_subslice_count`. One extra tile of rows clears it.
+    exposes as `gpu_subslice_count`. One extra tile of rows clears it, but
+    dtype, column count, and occupancy also determine which path runs.
     """
-    xe_core_count = torch.xpu.get_device_properties(0).gpu_subslice_count
+    xe_core_count = torch.xpu.get_device_properties(device).gpu_subslice_count
     return xe_core_count * 1024 + 1024
 
 
@@ -158,3 +160,72 @@ class TestRMSNorm(TestCase):
             atol=1e-1,
             rtol=1e-3,
         )
+
+
+class TestRMSNormBackwardFp16(TestCase):
+    @parametrize("n", [8192, 20001, 65536])
+    @parametrize("affine", [True, False])
+    def test_backward_large_n(self, device, n, affine):
+        """Regression test for https://github.com/intel/torch-xpu-ops/issues/6310.
+
+        rms_norm backward shares the fH * gamma * dY expression that overflowed
+        float16 for large N.
+        """
+        torch.manual_seed(0)
+        shape, normalized_shape = (2, n), (n,)
+        x = torch.randn(shape, dtype=torch.half)
+        grad = torch.randn(shape, dtype=torch.half)
+        weight = torch.randn(normalized_shape, dtype=torch.half) if affine else None
+
+        def grads(dev, dtype):
+            tensors = [t for t in (x, weight) if t is not None]
+            inputs = [t.to(dev, dtype).requires_grad_() for t in tensors]
+            out = nn.functional.rms_norm(
+                inputs[0], normalized_shape, *inputs[1:], eps=1e-6
+            )
+            return torch.autograd.grad(out, inputs, grad.to(dev, dtype))
+
+        for actual, expected in zip(
+            grads(device, torch.half), grads("cpu", torch.float)
+        ):
+            self.assertEqual(
+                actual.cpu().float(),
+                expected,
+                atol=2e-3 * expected.abs().max().item(),
+                rtol=0,
+            )
+
+
+class TestRMSNormMultidimBackward(TestCase):
+    def test_rms_norm_backward_multidim_normalized_shape_large_rows(self, device):
+        """Multidimensional input and weight gradients match the CPU reference."""
+        torch.manual_seed(42)
+        dim = [2, 4]
+        rows = _over_threshold_rows(device)
+        x = torch.randn(rows, *dim, dtype=torch.float32)
+        weight = torch.randn(dim, dtype=torch.float32)
+        grad_out = torch.randn_like(x)
+
+        grads = []
+        for dev in ("cpu", device):
+            x_dev = x.to(dev).detach().requires_grad_()
+            w_dev = weight.to(dev).detach().requires_grad_()
+            out = torch.nn.functional.rms_norm(x_dev, dim, w_dev, eps=1e-6)
+            out.backward(grad_out.to(dev))
+            grads.append((x_dev.grad, w_dev.grad))
+
+        for name, ref, grad in zip(("input", "weight"), grads[0], grads[1]):
+            expected_shape = x.shape if name == "input" else torch.Size(dim)
+            self.assertEqual(grad.shape, expected_shape, name)
+            if name == "input":
+                self.assertEqual(grad.cpu(), ref, name)
+            else:
+                self.assertEqual(grad.cpu(), ref, name, atol=1e-3, rtol=1e-3)
+
+
+instantiate_device_type_tests(
+    TestRMSNormMultidimBackward, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestRMSNormBackwardFp16, globals(), only_for="xpu", allow_xpu=True
+)

@@ -4,7 +4,7 @@
 // Tests for fold_details.js. Run: node .github/scripts/test_fold_details.js
 
 const assert = require("assert");
-const { foldDetails } = require("./fold_details.js");
+const { foldDetails, parseGate } = require("./fold_details.js");
 
 let failures = 0;
 
@@ -85,6 +85,34 @@ check("does not report when the verdict is present", () => {
   const seen = [];
   foldDetails("VERDICT: x.\n\nbody", (m) => seen.push(m));
   assert.strictEqual(seen.length, 0);
+});
+
+check("gate: reads the line right after the verdict", () => {
+  assert.strictEqual(parseGate("VERDICT: ok.\nGATE: ready_for_human_review\n\nbody"), "ready_for_human_review");
+  assert.strictEqual(parseGate("VERDICT: no.\nGATE: changes_requested\n\nbody"), "changes_requested");
+});
+
+check("gate: allows a preamble, a blank line and markdown decoration", () => {
+  assert.strictEqual(parseGate("Here is the review.\n\nVERDICT: ok.\n\n**GATE:** `ready_for_human_review`"),
+    "ready_for_human_review");
+});
+
+check("gate: a quoted passing GATE further down does not flip a failing review", () => {
+  const text = "VERDICT: blocked.\nGATE: changes_requested\n\n```\nGATE: ready_for_human_review\n```";
+  assert.strictEqual(parseGate(text), "changes_requested");
+});
+
+check("gate: missing or misplaced GATE is null (fails closed)", () => {
+  assert.strictEqual(parseGate("VERDICT: ok.\n\n## Summary\nGATE: ready_for_human_review"), null);
+  assert.strictEqual(parseGate("## PR Review\nGATE: ready_for_human_review"), null);
+  assert.strictEqual(parseGate("VERDICT: ok.\nGATE: ready_for_human_review, mostly"), null);
+});
+
+check("gate: uses foldDetails' window, so a folded comment and the gate agree", () => {
+  const late = "a\nb\nc\nd\ne\nf\nVERDICT: ok.\nGATE: ready_for_human_review";
+  assert.strictEqual(parseGate(late), null);
+  assert.strictEqual(foldDetails(late), late);  // not folded either
+  assert.strictEqual(parseGate("verdict: ok.\nGATE: ready_for_human_review"), null);  // VERDICT is case-sensitive there too
 });
 
 if (failures) {
