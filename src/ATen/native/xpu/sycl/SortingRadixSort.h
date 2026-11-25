@@ -340,9 +340,12 @@ class GroupRadixSort {
       auto digit = extract_digit(ukeys_[ITEM]);
       auto sub_counter = digit >> LOG_COUNTER_LANES;
       auto counter_lane = digit & (COUNTER_LANES - 1);
+      // Keep the descending remaps as XOR, not `N - 1 - x`: on some targets the
+      // subtraction form is compiled into an SLM access whose immediate offset
+      // leaves an out-of-range base for counter 0, and that update is lost.
       if constexpr (IS_DESCENDING) {
-        sub_counter = PACKING_RATIO - 1 - sub_counter;
-        counter_lane = COUNTER_LANES - 1 - counter_lane;
+        sub_counter ^= PACKING_RATIO - 1;
+        counter_lane ^= COUNTER_LANES - 1;
       }
       digit_counters[ITEM] =
           &local_storage_.rank_storage.buckets[counter_lane][lid_][sub_counter];
@@ -381,7 +384,7 @@ class GroupRadixSort {
       int digit = lid_;
       if (lid_ < RADIX_BUCKETS) {
         if constexpr (IS_DESCENDING)
-          digit = RADIX_BUCKETS - digit - 1;
+          digit ^= RADIX_BUCKETS - 1;
         auto sub_counter = digit >> LOG_COUNTER_LANES;
         auto counter_lane = digit & (COUNTER_LANES - 1);
         int digit_offset =
@@ -441,8 +444,8 @@ class GroupRadixSort {
         auto sub_counter = digit >> LOG_COUNTER_LANES;
         auto counter_lane = digit & (COUNTER_LANES - 1);
         if constexpr (IS_DESCENDING) {
-          sub_counter = PACKING_RATIO - 1 - sub_counter;
-          counter_lane = COUNTER_LANES - 1 - counter_lane;
+          sub_counter ^= PACKING_RATIO - 1;
+          counter_lane ^= COUNTER_LANES - 1;
         }
         digit_counters[ITEM] = &local_storage_.rank_storage
                                     .buckets[counter_lane][lid_][sub_counter];
