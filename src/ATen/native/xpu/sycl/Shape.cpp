@@ -302,67 +302,54 @@ void cat_array_batched_copy_aligned_k_contig_kernel_impl(
   }
 }
 
-// Like CatArrayBatchedCopy_alignedK_contig, but vectorizes both loads and
-// stores. When each input slice and the output row pitch are multiples of the
-// vector width, each input vector maps to one contiguous output vector. This
-// allows a single wide store and a simple direct output-offset calculation.
+// Like cat_array_batched_copy_aligned_k_contig_kernel_impl, but vectorizes both
+// loads and stores. When each input slice and the output row pitch are
+// multiples of the vector width, each input vector maps to one contiguous
+// output vector. This allows a single wide store and a simple direct
+// output-offset calculation.
 template <
     typename T,
     typename IndexType,
     int batch_size,
     int stride_size,
     int aligned_vec_load_bytes>
-struct CatArrayBatchedCopy_vectorized {
-  void operator()(sycl::nd_item<2> item) const {
-    static_assert(
-        aligned_vec_load_bytes % sizeof(T) == 0,
-        "the vector width must be a whole number of elements");
-    constexpr int kILP = aligned_vec_load_bytes / sizeof(T);
-    using LT = memory::aligned_vector<T, kILP>;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void cat_array_batched_copy_vectorized_kernel_impl(
+    T* output,
+    CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
+    IndexType outputDimSize,
+    IndexType dimStride) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  static_assert(
+      aligned_vec_load_bytes % sizeof(T) == 0,
+      "the vector width must be a whole number of elements");
+  constexpr int kILP = aligned_vec_load_bytes / sizeof(T);
+  using LT = memory::aligned_vector<T, kILP>;
 
-    const IndexType group = item.get_group(0);
+  const IndexType group = item.get_group(0);
 
-    // Exact: the host guarantees whole vectors per slice.
-    const IndexType nVectors = inputs.nElements[group] / kILP;
+  // Exact: the host guarantees whole vectors per slice.
+  const IndexType nVectors = inputs.nElements[group] / kILP;
 
-    IndexType vectorIndex =
-        item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
+  IndexType vectorIndex =
+      item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
 
-    const IndexType inputSliceVectors =
-        inputs.dimSize[group] * dimStride / kILP;
-    const IndexType outputSliceVectors = outputDimSize * dimStride / kILP;
-    const IndexType outputOffsetVectors =
-        inputs.offset[group] * dimStride / kILP;
-    const IndexType stride = item.get_group_range(1) * item.get_local_range(1);
+  const IndexType inputSliceVectors = inputs.dimSize[group] * dimStride / kILP;
+  const IndexType outputSliceVectors = outputDimSize * dimStride / kILP;
+  const IndexType outputOffsetVectors = inputs.offset[group] * dimStride / kILP;
+  const IndexType stride = item.get_group_range(1) * item.get_local_range(1);
 
-    const LT* in = reinterpret_cast<const LT*>(inputs.input[group]);
-    LT* out = reinterpret_cast<LT*>(output);
+  const LT* in = reinterpret_cast<const LT*>(inputs.input[group]);
+  LT* out = reinterpret_cast<LT*>(output);
 
-    while (vectorIndex < nVectors) {
-      const IndexType outerIndex = vectorIndex / inputSliceVectors;
-      const IndexType innerIndex = vectorIndex - outerIndex * inputSliceVectors;
-      out[outerIndex * outputSliceVectors + outputOffsetVectors + innerIndex] =
-          in[vectorIndex];
-      vectorIndex += stride;
-    }
+  while (vectorIndex < nVectors) {
+    const IndexType outerIndex = vectorIndex / inputSliceVectors;
+    const IndexType innerIndex = vectorIndex - outerIndex * inputSliceVectors;
+    out[outerIndex * outputSliceVectors + outputOffsetVectors + innerIndex] =
+        in[vectorIndex];
+    vectorIndex += stride;
   }
-
-  CatArrayBatchedCopy_vectorized(
-      T* output,
-      CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
-      IndexType outputDimSize,
-      IndexType dimStride)
-      : output(output),
-        inputs(inputs),
-        outputDimSize(outputDimSize),
-        dimStride(dimStride) {}
-
- private:
-  T* output;
-  CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs;
-  IndexType outputDimSize;
-  IndexType dimStride;
-};
+}
 
 template <typename scalar_t, int batch_size, int stride_size>
 void parallel_cat(
@@ -569,18 +556,21 @@ void parallel_cat(
     sycl::range<2> vecGroup, vecRange;                                     \
     std::tie(vecRange, vecGroup) = getCatRangeContig<scalar_t, VEC_BYTES>( \
         max_elements_per_tensor, batchCounter);                            \
-    CatArrayBatchedCopy_vectorized<                                        \
+    auto& q = getCurrentSYCLQueue();                                       \
+    sycl_kernel_submit<cat_array_batched_copy_vectorized_kernel_impl<      \
         scalar_t,                                                          \
         unsigned int,                                                      \
         batch_size,                                                        \
         stride_size,                                                       \
-        VEC_BYTES>                                                         \
-        kfn(data,                                                          \
-            catMetaData,                                                   \
-            outputParam.tensorSize[mapped_dimension],                      \
-            outputParam.tensorStride[mapped_dimension]);                   \
-    auto& q = getCurrentSYCLQueue();                                       \
-    sycl_kernel_submit(vecRange, vecGroup, q, kfn);                        \
+        VEC_BYTES>>(                                                       \
+        vecRange,                                                          \
+        vecGroup,                                                          \
+        q,                                                                 \
+        0,                                                                 \
+        data,                                                              \
+        catMetaData,                                                       \
+        outputParam.tensorSize[mapped_dimension],                          \
+        outputParam.tensorStride[mapped_dimension]);                       \
     continue;                                                              \
   }
 
