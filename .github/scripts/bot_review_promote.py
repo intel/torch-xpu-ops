@@ -9,11 +9,13 @@ Like pytorch's Dr.CI promotion, all of these must hold on the PR's head commit:
   * the bot review passed (`bot-review` commit status is success);
   * no maintainer commented after that review started;
   * the `pull` workflow finished, and every failure in it is explained by main:
-    a UT case or E2E model that fails here also fails in the latest
-    build-from-source nightly (BROKEN_TRUNK). A failure that passes on the
-    nightly is NEW, one the nightly did not run is UNKNOWN; both block, as does
-    any other failed job (lint, build, a crashed or cancelled test job --
-    rerun those).
+    a UT case or E2E model that fails here also fails in the baseline nightly
+    (BROKEN_TRUNK), or failed in another recent nightly (FLAKY). The baseline
+    is the build-from-source nightly whose commit is closest to the PR's
+    merge-base: main has no per-commit CI, so this stands in for Dr.CI's
+    merge-base comparison. A failure that passes on the baseline is NEW, one no
+    nightly ran is UNKNOWN; both block, as does any other failed job (lint,
+    build, a crashed or cancelled test job -- rerun those).
 
 Run when the review is posted and when `pull` completes; whichever comes last
 decides. Usage:
@@ -66,12 +68,18 @@ def parse_started(description):
     return m.group(1) if m else None
 
 
-def classify(lines, nightly_failed, nightly_passed):
-    """PR failure line -> 'broken_trunk' | 'new' | 'unknown' against the nightly."""
+def classify(lines, nightly_failed, nightly_passed, flaky=frozenset()):
+    """PR failure line -> 'broken_trunk' | 'flaky' | 'new' | 'unknown'.
+
+    `nightly_*` are the baseline nightly's results; `flaky` holds lines that
+    failed in any other recent nightly.
+    """
     out = {}
     for line in lines:
         if line in nightly_failed:
             out[line] = "broken_trunk"
+        elif line in flaky:
+            out[line] = "flaky"
         elif line in nightly_passed:
             out[line] = "new"
         else:
@@ -104,7 +112,7 @@ def ut_baseline(root):
     return failed, passed
 
 
-def ut_group_blockers(check_root, nightly_failed, nightly_passed, name="UT"):
+def ut_group_blockers(check_root, nightly_failed, nightly_passed, name="UT", flaky=frozenset()):
     """Why one UT check artifact blocks; also the broken-trunk lines it tolerated."""
     blockers, tolerated = [], []
     verdicts = [v for art in latest_attempts(check_root) for v in art.rglob("verdict.json")]
@@ -128,9 +136,11 @@ def ut_group_blockers(check_root, nightly_failed, nightly_passed, name="UT"):
             if not lines:
                 blockers.append(f"UT `{name}` failed without a new-failure list")
                 continue
-            for line, kind in classify(lines, nightly_failed, nightly_passed).items():
+            for line, kind in classify(lines, nightly_failed, nightly_passed, flaky).items():
                 if kind == "broken_trunk":
                     tolerated.append(line)
+                elif kind == "flaky":
+                    tolerated.append(f"{line} (flaky)")
                 else:
                     blockers.append(f"UT `{line}`: {'passes' if kind == 'new' else 'not run'} on main")
     return blockers, tolerated
@@ -147,8 +157,11 @@ def e2e_accuracy(root):
     return out
 
 
-def e2e_blockers(pr_acc, nightly_acc):
-    """Models that do not pass on the PR but pass on (or are missing from) main."""
+def e2e_blockers(pr_acc, nightly_acc, flaky=frozenset()):
+    """Models that do not pass on the PR but pass on (or are missing from) main.
+
+    `flaky` holds model keys that failed in another recent nightly.
+    """
     blockers, tolerated = [], []
     for key, acc in sorted(pr_acc.items()):
         if "pass" in acc:
@@ -157,6 +170,8 @@ def e2e_blockers(pr_acc, nightly_acc):
         base = nightly_acc.get(key)
         if base is not None and "pass" not in base:
             tolerated.append(label)
+        elif key in flaky:
+            tolerated.append(f"{label} (flaky)")
         else:
             blockers.append(f"E2E `{label}` is `{acc}`: {'not run' if base is None else base} on main")
     return blockers, tolerated
@@ -208,6 +223,11 @@ def recent_nightlies(runs, now):
     return sorted((r for r in runs if NIGHTLY_TITLE in r.get("display_title", "")
                    and now - _ts(r["created_at"]) <= NIGHTLY_MAX_AGE),
                   key=lambda r: r["created_at"], reverse=True)
+
+
+def closest_first(runs, distance):
+    """Nightlies by commit distance from the merge-base; ties keep newest first."""
+    return sorted(runs, key=lambda r: distance(r["head_sha"]))
 
 
 def maintainer_logins_since(activity, since, author, role_of):
@@ -283,13 +303,21 @@ class Repo:
                          ".workflow_runs[]")
         return recent_nightlies(runs, now)
 
+    def merge_base(self, base_ref, sha):
+        return api(f"repos/{self.name}/compare/{base_ref}...{sha}")["merge_base_commit"]["sha"]
+
+    def distance(self, a, b):
+        """Commits between a and b; unknown (e.g. force-pushed away) sorts last."""
+        out = gh("api", f"repos/{self.name}/compare/{a}...{b}", "--jq", ".ahead_by + .behind_by", check=False)
+        return int(out) if out.strip().isdigit() else float("inf")
+
     def download(self, run_id, pattern, dest):
         gh("run", "download", str(run_id), "-R", self.name, "-p", pattern, "-D", str(dest),
            check=False)
         return dest
 
 
-def evaluate_ci(repo, sha, workdir):
+def evaluate_ci(repo, sha, base_ref, workdir):
     run = repo.pull_run(sha)
     if run is None:
         # `pull` did not run for this commit (e.g. a stacked PR whose base is
@@ -300,29 +328,40 @@ def evaluate_ci(repo, sha, workdir):
         return True, [], []
     jobs = api_items(f"repos/{repo.name}/actions/runs/{run['id']}/jobs?per_page=100", ".jobs[]")
     nightly = {}
+    nights = []
 
-    def nightly_dir(pattern):
-        """The newest nightly that uploaded `pattern`; empty dir if none did."""
+    def nightly_dirs(pattern):
+        """Dirs of the recent nightlies that uploaded `pattern`, baseline first.
+
+        A nightly that broke before testing uploads nothing and is skipped.
+        """
+        if not nights:
+            base = repo.merge_base(base_ref, sha)
+            nights.extend(closest_first(repo.nightly_runs(), lambda s: repo.distance(base, s)))
         if pattern not in nightly:
-            dest = Path(workdir, "nightly", str(len(nightly)))
-            for night in repo.nightly_runs():
-                repo.download(night["id"], pattern, dest)
+            dirs = []
+            for i, night in enumerate(nights):
+                dest = repo.download(night["id"], pattern, Path(workdir, "nightly", str(len(nightly)), str(i)))
                 if any(dest.glob("*")):
-                    break
-            nightly[pattern] = dest
+                    dirs.append(dest)
+            nightly[pattern] = dirs or [Path(workdir, "nightly", "none")]
         return nightly[pattern]
 
     def ut_group(platform, ut):
         pr_dir = repo.download(run["id"], f"UT-Check-{platform}-{ut}-*", Path(workdir, "pr", platform, ut))
-        failed, passed = ut_baseline(nightly_dir(f"UT-Check-{platform}-{ut}-*"))
-        return ut_group_blockers(pr_dir, failed, passed, f"UT `{platform}-{ut}`")
+        base, *others = nightly_dirs(f"UT-Check-{platform}-{ut}-*")
+        failed, passed = ut_baseline(base)
+        flaky = set().union(*(ut_baseline(d)[0] for d in others))
+        return ut_group_blockers(pr_dir, failed, passed, f"UT `{platform}-{ut}`", flaky)
 
     def e2e():
         pr_dir = repo.download(run["id"], "Inductor-*-XPU-E2E-Data-*-accuracy-*", Path(workdir, "pr", "e2e"))
         pr_acc = e2e_accuracy(pr_dir)
         if not pr_acc:
             return ["E2E accuracy results are missing"], []
-        return e2e_blockers(pr_acc, e2e_accuracy(nightly_dir("Inductor-*-XPU-E2E-Data-*-accuracy-*")))
+        base, *others = nightly_dirs("Inductor-*-XPU-E2E-Data-*-accuracy-*")
+        flaky = {k for d in others for k, acc in e2e_accuracy(d).items() if "pass" not in acc}
+        return e2e_blockers(pr_acc, e2e_accuracy(base), flaky)
 
     return ci_verdict(jobs, ut_group, e2e)
 
@@ -359,7 +398,7 @@ def promote(repo, pr_number):
                          "re-run the review.")
             return
     with tempfile.TemporaryDirectory() as workdir:
-        pending, blockers, tolerated = evaluate_ci(repo, sha, workdir)
+        pending, blockers, tolerated = evaluate_ci(repo, sha, pr["base"]["ref"], workdir)
     if pending:
         print("CI has not finished; promotion waits for it")
         return
@@ -371,9 +410,9 @@ def promote(repo, pr_number):
         digest = hashlib.sha1("\n".join(blockers).encode()).hexdigest()[:8]
         comment_once(repo, pr_number, sha, f"ci:{digest}",
                      "Bot review passed, but CI blocks `ready for review`:\n\n"
-                     f"{shown}{more}\n\n\"On main\" means the latest build-from-source nightly. Fix new "
-                     "failures and push; if your branch is far behind main, rebase first, since a "
-                     "fix already on main shows up here as a new failure. Rerun jobs that failed "
+                     f"{shown}{more}\n\n\"On main\" means the build-from-source nightly closest to your "
+                     "merge-base. Fix new failures and push; failures that also fail in a recent "
+                     "nightly are not counted. Rerun jobs that failed "
                      "for infrastructure reasons (`@torchxpubot rerun failed`).")
         return
     gh("api", f"repos/{repo.name}/issues/{pr_number}/labels", "-f", f"labels[]={READY}")
@@ -381,7 +420,7 @@ def promote(repo, pr_number):
        f"repos/{repo.name}/issues/{pr_number}/labels/{urllib.parse.quote(IN_PROGRESS)}", check=False)
     note = ""
     if tolerated:
-        note = (f" {len(tolerated)} CI failure(s) also fail on main and were not counted: "
+        note = (f" {len(tolerated)} CI failure(s) also fail on main or are flaky there and were not counted: "
                 + ", ".join(f"`{t}`" for t in tolerated[:10]) + (" ..." if len(tolerated) > 10 else ""))
     comment_once(repo, pr_number, sha, "promoted",
                  f"Bot review passed and CI is clean: moved to `{READY}` for maintainers.{note}")

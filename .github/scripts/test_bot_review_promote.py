@@ -43,6 +43,21 @@ def test_parse_started():
 def test_classify_against_nightly():
     got = p.classify([A, B, C], nightly_failed={A}, nightly_passed={B})
     assert got == {A: "broken_trunk", B: "new", C: "unknown"}
+    # failed in another recent nightly: flaky, even if the baseline passed it
+    got = p.classify([A, B, C], nightly_failed={A}, nightly_passed={B}, flaky={A, B})
+    assert got == {A: "broken_trunk", B: "flaky", C: "unknown"}
+
+
+def test_ut_group_tolerates_flaky(tmp_path):
+    root = ut_check(tmp_path, [("op_extended", False)], new=[A, B])
+    assert p.ut_group_blockers(root, set(), {A, B}, flaky={B})[1] == [f"{B} (flaky)"]
+
+
+def test_nightly_closest_to_merge_base_first():
+    runs = [{"id": 1, "head_sha": "new"}, {"id": 2, "head_sha": "mid"}, {"id": 3, "head_sha": "old"},
+            {"id": 4, "head_sha": "gone"}]
+    dist = {"new": 9, "mid": 0, "old": 0, "gone": float("inf")}
+    assert [r["id"] for r in p.closest_first(runs, dist.get)] == [2, 3, 1, 4]
 
 
 def test_ut_baseline_reads_case_logs(tmp_path):
@@ -85,6 +100,9 @@ def test_e2e_compares_models_with_nightly(tmp_path):
     assert tolerated == ["timm/bf16/training/m1"]
     assert [b.split("`")[1] for b in blockers] == ["timm/bf16/training/m2", "timm/bf16/training/m4"]
     assert "not run on main" in blockers[1]
+    flaky = {("timm", "bf16", "training", "m2")}
+    blockers, tolerated = p.e2e_blockers(p.e2e_accuracy(tmp_path / "pr"), p.e2e_accuracy(tmp_path / "main"), flaky)
+    assert tolerated == ["timm/bf16/training/m1", "timm/bf16/training/m2 (flaky)"]
 
 
 def no_call(*_):
@@ -159,11 +177,11 @@ def test_maintainer_activity_since_review():
 def run_promote(monkeypatch, labels, status, ci, activity=()):
     calls = []
     pr = {"state": "open", "draft": False, "labels": [{"name": n} for n in labels],
-          "head": {"sha": "s" * 40}, "user": {"login": "author"}}
+          "head": {"sha": "s" * 40}, "base": {"ref": "main"}, "user": {"login": "author"}}
     monkeypatch.setattr(p, "api", lambda path: pr if "/pulls/" in path else {"statuses": status})
     monkeypatch.setattr(p, "api_items", lambda path, jq=".[]": [])
     monkeypatch.setattr(p, "gh", lambda *a, **k: calls.append(a) or "")
-    monkeypatch.setattr(p, "evaluate_ci", lambda repo, sha, d: ci)
+    monkeypatch.setattr(p, "evaluate_ci", lambda repo, sha, base, d: ci)
 
     class FakeRepo(p.Repo):
         def activity(self, pr_number, since):
@@ -228,4 +246,4 @@ def test_no_pull_run_means_nothing_to_wait_for(tmp_path):
         def pull_run(self, sha):
             return None
 
-    assert p.evaluate_ci(NoRun("o/r"), "s" * 40, tmp_path) == (False, [], [])
+    assert p.evaluate_ci(NoRun("o/r"), "s" * 40, "main", tmp_path) == (False, [], [])
