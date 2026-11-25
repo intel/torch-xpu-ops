@@ -1147,7 +1147,7 @@ jobs:
               result = data.filter(e => e.type === 'result').pop();
               console.log('Result:', JSON.stringify(result, null, 2));
             }
-            const ok = result && !result.is_error && result.total_cost_usd > 0;
+            const ok = result && result.subtype === 'success' && !result.is_error && result.total_cost_usd > 0;
             if (!ok) {
               // A review that ran into a limit says nothing about the PR or the AWS token.
               const reason = !result
