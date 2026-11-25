@@ -919,7 +919,7 @@ jobs:
   review:
     needs: parse-command
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     if: >-
       needs.parse-command.outputs.command == 'review'
       && needs.parse-command.outputs.authorized == 'true'
@@ -954,7 +954,7 @@ jobs:
           github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
           # --max-turns only stops a runaway session. A review that reaches it is
-          # lost with its whole cost, so keep it well above what a large PR needs.
+          # lost with its whole cost, so keep it well above what a review needs.
           claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_REVIEW || env.AWS_BEDROCK_MODEL }} --max-turns 150 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
