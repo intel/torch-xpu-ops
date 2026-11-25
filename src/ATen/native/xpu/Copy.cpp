@@ -271,7 +271,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   void* src = iter.data_ptr(1);
   int64_t nbytes = iter.numel() * iter.element_size(0);
 
-  auto q = getCurrentSYCLQueue();
+  auto& q = getCurrentSYCLQueue();
   if (non_blocking) {
     if (copy_kind == _H2D_) {
       if (at::detail::getXPUHooks().isPinnedPtr(src)) {
@@ -310,8 +310,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
       }
     }
   } else {
-    auto e = q.memcpy(dst, src, nbytes);
-    e.wait();
+    c10::xpu::memcpy_and_sync(dst, src, nbytes, q);
   }
 
   if (iter.tensor(0).is_conj() != iter.tensor(1).is_conj()) {

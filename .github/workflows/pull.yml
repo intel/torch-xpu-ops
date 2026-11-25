@@ -225,6 +225,11 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
+              - '.github/workflows/_windows_build.yml'
+              - '.github/actions/windows-testenv/**'
+              - '.github/actions/windows-uttest/**'
+              - '.github/scripts/build_windows.py'
+              - '.github/scripts/windows_env_check.ps1'
 
   linux-build:
     needs: preci-lint-check
@@ -238,6 +243,7 @@ jobs:
     with:
       runner: build
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ github.sha }}
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
@@ -251,7 +257,7 @@ jobs:
     with:
       runner: build
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      torch_xpu_ops: ${{ github.sha }}
       pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
 
   linux-ut:
@@ -266,12 +272,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [op_ut,basic]
+        ut_name: [op_ut,basic,xpu_profiling]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: bmg-test
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      torch_xpu_ops: ${{ github.sha }}
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
@@ -291,7 +297,7 @@ jobs:
     with:
       runner: distributed
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      torch_xpu_ops: ${{ github.sha }}
       ut: ${{ matrix.ut_name }}
 
   ut-report:
@@ -323,6 +329,7 @@ jobs:
       runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ github.sha }}
       suite: ${{ matrix.suite }}
       scenario: ${{ matrix.scenario }}
   linux-e2e-summary:
@@ -350,7 +357,7 @@ jobs:
     with:
       runner: windows-build
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      torch_xpu_ops: ${{ github.sha }}
 
   windows-ut:
     name: windows-ut
@@ -362,9 +369,13 @@ jobs:
       || (needs.preci-lint-check.outputs.skip_ut != 'true'
       && needs.conditions-filter-win.outputs.src_changed == 'true')) }}
     secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [basic]
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: op_extended,test_xpu
+      ut: ${{ matrix.ut_name }}
       runner: windows-test
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      torch_xpu_ops: ${{ github.sha }}

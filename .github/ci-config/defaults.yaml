@@ -4,7 +4,7 @@ common:
 ut:
   # op UT total per platform
   op_ut_linux: 325448
-  op_ut_windows: 105263
+  op_ut_windows: 240647
   # expected cases: op
   case_op_extended: 5352
   case_op_regression: 445

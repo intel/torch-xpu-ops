@@ -13,7 +13,7 @@ on:
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: 'pinned'
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
@@ -48,7 +48,7 @@ jobs:
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+      image: ${{ contains(inputs.runner, 'bmg') && 'intel/omix:0.5.0-devel-ubuntu26.04' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt/xpu-test/_cache:/github/home/.cache/:rw

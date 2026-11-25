@@ -15,6 +15,10 @@ on:
         type: string
         default: ''
         description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
+      torch_xpu_ops:
+        type: string
+        default: 'pinned'
+        description: Torch-xpu-ops wheel/source pin, or a ref, or 'repo@ref'
 
 permissions:
   contents: read
@@ -47,6 +51,7 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
       - name: Fixed frequency
         run: |

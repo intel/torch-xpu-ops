@@ -33,14 +33,11 @@ Scalar _local_scalar_dense_xpu(const Tensor& self) {
             false, /* pin_memory */
             std::nullopt /* memory format */
         );
-
-        auto queue = at::xpu::getCurrentSYCLQueue();
-        auto e = queue.memcpy(
-            (void*)value.const_data_ptr<scalar_t>(),
+        c10::xpu::memcpy_and_sync(
+            value.mutable_data_ptr<scalar_t>(),
             self.const_data_ptr<scalar_t>(),
-            sizeof(scalar_t));
-        e.wait();
-
+            sizeof(scalar_t),
+            c10::xpu::getCurrentXPUStream());
         r = Scalar(*value.const_data_ptr<scalar_t>());
       }),
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
