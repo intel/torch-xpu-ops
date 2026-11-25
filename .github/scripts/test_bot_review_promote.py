@@ -176,8 +176,9 @@ def test_maintainer_activity_since_review():
 
 def run_promote(monkeypatch, labels, status, ci, activity=()):
     calls = []
-    pr = {"state": "open", "draft": False, "labels": [{"name": n} for n in labels],
-          "head": {"sha": "s" * 40}, "base": {"ref": "main"}, "user": {"login": "author"}}
+    pr = {"number": 7, "state": "open", "draft": False, "labels": [{"name": n} for n in labels],
+          "head": {"sha": "s" * 40}, "base": {"ref": "main"}, "user": {"login": "author"},
+          "body": "Reviewers: @alice"}
     monkeypatch.setattr(p, "api", lambda path: pr if "/pulls/" in path else {"statuses": status})
     monkeypatch.setattr(p, "api_items", lambda path, jq=".[]": [])
     monkeypatch.setattr(p, "gh", lambda *a, **k: calls.append(a) or "")
@@ -202,6 +203,8 @@ def test_promote_swaps_labels_when_review_and_ci_pass(monkeypatch):
     calls = run_promote(monkeypatch, ["in progress"], PASSED, (False, [], ["x"]))
     assert ("api", "repos/o/r/issues/7/labels", "-f", "labels[]=ready for review") in calls
     assert ("api", "-X", "DELETE", "repos/o/r/issues/7/labels/in%20progress") in calls
+    assert ("api", "repos/o/r/pulls/7/requested_reviewers", "-f", "reviewers[]=alice") in calls
+    assert "Requested review from @alice" in calls[-1][-1]
     assert "also fail on main" in calls[-1][-1] and "bot-review-promote:promoted:" in calls[-1][-1]
 
 
@@ -231,6 +234,16 @@ def test_only_the_latest_attempt_counts(tmp_path):
     assert p.ut_group_blockers(tmp_path, {A}, {B}) == ([], [A])
 
 
+def test_reviewers_from_description_and_change_requests():
+    body = "Fix foo.\n\nReviewers: @alice, bob @intel/xpu-team @Alice author\nreviewer: @carol."
+    reviews = [{"user": {"login": "dave"}, "state": "CHANGES_REQUESTED"},
+               {"user": {"login": "erin"}, "state": "CHANGES_REQUESTED"},
+               {"user": {"login": "erin"}, "state": "APPROVED"},
+               {"user": {"login": "dave"}, "state": "COMMENTED"}]
+    assert p.reviewers_to_request(body, reviews, "author") == ["alice", "bob", "carol", "dave"]
+    assert p.reviewers_to_request(None, [], "author") == []
+
+
 def test_nightly_baseline_is_at_most_five_days_old():
     from datetime import datetime, timezone
     now = datetime(2026, 11, 20, 12, tzinfo=timezone.utc)
@@ -239,6 +252,20 @@ def test_nightly_baseline_is_at_most_five_days_old():
             {"id": 3, "display_title": "Weekly / Build-from-source", "created_at": "2026-11-15T16:10:00Z"},
             {"id": 4, "display_title": "Nightly / Build-from-source", "created_at": "2026-11-12T13:15:00Z"}]
     assert [r["id"] for r in p.recent_nightlies(runs, now)] == [1, 3]
+
+
+def test_request_reviewers_is_capped(monkeypatch):
+    calls = []
+    body = "Reviewers: " + " ".join(f"@u{i}" for i in range(9))
+    monkeypatch.setattr(p, "api_items", lambda path, jq=".[]": [])
+    monkeypatch.setattr(p, "gh", lambda *a, **k: calls.append(a) or "")
+
+    class FakeRepo(p.Repo):
+        def role(self, login):
+            return "write"
+
+    asked = p.request_reviewers(FakeRepo("o/r"), {"number": 7, "body": body, "user": {"login": "a"}})
+    assert asked == [f"u{i}" for i in range(p.MAX_REVIEWERS)]
 
 
 def test_no_pull_run_means_nothing_to_wait_for(tmp_path):

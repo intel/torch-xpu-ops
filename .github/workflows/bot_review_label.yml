@@ -4,19 +4,21 @@ name: bot-review label
 #   - a maintainer adds `in progress`, or
 #   - the author pushes / reopens / marks ready while `in progress` is on and
 #     `ready for review` is not.
-# A passing review (bot.yml `review-post` job) swaps `in progress` for
-# `ready for review`; human review starts there.
+# A passing review plus clean CI swaps `in progress` for `ready for review`;
+# human review starts there.
 # `no automated review` opts the PR out: it goes straight to `ready for review`.
 # A maintainer requesting changes on a `ready for review` PR sends it back to
 # `in progress`, which re-runs the review (see bot_review_demote.yml).
 # When the `pull` workflow finishes, `promote` re-evaluates CI for the PR
-# (.github/scripts/bot_review_promote.py).
+# (.github/scripts/bot_review_promote.py), which also requests reviewers from
+# the description's `Reviewers:` line on promotion. Review requests made while
+# the PR is still `in progress` are withdrawn (`hold-review-request`).
 # No PR code is checked out here. Writes use MERGE_TOKEN because GITHUB_TOKEN
 # comments and labels do not trigger other workflows.
 
 on:
   pull_request_target:
-    types: [labeled, synchronize, reopened, ready_for_review]
+    types: [labeled, synchronize, reopened, ready_for_review, review_requested]
   workflow_run:
     workflows: ["bot-review demote capture", "pull"]
     types: [completed]
@@ -32,7 +34,7 @@ jobs:
       !contains(github.event.pull_request.labels.*.name, 'no automated review') &&
       (
         (github.event.action == 'labeled' && github.event.label.name == 'in progress') ||
-        (github.event.action != 'labeled' &&
+        (contains(fromJSON('["synchronize", "reopened", "ready_for_review"]'), github.event.action) &&
          contains(github.event.pull_request.labels.*.name, 'in progress') &&
          !contains(github.event.pull_request.labels.*.name, 'ready for review'))
       )
@@ -61,7 +63,8 @@ jobs:
               body: `@torchxpubot review\n\n_Automated review (\`${context.payload.action}\` by @${context.payload.sender.login})._`
             });
 
-  # Opted out of automated review: skip straight to human review, like pytorch.
+  # Opted out of automated review (with or without `in progress`): skip straight
+  # to human review, like pytorch.
   opt-out:
     if: |
       github.event_name == 'pull_request_target' &&
@@ -69,10 +72,12 @@ jobs:
       contains(fromJSON('["labeled", "reopened", "ready_for_review"]'), github.event.action) &&
       !github.event.pull_request.draft &&
       contains(github.event.pull_request.labels.*.name, 'no automated review') &&
-      contains(github.event.pull_request.labels.*.name, 'in progress')
+      !contains(github.event.pull_request.labels.*.name, 'ready for review')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v9
+      - uses: actions/checkout@v7
+      - id: swap
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -81,9 +86,81 @@ jobs:
             // The event snapshot can be stale; act on live state only.
             const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
             const labels = pr.labels.map(l => l.name);
-            if (pr.state !== 'open' || pr.draft || !labels.includes('no automated review') || !labels.includes('in progress')) return;
+            if (pr.state !== 'open' || pr.draft || !labels.includes('no automated review') || labels.includes('ready for review')) return;
             await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['ready for review'] });
             await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'in progress' }).catch(() => {});
+            core.setOutput('promoted', 'true');
+      - name: Request reviewers
+        if: steps.swap.outputs.promoted == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: python3 .github/scripts/bot_review_promote.py --repo ${{ github.repository }} --pr ${{ github.event.pull_request.number }} --request-reviewers
+
+  # Reviewers are asked when the PR reaches `ready for review` (from the
+  # description's `Reviewers:` line). A request made while the bot review is
+  # still running is withdrawn; GitHub has already notified once, so this
+  # mainly keeps the PR off the reviewer's queue until it is ready.
+  hold-review-request:
+    if: |
+      github.event_name == 'pull_request_target' &&
+      github.repository_owner == 'intel' &&
+      github.event.action == 'review_requested' &&
+      github.event.sender.login != 'torchxpubot' &&
+      contains(github.event.pull_request.labels.*.name, 'in progress') &&
+      !contains(github.event.pull_request.labels.*.name, 'ready for review') &&
+      !contains(github.event.pull_request.labels.*.name, 'no automated review')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            if (!labels.includes('in progress') || labels.includes('ready for review') || labels.includes('no automated review')) return;
+            const user = context.payload.requested_reviewer?.login;
+            const team = context.payload.requested_team?.slug;
+            await github.rest.pulls.removeRequestedReviewers({ owner, repo, pull_number,
+              reviewers: user ? [user] : [], team_reviewers: team ? [team] : [] });
+            const who = user ? `@${user}` : `team ${team}`;
+            await github.rest.issues.createComment({ owner, repo, issue_number: pull_number,
+              body: `Withdrew the review request for ${who}: this PR is still \`in progress\`. Reviewers are requested automatically once it reaches \`ready for review\`. To choose them, add a line like \`Reviewers: @alice @bob\` to the PR description.` });
+
+  # Reviewers requested on a PR outside the gate: tell the author, once, to go
+  # through the bot review first or opt out if urgent. The request is kept.
+  remind-gate:
+    if: |
+      github.event_name == 'pull_request_target' &&
+      github.repository_owner == 'intel' &&
+      github.event.action == 'review_requested' &&
+      github.event.sender.login != 'torchxpubot' &&
+      !github.event.pull_request.draft &&
+      !contains(github.event.pull_request.labels.*.name, 'in progress') &&
+      !contains(github.event.pull_request.labels.*.name, 'ready for review') &&
+      !contains(github.event.pull_request.labels.*.name, 'no automated review')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            if (pr.state !== 'open' || pr.draft ||
+                ['in progress', 'ready for review', 'no automated review'].some(l => labels.includes(l))) return;
+            const marker = '<!-- bot-review-remind-gate -->';
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            if (comments.some(c => (c.body || '').includes(marker))) return;
+            await github.rest.issues.createComment({ owner, repo, issue_number,
+              body: `${marker}\n@${pr.user.login} reviewers were requested before this PR passed the bot review. ` +
+                `Please add the \`in progress\` label (or ask a maintainer to): the bot reviews every push, and once no ` +
+                `blocking issues remain the PR moves to \`ready for review\` and reviewers are requested from the ` +
+                `\`Reviewers: @alice @bob\` line in the description. If this PR is urgent, add \`no automated review\` ` +
+                `instead to skip the bot review. See [CONTRIBUTING.md](https://github.com/intel/torch-xpu-ops/blob/main/CONTRIBUTING.md#bot-review-before-human-review).` });
 
   # A maintainer requested changes on a ready PR: back to `in progress`. Adding
   # that label fires `trigger` above, so the review re-runs and must see the

@@ -17,6 +17,19 @@ Thank you for your interest in contributing to this project. Before you begin wr
 
 Once you implement and test your feature or bug-fix, submit a Pull Request to https://github.com/intel/torch-xpu-ops.
 
+### Bot review before human review
+
+Pull Requests go through an automated review by `@torchxpubot` before maintainers are asked to review:
+
+1. Add the `in progress` label (or ask a maintainer to). The bot reviews the PR and re-reviews on every push.
+2. Once the review finds no blocking issues and CI is clean (failures that also fail on `main` or are flaky there are not counted), the bot moves the PR to `ready for review`.
+3. The bot then requests reviewers listed in the PR description, e.g. a line `Reviewers: @alice @bob`. Do not request reviewers yourself while the PR is `in progress`; the bot withdraws such requests.
+4. If a maintainer requests changes, the PR goes back to `in progress` and the bot review runs again.
+
+For an urgent PR, add `no automated review` instead: the PR skips the bot review and moves straight to `ready for review`.
+
+The bot review never blocks merging; a merge still needs two maintainer approvals.
+
 
 ## Developing Torch XPU Operators project on XPU
 
