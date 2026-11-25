@@ -180,7 +180,6 @@ skip_dict = {
         "test_dtypes__refs_nn_functional_pdist_xpu",
         # not implemented
         "histogramdd",
-        "_flash_attention_",
         "_efficient_attention_",
         # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
         "test_dtypes_linalg_multi_dot_xpu",
