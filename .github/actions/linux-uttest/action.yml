@@ -230,9 +230,16 @@ runs:
       if: ${{ contains(inputs.ut_name, 'upstream_') }}
       run: |
         ut_name="${{ inputs.ut_name }}"
+        extra_args=()
         case "${ut_name}" in
           upstream_distributed) category="distributed" ;;
           upstream_inductor) category="inductor" ;;
+          upstream_default_remaining)
+            category="default"
+            ut_name="upstream_default"
+            mapfile -t rem_files < .github/ci-config/upstream_default_remaining.txt
+            extra_args=(--files "${rem_files[@]}")
+            ;;
           *) category="default" ;;
         esac
         # Distributed needs an etcd rendezvous and the XCCL topology
@@ -246,5 +253,6 @@ runs:
         python .github/scripts/run_upstream_ut.py "${category}" --ut-name "${ut_name}" \
           --pytorch-dir pytorch \
           --log-dir "${UT_LOG_DIR}" \
-          --xml-dir "${UT_JUNIT_DIR}" || rc=$?
+          --xml-dir "${UT_JUNIT_DIR}" \
+          "${extra_args[@]}" || rc=$?
         [ "${rc}" -le 1 ]

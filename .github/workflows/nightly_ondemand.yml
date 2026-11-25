@@ -50,6 +50,10 @@ on:
         type: string
         default: ''
         description: Test scenario. 'accuracy,performance'. Delimiter is comma
+      test_scope:
+        type: string
+        default: 'full'
+        description: "E2E tier scope: 'p0', 'p1', 'p2', or 'full'"
       model:
         type: string
         default: ''
@@ -223,6 +227,7 @@ jobs:
       dt: ${{ github.event_name == 'schedule' && '' || inputs.dt }}
       mode: ${{ github.event_name == 'schedule' && '' || inputs.mode }}
       scenario: ${{ matrix.scenario }}
+      test_scope: ${{ github.event_name == 'schedule' && 'full' || (inputs.test_scope != '' && inputs.test_scope || 'full') }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
     name: linux-e2e

@@ -39,6 +39,10 @@ on:
         type: string
         default: 'accuracy'
         description: Test scenario. `accuracy,performance`. Delimiter is comma
+      test_scope:
+        type: string
+        default: 'full'
+        description: "Test scope for ondemand runs: 'p0', 'p1', 'p2', or 'full'"
       model:
         required: false
         type: string
@@ -134,7 +138,7 @@ jobs:
           dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-          test_scope: full
+          test_scope: ${{ inputs.test_scope != '' && inputs.test_scope || 'full' }}
       - name: OnDemand PT2E Test (pt2e)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e

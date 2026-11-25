@@ -54,6 +54,29 @@ runs:
       uses: ./.github/actions/setup-python
       with:
         python: ${{ inputs.python }}
+    - name: Setup oneAPI setvars for container jobs
+      shell: bash -xe {0}
+      run: |
+        if [ -f /opt/intel/oneapi/setvars.sh ] && [ "${SETVARS_COMPLETED:-}" != "1" ]; then
+          _saved_path="${PATH}"
+          _saved_ld="${LD_LIBRARY_PATH:-}"
+          set +xu
+          source /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1 || true
+          set -xe
+          export PATH="${VIRTUAL_ENV:+${VIRTUAL_ENV}/bin:}${_saved_path}:${PATH}"
+          export LD_LIBRARY_PATH="${_saved_ld:+${_saved_ld}:}${LD_LIBRARY_PATH:-}"
+          python - <<'PY' >> "${GITHUB_ENV}"
+        import os
+        keep_prefixes = ("ONEAPI_", "CMPLR_", "MKL", "DNNL", "CCL_", "I_MPI", "TBB", "DPL", "SYCL", "OCL_ICD", "LEVEL_ZERO", "UR_", "UMF_")
+        keep_exact = {"SETVARS_COMPLETED", "LD_LIBRARY_PATH", "LIBRARY_PATH", "CPATH", "CMAKE_PREFIX_PATH", "PKG_CONFIG_PATH", "DIAGUTIL_PATH", "GDB_INFO", "INFOPATH"}
+        for k, v in sorted(os.environ.items()):
+            if (k in keep_exact or k.startswith(keep_prefixes)) and "\n" not in v:
+                print(f"{k}={v}")
+        PY
+          tr ':' '\n' <<< "${PATH}" | awk 'NF && !seen[$0]++' > /tmp/new_gh_path.txt
+          tac /tmp/new_gh_path.txt >> "${GITHUB_PATH}"
+          rm -f /tmp/new_gh_path.txt
+        fi
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v7
       with:
@@ -100,12 +123,16 @@ runs:
         if [ -d /workspace/local/manywheel-py3_12-xpu ]; then
           ln -s /workspace/local/manywheel-py3_12-xpu manywheel-py3_12-xpu
         else
-          gh --repo pytorch/pytorch run download 44455726062 -p "manywheel-py3_12-xpu"
+          mkdir -p manywheel-py3_12-xpu
+          curl -fL --retry 5 -o manywheel-py3_12-xpu/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl \
+            https://github.com/mengfei25/torch-xpu-ops/releases/download/cri-bmg-wheels-20261119/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl
         fi
         if [ -d /workspace/local/triton-wheel-3.12-xpu-manylinux_2_28_x86_64 ]; then
           ln -s /workspace/local/triton-wheel-3.12-xpu-manylinux_2_28_x86_64 triton-wheel-3.12-xpu-manylinux_2_28_x86_64
         else
-          gh --repo pytorch/pytorch run download 45280070281 -n "triton-wheel-3.12-xpu-manylinux_2_28_x86_64" -D triton-wheel-3.12-xpu-manylinux_2_28_x86_64
+          mkdir -p triton-wheel-3.12-xpu-manylinux_2_28_x86_64
+          curl -fL --retry 5 -o triton-wheel-3.12-xpu-manylinux_2_28_x86_64/triton_xpu-3.9.1+gita7b276f4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl \
+            https://github.com/mengfei25/torch-xpu-ops/releases/download/cri-bmg-wheels-20261119/triton_xpu-3.9.1+gita7b276f4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
         fi
         uv pip install --no-deps --force-reinstall manywheel-py3_12-xpu/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl
         uv pip install --no-deps --force-reinstall triton-wheel-3.12-xpu-manylinux_2_28_x86_64/triton_xpu-*.whl
@@ -259,12 +286,16 @@ runs:
         if [ -d /workspace/local/manywheel-py3_12-xpu ]; then
           ln -s /workspace/local/manywheel-py3_12-xpu manywheel-py3_12-xpu
         else
-          gh --repo pytorch/pytorch run download 44455726062 -p "manywheel-py3_12-xpu"
+          mkdir -p manywheel-py3_12-xpu
+          curl -fL --retry 5 -o manywheel-py3_12-xpu/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl \
+            https://github.com/mengfei25/torch-xpu-ops/releases/download/cri-bmg-wheels-20261119/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl
         fi
         if [ -d /workspace/local/triton-wheel-3.12-xpu-manylinux_2_28_x86_64 ]; then
           ln -s /workspace/local/triton-wheel-3.12-xpu-manylinux_2_28_x86_64 triton-wheel-3.12-xpu-manylinux_2_28_x86_64
         else
-          gh --repo pytorch/pytorch run download 45280070281 -n "triton-wheel-3.12-xpu-manylinux_2_28_x86_64" -D triton-wheel-3.12-xpu-manylinux_2_28_x86_64
+          mkdir -p triton-wheel-3.12-xpu-manylinux_2_28_x86_64
+          curl -fL --retry 5 -o triton-wheel-3.12-xpu-manylinux_2_28_x86_64/triton_xpu-3.9.1+gita7b276f4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl \
+            https://github.com/mengfei25/torch-xpu-ops/releases/download/cri-bmg-wheels-20261119/triton_xpu-3.9.1+gita7b276f4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
         fi
         if [[ "${{ inputs.suite }}" =~ huggingface|timm_models|torchbench|pt2e ]]; then
           uv pip install "numpy<2" triton-xpu pyelftools manywheel-py3_12-xpu/torch-2.16.0.dev20261119+xpu-cp312-cp312-manylinux_2_28_x86_64.whl --index-url https://download.pytorch.org/whl/nightly/xpu --pre
