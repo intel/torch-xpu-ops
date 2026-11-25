@@ -32,7 +32,6 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/TransposeKernel.h>
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
-#include <comm/GPUTrace.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/ops/empty_like.h>
@@ -272,7 +271,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   void* src = iter.data_ptr(1);
   int64_t nbytes = iter.numel() * iter.element_size(0);
 
-  auto q = getCurrentSYCLQueue();
+  auto& q = getCurrentSYCLQueue();
   if (non_blocking) {
     if (copy_kind == _H2D_) {
       if (at::detail::getXPUHooks().isPinnedPtr(src)) {
@@ -311,9 +310,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
       }
     }
   } else {
-    auto e = q.memcpy(dst, src, nbytes);
-    e.wait();
-    traceStreamSynchronization();
+    c10::xpu::memcpy_and_sync(dst, src, nbytes, q);
   }
 
   if (iter.tensor(0).is_conj() != iter.tensor(1).is_conj()) {

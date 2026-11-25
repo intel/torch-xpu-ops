@@ -1,0 +1,132 @@
+name: bot-review label
+
+# Bot review gate, triggered like pytorch's hardened-pr-review.yml:
+#   - a maintainer adds `in progress`, or
+#   - the author pushes / reopens / marks ready while `in progress` is on and
+#     `ready for review` is not.
+# A passing review (bot.yml `review-post` job) swaps `in progress` for
+# `ready for review`; human review starts there.
+# `no automated review` opts the PR out: it goes straight to `ready for review`.
+# A maintainer requesting changes on a `ready for review` PR sends it back to
+# `in progress`, which re-runs the review (see bot_review_demote.yml).
+# No PR code is checked out here. Writes use MERGE_TOKEN because GITHUB_TOKEN
+# comments and labels do not trigger other workflows.
+
+on:
+  pull_request_target:
+    types: [labeled, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows: ["bot-review demote capture"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  trigger:
+    if: |
+      github.event_name == 'pull_request_target' &&
+      github.repository_owner == 'intel' &&
+      !github.event.pull_request.draft &&
+      !contains(github.event.pull_request.labels.*.name, 'no automated review') &&
+      (
+        (github.event.action == 'labeled' && github.event.label.name == 'in progress') ||
+        (github.event.action != 'labeled' &&
+         contains(github.event.pull_request.labels.*.name, 'in progress') &&
+         !contains(github.event.pull_request.labels.*.name, 'ready for review'))
+      )
+    concurrency:
+      group: bot-review-label-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            // Queued events can be stale (opted out, drafted, closed since).
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            if (pr.state !== 'open' || pr.draft || labels.includes('no automated review') || !labels.includes('in progress')) return;
+            // `in progress` added to a ready PR: drop `ready for review`, or a
+            // failing review leaves both labels and later pushes are ignored.
+            if (labels.includes('ready for review')) {
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'ready for review' }).catch(() => {});
+            }
+            await github.rest.issues.createComment({
+              owner, repo, issue_number,
+              body: `@torchxpubot review\n\n_Automated review (\`${context.payload.action}\` by @${context.payload.sender.login})._`
+            });
+
+  # Opted out of automated review: skip straight to human review, like pytorch.
+  opt-out:
+    if: |
+      github.event_name == 'pull_request_target' &&
+      github.repository_owner == 'intel' &&
+      contains(fromJSON('["labeled", "reopened", "ready_for_review"]'), github.event.action) &&
+      !github.event.pull_request.draft &&
+      contains(github.event.pull_request.labels.*.name, 'no automated review') &&
+      contains(github.event.pull_request.labels.*.name, 'in progress')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            // The event snapshot can be stale; act on live state only.
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            if (pr.state !== 'open' || pr.draft || !labels.includes('no automated review') || !labels.includes('in progress')) return;
+            await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['ready for review'] });
+            await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'in progress' }).catch(() => {});
+
+  # A maintainer requested changes on a ready PR: back to `in progress`. Adding
+  # that label fires `trigger` above, so the review re-runs and must see the
+  # maintainer's comments addressed (pr-review skill, "Maintainer Comments").
+  demote:
+    if: |
+      github.event_name == 'workflow_run' &&
+      github.repository_owner == 'intel' &&
+      github.event.workflow_run.event == 'pull_request_review' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        env:
+          RUN_TITLE: ${{ github.event.workflow_run.display_title }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            // The capture run can come from a PR's own copy of its workflow, so
+            // its title is only a hint: everything below is re-checked live.
+            const m = /^bot-review demote PR (\d+)$/.exec(process.env.RUN_TITLE || '');
+            if (!m) return core.warning(`unexpected run title: ${process.env.RUN_TITLE}`);
+            const { owner, repo } = context.repo;
+            const issue_number = Number(m[1]);
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            if (pr.state !== 'open' || !labels.includes('ready for review') || labels.includes('no automated review')) return;
+            // Latest state per reviewer; demote only for an outstanding change
+            // request from a maintainer (triage access or above), not the author.
+            const latest = new Map();
+            for (const r of await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: issue_number, per_page: 100 })) {
+              if (r.user && r.state !== 'COMMENTED') latest.set(r.user.login, r.state);
+            }
+            let by = null;
+            for (const [username, state] of latest) {
+              if (state !== 'CHANGES_REQUESTED' || username === pr.user.login) continue;
+              // Fail closed: an unknown role still demotes (a re-review is cheap).
+              const role = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username }).then(
+                r => r.data.role_name,
+                e => { core.warning(`permission lookup for ${username} failed: ${e.message}`); return 'unknown'; });
+              if (['triage', 'write', 'maintain', 'admin', 'unknown'].includes(role)) { by = username; break; }
+            }
+            if (!by) return;
+            // Add before removing so the PR always carries a status label.
+            await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['in progress'] });
+            await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'ready for review' }).catch(() => {});
+            await github.rest.issues.createComment({ owner, repo, issue_number,
+              body: `@${by} requested changes, so this PR is back to \`in progress\`. Address the requested changes and push; the bot review re-runs and must find them addressed before the PR returns to \`ready for review\`.` });

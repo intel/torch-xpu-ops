@@ -197,6 +197,39 @@ class TestLayerNorm(TestCase):
         self.assertEqual(actual.float().cpu(), baseline, atol=atol, rtol=rtol)
 
 
+class TestLayerNormBackwardFp16(TestCase):
+    @parametrize("n", [8192, 20001, 65536])
+    @parametrize("affine", [True, False])
+    def test_backward_large_n(self, device, n, affine):
+        """Regression test for https://github.com/intel/torch-xpu-ops/issues/6310.
+
+        fH * gamma * dY used to be evaluated in float16 and overflowed to inf
+        for N >= 8192; only the input gradient was affected.
+        """
+        torch.manual_seed(0)
+        shape, normalized_shape = (2, n), (n,)
+        x = torch.randn(shape, dtype=torch.half)
+        grad = torch.randn(shape, dtype=torch.half)
+        weight = torch.randn(normalized_shape, dtype=torch.half) if affine else None
+        bias = torch.randn(normalized_shape, dtype=torch.half) if affine else None
+
+        def grads(dev, dtype):
+            tensors = [t for t in (x, weight, bias) if t is not None]
+            inputs = [t.to(dev, dtype).requires_grad_() for t in tensors]
+            out = nn.functional.layer_norm(inputs[0], normalized_shape, *inputs[1:])
+            return torch.autograd.grad(out, inputs, grad.to(dev, dtype))
+
+        for actual, expected in zip(
+            grads(device, torch.half), grads("cpu", torch.float)
+        ):
+            self.assertEqual(
+                actual.cpu().float(),
+                expected,
+                atol=2e-3 * expected.abs().max().item(),
+                rtol=0,
+            )
+
+
 class TestLayerNormMultidimBackward(TestCase):
     @parametrize("has_weight,has_bias", [(True, True), (True, False), (False, True)])
     def test_layer_norm_backward_multidim_normalized_shape_large_rows(
@@ -240,6 +273,9 @@ class TestLayerNormMultidimBackward(TestCase):
 
 instantiate_device_type_tests(
     TestLayerNormMultidimBackward, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestLayerNormBackwardFp16, globals(), only_for="xpu", allow_xpu=True
 )
 
 
