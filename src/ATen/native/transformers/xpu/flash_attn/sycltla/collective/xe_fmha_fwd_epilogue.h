@@ -146,7 +146,7 @@ class FMHAFwdEpilogue {
       QVCoord blk_qv, // WG tile indices: (q,v)
       int thr_id, // Work-item ID
       float* pLSE, // Global LSE Ptr
-      const std::tuple<int, int, int, int, int, int, int>&
+      const std::tuple<int, int64_t, int, int, int>&
           metadata_for_lse, // Metadata for LSE to calculate offset
       bool is_dropout // Whether dropout is enabled
   ) {
@@ -192,18 +192,10 @@ class FMHAFwdEpilogue {
     copy(copy_o, tOrO, tOgO);
 
     /* Calculate the LSE*/
-    auto
-        [blk_q,
-         num_heads_q,
-         seq_len_qo,
-         batch_idx,
-         q_head_idx,
-         tile_row_idx,
-         rows_of_maxima] = metadata_for_lse;
+    auto [blk_q, lse_base, seq_len_qo, tile_row_idx, rows_of_maxima] =
+        metadata_for_lse;
     int blk_q_coord = get<0>(blk_qv);
-    size_t lse_offset =
-        batch_idx * num_heads_q * seq_len_qo + // shift the batch
-        q_head_idx * seq_len_qo + // shift the head
+    size_t lse_offset = lse_base + // start of this (batch, head) row
         blk_q_coord * blk_q; // shift to the particular tile
     size_t seq_coord = blk_q_coord * blk_q + tile_row_idx;
 

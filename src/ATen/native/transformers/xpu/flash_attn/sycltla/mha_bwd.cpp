@@ -385,6 +385,303 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
       std::move(dq), std::move(dk), std::move(dv), std::move(softmax_d));
 }
 
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_varlen_bwd(
+    const at::Tensor& dout, // total_q x num_heads x head_size
+    const at::Tensor& q, // total_q x num_heads x head_size
+    const at::Tensor& k, // total_k x num_heads_k x head_size
+    const at::Tensor& v, // total_k x num_heads_k x head_size
+    const at::Tensor& out, // total_q x num_heads x head_size
+    const at::Tensor& softmax_lse, // num_heads x total_q
+    std::optional<at::Tensor>& dq_, // total_q x num_heads x head_size
+    std::optional<at::Tensor>& dk_, // total_k x num_heads_k x head_size
+    std::optional<at::Tensor>& dv_, // total_k x num_heads_k x head_size
+    const at::Tensor& cu_seqlens_q, // batch_size + 1
+    const at::Tensor& cu_seqlens_k, // batch_size + 1
+    std::optional<at::Tensor>& alibi_slopes_,
+    const int max_seqlen_q,
+    const int max_seqlen_k,
+    const float p_dropout,
+    const float softmax_scale,
+    bool is_causal,
+    int window_size_left,
+    int window_size_right,
+    const float softcap,
+    const bool deterministic,
+    const at::Tensor philox_seed,
+    const at::Tensor philox_offset) {
+  TORCH_CHECK(
+      !alibi_slopes_.has_value(),
+      "mha_varlen_bwd on xpu does not support alibi slopes yet");
+  TORCH_CHECK(
+      softcap == 0.0, "mha_varlen_bwd on xpu does not support softcap yet");
+  TORCH_CHECK(
+      !deterministic,
+      "mha_varlen_bwd on xpu does not support deterministic mode yet");
+  // The kernel's dropout offsets assume the dense layout.
+  TORCH_CHECK(
+      p_dropout == 0.0f, "mha_varlen_bwd on xpu does not support dropout yet");
+
+  auto sycl_queue = at::xpu::getCurrentXPUStream().queue();
+  check_device_architecture(sycl_queue);
+
+  auto dtype = q.scalar_type();
+  TORCH_CHECK(
+      dtype == at::kHalf || dtype == at::kBFloat16,
+      "mha_varlen_bwd on xpu only support fp16 and bf16 data type");
+  TORCH_CHECK(
+      k.scalar_type() == dtype && v.scalar_type() == dtype &&
+          out.scalar_type() == dtype && dout.scalar_type() == dtype,
+      "mha_varlen_bwd on xpu: query, key, value, out and grad_out must have the same dtype");
+  TORCH_CHECK(
+      softmax_lse.scalar_type() == at::kFloat,
+      "mha_varlen_bwd on xpu: logsumexp must have the dtype float32");
+  TORCH_CHECK(
+      cu_seqlens_q.scalar_type() == at::kInt &&
+          cu_seqlens_k.scalar_type() == at::kInt,
+      "mha_varlen_bwd on xpu: cu_seqlens must have dtype int32");
+
+  CHECK_DEVICE(q);
+  CHECK_DEVICE(k);
+  CHECK_DEVICE(v);
+  CHECK_DEVICE(out);
+  CHECK_DEVICE(dout);
+  CHECK_DEVICE(softmax_lse);
+  CHECK_DEVICE(cu_seqlens_q);
+  CHECK_DEVICE(cu_seqlens_k);
+
+  TORCH_CHECK(
+      q.stride(-1) == 1 && k.stride(-1) == 1 && v.stride(-1) == 1 &&
+          out.stride(-1) == 1 && dout.stride(-1) == 1,
+      "mha_varlen_bwd on xpu: input tensor must have contiguous last dimension");
+  TORCH_CHECK(
+      softmax_lse.is_contiguous(),
+      "mha_varlen_bwd on xpu: softmax_lse must be contiguous in [numhead_qo, total_q]");
+  TORCH_CHECK(
+      cu_seqlens_q.is_contiguous() && cu_seqlens_k.is_contiguous(),
+      "mha_varlen_bwd on xpu: cu_seqlens must be contiguous");
+  TORCH_CHECK(
+      q.dim() == 3 && k.dim() == 3 && v.dim() == 3 && out.dim() == 3 &&
+          dout.dim() == 3 && softmax_lse.dim() == 2,
+      "mha_varlen_bwd on xpu requires query, key, value, out, grad_out to be 3 dimensional and logsumexp to be 2 dimensional");
+
+  const int batch_size = cu_seqlens_q.numel() - 1;
+  const int total_q = q.sizes()[0];
+  const int total_k = k.sizes()[0];
+  const int numhead_qo = q.sizes()[1];
+  const int numhead_kv = k.sizes()[1];
+  const int headsize_qk = q.sizes()[2];
+  const int headsize_vo = v.sizes()[2];
+
+  TORCH_CHECK(
+      batch_size > 0, "mha_varlen_bwd on xpu: batch size must be positive");
+  TORCH_CHECK(
+      headsize_qk == headsize_vo,
+      "mha_varlen_bwd on xpu: headsize_qk must be equal to headsize_vo");
+  TORCH_CHECK(
+      headsize_qk <= 256,
+      "mha_varlen_bwd on xpu: only supports head dimension at most 256");
+  TORCH_CHECK(
+      numhead_qo % numhead_kv == 0,
+      "mha_varlen_bwd on xpu: number of heads in key/value must divide number of heads in query");
+
+  CHECK_SHAPE(q, total_q, numhead_qo, headsize_qk);
+  CHECK_SHAPE(k, total_k, numhead_kv, headsize_qk);
+  CHECK_SHAPE(v, total_k, numhead_kv, headsize_vo);
+  CHECK_SHAPE(out, total_q, numhead_qo, headsize_vo);
+  CHECK_SHAPE(dout, total_q, numhead_qo, headsize_vo);
+  CHECK_SHAPE(softmax_lse, numhead_qo, total_q);
+  CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
+  CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
+
+  // Same causal normalization as mha_varlen_fwd, so both see one mask.
+  if (is_causal) {
+    window_size_right = 0;
+  }
+  TORCH_CHECK(
+      window_size_left == -1 &&
+          (window_size_right == -1 || window_size_right == 0),
+      "mha_varlen_bwd on xpu only supports window_size (-1, -1), or (-1, 0) for causal");
+  is_causal = window_size_right == 0;
+  if (max_seqlen_q == 1) {
+    is_causal = false;
+  }
+
+  at::Tensor dq, dk, dv;
+  if (dq_.has_value()) {
+    dq = dq_.value();
+    TORCH_CHECK(dq.dtype() == dtype, "dq must have the same dtype as q");
+    CHECK_DEVICE(dq);
+    TORCH_CHECK(dq.stride(-1) == 1, "dq must have contiguous last dimension");
+    CHECK_SHAPE(dq, total_q, numhead_qo, headsize_qk);
+  } else {
+    dq = at::empty_like(q);
+  }
+  if (dk_.has_value()) {
+    dk = dk_.value();
+    TORCH_CHECK(dk.dtype() == dtype, "dk must have the same dtype as q");
+    CHECK_DEVICE(dk);
+    TORCH_CHECK(dk.stride(-1) == 1, "dk must have contiguous last dimension");
+    CHECK_SHAPE(dk, total_k, numhead_kv, headsize_qk);
+  } else {
+    dk = at::empty_like(k);
+  }
+  if (dv_.has_value()) {
+    dv = dv_.value();
+    TORCH_CHECK(dv.dtype() == dtype, "dv must have the same dtype as q");
+    CHECK_DEVICE(dv);
+    TORCH_CHECK(dv.stride(-1) == 1, "dv must have contiguous last dimension");
+    CHECK_SHAPE(dv, total_k, numhead_kv, headsize_vo);
+  } else {
+    dv = at::empty_like(v);
+  }
+
+  auto softmax_d = at::empty({0}, q.options().dtype(at::kFloat));
+
+  const int headsize_padded = round_up_headdim(headsize_qk);
+  const bool needs_headsize_pad = headsize_padded > headsize_qk;
+
+  at::Tensor q_padded = q;
+  at::Tensor k_padded = k;
+  at::Tensor v_padded = v;
+  at::Tensor out_padded = out;
+  at::Tensor dout_padded = dout;
+  if (needs_headsize_pad) {
+    int pad = headsize_padded - headsize_qk;
+    q_padded = at::constant_pad_nd(q, {0, pad}, 0);
+    k_padded = at::constant_pad_nd(k, {0, pad}, 0);
+    v_padded = at::constant_pad_nd(v, {0, pad}, 0);
+    out_padded = at::constant_pad_nd(out, {0, pad}, 0);
+    dout_padded = at::constant_pad_nd(dout, {0, pad}, 0);
+  }
+
+  auto opts = q.options();
+  auto dq_padded = needs_headsize_pad
+      ? at::empty({total_q, numhead_qo, headsize_padded}, opts)
+      : dq;
+  auto dk_padded = needs_headsize_pad
+      ? at::empty({total_k, numhead_kv, headsize_padded}, opts)
+      : dk;
+  auto dv_padded = needs_headsize_pad
+      ? at::empty({total_k, numhead_kv, headsize_padded}, opts)
+      : dv;
+
+  // The kernel writes dk/dv per query head; GQA sums them over the group.
+  const bool is_gqa = (numhead_kv != numhead_qo);
+  at::Tensor dk_expanded, dv_expanded;
+  if (is_gqa) {
+    dk_expanded = at::empty({total_k, numhead_qo, headsize_padded}, opts);
+    dv_expanded = at::empty({total_k, numhead_qo, headsize_padded}, opts);
+  } else {
+    dk_expanded = dk_padded;
+    dv_expanded = dv_padded;
+  }
+
+  q_padded = ensure_alignment_for_sdpa(q_padded);
+  k_padded = ensure_alignment_for_sdpa(k_padded);
+  v_padded = ensure_alignment_for_sdpa(v_padded);
+  out_padded = ensure_alignment_for_sdpa(out_padded);
+  dout_padded = ensure_alignment_for_sdpa(dout_padded);
+  dq_padded = ensure_alignment_for_sdpa(dq_padded);
+  dk_expanded = ensure_alignment_for_sdpa(dk_expanded);
+  dv_expanded = ensure_alignment_for_sdpa(dv_expanded);
+
+  // Scratch buffers get kBwdMPad / kBwdNPad spare rows per sequence because
+  // the kernel writes them in whole tiles (see Boffset::dqaccum_offset).
+  auto tensor_odo =
+      at::empty({numhead_qo, total_q}, opts.dtype(at::kFloat));
+  auto tensor_dqaccum = at::empty(
+      {numhead_qo, total_q + batch_size * kBwdMPad, headsize_padded},
+      opts.dtype(at::kFloat));
+  auto tensor_pbuff = at::empty(
+      {numhead_qo, total_k + batch_size * kBwdNPad, 2 * kBwdMPad}, opts);
+
+  // [1, total, heads, dim] views give set_params_dgrad the row stride in
+  // dim 1 and the head stride in dim 2, as for dense; the batch stride is
+  // unused because each sequence is located through cu_seqlens.
+  at::Tensor dq_4d = dq_padded.unsqueeze(0);
+  at::Tensor dk_4d = dk_expanded.unsqueeze(0);
+  at::Tensor dv_4d = dv_expanded.unsqueeze(0);
+  FLASH_BWD_params params;
+  set_params_dgrad(
+      params,
+      batch_size,
+      numhead_qo,
+      numhead_kv,
+      max_seqlen_q,
+      max_seqlen_k,
+      headsize_padded,
+      headsize_padded,
+      0, // unused seqlen_qo_pad
+      0, // unused seqlen_kv_pad
+      q_padded.unsqueeze(0),
+      k_padded.unsqueeze(0),
+      v_padded.unsqueeze(0),
+      out_padded.unsqueeze(0),
+      dout_padded.unsqueeze(0),
+      softmax_lse,
+      dq_4d,
+      dk_4d,
+      dv_4d,
+      tensor_odo,
+      tensor_dqaccum,
+      tensor_pbuff,
+      softmax_scale,
+      p_dropout,
+      is_causal);
+  params.cu_seqlens_q = static_cast<int*>(cu_seqlens_q.data_ptr());
+  params.cu_seqlens_k = static_cast<int*>(cu_seqlens_k.data_ptr());
+  params.total_q = total_q;
+  params.total_k = total_k;
+  params.is_varlen = true;
+
+  params.rng_seed = reinterpret_cast<uint64_t*>(philox_seed.data_ptr());
+  params.rng_offset = reinterpret_cast<uint64_t*>(philox_offset.data_ptr());
+
+  if (max_seqlen_q > 0 && max_seqlen_k > 0) {
+    cute::run_mha_bwd(sycl_queue, params);
+  } else {
+    // No queries: no gradient reaches K/V. No keys: the forward output was
+    // zero, so dQ is zero too.
+    dq_padded.zero_();
+    dk_expanded.zero_();
+    dv_expanded.zero_();
+  }
+
+  if (is_gqa) {
+    const int group = numhead_qo / numhead_kv;
+    at::Tensor dk_reduced = needs_headsize_pad ? dk_padded : dk;
+    at::Tensor dv_reduced = needs_headsize_pad ? dv_padded : dv;
+    at::sum_out(
+        dk_reduced,
+        at::reshape(
+            dk_expanded, {total_k, numhead_kv, group, headsize_padded}),
+        {2});
+    at::sum_out(
+        dv_reduced,
+        at::reshape(
+            dv_expanded, {total_k, numhead_kv, group, headsize_padded}),
+        {2});
+  } else {
+    // dk_expanded/dv_expanded are the tensors written by the kernel; sync
+    // dk_padded/dv_padded if alignment created new buffers for them.
+    dk_padded = dk_expanded;
+    dv_padded = dv_expanded;
+  }
+
+  if (!dq_padded.is_same(dq)) {
+    dq.copy_(dq_padded.slice(/*dim=*/2, /*start=*/0, /*end=*/headsize_qk));
+  }
+  if (!dk_padded.is_same(dk)) {
+    dk.copy_(dk_padded.slice(/*dim=*/2, /*start=*/0, /*end=*/headsize_qk));
+  }
+  if (!dv_padded.is_same(dv)) {
+    dv.copy_(dv_padded.slice(/*dim=*/2, /*start=*/0, /*end=*/headsize_vo));
+  }
+
+  return std::make_tuple(
+      std::move(dq), std::move(dk), std::move(dv), std::move(softmax_d));
+}
+
 std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
     const at::Tensor& grad_out,
     const at::Tensor& query,

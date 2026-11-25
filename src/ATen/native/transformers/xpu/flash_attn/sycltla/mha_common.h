@@ -9,6 +9,8 @@
  */
 
 #pragma once
+#include <algorithm>
+#include <array>
 #include <cassert>
 
 #include <ATen/xpu/XPUContext.h>
@@ -145,6 +147,12 @@ struct FLASH_FWD_params : public QKV_params {
   void* rng_seed;
   void* rng_offset;
 
+  // Varlen: cumulative sequence lengths [batch + 1] and total packed Q rows.
+  int* cu_seqlens_q = nullptr;
+  int* cu_seqlens_k = nullptr;
+  int total_q = 0;
+  bool is_varlen = false;
+
   bool is_fp16;
 };
 
@@ -163,6 +171,9 @@ struct FLASH_BWD_params : public FLASH_FWD_params {
 
   // To reorder P and dP due to slm api not ready.
   void* pb_ptr;
+
+  // Varlen: total packed K rows (sizes pb_ptr).
+  int total_k = 0;
 
   // The stride between rows of the dO, dQ, dK and dV matrices.
   index_t do_batch_stride;
@@ -392,4 +403,25 @@ inline int round_up_headdim(int d) {
       d,
       " exceeds maximum supported (256)");
   return -1;
+}
+
+inline void check_device_architecture(sycl::queue& sycl_queue) {
+  auto device_architecture =
+      sycl_queue.get_device()
+          .get_info<
+              sycl::ext::oneapi::experimental::info::device::architecture>();
+  constexpr auto supported_architectures =
+      std::array<sycl::ext::oneapi::experimental::architecture, 4>{
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc,
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg,
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21,
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g31};
+  if (std::find(
+          supported_architectures.begin(),
+          supported_architectures.end(),
+          device_architecture) == supported_architectures.end()) {
+    TORCH_CHECK(
+        false,
+        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21, intel_gpu_bmg_g31.");
+  }
 }
