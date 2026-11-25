@@ -66,8 +66,17 @@ jobs:
   test:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
-    env:
-      MODEL_ONLY_NAME: ${{ inputs.model }}
+    container:
+      image: intel/omix:0.5.0-devel-ubuntu26.04
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+        - /opt/xpu-test/_cache:/github/home/.cache/:rw
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --cap-add=SYS_ADMIN --shm-size=16g --privileged
+              -e ZE_AFFINITY_MASK
+      env:
+        MODEL_ONLY_NAME: ${{ inputs.model }}
+        no_proxy: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
     steps:
       - name: Configure optional Hugging Face token
         env:
@@ -176,6 +185,9 @@ jobs:
         if: ${{ always() }}
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock || true
+          if [ -d /__e ]; then
+            chown "$(stat -c %u:%g /__e)" /__w /github ./ -R || true
+          fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7

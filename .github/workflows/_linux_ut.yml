@@ -49,6 +49,16 @@ jobs:
       TORCH_SERIALIZATION_DEBUG: '1'
     if: ${{ inputs.ut_data_run_id == '' && ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
+    container:
+      image: intel/omix:0.5.0-devel-ubuntu26.04
+      env:
+        no_proxy: localhost,127.0.0.1,intel.com,.intel.com,laurentides.igk.intel.com
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+        - /opt/xpu-test/_cache:/github/home/.cache/:rw
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --cap-add=SYS_ADMIN --shm-size=16g --privileged
+              -e ZE_AFFINITY_MASK
     steps:
       - name: Configure optional Hugging Face token
         env:
@@ -90,6 +100,12 @@ jobs:
           name: UT-Data-linux-${{ inputs.ut == 'upstream_default_remaining' && 'upstream_default' || inputs.ut }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          if [ -d /__e ]; then
+            chown "$(stat -c %u:%g /__e)" /__w /github ./ -R || true
+          fi
 
   test-in-baremetal:
     timeout-minutes: 600
