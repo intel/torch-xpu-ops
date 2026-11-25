@@ -20,7 +20,6 @@
 
 namespace at::native::xpu {
 
-// Shared by unary sigmoid and foreach sigmoid so both give identical results.
 template <typename scalar_t>
 struct SigmoidFunctor {
   scalar_t operator()(scalar_t a) const {
