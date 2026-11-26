@@ -14,6 +14,7 @@
 #include <ATen/ExpandUtils.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/PhiloxStatelessRNG.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
@@ -108,21 +109,26 @@ struct PhiloxNormalSample {
   }
 };
 
+// Shared by scalar and tensor bounds so both round identically.
+template <typename scalar_t, typename rand_t>
+inline scalar_t philox_uniform_real(rand_t rand, scalar_t lo, scalar_t hi) {
+  if constexpr (
+      std::is_same_v<scalar_t, float> || std::is_same_v<scalar_t, double>) {
+    const auto unit = transformation::uniform_real(
+        rand, static_cast<scalar_t>(0), static_cast<scalar_t>(1));
+    // Preserve CPU's intermediate rounding instead of contracting the FMA.
+    volatile scalar_t scaled = unit * (hi - lo);
+    return scaled + lo;
+  } else {
+    return static_cast<scalar_t>(transformation::uniform_real(rand, lo, hi));
+  }
+}
+
 template <typename scalar_t>
 struct PhiloxUniformParam {
   template <typename rand_t>
   scalar_t operator()(rand_t rand, int64_t /*idx*/) const {
-    if constexpr (
-        std::is_same_v<scalar_t, float> || std::is_same_v<scalar_t, double>) {
-      const auto unit = transformation::uniform_real(
-          rand, static_cast<scalar_t>(0), static_cast<scalar_t>(1));
-      // Preserve CPU's intermediate rounding instead of contracting the FMA.
-      volatile scalar_t scaled = unit * (hi_ - lo_);
-      return scaled + lo_;
-    } else {
-      return static_cast<scalar_t>(
-          transformation::uniform_real(rand, lo_, hi_));
-    }
+    return philox_uniform_real<scalar_t>(rand, lo_, hi_);
   }
 
   PhiloxUniformParam(scalar_t lo, scalar_t hi) : lo_(lo), hi_(hi) {}
@@ -130,6 +136,27 @@ struct PhiloxUniformParam {
  private:
   scalar_t lo_;
   scalar_t hi_;
+};
+
+template <typename scalar_t, typename calc_index_t>
+struct PhiloxUniformTensorParam {
+  template <typename rand_t>
+  scalar_t operator()(rand_t rand, int64_t idx) const {
+    const auto offsets = calc_.get(static_cast<calc_index_t>(idx));
+    return philox_uniform_real<scalar_t>(
+        rand, lo_[offsets[0]], hi_[offsets[1]]);
+  }
+
+  PhiloxUniformTensorParam(
+      const scalar_t* lo,
+      const scalar_t* hi,
+      OffsetCalculator<2, calc_index_t> calc)
+      : lo_(lo), hi_(hi), calc_(calc) {}
+
+ private:
+  const scalar_t* lo_;
+  const scalar_t* hi_;
+  OffsetCalculator<2, calc_index_t> calc_;
 };
 
 template <typename scalar_t, typename compute_t>
@@ -395,6 +422,80 @@ Tensor& _philox_uniform_xpu_(
             PhiloxRawSample<scalar_t>(),
             PhiloxUniformParam<scalar_t>(
                 static_cast<scalar_t>(low), static_cast<scalar_t>(high)));
+      });
+  return self;
+}
+
+// Maps a row-major output index to offsets into two bounds broadcast to the
+// output.
+template <typename index_t>
+OffsetCalculator<2, index_t> make_bounds_offset_calculator(
+    const Tensor& a,
+    const Tensor& b) {
+  // Empty outputs launch no kernel, and IntDivider can't take a size of 0.
+  const int64_t ndim = a.numel() == 0 ? 0 : a.dim();
+  TORCH_CHECK(
+      ndim <= MAX_DIMS,
+      "philox: tensor bounds support at most ",
+      MAX_DIMS,
+      " dims, got ",
+      ndim);
+  auto reversed = [](IntArrayRef r) {
+    return c10::SmallVector<int64_t, MAX_DIMS>(r.rbegin(), r.rend());
+  };
+  auto sizes = reversed(a.sizes());
+  auto a_strides = reversed(a.strides());
+  auto b_strides = reversed(b.strides());
+  const int64_t* strides[] = {a_strides.data(), b_strides.data()};
+  return OffsetCalculator<2, index_t>(ndim, sizes.data(), strides);
+}
+
+Tensor& _philox_uniform_tensor_xpu_(
+    Tensor& self,
+    const Tensor& key,
+    const Tensor& low,
+    const Tensor& high) {
+  TORCH_CHECK(
+      self.is_floating_point(),
+      "_philox_uniform_: self must be a floating point tensor, got ",
+      self.scalar_type());
+  at::native::philox_check_bound("_philox_uniform_", "low", low, self);
+  at::native::philox_check_bound("_philox_uniform_", "high", high, self);
+  TORCH_CHECK(
+      low.device() == self.device(),
+      "_philox_uniform_: Expected all tensors to be on the same device, but "
+      "found at least two devices, ",
+      self.device(),
+      " and ",
+      low.device(),
+      "!");
+  TORCH_CHECK(
+      high.device() == self.device(),
+      "_philox_uniform_: Expected all tensors to be on the same device, but "
+      "found at least two devices, ",
+      self.device(),
+      " and ",
+      high.device(),
+      "!");
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf, kBFloat16, self.scalar_type(), "_philox_uniform_", [&] {
+        auto lo = low.to(self.scalar_type()).expand(self.sizes());
+        auto hi = high.to(self.scalar_type()).expand(self.sizes());
+        const scalar_t* lo_ptr = lo.const_data_ptr<scalar_t>();
+        const scalar_t* hi_ptr = hi.const_data_ptr<scalar_t>();
+        const auto index_type =
+            canUse32BitIndexMath(lo) && canUse32BitIndexMath(hi) ? kInt : kLong;
+        AT_DISPATCH_INDEX_TYPES(index_type, "_philox_uniform_", [&] {
+          using calc_index_t = std::make_unsigned_t<index_t>;
+          const auto calc = make_bounds_offset_calculator<calc_index_t>(lo, hi);
+          philox_distribution_kernel<scalar_t>(
+              "_philox_uniform_",
+              self,
+              key,
+              PhiloxRawSample<scalar_t>(),
+              PhiloxUniformTensorParam<scalar_t, calc_index_t>(
+                  lo_ptr, hi_ptr, calc));
+        });
       });
   return self;
 }
