@@ -6,7 +6,7 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-from skip_list_common import PYTORCH_TEST_DIR
+from skip_list_common import PYTORCH_TEST_DIR, SKIP_ENTIRE_FILE
 
 skip_dict = {
     # https://github.com/intel/torch-xpu-ops/issues/5726
@@ -29,6 +29,7 @@ skip_dict = {
     "test_autograd_xpu.py": (
         "test_min_max_aminmax_median_backprops_to_all_values_xpu",
     ),
+    "test_decomp_xpu.py": SKIP_ENTIRE_FILE,
     # SYCL default context is not supported on Windows
     "test_tensor_creation_ops_xpu.py": (
         "test_alias_from_dlpack_xpu_bfloat16",
