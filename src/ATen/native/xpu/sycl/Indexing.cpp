@@ -927,11 +927,12 @@ struct IndexFuncSmallIndexFunctor {
     // re-accessing indices in addition to src elements can be slow.
     for (IndexType srcIndex = 0; srcIndex < indices_.sizes[0]; ++srcIndex) {
       // Lua indices begin at 1
-      IndexType dstIndex =
+      const IndicesType dstIndexRaw =
           indices_
               .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
                   srcIndex, indices_)];
-      SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
+      SYCL_KERNEL_ASSERT(dstIndexRaw >= 0 && dstIndexRaw < dstAddDimSize_);
+      const IndexType dstIndex = static_cast<IndexType>(dstIndexRaw);
 
       // We stride over the output ignoring the indexed dimension
       // (innerSize), whose offset calculation is handled differently
@@ -1041,11 +1042,12 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
 
       // Lua indices begin at 1
-      IndexType dstIndex =
+      const IndicesType dstIndexRaw =
           indices_
               .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
                   srcIndex, indices_)];
-      SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
+      SYCL_KERNEL_ASSERT(dstIndexRaw >= 0 && dstIndexRaw < dstAddDimSize_);
+      const IndexType dstIndex = static_cast<IndexType>(dstIndexRaw);
 
       IndexType dstOffset =
           IndexToOffset<T, IndexType, DstDim>::get(elementInSlice, dst_);
@@ -1232,6 +1234,31 @@ bool indexShouldBeMajor(
   return false;
 }
 
+struct IndexInRangeCheckFunctor {
+  void operator()(sycl::item<1> item) const {
+    const int64_t idx = index_[item.get_id(0)];
+    SYCL_KERNEL_ASSERT(idx >= 0 && idx < self_dim_size_);
+  }
+  IndexInRangeCheckFunctor(const int64_t* index, int64_t self_dim_size)
+      : index_(index), self_dim_size_(self_dim_size) {}
+
+ private:
+  const int64_t* index_;
+  int64_t self_dim_size_;
+};
+
+// For paths that hand the index to an op accepting negative indices
+// (index_put_, index_fill_) before any kernel enforces [0, size).
+static void check_index_in_range(const Tensor& index, int64_t self_dim_size) {
+  if (index.numel() == 0) {
+    return;
+  }
+  const Tensor index_ = index.contiguous();
+  IndexInRangeCheckFunctor kfn(index_.const_data_ptr<int64_t>(), self_dim_size);
+  sycl_kernel_submit(
+      sycl::range<1>(index_.numel()), getCurrentSYCLQueue(), kfn);
+}
+
 template <typename func_t>
 void index_reduce_add_xpu_template(
     const Tensor& self,
@@ -1271,13 +1298,29 @@ void index_reduce_add_xpu_template(
       ") dims");
 
   if (globalContext().deterministicAlgorithms()) {
+    const Tensor index_long = index.to(at::kLong);
+    const Tensor value = source * alpha;
+    TORCH_CHECK_INDEX(
+        dim < result.dim(),
+        "too many indices for tensor of dimension ",
+        result.dim(),
+        " (got ",
+        dim + 1,
+        ")");
+    TORCH_CHECK(
+        value.scalar_type() == result.scalar_type(),
+        "expected scalar type ",
+        value.scalar_type(),
+        " but found ",
+        result.scalar_type());
+    check_index_in_range(index_long, self_.size(dim));
     torch::List<std::optional<Tensor>> indices;
     indices.reserve(dim + 1);
     for (int i = 0; i < dim; i++) {
       indices.emplace_back();
     }
-    indices.emplace_back(index.to(at::kLong));
-    result.index_put_(indices, source * alpha, true);
+    indices.emplace_back(index_long);
+    result.index_put_(indices, value, true);
     return;
   }
 
@@ -1548,6 +1591,8 @@ void index_reduce_func_xpu_template(
       ") dims");
 
   if (!include_self) {
+    // index_fill_ requires index to be a LongTensor
+    const Tensor index_long = index.to(at::ScalarType::Long);
     AT_DISPATCH_ALL_TYPES_AND2(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
@@ -1573,8 +1618,8 @@ void index_reduce_func_xpu_template(
               init_val = (scalar_t)0;
               break;
           }
-          // index_fill_ requires index to be a LongTensor
-          self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
+          check_index_in_range(index_long, self_.size(dim));
+          self_.index_fill_(dim, index_long, init_val);
         });
   }
 
@@ -2074,10 +2119,11 @@ struct IndexSelectSmallIndexFunctor {
     // this is a good choice (small number of chosen indices), since
     // re-accessing indices in addition to src elements can be slow.
     for (IndexType dstIndex = 0; dstIndex < indices.sizes[0]; ++dstIndex) {
-      IndexType srcIndex =
+      const IndicesType srcIndexRaw =
           indices.data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
               dstIndex, indices)];
-      SYCL_KERNEL_ASSERT(srcIndex < srcSelectDimSize);
+      SYCL_KERNEL_ASSERT(srcIndexRaw >= 0 && srcIndexRaw < srcSelectDimSize);
+      const IndexType srcIndex = static_cast<IndexType>(srcIndexRaw);
 
       // We stride over the output ignoring the indexed dimension
       // (innerSize), whose offset calculation is handled differently
