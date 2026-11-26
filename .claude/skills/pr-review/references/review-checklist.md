@@ -125,6 +125,7 @@ Also flag during review:
 ## Kernel Mapping And Performance
 
 - [ ] Work-group or subgroup decisions look deliberate rather than arbitrary
+- [ ] Sizes from `getKernelMaxWorkGroupSize` that feed a halving tree reduction are rounded to a power of two (see `domain-xpu-kernel.md`)
 - [ ] The hot path is not made branch-heavy just to support rare cases
 - [ ] Expensive queue, context, descriptor, or host-side setup is not repeated unnecessarily
 - [ ] Claimed optimizations come with benchmark evidence or at least a concrete design rationale

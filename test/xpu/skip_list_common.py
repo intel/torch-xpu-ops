@@ -33,7 +33,6 @@ skip_dict = {
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_profiler_use_cases.py": None,
@@ -99,7 +98,6 @@ skip_dict = {
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_compile_benchmark_util_xpu.py": None,
     "test_complex_xpu.py": None,
-    "test_cuda_multigpu_xpu.py": None,
     "test_cuda_nvml_based_avail_xpu.py": None,
     "test_cuda_primary_ctx_xpu.py": None,
     "test_cuda_sanitizer_xpu.py": None,
@@ -129,12 +127,6 @@ skip_dict = {
         "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
     "test_distributions_xpu.py": None,
-    "test_expanded_weights_xpu.py": None,
-    "test_fake_tensor_xpu.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/2472
-        # aten::_cudnn_rnn/aten::miopen_rnn not supported
-        "test_cudnn_rnn",
-    ),
     "test_fx_experimental_xpu.py": None,
     "test_fx_xpu.py": None,
     "test_linalg_xpu.py": (
@@ -220,7 +212,6 @@ skip_dict = {
     },
     "test_schema_check_xpu.py": None,
     "test_segment_reductions_xpu.py": None,
-    "test_serialization_xpu.py": None,
     "test_shape_ops_xpu.py": (
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
         "test_flip_xpu_float32",
@@ -365,6 +356,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_multihead_attention.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_packed_sequence.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_execution_trace.py": None,
@@ -414,6 +406,8 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
     f"{PYTORCH_TEST_DIR}/test_dynamic_shapes.py": None,
+    f"{PYTORCH_TEST_DIR}/test_expanded_weights.py": None,
+    f"{PYTORCH_TEST_DIR}/test_fake_tensor.py": None,
     f"{PYTORCH_TEST_DIR}/test_flop_counter.py": None,
     f"{PYTORCH_TEST_DIR}/test_foreach.py": None,
     f"{PYTORCH_TEST_DIR}/test_functional_autograd_benchmark.py": None,
@@ -425,6 +419,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_maskedtensor.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
     f"{PYTORCH_TEST_DIR}/test_modules.py": None,
+    f"{PYTORCH_TEST_DIR}/test_multigpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_mha.py": None,
@@ -441,6 +436,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
     f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/test_serialization.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
