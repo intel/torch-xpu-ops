@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 """Run upstream PyTorch unit tests on XPU with pytest, one file after another.
 
-Each test file runs with the caller's PYTEST_ADDOPTS (in CI: timeout, xdist
-workers one per GPU, ... from detect-devices.sh), except inductor's serial runs.
+Every run uses pytest-xdist, keeping the caller's other PYTEST_ADDOPTS options:
+  - parallel single-card tests: one worker per GPU. Without --gpus, the
+    caller's xdist options are used if any (in CI: detect-devices.sh);
+    otherwise they are replaced by one --tx worker per GPU in --gpus
+  - serial or multi-card tests (inductor `-m serial`, distributed): `-n 1`
+    with the caller's xdist options removed
 
 inductor
     The same tests as
       part1: run_test.py --inductor --include <INDUCTOR_PART1>
       part2: run_test.py --include <INDUCTOR_PART2>
     (--inductor only sets PYTORCH_TEST_WITH_INDUCTOR=1), run from pytorch/test
-    with run_test.py's pytest options. Each file runs twice: `-m serial` in one
-    process on the first GPU with PYTEST_ADDOPTS cleared, then `-m "not serial"`.
+    with run_test.py's pytest options. Each file runs twice: `-m serial` on the
+    first GPU, then `-m "not serial"`.
 
 distributed
-    Files under test/distributed/ from --files or the tracking issue, with XCCL.
+    Files under test/distributed/ from --files or the tracking issue, with XCCL,
+    on the largest contiguous run of complete 4-GPU groups (0-3, 4-7, ...) in
+    --gpus (default $ZE_AFFINITY_MASK or 0-7), cut to a power-of-two number of
+    groups (4, 8, 16, ... GPUs), e.g. 0-6 -> 0-3, 0,2-7 -> 4-7, 0-11 -> 0-7.
 
 default
     The other files from --files or the tracking issue. The issue list is the
@@ -50,6 +57,12 @@ COMMON_ENV = {
     "PYTORCH_TEST_WITH_SLOW": "1",
     "PYTORCH_TESTING_DEVICE_ONLY_FOR": "xpu",
 }
+
+# detect-devices.sh's defaults; command-line options override PYTEST_ADDOPTS
+XDIST_ARGS = ["--timeout_method=thread", "--max-worker-restart=1000000"]
+
+# xdist options that take a value, as in detect-devices.sh's PYTEST_ADDOPTS
+XDIST_VALUE_OPTS = ("-n", "--numprocesses", "--maxprocesses", "--tx", "--dist")
 
 
 def log(msg):
@@ -111,7 +124,46 @@ class Job:
     allow_empty: bool = False  # pytest exit code 5: nothing selected
 
 
-def file_jobs(args, env, files):
+def strip_xdist(addopts):
+    """addopts tokens without the xdist worker options."""
+    tokens, rest = shlex.split(addopts or ""), []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in XDIST_VALUE_OPTS:
+            i += 2
+            continue
+        if tok == "-d" or tok.startswith(tuple(f"{o}=" for o in XDIST_VALUE_OPTS)):
+            i += 1
+            continue
+        if re.fullmatch(r"-n\S+", tok):
+            i += 1
+            continue
+        rest.append(tok)
+        i += 1
+    return rest
+
+
+def single_worker(env, gpus, timeout=600):
+    """(env, pytest args) for one xdist worker that sees all of gpus."""
+    addopts = shlex.join(strip_xdist(env.get("PYTEST_ADDOPTS")))
+    env = {**env, "PYTEST_ADDOPTS": addopts, "ZE_AFFINITY_MASK": ",".join(gpus)}
+    return env, ["-n", "1", f"--timeout={timeout}", *XDIST_ARGS]
+
+
+def worker_per_card(args, env, gpus):
+    """(env, pytest args) for one xdist worker per GPU."""
+    env = {**env, "ZE_AFFINITY_MASK": ",".join(gpus)}
+    caller = shlex.split(env.get("PYTEST_ADDOPTS") or "")
+    rest = strip_xdist(env.get("PYTEST_ADDOPTS"))
+    if not args.gpus_given and rest != caller:
+        return env, []
+    env["PYTEST_ADDOPTS"] = shlex.join(rest)
+    tx = [f"--tx=popen//env:ZE_AFFINITY_MASK={g}" for g in gpus]
+    return env, ["--timeout=600", *XDIST_ARGS, "--dist=worksteal", *tx]
+
+
+def file_jobs(args, env, files, extra):
     """One plain pytest run per file, from the current directory."""
     jobs = []
     for test_file in files:
@@ -122,6 +174,7 @@ def file_jobs(args, env, files):
             "pytest",
             "-v",
             str(args.pytorch_dir / test_file),
+            *extra,
             f"--junit-xml={args.xml_dir / f'{args.ut_name}_{name}.xml'}",
         ]
         jobs.append(Job(name, test_file, cmd, env))
@@ -202,9 +255,6 @@ INDUCTOR_ENV = {
 # run_test.py's pytest options, minus -x: its stop-and-retry loop isn't used here
 INDUCTOR_PYTEST_ARGS = ["-vv", "-rfEX", "--reruns=2"]
 
-# Serial runs ignore PYTEST_ADDOPTS (it may hold xdist options), so set the timeout here
-SERIAL_PYTEST_ARGS = ["-p", "no:xdist", "--timeout=600", "--timeout_method=thread"]
-
 
 def inductor_files(args):
     return INDUCTOR_PART1 + INDUCTOR_PART2
@@ -223,13 +273,12 @@ def inductor_jobs(args, env, files):
         for marker in ("serial", "not serial"):
             name = f"part{part}_{rel.replace('/', '_')}"
             label = f"part{part} {test_file} -m '{marker}'"
-            job_env = file_env
-            extra = []
             if marker == "serial":
                 name += "_serial"
                 label += f" on GPU {args.gpus[0]}"
-                job_env = {**file_env, "PYTEST_ADDOPTS": "", "ZE_AFFINITY_MASK": args.gpus[0]}
-                extra = SERIAL_PYTEST_ARGS
+                job_env, extra = single_worker(file_env, args.gpus[:1])
+            else:
+                job_env, extra = worker_per_card(args, file_env, args.gpus)
             cmd = [
                 sys.executable,
                 "-m",
@@ -249,17 +298,46 @@ def inductor_jobs(args, env, files):
 
 DISTRIBUTED_ENV = {
     "BACKEND": "xccl",
-    "WORLD_SIZE": "8",
     "USE_CCL_V2": "1",
 }
+
+# Above MultiProcessTestCase's own timeouts, so pytest-timeout doesn't orphan ranks
+DISTRIBUTED_TIMEOUT = 1800
 
 
 def distributed_files(args):
     return args.files or get_issue_files(args, "distributed")
 
 
+def distributed_gpus(gpus):
+    """The largest contiguous run of complete 4-GPU groups (0-3, 4-7, ...) in gpus,
+    cut to a power-of-two number of groups."""
+    bad = [g for g in gpus if not g.isdigit()]
+    if bad:
+        raise RuntimeError(f"distributed needs integer GPU ids, got {','.join(bad)}")
+    ids = {int(g) for g in gpus}
+    groups = sorted({i // 4 for i in ids if all(i // 4 * 4 + k in ids for k in range(4))})
+    best, run = [], []
+    for group in groups:
+        run = run + [group] if run and group == run[-1] + 1 else [group]
+        if len(run) > len(best):
+            best = run
+    if best:
+        best = best[: 1 << (len(best).bit_length() - 1)]
+    return [str(g) for group in best for g in range(group * 4, group * 4 + 4)]
+
+
 def distributed_jobs(args, env, files):
-    env = {**env, **DISTRIBUTED_ENV, "ZE_AFFINITY_MASK": ",".join(args.gpus)}
+    gpus = distributed_gpus(args.gpus)
+    if not gpus:
+        raise RuntimeError(
+            f"distributed needs a complete 4-GPU group (0-3, 4-7, ...), got {','.join(args.gpus)}"
+        )
+    print(f"Distributed GPUs: {','.join(gpus)} (from {','.join(args.gpus)})", file=sys.stderr)
+    # Each test spawns WORLD_SIZE ranks over all GPUs
+    env, extra = single_worker(
+        {**env, **DISTRIBUTED_ENV, "WORLD_SIZE": str(len(gpus))}, gpus, DISTRIBUTED_TIMEOUT
+    )
     pipelining = (args.pytorch_dir / "test" / "distributed" / "pipelining").resolve()
     env["PYTHONPATH"] = os.pathsep.join(
         p for p in (env.get("PYTHONPATH"), str(pipelining)) if p
@@ -280,7 +358,7 @@ def distributed_jobs(args, env, files):
         ).stdout.strip()
         if out.lower() in ("false", "0"):
             raise RuntimeError("XCCL is not enabled")
-    return file_jobs(args, env, files)
+    return file_jobs(args, env, files, extra)
 
 
 # ---------------------------------------------------------------- default
@@ -291,7 +369,8 @@ def default_files(args):
 
 
 def default_jobs(args, env, files):
-    return file_jobs(args, {**env, "ZE_AFFINITY_MASK": ",".join(args.gpus)}, files)
+    env, extra = worker_per_card(args, env, args.gpus)
+    return file_jobs(args, env, files, extra)
 
 
 # ---------------------------------------------------------------- main
@@ -326,7 +405,7 @@ def parse_args():
     )
     parser.add_argument(
         "--gpus",
-        help="comma-separated GPU ids (default: $ZE_AFFINITY_MASK or 0; distributed: 0,1,2,3,4,5,6,7)",
+        help="comma-separated GPU ids (default: $ZE_AFFINITY_MASK, else 0; distributed: else 0-7)",
     )
     parser.add_argument(
         "--files",
@@ -347,10 +426,9 @@ def parse_args():
 
     args.ut_name = args.ut_name or f"upstream_{args.category}"
     args.log_dir = args.log_dir or Path("ut_log") / args.ut_name
-    default_gpus = (
-        "0,1,2,3,4,5,6,7"
-        if args.category == "distributed"
-        else os.environ.get("ZE_AFFINITY_MASK") or "0"
+    args.gpus_given = args.gpus is not None
+    default_gpus = os.environ.get("ZE_AFFINITY_MASK") or (
+        "0,1,2,3,4,5,6,7" if args.category == "distributed" else "0"
     )
     # Dedupe so each GPU gets exactly one worker
     args.gpus = list(
@@ -358,6 +436,8 @@ def parse_args():
             g.strip() for g in (args.gpus or default_gpus).split(",") if g.strip()
         )
     )
+    if not args.gpus:
+        parser.error("--gpus has no GPU ids")
     return args
 
 
