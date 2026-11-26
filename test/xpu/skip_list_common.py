@@ -7,6 +7,8 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 PYTORCH_TEST_DIR = "../../../../test"
+SKIP_ENTIRE_FILE_STR: str = "<skip_entire_file>"
+SKIP_ENTIRE_FILE: tuple[str] = (SKIP_ENTIRE_FILE_STR,)
 
 skip_dict = {
     # torch-xpu-ops tests, not upstreamed yet, must be sorted alphabetically

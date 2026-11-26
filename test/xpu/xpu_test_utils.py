@@ -1285,11 +1285,20 @@ def copy_tests(
 def launch_test(test_case, skip_list=None, exe_list=None, xml_prefix="op_ut"):
     import subprocess
 
+    from skip_list_common import SKIP_ENTIRE_FILE_STR
+
+    if skip_list and exe_list:
+        raise AssertionError("Only one of skip_list and exe_list can be set.")
+
+    if skip_list and SKIP_ENTIRE_FILE_STR in skip_list:
+        print(f"Skipping entire file {test_case}.")
+        return 0
+
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
     # check-ut.py derives the result category from this prefix, so it must match
     # the UT job name that runs the test.
-    if skip_list is not None and len(skip_list) > 0:
+    if skip_list:
         k_expr = "not " + " and not ".join(skip_list)
         cmd_args = [
             "pytest",
@@ -1298,7 +1307,7 @@ def launch_test(test_case, skip_list=None, exe_list=None, xml_prefix="op_ut"):
             "-k",
             k_expr,
         ]
-    elif exe_list is not None and len(exe_list) > 0:
+    elif exe_list and SKIP_ENTIRE_FILE_STR not in exe_list:
         k_expr = " or ".join(exe_list)
         cmd_args = [
             "pytest",
