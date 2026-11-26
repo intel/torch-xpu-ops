@@ -32,15 +32,11 @@ except Exception as e:
 with XPUImportCtx(False):
     from test_dataloader import (
         supported_multiprocessing_contexts,
-        TestCustomPinFn,
         TestDataLoader,
-        TestDataLoaderCUDA,
-        TestDataLoaderCUDAPersistentWorkers,
         TestDataLoaderDevice,
         TestDataLoaderPersistentWorkers,
         TestDictDataLoader,
         TestDictDataLoaderDevice,
-        TestStringDataLoader,
     )
 
     def _without_cuda_ipc_skip(fn):
@@ -50,10 +46,6 @@ with XPUImportCtx(False):
         while getattr(fn, "__unittest_skip_why__", None) == "CUDA IPC not available":
             fn = fn.__wrapped__
         return fn
-
-    def _drop_cuda_ipc_skip(cls, *names):
-        for name in names:
-            setattr(cls, name, _without_cuda_ipc_skip(getattr(cls, name)))
 
     _XPU_IPC_ISSUE = "https://github.com/intel/torch-xpu-ops/issues/3000"
 
@@ -88,15 +80,6 @@ with XPUImportCtx(False):
     )
     TestDataLoaderDevice.test_sparse_tensor_multiprocessing = (
         sparse_tensor_multiprocessing
-    )
-
-    # These bodies are device-agnostic; only the CUDA IPC guard keeps them off XPU.
-    # TestDataLoaderCUDAPersistentWorkers inherits them from TestDataLoaderCUDA.
-    _drop_cuda_ipc_skip(
-        TestDataLoaderCUDA,
-        "test_multiple_dataloaders",
-        "test_multiprocessing_contexts",
-        "test_multiprocessing_iterdatapipe",
     )
 
 
