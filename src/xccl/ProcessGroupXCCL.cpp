@@ -715,7 +715,12 @@ c10::intrusive_ptr<Backend> ProcessGroupXCCL::split(
   auto pg = c10::make_intrusive<ProcessGroupXCCL>(
       store, groupRank, static_cast<int>(ranks.size()), xcclOpts);
   pg->setGroupDesc(xcclOpts->group_desc);
+  ++xcclCommSplitCounter_;
   return c10::static_intrusive_pointer_cast<Backend>(pg);
+}
+
+uint64_t ProcessGroupXCCL::getCommSplitCounter() const {
+  return xcclCommSplitCounter_;
 }
 
 void ProcessGroupXCCL::groupStart() {

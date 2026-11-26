@@ -216,6 +216,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   void performNocolorSplit(at::Device device);
 
+  uint64_t getCommSplitCounter() const;
+
   void startCoalescing() override;
 
   c10::intrusive_ptr<Work> endCoalescing() override;
@@ -534,6 +536,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
   uint64_t xcclCommCounter_{0};
+  uint64_t xcclCommSplitCounter_{0};
   std::mutex mutex_;
   std::atomic<bool> xpuEventCacheEnabled_;
   std::set<int> usedDeviceIdxs_;
