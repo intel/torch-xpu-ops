@@ -965,24 +965,23 @@ void max_pool2d_with_indices_kernel(
   auto memory_format = input_.suggest_memory_format();
   Tensor input = input_.contiguous(memory_format);
 
-  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
-  const int kW = kernel_size.size() == 1
-      ? kH
-      : safe_downcast<int, int64_t>(kernel_size[1]);
+  const int kH = c10::safe_conv<int>(kernel_size[0], "int");
+  const int kW =
+      kernel_size.size() == 1 ? kH : c10::safe_conv<int>(kernel_size[1], "int");
 
-  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
+  const int dH = stride.empty() ? kH : c10::safe_conv<int>(stride[0], "int");
   const int dW = stride.empty() ? kW
       : stride.size() == 1      ? dH
-                                : safe_downcast<int, int64_t>(stride[1]);
+                                : c10::safe_conv<int>(stride[1], "int");
 
-  const int padH = safe_downcast<int, int64_t>(padding[0]);
+  const int padH = c10::safe_conv<int>(padding[0], "int");
   const int padW =
-      padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
+      padding.size() == 1 ? padH : c10::safe_conv<int>(padding[1], "int");
 
-  const int dilationH = safe_downcast<int, int64_t>(dilation[0]);
+  const int dilationH = c10::safe_conv<int>(dilation[0], "int");
   const int dilationW = dilation.size() == 1
       ? dilationH
-      : safe_downcast<int, int64_t>(dilation[1]);
+      : c10::safe_conv<int>(dilation[1], "int");
 
   const int64_t nbatch = input_.ndimension() == 4 ? input_.size(-4) : 1;
   const int64_t nInputPlane = input_.size(-3);
@@ -1133,21 +1132,20 @@ void max_pool2d_with_indices_backward_kernel(
   Tensor indices = indices_.contiguous(memory_format);
   gradInput.zero_();
 
-  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
-  const int kW = kernel_size.size() == 1
-      ? kH
-      : safe_downcast<int, int64_t>(kernel_size[1]);
-  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
+  const int kH = c10::safe_conv<int>(kernel_size[0], "int");
+  const int kW =
+      kernel_size.size() == 1 ? kH : c10::safe_conv<int>(kernel_size[1], "int");
+  const int dH = stride.empty() ? kH : c10::safe_conv<int>(stride[0], "int");
   const int dW = stride.empty() ? kW
       : stride.size() == 1      ? dH
-                                : safe_downcast<int, int64_t>(stride[1]);
-  const int padH = safe_downcast<int, int64_t>(padding[0]);
+                                : c10::safe_conv<int>(stride[1], "int");
+  const int padH = c10::safe_conv<int>(padding[0], "int");
   const int padW =
-      padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
-  const int dilationH = safe_downcast<int, int64_t>(dilation[0]);
+      padding.size() == 1 ? padH : c10::safe_conv<int>(padding[1], "int");
+  const int dilationH = c10::safe_conv<int>(dilation[0], "int");
   const int dilationW = dilation.size() == 1
       ? dilationH
-      : safe_downcast<int, int64_t>(dilation[1]);
+      : c10::safe_conv<int>(dilation[1], "int");
 
   /* sizes */
   const int64_t nbatch = input.ndimension() == 4 ? input.size(-4) : 1;

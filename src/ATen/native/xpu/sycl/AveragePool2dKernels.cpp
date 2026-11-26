@@ -1446,7 +1446,7 @@ void avg_pool2d_kernel(
   const auto memory_format = input_.suggest_memory_format();
 
   Tensor input = input_.contiguous(memory_format);
-  const auto count = safe_downcast<int32_t, int64_t>(output.numel());
+  const auto count = c10::safe_conv<int32_t>(output.numel(), "int32_t");
 
   bool use_divisor = divisor_override.has_value();
   const auto divisor_override_value =
@@ -1530,19 +1530,18 @@ void avg_pool2d_backward_kernel(
     bool count_include_pad,
     std::optional<int64_t> divisor_override,
     const Tensor& gradInput) {
-  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
-  const int kW = kernel_size.size() == 1
-      ? kH
-      : safe_downcast<int, int64_t>(kernel_size[1]);
+  const int kH = c10::safe_conv<int>(kernel_size[0], "int");
+  const int kW =
+      kernel_size.size() == 1 ? kH : c10::safe_conv<int>(kernel_size[1], "int");
 
-  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
+  const int dH = stride.empty() ? kH : c10::safe_conv<int>(stride[0], "int");
   const int dW = stride.empty() ? kW
       : stride.size() == 1      ? dH
-                                : safe_downcast<int, int64_t>(stride[1]);
+                                : c10::safe_conv<int>(stride[1], "int");
 
-  const int padH = safe_downcast<int, int64_t>(padding[0]);
+  const int padH = c10::safe_conv<int>(padding[0], "int");
   const int padW =
-      padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
+      padding.size() == 1 ? padH : c10::safe_conv<int>(padding[1], "int");
 
   const auto memory_format = input_.suggest_memory_format();
   const Tensor input = input_.contiguous(memory_format);
