@@ -12,6 +12,7 @@
 
 #include <bit>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include <ATen/OpMathType.h>
@@ -19,6 +20,7 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
@@ -542,12 +544,28 @@ void group_y_scan_with_indices(
   }
 }
 
+static inline bool can_use_32bit_scan_index(
+    int64_t batch,
+    int64_t problem,
+    int64_t stride) {
+  constexpr int64_t int32_max = std::numeric_limits<int32_t>::max();
+  constexpr int64_t uint32_max = std::numeric_limits<uint32_t>::max();
+  const int64_t max_wg = at::xpu::getDeviceMaxWorkGroupSize();
+  // IntDivider<unsigned int> requires divisor and dividend <= INT32_MAX.
+  // Reserving max_wg slack covers padded out-of-bounds work-items across
+  // pass-1 and recursive carrier passes.
+  return problem <= uint32_max - max_wg &&
+      batch * stride <= int32_max - max_wg &&
+      batch * problem * stride <= uint32_max;
+}
+
 template <
     class InputInfo,
     class OutputInfo,
     class IndicesInfo,
     typename T,
-    class BinaryFunction>
+    class BinaryFunction,
+    typename IndexType = int64_t>
 class SegmentScanConfig : public BatchKernelConfig {
  public:
   using arg_t = T;
@@ -556,6 +574,8 @@ class SegmentScanConfig : public BatchKernelConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = IndicesInfo;
   using IndicesT = typename IndicesInfo::scalar_t;
+  using index_t = IndexType;
+  using unsigned_index_t = std::make_unsigned_t<IndexType>;
 
   SegmentScanConfig() = default;
 
@@ -583,7 +603,9 @@ class SegmentScanConfig : public BatchKernelConfig {
         type_(type),
         func_(func),
         carrier_(nullptr),
-        carrier_idx_(nullptr) {}
+        carrier_idx_(nullptr),
+        problem_stride_(static_cast<IndexType>(problem * stride)),
+        stride_divider_(static_cast<unsigned_index_t>(stride)) {}
 
   template <auto* kptr>
   static SegmentScanConfig<
@@ -591,7 +613,8 @@ class SegmentScanConfig : public BatchKernelConfig {
       OutputInfo,
       IndicesInfo,
       T,
-      BinaryFunction>
+      BinaryFunction,
+      IndexType>
   make_config(
       InputInfo& input_info,
       OutputInfo& output_info,
@@ -605,7 +628,13 @@ class SegmentScanConfig : public BatchKernelConfig {
     int64_t problem = input_info.sizes[scan_dim];
     bool problem_along_x = input_info.strides[scan_dim] == 1 ? true : false;
 
-    SegmentScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>
+    SegmentScanConfig<
+        InputInfo,
+        OutputInfo,
+        IndicesInfo,
+        T,
+        BinaryFunction,
+        IndexType>
         cfg = {
             input_info,
             output_info,
@@ -619,6 +648,32 @@ class SegmentScanConfig : public BatchKernelConfig {
             func};
     cfg.template build<kptr>();
     return cfg;
+  }
+
+  inline void compute_offsets(
+      const ItemDesc& id,
+      IndexType& glb_off,
+      IndexType& crr_off) const {
+    const IndexType pi = static_cast<IndexType>(id.glb_problem);
+    const IndexType chunk = static_cast<IndexType>(id.chunk);
+    if (batch_ == 1) {
+      const IndexType si = static_cast<IndexType>(id.glb_batch);
+      const IndexType st = static_cast<IndexType>(stride_);
+      glb_off = si + pi * st;
+      crr_off = si + chunk * st;
+    } else if (stride_ == 1) {
+      const IndexType bi = static_cast<IndexType>(id.glb_batch);
+      glb_off = pi + bi * static_cast<IndexType>(problem_);
+      crr_off = chunk + bi * static_cast<IndexType>(id.chunk_num);
+    } else {
+      auto dm =
+          stride_divider_.divmod(static_cast<unsigned_index_t>(id.glb_batch));
+      const IndexType bi = static_cast<IndexType>(dm.div);
+      const IndexType si = static_cast<IndexType>(dm.mod);
+      const IndexType st = static_cast<IndexType>(stride_);
+      glb_off = si + pi * st + bi * problem_stride_;
+      crr_off = si + (chunk + bi * static_cast<IndexType>(id.chunk_num)) * st;
+    }
   }
 
   int64_t carrier_size() {
@@ -646,6 +701,8 @@ class SegmentScanConfig : public BatchKernelConfig {
   BinaryFunction func_;
   /* contiguous temp buffer */ T* carrier_;
   /* contiguous temp buffer */ IndicesT* carrier_idx_;
+  IndexType problem_stride_;
+  at::detail::IntDivider<unsigned_index_t> stride_divider_;
 };
 
 template <
@@ -661,6 +718,8 @@ inline void segment_scan_kernel(SSConfig_ cfg_) {
   using BinaryFunction = typename SSConfig::func_t;
   using InputInfo = typename SSConfig::InputInfoType;
   using OutputInfo = typename SSConfig::OutputInfoType;
+  using index_t = typename SSConfig::index_t;
+  using off_t = std::conditional_t<TrivialOffCal, index_t, int64_t>;
 
   // Use SYCL work group static/scratch memory
   // instead of SYCL local accessor for SLM usage.
@@ -668,23 +727,18 @@ inline void segment_scan_kernel(SSConfig_ cfg_) {
   T* slm_ = static_cast<T*>(syclexp::get_work_group_scratch_memory());
 
   auto id = cfg_.get_item_desc(item);
-  int64_t si, pi, bi, glb_ldr_off, glb_str_off, glb_str_off_0,
-      glb_ldr_logical_off, glb_str_logical_off, crr_off;
+  index_t glb_ldr_logical_off, glb_str_logical_off, crr_off;
+  off_t glb_ldr_off, glb_str_off, glb_str_off_0;
 
-  int64_t e = cfg_.type_ == INCLUSIVE_TYPE ? 0 : 1;
+  index_t e = cfg_.type_ == INCLUSIVE_TYPE ? 0 : 1;
   if constexpr (TrivialIdxCal) {
-    glb_ldr_logical_off = item.get_global_linear_id();
+    glb_ldr_logical_off = static_cast<index_t>(id.glb_problem);
     glb_str_logical_off = glb_ldr_logical_off + e;
-    crr_off = id.chunk;
+    crr_off = static_cast<index_t>(id.chunk);
   } else {
-    si = id.glb_batch % cfg_.stride_;
-    bi = id.glb_batch / cfg_.stride_;
-    pi = id.chunk * id.chunk_size + id.chunk_off;
-    glb_ldr_logical_off =
-        si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
+    cfg_.compute_offsets(id, glb_ldr_logical_off, crr_off);
     glb_str_logical_off =
-        si + (pi + e) * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
-    crr_off = si + id.chunk * cfg_.stride_ + bi * id.chunk_num * cfg_.stride_;
+        glb_ldr_logical_off + e * static_cast<index_t>(cfg_.stride_);
   }
 
   if constexpr (TrivialOffCal) {
@@ -693,13 +747,13 @@ inline void segment_scan_kernel(SSConfig_ cfg_) {
     glb_str_off_0 = glb_ldr_logical_off;
   } else {
     glb_ldr_off = IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
-        glb_ldr_logical_off, cfg_.iinfo_);
+        static_cast<int64_t>(glb_ldr_logical_off), cfg_.iinfo_);
     glb_str_off =
         IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
-            glb_str_logical_off, cfg_.oinfo_);
+            static_cast<int64_t>(glb_str_logical_off), cfg_.oinfo_);
     glb_str_off_0 =
         IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
-            glb_ldr_logical_off, cfg_.oinfo_);
+            static_cast<int64_t>(glb_ldr_logical_off), cfg_.oinfo_);
   }
   T value = cfg_.init_;
   if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
@@ -751,6 +805,8 @@ inline void segment_scan_with_indices_kernel(SSConfig_ cfg_) {
   using OutputInfo = typename SSConfig::OutputInfoType;
   using IndicesInfo = typename SSConfig::IndicesInfoType;
   using IndicesT = typename SSConfig::IndicesT;
+  using index_t = typename SSConfig::index_t;
+  using off_t = std::conditional_t<TrivialOffCal, index_t, int64_t>;
 
   auto item = syclext::this_work_item::get_nd_item<2>();
 
@@ -758,51 +814,42 @@ inline void segment_scan_with_indices_kernel(SSConfig_ cfg_) {
   IndicesT* slm_idx_ = (IndicesT*)(slm_ + cfg_.wg_range_x_ * cfg_.wg_range_y_);
 
   auto id = cfg_.get_item_desc(item);
-  int64_t si, pi, bi, glb_ldr_off, glb_str_off, glb_str_off_0, glb_idx_off,
-      glb_idx_off_0, glb_ldr_logical_off, glb_str_logical_off, crr_off,
-      glb_idx_logical_off;
+  index_t glb_ldr_logical_off, glb_str_logical_off, crr_off;
+  off_t glb_ldr_off, glb_str_off, glb_str_off_0, glb_idx_off, glb_idx_off_0;
 
-  int64_t e = cfg_.type_ == INCLUSIVE_TYPE ? 0 : 1;
+  index_t e = cfg_.type_ == INCLUSIVE_TYPE ? 0 : 1;
+  IndicesT pi = static_cast<IndicesT>(id.glb_problem);
   if constexpr (TrivialIdxCal) {
-    glb_ldr_logical_off = item.get_global_linear_id();
+    glb_ldr_logical_off = static_cast<index_t>(id.glb_problem);
     glb_str_logical_off = glb_ldr_logical_off + e;
-    glb_idx_logical_off = glb_ldr_logical_off + e;
-    pi = id.chunk * id.chunk_size + id.chunk_off;
-    crr_off = id.chunk;
+    crr_off = static_cast<index_t>(id.chunk);
   } else {
-    si = id.glb_batch % cfg_.stride_;
-    bi = id.glb_batch / cfg_.stride_;
-    pi = id.chunk * id.chunk_size + id.chunk_off;
-    glb_ldr_logical_off =
-        si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
+    cfg_.compute_offsets(id, glb_ldr_logical_off, crr_off);
     glb_str_logical_off =
-        si + (pi + e) * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
-    glb_idx_logical_off =
-        si + (pi + e) * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
-    crr_off = si + id.chunk * cfg_.stride_ + bi * id.chunk_num * cfg_.stride_;
+        glb_ldr_logical_off + e * static_cast<index_t>(cfg_.stride_);
   }
 
   if constexpr (TrivialOffCal) {
     glb_ldr_off = glb_ldr_logical_off;
     glb_str_off = glb_str_logical_off;
     glb_str_off_0 = glb_ldr_logical_off;
-    glb_idx_off = glb_idx_logical_off;
+    glb_idx_off = glb_str_logical_off;
     glb_idx_off_0 = glb_ldr_logical_off;
   } else {
     glb_ldr_off = IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
-        glb_ldr_logical_off, cfg_.iinfo_);
+        static_cast<int64_t>(glb_ldr_logical_off), cfg_.iinfo_);
     glb_str_off =
         IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
-            glb_str_logical_off, cfg_.oinfo_);
+            static_cast<int64_t>(glb_str_logical_off), cfg_.oinfo_);
     glb_str_off_0 =
         IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
-            glb_ldr_logical_off, cfg_.oinfo_);
+            static_cast<int64_t>(glb_ldr_logical_off), cfg_.oinfo_);
     glb_idx_off =
         IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
-            glb_idx_logical_off, cfg_.idxinfo_);
+            static_cast<int64_t>(glb_str_logical_off), cfg_.idxinfo_);
     glb_idx_off_0 =
         IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
-            glb_ldr_logical_off, cfg_.oinfo_);
+            static_cast<int64_t>(glb_ldr_logical_off), cfg_.oinfo_);
   }
   T value = cfg_.init_;
   IndicesT idx = pi;
@@ -885,19 +932,16 @@ static inline void launch_segment_scan_with_indices(const SSConfig& cfg) {
 template <class SSConfig, bool TrivialIdxCal = false>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
 inline void accumulate_carrier_kernel(SSConfig cfg) {
+  using index_t = typename SSConfig::index_t;
   auto item = syclext::this_work_item::get_nd_item<2>();
 
   auto id = cfg.get_item_desc(item);
-  int64_t si, pi, bi, glb_off, crr_off;
+  index_t glb_off, crr_off;
   if constexpr (TrivialIdxCal) {
-    glb_off = item.get_global_linear_id();
-    crr_off = id.chunk;
+    glb_off = static_cast<index_t>(id.glb_problem);
+    crr_off = static_cast<index_t>(id.chunk);
   } else {
-    si = id.glb_batch % cfg.stride_;
-    bi = id.glb_batch / cfg.stride_;
-    pi = id.chunk * id.chunk_size + id.chunk_off;
-    glb_off = si + pi * cfg.stride_ + bi * cfg.problem_ * cfg.stride_;
-    crr_off = si + id.chunk * cfg.stride_ + bi * id.chunk_num * cfg.stride_;
+    cfg.compute_offsets(id, glb_off, crr_off);
   }
   if (id.glb_problem < cfg.problem_ && id.glb_batch < cfg.problem_batch_) {
     cfg.oinfo_.data[glb_off] =
@@ -908,19 +952,16 @@ inline void accumulate_carrier_kernel(SSConfig cfg) {
 template <class SSConfig, bool TrivialIdxCal = false>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
 inline void accumulate_carrier_with_indices_kernel(SSConfig cfg_) {
+  using index_t = typename SSConfig::index_t;
   auto item = syclext::this_work_item::get_nd_item<2>();
 
   auto id = cfg_.get_item_desc(item);
-  int64_t si, pi, bi, glb_off, crr_off;
+  index_t glb_off, crr_off;
   if constexpr (TrivialIdxCal) {
-    glb_off = item.get_global_linear_id();
-    crr_off = id.chunk;
+    glb_off = static_cast<index_t>(id.glb_problem);
+    crr_off = static_cast<index_t>(id.chunk);
   } else {
-    si = id.glb_batch % cfg_.stride_;
-    bi = id.glb_batch / cfg_.stride_;
-    pi = id.chunk * id.chunk_size + id.chunk_off;
-    glb_off = si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
-    crr_off = si + id.chunk * cfg_.stride_ + bi * id.chunk_num * cfg_.stride_;
+    cfg_.compute_offsets(id, glb_off, crr_off);
   }
   if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
     binary_op_update(
@@ -1042,6 +1083,7 @@ template <
     ScanType Type,
     bool TrivialOffCal,
     bool TrivialIdxCal,
+    typename IndexType = int64_t,
     typename T,
     class InputInfo,
     class OutputInfo,
@@ -1057,22 +1099,17 @@ static inline void _segment_scan_kernel(
       OutputInfo,
       OutputInfo /*not used*/,
       T,
-      BinaryFunction>;
-  auto cfg = SegmentScanConfig<
-      InputInfo,
-      OutputInfo,
-      OutputInfo /*not used*/,
-      T,
-      BinaryFunction>::
-      template make_config<
-          segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal>>(
-          input_info,
-          output_info,
-          output_info /*not used*/,
-          dim_after_collapse,
-          init,
-          Type,
-          func);
+      BinaryFunction,
+      IndexType>;
+  auto cfg = SSConfig::template make_config<
+      segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal>>(
+      input_info,
+      output_info,
+      output_info /*not used*/,
+      dim_after_collapse,
+      init,
+      Type,
+      func);
   // 0. recursive convergence
   if (cfg.problem_ <= cfg.problem_wg_range_) {
     cfg.set_carrier(nullptr);
@@ -1090,7 +1127,7 @@ static inline void _segment_scan_kernel(
   launch_segment_scan<decltype(cfg), TrivialOffCal, TrivialIdxCal>(cfg);
 
   // 2. recursion for carrier
-  _segment_scan_kernel<EXCLUSIVE_TYPE, TrivialOffCal, TrivialIdxCal>(
+  _segment_scan_kernel<EXCLUSIVE_TYPE, TrivialOffCal, TrivialIdxCal, IndexType>(
       carrier_info, carrier_info, 1, init, func);
 
   // 3. accumulate among all chunk
@@ -1104,6 +1141,7 @@ template <
     bool TrivialOffCal,
     bool TrivialIdxCal,
     bool is_idx_carried,
+    typename IndexType = int64_t,
     typename T,
     class InputInfo,
     class OutputInfo,
@@ -1117,22 +1155,25 @@ static inline void _segment_scan_kernel_with_indices(
     T init,
     BinaryFunction func) {
   using IndicesT = typename IndicesInfo::scalar_t;
-  using SSConfig =
-      SegmentScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>;
-  auto cfg =
-      SegmentScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>::
-          template make_config<segment_scan_with_indices_kernel<
-              SSConfig,
-              TrivialOffCal,
-              TrivialIdxCal,
-              is_idx_carried>>(
-              input_info,
-              output_info,
-              indices_info,
-              dim_after_collapse,
-              init,
-              Type,
-              func);
+  using SSConfig = SegmentScanConfig<
+      InputInfo,
+      OutputInfo,
+      IndicesInfo,
+      T,
+      BinaryFunction,
+      IndexType>;
+  auto cfg = SSConfig::template make_config<segment_scan_with_indices_kernel<
+      SSConfig,
+      TrivialOffCal,
+      TrivialIdxCal,
+      is_idx_carried>>(
+      input_info,
+      output_info,
+      indices_info,
+      dim_after_collapse,
+      init,
+      Type,
+      func);
   // 0. recursive convergence
   if (cfg.problem_ <= cfg.problem_wg_range_) {
     cfg.set_carrier(nullptr);
@@ -1170,7 +1211,8 @@ static inline void _segment_scan_kernel_with_indices(
       EXCLUSIVE_TYPE,
       TrivialOffCal,
       TrivialIdxCal,
-      true>(carrier_info, carrier_info, carrier_idx_info, 1, init, func);
+      true,
+      IndexType>(carrier_info, carrier_info, carrier_idx_info, 1, init, func);
 
   // 3. accumulate among all chunk
   accumulate_carrier_with_indices<decltype(cfg), TrivialIdxCal>(cfg);
@@ -1238,11 +1280,14 @@ void scan(
           input_info, output_info, dim_after_collapse, init, func);
     }
   } else {
-    if (batch == 1 && stride == 1) {
-      _segment_scan_kernel<Type, true, true>(
+    if (!can_use_32bit_scan_index(batch, problem, stride)) {
+      _segment_scan_kernel<Type, true, false, int64_t>(
+          input_info, output_info, dim_after_collapse, init, func);
+    } else if (batch == 1 && stride == 1) {
+      _segment_scan_kernel<Type, true, true, uint32_t>(
           input_info, output_info, dim_after_collapse, init, func);
     } else {
-      _segment_scan_kernel<Type, true, false>(
+      _segment_scan_kernel<Type, true, false, uint32_t>(
           input_info, output_info, dim_after_collapse, init, func);
     }
   }
@@ -1295,8 +1340,16 @@ void scan_with_indices(
     loop_scan_kernel_with_indices<Type, true>(
         input_info, output_info, indices_info, dim_after_collapse, init, func);
   } else {
-    if (batch == 1 && stride == 1) {
-      _segment_scan_kernel_with_indices<Type, true, true, false>(
+    if (!can_use_32bit_scan_index(batch, problem, stride)) {
+      _segment_scan_kernel_with_indices<Type, true, false, false, int64_t>(
+          input_info,
+          output_info,
+          indices_info,
+          dim_after_collapse,
+          init,
+          func);
+    } else if (batch == 1 && stride == 1) {
+      _segment_scan_kernel_with_indices<Type, true, true, false, uint32_t>(
           input_info,
           output_info,
           indices_info,
@@ -1304,7 +1357,7 @@ void scan_with_indices(
           init,
           func);
     } else {
-      _segment_scan_kernel_with_indices<Type, true, false, false>(
+      _segment_scan_kernel_with_indices<Type, true, false, false, uint32_t>(
           input_info,
           output_info,
           indices_info,
