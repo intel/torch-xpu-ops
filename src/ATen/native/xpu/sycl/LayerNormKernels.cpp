@@ -1506,8 +1506,8 @@ void layer_norm_backward_kernel_impl(
   const int elements_per_thread = 16;
   // TODO: Consider tuning the tile size selection logic (tile_size_m,
   // tile_size_n) and occupancy calculation
-  const auto tile_config = layer_norm_bwd_tile_config_select(
-      M, N, thread_slots, local_size_x, SIMD);
+  const auto tile_config =
+      layer_norm_bwd_tile_config_select(M, N, thread_slots, local_size_x, SIMD);
   const int tile_size_m = tile_config.tile_size_m;
   const int tile_size_n = tile_config.tile_size_n;
   const int num_tile_m = tile_config.num_tile_m;
