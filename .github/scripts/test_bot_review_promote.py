@@ -274,3 +274,13 @@ def test_no_pull_run_means_nothing_to_wait_for(tmp_path):
             return None
 
     assert p.evaluate_ci(NoRun("o/r"), "s" * 40, "main", tmp_path) == (False, [], [])
+
+
+def test_pull_run_without_jobs_blocks(monkeypatch, tmp_path):
+    class Run(p.Repo):
+        def pull_run(self, sha):
+            return {"id": 1, "status": "completed", "conclusion": "action_required"}
+
+    monkeypatch.setattr(p, "api_items", lambda path, jq=".[]": [])
+    pending, blockers, _ = p.evaluate_ci(Run("o/r"), "s" * 40, "main", tmp_path)
+    assert not pending and "action_required" in blockers[0]

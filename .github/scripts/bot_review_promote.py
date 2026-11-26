@@ -349,6 +349,10 @@ def evaluate_ci(repo, sha, base_ref, workdir):
     if run["status"] != "completed":
         return True, [], []
     jobs = api_items(f"repos/{repo.name}/actions/runs/{run['id']}/jobs?per_page=100", ".jobs[]")
+    if not jobs and run["conclusion"] not in OK:
+        # e.g. a fork PR waiting for approval (`action_required`), or a run
+        # cancelled before any job started: no CI ran, so nothing is clean.
+        return False, [f"`pull` run {run['conclusion']} without running any job"], []
     nightly = {}
     nights = []
 
