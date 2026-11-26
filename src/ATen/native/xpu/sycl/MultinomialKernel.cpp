@@ -110,17 +110,17 @@ inline void renormRows(Tensor& t) {
 }
 
 template <typename scalar_t>
-inline int binarySearchForMultinomial(
+inline int64_t binarySearchForMultinomial(
     scalar_t* cumdist,
     scalar_t* dist,
-    int size,
+    int64_t size,
     scalar_t val) {
-  int start = 0;
-  int end = size;
+  int64_t start = 0;
+  int64_t end = size;
   // cumdist[size - 1] = 0 => all zero prob dist
 
   while (end - start > 0) {
-    int mid = start + (end - start) / 2;
+    int64_t mid = start + (end - start) / 2;
 
     scalar_t midVal = cumdist[mid];
     if (midVal < val) {
@@ -152,7 +152,7 @@ inline void sampleMultinomialWithReplacement(
     int totalSamples,
     int64_t* dest,
     int64_t distributions,
-    int categories,
+    int64_t categories,
     scalar_t* normDistPrefixSum,
     scalar_t* normDist) {
   auto thread_idx = item.get_local_id(1);
@@ -192,7 +192,7 @@ inline void sampleMultinomialWithReplacement(
       }
 
       // Find the bucket that a uniform sample lies in
-      int choice = binarySearchForMultinomial<scalar_t>(
+      int64_t choice = binarySearchForMultinomial<scalar_t>(
           normDistPrefixSum + curDist * categories,
           normDist + curDist * categories,
           categories,
@@ -210,7 +210,7 @@ void multinomial_with_replacement_kernel(
     int totalSamples,
     int64_t* result_ptr,
     int64_t numDist,
-    int numCategories,
+    int64_t numCategories,
     scalar_t* prefixSum_ptr,
     scalar_t* normDist_ptr) {
   auto item = syclext::this_work_item::get_nd_item<2>();
@@ -380,7 +380,7 @@ void multinomial_kernel(
 
   int inputSize = self.dim();
   int64_t numDist = inputSize == 1 ? 1 : self.size(0);
-  int numCategories = inputSize == 1 ? self.size(0) : self.size(1);
+  int64_t numCategories = inputSize == 1 ? self.size(0) : self.size(1);
 
   // Restructure data for 2d
   auto self_v = inputSize == 1 ? self.view({numDist, numCategories}) : self;
@@ -415,7 +415,8 @@ void multinomial_kernel(
           int maxShared = at::xpu::getDeviceLocalMemSize();
 
           int SubGroupSize = at::xpu::getDeviceMinSubGroupSize();
-          int requiredSubGroups = at::ceil_div(numCategories, SubGroupSize);
+          int requiredSubGroups =
+              at::ceil_div(static_cast<int>(numCategories), SubGroupSize);
           int requiredThreads =
               std::min(maxThreads, requiredSubGroups * SubGroupSize);
           int requiredShared = requiredThreads * sizeof(accscalar_t);
@@ -440,7 +441,7 @@ void multinomial_kernel(
               slm_sz,
               result.mutable_data_ptr<int64_t>(),
               numDist,
-              numCategories,
+              static_cast<int>(numCategories),
               sampled.const_data_ptr<scalar_t>(),
               self_v.const_data_ptr<scalar_t>(),
               (int)self_v.stride(0),
