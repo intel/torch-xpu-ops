@@ -9,9 +9,9 @@
  */
 
 #include <ATen/core/Tensor.h>
-#include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
 #include <ATen/native/xpu/sycl/DilatedMaxPool2d.h>
+#include <c10/util/safe_conv.h>
 
 #include <ATen/ops/max.h>
 #include <ATen/ops/max_pool2d_with_indices_backward_native.h>

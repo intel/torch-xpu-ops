@@ -25,6 +25,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
+#include <c10/util/safe_conv.h>
 
 #include <ATen/native/xpu/sycl/AveragePool3dKernels.h>
 #include <comm/SYCLContext.h>

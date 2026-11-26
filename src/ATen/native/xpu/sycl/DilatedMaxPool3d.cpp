@@ -24,6 +24,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
 #include <ATen/xpu/XPUContext.h>
+#include <c10/util/safe_conv.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>

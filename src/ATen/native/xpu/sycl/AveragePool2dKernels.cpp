@@ -16,6 +16,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Pool.h>
+#include <c10/util/safe_conv.h>
 
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <ATen/native/xpu/sycl/IntegerDivider.h>
