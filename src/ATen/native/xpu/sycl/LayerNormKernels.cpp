@@ -1503,11 +1503,7 @@ void layer_norm_backward_kernel_impl(
 
   const size_t local_size_x = 8;
   const size_t SIMD = 32;
-  // workgroup size is 256
-  // slm is 16KB, 64*32 float * 2
-  // elements_per_thread is at least 16
   const int elements_per_thread = 16;
-  // for M = 64*1024, N = 1, we choose tile size (256, 16) on pvc
   // TODO: Consider tuning the tile size selection logic (tile_size_m,
   // tile_size_n) and occupancy calculation
   const auto tile_config = layer_norm_bwd_tile_config_select(
@@ -1519,14 +1515,15 @@ void layer_norm_backward_kernel_impl(
 
   size_t num_workgroup = std::min(
       num_tile_m * num_tile_n, static_cast<int>(thread_slots / local_size_x));
-  // Both kernels are bound by the chain of rows each work-item reduces
-  // serially; take the M-parallel path when its chain is shorter.
-  int64_t simple_rows_per_item =
+
+  // choose two-stage path when its chain of each work-item is shorter.
+  int64_t simple_serial_iters_per_item =
       (M + config_w.block_row - 1) / config_w.block_row;
-  int64_t two_stage_rows_per_item = tile_size_m / local_size_x *
+  int64_t two_stage_serial_iters_per_item = tile_size_m / local_size_x *
       ((num_tile_m * num_tile_n + num_workgroup - 1) / num_workgroup);
+
   if (use_two_stage_col_reduction && tile_n < xe_core_count * 2 &&
-      simple_rows_per_item > two_stage_rows_per_item) {
+      simple_serial_iters_per_item > two_stage_serial_iters_per_item) {
     // tile size can be (1024,32), (512,32), (512,16), (256, 16)
     // Modifying these parameters (num_subgroup, workgroup_size, tile_size,
     // elements_per_thread) will alter the kernel configuration, potentially
