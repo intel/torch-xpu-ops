@@ -1394,7 +1394,7 @@ inline LayerNormBwdTileConfig layer_norm_bwd_tile_config_select(
       num_tile_m = (M + tile_size_m - 1) / tile_size_m;
       adjust_m = false;
     } else {
-      tile_size_n /= 2;
+      tile_size_n = std::max(1, tile_size_n / 2);
       num_tile_n = (N + tile_size_n - 1) / tile_size_n;
       adjust_m = true;
     }
