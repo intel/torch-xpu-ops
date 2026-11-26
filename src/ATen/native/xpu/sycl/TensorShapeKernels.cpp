@@ -696,6 +696,8 @@ void _chunk_cat_out_xpu_contiguous(
       dst_elem_size / src_elem_size);
 }
 
+// See [Fast path for split_with_sizes_copy.out]. Callers must first check
+// has_dense_matching_slices; other layouts produce wrong values.
 void split_with_sizes_copy_out_xpu_contiguous_no_cast(
     const at::Tensor& self,
     at::IntArrayRef split_sizes,
