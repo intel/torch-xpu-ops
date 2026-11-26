@@ -1287,34 +1287,57 @@ def launch_test(test_case, skip_list=None, exe_list=None, xml_prefix="op_ut"):
 
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
+    norm_case = test_case.replace("\\", "/")
+    xpu_dir = os.path.dirname(os.path.abspath(__file__))
+    ops_test_dir = os.path.dirname(xpu_dir)
+    pytorch_test_prefix = "../../../../test/"
+    if norm_case.startswith(pytorch_test_prefix):
+        # Launch stock PyTorch UTs from pytorch/test/ while keeping the JUnit
+        # XML report in the caller's working directory.
+        run_cwd = os.path.abspath(os.path.join(xpu_dir, "../../../../test"))
+        run_target = norm_case[len(pytorch_test_prefix) :]
+    else:
+        # Launch torch-xpu-ops UTs from torch-xpu-ops/test/.
+        run_cwd = ops_test_dir
+        if os.path.isabs(test_case):
+            run_target = test_case
+        elif norm_case.startswith("xpu/") or os.path.exists(
+            os.path.join(ops_test_dir, norm_case)
+        ):
+            run_target = norm_case
+        else:
+            run_target = f"xpu/{norm_case}"
     # check-ut.py derives the result category from this prefix, so it must match
     # the UT job name that runs the test.
     if skip_list is not None and len(skip_list) > 0:
         k_expr = "not " + " and not ".join(skip_list)
+        xml_path = os.path.abspath(f"./{xml_prefix}_with_skip.{module_name}.xml")
         cmd_args = [
             "pytest",
-            f"--junit-xml=./{xml_prefix}_with_skip.{module_name}.xml",
-            test_case,
+            f"--junit-xml={xml_path}",
+            run_target,
             "-k",
             k_expr,
         ]
     elif exe_list is not None and len(exe_list) > 0:
         k_expr = " or ".join(exe_list)
+        xml_path = os.path.abspath(f"./{xml_prefix}_with_exe.{module_name}.xml")
         cmd_args = [
             "pytest",
-            f"--junit-xml=./{xml_prefix}_with_exe.{module_name}.xml",
-            test_case,
+            f"--junit-xml={xml_path}",
+            run_target,
             "-k",
             k_expr,
         ]
     else:
+        xml_path = os.path.abspath(f"./{xml_prefix}_with_all.{module_name}.xml")
         cmd_args = [
             "pytest",
-            f"--junit-xml=./{xml_prefix}_with_all.{module_name}.xml",
-            test_case,
+            f"--junit-xml={xml_path}",
+            run_target,
         ]
     # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows
-    result = subprocess.run(cmd_args)
+    result = subprocess.run(cmd_args, cwd=run_cwd)
     return result.returncode
 
 

@@ -74,13 +74,12 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          cd pytorch
+          cd pytorch/third_party/torch-xpu-ops/test
           echo "=== Running changed reproducer files ==="
-          # Convert file paths to pytest-compatible paths under third_party/torch-xpu-ops/
           REPRO_FILES=""
           while IFS= read -r f; do
             [ -z "$f" ] && continue
-            REPRO_FILES="$REPRO_FILES third_party/torch-xpu-ops/$f"
+            REPRO_FILES="$REPRO_FILES ${f#test/}"
           done <<< "${{ steps.changed-repro.outputs.files }}"
           echo "Files: $REPRO_FILES"
           pytest $REPRO_FILES -v 2>&1 | tee ${{ github.workspace }}/reproducer_output.txt
@@ -92,11 +91,11 @@ jobs:
           PR_BODY_CMD: ${{ inputs.pr_body_cmd }}
         run: |
           set -o pipefail
-          cd pytorch/third_party/torch-xpu-ops
+          cd pytorch/third_party/torch-xpu-ops/test
           echo "=== Running reproducer commands from PR description ==="
           RESULT=0
           while IFS= read -r cmd; do
-            cmd=$(echo "$cmd" | tr -d '\r')
+            cmd=$(echo "$cmd" | tr -d '\r' | sed -E 's/(^|[[:space:]])test\/(xpu|repro|regressions|profiling)\//\1\2\//g')
             [ -z "$cmd" ] && continue
             echo "--- Running: $cmd ---"
             eval "$cmd" 2>&1 | tee -a ${{ github.workspace }}/reproducer_output.txt || RESULT=1

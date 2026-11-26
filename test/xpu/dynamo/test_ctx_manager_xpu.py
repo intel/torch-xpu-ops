@@ -1,10 +1,16 @@
 # Owner(s): ["module: dynamo"]
 import contextlib
+import os
 import sys
 import unittest
 from contextlib import contextmanager
 
-sys.path.append("../../../../test/dynamo")
+sys.path.append(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../../../../../test/dynamo",
+    )
+)
 
 import torch
 import torch._dynamo.test_case

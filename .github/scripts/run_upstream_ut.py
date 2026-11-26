@@ -111,20 +111,42 @@ class Job:
     allow_empty: bool = False  # pytest exit code 5: nothing selected
 
 
+def normalize_test_file(test_file, pytorch_dir, test_dir):
+    """Normalize a CLI or issue test file path to ('test/...', '<rel-to-test>')."""
+    candidate = Path(test_file)
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+        if resolved.is_relative_to(test_dir):
+            rel = resolved.relative_to(test_dir).as_posix()
+            return f"test/{rel}", rel
+    raw = test_file.replace("\\", "/")
+    while raw.startswith("./"):
+        raw = raw[2:]
+    if not pytorch_dir.is_absolute():
+        pt_prefix = pytorch_dir.as_posix().strip("./")
+        if pt_prefix and raw.startswith(f"{pt_prefix}/"):
+            raw = raw[len(pt_prefix) + 1 :]
+    rel = raw.removeprefix("test/")
+    return f"test/{rel}", rel
+
+
 def file_jobs(args, env, files):
-    """One plain pytest run per file, from the current directory."""
+    """One plain pytest run per file, from test/ like run_test.py does."""
+    test_dir = (args.pytorch_dir / "test").resolve()
+    xml_dir = args.xml_dir.resolve()
     jobs = []
-    for test_file in files:
+    for raw_file in files:
+        test_file, rel = normalize_test_file(raw_file, args.pytorch_dir, test_dir)
         name = test_file.replace("/", "_")
         cmd = [
             sys.executable,
             "-m",
             "pytest",
             "-v",
-            str(args.pytorch_dir / test_file),
-            f"--junit-xml={args.xml_dir / f'{args.ut_name}_{name}.xml'}",
+            rel,
+            f"--junit-xml={xml_dir / f'{args.ut_name}_{name}.xml'}",
         ]
-        jobs.append(Job(name, test_file, cmd, env))
+        jobs.append(Job(name, test_file, cmd, env, test_dir))
     return jobs
 
 
@@ -260,7 +282,8 @@ def distributed_files(args):
 
 def distributed_jobs(args, env, files):
     env = {**env, **DISTRIBUTED_ENV, "ZE_AFFINITY_MASK": ",".join(args.gpus)}
-    pipelining = (args.pytorch_dir / "test" / "distributed" / "pipelining").resolve()
+    test_dir = (args.pytorch_dir / "test").resolve()
+    pipelining = (test_dir / "distributed" / "pipelining").resolve()
     env["PYTHONPATH"] = os.pathsep.join(
         p for p in (env.get("PYTHONPATH"), str(pipelining)) if p
     )
@@ -274,6 +297,7 @@ def distributed_jobs(args, env, files):
                 "import torch;print(torch.distributed.is_xccl_available())",
             ],
             env=env,
+            cwd=test_dir,
             capture_output=True,
             text=True,
             check=True,

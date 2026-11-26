@@ -46,6 +46,7 @@ class Task:
     group: str
     repo: str
     path: str
+    target: str
     cwd: Path
     command: list[str]
     log: Path
@@ -61,10 +62,8 @@ def require_mapping(value, label):
 def pytest_command():
     """Argv prefix for pytest.
 
-    `python -m pytest` puts the working directory first on sys.path. PyTorch
-    files run in the source checkout, so `import torch` loads that unbuilt
-    tree instead of the installed wheel. The import fails, and the retry is
-    rejected. The console script next to this interpreter does not add cwd.
+    `python -m pytest` puts the working directory first on sys.path; the
+    console script next to this interpreter does not add cwd.
     """
     name = "pytest.exe" if sys.platform == "win32" else "pytest"
     script = Path(sys.executable).with_name(name)
@@ -98,6 +97,14 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                     or any(c in path for c in "\r\n\0:")
                 ):
                     raise ValueError(f"Invalid test path: {path!r}")
+                posix_path = Path(path).as_posix()
+                # Launch all UTs from <repo>/test/ rather than the repo root so
+                # child `python -c "import torch"` subprocesses do not shadow an
+                # installed wheel with an unbuilt source `torch/` directory.
+                if Path(posix_path).parts[:1] != ("test",) or len(Path(posix_path).parts) < 2:
+                    raise ValueError(f"Test path must be under test/: {path!r}")
+                cwd = root / "test"
+                target = Path(posix_path).relative_to("test").as_posix()
                 require_mapping(options, path)
                 if set(options) - {"skip"}:
                     raise ValueError(f"Unknown options for {path}: {set(options)}")
@@ -108,20 +115,21 @@ def build_plan(config, selected, roots, output, prefix, run_id):
                     raise ValueError(f"Invalid skip cases for {path}")
                 if group not in selected:
                     continue
-                if not (root / path).is_file():
+                if not (cwd / target).is_file():
                     # Reported per file at run time so the other files still run.
-                    print(f"WARNING: test file does not exist: {root / path}", file=sys.stderr, flush=True)
-                name = f"{prefix}{group}__{repo}__{path.replace('/', '__')}_{run_id}"
+                    print(f"WARNING: test file does not exist: {cwd / target}", file=sys.stderr, flush=True)
+                name = f"{prefix}{group}__{repo}__{posix_path.replace('/', '__')}_{run_id}"
                 junit = output / f"{name}.xml"
-                command = pytest_command() + [path, f"--rootdir={root}", f"--junit-xml={junit}"] + [
-                    f"--deselect={path}::{case}" for case in cases
+                command = pytest_command() + [target, f"--rootdir={root}", f"--junit-xml={junit}"] + [
+                    f"--deselect={posix_path}::{case}" for case in cases
                 ]
                 tasks.append(
                     Task(
                         group,
                         repo,
-                        path,
-                        root,
+                        posix_path,
+                        target,
+                        cwd,
                         command,
                         output / f"{name}.log",
                         junit,
@@ -143,9 +151,9 @@ def run_task(task, file_timeout=None):
         flush=True,
     )
     with task.log.open("w", encoding="utf-8") as log:
-        if not (task.cwd / task.path).is_file():
+        if not (task.cwd / task.target).is_file():
             result["status"] = "missing"
-            log.write(f"ERROR: test file does not exist: {task.cwd / task.path}\n")
+            log.write(f"ERROR: test file does not exist: {task.cwd / task.target}\n")
         else:
             run_process(task, log, result, file_timeout)
     try:
@@ -154,7 +162,7 @@ def run_task(task, file_timeout=None):
         result["counts"] = {
             key: sum(int(suite.get(key, "0")) for suite in suites) for key in ("tests", "failures", "errors", "skipped")
         }
-        result["failed_cases"] = failed_cases(tree, task.path)
+        result["failed_cases"] = failed_cases(tree, task.target)
         ran = result["counts"]["tests"] - result["counts"]["skipped"]
         if result["status"] == "passed" and (ran <= 0 or result["counts"]["failures"] or result["counts"]["errors"]):
             result["status"] = "failed"
@@ -175,6 +183,11 @@ def run_task(task, file_timeout=None):
 
 def run_process(task, log, result, file_timeout):
     # No `with Popen`: its exit waits forever on a child stuck in the GPU driver.
+    popen_kwargs = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        if sys.platform == "win32"
+        else {"start_new_session": True}
+    )
     try:
         process = subprocess.Popen(
             task.command,
@@ -182,7 +195,7 @@ def run_process(task, log, result, file_timeout):
             stdout=log,
             stderr=subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
-            start_new_session=True,
+            **popen_kwargs,
         )
     except OSError as error:
         result["error"] = str(error)
@@ -201,14 +214,22 @@ def run_process(task, log, result, file_timeout):
 
 
 def kill_group(process, log):
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
     try:
         return process.wait(timeout=60)
     except subprocess.TimeoutExpired:
-        log.write(f"\nERROR: pid {process.pid} did not exit after SIGKILL (uninterruptible); abandoned\n")
+        log.write(f"\nERROR: pid {process.pid} did not exit after kill (uninterruptible); abandoned\n")
         return None
 
 
@@ -287,7 +308,7 @@ def write_reproduce(path, tasks, results):
     ]
     lines += [f"Root ({repo}): cd {display_root(root)}" for repo, root in roots.items()]
     failed = [(r, node) for r in results for node in r.get("failed_cases", [])]
-    failed += [(r, r["path"]) for r in results if r["status"] != "passed" and not r.get("failed_cases")]
+    failed += [(r, r["target"]) for r in results if r["status"] != "passed" and not r.get("failed_cases")]
     if failed:
         lines.append("Failed cases:")
         lines += [

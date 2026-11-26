@@ -6,11 +6,17 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+import os
 import re
 import sys
 from io import StringIO
 
 import pytest
+
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
+
 from skip_list_win_mtl import skip_dict
 
 IS_WINDOWS = sys.platform == "win32"
@@ -22,15 +28,21 @@ for skip_case in skip_list[1:]:
     skip_option = " and not " + skip_case
     skip_options += skip_option
 
+xml_path = os.path.abspath("./test_xpu.xml")
+pytorch_test_dir = os.path.abspath(os.path.join(_THIS_DIR, "../../../../test"))
+original_cwd = os.getcwd()
 original_stdout = sys.stdout
-sys.stdout = StringIO()
+captured_stdout = StringIO()
+sys.stdout = captured_stdout
+try:
+    os.chdir(pytorch_test_dir)
+    test_command = ["-k", skip_options, "test_xpu.py", "-v", "--junit-xml", xml_path]
+    res = pytest.main(test_command)
+finally:
+    sys.stdout = original_stdout
+    os.chdir(original_cwd)
 
-test_command = ["-k", skip_options, "../../../../test/test_xpu.py", "-v"]
-test_command.extend(["--junit-xml", "./test_xpu.xml"])
-res = pytest.main(test_command)
-
-output = sys.stdout.getvalue()
-sys.stdout = original_stdout
+output = captured_stdout.getvalue()
 
 cleaned_output = re.sub(
     r"\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)test(\/|\\)", "", output

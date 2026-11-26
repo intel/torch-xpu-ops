@@ -17,13 +17,19 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import TYPE_CHECKING
 
 import torch
 import torch.distributed as dist
 
-sys.path.append("../../../../test/complex_tensor")
+sys.path.append(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../../../../../test/complex_tensor",
+    )
+)
 
 # Support both when imported from elsewhere or directly as a file
 try:
