@@ -26,8 +26,13 @@ permissions:
 # GitHub keeps only one pending run per group and cancels older pending ones.
 # #5272 receives every DISABLED-queue trigger, so give each comment its own group
 # there; runs then wait on the xpu-agent runner pool instead of cancelling each other.
+# Non-command comments (including the bot's own review replies) also get their own
+# group, so they cannot replace a queued `@torchxpubot review` and skip it.
+# The gate's automatic `@torchxpubot review` (bot_review_label.yml, marked by its
+# `_Automated review (` footer) queues apart from other commands, so a push
+# cannot replace a pending maintainer command such as `merge` or `rebase`.
 concurrency:
-  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ github.event.issue.number == 5272 && format('-{0}', github.event.comment.id) || '' }}
+  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ (github.event.issue.number == 5272 || !startsWith(github.event.comment.body, '@torchxpubot')) && format('-{0}', github.event.comment.id) || contains(github.event.comment.body, '_Automated review (') && '-auto-review' || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -464,7 +469,7 @@ jobs:
                 owner: context.repo.owner, repo: context.repo.repo, ref: sha, per_page: 100
               }),
               github.rest.repos.getCombinedStatusForRef({
-                owner: context.repo.owner, repo: context.repo.repo, ref: sha
+                owner: context.repo.owner, repo: context.repo.repo, ref: sha, per_page: 100
               })
             ]);
             const latestByName = new Map();
@@ -487,12 +492,14 @@ jobs:
             }
             const acceptable = new Set(['success', 'skipped', 'neutral']);
             const failedChecks = latestChecks.filter(c => !acceptable.has(c.conclusion));
-            const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
+            // `bot-review` records the bot review gate for promotion only; it never blocks merging.
+            const blockingStatuses = statuses.data.statuses.filter(s => s.context !== 'bot-review');
+            const statusFailed = blockingStatuses.some(s => s.state !== 'success');
             if (failedChecks.length > 0 || statusFailed) {
               const failedNames = failedChecks.map(c => `${c.name}: ${c.conclusion}`).join(', ');
               const msg = [
                 failedChecks.length > 0 ? `Failed checks: ${failedNames}` : '',
-                statusFailed ? `Combined commit status: ${statuses.data.state}` : ''
+                statusFailed ? `Failed statuses: ${blockingStatuses.filter(s => s.state !== 'success').map(s => `${s.context}: ${s.state}`).join(', ')}` : ''
               ].filter(Boolean).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
@@ -916,16 +923,35 @@ jobs:
     if: >-
       needs.parse-command.outputs.command == 'review'
       && needs.parse-command.outputs.authorized == 'true'
+    # The model reads untrusted PR text, so it gets a read-only token; posting
+    # and labeling happen in the `review-post` job, which holds MERGE_TOKEN.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      head_sha: ${{ steps.head.outputs.sha }}
+      started_at: ${{ steps.head.outputs.started_at }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      # The commit this review is about; the `bot-review` status lands on it,
+      # so a push during or after the review leaves the new head without one.
+      - name: Record PR head
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(gh api repos/${{ github.repository }}/pulls/${{ needs.parse-command.outputs.pr_number }} --jq .head.sha)" >> "$GITHUB_OUTPUT"
 
       - name: Run AI review
         id: ai-review
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
-          github_token: ${{ secrets.MERGE_TOKEN }}
+          github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_REVIEW || env.AWS_BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
@@ -935,18 +961,64 @@ jobs:
             Start your output with a single line `VERDICT: <one sentence>`
             summarising the outcome. Everything after it is folded behind a
             summary in the posted comment, so that line has to stand alone.
+            Follow it with the skill's `GATE:` line.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
+      # Hand the result to `review-post` as data. Steps that hold MERGE_TOKEN run
+      # in a separate job on a fresh runner, so nothing the model did on this
+      # runner (edited files, leftover processes) can reach that token.
+      # The transcript holds tool outputs (e.g. `env`), and artifacts are not
+      # masked: keep only the final result entry and redact secrets from it.
+      - name: Save review output
+        id: save
+        if: always() && steps.ai-review.outputs.execution_file
+        env:
+          TRANSCRIPT: ${{ steps.ai-review.outputs.execution_file }}
+          SECRETS: |
+            ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+            ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p review-output
+          out=review-output/execution.json
+          jq '[.[] | select(.type == "result")] | .[-1:] | map({type, is_error, result, total_cost_usd, modelUsage})' "$TRANSCRIPT" > "$out"
+          while IFS= read -r secret; do
+            [ -n "$secret" ] || continue
+            b64="$(printf 'x-access-token:%s' "$secret" | base64 -w0)"
+            SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$out"
+            SECRET="$b64"    perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$out"
+          done <<< "$SECRETS"
+      - name: Upload review output
+        if: always() && steps.save.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-output
+          path: review-output/execution.json
+          retention-days: 7
+
+  review-post:
+    needs: [parse-command, review]
+    if: always() && needs.review.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download review output
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: review-output
+          path: review-output
       - name: Post review comment
-        if: steps.ai-review.outputs.execution_file
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = 'review-output/execution.json';
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -958,22 +1030,94 @@ jobs:
             const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
-            const footer = `\n\n---\n_Generated by [\`review\` job](${jobUrl})._`;
             // require() reads the tree actions/checkout populated, and that
             // checkout pins no ref -- so on issue_comment it lands on the default
             // branch, and a helper added by a PR is absent until that PR merges.
             // Fall back to raw text: losing the fold beats losing the comment.
+            // Without parseGate the verdict cannot be read, so the gate fails closed.
             let foldDetails = (text) => text;
+            let parseGate = () => null;
             try {
-              ({ foldDetails } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/fold_details.js`));
+              ({ foldDetails, parseGate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/fold_details.js`));
             } catch (error) {
               core.warning(`fold_details.js unavailable (${error.message}); posting unfolded`);
             }
+            // Bot review gate, same labels as pytorch: a passing review moves the
+            // PR from `in progress` to `ready for review`; otherwise it stays.
+            const { owner, repo } = context.repo;
+            const issue_number = ${{ needs.parse-command.outputs.pr_number }};
+            // Only the GATE line right after VERDICT counts (tested in test_fold_details.js).
+            const ready = parseGate(result.result) === 'ready_for_human_review';
+            const sha = '${{ needs.review.outputs.head_sha }}';
+            // The gate covers open, non-draft PRs labeled `in progress`. A manual
+            // review elsewhere still gets its comment, but no status or labels.
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            const inGate = pr.state === 'open' && !pr.draft
+              && labels.includes('in progress') && !labels.includes('no automated review');
+            // Per-commit record of the verdict for the promotion check. Not a
+            // required check: it never blocks merging.
+            if (!inGate) {
+              core.info('PR is not in the bot review gate; no bot-review status');
+            } else if (/^[0-9a-f]{40}$/.test(sha)) {
+              await github.rest.repos.createCommitStatus({
+                owner, repo, sha, context: 'bot-review', target_url: jobUrl,
+                state: ready ? 'success' : 'failure',
+                description: ready ? 'No blocking issues' : 'Blocking issues found'
+              });
+            } else {
+              core.warning(`no valid head sha (${sha}); skipping bot-review status`);
+            }
+            // Like pytorch's promotion: a maintainer comment posted after the
+            // review started was not seen by it, so do not promote on this verdict.
+            let maintainerActivity = [];
+            let skipReason = '';
+            const startedAt = '${{ needs.review.outputs.started_at }}';
+            if (ready) {
+              // Promote only the commit that was reviewed, and only PRs in the gate.
+              if (pr.head.sha !== sha) skipReason = `new commits were pushed after the reviewed ${sha.slice(0, 7)}`;
+              else if (!inGate) skipReason = 'the PR is not `in progress` in the bot review gate';
+              const since = startedAt || new Date(0).toISOString();
+              const [comments, reviews, reviewComments] = await Promise.all([
+                github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, since, per_page: 100 }),
+                github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: issue_number, per_page: 100 }),
+                github.paginate(github.rest.pulls.listReviewComments, { owner, repo, pull_number: issue_number, since, per_page: 100 }),
+              ]);
+              const activity = [
+                ...comments.map(c => ({ user: c.user, at: c.created_at })),
+                ...reviews.filter(r => r.state !== 'APPROVED' || r.body).map(r => ({ user: r.user, at: r.submitted_at })),
+                ...reviewComments.map(c => ({ user: c.user, at: c.created_at })),
+              ];
+              const logins = new Set(activity
+                .filter(a => a.user && a.at && Date.parse(a.at) > Date.parse(since)
+                  && a.user.login !== pr.user.login && a.user.login !== 'torchxpubot' && a.user.type !== 'Bot')
+                .map(a => a.user.login));
+              for (const username of logins) {
+                // Fail closed: an unknown role blocks promotion but still posts the review.
+                const role = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username }).then(
+                  r => r.data.role_name,
+                  e => { core.warning(`permission lookup for ${username} failed: ${e.message}`); return 'unknown'; });
+                if (['triage', 'write', 'maintain', 'admin', 'unknown'].includes(role)) maintainerActivity.push(username);
+              }
+            }
+            const promote = ready && !skipReason && maintainerActivity.length === 0;
+            if (promote) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['ready for review'] });
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'in progress' }).catch(() => {});
+            }
+            const banner = promote
+              ? '**Bot review: no blocking issues.** Labeled `ready for review` for maintainers.\n\n'
+              : ready && skipReason
+              ? `**Bot review: no blocking issues, but labels unchanged: ${skipReason}.**\n\n`
+              : ready
+              ? `**Bot review: no blocking issues, but ${maintainerActivity.map(u => '@' + u).join(', ')} commented after this review started (or their access could not be checked).** Address those comments, then push, or ask a maintainer to comment \`@torchxpubot review\`, to re-run the review.\n\n`
+              : '**Bot review: blocking issues found.** Fix them and push; the review re-runs while the PR is `in progress`. If a finding does not apply, reply in a PR comment naming it and saying why; the next review reads it.\n\n';
+            const footer = `\n\n---\n_Generated by [\`review\` job](${jobUrl})._`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ needs.parse-command.outputs.pr_number }},
-              body: header + foldDetails(result.result, core.warning) + footer
+              body: header + banner + foldDetails(result.result, core.warning) + footer
             });
 
       - name: "Verify: AI review succeeded"
@@ -984,7 +1128,7 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = 'review-output/execution.json';
             let ok = false;
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -1011,7 +1155,7 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = 'review-output/execution.json';
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
