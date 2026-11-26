@@ -111,7 +111,6 @@ skip_dict = {
         "test_backward_grads_are_tensor_or_none",
         "test_backward_impl_on_existing_op",
     ),
-    "test_dataloader_xpu.py": None,
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward_baddbmm_xpu_float64",
@@ -410,6 +409,11 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
     f"{PYTORCH_TEST_DIR}/test_comparison_utils.py": None,
     f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
+    f"{PYTORCH_TEST_DIR}/test_dataloader.py": (
+        # CPU-only, accelerator-agnostic test. Marked as expectedFailure in
+        # upstream and fails in our CI with "Unexpected success".
+        "test_multiprocessing_iterdatapipe_with_dill",
+    ),
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
     f"{PYTORCH_TEST_DIR}/test_dynamic_shapes.py": None,
     f"{PYTORCH_TEST_DIR}/test_expanded_weights.py": None,
