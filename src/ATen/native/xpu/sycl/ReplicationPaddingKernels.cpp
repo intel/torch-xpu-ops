@@ -20,6 +20,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/ceil_div.h>
 #include <ATen/native/IndexingUtils.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
+#include <ATen/native/Padding.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 
@@ -527,50 +528,13 @@ void replication_pad2d_backward_kernel(
   TORCH_CHECK(padding.size() == 4, "padding Size is expected to be 4");
 
   const auto padL = padding[0];
-  const auto padR = padding[1];
   const auto padT = padding[2];
-  const auto padB = padding[3];
-  int dimc = 0;
-  int dimh = 1;
-  int dimw = 2;
 
   int numInputDims = input.dim();
-  if (numInputDims == 4) {
-    dimc++;
-    dimh++;
-    dimw++;
-  }
-  const auto ichannel = input.size(dimc);
-  const auto iheight = input.size(dimh);
-  const auto iwidth = input.size(dimw);
-  const auto oheight = iheight + padT + padB;
-  const auto owidth = iwidth + padL + padR;
-
-  // Validate the channel (plane) dimension in addition to the spatial dims.
-  // Without this check a grad_output whose channel count does not match the
-  // input (e.g. 0 channels) passes the width/height checks, a non-empty
-  // grad_input is allocated from the input shape, and the kernel reads
-  // grad_output out of bounds -> SIGSEGV. Mirrors the 3d backward check and
-  // the CPU/CUDA fix in pytorch/pytorch#189463.
-  TORCH_CHECK(
-      ichannel == grad_output.size(dimc),
-      "gradOutput channel unexpected. Expected: ",
-      ichannel,
-      ", Got: ",
-      grad_output.size(dimc));
-
-  TORCH_CHECK(
-      owidth == grad_output.size(dimw),
-      "grad_output width unexpected. Expected: ",
-      owidth,
-      ", Got: ",
-      grad_output.size(dimw));
-  TORCH_CHECK(
-      oheight == grad_output.size(dimh),
-      "grad_output height unexpected. Expected: ",
-      oheight,
-      ", Got: ",
-      grad_output.size(dimh));
+    
+  at::native::padding::pad_backward_shape_check(
+      grad_output, input, padding, /*dim=*/2);
+  
 
   grad_input.resize_as_(input);
   if (grad_input.numel() == 0) {
@@ -651,24 +615,23 @@ static inline void shapeAndGradOutputCheck3d(
       "Expected 4D or 5D (batch mode) tensor with possibly 0 batch size and other non-zero dimensions for input, but got: ",
       input.sizes());
 
-  int plane_dim = 0;
+ 
   int dimd = 1;
   int dimh = 2;
   int dimw = 3;
   if (num_input_dims == 5) {
-    plane_dim++;
     dimd++;
     dimh++;
     dimw++;
   }
 
-  int64_t num_planes = input.size(plane_dim);
   int64_t idepth = input.size(dimd);
   int64_t iheight = input.size(dimh);
   int64_t iwidth = input.size(dimw);
   int64_t odepth = idepth + pad_front + pad_back;
   int64_t oheight = iheight + pad_top + pad_bottom;
   int64_t owidth = iwidth + pad_left + pad_right;
+
   TORCH_CHECK(
       owidth >= 1 || oheight >= 1 || odepth >= 1,
       "input (D: ",
@@ -689,30 +652,9 @@ static inline void shapeAndGradOutputCheck3d(
       canUse32BitIndexMath(grad_output),
       "output gradient tensor must fit into 32-bit index math");
 
-  TORCH_CHECK(
-      num_planes == grad_output.size(plane_dim),
-      "grad_output width unexpected. Expected: ",
-      num_planes,
-      ", Got: ",
-      grad_output.size(plane_dim));
-  TORCH_CHECK(
-      owidth == grad_output.size(dimw),
-      "grad_output width unexpected. Expected: ",
-      owidth,
-      ", Got: ",
-      grad_output.size(dimw));
-  TORCH_CHECK(
-      oheight == grad_output.size(dimh),
-      "grad_output height unexpected. Expected: ",
-      oheight,
-      ", Got: ",
-      grad_output.size(dimh));
-  TORCH_CHECK(
-      odepth == grad_output.size(dimd),
-      "grad_output depth unexpected. Expected: ",
-      odepth,
-      ", Got: ",
-      grad_output.size(dimd));
+  at::native::padding::pad_backward_shape_check(
+      grad_output, input, {pad_left, pad_right, pad_top, pad_bottom, pad_front, pad_back}, /*dim=*/3);
+
 }
 
 void replication_pad3d_backward_kernel(
