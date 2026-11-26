@@ -1361,6 +1361,48 @@ void gamma_beta_bwd_simple_kernel(
 #undef VECTORIZE_KERNEL
 }
 
+struct LayerNormBwdTileConfig {
+  int tile_size_m;
+  int tile_size_n;
+  int num_tile_m;
+  int num_tile_n;
+};
+
+inline LayerNormBwdTileConfig layer_norm_bwd_tile_config_select(
+    int64_t M,
+    int64_t N,
+    int64_t thread_slots,
+    size_t local_size_x = 8,
+    size_t SIMD = 32) {
+  int tile_size_m = 1024;
+  int tile_size_n = N < 32 ? static_cast<int>(N) : 32;
+  int num_tile_m = (M + tile_size_m - 1) / tile_size_m;
+  int num_tile_n = (N + tile_size_n - 1) / tile_size_n;
+  bool adjust_m = true;
+
+  const int max_sg_size = at::xpu::getDeviceMaxSubGroupSize();
+
+  for (int i = 0; i < 3; ++i) {
+    if (num_tile_m * num_tile_n * local_size_x * SIMD / max_sg_size * 2 >
+        thread_slots) {
+      break;
+    }
+
+    // occupancy <= 50%
+    if (adjust_m) {
+      tile_size_m /= 2;
+      num_tile_m = (M + tile_size_m - 1) / tile_size_m;
+      adjust_m = false;
+    } else {
+      tile_size_n /= 2;
+      num_tile_n = (N + tile_size_n - 1) / tile_size_n;
+      adjust_m = true;
+    }
+  }
+
+  return {tile_size_m, tile_size_n, num_tile_m, num_tile_n};
+}
+
 template <
     typename scalar_t,
     typename mean_t,
@@ -1458,38 +1500,23 @@ void layer_norm_backward_kernel_impl(
           thread_slots;
   int xe_core_count = at::xpu::getDeviceXeCoreCount();
   int tile_n = N / 32;
+
   const size_t local_size_x = 8;
   const size_t SIMD = 32;
   // workgroup size is 256
   // slm is 16KB, 64*32 float * 2
   // elements_per_thread is at least 16
   const int elements_per_thread = 16;
-  int tile_size_m = 1024;
-  int tile_size_n = N < 32 ? N : 32;
-  int num_tile_m = (M + tile_size_m - 1) / tile_size_m;
-  int num_tile_n = (N + tile_size_n - 1) / tile_size_n;
-  bool adjust_m = true;
   // for M = 64*1024, N = 1, we choose tile size (256, 16) on pvc
   // TODO: Consider tuning the tile size selection logic (tile_size_m,
   // tile_size_n) and occupancy calculation
-  for (auto i = 0; i < 3; i++) {
-    // occupancy <= 50%
-    if (num_tile_m * num_tile_n * local_size_x * SIMD /
-            at::xpu::getDeviceMaxSubGroupSize() * 2 <=
-        thread_slots) {
-      if (adjust_m) {
-        tile_size_m /= 2;
-        num_tile_m = (M + tile_size_m - 1) / tile_size_m;
-        adjust_m = false;
-      } else {
-        tile_size_n /= 2;
-        num_tile_n = (N + tile_size_n - 1) / tile_size_n;
-        adjust_m = true;
-      }
-    } else {
-      break;
-    }
-  }
+  const auto tile_config = layer_norm_bwd_tile_config_select(
+      M, N, thread_slots, local_size_x, SIMD);
+  const int tile_size_m = tile_config.tile_size_m;
+  const int tile_size_n = tile_config.tile_size_n;
+  const int num_tile_m = tile_config.num_tile_m;
+  const int num_tile_n = tile_config.num_tile_n;
+
   size_t num_workgroup = std::min(
       num_tile_m * num_tile_n, static_cast<int>(thread_slots / local_size_x));
   // Both kernels are bound by the chain of rows each work-item reduces
