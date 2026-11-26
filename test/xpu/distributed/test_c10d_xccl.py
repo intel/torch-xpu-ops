@@ -551,6 +551,146 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
                 self.assertIn(key, covering[0]["args"], f"{launch['name']}: {key}")
 
 
+class ProcessGroupXCCLSplitTest(MultiProcessTestCase):
+    # `supports_splitting=True` changes PyTorch's default initialization paths
+    # for every XCCL process group, not just the pipelining use case:
+    #  - init_process_group/new_group with a device_id eagerly connects the
+    #    local device's communicator (eager_connect_single_device);
+    #  - DeviceMesh builds its dimension groups through a single
+    #    split_group() call whenever the default group carries a bound
+    #    device_id, instead of the new_group() loop.
+    # These tests verify both switched paths and the unchanged fallback.
+
+    @property
+    def world_size(self):
+        return 4
+
+    def setUp(self):
+        super().setUp()
+        self._spawn_processes()
+
+    def tearDown(self):
+        super().tearDown()
+        try:
+            os.remove(self.file_name)
+        except OSError:
+            pass
+
+    def _create_process_group_xccl(
+        self, timeout=timedelta(seconds=600), device_id=None
+    ):
+        if device_id is not None:
+            torch.xpu.set_device(device_id)
+        store = c10d.FileStore(self.file_name, self.world_size)
+        c10d.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+            timeout=timeout,
+            device_id=device_id,
+        )
+        return c10d.distributed_c10d._get_default_group()
+
+    def _xpu_device(self):
+        return torch.device(f"xpu:{self.rank}")
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(4)
+    def test_eager_connect_with_device_id_allreduce(self):
+        pg = self._create_process_group_xccl(device_id=self._xpu_device())
+        self.assertIsNotNone(pg.bound_device_id)
+        t = torch.ones(16, device="xpu")
+        dist.all_reduce(t)
+        self.assertEqual(t, torch.full((16,), float(self.world_size), device="xpu"))
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(4)
+    def test_eager_connect_destroy_without_collective(self):
+        # The eagerly created communicator must not leave a half-initialized
+        # state behind: destroying the group without running any collective
+        # has to exit cleanly.
+        self._create_process_group_xccl(device_id=self._xpu_device())
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(4)
+    def test_new_group_with_device_id(self):
+        self._create_process_group_xccl(device_id=self._xpu_device())
+        sub = c10d.new_group([0, 1], device_id=self._xpu_device())
+        if self.rank in (0, 1):
+            t = torch.ones(8, device="xpu")
+            dist.all_reduce(t, group=sub)
+            self.assertEqual(t, torch.full((8,), 2.0, device="xpu"))
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(4)
+    def test_device_mesh_split_full_mesh(self):
+        from torch.distributed.device_mesh import DeviceMesh
+
+        # Default group created with device_id -> the mesh's dimension group
+        # is built through split_group() on the splitting backend.
+        self._create_process_group_xccl(device_id=self._xpu_device())
+        mesh = DeviceMesh("xpu", torch.arange(self.world_size))
+        t = torch.ones(8, device="xpu")
+        dist.all_reduce(t, group=mesh.get_group())
+        self.assertEqual(t, torch.full((8,), float(self.world_size), device="xpu"))
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(4)
+    def test_device_mesh_split_reversed_2d(self):
+        from torch.distributed.device_mesh import DeviceMesh
+
+        # A non-contiguous 2-D mesh over all 4 ranks splits every dimension
+        # group from the default group; each rank sits in exactly one group
+        # per dimension and both must be usable for collectives.
+        self._create_process_group_xccl(device_id=self._xpu_device())
+        mesh = DeviceMesh("xpu", torch.tensor([[3, 1], [2, 0]]))
+        for mesh_dim in range(2):
+            t = torch.ones(8, device="xpu")
+            dist.all_reduce(t, group=mesh.get_group(mesh_dim))
+            self.assertEqual(t, torch.full((8,), 2.0, device="xpu"))
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(4)
+    def test_split_group_position_ordered_ranks(self):
+        # split_group()'s `split_ranks` entries are position-ordered: the
+        # position of a rank inside an inner list is its rank in the child
+        # group. ProcessGroupXCCL::split() must honor that ordering (unlike
+        # onecclCommSplit, which orders by parent rank) or c10d and oneCCL
+        # disagree about who is who and collectives mismatch or hang.
+        pg = self._create_process_group_xccl(device_id=self._xpu_device())
+        position_order = [3, 1, 2, 0]
+        sub = dist.split_group(pg, split_ranks=[position_order])
+        self.assertEqual(sub.size(), self.world_size)
+        self.assertEqual(sub.rank(), position_order.index(self.rank))
+        t = torch.full((8,), float(self.rank + 1), device="xpu")
+        dist.all_reduce(t, group=sub)
+        self.assertEqual(
+            t,
+            torch.full((8,), float(sum(range(1, self.world_size + 1))), device="xpu"),
+        )
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(4)
+    def test_device_mesh_fallback_no_device_id(self):
+        from torch.distributed.device_mesh import DeviceMesh
+
+        # Without a bound device_id the mesh keeps using the new_group()
+        # loop; that path must be unaffected by supports_splitting=True.
+        self._create_process_group_xccl()
+        mesh = DeviceMesh("xpu", torch.arange(self.world_size))
+        t = torch.ones(8, device="xpu")
+        dist.all_reduce(t, group=mesh.get_group())
+        self.assertEqual(t, torch.full((8,), float(self.world_size), device="xpu"))
+        dist.destroy_process_group()
+
+
 class CommTest(MultiProcessTestCase):
     @property
     def device(self):
