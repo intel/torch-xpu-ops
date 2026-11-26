@@ -770,9 +770,12 @@ struct VectorizedLayerNormKernelSmallFunctor {
 };
 
 int64_t layer_norm_wg_size_select(
-    const int64_t max_wg_size,
+    int64_t max_wg_size,
     const int64_t M,
     const int n) {
+  // compute_stats tree-reduces subgroups by halving, so keep wg_size a power
+  // of two even if the kernel max work-group size is not (e.g. 768).
+  max_wg_size = c10::llvm::PowerOf2Floor(max_wg_size);
   if (n >= max_wg_size)
     return max_wg_size;
 
@@ -880,13 +883,8 @@ void launch_vectorized_layer_norm_kernel(
   }
 
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
-  // compute_stats tree-reduces subgroups by halving, so keep wg_size a power
-  // of two even if the kernel max work-group size is not (e.g. 768).
   auto wg_size = layer_norm_wg_size_select(
-      c10::llvm::PowerOf2Floor(
-          at::xpu::getKernelMaxWorkGroupSize<KernelClass>()),
-      M,
-      N / vec_size<T>);
+      at::xpu::getKernelMaxWorkGroupSize<KernelClass>(), M, N / vec_size<T>);
   KernelClass kfn(
       N,
       eps,
