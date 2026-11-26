@@ -315,7 +315,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
   if (dev.has(sycl::aspect::ext_oneapi_ipc_physical_memory)) {
     namespace syclexp = sycl::ext::oneapi::experimental;
     sycl::context ctx = current_queue.get_context();
-    // Work around a SYCL runtime bug (CMPLRLLVM-80016):
+    // Work around a SYCL runtime bug (GSD-14390):
     // sycl_ext_oneapi_virtual_mem allows any multiple of get_mem_granularity,
     // but on Level Zero, sizes of 2 MiB and more must also be a multiple of
     // 2 MiB, the page size Level Zero uses for them.
@@ -375,6 +375,7 @@ struct RendezvousRequest {
   size_t buffer_size;
   size_t signal_pad_offset;
   bool has_multicast_support;
+  bool physical_ipc;
 };
 
 void validate_rendezvous_requests(
@@ -389,6 +390,15 @@ void validate_rendezvous_requests(
   }
 
   for (int r = 1; r < world_size; ++r) {
+    TORCH_CHECK(
+        reqs[r].physical_ipc == reqs[0].physical_ipc,
+        "XPUSymmetricMemory::rendezvous: rank 0 shares its block as ",
+        reqs[0].physical_ipc ? "physical memory" : "USM",
+        " but rank ",
+        r,
+        " as ",
+        reqs[r].physical_ipc ? "physical memory" : "USM",
+        ". All ranks must support ext_oneapi_ipc_physical_memory, or none.");
     TORCH_CHECK(reqs[r].block_size == reqs[0].block_size);
     TORCH_CHECK(reqs[r].buffer_size == reqs[0].buffer_size);
     TORCH_CHECK(reqs[r].signal_pad_offset == reqs[0].signal_pad_offset);
@@ -463,13 +473,21 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     (void)::prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
   });
 
+  // Blocks allocated as physical memory are shared as physical memory objects;
+  // each peer imports and maps them itself (see alloc()).
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  const bool physical_ipc = block->alloc_ref->physmem.has_value();
+#else
+  const bool physical_ipc = false;
+#endif
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
       .pid = getpid(),
       .block_size = block->block_size,
       .buffer_size = block->buffer_size,
       .signal_pad_offset = block->signal_pad_offset,
-      .has_multicast_support = false};
+      .has_multicast_support = false,
+      .physical_ipc = physical_ipc};
   auto reqs = storeExchange.all_gather(store, rank, world_size, local_req);
   validate_rendezvous_requests(reqs, world_size);
 
@@ -485,17 +503,12 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   // which older toolchains lack; keep ipc_memory until 2026.1 is dropped.
   C10_DIAGNOSTIC_PUSH_AND_IGNORED_IF_DEFINED("-Wdeprecated-declarations")
   namespace syclexp = sycl::ext::oneapi::experimental;
-  // Blocks allocated as physical memory are shared as physical memory objects;
-  // each peer imports and maps them itself (see alloc()).
 #if XPU_SYMM_MEM_PHYSICAL_IPC
-  const bool physical = block->alloc_ref->physmem.has_value();
   std::vector<c10::intrusive_ptr<AllocationRef>> peer_refs(world_size);
-#else
-  const bool physical = false;
 #endif
   std::vector<std::byte> local_handle_bytes;
 #if XPU_SYMM_MEM_PHYSICAL_IPC
-  if (physical) {
+  if (physical_ipc) {
     // Export once per block and reuse the handle in every group. Releasing it
     // after a rendezvous and exporting again would give a peer that imports
     // this block for the first time, in a later group, a handle it cannot
@@ -507,7 +520,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     local_handle_bytes = block->exported_handle->data();
   }
 #endif
-  if (!physical) {
+  if (!physical_ipc) {
     local_handle_bytes = syclexp::ipc_memory::get(base_ptr, ctx).data();
   }
   std::vector<uint8_t> local_payload(
@@ -538,7 +551,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
         reinterpret_cast<const std::byte*>(payload.data()) + payload.size());
     void* remote_base = nullptr;
 #if XPU_SYMM_MEM_PHYSICAL_IPC
-    if (physical) {
+    if (physical_ipc) {
       // Import for the local device: imports for the exporting device are not
       // reliably visible to kernels on the local device with current drivers.
       syclexp::physical_mem physmem =
