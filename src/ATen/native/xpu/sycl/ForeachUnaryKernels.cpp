@@ -17,6 +17,7 @@
 #include <ATen/native/xpu/sycl/ForeachUnaryKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
+#include <ATen/native/xpu/sycl/SigmoidOps.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
 
@@ -374,19 +375,6 @@ FOREACH_UNARY_KERNEL(sqrt) {
 }
 
 template <typename T>
-struct Sigmoid {
-  T operator()(T t) const {
-    using opmath_t = at::opmath_type<T>;
-    const opmath_t one = opmath_t{1};
-    if constexpr (c10::is_complex<opmath_t>::value) {
-      return one / (one + std::exp(-static_cast<opmath_t>(t)));
-    } else {
-      return one / (one + sycl::exp(-static_cast<opmath_t>(t)));
-    }
-  }
-};
-
-template <typename T>
 struct Round {
   T operator()(T t) const {
     return sycl::rint(static_cast<at::opmath_type<T>>(t));
@@ -439,10 +427,10 @@ struct Rsqrt<c10::complex<double>> {
 };
 
 FOREACH_UNARY_INPLACE_KERNEL(sigmoid) {
-  return floating_complex_half_bfloat16_<Sigmoid>(tensors);
+  return floating_complex_half_bfloat16_<SigmoidFunctor>(tensors);
 }
 FOREACH_UNARY_KERNEL(sigmoid) {
-  return floating_complex_half_bfloat16<Sigmoid>(tensors);
+  return floating_complex_half_bfloat16<SigmoidFunctor>(tensors);
 }
 
 FOREACH_UNARY_INPLACE_KERNEL(round) {
