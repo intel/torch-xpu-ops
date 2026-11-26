@@ -126,7 +126,6 @@ skip_dict = {
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
-    "test_distributions_xpu.py": None,
     "test_fx_experimental_xpu.py": None,
     "test_fx_xpu.py": None,
     "test_linalg_xpu.py": (
