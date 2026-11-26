@@ -98,7 +98,6 @@ skip_dict = {
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_compile_benchmark_util_xpu.py": None,
     "test_complex_xpu.py": None,
-    "test_cuda_multigpu_xpu.py": None,
     "test_cuda_nvml_based_avail_xpu.py": None,
     "test_cuda_primary_ctx_xpu.py": None,
     "test_cuda_sanitizer_xpu.py": None,
@@ -185,6 +184,12 @@ skip_dict = {
         "_efficient_attention_",
         # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
         "test_dtypes_linalg_multi_dot_xpu",
+        # XPU dot now supports integral dtypes; the OpInfo claim lands
+        # in stock pytorch separately. Remove after that PR + pin bump.
+        # https://github.com/intel/torch-xpu-ops/issues/4452
+        "test_dtypes_dot_xpu",
+        "test_dtypes_vdot_xpu",
+        "test_dtypes_inner_xpu",
         # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
         "test_out_mean_xpu_float32",
         # FakeTensor mismatch in outputs_alias_inputs for aten.view.default
@@ -420,6 +425,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_maskedtensor.py": None,
     f"{PYTORCH_TEST_DIR}/test_mkldnn.py": None,
     f"{PYTORCH_TEST_DIR}/test_modules.py": None,
+    f"{PYTORCH_TEST_DIR}/test_multigpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_multiprocessing.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_mha.py": None,
