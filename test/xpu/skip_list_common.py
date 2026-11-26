@@ -160,9 +160,8 @@ skip_dict = {
     ),
     "test_matmul_cuda_xpu.py": None,
     "test_meta_xpu.py": (
-        # skipped due to #2309, unsupported ops: aten::narrow_copy, aten::_histogramdd_bin_edges
+        # skipped due to #2309, unsupported ops: aten::narrow_copy
         "narrow_copy",
-        "histogramdd",
         "_jiterator_",
         # https://github.com/intel/torch-xpu-ops/issues/2285
         "_efficient_attention_forward",
@@ -179,7 +178,6 @@ skip_dict = {
         # crash
         "test_dtypes__refs_nn_functional_pdist_xpu",
         # not implemented
-        "histogramdd",
         "_flash_attention_",
         "_efficient_attention_",
         # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!

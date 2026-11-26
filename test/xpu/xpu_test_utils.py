@@ -330,7 +330,6 @@ _xpu_computation_op_list = [
 
 _ops_without_cuda_support = [
     "histogram",
-    "histogramdd",
 ]
 
 _ops_dtype_different_cuda_support = {
@@ -372,6 +371,7 @@ _cuda_xfail_xpu_pass = [
     ("_refs.true_divide", "test_python_ref_torch_fallback"),
     ("argsort", "test_non_standard_bool_values"),
     ("sort", "test_non_standard_bool_values"),
+    ("histogramdd", "test_errors"),
 ]
 
 # Additional unscoped (device_type=None) expectedFailure entries that should
