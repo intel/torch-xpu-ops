@@ -531,10 +531,10 @@ void replication_pad2d_backward_kernel(
   const auto padT = padding[2];
 
   int numInputDims = input.dim();
-    
+
   at::native::padding::pad_backward_shape_check(
       grad_output, input, padding, /*dim=*/2);
-  
+
 
   grad_input.resize_as_(input);
   if (grad_input.numel() == 0) {
@@ -615,7 +615,7 @@ static inline void shapeAndGradOutputCheck3d(
       "Expected 4D or 5D (batch mode) tensor with possibly 0 batch size and other non-zero dimensions for input, but got: ",
       input.sizes());
 
- 
+
   int dimd = 1;
   int dimh = 2;
   int dimw = 3;
