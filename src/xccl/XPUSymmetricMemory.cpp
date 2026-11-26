@@ -9,8 +9,10 @@
 
 #include <xccl/ProcessGroupXCCL.hpp>
 
+#include <ATen/Context.h> // Residency workaround only
 #include <ATen/ceil_div.h>
 #include <ATen/xpu/XPUContext.h>
+#include <ATen/xpu/level_zero_stub/ATenLevelZero.h> // Residency workaround only
 #include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
@@ -48,10 +50,39 @@ AllocationRef::AllocationRef(
       device_idx(device_idx),
       local_allocation(local_allocation) {}
 
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+AllocationRef::AllocationRef(
+    void* ptr,
+    size_t block_size,
+    int device_idx,
+    bool local_allocation,
+    sycl::ext::oneapi::experimental::physical_mem physmem)
+    : ptr(ptr),
+      handle(ptr),
+      block_size(block_size),
+      device_idx(device_idx),
+      local_allocation(local_allocation),
+      physmem(std::move(physmem)) {}
+#endif
+
 AllocationRef::~AllocationRef() {
   if (is_finalizing()) {
     return;
   }
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  if (physmem) {
+    // This process owns the mapping, whether the memory is local or imported.
+    namespace syclexp = sycl::ext::oneapi::experimental;
+    c10::Device local_device(c10::DeviceType::XPU, device_idx);
+    c10::DeviceGuard guard(local_device);
+    c10::xpu::syncStreamsOnDevice();
+    sycl::context ctx = physmem->get_context();
+    syclexp::unmap(ptr, block_size, ctx);
+    syclexp::free_virtual_mem(
+        reinterpret_cast<uintptr_t>(ptr), block_size, ctx);
+    return;
+  }
+#endif
   // Currently, we cannot free virtual memory exchanged from other device.
   // (SYCL `ipc_memory::close` is available but calling it during teardown
   // has been observed to hang on this stack; match the original L0 path
@@ -247,6 +278,17 @@ Block::Block(
       signal_pad_offset(signal_pad_offset),
       default_group_name(std::move(group_name)) {}
 
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+Block::~Block() {
+  // The only release of the exported handle: rendezvous() reuses it in every
+  // group, since the block cannot be exported again after a put.
+  if (exported_handle && !is_finalizing()) {
+    sycl::ext::oneapi::experimental::ipc::physical_memory::put(
+        *exported_handle, alloc_ref->physmem->get_context());
+  }
+}
+#endif
+
 void* XPUSymmetricMemoryAllocator::alloc(
     size_t size,
     int device_idx,
@@ -262,10 +304,41 @@ void* XPUSymmetricMemoryAllocator::alloc(
   //    exchanged IPC handles/addresses;
   // 3) preserve flexibility for future handle-based features (for example,
   //    reconstructing multicast objects from physical/shared handles).
-  void* ptr = sycl::malloc_device(block_size, current_queue);
+  void* ptr = nullptr;
+  c10::intrusive_ptr<AllocationRef> alloc_ref;
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  // Each block is its own physical memory object, which peers import and map
+  // themselves, as the CUDA backend does with cuMemCreate. Unlike USM shared
+  // through ipc::memory, the importer's mapping is usable by kernels that load
+  // the peer address from device memory, such as the signal kernels.
+  sycl::device dev = current_queue.get_device();
+  if (dev.has(sycl::aspect::ext_oneapi_ipc_physical_memory)) {
+    namespace syclexp = sycl::ext::oneapi::experimental;
+    sycl::context ctx = current_queue.get_context();
+    // Work around a SYCL runtime bug (GSD-14390):
+    // sycl_ext_oneapi_virtual_mem allows any multiple of get_mem_granularity,
+    // but on Level Zero, sizes of 2 MiB and more must also be a multiple of
+    // 2 MiB, the page size Level Zero uses for them.
+    constexpr size_t kLargePageSize = 2 * 1024 * 1024;
+    block_size =
+        at::round_up(block_size, syclexp::get_mem_granularity(dev, ctx));
+    if (block_size >= kLargePageSize) {
+      block_size = at::round_up(block_size, kLargePageSize);
+    }
+    syclexp::physical_mem physmem(
+        dev, ctx, block_size, syclexp::properties{syclexp::enable_ipc{}});
+    uintptr_t va = syclexp::reserve_virtual_mem(block_size, ctx);
+    ptr = physmem.map(va, block_size, syclexp::address_access_mode::read_write);
+    alloc_ref = c10::make_intrusive<AllocationRef>(
+        ptr, block_size, device_idx, true, std::move(physmem));
+  }
+#endif
+  if (!ptr) {
+    ptr = sycl::malloc_device(block_size, current_queue);
+    alloc_ref = c10::make_intrusive<AllocationRef>(
+        ptr, ptr, block_size, device_idx, true);
+  }
   current_queue.memset(ptr, 0, block_size).wait();
-  auto alloc_ref = c10::make_intrusive<AllocationRef>(
-      ptr, ptr, block_size, device_idx, true);
   auto block = c10::make_intrusive<Block>(
       std::move(alloc_ref),
       device_idx,
@@ -302,6 +375,7 @@ struct RendezvousRequest {
   size_t buffer_size;
   size_t signal_pad_offset;
   bool has_multicast_support;
+  bool physical_ipc;
 };
 
 void validate_rendezvous_requests(
@@ -316,6 +390,15 @@ void validate_rendezvous_requests(
   }
 
   for (int r = 1; r < world_size; ++r) {
+    TORCH_CHECK(
+        reqs[r].physical_ipc == reqs[0].physical_ipc,
+        "XPUSymmetricMemory::rendezvous: rank 0 shares its block as ",
+        reqs[0].physical_ipc ? "physical memory" : "USM",
+        " but rank ",
+        r,
+        " as ",
+        reqs[r].physical_ipc ? "physical memory" : "USM",
+        ". All ranks must support ext_oneapi_ipc_physical_memory, or none.");
     TORCH_CHECK(reqs[r].block_size == reqs[0].block_size);
     TORCH_CHECK(reqs[r].buffer_size == reqs[0].buffer_size);
     TORCH_CHECK(reqs[r].signal_pad_offset == reqs[0].signal_pad_offset);
@@ -390,13 +473,21 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     (void)::prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
   });
 
+  // Blocks allocated as physical memory are shared as physical memory objects;
+  // each peer imports and maps them itself (see alloc()).
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  const bool physical_ipc = block->alloc_ref->physmem.has_value();
+#else
+  const bool physical_ipc = false;
+#endif
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
       .pid = getpid(),
       .block_size = block->block_size,
       .buffer_size = block->buffer_size,
       .signal_pad_offset = block->signal_pad_offset,
-      .has_multicast_support = false};
+      .has_multicast_support = false,
+      .physical_ipc = physical_ipc};
   auto reqs = storeExchange.all_gather(store, rank, world_size, local_req);
   validate_rendezvous_requests(reqs, world_size);
 
@@ -412,9 +503,26 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   // which older toolchains lack; keep ipc_memory until 2026.1 is dropped.
   C10_DIAGNOSTIC_PUSH_AND_IGNORED_IF_DEFINED("-Wdeprecated-declarations")
   namespace syclexp = sycl::ext::oneapi::experimental;
-  syclexp::ipc_memory::handle local_handle =
-      syclexp::ipc_memory::get(base_ptr, ctx);
-  syclexp::ipc_memory::handle_data_t local_handle_bytes = local_handle.data();
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  std::vector<c10::intrusive_ptr<AllocationRef>> peer_refs(world_size);
+#endif
+  std::vector<std::byte> local_handle_bytes;
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+  if (physical_ipc) {
+    // Export once per block and reuse the handle in every group. Releasing it
+    // after a rendezvous and exporting again would give a peer that imports
+    // this block for the first time, in a later group, a handle it cannot
+    // open. The handle is released in ~Block().
+    if (!block->exported_handle) {
+      block->exported_handle =
+          syclexp::ipc::physical_memory::get(*block->alloc_ref->physmem);
+    }
+    local_handle_bytes = block->exported_handle->data();
+  }
+#endif
+  if (!physical_ipc) {
+    local_handle_bytes = syclexp::ipc_memory::get(base_ptr, ctx).data();
+  }
   std::vector<uint8_t> local_payload(
       reinterpret_cast<const uint8_t*>(local_handle_bytes.data()),
       reinterpret_cast<const uint8_t*>(local_handle_bytes.data()) +
@@ -441,7 +549,53 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     syclexp::ipc_memory::handle_data_t peer_bytes(
         reinterpret_cast<const std::byte*>(payload.data()),
         reinterpret_cast<const std::byte*>(payload.data()) + payload.size());
-    void* remote_base = syclexp::ipc_memory::open(peer_bytes, ctx, dev);
+    void* remote_base = nullptr;
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+    if (physical_ipc) {
+      // Import for the local device: imports for the exporting device are not
+      // reliably visible to kernels on the local device with current drivers.
+      syclexp::physical_mem physmem =
+          syclexp::ipc::physical_memory::open(peer_bytes, ctx, dev);
+      uintptr_t va = syclexp::reserve_virtual_mem(block->block_size, ctx);
+      remote_base = physmem.map(
+          va, block->block_size, syclexp::address_access_mode::read_write);
+      peer_refs[r] = c10::make_intrusive<AllocationRef>(
+          remote_base,
+          block->block_size,
+          block->device_idx,
+          false,
+          std::move(physmem));
+      handles[r] = remote_base;
+      buffers[r] = remote_base;
+      signal_pads[r] =
+          static_cast<char*>(remote_base) + block->signal_pad_offset;
+      continue;
+    }
+#endif
+    remote_base = syclexp::ipc_memory::open(peer_bytes, ctx, dev);
+    // L0 does not make an imported IPC allocation resident on this device
+    // until a kernel takes it as a direct argument. The signal kernels only
+    // reach peer memory through pointers loaded from signal_pads_dev_, so
+    // without this their first access page-faults and the device is lost.
+    // This relies on opening peer memory on this device: opened on the
+    // exporting device, residency calls on later blocks of a pooled
+    // allocation map the first block's memory (driver bug, GSD-14207).
+    // TODO: Remove this workaround, and the includes marked for it, once
+    // oneAPI n-1 is 2026.2 or later, so that every build shares symmetric
+    // memory as physical memory, or once IPC imports are usable through
+    // indirect access.
+    ze_result_t ze_status =
+        at::globalContext().getLevelZero().zeContextMakeMemoryResident(
+            sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx),
+            sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev),
+            remote_base,
+            block->block_size);
+    TORCH_CHECK(
+        ze_status == ZE_RESULT_SUCCESS,
+        "zeContextMakeMemoryResident failed for peer ",
+        r,
+        " with error ",
+        ze_status);
 
     handles[r] = remote_base;
     buffers[r] = remote_base;
@@ -456,6 +610,12 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       alloc_refs.emplace_back(block->alloc_ref);
       continue;
     }
+#if XPU_SYMM_MEM_PHYSICAL_IPC
+    if (peer_refs[r]) {
+      alloc_refs.push_back(peer_refs[r]);
+      continue;
+    }
+#endif
     alloc_refs.push_back(c10::make_intrusive<AllocationRef>(
         buffers[r], handles[r], block->block_size, block->device_idx, false));
   }
