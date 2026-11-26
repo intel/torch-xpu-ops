@@ -124,7 +124,8 @@ jobs:
               github.rest.repos.getCombinedStatusForRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: sha
+                ref: sha,
+                per_page: 100
               })
             ]);
 
@@ -156,13 +157,15 @@ jobs:
             const acceptableConclusions = new Set(['success', 'skipped', 'neutral']);
             const failedChecks = latestChecks
               .filter(c => !acceptableConclusions.has(c.conclusion));
-            const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
+            // `bot-review` records the bot review gate for promotion only; it never blocks merging.
+            const blockingStatuses = statuses.data.statuses.filter(s => s.context !== 'bot-review');
+            const statusFailed = blockingStatuses.some(s => s.state !== 'success');
 
             if (failedChecks.length > 0 || statusFailed) {
               const failedNames = failedChecks.map(c => `${c.name}: ${c.conclusion}`).join(', ');
               const msg = [
                 failedChecks.length > 0 ? `Failed checks: ${failedNames}` : '',
-                statusFailed ? `Combined commit status: ${statuses.data.state}` : ''
+                statusFailed ? `Failed statuses: ${blockingStatuses.filter(s => s.state !== 'success').map(s => `${s.context}: ${s.state}`).join(', ')}` : ''
               ].filter(Boolean).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,

@@ -7,6 +7,10 @@ on:
         type: string
         default: ''
         description: 'Artifact tag of the UT checks to report on (empty means every one of the run)'
+      platform:
+        type: string
+        default: ''
+        description: 'Platform of the UT checks to report on, linux or windows (empty means every one of the run)'
 
 permissions:
   contents: read
@@ -34,6 +38,7 @@ jobs:
         uses: ./.github/actions/ut-report
         with:
           category: ${{ inputs.category }}
+          platform: ${{ inputs.platform }}
       - name: Comment on PR for new failures
         if: >-
           ${{ ! cancelled() && github.event_name == 'pull_request'

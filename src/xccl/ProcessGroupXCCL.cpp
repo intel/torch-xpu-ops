@@ -485,6 +485,16 @@ void ProcessGroupXCCL::attachRetireAndStatusCallback(
       /*use_future*/ false);
 }
 
+void ProcessGroupXCCL::attachRecordFunctionEndCallback(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
+  if (!work->recordFunctionEndCallback_) {
+    return;
+  }
+  work->future_->addCallback(
+      [work](at::ivalue::Future&) { work->recordFunctionEndCallback_(); },
+      /*use_future*/ false);
+}
+
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
 uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
@@ -748,7 +758,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
     std::vector<at::Device> devices{device};
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
-    work->future_->markCompleted(at::IValue(std::vector<at::Tensor>()));
+    // Add a callback that runs profiling end callbacks.
+    attachRecordFunctionEndCallback(work);
+    work->future_->markCompleted(at::IValue(std::vector<at::Tensor>{}));
   }
 
   // Skip PG status update during graph capture
@@ -890,12 +902,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     work->xcclEndEvent_->record(stream);
   }
 
-  std::vector<c10::Stream> streams = {stream.unwrap()};
-  c10::MultiStreamGuard streamGuard(streams);
-  std::vector<at::Device> devices{device};
-  work->future_ = c10::make_intrusive<at::ivalue::Future>(
-      c10::ListType::create(c10::TensorType::get()), devices);
-  work->future_->markCompleted(at::IValue(*work->outputs_));
+  {
+    std::vector<c10::Stream> streams = {stream.unwrap()};
+    c10::MultiStreamGuard streamGuard(streams);
+    std::vector<at::Device> devices{device};
+    work->future_ = c10::make_intrusive<at::ivalue::Future>(
+        c10::ListType::create(c10::TensorType::get()), devices);
+    // Add a callback that runs profiling end callbacks.
+    attachRecordFunctionEndCallback(work);
+    work->future_->markCompleted(at::IValue(*work->outputs_));
+  }
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -1058,6 +1074,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
       std::vector<at::Device> devices{device};
       work->future_ = c10::make_intrusive<at::ivalue::Future>(
           c10::ListType::create(c10::TensorType::get()), devices);
+      // Add a callback that runs profiling end callbacks.
+      attachRecordFunctionEndCallback(work);
       work->future_->markCompleted(at::IValue(*work->outputs_));
     }
 
