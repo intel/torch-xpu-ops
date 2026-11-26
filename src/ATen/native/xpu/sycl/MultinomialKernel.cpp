@@ -227,6 +227,8 @@ void multinomial_kernel(
     Tensor& result,
     const Tensor& self,
     const int64_t n_sample,
+    // By value to match multinomial_with_replacement_stub
+    // NOLINTNEXTLINE(performance-unnecessary-value-param)
     std::optional<Generator> generator) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
