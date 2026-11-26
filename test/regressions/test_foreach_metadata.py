@@ -11,8 +11,14 @@ import torch
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
+    largeTensorTest,
 )
-from torch.testing._internal.common_utils import parametrize, run_tests, TestCase
+from torch.testing._internal.common_utils import (
+    parametrize,
+    run_tests,
+    serialTest,
+    TestCase,
+)
 
 
 class TestForeachMetadata(TestCase):
@@ -92,6 +98,38 @@ class TestForeachMetadata(TestCase):
                     optimizer.state[param][state_key],
                     ref_optimizer.state[ref_param][state_key],
                 )
+
+    @largeTensorTest("8GB")
+    @serialTest()
+    @parametrize("numel", (2**31 + 1024, 2**32))
+    def test_foreach_large_numel(self, device, numel):
+        x = torch.ones(numel, dtype=torch.int8, device=device)
+        torch._foreach_add_([x], 1)
+        self.assertEqual(x.min().item(), 2)
+        self.assertEqual(x.max().item(), 2)
+
+        torch._foreach_add_([x], [1])
+        self.assertEqual(x.min().item(), 3)
+        self.assertEqual(x.max().item(), 3)
+
+        scalar = torch.tensor(1, dtype=torch.int8, device=device)
+        torch._foreach_add_([x], scalar)
+        self.assertEqual(x.min().item(), 4)
+        self.assertEqual(x.max().item(), 4)
+
+    @largeTensorTest("28GB")
+    @serialTest()
+    @parametrize("optim_cls", (torch.optim.SGD, torch.optim.Adagrad))
+    def test_fused_optimizer_large_numel(self, device, optim_cls):
+        p = torch.ones(2**32, dtype=torch.float16, device=device)
+        p.grad = torch.ones_like(p)
+        optim_cls([p], lr=0.01, fused=True).step()
+
+        self.assertEqual(p.min(), p.max())
+        ref = torch.ones(1, dtype=torch.float16, device=device)
+        ref.grad = torch.ones_like(ref)
+        optim_cls([ref], lr=0.01, fused=True).step()
+        self.assertEqual(p[0], ref[0])
 
 
 instantiate_device_type_tests(

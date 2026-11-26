@@ -345,7 +345,7 @@ struct PointwiseOpScalarFunctor {
     T r_args[r_args_depth][kILP];
 
     if (n % kILP == 0 && chunk_size % kILP == 0 && all_aligned) {
-      for (int i_start = item_idx;
+      for (int64_t i_start = item_idx;
            i_start * kILP < n && i_start * kILP < chunk_size;
            i_start += item_range) {
         load_store(r_args[0], args[0], 0, i_start);
@@ -363,7 +363,7 @@ struct PointwiseOpScalarFunctor {
         load_store(args[res_arg_index], r_args[0], i_start, 0);
       }
     } else {
-      for (int i_start = 0; i_start < n && i_start < chunk_size;
+      for (int64_t i_start = 0; i_start < n && i_start < chunk_size;
            i_start += item_range * kILP) {
         load_args<3>(
             r_args, args, i_start, chunk_size, n, item_idx, item_range);
@@ -413,7 +413,7 @@ struct PointwiseOpScalarListFunctor {
     T r_args[r_args_depth][kILP];
 
     if (n % kILP == 0 && chunk_size % kILP == 0 && all_aligned) {
-      for (int i_start = item_idx;
+      for (int64_t i_start = item_idx;
            i_start * kILP < n && i_start * kILP < chunk_size;
            i_start += item_range) {
         load_store(r_args[0], args[0], 0, i_start);
@@ -431,7 +431,7 @@ struct PointwiseOpScalarListFunctor {
         load_store(args[res_arg_index], r_args[0], i_start, 0);
       }
     } else {
-      for (int i_start = 0; i_start < n && i_start < chunk_size;
+      for (int64_t i_start = 0; i_start < n && i_start < chunk_size;
            i_start += item_range * kILP) {
         load_args<3>(
             r_args, args, i_start, chunk_size, n, item_idx, item_range);
@@ -518,7 +518,7 @@ void binary_op_scalar(
     T r_args[][kILP],
     T** args,
     opmath_t scalar,
-    int n,
+    int64_t n,
     int64_t chunk_size,
     bool all_aligned,
     Op op,
@@ -575,7 +575,7 @@ void binary_op_scalar_tensor(
     T** args,
     scalar_t* scalar,
     opmath_t alpha,
-    int n,
+    int64_t n,
     int64_t chunk_size,
     bool all_aligned,
     Op op,

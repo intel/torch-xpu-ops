@@ -108,7 +108,7 @@ struct FusedSgdMathFunctor {
     const auto use_faster_load_store =
         (n % kILP == 0) && (chunk_size % kILP == 0) && all_aligned;
     if (use_faster_load_store) {
-      for (auto i_start = item_id;
+      for (int64_t i_start = item_id;
            i_start * kILP < n && i_start * kILP < chunk_size;
            i_start += local_range) {
 #pragma unroll
@@ -135,7 +135,7 @@ struct FusedSgdMathFunctor {
         }
       }
     } else {
-      for (auto i_start = 0; i_start < n && i_start < chunk_size;
+      for (int64_t i_start = 0; i_start < n && i_start < chunk_size;
            i_start += local_range * kILP) {
         load_args<depth>(
             r_args, args, i_start, chunk_size, n, item_id, local_range);
