@@ -24,6 +24,10 @@ were contiguous, producing incorrect values.
 """
 
 import torch
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 xpu_device = torch.device("xpu")
@@ -229,6 +233,177 @@ class TestBatchNormContiguous(TestCase):
 
         self.assertEqual(rm_cpu, rm_xpu.cpu(), atol=1e-4, rtol=1e-4)
         self.assertEqual(rv_cpu, rv_xpu.cpu(), atol=1e-4, rtol=1e-4)
+
+
+def _channels_last_with_offset(src, offset, device):
+    """Copy *src* (NCHW logical) to an XPU channels-last tensor whose
+    storage_offset is *offset* elements, so offset=1 breaks 2-element
+    alignment for 16-bit dtypes and forces the scalar fallback."""
+    numel = src.numel()
+    buf = torch.empty(numel + offset, dtype=src.dtype, device=device)
+    _, C, H, W = src.shape
+    t = buf.as_strided(src.shape, (H * W * C, 1, W * C, C), offset)
+    t.copy_(src.to(device))
+    if not t.is_contiguous(memory_format=torch.channels_last):
+        raise AssertionError("expected a channels-last tensor")
+    if t.storage_offset() != offset:
+        raise AssertionError(
+            f"expected storage offset {offset}, got {t.storage_offset()}"
+        )
+    return t
+
+
+class TestBatchNormBackwardElemtChannelsLast(TestCase):
+    """Numerical coverage for the 1-D channels-last backward elementwise kernel
+    (batch_norm_backward_elemt_channels_last_template, with and without count).
+
+    Shapes cover: aligned C, even non-aligned C, odd C with odd total element
+    count (vec2 channel wrap-around + scalar tail), and C >= 1024 (non-SLM
+    paths). storage_offset=1 on input / grad_output independently exercises
+    the unaligned scalar fallback.
+    """
+
+    SHAPES = [
+        (2, 32, 5, 5),  # aligned C
+        (2, 24, 7, 7),  # even, non cache-line aligned C
+        (3, 27, 3, 3),  # odd C, odd total -> wrap-around + tail
+        (1, 61, 3, 3),  # odd C, odd total
+        (2, 1026, 3, 3),  # even C >= 1024 -> non-SLM vec2
+        (1, 1025, 3, 3),  # odd C >= 1024, odd total -> scalar
+    ]
+
+    def _tol(self, dtype):
+        if dtype == torch.float32:
+            return 1e-4, 1e-4
+        if dtype == torch.float16:
+            return 2e-3, 2e-3
+        return 2e-2, 2e-2
+
+    def _inputs(self, shape, dtype):
+        torch.manual_seed(0)
+        C = shape[1]
+        x = torch.randn(shape).to(dtype)
+        go = torch.randn(shape).to(dtype)
+        # Distinct per-channel parameters so a wrong channel index is visible.
+        w = (torch.arange(C, dtype=torch.float32) / C + 0.5).to(dtype)
+        b = torch.randn(C).to(dtype)
+        return x, go, w, b
+
+    # F.batch_norm accepts a mixed-dtype weight/bias pair on XPU (fp16/bf16
+    # input with fp32 weight and bias, the standard mixed pattern), so the
+    # native-backward test also covers the mixed-dtype weight branch of the
+    # non-count backward template. Both weight and bias must be upcast: a
+    # half bias with a float weight fails in the forward with "expected
+    # scalar type Float but found Half".
+    def _check_native_backward(self, device, shape, dtype, weight_kind, in_off, go_off):
+        x, go, w, b = self._inputs(shape, dtype)
+        if weight_kind == "none":
+            w = None
+        elif weight_kind == "mixed":
+            w = w.float()
+            b = b.float()
+
+        # Reference: CPU fp64 NCHW.
+        xr = x.double().requires_grad_()
+        wr = None if w is None else w.double()
+        br = None if w is None else b.double()
+        out = torch.nn.functional.batch_norm(
+            xr, None, None, wr, br, training=True, eps=1e-5
+        )
+        out.backward(go.double())
+        ref = xr.grad
+
+        xx = _channels_last_with_offset(x, in_off, device).requires_grad_()
+        gx = _channels_last_with_offset(go, go_off, device)
+        w_xpu = None if w is None else w.to(device)
+        b_xpu = None if w is None else b.to(device)
+        out = torch.nn.functional.batch_norm(
+            xx,
+            None,
+            None,
+            w_xpu,
+            b_xpu,
+            training=True,
+            eps=1e-5,
+        )
+        out.backward(gx)
+        atol, rtol = self._tol(dtype)
+        self.assertEqual(xx.grad.cpu().double(), ref, atol=atol, rtol=rtol)
+
+    def _check_backward_elemt_count(
+        self, device, shape, dtype, weight_kind, in_off, go_off
+    ):
+        x, go, w, _ = self._inputs(shape, dtype)
+        if weight_kind == "none":
+            w = None
+        elif weight_kind == "mixed":
+            w = w.float()
+        C = shape[1]
+        dims = [0, 2, 3]
+
+        xd, god = x.double(), go.double()
+        mean = xd.mean(dims)
+        invstd = 1.0 / torch.sqrt(xd.var(dims, unbiased=False) + 1e-5)
+        sum_dy = god.sum(dims)
+        sum_dy_xmu = (god * (xd - mean.view(1, C, 1, 1))).sum(dims)
+        # Simulate 2 ranks each contributing the local count.
+        count = torch.tensor([x.numel() // C] * 2, dtype=torch.int32)
+        total = float(count.sum())
+        c4 = lambda t: t.view(1, C, 1, 1)
+        scale = 1.0 if w is None else w.double()
+        ref = (
+            god
+            - c4(sum_dy) / total
+            - (xd - c4(mean)) * c4(invstd * invstd * sum_dy_xmu / total)
+        ) * c4(scale * invstd)
+
+        xx = _channels_last_with_offset(x, in_off, device)
+        gx = _channels_last_with_offset(go, go_off, device)
+        f32 = lambda t: t.float().to(device)
+        w_xpu = None if w is None else w.to(device)
+        gi = torch.batch_norm_backward_elemt(
+            gx,
+            xx,
+            f32(mean),
+            f32(invstd),
+            w_xpu,
+            f32(sum_dy),
+            f32(sum_dy_xmu),
+            count.to(device),
+        )
+        atol, rtol = self._tol(dtype)
+        self.assertEqual(gi.cpu().double(), ref, atol=atol, rtol=rtol)
+
+    def _run(self, checker, device, dtype, weight_variants):
+        for shape in self.SHAPES:
+            for weight_kind in weight_variants:
+                for in_off, go_off in [(0, 0), (1, 0), (0, 1)]:
+                    with self.subTest(
+                        shape=shape,
+                        weight=weight_kind,
+                        in_off=in_off,
+                        go_off=go_off,
+                    ):
+                        checker(device, shape, dtype, weight_kind, in_off, go_off)
+
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    def test_native_backward_channels_last(self, device, dtype):
+        weight_variants = ["same", "none"]
+        if dtype != torch.float32:
+            weight_variants.append("mixed")
+        self._run(self._check_native_backward, device, dtype, weight_variants)
+
+    @dtypes(torch.float32, torch.float16, torch.bfloat16)
+    def test_backward_elemt_count_channels_last(self, device, dtype):
+        weight_variants = ["same", "none"]
+        if dtype != torch.float32:
+            weight_variants.append("mixed")
+        self._run(self._check_backward_elemt_count, device, dtype, weight_variants)
+
+
+instantiate_device_type_tests(
+    TestBatchNormBackwardElemtChannelsLast, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":
