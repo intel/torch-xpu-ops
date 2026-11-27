@@ -831,15 +831,11 @@ static inline bool try_launch_strided_binary(
     }
     constexpr int max_vec_size = std::min(8, 16 / max_bytes);
     const auto numel = iter.numel();
-    // Use the largest supported subgroup to size a wave of vectors. Require
-    // two waves for packing four 32-bit elements per work-item. Keep wider
-    // packed accesses for sub-dword elements with one wave.
-    const int64_t wave_items = at::xpu::getDeviceMaxWorkItems();
+    // Keep enough vector work-items for one wave.
+    const int64_t min_items = at::xpu::getDeviceMaxWorkItems();
     for (int vec_size = max_vec_size; vec_size > 1; vec_size /= 2) {
-      const int waves = max_bytes == 4 && vec_size == 4 ? 2 : 1;
-      if (numel / vec_size < waves * wave_items ||
+      if (numel / vec_size < min_items ||
           memory::can_vectorize_up_to<output_t>(data[0]) < vec_size ||
-          shape[0] % vec_size != 0 ||
           !is_aligned_strided_row(iter, 1, vec_size) ||
           !is_aligned_strided_row(iter, 2, vec_size)) {
         continue;

@@ -8,7 +8,8 @@
 
 # Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_utils import parametrize, TestCase
 
 cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
@@ -309,3 +310,45 @@ class TestSimpleBinary(TestCase):
         x_cpu_clone.ldexp_(e_cpu)
         x_xpu_clone.ldexp_(e_xpu)
         self.assertEqual(x_cpu_clone, x_xpu_clone.to(cpu_device))
+
+
+class TestAlignedRowBinary(TestCase):
+    @parametrize(
+        "cols,dtype",
+        [(126, torch.float32), (128, torch.float32), (128, torch.bfloat16)],
+    )
+    def test_transposed_padded_rows(self, device, cols, dtype):
+        # Different pitches require independent input offsets. A 126-element
+        # row only admits vec2; 128 also admits FP32 vec4 or BF16 vec8.
+        a = torch.randn(16384, 136, dtype=dtype)
+        b = torch.randn(16384, 144, dtype=dtype)
+
+        def apply(a, b):
+            a, b = a[:, :cols].t(), b[:, :cols].t()
+            if dtype == torch.bfloat16:
+                return torch.ops.aten.leaky_relu_backward(a, b, 0.125, False)
+            return torch.sub(a, b)
+
+        actual = apply(a.to(device), b.to(device))
+        self.assertEqual(actual.stride(), (1, cols))
+        self.assertEqual(actual.cpu(), apply(a, b))
+
+    def test_inplace_outer_broadcast(self, device):
+        x = torch.randn(16, 128, 32, 32, dtype=torch.float16).contiguous(
+            memory_format=torch.channels_last
+        )
+        bias = torch.randn(16, 128, 1, 1, dtype=x.dtype)
+        mask = bias < 0
+        actual = x.to(device)
+        actual.add_(bias.to(device))
+        x.add_(bias)
+        self.assertEqual(actual.cpu(), x)
+        actual.masked_fill_(mask.to(device), 3)
+        x.masked_fill_(mask, 3)
+        self.assertEqual(actual.stride(), x.stride())
+        self.assertEqual(actual.cpu(), x)
+
+
+instantiate_device_type_tests(
+    TestAlignedRowBinary, globals(), only_for="xpu", allow_xpu=True
+)
