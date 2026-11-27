@@ -840,20 +840,23 @@ static inline bool try_launch_strided_binary(
           !is_aligned_strided_row(iter, 2, vec_size)) {
         continue;
       }
-      auto launch = [&](auto width) {
-        constexpr int width_v = decltype(width)::value;
-        if constexpr (width_v <= max_vec_size) {
-          if (vec_size == width_v) {
-            auto ic = make_input_offset_calculator<2>(iter);
-            launch_strided_binary<width_v>(numel, f, data, ic);
+      auto ic = make_input_offset_calculator<2>(iter);
+      switch (vec_size) {
+        case 8:
+          if constexpr (max_vec_size == 8) {
+            launch_strided_binary<8>(numel, f, data, ic);
             return true;
           }
-        }
-        return false;
-      };
-      return launch(std::integral_constant<int, 8>{}) ||
-          launch(std::integral_constant<int, 4>{}) ||
-          launch(std::integral_constant<int, 2>{});
+          return false;
+        case 4:
+          launch_strided_binary<4>(numel, f, data, ic);
+          return true;
+        case 2:
+          launch_strided_binary<2>(numel, f, data, ic);
+          return true;
+        default:
+          return false;
+      }
     }
     return false;
   }
