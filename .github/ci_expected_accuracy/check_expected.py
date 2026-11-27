@@ -11,6 +11,13 @@ import argparse
 import pandas as pd
 from pathlib import Path
 
+# detectron2: cuda not run it
+# torchrec_dlrm: fbgemm_gpu not incompatable
+# stable_diffusion: stabilityai/stable-diffusion-2 is not a valid model identifier listed on 'https://huggingface.co/models'
+SKIPPED_MODELS = ['detectron2', 'torchrec_dlrm', 'stable_diffusion_text_encoder', 'stable_diffusion_unet']
+# Issues with any of these labels mute every model row they list, whatever its value.
+SKIP_LABELS = {'skipped', 'skipped_bmg', 'random'}
+
 
 def load_data(csv_file):
     """Load CSV file with comment support."""
@@ -45,6 +52,10 @@ def get_test_result(data, suite, dtype, mode, model):
 
     Returns:
         Test result or "N/A" if not found
+
+    Table convention (see get_issue.fast_extract_table_rows): after empty cells
+    are dropped a row needs at least 6 cells, `suite | dtype | mode | model |
+    value | message`, and row[4] is the exact value that is muted.
     """
     for issue in data:
         for row in issue.get('table_rows', []):
@@ -114,6 +125,8 @@ def categorize_model(model_name, test_accuracy, refer_accuracy, known_accuracy, 
     elif 'timeout' in test_accuracy:
         if refer_accuracy == "N/A":
             return "new", True
+        if known_accuracy == test_accuracy:
+            return "expected_failed", False
         return "timeout", False
     else:  # Failed cases
         if refer_accuracy == "N/A":
@@ -165,8 +178,7 @@ def main():
     # Load data files
     test_data = load_data(args.csv_file)
     test_known_data = load_known_data(args.issue_file)
-    skip_labels = {'skipped', 'skipped_bmg', 'random'}
-    skip_data = [i for i in test_known_data if skip_labels & set(i.get('labels', []))]
+    skip_data = [i for i in test_known_data if SKIP_LABELS & set(i.get('labels', []))]
     suite, dtype, mode = args.suite, args.dtype, args.mode
 
     # Load reference data
@@ -192,10 +204,6 @@ def main():
         'skipped': [],
         'timeout': []
     }
-    # detectron2: cuda not run it
-    # torchrec_dlrm: fbgemm_gpu not incompatable
-    # stable_diffusion: stabilityai/stable-diffusion-2 is not a valid model identifier listed on 'https://huggingface.co/models'
-    skipped_models = ['detectron2', 'torchrec_dlrm', 'stable_diffusion_text_encoder', 'stable_diffusion_unet']
     needs_update = False
 
     # Process each model
@@ -215,7 +223,7 @@ def main():
             category, should_update = "skipped", False
         else:
             category, should_update = categorize_model(
-                model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models
+                model_name, test_accuracy, refer_accuracy, known_accuracy, SKIPPED_MODELS
             )
 
         categories[category].append([model_name, test_accuracy])

@@ -92,6 +92,11 @@ No write scope is required — this skill only reads.
 `issue_type = batch-bug` with `batch_kind = skip-list` regardless of
 body content.
 
+A `test: e2e` issue lists every affected model in one Affected Cases
+table because they share one root cause. Once its minimal reproducer is
+filled in (see Step 2) it is **single-bug**, however many rows the
+table has.
+
 ## Step 2: Detect `reproduction_missing`
 
 Report `yes` when the issue lacks all of:
@@ -101,6 +106,12 @@ Report `yes` when the issue lacks all of:
 - A minimal code snippet that triggers the failure.
 
 Report `no` when at least one of the above is present.
+
+For a `test: e2e` issue, the reproducer is the block between
+`<!-- e2e-accuracy-minimal-repro:begin -->` and `<!-- e2e-accuracy-minimal-repro:end -->`:
+read it first and prefer it over the whole-model benchmark command in
+`## Reproducer`. It counts as filled only when it holds a script, not
+`pending triage`.
 
 Batch-bug issues list child test node ids / sub-bug references in their
 body, so they satisfy the second bullet and report `no`.
@@ -157,7 +168,10 @@ Evaluate in order; first match wins:
 4. Issue explicitly requires hardware or a non-public model/dataset the
    agent cannot access → **needs-human**
    (reason: names the missing resource).
-5. Otherwise → **agent-fixable**.
+5. `test: e2e` issue whose minimal reproducer is not filled (Step 2) →
+   **needs-human** (reason: `"E2E issue without a minimal reproducer"`):
+   a fix must not start from a whole-model benchmark run.
+6. Otherwise → **agent-fixable**.
 
 `scope=both` and `scope=unclear` do NOT force needs-human — a
 downstream deep-triage skill decides the final target repo.
