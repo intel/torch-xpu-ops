@@ -684,14 +684,9 @@ struct InnerBroadcast {
   OffsetCalculator<2> calc;
 };
 
-// For a binary functor whose output is dense, one input is dense along the
-// innermost dimension and the other broadcasts along it (stride 0), e.g.
-// Tensor op single-element XPU Tensor or [M, N] op [M, 1]. Vectors never cross
-// an innermost row, so each takes one vector of the dense input and one
-// element of the broadcast input. The functor and its argument order are
-// unchanged. The broadcast position is a template parameter so both loads are
-// issued back to back, and the pointers and the functor come first so they
-// stay in the inline kernel payload.
+// Vectorize binary operations with a dense output and one inner-broadcast
+// input. Each vector stays within a row and reuses one broadcast element.
+// Specialize the broadcast position while preserving operand order.
 template <int vec_size, int broadcast_arg, typename func_t, typename layout_t>
 struct BroadcastElementwiseKernel {
   // Fix the group size at 256 so the index calculation uses a constant.
