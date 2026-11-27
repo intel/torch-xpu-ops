@@ -35,7 +35,7 @@ bool is_aligned(T* p) {
 }
 
 template <typename T, int64_t kILP = kILP>
-void load_store(T* dst, T* src, int dst_offset, int src_offset) {
+void load_store(T* dst, T* src, int64_t dst_offset, int64_t src_offset) {
   using LT = at::native::memory::aligned_vector<T, kILP>;
   ((LT*)dst)[dst_offset] = ((LT*)src)[src_offset];
 }
@@ -43,20 +43,20 @@ void load_store(T* dst, T* src, int dst_offset, int src_offset) {
 template <typename scalar_vals_t, int n>
 struct TLMetaForAddressScalar {
   void* addresses[n];
-  uint32_t numel_to_tensor;
+  int64_t numel_to_tensor;
   scalar_vals_t scalar_vals;
 };
 
 template <int n>
 struct TLMetaForAddress {
   void* addresses[n];
-  uint32_t numel_to_tensor;
+  int64_t numel_to_tensor;
 };
 
 template <int n>
 struct TLFusedMetaForAddress {
   void* addresses[n];
-  uint32_t numel_to_tensor;
+  int64_t numel_to_tensor;
   void* state_steps_addresses;
 };
 
@@ -208,7 +208,7 @@ void launch_multi_tensor_apply_kernel(
     T tlAddressMeta,
     Y tlWGMeta,
     U callable,
-    int num_wg,
+    int64_t num_wg,
     ArgTypes... args) {
   auto& q = getCurrentSYCLQueue();
   int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
