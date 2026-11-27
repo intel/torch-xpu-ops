@@ -694,6 +694,7 @@ struct InnerBroadcast {
 // stay in the inline kernel payload.
 template <int vec_size, int broadcast_arg, typename func_t, typename layout_t>
 struct BroadcastElementwiseKernel {
+  // Fix the group size at 256 so the index calculation uses a constant.
   static constexpr int work_group_size = 256;
   using traits = function_traits<func_t>;
   using dense_t =
@@ -710,7 +711,6 @@ struct BroadcastElementwiseKernel {
     }
   }
 
-  // A constant group size keeps the index free of payload loads.
   void operator()(sycl::nd_item<1> item) const {
     const uint32_t index = uint32_t(item.get_group(0)) * work_group_size +
         uint32_t(item.get_local_id(0));
@@ -734,18 +734,6 @@ struct BroadcastElementwiseKernel {
         const uint32_t k = vectors * (vec_size - 1) + index;
         output_[k] = apply(c10::load(dense_ + k), c10::load(broadcast_));
       }
-    }
-  }
-
-  auto get(sycl::ext::oneapi::experimental::properties_tag) const {
-    if constexpr (
-        std::is_same_v<layout_t, InnerBroadcast> &&
-        std::is_integral_v<dense_t> && std::is_integral_v<broadcast_t> &&
-        std::is_integral_v<return_t>) {
-      return sycl::ext::oneapi::experimental::properties{
-          sycl::ext::oneapi::experimental::sub_group_size<32>};
-    } else {
-      return sycl::ext::oneapi::experimental::properties{};
     }
   }
 
@@ -1174,13 +1162,12 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   } else {
     const bool dense_output = (packed_strided_unary || traits::arity == 2) &&
         has_dense_output(iter, sizeof(arg0_t));
-    // Keep the legacy row-vector restrictions for split iterators. Packed
-    // strided paths validate their own geometry and also serve split iterators.
     if constexpr (traits::arity == 2) {
       if (try_launch_broadcast_kernel(iter, f, data, numel, dense_output)) {
         return;
       }
     }
+    // Split iterators disable the legacy row-vector path.
     if constexpr (enable_broadcast_vec) {
       if (!latency_case &&
           can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {

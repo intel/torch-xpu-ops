@@ -67,13 +67,34 @@ class TestSimpleBinary(TestCase):
         size, guard = 1025, 4
         dense = torch.arange(size, dtype=torch.float32)
         scalar = torch.tensor(2.5, dtype=dense.dtype)
-        expected = torch.full((size + 2 * guard,), -127, dtype=dense.dtype)
-        backing = expected.to(xpu_device)
-        torch.sub(
-            scalar.to(xpu_device), dense.to(xpu_device), out=backing[guard:-guard]
+        for lhs, rhs in ((scalar, dense), (dense, scalar)):
+            with self.subTest(scalar_on_left=lhs.ndim == 0):
+                expected = torch.full((size + 2 * guard,), -127, dtype=dense.dtype)
+                backing = expected.to(xpu_device)
+                torch.sub(
+                    lhs.to(xpu_device), rhs.to(xpu_device), out=backing[guard:-guard]
+                )
+                expected[guard:-guard] = lhs - rhs
+                self.assertEqual(backing.cpu(), expected, atol=0, rtol=0)
+
+    def test_le_inner_broadcast_int64(self):
+        dense = torch.arange(12, dtype=torch.int64).view(3, 4)
+        dense += torch.tensor([[1 << 32], [-(1 << 32)], [0]])
+        row = torch.tensor([[2], [-1], [9]], dtype=torch.int64)
+        self.assertEqual(
+            torch.le(dense.to(xpu_device), row.to(xpu_device)).cpu(), dense <= row
         )
-        expected[guard:-guard] = scalar - dense
-        self.assertEqual(backing.cpu(), expected, atol=0, rtol=0)
+
+    def test_sub_broadcast_overlapping_bounds(self):
+        backing = torch.arange(21, dtype=torch.float32)
+        dense = torch.arange(16, dtype=backing.dtype).view(2, 8)
+        actual = backing.to(xpu_device)
+        # The output lies between the two broadcast values in the same storage.
+        row = actual[::20].view(2, 1)
+        torch.sub(dense.to(xpu_device), row, out=actual[4:20].view(2, 8))
+        expected = backing.clone()
+        expected[4:20] = (dense - backing[::20].view(2, 1)).flatten()
+        self.assertEqual(actual.cpu(), expected)
 
     def test_mul(self, dtype=torch.float):
         a_cpu = torch.randn(2, 3)
