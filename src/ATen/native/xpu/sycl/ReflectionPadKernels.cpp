@@ -813,23 +813,8 @@ void reflection_pad2d_backward_kernel(
   int64_t input_h = input.size(dim_h);
   int64_t input_w = input.size(dim_w);
 
-  int64_t output_h = input_h + pad_t + pad_b;
-  int64_t output_w = input_w + pad_l + pad_r;
-
-  TORCH_CHECK(
-      output_w == grad_output_.size(dim_w),
-      "grad_output width "
-      "unexpected. Expected: ",
-      output_w,
-      ", Got: ",
-      grad_output_.size(dim_w));
-  TORCH_CHECK(
-      output_h == grad_output_.size(dim_h),
-      "grad_output height "
-      "unexpected. Expected: ",
-      output_h,
-      ", Got: ",
-      grad_output_.size(dim_h));
+  at::native::padding::pad_backward_shape_check(
+      grad_output_, input, padding, /*dim=*/2);
 
   Tensor grad_output = grad_output_.contiguous();
 
