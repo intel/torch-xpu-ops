@@ -187,62 +187,20 @@ struct Msg {
   char msg[MAX_MSG_LENGTH];
 };
 
-// SYCL_KERNEL_ASSERT_MSG is not ready
 template <typename scalar_t>
-struct AssertAsyncKernelFunctor1 {
-  void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(input_[0] != 0);
-  }
-  // TODO: add actual handling for the message argument
-  // See: https://github.com/intel/torch-xpu-ops/issues/5165
-  AssertAsyncKernelFunctor1(const scalar_t* input, Msg) : input_(input) {}
-
- private:
-  const scalar_t* input_;
-};
-
-struct AssertAsyncKernelFunctor2 {
-  void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(input_[0] != c10::complex<float>(0, 0));
-  }
-  // TODO: add actual handling for the message argument
-  // See: https://github.com/intel/torch-xpu-ops/issues/5165
-  AssertAsyncKernelFunctor2(const c10::complex<float>* input, Msg)
-      : input_(input) {}
-
- private:
-  const c10::complex<float>* input_;
-};
-
-struct AssertAsyncKernelFunctor3 {
-  void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(input_[0] != c10::complex<double>(0, 0));
-  }
-  // TODO: add actual handling for the message argument
-  // See: https://github.com/intel/torch-xpu-ops/issues/5165
-  AssertAsyncKernelFunctor3(const c10::complex<double>* input, Msg)
-      : input_(input) {}
-
- private:
-  const c10::complex<double>* input_;
-};
-
-template <typename scalar_t>
-void launch_assert_async_kernel(const scalar_t* input, Msg msg) {
-  AssertAsyncKernelFunctor1<scalar_t> kfn(input, msg);
-  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void assert_async_kernel(const scalar_t* input) {
+  SYCL_KERNEL_ASSERT(input[0] != scalar_t(0));
 }
 
-template <>
-void launch_assert_async_kernel(const c10::complex<float>* input, Msg msg) {
-  AssertAsyncKernelFunctor2 kfn(input, msg);
-  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
-}
-
-template <>
-void launch_assert_async_kernel(const c10::complex<double>* input, Msg msg) {
-  AssertAsyncKernelFunctor3 kfn(input, msg);
-  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+// TODO: pass msg to the kernel once SYCL_KERNEL_ASSERT_MSG is ready.
+// See: https://github.com/intel/torch-xpu-ops/issues/5165
+template <typename scalar_t>
+void launch_assert_async_kernel(
+    const scalar_t* input,
+    [[maybe_unused]] Msg msg) {
+  sycl_kernel_submit<assert_async_kernel<scalar_t>>(
+      1, 1, getCurrentSYCLQueue(), 0, input);
 }
 
 void _assert_async_msg_kernel(
