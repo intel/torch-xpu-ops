@@ -8,7 +8,11 @@
 
 # Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_utils import parametrize, TestCase
 
 test_shapes = [
     [[23, 72, 72], [5184, 72, 1], [23, 72, 72], [5184, 72, 1]],
@@ -83,3 +87,38 @@ class TestLoopsKernel(TestCase):
         raw_data = torch.rand(48, 64, 64, 64, 64)
         a = raw_data.xpu().transpose(0, 1).contiguous().transpose(0, 1)
         self.assertEqual(a, raw_data.xpu())
+
+
+class TestStridedUnary(TestCase):
+    @dtypes(torch.float16, torch.bfloat16, torch.float32)
+    def test_broadcast_row_crossing_and_tail(self, device, dtype):
+        rows = torch.tensor([[-3], [1], [7]], dtype=dtype)
+        # Nine elements per row cross vec4 and vec8 boundaries; 27 leave a tail.
+        x = rows.to(device).expand(3, 9)
+        ref = rows.expand(3, 9)
+        self.assertEqual(torch.neg(x).cpu(), torch.neg(ref))
+        self.assertEqual((x - 2).cpu(), ref - 2)
+        self.assertEqual((2 - x).cpu(), 2 - ref)
+
+    @parametrize(
+        "shape,order", [((24, 16), (1, 0)), ((2, 3, 4, 16), (0, 3, 1, 2))]
+    )
+    def test_padded_rows(self, device, shape, order):
+        rows = torch.arange(-192, 192, dtype=torch.float32).view(shape)
+        ref = rows[..., :8].permute(order)
+        x = rows.to(device)[..., :8].permute(order)
+        for offset in (0, 1):
+            # Offset one float misaligns the output while preserving its strides.
+            buf = torch.full((ref.numel() + offset,), 777.0, device=device)
+            out = buf[offset:].view(*shape[:-1], 8).permute(order)
+            torch.neg(x, out=out)
+            self.assertEqual(out.cpu(), -ref)
+            if offset:
+                self.assertEqual(buf[0].item(), 777.0)
+        # Eight bool outputs would require a 32-byte load from each FP32 row.
+        self.assertEqual(torch.signbit(x).cpu(), torch.signbit(ref))
+
+
+instantiate_device_type_tests(
+    TestStridedUnary, globals(), only_for="xpu", allow_xpu=True
+)
