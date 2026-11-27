@@ -14,9 +14,7 @@
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
 
-#include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/native/xpu/sycl/MultinomialKernel.h>
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
@@ -25,6 +23,9 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
+
+#include <limits>
+#include <type_traits>
 
 namespace at::native::xpu {
 
@@ -107,17 +108,17 @@ inline void renormRows(Tensor& t) {
 }
 
 template <typename scalar_t>
-inline int binarySearchForMultinomial(
+inline int64_t binarySearchForMultinomial(
     scalar_t* cumdist,
     scalar_t* dist,
-    int size,
+    int64_t size,
     scalar_t val) {
-  int start = 0;
-  int end = size;
+  int64_t start = 0;
+  int64_t end = size;
   // cumdist[size - 1] = 0 => all zero prob dist
 
   while (end - start > 0) {
-    int mid = start + (end - start) / 2;
+    int64_t mid = start + (end - start) / 2;
 
     scalar_t midVal = cumdist[mid];
     if (midVal < val) {
@@ -149,7 +150,7 @@ inline void sampleMultinomialWithReplacement(
     int totalSamples,
     int64_t* dest,
     int64_t distributions,
-    int categories,
+    int64_t categories,
     scalar_t* normDistPrefixSum,
     scalar_t* normDist) {
   auto thread_idx = item.get_local_id(1);
@@ -180,11 +181,16 @@ inline void sampleMultinomialWithReplacement(
          sample += thread_range * group_range_x) {
       // we are losing 3 out of 4 generated numbers but it's ok
       // this kernel is not very efficient anyway
-      auto rand = rand_uniform4(&state);
-      scalar_t r = static_cast<scalar_t>(rand.x);
+      scalar_t r;
+      if constexpr (std::is_same_v<scalar_t, double>) {
+        // Match RNG precision to double CDF
+        r = rand_uniform2_double(&state).x;
+      } else {
+        r = static_cast<scalar_t>(rand_uniform4(&state).x);
+      }
 
       // Find the bucket that a uniform sample lies in
-      int choice = binarySearchForMultinomial<scalar_t>(
+      int64_t choice = binarySearchForMultinomial<scalar_t>(
           normDistPrefixSum + curDist * categories,
           normDist + curDist * categories,
           categories,
@@ -202,7 +208,7 @@ void multinomial_with_replacement_kernel(
     int totalSamples,
     int64_t* result_ptr,
     int64_t numDist,
-    int numCategories,
+    int64_t numCategories,
     scalar_t* prefixSum_ptr,
     scalar_t* normDist_ptr) {
   auto item = syclext::this_work_item::get_nd_item<2>();
@@ -217,154 +223,12 @@ void multinomial_with_replacement_kernel(
       normDist_ptr);
 }
 
-template <typename scalar_t, typename accscalar_t>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void sample_multinomial_once_kernel(
-    int64_t* dest,
-    int64_t distributions,
-    int categories,
-    const scalar_t* sampled,
-    const scalar_t* dist,
-    int stride_dist,
-    int stride_categories,
-    int group_size) {
-  auto item = syclext::this_work_item::get_nd_item<1>();
-
-  char* scratch = static_cast<char*>(syclexp::get_work_group_scratch_memory());
-  accscalar_t* smem = reinterpret_cast<accscalar_t*>(scratch);
-  int* foundPos = (int*)(scratch + sizeof(accscalar_t) * group_size);
-  bool* found = (bool*)(foundPos + 1);
-
-  accscalar_t accZero = static_cast<accscalar_t>(0);
-  scalar_t zero = static_cast<scalar_t>(0);
-  int local_id = item.get_local_id(0);
-  int local_range = item.get_local_range(0);
-
-  for (int64_t curDist = item.get_group(0); curDist < distributions;
-       curDist += item.get_group_range(0)) {
-    // First pass, find the total sum of the distribution
-    accscalar_t sum = accZero;
-    scalar_t val;
-    for (int cat = item.get_local_id(0); cat < categories;
-         cat += item.get_local_range(0)) {
-      val = dist[curDist * stride_dist + cat * stride_categories];
-      SYCL_KERNEL_ASSERT(!at::_isnan(val));
-      SYCL_KERNEL_ASSERT(!_isinf(val));
-      SYCL_KERNEL_ASSERT(!(val < zero));
-      sum = sum + static_cast<accscalar_t>(val);
-    }
-
-    sum = GroupReduceSumSGSizeEqualstoNumSG(item, sum, smem);
-
-    // Broadcast sum and sample value
-    if (item.get_local_id(0) == 0) {
-      // Make sure the sum of our distribution didn't overflow
-      SYCL_KERNEL_ASSERT(!_isinf(val));
-      SYCL_KERNEL_ASSERT(sum > accZero);
-
-      foundPos[0] = 0;
-      smem[0] = sum;
-      smem[1] = sampled[curDist];
-    }
-    sycl::group_barrier(item.get_group());
-
-    sum = smem[0];
-    scalar_t sample = static_cast<scalar_t>(smem[1]);
-    sycl::group_barrier(item.get_group());
-
-    if (sum == accZero) {
-      // Choose the first element
-      if (local_id == 0) {
-        dest[curDist] = 0;
-      }
-
-      continue;
-    }
-
-    int chunks = (categories + (int)local_range - 1) / local_range;
-    accscalar_t prevHighProb = accZero;
-    found[0] = false;
-
-    for (int chunk = 0; chunk < chunks && !found[0]; ++chunk) {
-      // All threads in bounds load a value
-      int cat = chunk * local_range + local_id;
-
-      accscalar_t dist_val = cat < categories
-          ? static_cast<accscalar_t>(
-                dist[curDist * stride_dist + cat * stride_categories]) /
-              sum
-          : accZero;
-
-      smem[local_id] = dist_val;
-      sycl::group_barrier(item.get_group());
-
-      // Perform an inclusive prefix sum of the shared memory contents
-      for (int offset = 1; offset < local_range; offset *= 2) {
-        accscalar_t val = accZero;
-
-        if (local_id >= offset) {
-          val = smem[local_id - offset] + smem[local_id];
-        }
-
-        sycl::group_barrier(item.get_group());
-        if (local_id >= offset) {
-          smem[local_id] = val;
-        }
-        sycl::group_barrier(item.get_group());
-      }
-
-      // Each thread will check to see if the sample falls in its
-      // bucket
-      scalar_t curBucket = static_cast<scalar_t>(smem[local_id] + prevHighProb);
-      scalar_t prevBucket = static_cast<scalar_t>(
-          local_id == 0 ? prevHighProb : smem[local_id - 1] + prevHighProb);
-      bool inBucket = (cat < categories) &&
-          (!(sample >= curBucket) && (sample >= prevBucket) &&
-           (dist_val > zero));
-
-      if (inBucket) {
-        // We're done; we have the sample
-        // Torch indices are 1-based
-
-        atomicMax(sycl_local_ptr<int>(foundPos), cat);
-
-        found[0] = true;
-      }
-
-      // Store the previous scan's high value for future use
-      prevHighProb = prevHighProb + smem[local_range - 1];
-
-      sycl::group_barrier(item.get_group());
-    }
-
-    if (local_id == 0) {
-      if (found[0]) {
-        dest[curDist] = foundPos[0];
-      } else {
-        // This should address a rare bug where we don't select a valid index.
-        // This likely occurs when due to floating point arithmetic rounding
-        // errors, our cumulative sum does not add up to 1, but and our
-        // uniform sample is greater than this value. In this case we likely
-        // have unitialized memory in dest[curDist]. So basically we will loop
-        // through the distribution and pick the largest index where the
-        // distribution is non-zero. This is obviously terribly inefficient,
-        // but due to the rarity in which this occurs, this should not be an
-        // issue.
-        for (int cat = categories - 1; cat >= 0; --cat) {
-          if (dist[curDist * stride_dist + cat * stride_categories] > zero) {
-            dest[curDist] = cat;
-            break;
-          }
-        }
-      }
-    }
-  }
-}
-
 void multinomial_kernel(
     Tensor& result,
     const Tensor& self,
     const int64_t n_sample,
+    // By value to match multinomial_with_replacement_stub
+    // NOLINTNEXTLINE(performance-unnecessary-value-param)
     std::optional<Generator> generator) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
@@ -372,115 +236,72 @@ void multinomial_kernel(
 
   int inputSize = self.dim();
   int64_t numDist = inputSize == 1 ? 1 : self.size(0);
-  int numCategories = inputSize == 1 ? self.size(0) : self.size(1);
+  int64_t numCategories = inputSize == 1 ? self.size(0) : self.size(1);
 
   // Restructure data for 2d
   auto self_v = inputSize == 1 ? self.view({numDist, numCategories}) : self;
 
+  // Half row sums overflow and bfloat16 CDFs are too coarse, so both build the
+  // CDF in float; a float CDF cannot give distinct buckets to more than 2^24
+  // categories
+  const auto inputType = self_v.scalar_type();
+  const bool needsDoubleCdf =
+      numCategories > (int64_t{1} << std::numeric_limits<float>::digits);
+  TORCH_CHECK(
+      !needsDoubleCdf || at::xpu::getCurrentDeviceProperties()->has_fp64,
+      "multinomial: sampling with replacement from more than 2^24 categories "
+      "requires a device with fp64 support");
+  const auto cdfType = needsDoubleCdf
+      ? kDouble
+      : (inputType == kHalf || inputType == kBFloat16 ? kFloat : inputType);
+
   result.resize_({numDist, n_sample});
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      self_v.scalar_type(),
-      "multinomial_kernel_xpu",
-      [&] {
-        using accscalar_t = acc_type_device<scalar_t, kXPU>;
-        int maxThreads = at::xpu::getKernelMaxWorkGroupSize<
-            sample_multinomial_once_kernel<scalar_t, accscalar_t>>();
-        int maxShared = at::xpu::getDeviceLocalMemSize();
+  AT_DISPATCH_FLOATING_TYPES(
+      cdfType, "multinomial_with_replacement_kernel_xpu", [&] {
+        // Break per source build. Build every kernel source file into a so.
+        // libtorch_xpu.so which is the so of operator level depends the so
+        // of kernels. Do not depends on libtorch_xpu.so inversively. Using
+        // at::empty instead of at::detail::empty_xpu.
+        Tensor normDist = at::empty(
+            {numDist, numCategories}, self_v.options().dtype(cdfType));
+        Tensor prefixSum =
+            at::empty({numDist, numCategories}, normDist.options());
 
-        int SubGroupSize = at::xpu::getDeviceMinSubGroupSize();
-        int requiredSubGroups = at::ceil_div(numCategories, SubGroupSize);
-        int requiredThreads =
-            std::min(maxThreads, requiredSubGroups * SubGroupSize);
-        int requiredShared = requiredThreads * sizeof(accscalar_t);
-        if (n_sample == 1 && maxShared >= requiredShared) {
-          // Break per source build. Build every kernel source file into a so.
-          // libtorch_xpu.so which is the so of operator level depends the so
-          // of kernels. Do not depends on libtorch_xpu.so inversively. Using
-          // at::empty instead of at::detail::empty_xpu.
-          Tensor sampled = at::empty({numDist, n_sample}, self_v.options());
-          at::native::uniform_(sampled, 0.0, 1.0, generator);
-          int group_size = requiredThreads;
-          int group_range = numDist;
-          int slm_sz =
-              sizeof(scalar_t) * group_size + sizeof(int) + sizeof(bool);
-          sycl_kernel_submit<
-              sample_multinomial_once_kernel<scalar_t, accscalar_t>>(
-              group_range * group_size,
-              group_size,
-              sycl_queue,
-              slm_sz,
-              result.mutable_data_ptr<int64_t>(),
-              numDist,
-              numCategories,
-              sampled.const_data_ptr<scalar_t>(),
-              self_v.const_data_ptr<scalar_t>(),
-              (int)self_v.stride(0),
-              (int)self_v.stride(1),
-              group_size);
-        } else {
-          Tensor origDist = native::empty_like(
-              self_v,
-              std::nullopt /* dtype */,
-              std::nullopt /* layout */,
-              std::nullopt /* device */,
-              std::nullopt /* pin_memory */,
-              LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-          origDist.copy_(self_v);
+        // Renorm along rows
+        normDist.copy_(self_v);
+        renormRows(normDist);
 
-          Tensor normDist = native::empty_like(
-              self_v,
-              std::nullopt /* dtype */,
-              std::nullopt /* layout */,
-              std::nullopt /* device */,
-              std::nullopt /* pin_memory */,
-              LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+        // Prefix sum along rows
+        at::cumsum_out(prefixSum, normDist, 1);
+        int group_size = at::xpu::getDeviceMaxSubGroupSize() *
+            at::xpu::getDeviceEUCountPerXeCore();
+        int group_range_y = numDist;
+        int group_range_x = (n_sample - 1) / group_size + 1;
 
-          Tensor prefixSum = native::empty_like(
-              self_v,
-              std::nullopt /* dtype */,
-              std::nullopt /* layout */,
-              std::nullopt /* device */,
-              std::nullopt /* pin_memory */,
-              LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-
-          // Renorm along rows
-          normDist.copy_(origDist);
-          renormRows(normDist);
-
-          // Prefix sum along rows
-          at::cumsum_out(prefixSum, normDist, 1);
-          int group_size = at::xpu::getDeviceMaxSubGroupSize() *
-              at::xpu::getDeviceEUCountPerXeCore();
-          int group_range_y = numDist;
-          int group_range_x = (n_sample - 1) / group_size + 1;
-
-          PhiloxXpuState rng_engine_inputs;
-          {
-            // See Note [Acquire lock when using random generators]
-            std::lock_guard<std::mutex> lock(gen->mutex_);
-            auto offset = ((numDist - 1) / group_range_y + 1) * 4;
-            rng_engine_inputs = gen->philox_xpu_state(offset);
-          }
-
-          auto result_ptr = result.data_ptr<int64_t>();
-          auto prefixSum_ptr = prefixSum.data_ptr<scalar_t>();
-          auto normDist_ptr = normDist.data_ptr<scalar_t>();
-          sycl_kernel_submit<multinomial_with_replacement_kernel<scalar_t>>(
-              sycl::range<2>(group_range_y, group_range_x * group_size),
-              sycl::range<2>(1, group_size),
-              sycl_queue,
-              0,
-              rng_engine_inputs,
-              (int)n_sample,
-              result_ptr,
-              numDist,
-              numCategories,
-              prefixSum_ptr,
-              normDist_ptr);
+        PhiloxXpuState rng_engine_inputs;
+        {
+          // See Note [Acquire lock when using random generators]
+          std::lock_guard<std::mutex> lock(gen->mutex_);
+          auto offset = ((numDist - 1) / group_range_y + 1) * 4;
+          rng_engine_inputs = gen->philox_xpu_state(offset);
         }
+
+        auto result_ptr = result.data_ptr<int64_t>();
+        auto prefixSum_ptr = prefixSum.data_ptr<scalar_t>();
+        auto normDist_ptr = normDist.data_ptr<scalar_t>();
+        sycl_kernel_submit<multinomial_with_replacement_kernel<scalar_t>>(
+            sycl::range<2>(group_range_y, group_range_x * group_size),
+            sycl::range<2>(1, group_size),
+            sycl_queue,
+            0,
+            rng_engine_inputs,
+            (int)n_sample,
+            result_ptr,
+            numDist,
+            numCategories,
+            prefixSum_ptr,
+            normDist_ptr);
       });
 
   if (inputSize == 1) {

@@ -13,7 +13,6 @@
 #include <ATen/detail/XPUHooksInterface.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <c10/core/ScalarType.h>
-#include <comm/GPUTrace.h>
 #include <comm/SYCLContext.h>
 
 using namespace at;
@@ -32,11 +31,10 @@ inline void memcpyHostToDevice(
     return;
 
   auto& queue = getCurrentSYCLQueue();
-  auto e = queue.memcpy(dst, src, n_bytes);
   if (!async) {
-    e.wait();
-    traceStreamSynchronization();
+    c10::xpu::memcpy_and_sync(dst, src, n_bytes, queue);
   } else {
+    queue.memcpy(dst, src, n_bytes);
     if (is_pinned) {
       at::getHostAllocator(at::kXPU)->record_event(
           const_cast<void*>(src),
@@ -53,7 +51,7 @@ inline void memcpyHostToDevice(
       TORCH_CHECK(
           stage_mem, "Fail to allocate host memory from XPU HostAllocator");
       std::memcpy(stage_mem, src, n_bytes);
-      e = queue.memcpy(dst, stage_mem, n_bytes);
+      queue.memcpy(dst, stage_mem, n_bytes);
       at::getHostAllocator(at::kXPU)->record_event(
           stage_mem,
           stage_mem_dptr.get_context(),
@@ -73,14 +71,14 @@ inline void memcpyDeviceToHost(
     return;
 
   auto& queue = getCurrentSYCLQueue();
-  auto e = queue.memcpy(dst, src, n_bytes);
-
   if (!async) {
-    e.wait();
-    traceStreamSynchronization();
-  } else if (is_pinned) {
-    at::getHostAllocator(at::kXPU)->record_event(
-        dst, const_cast<void*>(hctx), at::xpu::getCurrentXPUStream());
+    c10::xpu::memcpy_and_sync(dst, src, n_bytes, queue);
+  } else {
+    queue.memcpy(dst, src, n_bytes);
+    if (is_pinned) {
+      at::getHostAllocator(at::kXPU)->record_event(
+          dst, const_cast<void*>(hctx), at::xpu::getCurrentXPUStream());
+    }
   }
 }
 
@@ -93,20 +91,10 @@ inline void memcpyDeviceToDevice(
     return;
 
   auto& queue = getCurrentSYCLQueue();
-  auto e = queue.memcpy(dst, src, n_bytes);
-
   if (!async) {
-    e.wait();
-    traceStreamSynchronization();
-  }
-}
-
-inline void memsetDevice(void* dst, int value, size_t n_bytes, bool async) {
-  auto& queue = getCurrentSYCLQueue();
-  auto e = queue.memset(dst, value, n_bytes);
-
-  if (!async) {
-    e.wait();
+    c10::xpu::memcpy_and_sync(dst, src, n_bytes, queue);
+  } else {
+    queue.memcpy(dst, src, n_bytes);
   }
 }
 
@@ -165,14 +153,6 @@ inline void syclMemcpyAsync(
     default:
       TORCH_CHECK(false, "Unknown sycl memory kind");
   }
-}
-
-inline void syclMemset(void* data, int value, size_t n_bytes) {
-  memsetDevice(data, value, n_bytes, false);
-}
-
-inline void syclMemsetAsync(void* data, int value, size_t n_bytes) {
-  memsetDevice(data, value, n_bytes, true);
 }
 
 } // namespace sycl
