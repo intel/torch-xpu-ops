@@ -352,6 +352,8 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
     def test_nan_assert(self, type):
         # Expecting a device-side error when NaN is detected
         os.environ["TORCH_XCCL_NAN_CHECK"] = "1"
+        # Backends without a native checker (e.g. XCCL2) rely on the c10d NanCheckHook
+        os.environ["TORCH_DIST_NAN_CHECK"] = "1"
         pg = self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]
         # Cover different buffer sizes
@@ -398,6 +400,7 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
 
         # reset env
         os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
+        os.environ["TORCH_DIST_NAN_CHECK"] = "0"
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
@@ -416,6 +419,7 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         # tensors, instead of raising
         # "NotImplementedError: 'checkForNaN_XPU' not implemented for 'Byte'".
         os.environ["TORCH_XCCL_NAN_CHECK"] = "1"
+        os.environ["TORCH_DIST_NAN_CHECK"] = "1"
         device = torch.device(f"xpu:{self.rank:d}")
         store = c10d.FileStore(self.file_name, self.world_size)
         c10d.init_process_group(
@@ -439,12 +443,14 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         c10d.destroy_process_group()
         # reset env
         os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
+        os.environ["TORCH_DIST_NAN_CHECK"] = "0"
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_nan_check_empty_tensor(self):
         # Regression test: NaN checker should not crash on empty tensors.
         os.environ["TORCH_XCCL_NAN_CHECK"] = "1"
+        os.environ["TORCH_DIST_NAN_CHECK"] = "1"
         device = torch.device(f"xpu:{self.rank:d}")
         store = c10d.FileStore(self.file_name, self.world_size)
         c10d.init_process_group(
@@ -456,6 +462,7 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         c10d.destroy_process_group()
         # reset env
         os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
+        os.environ["TORCH_DIST_NAN_CHECK"] = "0"
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)

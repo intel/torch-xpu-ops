@@ -151,7 +151,7 @@ class LayerNormBackward
     mean_t mean_val = NB::mean_data[group_id];
     mean_t var_val = NB::var_data[group_id];
 
-    int fH = cfg.problem_size;
+    accscalar_t fH = cfg.problem_size;
     accscalar_t term1 = (accscalar_t(1) / fH) * var_val;
     for (index_t j = local_id * vec_size; j < cfg.workgroup_work_size;
          j += cfg.workgroup_size * vec_size) {
@@ -170,8 +170,9 @@ class LayerNormBackward
         vec_t dX_val;
         for (int v = 0; v < vec_size; ++v) {
           accscalar_t f_grad_input = (NB::gamma_data == nullptr)
-              ? static_cast<accscalar_t>(fH * dY_val[v])
-              : static_cast<accscalar_t>(fH * gamma_val[v] * dY_val[v]);
+              ? fH * static_cast<accscalar_t>(dY_val[v])
+              : fH * static_cast<accscalar_t>(gamma_val[v]) *
+                  static_cast<accscalar_t>(dY_val[v]);
           if constexpr (!rms_norm) {
             f_grad_input -= (X_val[v] - mean_val) * var_val * sum2;
             f_grad_input -= sum1;

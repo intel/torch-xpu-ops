@@ -225,8 +225,11 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
+              - '.github/workflows/_windows_build.yml'
               - '.github/actions/windows-testenv/**'
               - '.github/actions/windows-uttest/**'
+              - '.github/scripts/build_windows.py'
+              - '.github/scripts/windows_env_check.ps1'
 
   linux-build:
     needs: preci-lint-check
