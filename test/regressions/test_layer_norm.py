@@ -295,9 +295,11 @@ class TestLayerNormGammaBetaBackward(TestCase):
             return torch.autograd.grad(out, inputs, grad_out.to(dev, dt))
 
         tol = {torch.float32: 1e-4, torch.float16: 5e-3, torch.bfloat16: 2e-2}[dtype]
-        for actual, expected in zip(grads(device, dtype), grads("cpu", torch.float)):
+        # float64 reference: with N == 1, grad_input is exactly 0 but a float32
+        # CPU reference leaves ~1e-4 rounding noise amplified by rstd=1/sqrt(eps).
+        for actual, expected in zip(grads(device, dtype), grads("cpu", torch.double)):
             self.assertEqual(
-                actual.cpu().float(),
+                actual.cpu().double(),
                 expected,
                 atol=tol * max(expected.abs().max().item(), 1.0),
                 rtol=0,
