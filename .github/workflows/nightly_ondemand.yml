@@ -178,24 +178,26 @@ jobs:
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
 
+  # One report per platform, so an offline runner on one side never holds back
+  # the other side's report.
   Linux-Nightly-Ondemand-UT-Report:
-    name: ut-report
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests,
-            Windows-Nightly-Ondemand-UT-Tests]
-    if: >-
-      ${{ !cancelled()
-      && (!endsWith(needs.Linux-Nightly-Ondemand-UT-Tests.result, 'ed')
-      || !endsWith(needs.Windows-Nightly-Ondemand-UT-Tests.result, 'ed')) }}
+    name: linux-ut-report
+    needs: [Linux-Nightly-Ondemand-UT-Tests]
+    if: ${{ !cancelled() && !endsWith(needs.Linux-Nightly-Ondemand-UT-Tests.result, 'ed') }}
     secrets: inherit
     permissions:
       actions: read
       contents: read
       pull-requests: write
     uses: ./.github/workflows/_ut_report.yml
+    with:
+      platform: linux
 
   Linux-Nightly-Ondemand-UT-Auto-Issue:
     name: linux-ut-auto-issue
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests, Linux-Nightly-Ondemand-UT-Report]
+    # Not on the UT report: this job reads the Linux UT-Data/UT-Check artifacts
+    # itself, so it only has to wait for the Linux UT jobs.
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
     # Not success(): the UT job fails whenever there are new failures, which is
     # precisely when this needs to run.
     # `contains(inputs.ut, 'p')` mirrors the UT job's own gate: with no UT job
@@ -305,3 +307,16 @@ jobs:
       runner: windows-test
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+
+  Windows-Nightly-Ondemand-UT-Report:
+    name: windows-ut-report
+    needs: [Windows-Nightly-Ondemand-UT-Tests]
+    if: ${{ !cancelled() && !endsWith(needs.Windows-Nightly-Ondemand-UT-Tests.result, 'ed') }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/_ut_report.yml
+    with:
+      platform: windows

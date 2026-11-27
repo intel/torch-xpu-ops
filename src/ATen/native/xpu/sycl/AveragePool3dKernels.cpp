@@ -25,6 +25,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
+#include <c10/util/safe_conv.h>
 
 #include <ATen/native/xpu/sycl/AveragePool3dKernels.h>
 #include <comm/SYCLContext.h>
@@ -180,27 +181,25 @@ void avg_pool3d_kernel(
 
   checkAllSameGPU(__func__, {output_arg, input_arg});
 
-  const int kT = safe_downcast<int, int64_t>(kernel_size[0]);
-  const int kH = kernel_size.size() == 1
-      ? kT
-      : safe_downcast<int, int64_t>(kernel_size[1]);
-  const int kW = kernel_size.size() == 1
-      ? kT
-      : safe_downcast<int, int64_t>(kernel_size[2]);
+  const int kT = c10::safe_conv<int>(kernel_size[0], "int");
+  const int kH =
+      kernel_size.size() == 1 ? kT : c10::safe_conv<int>(kernel_size[1], "int");
+  const int kW =
+      kernel_size.size() == 1 ? kT : c10::safe_conv<int>(kernel_size[2], "int");
 
-  const int dT = stride.empty() ? kT : safe_downcast<int, int64_t>(stride[0]);
+  const int dT = stride.empty() ? kT : c10::safe_conv<int>(stride[0], "int");
   const int dH = stride.empty() ? kH
       : stride.size() == 1      ? dT
-                                : safe_downcast<int, int64_t>(stride[1]);
+                                : c10::safe_conv<int>(stride[1], "int");
   const int dW = stride.empty() ? kW
       : stride.size() == 1      ? dT
-                                : safe_downcast<int, int64_t>(stride[2]);
+                                : c10::safe_conv<int>(stride[2], "int");
 
-  const int padT = safe_downcast<int, int64_t>(padding[0]);
+  const int padT = c10::safe_conv<int>(padding[0], "int");
   const int padH =
-      padding.size() == 1 ? padT : safe_downcast<int, int64_t>(padding[1]);
+      padding.size() == 1 ? padT : c10::safe_conv<int>(padding[1], "int");
   const int padW =
-      padding.size() == 1 ? padT : safe_downcast<int, int64_t>(padding[2]);
+      padding.size() == 1 ? padT : c10::safe_conv<int>(padding[2], "int");
 
   // if divisor==0 then we will ignore it
   int64_t divisor = 0;
@@ -650,27 +649,25 @@ void avg_pool3d_backward_kernel(
 
   checkAllSameGPU(__func__, {gradInput_arg, gradOutput_arg, input_arg});
 
-  const int kT = safe_downcast<int, int64_t>(kernel_size[0]);
-  const int kH = kernel_size.size() == 1
-      ? kT
-      : safe_downcast<int, int64_t>(kernel_size[1]);
-  const int kW = kernel_size.size() == 1
-      ? kT
-      : safe_downcast<int, int64_t>(kernel_size[2]);
+  const int kT = c10::safe_conv<int>(kernel_size[0], "int");
+  const int kH =
+      kernel_size.size() == 1 ? kT : c10::safe_conv<int>(kernel_size[1], "int");
+  const int kW =
+      kernel_size.size() == 1 ? kT : c10::safe_conv<int>(kernel_size[2], "int");
 
-  const int dT = stride.empty() ? kT : safe_downcast<int, int64_t>(stride[0]);
+  const int dT = stride.empty() ? kT : c10::safe_conv<int>(stride[0], "int");
   const int dH = stride.empty() ? kH
       : stride.size() == 1      ? dT
-                                : safe_downcast<int, int64_t>(stride[1]);
+                                : c10::safe_conv<int>(stride[1], "int");
   const int dW = stride.empty() ? kW
       : stride.size() == 1      ? dT
-                                : safe_downcast<int, int64_t>(stride[2]);
+                                : c10::safe_conv<int>(stride[2], "int");
 
-  const int padT = safe_downcast<int, int64_t>(padding[0]);
+  const int padT = c10::safe_conv<int>(padding[0], "int");
   const int padH =
-      padding.size() == 1 ? padT : safe_downcast<int, int64_t>(padding[1]);
+      padding.size() == 1 ? padT : c10::safe_conv<int>(padding[1], "int");
   const int padW =
-      padding.size() == 1 ? padT : safe_downcast<int, int64_t>(padding[2]);
+      padding.size() == 1 ? padT : c10::safe_conv<int>(padding[2], "int");
 
   TORCH_CHECK(
       (gradOutput.ndimension() == 4 || gradOutput.ndimension() == 5),
