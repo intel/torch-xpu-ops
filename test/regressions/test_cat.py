@@ -13,7 +13,7 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
 )
 from torch.testing._internal.common_dtype import float8_types_and
-from torch.testing._internal.common_utils import run_tests, TestCase
+from torch.testing._internal.common_utils import parametrize, run_tests, TestCase
 
 cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
@@ -114,6 +114,31 @@ class TestTorchMethod(TestCase):
             dim=1,
         )
         self.assertEqual(res_cpu, res_xpu.cpu())
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize(
+        "shapes",
+        (
+            ((16, 72317), (16, 72317)),
+            ((256, 4097), (256, 4097)),
+            ((1, 1048577), (1, 1048577)),
+            ((1722, 609), (1722, 609)),
+            ((1636, 641), (1636, 641)),
+        ),
+    )
+    def test_cat_contiguous_slice_alignment(self, device, dtype, shapes):
+        inputs_cpu = [torch.randint(0, 16, shape, dtype=dtype) for shape in shapes]
+        inputs_xpu = [tensor.to(device) for tensor in inputs_cpu]
+        for tensor in inputs_xpu:
+            self.assertTrue(tensor.is_contiguous())
+            self.assertEqual(tensor.data_ptr() % 4, 0)
+
+        expected = torch.cat(inputs_cpu, dim=1)
+        actual = torch.cat(inputs_xpu, dim=1)
+
+        self.assertTrue(actual.is_contiguous())
+        self.assertEqual(actual.data_ptr() % 4, 0)
+        self.assertEqual(expected, actual.cpu(), rtol=0, atol=0)
 
     def test_cat_contiguous_vectorized_copy(self):
         # A trailing extent of 8 BF16 values makes every concat slice 16-byte
