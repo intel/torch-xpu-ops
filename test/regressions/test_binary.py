@@ -8,7 +8,11 @@
 
 # Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_utils import parametrize, TestCase
 
 cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
@@ -364,3 +368,93 @@ class TestSimpleBinary(TestCase):
         x_cpu_clone.ldexp_(e_cpu)
         x_xpu_clone.ldexp_(e_xpu)
         self.assertEqual(x_cpu_clone, x_xpu_clone.to(cpu_device))
+
+
+class TestMixedDtypeVectorized(TestCase):
+    def _check_binary_orders(self, op, a, b):
+        for lhs, rhs in ((a, b), (b, a)):
+            with self.subTest(op=op.__name__, lhs=lhs.dtype, shape=lhs.shape):
+                expected = op(lhs.cpu(), rhs.cpu())
+                self.assertEqual(op(lhs, rhs).cpu(), expected, atol=0, rtol=0)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    def test_typed_binary_broadcast(self, device, dtype):
+        fp32 = torch.randn(65, 32, device=device)
+        low = torch.randn(65, 32, device=device, dtype=dtype)
+        self._check_binary_orders(torch.add, fp32, low)
+        self._check_binary_orders(torch.mul, fp32[:, :1], low)
+        # A rank-one singleton promotes to FP32 and leaves a partial vector.
+        self._check_binary_orders(torch.add, fp32.flatten()[:1], low.flatten()[:-1])
+
+    @dtypes(torch.float16, torch.bfloat16)
+    def test_typed_binary_strided_rows(self, device, dtype):
+        # Distinct padded pitches keep row offsets independent. The 126
+        # columns admit vec2 and transposing gives a dense transposed output.
+        fp32 = torch.randn(16384, 130, device=device)[:, 2:128]
+        low = torch.randn(16384, 134, device=device, dtype=dtype)[:, :126]
+        self._check_binary_orders(torch.mul, fp32, low)
+        self._check_binary_orders(torch.mul, fp32.t(), low.t())
+
+    def test_mixed_low_types_fallback(self, device):
+        half = torch.randn(17, device=device, dtype=torch.float16)
+        bf16 = torch.randn(17, device=device, dtype=torch.bfloat16)
+        self._check_binary_orders(torch.add, half, bf16)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    def test_mixed_clamp_float_output_tail(self, device, dtype):
+        x = torch.randn(2051, device=device)
+        lower = -torch.rand(2051, device=device, dtype=dtype)
+        upper = torch.rand_like(lower)
+        expected = torch.clamp(x.cpu(), min=lower.cpu(), max=upper.cpu())
+        self.assertEqual(torch.clamp(x, min=lower, max=upper).cpu(), expected)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize(
+        "offset,tail",
+        [(8, tail) for tail in range(8)] + [(4, 3), (1, 3)],
+    )
+    def test_mixed_scalar_broadcast(self, device, dtype, offset, tail):
+        size = 2048 + tail
+        scalar = torch.tensor(1.001, dtype=torch.float32)
+        dense = (torch.arange(size) % 15 - 7).to(dtype)
+        dense[::31] = scalar.to(dtype)
+        tensors = (dense, scalar)
+        device_tensors = tuple(tensor.to(device) for tensor in tensors)
+
+        for op, sentinel in ((torch.sub, -127), (torch.lt, True)):
+            for reverse in (False, True):
+                with self.subTest(op=op.__name__, reverse=reverse):
+                    args = tensors[::-1] if reverse else tensors
+                    device_args = device_tensors[::-1] if reverse else device_tensors
+                    expected = op(*args)
+                    backing = torch.full(
+                        (size + offset + 8,), sentinel, dtype=expected.dtype
+                    )
+                    device_backing = backing.to(device)
+                    op(*device_args, out=device_backing[offset:-8])
+                    backing[offset:-8] = expected
+                    self.assertEqual(device_backing.cpu(), backing, atol=0, rtol=0)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    def test_mixed_ternary_scalar_broadcast(self, device, dtype):
+        dense = (torch.arange(2055) % 15 - 7).to(dtype)
+        lower = torch.tensor(-1.001, dtype=torch.float32)
+        upper = torch.tensor(2.003, dtype=torch.float32)
+        clamp = torch.ops.aten.clamp.Tensor
+        expected = clamp(dense, lower, upper)
+        actual = clamp(dense.to(device), lower.to(device), upper.to(device))
+        self.assertEqual(actual.cpu(), expected, atol=0, rtol=0)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize("columns", [31, 32])
+    def test_mixed_outer_broadcast(self, device, dtype, columns):
+        dense = (torch.arange(9 * columns).reshape(9, columns) % 15 - 7).to(dtype)
+        broadcast = torch.arange(columns, dtype=torch.float32).unsqueeze(0) * 0.25
+        expected = torch.lt(broadcast, dense)
+        actual = torch.lt(broadcast.to(device), dense.to(device))
+        self.assertEqual(actual.cpu(), expected, atol=0, rtol=0)
+
+
+instantiate_device_type_tests(
+    TestMixedDtypeVectorized, globals(), only_for="xpu", allow_xpu=True
+)
