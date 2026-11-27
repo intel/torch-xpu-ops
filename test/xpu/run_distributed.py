@@ -7,6 +7,8 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 import os
+import re
+import shlex
 import subprocess
 import sys
 
@@ -17,44 +19,71 @@ res = 0
 res2 = 0
 fail_test = []
 
-# -rA prints PASSED lines, which the UT check needs to collect passing cases.
-os.environ.setdefault("PYTEST_ADDOPTS", "-rA")
-os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
-# Get the xelink group card affinity
-ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
-if ret == 0:
-    gpu_dict = {}
-    with open("topology.log") as file:
-        lines = file.readlines()
-        for line in lines:
-            if "CPU Affinity" in line:
-                continue
-            line = line.strip()
-            if line.startswith("GPU "):
-                items = line.split(" ")
-                items = [x for x in items if x]
-                gpu_id = items[1]
-                i = gpu_id.split("/")[0]
-                affinity = ""
-                for j, item in enumerate(items):
-                    if "SYS" not in item and ("XL" in item or "S" in item):
-                        if len(affinity) == 0:
-                            affinity = str(j - 2)
-                        else:
-                            affinity = affinity + "," + str(j - 2)
-                gpu_dict[i] = affinity
+# xdist options that take a value, as in detect-devices.sh's PYTEST_ADDOPTS
+XDIST_VALUE_OPTS = ("-n", "--numprocesses", "--maxprocesses", "--tx", "--dist")
 
-    max_affinity = ""
-    for key, value in gpu_dict.items():
-        if len(value) > len(max_affinity):
-            max_affinity = value
 
-    os.environ["ZE_AFFINITY_MASK"] = str(max_affinity)
-    print(str("ZE_AFFINITY_MASK=" + os.environ.get("ZE_AFFINITY_MASK")))
+def strip_xdist(addopts):
+    """addopts tokens without the xdist worker options."""
+    tokens, rest = shlex.split(addopts or ""), []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in XDIST_VALUE_OPTS:
+            i += 2
+            continue
+        if tok == "-d" or tok.startswith(tuple(f"{o}=" for o in XDIST_VALUE_OPTS)):
+            i += 1
+            continue
+        if re.fullmatch(r"-n\S+", tok):
+            i += 1
+            continue
+        rest.append(tok)
+        i += 1
+    return rest
 
-else:
-    print("xpu-smi topology failed")
-    sys.exit(255)
+
+def distributed_group(mask):
+    """First complete 4-GPU group (0-3, 4-7, ...) in mask."""
+    gpus = list(
+        dict.fromkeys(
+            g.strip() for g in (mask or "0,1,2,3,4,5,6,7").split(",") if g.strip()
+        )
+    )
+    bad = [g for g in gpus if not g.isdigit()]
+    if bad:
+        raise RuntimeError(f"distributed needs integer GPU ids, got {','.join(bad)}")
+    ids = {int(g) for g in gpus}
+    groups = sorted(
+        {i // 4 for i in ids if all(i // 4 * 4 + k in ids for k in range(4))}
+    )
+    if not groups:
+        raise RuntimeError(
+            f"distributed needs a complete 4-GPU group (0-3, 4-7, ...), got {','.join(gpus)}"
+        )
+    base = groups[0] * 4
+    return [str(base + k) for k in range(4)]
+
+
+# -rA prints PASSED lines when PYTEST_ADDOPTS is not set; always run in one xdist worker (-n 1).
+addopts = os.environ.get("PYTEST_ADDOPTS") or "-rA"
+os.environ["PYTEST_ADDOPTS"] = shlex.join([*strip_xdist(addopts), "-n", "1"])
+
+pipelining = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../../../test/distributed/pipelining")
+)
+os.environ["PYTHONPATH"] = os.pathsep.join(
+    p for p in (os.environ.get("PYTHONPATH"), pipelining) if p
+)
+
+try:
+    gpus = distributed_group(os.environ.get("ZE_AFFINITY_MASK"))
+except RuntimeError as e:
+    print(f"[ERROR] {e}", file=sys.stderr)
+    sys.exit(2)
+
+os.environ["ZE_AFFINITY_MASK"] = ",".join(gpus)
+print(f"ZE_AFFINITY_MASK={os.environ['ZE_AFFINITY_MASK']}")
 
 
 # run python test
