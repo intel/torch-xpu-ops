@@ -142,6 +142,19 @@ else()
 
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endif()
+
+set(REPLACE_FLAGS_FOR_SLEEP TRUE)
+set_build_flags()
+# Short target name for the same MAX_PATH reason as the kernel groups above.
+set(sycl_lib xpuks)
+sycl_add_library(${sycl_lib} STATIC SYCL_SOURCES ${ATen_XPU_SLEEP_SRCS})
+set_target_properties(${sycl_lib} PROPERTIES OUTPUT_NAME torch_xpu_ops_sycl_sleep_kernels)
+target_compile_definitions(${sycl_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+target_link_libraries(torch_xpu_ops PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,${sycl_lib}>")
+list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+set(REPLACE_FLAGS_FOR_SLEEP FALSE)
+set_build_flags()
+
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
 torch_xpu_ops_finalize_targets(c10_xpu torch_cpu)

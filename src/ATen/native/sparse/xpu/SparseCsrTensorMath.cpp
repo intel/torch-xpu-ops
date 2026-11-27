@@ -207,6 +207,13 @@ Tensor& addmm_out_sparse_compressed_xpu(
     const Scalar& beta,
     const Scalar& alpha,
     Tensor& result) {
+  // Run on a contiguous clone and copy back through the strides, as
+  // CPU and CUDA do, so that non-contiguous out= is honoured.
+  if (at::sparse_csr::has_noncontiguous_values(result)) {
+    return at::sparse_csr::run_on_contiguous_clone(result, [&](Tensor& r) {
+      addmm_out_sparse_compressed_xpu(self, mat1, mat2, beta, alpha, r);
+    });
+  }
   TORCH_CHECK(
       self.is_xpu(),
       "Expected all tensors to be on the same device. addmm expected self to be XPU tensor, but got ",
@@ -427,6 +434,16 @@ Tensor& add_out_sparse_compressed_xpu(
         out.is_xpu(),
         "add: expected 'out' to be XPU tensor, but got tensor on device: ",
         out.device());
+
+    // Checked before only_sparse_compressed_add_trivial_cases (unlike CPU/
+    // CUDA, which check after) so that the trivial-case handlers do not
+    // silently replace out's member tensors for identical-operand cases.
+    // Tracked by https://github.com/intel/torch-xpu-ops/issues/6333.
+    if (at::sparse_csr::has_noncontiguous_values(out)) {
+      return at::sparse_csr::run_on_contiguous_clone(out, [&](Tensor& r) {
+        add_out_sparse_compressed_xpu(self, other, alpha, r);
+      });
+    }
 
     if (only_sparse_compressed_add_trivial_cases(self, other, alpha, out)) {
       return out;

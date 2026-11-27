@@ -1,0 +1,20 @@
+name: bot-review demote capture
+run-name: bot-review demote PR ${{ github.event.pull_request.number }}
+
+# `pull_request_review` gets no secrets on fork PRs, so this run only records
+# that a change request happened; the run title carries the PR number. The
+# `demote` job in bot_review_label.yml (workflow_run, with MERGE_TOKEN) re-checks
+# everything live before moving the PR back to `in progress`.
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  capture:
+    if: github.event.review.state == 'changes_requested'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Changes requested on PR ${{ github.event.pull_request.number }}"
