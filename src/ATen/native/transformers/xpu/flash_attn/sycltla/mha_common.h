@@ -145,6 +145,12 @@ struct FLASH_FWD_params : public QKV_params {
   void* rng_seed;
   void* rng_offset;
 
+  // Varlen: cumulative sequence lengths [batch + 1] and total packed Q rows.
+  int* cu_seqlens_q = nullptr;
+  int* cu_seqlens_k = nullptr;
+  int total_q = 0;
+  bool is_varlen = false;
+
   bool is_fp16;
 };
 

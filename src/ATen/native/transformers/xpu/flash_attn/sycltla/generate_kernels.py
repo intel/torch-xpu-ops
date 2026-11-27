@@ -68,10 +68,10 @@ namespace cute {{
 
 FWD_SPECIALIZATION = """\
 template <>
-void run_mha_fwd_<{dtype}, {hdim}, {causal}>(
+void run_mha_fwd_<{dtype}, {hdim}, {causal}, {varlen}>(
     sycl::queue& queue,
     FLASH_FWD_params& params) {{
-  run_mha_fwd_hdim{hdim}<{dtype}, {causal}>(queue, params);
+  run_mha_fwd_hdim{hdim}<{dtype}, {causal}, {varlen}>(queue, params);
 }}"""
 
 BWD_SPECIALIZATION = """\
@@ -83,26 +83,34 @@ void run_mha_bwd_<{dtype}, {hdim}, {causal}>(
 }}"""
 
 
-def generate_specializations(template: str, hdim: int) -> str:
+def generate_specializations(template: str, hdim: int, varlen: bool = False) -> str:
     specs = []
     for dtype_cpp in DTYPE_MAP.values():
         for causal in ["false", "true"]:
-            specs.append(template.format(dtype=dtype_cpp, hdim=hdim, causal=causal))
+            specs.append(
+                template.format(
+                    dtype=dtype_cpp,
+                    hdim=hdim,
+                    causal=causal,
+                    varlen="true" if varlen else "false",
+                )
+            )
     return "\n\n".join(specs)
 
 
-def generate_file(direction: str, hdim: int) -> tuple[str, str]:
+def generate_file(direction: str, hdim: int, varlen: bool = False) -> tuple[str, str]:
     if direction == "fwd":
         body = FWD_TEMPLATE.format(
             prelude=PRELUDE,
-            specializations=generate_specializations(FWD_SPECIALIZATION, hdim),
+            specializations=generate_specializations(FWD_SPECIALIZATION, hdim, varlen),
         )
     else:
         body = BWD_TEMPLATE.format(
             prelude=PRELUDE,
             specializations=generate_specializations(BWD_SPECIALIZATION, hdim),
         )
-    filename = f"mha_{direction}_hdim{hdim}.cpp"
+    varlen_tag = "varlen_" if varlen else ""
+    filename = f"mha_{direction}_{varlen_tag}hdim{hdim}.cpp"
     return filename, body
 
 
@@ -112,9 +120,9 @@ def main(output_dir: Optional[str]) -> None:
     else:
         out = Path(output_dir)
 
-    for direction in ["fwd", "bwd"]:
+    for direction, varlen in [("fwd", False), ("fwd", True), ("bwd", False)]:
         for hdim in HEAD_DIMENSIONS:
-            filename, content = generate_file(direction, hdim)
+            filename, content = generate_file(direction, hdim, varlen)
             (out / filename).write_text(content)
             print(f"  {filename}")
 

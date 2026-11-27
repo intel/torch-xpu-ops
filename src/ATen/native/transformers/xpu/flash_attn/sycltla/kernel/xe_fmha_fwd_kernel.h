@@ -35,6 +35,7 @@ struct FMHAProblemShape {
   int num_heads_q, num_heads_kv;
   SeqLenType seq_len_qo, seq_len_kv;
   int head_size_qk, head_size_vo;
+  int total_seq_len_qo = 0; // varlen only: rows in the packed Q, for LSE
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -269,18 +270,15 @@ class XeFMHAFwdKernel {
       // written for these rows instead of being left uninitialized.
       const bool fully_masked = CollectiveMainloop::CausalMask && seq_len == 0;
 
-      int offset_q = 0, offset_k = 0, offset_v = 0, offset_o = 0;
+      int64_t offset_q = 0, offset_k = 0, offset_v = 0, offset_o = 0;
       if constexpr (is_var_len) {
+        // Row offset only: the head is applied by Q(_, _, head_q, 0) below.
         auto qo_cumulative = s.seq_len_qo.cumulative_length;
         auto kv_cumulative = s.seq_len_kv.cumulative_length;
-        offset_q =
-            p.q_head_stride * head_q + p.q_row_stride * qo_cumulative[idx_b];
-        offset_k =
-            p.k_head_stride * head + p.k_row_stride * kv_cumulative[idx_b];
-        offset_v =
-            p.v_head_stride * head + p.v_row_stride * kv_cumulative[idx_b];
-        offset_o =
-            p.o_head_stride * head_q + p.o_row_stride * qo_cumulative[idx_b];
+        offset_q = p.q_row_stride * qo_cumulative[idx_b];
+        offset_k = p.k_row_stride * kv_cumulative[idx_b];
+        offset_v = p.v_row_stride * kv_cumulative[idx_b];
+        offset_o = p.o_row_stride * qo_cumulative[idx_b];
       }
 
       auto batch_dim = is_var_len ? 1 : s.batch;
@@ -364,12 +362,18 @@ class XeFMHAFwdKernel {
 
       // Epilogue
       CollectiveEpilogue epilogue{params.epilogue, shared_storage.epilogue};
+      // LSE is [B, Hq, S] for dense and [Hq, total_q] for varlen.
+      int64_t lse_base;
+      if constexpr (is_var_len) {
+        lse_base = int64_t(head_q) * s.total_seq_len_qo +
+            s.seq_len_qo.cumulative_length[idx_b];
+      } else {
+        lse_base = (int64_t(idx_b) * s.num_heads_q + head_q) * seq_len_qo;
+      }
       auto metadata_for_lse = std::make_tuple(
           get<0>(TileShapePV{}),
-          s.num_heads_q,
+          lse_base,
           seq_len_qo,
-          idx_b,
-          head_q,
           tile_row_idx,
           rows_of_maxima);
       epilogue(
