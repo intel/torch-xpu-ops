@@ -8,6 +8,8 @@ BartForCausalLM,pass,pass,pass,pass,pass
 BartForConditionalGeneration,pass,pass,pass,pass,pass
 BertForMaskedLM,pass,pass,pass,pass,pass
 BertForQuestionAnswering,pass,pass,pass,pass,pass
+# BlenderbotForCausalLM float32/amp_bf16/amp_fp16: eager_fail_to_run - out of memory on B60 (24 GB)
+BlenderbotForCausalLM,eager_fail_to_run,pass_due_to_skip,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run
 BlenderbotSmallForCausalLM,pass,pass,pass,pass,pass
 BlenderbotSmallForConditionalGeneration,pass,pass,pass,pass,pass
 # DebertaV2ForQuestionAnswering float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6203
@@ -34,6 +36,10 @@ PLBartForCausalLM,pass,pass,pass,pass,pass
 PLBartForConditionalGeneration,pass,pass,pass,pass,pass
 PegasusForCausalLM,pass,pass,pass,pass,pass
 PegasusForConditionalGeneration,pass,pass,pass,pass,pass
+# Qwen/Qwen3-0.6B float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6348
+Qwen/Qwen3-0.6B,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+# Qwen/Qwen3.5-0.8B float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6348
+Qwen/Qwen3.5-0.8B,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 RobertaForCausalLM,pass,pass,pass,pass,pass
 RobertaForQuestionAnswering,pass,pass,pass,pass,pass
 T5ForConditionalGeneration,pass,pass,pass,pass,pass
@@ -42,3 +48,10 @@ TrOCRForCausalLM,pass,pass,pass,pass,pass
 XGLMForCausalLM,pass,pass,pass,pass,pass
 XLNetLMHeadModel,pass,pass,pass,pass,pass
 YituTechConvBert,pass,pass,pass,pass,pass
+# google/gemma-2-2b float32/amp_bf16/amp_fp16: eager_fail_to_run - out of memory on B60 (24 GB) (also fails on PVC, #6348)
+# google/gemma-2-2b bfloat16/float16: eager_fail_to_run - also fails on PVC, #6348
+google/gemma-2-2b,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+# meta-llama/Llama-3.2-1B float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6348
+meta-llama/Llama-3.2-1B,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+# openai/whisper-tiny float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6348
+openai/whisper-tiny,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run

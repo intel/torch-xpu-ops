@@ -6,6 +6,9 @@ adv_inception_v3,pass,fail_accuracy,pass,pass,pass
 beit_base_patch16_224,pass,pass,pass,pass,pass
 # botnet26t_256 amp_fp16: fail_accuracy - BMG only, #6273
 botnet26t_256,pass,pass,pass,pass,fail_accuracy
+# cait_m36_384 float32: eager_fail_to_run - out of memory on B60 (24 GB) (also OOM on PVC)
+# cait_m36_384 bfloat16/float16/amp_bf16/amp_fp16: UR_RESULT_ERROR - out of memory on B60 (24 GB) (also OOM on PVC)
+cait_m36_384,eager_fail_to_run,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR
 coat_lite_mini,pass,pass,pass,pass,pass
 convit_base,pass,pass,pass,pass,pass
 convmixer_768_32,pass,pass,pass,pass,pass
@@ -68,3 +71,6 @@ vit_base_patch14_dinov2.lvd142m,UR_RESULT_ERROR,pass,pass,pass,pass
 vit_base_patch16_224,pass,pass,pass,pass,pass
 vit_base_patch16_siglip_256,pass,pass,pass,pass,pass
 volo_d1_224,pass,pass,pass,pass,pass
+# xcit_large_24_p8_224 float32: UR_RESULT_ERROR - out of memory on B60 (24 GB)
+# xcit_large_24_p8_224 bfloat16/float16/amp_bf16/amp_fp16: out of memory - out of memory on B60 (24 GB)
+xcit_large_24_p8_224,UR_RESULT_ERROR,out of memory,out of memory,out of memory,out of memory
