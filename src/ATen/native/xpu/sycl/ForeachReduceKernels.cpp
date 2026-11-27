@@ -234,17 +234,19 @@ void foreach_norn_kernel_config(
     TensorOptions output_per_tensor_option,
     int64_t simd,
     int64_t& wg_size,
+    int64_t& chunk_size,
     int& max_chunks_per_tensor,
     Tensor& output_per_tensor) {
   const int ntensors = tensors.size();
 
   max_chunks_per_tensor = -1;
   wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
+  chunk_size =
+      multi_tensor_apply_kernel_get_chunk_size(simd, kReduceElementPerThread);
 
   for (int t = 0; t < ntensors; t++) {
     int max_chunks_this_tensor =
-        (tensors[t].numel() + kChunkSize - 1) / kChunkSize;
+        (tensors[t].numel() + chunk_size - 1) / chunk_size;
     if (max_chunks_this_tensor > max_chunks_per_tensor) {
       max_chunks_per_tensor = max_chunks_this_tensor;
     }
@@ -288,6 +290,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
 
   int64_t wg_size;
+  int64_t chunk_size;
   int max_chunks_per_tensor;
   Tensor output_per_tensor;
   int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
@@ -296,6 +299,7 @@ std::vector<Tensor> foreach_norm_kernel_impl(
       output_per_tensor_option,
       simd,
       wg_size,
+      chunk_size,
       max_chunks_per_tensor,
       output_per_tensor);
   if (p == static_cast<double>(1)) {
@@ -310,8 +314,9 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                 using out_opmath_t = typename at::opmath_type<out_t>;
                 // sum temp val for each chunk
                 if (simd == SIMD32) {
-                  multi_tensor_apply<1>(
+                  multi_tensor_apply_with_chunk_size<1>(
                       tensor_lists,
+                      chunk_size,
                       LpNormFunctor<
                           scalar_t,
                           NormType::L1,
@@ -320,8 +325,9 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       max_chunks_per_tensor);
                 } else {
-                  multi_tensor_apply<1>(
+                  multi_tensor_apply_with_chunk_size<1>(
                       tensor_lists,
+                      chunk_size,
                       LpNormFunctor<
                           scalar_t,
                           NormType::L1,
@@ -381,8 +387,9 @@ std::vector<Tensor> foreach_norm_kernel_impl(
               output_dtype, "foreach_norm_out_dtype_xpu", [&]() {
                 using out_opmath_t = typename at::opmath_type<out_t>;
                 if (simd == SIMD32) {
-                  multi_tensor_apply<1>(
+                  multi_tensor_apply_with_chunk_size<1>(
                       tensor_lists,
+                      chunk_size,
                       LpNormFunctor<
                           scalar_t,
                           NormType::L2,
@@ -391,8 +398,9 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       max_chunks_per_tensor);
                 } else {
-                  multi_tensor_apply<1>(
+                  multi_tensor_apply_with_chunk_size<1>(
                       tensor_lists,
+                      chunk_size,
                       LpNormFunctor<
                           scalar_t,
                           NormType::L2,
@@ -452,8 +460,9 @@ std::vector<Tensor> foreach_norm_kernel_impl(
               output_dtype, "foreach_norm_out_dtype_xpu", [&]() {
                 using out_opmath_t = typename at::opmath_type<out_t>;
                 if (simd == SIMD32) {
-                  multi_tensor_apply<1>(
+                  multi_tensor_apply_with_chunk_size<1>(
                       tensor_lists,
+                      chunk_size,
                       LpNormFunctor<
                           scalar_t,
                           NormType::LInf,
@@ -462,8 +471,9 @@ std::vector<Tensor> foreach_norm_kernel_impl(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       max_chunks_per_tensor);
                 } else {
-                  multi_tensor_apply<1>(
+                  multi_tensor_apply_with_chunk_size<1>(
                       tensor_lists,
+                      chunk_size,
                       LpNormFunctor<
                           scalar_t,
                           NormType::LInf,
@@ -697,7 +707,8 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
 
   int max_chunks_per_tensor = -1;
   int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
+  int64_t kChunkSize =
+      multi_tensor_apply_kernel_get_chunk_size(simd, kReduceElementPerThread);
   for (const auto t : c10::irange(ntensors)) {
     int max_chunks_this_tensor =
         (tensors[t].numel() + kChunkSize - 1) / kChunkSize;
@@ -732,14 +743,16 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
       "foreach_tensor_max_xpu_scalar_type",
       [&]() {
         if (simd == SIMD32) {
-          multi_tensor_apply<1>(
+          multi_tensor_apply_with_chunk_size<1>(
               tensor_lists,
+              kChunkSize,
               LpMaxFunctor<scalar_t, SIMD32>(),
               output_per_tensor.mutable_data_ptr<scalar_t>(),
               max_chunks_per_tensor);
         } else if (simd == SIMD16) {
-          multi_tensor_apply<1>(
+          multi_tensor_apply_with_chunk_size<1>(
               tensor_lists,
+              kChunkSize,
               LpMaxFunctor<scalar_t, SIMD16>(),
               output_per_tensor.mutable_data_ptr<scalar_t>(),
               max_chunks_per_tensor);

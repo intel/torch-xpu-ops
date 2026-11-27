@@ -28,7 +28,10 @@ namespace at::native::xpu {
 
 // Instruction level Parallelism, namely vec size
 static constexpr int64_t kILP = 4;
-static constexpr int64_t kElementPerThread = 128;
+static constexpr int64_t kElementPerThread = 16;
+// Reduction kernels execute work-group barriers and write per-chunk partials,
+// so keep a larger per-work-item grain size to amortize reduction overhead.
+static constexpr int64_t kReduceElementPerThread = 128;
 template <typename T>
 bool is_aligned(T* p) {
   return ((uint64_t)p) % (kILP * sizeof(T)) == 0;
@@ -149,13 +152,15 @@ inline uint64_t count_work_groups(
   return total_wg;
 }
 
-static int64_t multi_tensor_apply_kernel_get_wg_size(int simd) {
+static inline int64_t multi_tensor_apply_kernel_get_wg_size(int simd) {
   return get_group_reduce_group_size(simd);
 }
 
-static int64_t multi_tensor_apply_kernel_get_chunk_size(int simd) {
+static inline int64_t multi_tensor_apply_kernel_get_chunk_size(
+    int simd,
+    int64_t elements_per_thread = kElementPerThread) {
   int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
-  return max_wg_size * kElementPerThread;
+  return max_wg_size * elements_per_thread;
 }
 
 static inline int64_t multi_tensor_apply_fused_kernel_get_wg_size() {
@@ -209,15 +214,15 @@ void launch_multi_tensor_apply_kernel(
     Y tlWGMeta,
     U callable,
     int num_wg,
+    int64_t chunk_size,
     ArgTypes... args) {
   auto& q = getCurrentSYCLQueue();
   int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
   int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   if constexpr (fused_kernel) {
     max_wg_size = multi_tensor_apply_fused_kernel_get_wg_size();
-    kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
+    chunk_size = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
   // See MultiTensorApplyCallableWrapper above: fold extra args into a
@@ -232,7 +237,7 @@ void launch_multi_tensor_apply_kernel(
       sycl::range<1>(max_wg_size),
       q,
       0,
-      kChunkSize,
+      chunk_size,
       tlAddressMeta,
       tlWGMeta,
       wrapped);
@@ -274,21 +279,20 @@ void multi_tensor_apply(
       metadata.work_group_meta(),
       callable,
       metadata.work_group_count(),
+      kChunkSize,
       args...);
 }
 
 template <int depth, typename T, typename... ArgTypes>
-void multi_tensor_apply(
+void multi_tensor_apply_with_chunk_size(
     std::vector<std::vector<at::Tensor>>& tensor_lists,
+    int64_t kChunkSize,
     T callable,
     ArgTypes... args) {
   TORCH_CHECK(
       tensor_lists.size() == depth,
       "Number of tensor lists has to match he depth");
   size_t n_tensors = tensor_lists[0].size();
-
-  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   MultiTensorApplyMetadata<TLMetaForAddress<depth>> metadata(
       n_tensors, count_work_groups(tensor_lists[0], kChunkSize));
@@ -310,7 +314,19 @@ void multi_tensor_apply(
       metadata.work_group_meta(),
       callable,
       metadata.work_group_count(),
+      kChunkSize,
       args...);
+}
+
+template <int depth, typename T, typename... ArgTypes>
+void multi_tensor_apply(
+    std::vector<std::vector<at::Tensor>>& tensor_lists,
+    T callable,
+    ArgTypes... args) {
+  int64_t simd = at::xpu::getDeviceMaxSubGroupSize();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
+  multi_tensor_apply_with_chunk_size<depth>(
+      tensor_lists, kChunkSize, callable, args...);
 }
 
 template <int depth, typename T, typename... ArgTypes>
@@ -347,6 +363,7 @@ void multi_tensor_apply_for_fused_optimizer(
       metadata.work_group_meta(),
       callable,
       metadata.work_group_count(),
+      kChunkSize,
       args...);
 }
 
