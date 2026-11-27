@@ -63,6 +63,8 @@ jobs:
       invalid_reason: ${{ steps.parse.outputs.invalid_reason }}
       actor: ${{ steps.parse.outputs.actor }}
       authorized: ${{ steps.parse.outputs.authorized }}
+      enter_gate: ${{ steps.parse.outputs.enter_gate }}
+      skip_review: ${{ steps.parse.outputs.skip_review }}
     steps:
       - name: Acknowledge Command
         uses: actions/github-script@v9
@@ -285,6 +287,21 @@ jobs:
             core.setOutput('fix_image', fixImage);
             core.setOutput('omix_note', omixNote);
             core.setOutput('authorized', String(authorized));
+            // `@torchxpubot review` on an open PR with no gate label enters the gate
+            // (adds `in progress`) instead of running a one-off review.
+            const gateLabels = ['in progress', 'ready for review', 'no automated review'];
+            // Drafts stay out of the gate and get the one-off review as before.
+            // `@torchxpubot review --skip`: opt out of the bot review (urgent PRs).
+            const skipReview = isPR && normalizedCommand === 'review' && /(^|\s)--skip\b/.test(args);
+            core.setOutput('skip_review', String(skipReview));
+            let enterGate = !skipReview && isPR && normalizedCommand === 'review'
+              && context.payload.issue.state === 'open'
+              && !context.payload.issue.labels.some(l => gateLabels.includes(l.name));
+            if (enterGate) {
+              const { owner, repo } = context.repo;
+              enterGate = !(await github.rest.pulls.get({ owner, repo, pull_number: issueNumber })).data.draft;
+            }
+            core.setOutput('enter_gate', String(enterGate));
 
   invalid-command:
     needs: parse-command
@@ -361,7 +378,8 @@ jobs:
             | \`@torchxpubot rerun\` | Re-trigger full CI |
             | \`@torchxpubot rerun failed\` | Re-run only failed CI jobs |
             | \`@torchxpubot rerun -b <branch_or_commit>\` | Rerun CI against a pytorch ref |
-            | \`@torchxpubot review\` (or \`pr-review\`) | AI-powered PR code review |
+            | \`@torchxpubot review\` (or \`pr-review\`) | AI-powered PR code review; on a PR with no gate label, adds \`in progress\` (bot review gate) |
+            | \`@torchxpubot review --skip\` | Skip the bot review gate (urgent PR): adds \`no automated review\` |
             | \`@torchxpubot ut-check\` (or \`check-ut\`, \`ut\`) | Analyze UT results: new failures, relevance, coverage |
             | \`@torchxpubot cherry-pick --onto release/x.xx -c <class>\` | Cherry-pick this merged PR onto a release branch |
             | \`@torchxpubot help\` | Show this help message |
@@ -916,6 +934,54 @@ jobs:
               core.setFailed(e.message);
             }
 
+  # Second entry to the bot review gate, for those who cannot add labels:
+  # adding `in progress` fires bot_review_label.yml, which starts the review.
+  review-enter-gate:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      needs.parse-command.outputs.enter_gate == 'true'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = ${{ needs.parse-command.outputs.pr_number }};
+            await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['in progress'] });
+            await github.rest.issues.createComment({ owner, repo, issue_number, body:
+              'Added `in progress`, so the bot review starts now. From here:\n' +
+              '- Every push is reviewed again automatically. Comment `@torchxpubot review` only to re-run without pushing.\n' +
+              '- When the review finds no blocking issues and CI is clean, the PR moves to `ready for review`.\n' +
+              '- If a finding is wrong, reply in a comment naming it and saying why. The next review reads it.\n' +
+              '- Put `Reviewers: @alice @bob` in the PR description. The bot requests them at `ready for review`; do not request them yourself before that.\n' +
+              '- Urgent PR: comment `@torchxpubot review --skip` to skip the bot review.' });
+
+  # `@torchxpubot review --skip`: add `no automated review`, so that
+  # bot_review_label.yml moves the PR straight to `ready for review`
+  # (for a draft, once it is marked ready) and requests reviewers.
+  review-skip:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      needs.parse-command.outputs.skip_review == 'true'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = ${{ needs.parse-command.outputs.pr_number }};
+            await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['no automated review'] });
+            await github.rest.issues.createComment({ owner, repo, issue_number, body:
+              'Added `no automated review`: this PR skips the bot review and goes straight to `ready for review` ' +
+              '(once it is no longer a draft). Reviewers come from the `Reviewers: @alice @bob` line in the PR description. ' +
+              'Merging still needs two maintainer approvals.' });
+
   review:
     needs: parse-command
     runs-on: ubuntu-latest
@@ -923,6 +989,8 @@ jobs:
     if: >-
       needs.parse-command.outputs.command == 'review'
       && needs.parse-command.outputs.authorized == 'true'
+      && needs.parse-command.outputs.enter_gate != 'true'
+      && needs.parse-command.outputs.skip_review != 'true'
     # The model reads untrusted PR text, so it gets a read-only token; posting
     # and labeling happen in the `review-post` job, which holds MERGE_TOKEN.
     permissions:

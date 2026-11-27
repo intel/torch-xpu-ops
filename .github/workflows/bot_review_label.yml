@@ -1,7 +1,8 @@
 name: bot-review label
 
 # Bot review gate, triggered like pytorch's hardened-pr-review.yml:
-#   - a maintainer adds `in progress`, or
+#   - someone adds `in progress`, or comments `@torchxpubot review` on a PR
+#     with no gate label (bot.yml adds `in progress`), or
 #   - the author pushes / reopens / marks ready while `in progress` is on and
 #     `ready for review` is not.
 # A passing review plus clean CI swaps `in progress` for `ready for review`;
@@ -156,11 +157,11 @@ jobs:
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
             if (comments.some(c => (c.body || '').includes(marker))) return;
             await github.rest.issues.createComment({ owner, repo, issue_number,
-              body: `${marker}\n@${pr.user.login} reviewers were requested before this PR passed the bot review. ` +
-                `Please add the \`in progress\` label (or ask a maintainer to): the bot reviews every push, and once no ` +
-                `blocking issues remain the PR moves to \`ready for review\` and reviewers are requested from the ` +
-                `\`Reviewers: @alice @bob\` line in the description. If this PR is urgent, add \`no automated review\` ` +
-                `instead to skip the bot review. See [CONTRIBUTING.md](https://github.com/intel/torch-xpu-ops/blob/main/CONTRIBUTING.md#bot-review-before-human-review).` });
+              body: `${marker}\n@${pr.user.login} reviewers are requested after the bot review. ` +
+                `Comment \`@torchxpubot review\` (or add the \`in progress\` label) to start it, and put ` +
+                `\`Reviewers: @alice @bob\` in the PR description: the bot requests them once the PR reaches ` +
+                `\`ready for review\`. Urgent PR: comment \`@torchxpubot review --skip\` to skip the bot review. ` +
+                `See [CONTRIBUTING.md](https://github.com/intel/torch-xpu-ops/blob/main/CONTRIBUTING.md#bot-review-before-human-review).` });
 
   # A maintainer requested changes on a ready PR: back to `in progress`. Adding
   # that label fires `trigger` above, so the review re-runs and must see the
