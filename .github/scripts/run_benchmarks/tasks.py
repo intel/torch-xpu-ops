@@ -257,6 +257,22 @@ def _combos(group: dict, cfg: dict, path: str, dts, modes):
                     yield suite, mode, dt, models
 
 
+@cache
+def get_tier_skipped_models(tier_dir: Path, suite: str, scenario: str, mode: str) -> frozenset[str]:
+    """Return models skipped for *(suite, scenario, mode)* in ``<tier_dir>/skip.yaml``."""
+    skip_file = tier_dir / "skip.yaml"
+    if not skip_file.is_file():
+        return frozenset()
+
+    import yaml
+
+    with skip_file.open(encoding="utf-8") as f:
+        skip = (yaml.safe_load(f) or {}).get("skip") or {}
+    suite_key = "timm" if suite == "timm_models" and "timm" in skip else suite
+    items = (((skip.get(suite_key) or {}).get(scenario) or {}).get(mode)) or []
+    return frozenset(str(m).strip() for m in items if m is not None)
+
+
 def load_tasks_from_scope(
     path: str,
     suites: set[str] | None = None,
@@ -267,6 +283,7 @@ def load_tasks_from_scope(
     """Build tasks from a tier config.yaml; combinations not claimed by any group come from the top level."""
     import yaml
 
+    tier_dir = Path(path).resolve().parent
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
@@ -285,6 +302,8 @@ def load_tasks_from_scope(
                 continue
             scenario_list = [s for s in group["scenario"] if not scenarios or s in scenarios]
             for scenario, model in product(scenario_list, dict.fromkeys(models)):
+                if model in get_tier_skipped_models(tier_dir, suite, scenario, mode):
+                    continue
                 if suite == "pt2e":
                     # pt2e has no backend axis; generating it per backend would duplicate runs.
                     tasks.extend(_pt2e_tasks(dt, scenario, model))

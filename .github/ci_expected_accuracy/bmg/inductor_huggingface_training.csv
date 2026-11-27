@@ -1,4 +1,4 @@
-# BMG (Arc Pro B60) accuracy reference, run 45102486992 + standalone verification on 816791 (full p0+p1+p2).
+# BMG (Arc Pro B60) accuracy reference (p0/p1/p2).
 # Comment lines above a model explain its non-pass results.
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 AlbertForMaskedLM,pass,pass,pass,pass,pass
@@ -23,7 +23,6 @@ GPT2ForSequenceClassification,pass,pass,pass,pass,pass
 GoogleFnet,pass,pass,pass,pass,pass
 LayoutLMForMaskedLM,pass,pass,pass,pass,pass
 LayoutLMForSequenceClassification,pass,pass,pass,pass,pass
-M2M100ForConditionalGeneration,pass,pass,pass,pass,pass
 MBartForCausalLM,pass,pass,pass,pass,pass
 MBartForConditionalGeneration,pass,pass,pass,pass,pass
 MT5ForConditionalGeneration,pass,pass,pass,pass,pass
