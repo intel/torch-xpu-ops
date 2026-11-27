@@ -169,65 +169,46 @@ struct PhiloxRandintBoundedParam {
   u_t range_;
 };
 
-// One kernel type covers both of CUDA's key kernels: TrivialOffsetCalculator
-// selects the single-key path and OffsetCalculator the batched-key path.
+// One kernel function covers both of CUDA's key kernels:
+// TrivialOffsetCalculator selects the single-key path and OffsetCalculator the
+// batched-key path.
 template <
     typename scalar_t,
     typename sample_t,
     typename param_t,
     typename key_offset_calc_t>
-struct PhiloxDistributionFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    constexpr int epc = at::native::elems_per_call<scalar_t>;
-    XPU_KERNEL_LOOP_TYPE(item, index, total_chunks_, int64_t) {
-      const int64_t key_idx = index / chunks_per_key_;
-      const int64_t chunk = index % chunks_per_key_;
-      const auto key_offset = key_offset_calc_.get(key_idx)[0];
-      const auto key_vec = memory::ld_vec<16>(keys_ + key_offset);
-      const auto* key_vals = reinterpret_cast<const uint64_t*>(&key_vec);
-      const uint64_t seed = key_vals[0];
-      const uint64_t offset = key_vals[1];
-      const int64_t chunk_offset = chunk * epc;
-      const int64_t base = key_idx * elems_per_key_ + chunk_offset;
-      const int64_t remaining = elems_per_key_ - chunk_offset;
-      const int count = static_cast<int>(remaining < epc ? remaining : epc);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void philox_distribution_kernel_impl(
+    scalar_t* output,
+    const uint64_t* keys,
+    int64_t elems_per_key,
+    int64_t chunks_per_key,
+    int64_t total_chunks,
+    key_offset_calc_t key_offset_calc,
+    sample_t sample_func,
+    param_t param_func) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  constexpr int epc = at::native::elems_per_call<scalar_t>;
+  XPU_KERNEL_LOOP_TYPE(item, index, total_chunks, int64_t) {
+    const int64_t key_idx = index / chunks_per_key;
+    const int64_t chunk = index % chunks_per_key;
+    const auto key_offset = key_offset_calc.get(key_idx)[0];
+    const auto key_vec = memory::ld_vec<16>(keys + key_offset);
+    const auto* key_vals = reinterpret_cast<const uint64_t*>(&key_vec);
+    const uint64_t seed = key_vals[0];
+    const uint64_t offset = key_vals[1];
+    const int64_t chunk_offset = chunk * epc;
+    const int64_t base = key_idx * elems_per_key + chunk_offset;
+    const int64_t remaining = elems_per_key - chunk_offset;
+    const int count = static_cast<int>(remaining < epc ? remaining : epc);
 
-      const uint64_t chunk_seq = offset + static_cast<uint64_t>(chunk);
-      const auto sample = sample_func_(seed, chunk_seq);
-      for (int j = 0; j < count; j++) {
-        output_[base + j] = param_func_(sample[j], base + j);
-      }
+    const uint64_t chunk_seq = offset + static_cast<uint64_t>(chunk);
+    const auto sample = sample_func(seed, chunk_seq);
+    for (int j = 0; j < count; j++) {
+      output[base + j] = param_func(sample[j], base + j);
     }
   }
-
-  PhiloxDistributionFunctor(
-      scalar_t* output,
-      const uint64_t* keys,
-      int64_t elems_per_key,
-      int64_t chunks_per_key,
-      int64_t total_chunks,
-      key_offset_calc_t key_offset_calc,
-      sample_t sample_func,
-      param_t param_func)
-      : output_(output),
-        keys_(keys),
-        elems_per_key_(elems_per_key),
-        chunks_per_key_(chunks_per_key),
-        total_chunks_(total_chunks),
-        key_offset_calc_(key_offset_calc),
-        sample_func_(sample_func),
-        param_func_(param_func) {}
-
- private:
-  scalar_t* output_;
-  const uint64_t* keys_;
-  int64_t elems_per_key_;
-  int64_t chunks_per_key_;
-  int64_t total_chunks_;
-  key_offset_calc_t key_offset_calc_;
-  sample_t sample_func_;
-  param_t param_func_;
-};
+}
 
 void philox_distribution_validate(
     const char* op_name,
@@ -284,8 +265,6 @@ void submit_philox_kernel(
     key_offset_calc_t key_offset_calc,
     sample_t sample_func,
     param_t param_func) {
-  using functor_t =
-      PhiloxDistributionFunctor<scalar_t, sample_t, param_t, key_offset_calc_t>;
   constexpr int64_t epc = at::native::elems_per_call<scalar_t>;
   const int64_t chunks_per_key = at::ceil_div(elems_per_key, epc);
   const int64_t total_chunks = num_keys * chunks_per_key;
@@ -294,7 +273,16 @@ void submit_philox_kernel(
   const int64_t work_group_num =
       xpuKernelLoopGroupRange(total_chunks, work_group_size);
 
-  const auto functor = functor_t(
+  constexpr auto kptr = philox_distribution_kernel_impl<
+      scalar_t,
+      sample_t,
+      param_t,
+      key_offset_calc_t>;
+  sycl_kernel_submit<kptr>(
+      work_group_num * work_group_size,
+      work_group_size,
+      at::xpu::getCurrentSYCLQueue(),
+      0,
       output.mutable_data_ptr<scalar_t>(),
       key.const_data_ptr<uint64_t>(),
       elems_per_key,
@@ -303,12 +291,6 @@ void submit_philox_kernel(
       key_offset_calc,
       sample_func,
       param_func);
-
-  sycl_kernel_submit(
-      sycl::range<1>(work_group_num * work_group_size),
-      sycl::range<1>(work_group_size),
-      at::xpu::getCurrentSYCLQueue(),
-      functor);
 }
 
 template <typename scalar_t, typename sample_t, typename param_t>
