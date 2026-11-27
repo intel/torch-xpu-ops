@@ -13,7 +13,10 @@
 # Guide.
 
 import json
+import os
 import re
+import subprocess
+import sys
 import unittest
 
 import torch
@@ -64,6 +67,45 @@ def _driver_version_at_least(min_version):
     driver_version = torch.xpu.get_device_properties().driver_version
     match = re.match(r"(\d+)\.(\d+)\.(\d+)", driver_version or "")
     return bool(match) and tuple(int(g) for g in match.groups()) >= min_version
+
+
+# The Level Zero loader only arms its metrics layer when ZET_ENABLE_METRICS is
+# set before the driver initializes, so the scope-profiler case cannot enable it
+# in-process -- without the layer, PTI's metric-device enumeration fails with
+# PTI_ERROR_DRIVER and the profiler refuses to start. Hence this child script.
+_SCOPE_PROFILER_SCRIPT = """
+import sys
+
+import torch
+from torch.profiler import profile, ProfilerActivity
+
+x = torch.randn(4, 4, device="xpu")
+weight = torch.randn(4, 4, device="xpu")
+
+# Warm up so first-iteration setup costs stay out of the profiled region.
+for _ in range(2):
+    _ = x @ weight
+torch.xpu.synchronize()
+
+with profile(
+    activities=[
+        ProfilerActivity.CPU,
+        {
+            ProfilerActivity.XPU: [
+                "XVE_STALL",
+                "XVE_ACTIVE",
+                "GpuCoreClocks",
+                "AvgGpuCoreFrequencyMHz",
+            ]
+        },
+    ],
+) as prof:
+    _ = x @ weight
+    prof.step()
+    torch.xpu.synchronize()
+
+prof.export_chrome_trace(sys.argv[1])
+"""
 
 
 class XpuProfilerUseCasesTest(TestCase):
@@ -230,37 +272,27 @@ class XpuProfilerUseCasesTest(TestCase):
     @unittest.skipIf(not TEST_XPU, "test requires XPU")
     def test_profiler_xpu_scope_profiler_config(self):
         """Check that the scope (HW-metrics) config is accepted and does not
-        break trace collection. Per-kernel metric values additionally require
-        the scope-profiler build patches, ``ZET_ENABLE_METRICS=1`` and
+        break trace collection. The profiled region runs in a child process
+        because ``ZET_ENABLE_METRICS=1`` has to be set before Level Zero
+        initializes. Per-kernel metric values additionally require the
+        scope-profiler build patches and
         ``sysctl dev.xe.observation_paranoid=0``, so the metric args
         themselves are not asserted here.
         """
-        x, weight = self._gemm_inputs()
-
-        # Warm up so first-iteration setup costs stay out of the profiled region.
-        for _ in range(2):
-            _ = x @ weight
-        torch.xpu.synchronize()
-
-        with profile(
-            activities=[
-                ProfilerActivity.CPU,
-                {
-                    ProfilerActivity.XPU: [
-                        "XVE_STALL",
-                        "XVE_ACTIVE",
-                        "GpuCoreClocks",
-                        "AvgGpuCoreFrequencyMHz",
-                    ]
-                },
-            ],
-        ) as prof:
-            _ = x @ weight
-            prof.step()
-            torch.xpu.synchronize()
-
         with TemporaryFileName(mode="w+") as fname:
-            prof.export_chrome_trace(fname)
+            completed = subprocess.run(
+                [sys.executable, "-c", _SCOPE_PROFILER_SCRIPT, fname],
+                env={**os.environ, "ZET_ENABLE_METRICS": "1"},
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            self.assertEqual(
+                completed.returncode,
+                0,
+                "scope-profiled child process failed:\n"
+                f"{completed.stdout}\n{completed.stderr}",
+            )
             with open(fname) as f:
                 data = json.load(f)
 
