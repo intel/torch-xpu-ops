@@ -371,6 +371,43 @@ class TestSimpleBinary(TestCase):
 
 
 class TestMixedDtypeVectorized(TestCase):
+    def _check_binary_orders(self, op, a, b):
+        for lhs, rhs in ((a, b), (b, a)):
+            with self.subTest(op=op.__name__, lhs=lhs.dtype, shape=lhs.shape):
+                expected = op(lhs.cpu(), rhs.cpu())
+                self.assertEqual(op(lhs, rhs).cpu(), expected, atol=0, rtol=0)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    def test_typed_binary_broadcast(self, device, dtype):
+        fp32 = torch.randn(65, 32, device=device)
+        low = torch.randn(65, 32, device=device, dtype=dtype)
+        self._check_binary_orders(torch.add, fp32, low)
+        self._check_binary_orders(torch.mul, fp32[:, :1], low)
+        # A rank-one singleton promotes to FP32 and leaves a partial vector.
+        self._check_binary_orders(torch.add, fp32.flatten()[:1], low.flatten()[:-1])
+
+    @dtypes(torch.float16, torch.bfloat16)
+    def test_typed_binary_strided_rows(self, device, dtype):
+        # Distinct padded pitches keep row offsets independent. The 126
+        # columns admit vec2 and transposing gives a dense transposed output.
+        fp32 = torch.randn(16384, 130, device=device)[:, 2:128]
+        low = torch.randn(16384, 134, device=device, dtype=dtype)[:, :126]
+        self._check_binary_orders(torch.mul, fp32, low)
+        self._check_binary_orders(torch.mul, fp32.t(), low.t())
+
+    def test_mixed_low_types_fallback(self, device):
+        half = torch.randn(17, device=device, dtype=torch.float16)
+        bf16 = torch.randn(17, device=device, dtype=torch.bfloat16)
+        self._check_binary_orders(torch.add, half, bf16)
+
+    @dtypes(torch.float16, torch.bfloat16)
+    def test_mixed_clamp_float_output_tail(self, device, dtype):
+        x = torch.randn(2051, device=device)
+        lower = -torch.rand(2051, device=device, dtype=dtype)
+        upper = torch.rand_like(lower)
+        expected = torch.clamp(x.cpu(), min=lower.cpu(), max=upper.cpu())
+        self.assertEqual(torch.clamp(x, min=lower, max=upper).cpu(), expected)
+
     @dtypes(torch.float16, torch.bfloat16)
     @parametrize(
         "offset,tail",

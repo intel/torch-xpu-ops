@@ -1221,7 +1221,8 @@ struct MixedDtypeVectorizedKernel {
   static arg_t<i> convert_input(storage_t<i> value) {
     if constexpr (
         std::is_same_v<storage_t<i>, float> && std::is_same_v<arg_t<i>, Half>) {
-      // Preserve the Half bits when the functor widens to FP32 for math.
+      // Materialize rounded Half bits: the SYCL compiler can otherwise elide
+      // the conversion when the functor immediately widens the value to FP32.
       return Half(
           c10::detail::fp16_ieee_from_fp32_value(value), Half::from_bits());
     }
