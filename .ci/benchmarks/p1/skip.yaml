@@ -1,9 +1,37 @@
 # Models excluded from specific test cases for priority p1.
 #
-# config.yaml in this folder contains the full model set for this priority.
-# A model listed under a given suite/scenario/mode here is skipped at launch
-# for that run configuration (in addition to suite-level skips in <suite>.yaml).
+# torchbench_models_list.txt, huggingface_models_list.txt and
+# timm_models_list.txt in this folder contain the full model set for this
+# priority. A model listed under a given suite/scenario/mode here is skipped for
+# that run configuration.
+#
+# p1 currently runs the same model set across all scenarios and modes, so no
+# skips are defined.
 skip:
+  huggingface:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  timm:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  torchbench:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+
+# Models excluded on Linux for priority p1 (in addition to <suite>.yaml skips).
+linux:
   huggingface:
     accuracy:
       inference:
@@ -12,13 +40,9 @@ skip:
       training:
         # OOM on 24 GB VRAM (BMG B60); large model skipped in huggingface.yaml
         - BlenderbotForCausalLM
-        # Inference-only model in huggingface.yaml (only_inference)
-        - M2M100ForConditionalGeneration
     performance:
       inference: []
-      training:
-        # Inference-only model in huggingface.yaml (only_inference)
-        - M2M100ForConditionalGeneration
+      training: []
   timm:
     accuracy:
       inference: []
@@ -29,23 +53,11 @@ skip:
   torchbench:
     accuracy:
       inference:
-        # Generate-only model, not run in accuracy
-        - cm3leon_generate
         # OOM on 24 GB VRAM (BMG B60); large model skipped in torchbench.yaml
         - llama_v2_7b_16h
-      training:
-        # Excluded from training in torchbench.yaml (skip.test.training)
-        - cm3leon_generate
-        - detectron2_fcos_r_50_fpn
-        - llama_v2_7b_16h
-        - moondream
+      training: []
     performance:
       inference:
         # OOM on 24 GB VRAM (BMG B60)
         - llama_v2_7b_16h
-      training:
-        # Excluded from training in torchbench.yaml (skip.test.training)
-        - cm3leon_generate
-        - detectron2_fcos_r_50_fpn
-        - llama_v2_7b_16h
-        - moondream
+      training: []

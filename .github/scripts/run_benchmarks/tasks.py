@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .config import (
     INDUCTOR_DT,
+    IS_WINDOWS,
     PT2E_DT,
     VALID_DT,
     VALID_MODES,
@@ -74,7 +75,11 @@ def get_skipped_models(suite: str) -> frozenset[str]:
 
 @cache
 def get_tier_skipped_models(tier_dir: Path, suite: str, scenario: str, mode: str) -> frozenset[str]:
-    """Return models skipped for *(suite, scenario, mode)* in ``<tier_dir>/skip.yaml``."""
+    """Return models skipped for *(suite, scenario, mode)* in ``<tier_dir>/skip.yaml``.
+
+    The top-level ``skip`` section is legacy Windows configuration; Linux uses the
+    top-level ``linux`` section (or ``skip.linux`` if nested).
+    """
     skip_file = tier_dir / "skip.yaml"
     if not skip_file.is_file():
         return frozenset()
@@ -82,7 +87,15 @@ def get_tier_skipped_models(tier_dir: Path, suite: str, scenario: str, mode: str
     import yaml
 
     with skip_file.open(encoding="utf-8") as f:
-        skip = (yaml.safe_load(f) or {}).get("skip") or {}
+        data = yaml.safe_load(f) or {}
+    platform_key = "windows" if IS_WINDOWS else "linux"
+    raw_skip = data.get("skip") or {}
+    if platform_key in data:
+        skip = data[platform_key] or {}
+    elif platform_key in raw_skip:
+        skip = raw_skip[platform_key] or {}
+    else:
+        skip = raw_skip if IS_WINDOWS else {}
     suite_key = "timm" if suite == "timm_models" and "timm" in skip else suite
     items = (((skip.get(suite_key) or {}).get(scenario) or {}).get(mode)) or []
     return frozenset(_flatten_yaml_items(items))

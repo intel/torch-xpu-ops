@@ -21,6 +21,7 @@ GPT2ForSequenceClassification,pass,pass,pass,pass,pass
 GoogleFnet,pass,pass,pass,pass,pass
 LayoutLMForMaskedLM,pass,pass,pass,pass,pass
 LayoutLMForSequenceClassification,pass,pass,pass,pass,pass
+M2M100ForConditionalGeneration,pass,pass,pass,pass,pass
 MBartForCausalLM,pass,pass,pass,pass,pass
 MBartForConditionalGeneration,pass,pass,pass,pass,pass
 MT5ForConditionalGeneration,pass,pass,pass,pass,pass

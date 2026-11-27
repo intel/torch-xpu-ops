@@ -10,6 +10,7 @@ basic_gnn_edgecnn,pass,pass,pass,pass,pass
 basic_gnn_gcn,pass,pass,pass,pass,pass
 basic_gnn_gin,pass,pass,pass,pass,pass
 basic_gnn_sage,pass,pass,pass,pass,pass
+cm3leon_generate,pass,pass,pass,pass,pass
 dcgan,pass,pass,pass,pass,pass
 demucs,pass,pass,pass,pass,pass
 densenet121,pass,pass,pass,pass,pass

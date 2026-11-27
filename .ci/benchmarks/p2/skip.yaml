@@ -1,9 +1,48 @@
 # Models excluded from specific test cases for priority p2.
 #
-# config.yaml in this folder contains the full model set for this priority.
-# A model listed under a given suite/scenario/mode here is skipped at launch
-# for that run configuration (in addition to suite-level skips in <suite>.yaml).
+# torchbench_models_list.txt, huggingface_models_list.txt and
+# timm_models_list.txt in this folder contain the full model set for this
+# priority. A model listed under a given suite/scenario/mode here is skipped for
+# that run configuration.
 skip:
+  huggingface:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  timm:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  torchbench:
+    accuracy:
+      inference: []
+      training:
+        - doctr_det_predictor
+        - doctr_reco_predictor
+        - maml
+        - pyhpc_equation_of_state
+        - pyhpc_isoneutral_mixing
+        - pyhpc_turbulent_kinetic_energy
+        - sam_fast
+    performance:
+      inference: []
+      training:
+        - doctr_det_predictor
+        - doctr_reco_predictor
+        - maml
+        - pyhpc_equation_of_state
+        - pyhpc_isoneutral_mixing
+        - pyhpc_turbulent_kinetic_energy
+        - sam_fast
+
+# Models excluded on Linux for priority p2 (in addition to <suite>.yaml skips).
+linux:
   huggingface:
     accuracy:
       inference: []
@@ -51,14 +90,6 @@ skip:
         # Requires CUDA-only fbgemm_gpu
         - torchrec_dlrm
       training:
-        # Excluded from training in torchbench.yaml (skip.test.training)
-        - doctr_det_predictor
-        - doctr_reco_predictor
-        - maml
-        - pyhpc_equation_of_state
-        - pyhpc_isoneutral_mixing
-        - pyhpc_turbulent_kinetic_energy
-        - sam_fast
         # Training not implemented in TorchBench (#6348)
         - hf_distil_whisper
         # Generation-only model without grad_fn in training (#6348)
@@ -91,14 +122,6 @@ skip:
         # Requires CUDA-only fbgemm_gpu
         - torchrec_dlrm
       training:
-        # Excluded from training in torchbench.yaml (skip.test.training)
-        - doctr_det_predictor
-        - doctr_reco_predictor
-        - maml
-        - pyhpc_equation_of_state
-        - pyhpc_isoneutral_mixing
-        - pyhpc_turbulent_kinetic_energy
-        - sam_fast
         # Training not implemented in TorchBench (#6348)
         - hf_distil_whisper
         # Generation-only model without grad_fn in training (#6348)
