@@ -30,18 +30,6 @@ function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
   file(REMOVE_RECURSE ${TEMP_DIR})
 endfunction()
 
-# Remove the given devices from the comma-separated AOT target list held by
-# the variable <aot_targets_var>; an empty result becomes "none".
-function(exclude_aot_targets aot_targets_var)
-  string(REPLACE "," ";" _targets "${${aot_targets_var}}")
-  list(REMOVE_ITEM _targets ${ARGN})
-  list(JOIN _targets "," _targets)
-  if(_targets STREQUAL "")
-    set(_targets "none")
-  endif()
-  set(${aot_targets_var} "${_targets}" PARENT_SCOPE)
-endfunction()
-
 macro(set_build_flags)
  set(_TORCH_XPU_OPS_SUPPORTED_COMPILERS "GNU" "Clang" "MSVC")
   if(NOT CMAKE_CXX_COMPILER_ID IN_LIST _TORCH_XPU_OPS_SUPPORTED_COMPILERS)
@@ -293,8 +281,8 @@ macro(set_build_flags)
       set(AOT_TARGETS "${TORCH_XPU_ARCH_LIST}")
     endif()
     if(REPLACE_FLAGS_FOR_SLEEP)
-      # The sleep kernel fails to AOT-compile for PVC due to old driver.
-      exclude_aot_targets(AOT_TARGETS pvc)
+      # The sleep kernel fails to AOT-compile on PVC for any AOT target due to old driver.
+      set(AOT_TARGETS "none")
     endif()
     if(AOT_TARGETS STREQUAL "none")
       set(TORCH_XPU_ARCH_LIST "" PARENT_SCOPE)

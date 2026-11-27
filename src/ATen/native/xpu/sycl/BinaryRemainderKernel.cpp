@@ -31,8 +31,7 @@ struct RemainderIntegralFunctor {
 
 template <typename scalar_t>
 struct RemainderFloatingFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const
-      __ubsan_ignore_float_divide_by_zero__ {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
     using opmath_t = at::opmath_type<scalar_t>;
     auto mod = sycl::fmod(static_cast<opmath_t>(a), static_cast<opmath_t>(b));
     if (mod != opmath_t(0) && c10::signs_differ(b, mod)) {
@@ -51,8 +50,7 @@ struct FmodIntegralFunctor {
 
 template <typename scalar_t>
 struct FmodFloatingFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const
-      __ubsan_ignore_float_divide_by_zero__ {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
     using opmath_t = at::opmath_type<scalar_t>;
     return static_cast<scalar_t>(
         sycl::fmod(static_cast<opmath_t>(a), static_cast<opmath_t>(b)));
