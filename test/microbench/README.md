@@ -269,7 +269,7 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    attempt), nightly report, coverage report, quarantine suggestions, issue
    evidence (`microbench-nightly-<run>`): every regression the recheck A/B
    confirmed, except quarantined cases and ops kept out of gating (no A/A
-   calibration needed).
+   calibration needed). The report also lists the cases that failed on N.
 4. `microbench-auto-issue` (`_microbench_auto_issue.yml`): evidence, LLM
    drafts (`microbench-issue-authoring` skill), checked filing. Issues are
    filed only when `MICROBENCH_AUTO_ISSUE_ENABLED` is `true`; otherwise the

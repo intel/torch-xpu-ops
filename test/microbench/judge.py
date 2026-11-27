@@ -645,6 +645,8 @@ def write_all_cases(result, out_dir):
 # changed between P and N) is attributed to PyTorch without the three-wheel
 # run ("inferred").
 
+MAX_ERROR_ROWS = 100  # failed cases listed in the nightly report
+
 ISSUE_LABELS = {
     "xpu-ops": ["microbench-regression"],
     "pytorch": ["microbench-regression-upstream"],
@@ -825,6 +827,7 @@ def run_nightly_check(args):
         and (recheck.get(c) or {}).get("verdict")
         not in ("regression", "improvement", None)
     ]
+    errors = sorted(c for c, r in detect.items() if r.get("status") == "error")
 
     # jumps: confirmed regressions with an attribution, and improvements
     jumps = []
@@ -954,6 +957,30 @@ def run_nightly_check(args):
                 f"{'unavailable' if cands is None else ', '.join(c['sha'][:10] for c in cands) or '-'} | "
                 f"`logs/{case_log_dir(case.op, case.pass_, cid) if case else cid}/` |"
             )
+    if errors:
+        lines += [
+            "",
+            f"### Cases that failed on this nightly ({len(errors)})",
+            "",
+            "Not measured, not rechecked and not in an issue.",
+            "",
+            "| Op | Case | Pass | Error | Log |",
+            "|---|---|---|---|---|",
+        ]
+        for cid in errors[:MAX_ERROR_ROWS]:
+            case = man.get(cid)
+            reason = " ".join(str(detect[cid].get("reason") or "").split())
+            lines.append(
+                f"| `{case.op if case else '?'}` | {case.label if case else cid} | {case.pass_ if case else '?'} | "
+                f"{reason.replace('|', chr(92) + '|')} | "
+                f"`logs/{case_log_dir(case.op, case.pass_, cid) if case else cid}/` in "
+                f"{os.path.basename(shard_of.get(cid, ''))} |"
+            )
+        if len(errors) > MAX_ERROR_ROWS:
+            lines += [
+                "",
+                f"... and {len(errors) - MAX_ERROR_ROWS} more in nightly_summary.json",
+            ]
     if improvements:
         lines += ["", f"### Confirmed improvements ({len(improvements)})", ""]
         lines += [
@@ -997,6 +1024,7 @@ def run_nightly_check(args):
         "attribution": {c: {"attribution": a["attribution"]} for c, a in attr.items()},
         "categories": cat,
         "false_alarms": false_alarms,
+        "errors": errors,
         "suggestions": sugg,
     }
     with open(os.path.join(args.out_dir, "nightly_summary.json"), "w") as f:

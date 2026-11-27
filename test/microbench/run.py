@@ -1529,7 +1529,12 @@ def run_nightly_vs_reference(args, sel, cfg):
     for rec in case_records(judge.load_records(sched.raw), sched.meta, side_info):
         cid = rec["case_id"]
         if all(p["status"] != "ok" for p in rec["per_process"]):
-            detect[cid] = {"case_id": cid, "status": "error", "reason": "no result"}
+            errs = [p["error"] for p in rec["per_process"] if p.get("error")]
+            detect[cid] = {
+                "case_id": cid,
+                "status": "error",
+                "reason": errs[0][:300] if errs else "no result",
+            }
             continue
         cands = reference.eligible_entries(
             entries.get(cid, []), cid, rec.get("case_code_hash"), jumps
