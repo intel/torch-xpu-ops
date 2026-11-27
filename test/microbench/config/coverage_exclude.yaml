@@ -1,0 +1,479 @@
+# coverage_exclude.yaml - XPU dispatch ops without a dedicated microbench case.
+#
+#   excluded: never benchmarked on their own: composite ops (no XPU dispatch;
+#             their XPU building blocks are counted instead), ops implemented
+#             by oneDNN on the PyTorch side, and view/metadata/allocation ops.
+#   deferred: real XPU kernels without parameters in the reference op dumps.
+#             Re-check when the dumps are refreshed; ops that gain
+#             parameters become cases.
+#
+# Report only: nothing in CI fails because of this file. Names are functional
+# op names (in-place/out variants folded).
+deferred:
+  __ilshift__: no parameters in the reference op dumps
+  __irshift__: no parameters in the reference op dumps
+  __lshift__: no parameters in the reference op dumps
+  __rshift__: no parameters in the reference op dumps
+  _adaptive_avg_pool3d: no parameters in the reference op dumps
+  _adaptive_avg_pool3d_backward: no parameters in the reference op dumps
+  _aminmax: no parameters in the reference op dumps
+  _amp_foreach_non_finite_check_and_unscale: no parameters in the reference op dumps
+  _amp_update_scale: no parameters in the reference op dumps
+  _assert_async: no parameters in the reference op dumps
+  _chunk_cat: no parameters in the reference op dumps
+  _coalesce: no parameters in the reference op dumps (SparseXPU)
+  _coalesced: no parameters in the reference op dumps (SparseXPU)
+  _compute_linear_combination: no parameters in the reference op dumps
+  _conj_physical: no parameters in the reference op dumps (SparseCsrXPU)
+  _convert_indices_from_coo_to_csr: no parameters in the reference op dumps
+  _convert_indices_from_csr_to_coo: no parameters in the reference op dumps
+  _convert_weight_to_int4pack: no parameters in the reference op dumps
+  _cummax_helper: no parameters in the reference op dumps
+  _cummin_helper: no parameters in the reference op dumps
+  _deform_conv2d_backward: no parameters in the reference op dumps
+  _dimI: no parameters in the reference op dumps (SparseXPU)
+  _dimV: no parameters in the reference op dumps (SparseXPU)
+  _dirichlet_grad: no parameters in the reference op dumps
+  _efficientzerotensor: no parameters in the reference op dumps
+  _embedding_bag_per_sample_weights_backward: no parameters in the reference op dumps
+  _fake_quantize_learnable_per_channel_affine: no parameters in the reference op dumps
+  _fake_quantize_learnable_per_channel_affine_backward: no parameters in the reference op dumps
+  _fake_quantize_learnable_per_tensor_affine: no parameters in the reference op dumps
+  _fake_quantize_learnable_per_tensor_affine_backward: no parameters in the reference op dumps
+  _fake_quantize_per_tensor_affine_cachemask_tensor_qparams: no parameters in the reference op dumps
+  _fft_c2r: no parameters in the reference op dumps
+  _fft_r2c: no parameters in the reference op dumps
+  _fill_mem_eff_dropout_mask: no parameters in the reference op dumps
+  _foreach_abs: no parameters in the reference op dumps
+  _foreach_acos: no parameters in the reference op dumps
+  _foreach_asin: no parameters in the reference op dumps
+  _foreach_atan: no parameters in the reference op dumps
+  _foreach_ceil: no parameters in the reference op dumps
+  _foreach_clamp_max: no parameters in the reference op dumps
+  _foreach_clamp_min: no parameters in the reference op dumps
+  _foreach_copy: no parameters in the reference op dumps
+  _foreach_cos: no parameters in the reference op dumps
+  _foreach_cosh: no parameters in the reference op dumps
+  _foreach_erf: no parameters in the reference op dumps
+  _foreach_erfc: no parameters in the reference op dumps
+  _foreach_exp: no parameters in the reference op dumps
+  _foreach_expm1: no parameters in the reference op dumps
+  _foreach_floor: no parameters in the reference op dumps
+  _foreach_frac: no parameters in the reference op dumps
+  _foreach_lgamma: no parameters in the reference op dumps
+  _foreach_log: no parameters in the reference op dumps
+  _foreach_log10: no parameters in the reference op dumps
+  _foreach_log1p: no parameters in the reference op dumps
+  _foreach_log2: no parameters in the reference op dumps
+  _foreach_max: no parameters in the reference op dumps
+  _foreach_maximum: no parameters in the reference op dumps
+  _foreach_minimum: no parameters in the reference op dumps
+  _foreach_neg: no parameters in the reference op dumps
+  _foreach_norm: no parameters in the reference op dumps
+  _foreach_pow: no parameters in the reference op dumps
+  _foreach_reciprocal: no parameters in the reference op dumps
+  _foreach_round: no parameters in the reference op dumps
+  _foreach_rsqrt: no parameters in the reference op dumps
+  _foreach_sigmoid: no parameters in the reference op dumps
+  _foreach_sign: no parameters in the reference op dumps
+  _foreach_sin: no parameters in the reference op dumps
+  _foreach_sinh: no parameters in the reference op dumps
+  _foreach_sub: no parameters in the reference op dumps
+  _foreach_tan: no parameters in the reference op dumps
+  _foreach_tanh: no parameters in the reference op dumps
+  _foreach_trunc: no parameters in the reference op dumps
+  _foreach_zero: no parameters in the reference op dumps
+  _fused_adagrad: no parameters in the reference op dumps
+  _fused_adam: no parameters in the reference op dumps
+  _fused_adamw: no parameters in the reference op dumps
+  _fused_dropout: no parameters in the reference op dumps
+  _fused_moving_avg_obs_fq_helper: no parameters in the reference op dumps
+  _fused_rms_norm: no parameters in the reference op dumps
+  _fused_rms_norm_backward: no parameters in the reference op dumps
+  _fused_sdp_choice: no parameters in the reference op dumps
+  _fused_sgd: no parameters in the reference op dumps
+  _index_put_impl: no parameters in the reference op dumps
+  _jagged_to_padded_dense_forward: no parameters in the reference op dumps
+  _linalg_det: no parameters in the reference op dumps
+  _linalg_slogdet: no parameters in the reference op dumps
+  _linalg_solve_ex: no parameters in the reference op dumps
+  _local_scalar_dense: no parameters in the reference op dumps
+  _logcumsumexp: no parameters in the reference op dumps
+  _make_per_channel_quantized_tensor: no parameters in the reference op dumps
+  _make_per_tensor_quantized_tensor: no parameters in the reference op dumps
+  _masked_scale: no parameters in the reference op dumps
+  _masked_softmax: no parameters in the reference op dumps
+  _masked_softmax_backward: no parameters in the reference op dumps
+  _native_batch_norm_legit: no parameters in the reference op dumps
+  _native_multi_head_attention: no parameters in the reference op dumps (NestedTensorXPU/XPU)
+  _nested_compute_contiguous_strides_offsets: no parameters in the reference op dumps
+  _nested_from_padded: no parameters in the reference op dumps
+  _nested_from_padded_and_nested_example: no parameters in the reference op dumps (NestedTensorXPU)
+  _nested_select_backward: no parameters in the reference op dumps (NestedTensorXPU)
+  _nested_tensor_from_mask: no parameters in the reference op dumps
+  _nested_tensor_size: no parameters in the reference op dumps (NestedTensorXPU)
+  _nested_tensor_softmax_with_shape: no parameters in the reference op dumps (NestedTensorXPU)
+  _nested_tensor_storage_offsets: no parameters in the reference op dumps (NestedTensorXPU)
+  _nested_tensor_strides: no parameters in the reference op dumps (NestedTensorXPU)
+  _nnz: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU)
+  _padded_dense_to_jagged_forward: no parameters in the reference op dumps
+  _prelu_kernel: no parameters in the reference op dumps
+  _prelu_kernel_backward: no parameters in the reference op dumps
+  _ps_roi_align_backward: no parameters in the reference op dumps
+  _ps_roi_pool_backward: no parameters in the reference op dumps
+  _roi_align_backward: no parameters in the reference op dumps
+  _roi_pool_backward: no parameters in the reference op dumps
+  _sample_dirichlet: no parameters in the reference op dumps
+  _scaled_dot_product_efficient_attention: no parameters in the reference op dumps
+  _scaled_dot_product_efficient_attention_backward: no parameters in the reference op dumps
+  _scaled_mm_v2: no parameters in the reference op dumps
+  _segment_reduce_backward: no parameters in the reference op dumps
+  _sparse_coo_tensor_with_dims: no parameters in the reference op dumps (SparseXPU)
+  _sparse_coo_tensor_with_dims_and_tensors: no parameters in the reference op dumps (SparseXPU)
+  _sparse_csr_prod: no parameters in the reference op dumps (SparseCsrXPU)
+  _sparse_csr_sum: no parameters in the reference op dumps (SparseCsrXPU)
+  _sparse_log_softmax: no parameters in the reference op dumps (SparseXPU)
+  _sparse_log_softmax_backward_data: no parameters in the reference op dumps (SparseXPU)
+  _sparse_mask_projection: no parameters in the reference op dumps (SparseXPU)
+  _sparse_softmax: no parameters in the reference op dumps (SparseXPU)
+  _sparse_softmax_backward_data: no parameters in the reference op dumps (SparseXPU)
+  _sparse_sparse_matmul: no parameters in the reference op dumps (SparseXPU)
+  _sparse_sum_backward: no parameters in the reference op dumps (SparseXPU)
+  _spsolve: no parameters in the reference op dumps (SparseCsrXPU)
+  _standard_gamma: no parameters in the reference op dumps
+  _standard_gamma_grad: no parameters in the reference op dumps
+  _test_autograd_multiple_dispatch: no parameters in the reference op dumps (NestedTensorXPU)
+  _thnn_fused_gru_cell: no parameters in the reference op dumps
+  _thnn_fused_gru_cell_backward: no parameters in the reference op dumps
+  _thnn_fused_lstm_cell: no parameters in the reference op dumps
+  _thnn_fused_lstm_cell_backward_impl: no parameters in the reference op dumps
+  _to_copy: no parameters in the reference op dumps (NestedTensorXPU)
+  _to_dense: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU)
+  _to_sparse: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  _to_sparse_bsc: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  _to_sparse_bsr: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  _to_sparse_csc: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  _to_sparse_csr: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  _transform_bias_rescale_qkv: no parameters in the reference op dumps (NestedTensorXPU/XPU)
+  _transformer_encoder_layer_fwd: no parameters in the reference op dumps (NestedTensorXPU/XPU)
+  _unique: no parameters in the reference op dumps
+  _upsample_bicubic2d_aa: no parameters in the reference op dumps
+  _upsample_bicubic2d_aa_backward: no parameters in the reference op dumps
+  _upsample_bilinear2d_aa: no parameters in the reference op dumps
+  _upsample_bilinear2d_aa_backward: no parameters in the reference op dumps
+  _upsample_nearest_exact1d: no parameters in the reference op dumps
+  _upsample_nearest_exact1d_backward: no parameters in the reference op dumps
+  _upsample_nearest_exact3d: no parameters in the reference op dumps
+  _upsample_nearest_exact3d_backward: no parameters in the reference op dumps
+  _weight_int4pack_mm_with_scales_and_zeros: no parameters in the reference op dumps
+  _weight_norm_interface: no parameters in the reference op dumps
+  _weight_norm_interface_backward: no parameters in the reference op dumps
+  acos: no parameters in the reference op dumps
+  acosh: no parameters in the reference op dumps
+  adaptive_avg_pool2d: no parameters in the reference op dumps
+  adaptive_avg_pool3d: no parameters in the reference op dumps
+  adaptive_avg_pool3d_backward: no parameters in the reference op dumps
+  adaptive_max_pool3d: no parameters in the reference op dumps
+  adaptive_max_pool3d_backward: no parameters in the reference op dumps
+  addcdiv: no parameters in the reference op dumps
+  addr: no parameters in the reference op dumps
+  amax: no parameters in the reference op dumps
+  amin: no parameters in the reference op dumps
+  aminmax: no parameters in the reference op dumps
+  angle: no parameters in the reference op dumps (SparseCsrXPU/XPU)
+  argmin: no parameters in the reference op dumps
+  asin: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  asinh: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  atan: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  atan2: no parameters in the reference op dumps
+  atanh: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  batch_norm_backward_elemt: no parameters in the reference op dumps
+  batch_norm_backward_reduce: no parameters in the reference op dumps
+  batch_norm_elemt: no parameters in the reference op dumps
+  batch_norm_gather_stats: no parameters in the reference op dumps
+  batch_norm_gather_stats_with_counts: no parameters in the reference op dumps
+  batch_norm_stats: no parameters in the reference op dumps
+  batch_norm_update_stats: no parameters in the reference op dumps
+  bincount: no parameters in the reference op dumps
+  binomial: no parameters in the reference op dumps
+  bitwise_left_shift: no parameters in the reference op dumps
+  bitwise_right_shift: no parameters in the reference op dumps
+  bitwise_xor: no parameters in the reference op dumps
+  bucketize: no parameters in the reference op dumps
+  ceil: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  channel_shuffle: no parameters in the reference op dumps
+  clamp_max: no parameters in the reference op dumps
+  clamp_min: no parameters in the reference op dumps
+  complex: no parameters in the reference op dumps
+  conj_physical: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  copy_sparse_to_sparse: no parameters in the reference op dumps (SparseXPU)
+  copysign: no parameters in the reference op dumps
+  cosh: no parameters in the reference op dumps
+  count_nonzero: no parameters in the reference op dumps
+  cumprod: no parameters in the reference op dumps
+  deform_conv2d: no parameters in the reference op dumps
+  deg2rad: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU)
+  dense_dim: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU)
+  dequantize: no parameters in the reference op dumps
+  digamma: no parameters in the reference op dumps
+  elu: no parameters in the reference op dumps
+  elu_backward: no parameters in the reference op dumps
+  embedding_renorm: no parameters in the reference op dumps
+  equal: no parameters in the reference op dumps
+  erf: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  erfc: no parameters in the reference op dumps
+  erfinv: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  exp2: no parameters in the reference op dumps
+  expm1: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  eye: no parameters in the reference op dumps
+  fake_quantize_per_channel_affine_cachemask: no parameters in the reference op dumps
+  fake_quantize_per_tensor_affine_cachemask: no parameters in the reference op dumps
+  floor_divide: no parameters in the reference op dumps (SparseXPU/XPU)
+  fmax: no parameters in the reference op dumps
+  fmin: no parameters in the reference op dumps
+  fmod: no parameters in the reference op dumps
+  frac: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  frexp: no parameters in the reference op dumps
+  gcd: no parameters in the reference op dumps
+  geqrf: no parameters in the reference op dumps
+  glu: no parameters in the reference op dumps
+  glu_backward: no parameters in the reference op dumps
+  glu_backward_jvp: no parameters in the reference op dumps
+  glu_jvp: no parameters in the reference op dumps
+  hardshrink: no parameters in the reference op dumps
+  hardshrink_backward: no parameters in the reference op dumps
+  heaviside: no parameters in the reference op dumps
+  histc: no parameters in the reference op dumps
+  histogram: no parameters in the reference op dumps
+  hspmm: no parameters in the reference op dumps (SparseXPU)
+  huber_loss: no parameters in the reference op dumps
+  huber_loss_backward: no parameters in the reference op dumps
+  hypot: no parameters in the reference op dumps
+  i0: no parameters in the reference op dumps
+  igamma: no parameters in the reference op dumps
+  igammac: no parameters in the reference op dumps
+  index_reduce: no parameters in the reference op dumps
+  is_coalesced: no parameters in the reference op dumps (SparseXPU)
+  is_same_size: no parameters in the reference op dumps (NestedTensorXPU)
+  isnan: no parameters in the reference op dumps (NestedTensorXPU/SparseCsrXPU/SparseXPU/XPU)
+  isneginf: no parameters in the reference op dumps (NestedTensorXPU/SparseCsrXPU/SparseXPU/XPU)
+  isposinf: no parameters in the reference op dumps (NestedTensorXPU/SparseCsrXPU/SparseXPU/XPU)
+  kthvalue: no parameters in the reference op dumps
+  lcm: no parameters in the reference op dumps
+  lerp: no parameters in the reference op dumps
+  lgamma: no parameters in the reference op dumps
+  linalg_cross: no parameters in the reference op dumps
+  linalg_householder_product: no parameters in the reference op dumps
+  linalg_inv_ex: no parameters in the reference op dumps
+  linalg_lu_factor_ex: no parameters in the reference op dumps
+  linalg_lu_solve: no parameters in the reference op dumps
+  linalg_polar: no parameters in the reference op dumps
+  linalg_qr: no parameters in the reference op dumps
+  linalg_solve_triangular: no parameters in the reference op dumps
+  linalg_vector_norm: no parameters in the reference op dumps (SparseXPU/XPU)
+  linear: no parameters in the reference op dumps (NestedTensorXPU)
+  linear_backward: no parameters in the reference op dumps (NestedTensorXPU)
+  log10: no parameters in the reference op dumps
+  log1p: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  log_sigmoid_backward: no parameters in the reference op dumps
+  log_sigmoid_forward: no parameters in the reference op dumps
+  logaddexp: no parameters in the reference op dumps
+  logaddexp2: no parameters in the reference op dumps
+  logical_and: no parameters in the reference op dumps
+  logical_not: no parameters in the reference op dumps (NestedTensorXPU/XPU)
+  logical_or: no parameters in the reference op dumps
+  logical_xor: no parameters in the reference op dumps
+  logit: no parameters in the reference op dumps
+  logit_backward: no parameters in the reference op dumps
+  logspace: no parameters in the reference op dumps
+  masked_scatter: no parameters in the reference op dumps
+  matmul: no parameters in the reference op dumps (NestedTensorXPU)
+  matmul_backward: no parameters in the reference op dumps (NestedTensorXPU)
+  max_pool2d: no parameters in the reference op dumps
+  median: no parameters in the reference op dumps
+  min: no parameters in the reference op dumps
+  mish: no parameters in the reference op dumps
+  mish_backward: no parameters in the reference op dumps
+  mode: no parameters in the reference op dumps
+  multi_margin_loss: no parameters in the reference op dumps
+  multi_margin_loss_backward: no parameters in the reference op dumps
+  mvlgamma: no parameters in the reference op dumps
+  nanmedian: no parameters in the reference op dumps
+  nansum: no parameters in the reference op dumps
+  narrow_copy: no parameters in the reference op dumps (SparseXPU)
+  native_norm: no parameters in the reference op dumps (SparseXPU)
+  nextafter: no parameters in the reference op dumps
+  nonzero_static: no parameters in the reference op dumps
+  norm: no parameters in the reference op dumps (SparseXPU/XPU)
+  ones_like: no parameters in the reference op dumps (NestedTensorXPU)
+  poisson: no parameters in the reference op dumps
+  polar: no parameters in the reference op dumps
+  polygamma: no parameters in the reference op dumps
+  prod: no parameters in the reference op dumps
+  ps_roi_align: no parameters in the reference op dumps
+  ps_roi_pool: no parameters in the reference op dumps
+  quantize_per_channel: no parameters in the reference op dumps
+  quantize_per_tensor: no parameters in the reference op dumps
+  quantize_per_tensor_dynamic: no parameters in the reference op dumps
+  rad2deg: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU)
+  range: no parameters in the reference op dumps
+  reflection_pad1d: no parameters in the reference op dumps
+  reflection_pad1d_backward: no parameters in the reference op dumps
+  reflection_pad2d: no parameters in the reference op dumps
+  reflection_pad2d_backward: no parameters in the reference op dumps
+  reflection_pad3d: no parameters in the reference op dumps
+  reflection_pad3d_backward: no parameters in the reference op dumps
+  renorm: no parameters in the reference op dumps
+  replication_pad1d: no parameters in the reference op dumps
+  replication_pad1d_backward: no parameters in the reference op dumps
+  replication_pad2d: no parameters in the reference op dumps
+  replication_pad2d_backward: no parameters in the reference op dumps
+  replication_pad3d: no parameters in the reference op dumps
+  replication_pad3d_backward: no parameters in the reference op dumps
+  resize_as_sparse: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU)
+  roi_pool: no parameters in the reference op dumps
+  round: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  rrelu_with_noise: no parameters in the reference op dumps
+  scatter_reduce: no parameters in the reference op dumps
+  searchsorted: no parameters in the reference op dumps
+  segment_reduce: no parameters in the reference op dumps
+  select_copy: no parameters in the reference op dumps (SparseCsrXPU)
+  sign: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  signbit: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  sinc: no parameters in the reference op dumps
+  sinh: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  softplus: no parameters in the reference op dumps
+  softplus_backward: no parameters in the reference op dumps
+  softshrink: no parameters in the reference op dumps
+  softshrink_backward: no parameters in the reference op dumps
+  sparse_dim: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU)
+  sparse_mask: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU)
+  sparse_resize: no parameters in the reference op dumps (SparseXPU)
+  sparse_resize_and_clear: no parameters in the reference op dumps (SparseXPU)
+  sparse_sampled_addmm: no parameters in the reference op dumps (SparseCsrXPU)
+  special_airy_ai: no parameters in the reference op dumps
+  special_bessel_j0: no parameters in the reference op dumps
+  special_bessel_j1: no parameters in the reference op dumps
+  special_bessel_y0: no parameters in the reference op dumps
+  special_bessel_y1: no parameters in the reference op dumps
+  special_chebyshev_polynomial_t: no parameters in the reference op dumps
+  special_chebyshev_polynomial_u: no parameters in the reference op dumps
+  special_chebyshev_polynomial_v: no parameters in the reference op dumps
+  special_chebyshev_polynomial_w: no parameters in the reference op dumps
+  special_entr: no parameters in the reference op dumps
+  special_erfcx: no parameters in the reference op dumps
+  special_hermite_polynomial_h: no parameters in the reference op dumps
+  special_hermite_polynomial_he: no parameters in the reference op dumps
+  special_i0e: no parameters in the reference op dumps
+  special_i1: no parameters in the reference op dumps
+  special_i1e: no parameters in the reference op dumps
+  special_laguerre_polynomial_l: no parameters in the reference op dumps
+  special_legendre_polynomial_p: no parameters in the reference op dumps
+  special_log_ndtr: no parameters in the reference op dumps
+  special_modified_bessel_i0: no parameters in the reference op dumps
+  special_modified_bessel_i1: no parameters in the reference op dumps
+  special_modified_bessel_k0: no parameters in the reference op dumps
+  special_modified_bessel_k1: no parameters in the reference op dumps
+  special_ndtri: no parameters in the reference op dumps
+  special_scaled_modified_bessel_k0: no parameters in the reference op dumps
+  special_scaled_modified_bessel_k1: no parameters in the reference op dumps
+  special_shifted_chebyshev_polynomial_t: no parameters in the reference op dumps
+  special_shifted_chebyshev_polynomial_u: no parameters in the reference op dumps
+  special_shifted_chebyshev_polynomial_v: no parameters in the reference op dumps
+  special_shifted_chebyshev_polynomial_w: no parameters in the reference op dumps
+  special_spherical_bessel_j0: no parameters in the reference op dumps
+  special_xlog1py: no parameters in the reference op dumps
+  special_zeta: no parameters in the reference op dumps
+  split_with_sizes_copy: no parameters in the reference op dumps
+  std_mean: no parameters in the reference op dumps
+  tan: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  tanh: no parameters in the reference op dumps (NestedTensorXPU/SparseCsrXPU/SparseXPU/XPU)
+  tanh_backward: no parameters in the reference op dumps
+  threshold: no parameters in the reference op dumps
+  threshold_backward: no parameters in the reference op dumps (NestedTensorXPU/SparseCsrXPU/SparseXPU/XPU)
+  to_padded_tensor: no parameters in the reference op dumps (NestedTensorXPU)
+  trace: no parameters in the reference op dumps
+  triangular_solve: no parameters in the reference op dumps (SparseCsrXPU)
+  tril: no parameters in the reference op dumps
+  tril_indices: no parameters in the reference op dumps
+  triu: no parameters in the reference op dumps
+  triu_indices: no parameters in the reference op dumps
+  trunc: no parameters in the reference op dumps (SparseCsrXPU/SparseXPU/XPU)
+  unique_consecutive: no parameters in the reference op dumps
+  unique_dim: no parameters in the reference op dumps
+  unique_dim_consecutive: no parameters in the reference op dumps
+  upsample_linear1d: no parameters in the reference op dumps
+  upsample_linear1d_backward: no parameters in the reference op dumps
+  upsample_nearest1d: no parameters in the reference op dumps
+  upsample_nearest1d_backward: no parameters in the reference op dumps
+  upsample_trilinear3d: no parameters in the reference op dumps
+  upsample_trilinear3d_backward: no parameters in the reference op dumps
+  var: no parameters in the reference op dumps
+  var_mean: no parameters in the reference op dumps
+  xlogy: no parameters in the reference op dumps
+  zero: no parameters in the reference op dumps (NestedTensorXPU/SparseCsrXPU/SparseXPU/XPU)
+  zeros: no parameters in the reference op dumps (SparseXPU)
+excluded:
+  _addmm_activation: implemented by oneDNN on the PyTorch side, not in this repository
+  _indices: metadata / view / allocation only, no compute kernel
+  _int_mm: implemented by oneDNN on the PyTorch side, not in this repository
+  _nested_tensor_from_mask_left_aligned: metadata / view / allocation only, no compute kernel
+  _nested_view_from_buffer: metadata / view / allocation only, no compute kernel
+  _reshape_alias: metadata / view / allocation only, no compute kernel
+  _scaled_dot_product_fused_attention_overrideable: implemented by oneDNN on the PyTorch side, not in this repository
+  _scaled_mm: implemented by oneDNN on the PyTorch side, not in this repository
+  _sparse_broadcast_to: metadata / view / allocation only, no compute kernel
+  _values: metadata / view / allocation only, no compute kernel
+  _weight_int4pack_mm: implemented by oneDNN on the PyTorch side, not in this repository
+  _weight_int8pack_mm: implemented by oneDNN on the PyTorch side, not in this repository
+  addbmm: implemented by oneDNN on the PyTorch side, not in this repository
+  addmm: implemented by oneDNN on the PyTorch side, not in this repository
+  addmv: implemented by oneDNN on the PyTorch side, not in this repository
+  alias: metadata / view / allocation only, no compute kernel
+  as_strided: metadata / view / allocation only, no compute kernel
+  baddbmm: implemented by oneDNN on the PyTorch side, not in this repository
+  bmm: implemented by oneDNN on the PyTorch side, not in this repository
+  ccol_indices: metadata / view / allocation only, no compute kernel
+  chunk: metadata / view / allocation only, no compute kernel
+  col_indices: metadata / view / allocation only, no compute kernel
+  constant_pad_nd: composite of fill + copy (no XPU dispatch)
+  convolution: composite dispatching to oneDNN (no XPU dispatch)
+  convolution_backward: composite dispatching to oneDNN (no XPU dispatch)
+  crow_indices: metadata / view / allocation only, no compute kernel
+  detach: metadata / view / allocation only, no compute kernel
+  dot: implemented by oneDNN on the PyTorch side, not in this repository
+  empty: metadata / view / allocation only, no compute kernel
+  empty_like: metadata / view / allocation only, no compute kernel
+  empty_strided: metadata / view / allocation only, no compute kernel
+  full: composite of empty + fill_ (no XPU dispatch)
+  full_like: composite of empty_like + fill_
+  index_put: composite of _index_put_impl_ (covered via index_put_)
+  indices: metadata / view / allocation only, no compute kernel
+  is_set_to: metadata / view / allocation only, no compute kernel
+  logsumexp: composite of max/sub/exp/sum/log
+  mv: implemented by oneDNN on the PyTorch side, not in this repository
+  narrow: metadata / view / allocation only, no compute kernel
+  new_full: composite of new_empty + fill_
+  permute: metadata / view / allocation only, no compute kernel
+  rand: composite of empty + uniform_
+  randn: composite of empty + normal_
+  randn_like: composite of empty_like + normal_
+  record_stream: metadata / view / allocation only, no compute kernel
+  repeat: composite of expand + copy
+  resize: metadata / view / allocation only, no compute kernel
+  row_indices: metadata / view / allocation only, no compute kernel
+  scalar_tensor: composite of empty + fill_
+  select: metadata / view / allocation only, no compute kernel
+  set: metadata / view / allocation only, no compute kernel
+  split_with_sizes: metadata / view / allocation only, no compute kernel
+  squeeze: metadata / view / allocation only, no compute kernel
+  stack: composite of unsqueeze + cat
+  transpose: metadata / view / allocation only, no compute kernel
+  unbind: metadata / view / allocation only, no compute kernel
+  unfold: metadata / view / allocation only, no compute kernel
+  unsqueeze: metadata / view / allocation only, no compute kernel
+  values: metadata / view / allocation only, no compute kernel
+  vdot: implemented by oneDNN on the PyTorch side, not in this repository
+  view: metadata / view / allocation only, no compute kernel
+  view_as_complex: metadata / view / allocation only, no compute kernel
+  view_as_real: metadata / view / allocation only, no compute kernel
