@@ -119,8 +119,10 @@ Keys:
 
 `values` picks value ranges where performance or validity depends on them
 (`("uniform", lo, hi)`, `("int", lo, hi)`, `("mask", p)`, `("nonfinite",
-frac)`). `inplace=True` (class or case) restores the input before every
-iteration; `idempotent=True` skips that for ops such as `relu_`. Backward
+frac)`). `inplace=True` (class or case) restores the input between passes:
+every iteration of a pass has its own input set, except above 100 MB of
+inputs, where one set is reused and later iterations run on what the earlier
+ones left. `idempotent=True` skips the restore for ops such as `relu_`. Backward
 classes pass `passes=("bwd",)` and `bwd=...` calling the aten backward op
 (`expected` defaults to `<op>_backward`).
 

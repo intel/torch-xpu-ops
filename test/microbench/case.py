@@ -53,7 +53,10 @@ torchvision = LazyModule("torchvision")
 # * ``bwd`` cases build the graph and ``grad_out`` in setup; the timed region
 #   is ``torch.autograd.grad(out, inputs, grad_out, retain_graph=True)``, or an
 #   overridden ``bwd`` that calls an aten ``*_backward`` op directly.
-# * ``reset`` restores the inputs of in-place ops before every iteration.
+# * ``reset`` restores the inputs of in-place ops between passes. Every
+#   iteration of a pass has its own input set, so each sees pristine inputs;
+#   a case whose inputs are above ``reuse_input_bytes`` has one set, and its
+#   iterations after the first run on what the previous ones left.
 
 FLOAT_DTYPES = ("bf16", "fp16", "fp32")
 DTYPE_NAMES = {
@@ -455,8 +458,9 @@ class TableBench(OpBench):
 
     ``values`` maps an input name to a value rule of ``tensor()`` (or to a
     function of the params returning one). ``inplace = True``, or a case with
-    ``inplace=True``, restores ``s.x``/``s.xs`` before every iteration unless
-    the op is ``idempotent``. ``factory`` ops get ``s.dtype`` and ``s.device``.
+    ``inplace=True``, restores ``s.x``/``s.xs`` between passes (see ``reset``
+    above) unless the op is ``idempotent``. ``factory`` ops get ``s.dtype`` and
+    ``s.device``.
     Backward classes (``passes = ("bwd",)``) call the aten backward op
     directly in ``bwd()``.
     """
