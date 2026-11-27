@@ -73,6 +73,7 @@ groups:
   non-inductor:
     pytorch:
       test/test_masked.py: {}
+      test/test_shape_ops.py: {}
       test/test_view_ops.py: {}
       test/xpu/test_conv.py: {}
       test/xpu/test_fusion.py: {}
@@ -135,9 +136,6 @@ groups:
           - "TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_True_AdamW_xpu_float32"
           - "TestOptimRenewedXPU::test_fused_mixed_precision_state_init_amsgrad_True_Adam_xpu_float32"
           - "TestOptimRenewedXPU::test_state_dict_cross_device_Muon_xpu_float32"
-      test/xpu/test_shape_ops_xpu.py:
-        skip:
-          - "TestShapeOpsXPU::test_flip_xpu_float32"
       test/xpu/test_unary_ufuncs_xpu.py:
         skip:
           - "TestUnaryUfuncsXPU::test_reference_numerics_extremal__refs_tan_xpu_complex64"
