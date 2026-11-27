@@ -951,6 +951,11 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
+          # The action skips fork PRs by default. These two commands only run
+          # for a commenter with write access, and the checkout above is the
+          # base branch, so opting in does not run fork code; the action's
+          # restrict_untrusted_prs default still applies to untrusted authors.
+          allow_fork_prs: "true"
           github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
           # --max-turns only stops a runaway session. A review that reaches it is
@@ -1235,6 +1240,11 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
+          # The action skips fork PRs by default. These two commands only run
+          # for a commenter with write access, and the checkout above is the
+          # base branch, so opting in does not run fork code; the action's
+          # restrict_untrusted_prs default still applies to untrusted authors.
+          allow_fork_prs: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_UT_CHECK || env.AWS_BEDROCK_MODEL }} --max-turns 40 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
