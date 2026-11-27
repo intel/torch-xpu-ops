@@ -25,7 +25,15 @@ class BatchNorm(OpBench):
         c = p["shape"][1]
         ones, zeros = (torch.ones(c, device=device), torch.zeros(c, device=device))
         x = nd_input(p["shape"], p["dtype"], device, p.get("channels_last", False))
-        return State(x=x, w=ones, b=zeros, rm=zeros.clone(), rv=ones.clone())
+        # bwd: the weight and bias gradients too, as with nn.BatchNorm*d
+        return State(
+            x=x,
+            w=ones,
+            b=zeros,
+            rm=zeros.clone(),
+            rv=ones.clone(),
+            inputs=[x, ones, zeros],
+        )
 
     def fwd(self, s):
         return F.batch_norm(s.x, s.rm, s.rv, s.w, s.b, training=True)
@@ -140,7 +148,9 @@ class LayerNorm(OpBench):
         x = randn(p["shape"], p["dtype"], device)
         n = tuple(p["normalized_shape"])
         w = torch.ones(n, device=device, dtype=x.dtype)
-        return State(x=x, n=n, w=w, b=torch.zeros(n, device=device, dtype=x.dtype))
+        b = torch.zeros(n, device=device, dtype=x.dtype)
+        # bwd: the weight and bias gradients too, as with nn.LayerNorm
+        return State(x=x, n=n, w=w, b=b, inputs=[x, w, b])
 
     def fwd(self, s):
         return F.layer_norm(s.x, s.n, s.w, s.b)
