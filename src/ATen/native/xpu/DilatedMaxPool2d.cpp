@@ -9,9 +9,9 @@
  */
 
 #include <ATen/core/Tensor.h>
-#include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
 #include <ATen/native/xpu/sycl/DilatedMaxPool2d.h>
+#include <c10/util/safe_conv.h>
 
 #include <ATen/ops/max.h>
 #include <ATen/ops/max_pool2d_with_indices_backward_native.h>
@@ -50,13 +50,12 @@ TORCH_IMPL_FUNC(max_pool2d_with_indices_out_xpu)
  bool ceil_mode,
  const Tensor& output,
  const Tensor& indices) {
-  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
-  const int kW = kernel_size.size() == 1
-      ? kH
-      : safe_downcast<int, int64_t>(kernel_size[1]);
-  const int padH = safe_downcast<int, int64_t>(padding[0]);
+  const int kH = c10::safe_conv<int>(kernel_size[0], "int");
+  const int kW =
+      kernel_size.size() == 1 ? kH : c10::safe_conv<int>(kernel_size[1], "int");
+  const int padH = c10::safe_conv<int>(padding[0], "int");
   const int padW =
-      padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
+      padding.size() == 1 ? padH : c10::safe_conv<int>(padding[1], "int");
 
   const int64_t nbatch = input.ndimension() == 4 ? input.size(-4) : 1;
   const int64_t nInputPlane = input.size(-3);
