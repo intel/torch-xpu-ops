@@ -85,10 +85,6 @@ skip_dict = {
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
     "test_autograd_xpu.py": (
-        # skipped due to #2536, torch._C._scatter or torch._C._gather
-        "test_profiler_emit_nvtx_xpu",
-        "test_checkpointing_without_reentrant_dataparallel",
-        "test_dataparallel_saved_tensors_hooks",
         # CUDA-specific bogus autograd registration tests, not applicable to XPU
         # As noted in pytorch/pytorch#180969, this test is not applicable to XPU.
         "test_view_copy_xpu",
