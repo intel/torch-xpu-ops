@@ -31,6 +31,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO = os.environ.get("GITHUB_REPOSITORY") or "intel/torch-xpu-ops"
@@ -41,13 +42,17 @@ MARKER_RE = re.compile(r"<!-- microbench-regression: (\S+) -->")
 CASE_RE = re.compile(r"`logs/[^`/]+/[a-z]+_([0-9a-f]{12})/`")
 MAX_PATCH = 6000
 MAX_BODY = 3000
+RETRY_DELAY = 20  # seconds, times the attempt number
 
 
-def run(cmd: list[str], check: bool = True) -> str:
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if check and proc.returncode != 0:
-        raise RuntimeError(f"{' '.join(cmd)} failed:\n{proc.stderr.strip()}")
-    return proc.stdout
+def run(cmd: list[str], check: bool = True, attempts: int = 1) -> str:
+    for attempt in range(attempts):
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if not check or proc.returncode == 0:
+            return proc.stdout
+        if attempt + 1 < attempts:
+            time.sleep(RETRY_DELAY * (attempt + 1))
+    raise RuntimeError(f"{' '.join(cmd)} failed:\n{proc.stderr.strip()}")
 
 
 def gh_json(path: str, default=None):
@@ -105,16 +110,14 @@ def commit_patch(sha: str, files: list[str]) -> str:
 
 
 def open_issues() -> list[dict]:
+    """The open microbench issues: the only source of deduplication. A lookup
+    that fails raises; an empty answer would file every open issue again."""
     out = []
     for label in ISSUE_LABELS:
-        try:
-            data = json.loads(
-                run(["gh", "issue", "list", "--repo", REPO, "--state", "open", "--label", label,
-                     "--limit", "200", "--json", "number,title,body,url"])
-            )
-        except RuntimeError as e:
-            print(f"::warning::{e}")
-            continue
+        data = json.loads(
+            run(["gh", "issue", "list", "--repo", REPO, "--state", "open", "--label", label,
+                 "--limit", "200", "--json", "number,title,body,url"], attempts=3)
+        )
         for i in data:
             if any(o["number"] == i["number"] for o in out):
                 continue
@@ -146,7 +149,13 @@ def main() -> int:
         run(["gh", "run", "download", args.run_id, "--repo", REPO, "-n", f"microbench-nightly-{args.run_id}", "-D", str(src)])
     nightly = json.loads((src / "issue_evidence.json").read_text())
 
-    issues = open_issues()
+    try:
+        issues = open_issues()
+    except (RuntimeError, ValueError) as e:
+        print(f"::error::cannot list the open microbench issues, so no evidence is written and nothing is "
+              f"filed; replay with the 'Microbench Issue Auto Creation' workflow and run id {args.run_id}")
+        print(e, file=sys.stderr)
+        return 1
     reported = {c: i["number"] for i in issues for c in i["cases"]}
     groups = []
     for g in nightly.get("groups") or []:
