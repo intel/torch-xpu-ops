@@ -10,8 +10,10 @@
 against it. No torch, no numpy.
 
 The state is one JSONL file (``reference.jsonl``) in the artifact
-``microbench-reference-state`` that every scheduled nightly re-uploads with
-its own measurements appended (30 days kept). Two kinds of lines:
+``microbench-reference-state-<attempt>`` that every scheduled nightly
+re-uploads with its own measurements appended (30 days kept); a rerun of the
+check job uploads a new attempt and readers take the latest. Two kinds of
+lines:
 
 * ``measure``: one per (nightly, case, side) with the per-process medians,
   case_code_hash, protocol_version, commits, card and environment key;
@@ -23,14 +25,15 @@ its own measurements appended (30 days kept). Two kinds of lines:
 
 Everything else (reference values, noise statistics) is computed on read.
 Only runs of nightly_ondemand.yml on main that were scheduled (or a
-maintainer's rebuild dispatch) upload ``microbench-reference-state``; other
-runs upload ``microbench-reference-state-ondemand``, which is only read when
-a run id is given explicitly (on-demand tests).
+maintainer's rebuild dispatch) upload ``microbench-reference-state-<attempt>``;
+other runs upload ``microbench-reference-state-ondemand-<attempt>``, which is
+only read when a run id is given explicitly (on-demand tests).
 """
 
 import json
 import math
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -83,6 +86,28 @@ def _gh(*args):
     return subprocess.run(["gh", *args], capture_output=True, text=True)
 
 
+def download_state(repo, run_id, names, dest):
+    """reference.jsonl of run ``run_id``: the first of ``names`` it has, in its
+    latest attempt (``<name>-<attempt>``; ``<name>`` alone is an upload from
+    before the attempt was part of the name). None when the run has none."""
+    args = []
+    for name in names:
+        args += ["-n", name, "-p", f"{name}-[0-9]*"]
+    # with a pattern, gh extracts every artifact into a directory of its name
+    if _gh("run", "download", run_id, "--repo", repo, *args, "-D", dest).returncode:
+        return None
+    for name in names:
+        found = []
+        for d in os.listdir(dest):
+            m = re.fullmatch(re.escape(name) + r"(?:-(\d+))?", d)
+            path = os.path.join(dest, d, STATE_FILE)
+            if m and os.path.exists(path):
+                found.append((int(m.group(1) or 0), path))
+        if found:
+            return max(found)[1]
+    return None
+
+
 def fetch_state(repo, out_dir, run_id=None, exclude_run=None, limit=60):
     """Download the newest valid state. Returns (path, run_id), or
     (None, None) when there is none (first run, or more than 90 days
@@ -115,17 +140,9 @@ def fetch_state(repo, out_dir, run_id=None, exclude_run=None, limit=60):
         ]
         names = (STATE_ARTIFACT,)
     for rid in candidates:
-        for name in names:
-            dest = os.path.join(out_dir, rid)
-            if (
-                _gh(
-                    "run", "download", rid, "--repo", repo, "-n", name, "-D", dest
-                ).returncode
-                == 0
-            ):
-                path = os.path.join(dest, STATE_FILE)
-                if os.path.exists(path):
-                    return path, rid
+        path = download_state(repo, rid, names, os.path.join(out_dir, rid))
+        if path:
+            return path, rid
     return None, None
 
 

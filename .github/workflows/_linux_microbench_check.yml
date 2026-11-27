@@ -152,8 +152,9 @@ jobs:
             PREV_NF=""
             PREV=$(gh run list --repo ${{ github.repository }} --workflow nightly_ondemand.yml --event schedule --branch main \
               --limit 10 --json databaseId --jq '.[].databaseId' | grep -vx "${{ github.run_id }}" | head -n 1 || true)
-            if [ -n "$PREV" ] && gh run download "$PREV" --repo ${{ github.repository }} -n microbench-native-functions -D /tmp/prev_nf; then
-              PREV_NF="--prev-native-functions /tmp/prev_nf/native_functions.yaml"
+            # the latest attempt (one directory per artifact)
+            if [ -n "$PREV" ] && gh run download "$PREV" --repo ${{ github.repository }} -p 'microbench-native-functions-[0-9]*' -D /tmp/prev_nf; then
+              PREV_NF="--prev-native-functions $(find /tmp/prev_nf -name native_functions.yaml | sort -V | tail -n 1)"
             fi
             python -m microbench coverage --native-functions "$NF" $PREV_NF \
               --observed "${WS}/mb_report/validation_all.jsonl" \
@@ -168,15 +169,16 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           # only scheduled (or maintainer rebuild) main runs publish the state
-          # that later nightlies read
-          name: ${{ inputs.write_state && 'microbench-reference-state' || 'microbench-reference-state-ondemand' }}
+          # that later nightlies read; a rerun of this job uploads a new
+          # attempt and readers take the latest
+          name: ${{ inputs.write_state && 'microbench-reference-state' || 'microbench-reference-state-ondemand' }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/mb_state/reference.jsonl
           retention-days: 90
       - name: Upload native_functions.yaml
         if: ${{ inputs.scope == 'nightly' && !cancelled() && hashFiles('mb_report/native_functions.yaml') != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: microbench-native-functions
+          name: microbench-native-functions-${{ github.run_attempt }}
           path: ${{ github.workspace }}/mb_report/native_functions.yaml
           retention-days: 90
       - name: Upload report

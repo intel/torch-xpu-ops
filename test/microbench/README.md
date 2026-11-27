@@ -264,12 +264,12 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    `microbench / microbench-run (nightly-xpu-ops-vs-pytorch)` alternates P,
    P' and N.
 3. `microbench / microbench-check`: attribution (xpu-ops / pytorch / mixed),
-   new reference state (`microbench-reference-state`: this night's
-   measurements and confirmed jumps, 30 days), nightly report, coverage
-   report, quarantine suggestions, issue evidence
-   (`microbench-nightly-<run>`): every regression the recheck A/B confirmed,
-   except quarantined cases and ops kept out of gating (no A/A calibration
-   needed).
+   new reference state (`microbench-reference-state-<attempt>`: this night's
+   measurements and confirmed jumps, 30 days; readers take the latest
+   attempt), nightly report, coverage report, quarantine suggestions, issue
+   evidence (`microbench-nightly-<run>`): every regression the recheck A/B
+   confirmed, except quarantined cases and ops kept out of gating (no A/A
+   calibration needed).
 4. `microbench-auto-issue` (`_microbench_auto_issue.yml`): evidence, LLM
    drafts (`microbench-issue-authoring` skill), checked filing. Issues are
    filed only when `MICROBENCH_AUTO_ISSUE_ENABLED` is `true`; otherwise the
@@ -280,9 +280,10 @@ Run jobs upload one artifact, `microbench-data-<run>-<scope>[-<shard>]-<attempt>
 
 On demand (`ut` containing `microbench`): `microbench_base` `nightly` (the
 default) simulates a nightly (its state is uploaded as
-`microbench-reference-state-ondemand`, which only `microbench_reference_run`
-reads; `microbench_prev_run` names the run whose wheel is the previous
-nightly P, default the latest scheduled run on `main`; no issues); a
+`microbench-reference-state-ondemand-<attempt>`, which only
+`microbench_reference_run` reads; `microbench_prev_run` names the run whose
+wheel is the previous nightly P, default the latest scheduled run on `main`;
+no issues); a
 commit/branch runs an A/B of the B wheel
 (`torch_xpu_ops`) against it, e.g. to confirm a candidate commit of an issue
 against its parent; `none` an A/A. The A/B and A/A report is in
