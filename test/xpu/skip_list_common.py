@@ -91,7 +91,7 @@ skip_dict = {
         "test_autograd_multiple_dispatch_registrations_xpu",
         "test_foward_mode_AD_xpu",
     ),
-    "test_binary_ufuncs_xpu.py": ("_jiterator_",),
+    "test_binary_ufuncs_xpu.py": None,
     "test_compile_benchmark_util_xpu.py": None,
     "test_complex_xpu.py": None,
     "test_cuda_nvml_based_avail_xpu.py": None,
