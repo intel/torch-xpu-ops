@@ -245,6 +245,30 @@ def nightly_entries(state, case_id=None):
     ]
 
 
+def last_measured_run(state):
+    """Run id of the newest nightly measurements in the state: the night most
+    reference records are from (None: no measurement). Not always the run
+    that uploaded the state: a night without results still uploads it."""
+    nightly = nightly_entries(state)
+    return (
+        max(nightly, key=lambda e: e.get("time", 0)).get("run_id") if nightly else None
+    )
+
+
+def reference_before(det, run_id):
+    """The reference record of a detection result is from a run before
+    ``run_id`` (run ids grow with time; ids that are not numbers: from another
+    run)."""
+    runs = det.get("reference_runs") or []
+    if not runs or not run_id:
+        return False
+    ref = runs[0][0]
+    try:
+        return int(ref) < int(run_id)
+    except (TypeError, ValueError):
+        return str(ref) != str(run_id)
+
+
 def by_case(entries):
     out = {}
     for e in entries:
@@ -427,11 +451,15 @@ def eligible_entries(entries, case_id, code_hash, jumps):
 def run_reference(args):
     if args.action == "fetch":
         path, rid = fetch_state(args.repo, args.out_dir, args.run_id, args.exclude_run)
-        info = {"path": path, "run_id": rid}
+        measured = last_measured_run(load_state(path))
+        info = {"path": path, "run_id": rid, "measured_run": measured}
         print(json.dumps(info))
         if args.github_output:
             with open(args.github_output, "a") as f:
-                f.write(f"state={path or ''}\nstate_run={rid or ''}\n")
+                f.write(
+                    f"state={path or ''}\nstate_run={rid or ''}\n"
+                    f"measured_run={measured or ''}\n"
+                )
         return 0
     state = load_state(args.state)
     nightly = nightly_entries(state)

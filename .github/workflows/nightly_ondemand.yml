@@ -69,7 +69,7 @@ on:
       microbench_prev_run:
         type: string
         default: ''
-        description: "Microbench nightly: use the wheel of this run id as the previous nightly P (default: the latest scheduled main run)"
+        description: "Microbench nightly: use the wheel of this run id as the previous nightly P (default: the run of the newest reference records, else the latest scheduled main run)"
 
 permissions: read-all
 

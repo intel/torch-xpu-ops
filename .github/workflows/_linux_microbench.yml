@@ -59,7 +59,7 @@ on:
       prev_run_id:
         type: string
         default: ''
-        description: nightly scopes - run of the previous nightly wheel P (default for nightly-vs-reference - the latest scheduled main run)
+        description: nightly scopes - run of the previous nightly wheel P (default for nightly-vs-reference - the run of the newest reference records, else the latest scheduled main run)
       shard:
         type: string
         default: '0'
@@ -157,16 +157,28 @@ jobs:
         with:
           pattern: microbench-data-${{ inputs.artifact_id }}-nightly-vs-reference-*
           path: ${{ github.workspace }}/mb_nightly
+      - name: Fetch the reference state
+        id: state
+        if: ${{ inputs.scope == 'nightly-vs-reference' }}
+        run: |
+          cd test
+          python -m microbench reference fetch --repo ${{ github.repository }} --out-dir "${WS}/mb_reference" \
+            --exclude-run ${{ github.run_id }} ${{ inputs.reference_run != '' && format('--run-id {0}', inputs.reference_run) || '' }} \
+            --github-output "${GITHUB_OUTPUT}"
       - name: Fetch the previous nightly wheel (P)
         id: prev
         if: ${{ startsWith(inputs.scope, 'nightly-') }}
         run: |
-          # P: the newest earlier scheduled build-from-source nightly with a
-          # wheel and a selection (its xpu-ops commit)
+          # P: the run of the newest reference records, so that detection and
+          # recheck compare with the same night (a night whose microbench
+          # failed has a wheel and no records: a regression of that night
+          # would be in P and in N). Without its wheel, the newest earlier
+          # scheduled build-from-source nightly with a wheel and a selection
+          # (its xpu-ops commit)
           mkdir -p "${WS}/mb_prev"
           IDS="${{ inputs.prev_run_id }}"
           if [ -z "$IDS" ]; then
-            IDS=$(gh run list --repo ${{ github.repository }} --workflow nightly_ondemand.yml --event schedule \
+            IDS="${{ steps.state.outputs.measured_run }} "$(gh run list --repo ${{ github.repository }} --workflow nightly_ondemand.yml --event schedule \
               --branch main --status completed --limit 30 --json databaseId --jq '.[].databaseId' | grep -vx "${{ github.run_id }}" || true)
           fi
           PREV=""
@@ -182,14 +194,6 @@ jobs:
           else
             echo "No previous nightly wheel: recheck and attribution are skipped (inconclusive)." >> "${GITHUB_STEP_SUMMARY}"
           fi
-      - name: Fetch the reference state
-        id: state
-        if: ${{ inputs.scope == 'nightly-vs-reference' }}
-        run: |
-          cd test
-          python -m microbench reference fetch --repo ${{ github.repository }} --out-dir "${WS}/mb_reference" \
-            --exclude-run ${{ github.run_id }} ${{ inputs.reference_run != '' && format('--run-id {0}', inputs.reference_run) || '' }} \
-            --github-output "${GITHUB_OUTPUT}"
       - name: Create venvs
         run: |
           pick() {  # newest artifact dir matching a name filter

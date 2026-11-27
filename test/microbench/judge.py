@@ -646,6 +646,8 @@ def write_all_cases(result, out_dir):
 # run ("inferred").
 
 MAX_ERROR_ROWS = 100  # failed cases listed in the nightly report
+# recheck verdicts that are the result of a comparison
+RECHECK_ANSWERS = ("regression", "improvement", "no_change", "inconclusive")
 
 ISSUE_LABELS = {
     "xpu-ops": ["microbench-regression"],
@@ -789,6 +791,7 @@ def run_nightly_check(args):
     )
 
     detect, recheck, candidates, kernels, shard_of = {}, {}, {}, {}, {}
+    skipped = {}  # case_id: why its shard did not recheck
     new_entries = []
     for sdir, d in shards:
         for cid in d.get("detect") or {}:
@@ -797,9 +800,21 @@ def run_nightly_check(args):
         recheck.update(d.get("recheck") or {})
         candidates.update(d.get("candidates") or {})
         kernels.update(d.get("kernels") or {})
-        recs = read_jsonl(os.path.join(sdir, "records.jsonl")) + read_jsonl(
-            os.path.join(sdir, "aa", "records.jsonl")
-        )
+        # Only measurements that were judged become reference records, or a
+        # regression of this night would be the reference of the next one
+        # unseen. A shard that stopped with an infra error has measurements
+        # and no detection; a shard whose recheck failed has suspects nobody
+        # compared. Both keep their earlier records, and the next nightly
+        # takes P from the night of those.
+        judged = {} if d.get("recheck_failed") else d.get("detect") or {}
+        if d.get("recheck_skipped"):
+            for cid in d.get("recheck_cases") or []:
+                skipped[cid] = d["recheck_skipped"]
+        recs = [
+            r
+            for r in read_jsonl(os.path.join(sdir, "records.jsonl"))
+            if r.get("case_id") in judged
+        ] + read_jsonl(os.path.join(sdir, "aa", "records.jsonl"))
         new_entries += reference.measure_entries(
             recs, args.run_id or cur.get("run_id"), now, metric=metric
         )
@@ -820,13 +835,33 @@ def run_nightly_check(args):
             inferred.add(cid)
         else:
             cat[cid] = (attr.get(cid) or {}).get("attribution", "inconclusive")
-    false_alarms = [
-        c
-        for c, r in detect.items()
-        if r.get("status") in ("suspect_regression", "suspect_improvement")
-        and (recheck.get(c) or {}).get("verdict")
-        not in ("regression", "improvement", None)
-    ]
+    # Suspects the recheck did not confirm. A suspect regression is a false
+    # alarm only if the recheck compared it and covers the step: not when the
+    # recheck did not run for the case, and not when its reference record is
+    # from a run before P (the case has no record of P's night, and the
+    # recheck P vs N says nothing about the nights in between).
+    false_alarms, unresolved = [], {}
+    for c, r in detect.items():
+        if r.get("status") not in ("suspect_regression", "suspect_improvement"):
+            continue
+        v = recheck.get(c) or {}
+        verdict = v.get("verdict")
+        if verdict in ("regression", "improvement"):
+            continue
+        if r["status"] == "suspect_regression":
+            if c in skipped:
+                unresolved[c] = f"recheck skipped ({skipped[c][:200]})"
+            elif verdict not in RECHECK_ANSWERS:
+                why = f"{verdict}: {v.get('reason')}" if v.get("reason") else verdict
+                unresolved[c] = f"no recheck result ({why or 'not run'})"
+            elif reference.reference_before(r, prev.get("run_id")):
+                unresolved[c] = (
+                    f"reference older than P; recheck {verdict}, ratio {_fmt(v.get('ratio'))}"
+                )
+            if c in unresolved:
+                continue
+        if verdict is not None:
+            false_alarms.append(c)
     errors = sorted(c for c, r in detect.items() if r.get("status") == "error")
 
     # jumps: confirmed regressions with an attribution, and improvements
@@ -923,12 +958,29 @@ def run_nightly_check(args):
         f"- {len(detect)} case(s) over {len(shards)} shard(s)",
         "- detection: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())),
         f"- recheck (P vs N, same card): {len(recheck)} case(s), {len(confirmed)} regression(s), "
-        f"{len(improvements)} improvement(s), {len(false_alarms)} detection false alarm(s)",
+        f"{len(improvements)} improvement(s), {len(false_alarms)} detection false alarm(s), "
+        f"{len(unresolved)} suspect regression(s) not answered",
     ]
+    measured = reference.last_measured_run(state)
+    if prev.get("run_id") and measured and str(prev["run_id"]) != str(measured):
+        lines.append(
+            f"- P (run `{prev['run_id']}`) is not the run of the newest reference records (run `{measured}`): "
+            "the recheck does not cover the nights between them"
+        )
     for _, d in shards:
+        if "detect" not in d:
+            lines.append(
+                f"- shard {d.get('shard')}: no detection (exit status {d.get('status')}); its measurements are "
+                "not added to the reference state"
+            )
         if d.get("recheck_skipped"):
             lines.append(
                 f"- shard {d.get('shard')}: recheck skipped ({d['recheck_skipped']})"
+                + (
+                    "; its measurements are not added to the reference state"
+                    if d.get("recheck_failed")
+                    else ""
+                )
             )
         if d.get("no_reference_not_rechecked"):
             lines.append(
@@ -956,6 +1008,27 @@ def run_nightly_check(args):
                 f"{_fmt((a.get('r_pt') or {}).get('ratio'))} | {cat[cid]}{' (inferred)' if cid in inferred else ''} | "
                 f"{'unavailable' if cands is None else ', '.join(c['sha'][:10] for c in cands) or '-'} | "
                 f"`logs/{case_log_dir(case.op, case.pass_, cid) if case else cid}/` |"
+            )
+    if unresolved:
+        lines += [
+            "",
+            f"### Suspect regressions the recheck did not answer ({len(unresolved)})",
+            "",
+            "Slower than their reference, and the recheck P vs N did not run for them or does not cover the "
+            f"nights from the reference to P (run `{prev.get('run_id')}`). A regression is not excluded and no "
+            "issue is filed: confirm with an on-demand A/B against the reference commit.",
+            "",
+            "| Op | Case | Pass | Reference (us) | This nightly (us) | Ratio | Reference run | Reference xpu-ops | Why |",
+            "|---|---|---|---|---|---|---|---|---|",
+        ]
+        for cid in sorted(unresolved, key=lambda c: -(detect[c].get("ratio") or 0)):
+            case, d = man.get(cid), detect[cid]
+            ref_run, ref_date, ref_sha = (list(d["reference_runs"][0]) + [None] * 3)[:3]
+            why = " ".join(unresolved[cid].split()).replace("|", chr(92) + "|")
+            lines.append(
+                f"| `{case.op if case else '?'}` | {case.label if case else cid} | {case.pass_ if case else '?'} | "
+                f"{_fmt(d.get('reference_us'))} | {_fmt(d.get('new_us'))} | {_fmt(d.get('ratio'))} | "
+                f"`{ref_run}` ({ref_date}) | `{str(ref_sha or '?')[:10]}` | {why} |"
             )
     if errors:
         lines += [
@@ -1024,6 +1097,7 @@ def run_nightly_check(args):
         "attribution": {c: {"attribution": a["attribution"]} for c, a in attr.items()},
         "categories": cat,
         "false_alarms": false_alarms,
+        "unresolved": unresolved,
         "errors": errors,
         "suggestions": sugg,
     }

@@ -258,7 +258,10 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    the previous nightly's, so seven nightlies cover them all), the
    case validator (coverage), detection against the reference state, recheck
    of the suspects against the previous nightly wheel P on the same card,
-   candidate commits (P..N commits touching files related to the case).
+   candidate commits (P..N commits touching files related to the case). P is
+   the wheel of the run the newest reference records are from, so detection
+   and recheck compare with the same night also after a night whose
+   microbench failed (without that wheel: the latest scheduled run).
 2. `microbench-build-base` builds P' (P's xpu-ops, N's PyTorch, torch only)
    when a confirmed regression has candidates, and
    `microbench / microbench-run (nightly-xpu-ops-vs-pytorch)` alternates P,
@@ -269,7 +272,14 @@ python -m microbench noise calibrate out_aa_* --out microbench/config/history.js
    attempt), nightly report, coverage report, quarantine suggestions, issue
    evidence (`microbench-nightly-<run>`): every regression the recheck A/B
    confirmed, except quarantined cases and ops kept out of gating (no A/A
-   calibration needed). The report also lists the cases that failed on N.
+   calibration needed). The report also lists the cases that failed on N, and
+   the suspect regressions the recheck did not answer: the recheck did not
+   run for the case, or the case has no record of P's night, so it is
+   compared with an older reference and "no change" from P to N says nothing
+   about the nights in between. These get no issue. Only judged measurements
+   become reference records: a shard that stopped before detection, or whose
+   recheck failed, adds none, so the next nightly compares with the night
+   before it and takes P from that night.
 4. `microbench-auto-issue` (`_microbench_auto_issue.yml`): evidence, LLM
    drafts (`microbench-issue-authoring` skill), checked filing. Issues are
    filed only when `MICROBENCH_AUTO_ISSUE_ENABLED` is `true`; otherwise the
@@ -282,8 +292,7 @@ On demand (`ut` containing `microbench`): `microbench_base` `nightly` (the
 default) simulates a nightly (its state is uploaded as
 `microbench-reference-state-ondemand-<attempt>`, which only
 `microbench_reference_run` reads; `microbench_prev_run` names the run whose
-wheel is the previous nightly P, default the latest scheduled run on `main`;
-no issues); a
+wheel is the previous nightly P, default as in a nightly; no issues); a
 commit/branch runs an A/B of the B wheel
 (`torch_xpu_ops`) against it, e.g. to confirm a candidate commit of an issue
 against its parent; `none` an A/A. The A/B and A/A report is in

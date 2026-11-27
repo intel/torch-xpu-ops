@@ -1583,6 +1583,8 @@ def run_nightly_vs_reference(args, sel, cfg):
         doc["prev"]["pytorch_sha"] = (rc.meta.get("torch_git_version") or {}).get("A")
         if st != EXIT_OK:
             doc["recheck_skipped"] = "; ".join(rc.meta["infra_errors"]) or f"exit {st}"
+            # the check keeps this shard out of the reference state
+            doc["recheck_failed"] = True
         else:
             res = judge.judge(
                 rc.raw,
