@@ -459,11 +459,8 @@ static inline bool has_dense_output(
   return true;
 }
 
-// TI normally rejects detectable internal/partial overlap, but permits exact
-// in-place aliasing and may report TooHard for strided views. The binary
-// broadcast paths additionally reject overlapping input/output bounding ranges.
-// This is a conservative fast-path guard, not a general alias-safety proof.
-// The caller must establish that the output is dense in iteration order.
+// Conservative bounding-range overlap check for broadcast inputs.
+// Requires the output to be dense in iteration order.
 static inline bool overlaps_dense_output(
     const TensorIteratorBase& iter,
     const void* output,
