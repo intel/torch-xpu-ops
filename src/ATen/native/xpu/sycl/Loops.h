@@ -24,6 +24,12 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
+#if defined(_MSC_VER) && !defined(__SYCL_DEVICE_ONLY__)
+#define XPU_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#define XPU_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#endif
+
 using namespace at::xpu;
 
 namespace at {
@@ -99,49 +105,96 @@ struct UnrolledElementwiseKernel {
   storer_t s_;
 };
 
-template <int vec_size, typename func_t, typename array_t, typename in_calc_t>
-struct VectorizedElementwiseKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    int grpsz = item.get_local_range(0);
-    int grpid = item.get_group(0);
-    int lid = item.get_local_id(0);
-    int group_work_size = vec_size * grpsz;
-    int remaining = numel_ - grpid * group_work_size;
+// Reconstruct only values whose type completely determines their state.
+template <typename func_t>
+constexpr bool is_stateless_functor_v =
+    std::is_empty_v<func_t> && std::is_default_constructible_v<func_t>;
 
-    // ic_
-    if (remaining < group_work_size) {
-      auto oc = TrivialOffsetCalculator<1>();
-      auto l = at::native::memory::LoadWithoutCast();
-      auto s = at::native::memory::StoreWithoutCast();
-      auto policy = at::native::memory::policies::unroll<
-          vec_size,
-          array_t,
-          decltype(ic_),
-          decltype(oc),
-          at::native::memory::LoadWithoutCast,
-          at::native::memory::StoreWithoutCast>(
-          data_, remaining, ic_, oc, l, s, lid, grpid, grpsz);
-      elementwise_kernel_helper<vec_size>(f_, policy);
+template <typename calc_t>
+constexpr bool is_trivial_offset_calculator_v = false;
+template <int N, typename index_t>
+constexpr bool
+    is_trivial_offset_calculator_v<TrivialOffsetCalculator<N, index_t>> = true;
+
+template <
+    int vec_size,
+    typename func_t,
+    typename array_t,
+    typename in_calc_t,
+    bool full_tile,
+    int work_group_size = 0>
+struct VectorizedElementwiseKernel {
+  template <bool omit, typename T>
+  static auto capture(const T& value) {
+    if constexpr (omit) {
+      return std::tuple<>{};
     } else {
-      auto policy = at::native::memory::policies::
-          vectorized<vec_size, array_t, in_calc_t>(
-              data_, ic_, lid, grpid, grpsz);
-      elementwise_kernel_helper<vec_size>(f_, policy);
+      return value;
+    }
+  }
+
+  template <typename T, typename stored_t>
+  static T restore(const stored_t& value) {
+    if constexpr (std::is_same_v<T, stored_t>) {
+      return value;
+    } else {
+      return T{};
+    }
+  }
+
+  template <int width>
+  static inline void apply(
+      const func_t& f,
+      array_t data,
+      in_calc_t ic,
+      uint32_t lid,
+      uint32_t grpid,
+      uint32_t grpsz) {
+    auto policy = memory::policies::vectorized<width, array_t, in_calc_t>(
+        data, ic, lid, grpid, grpsz);
+    elementwise_kernel_helper<width>(f, policy);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const uint32_t grpsz =
+        work_group_size ? work_group_size : item.get_local_range(0);
+    const uint32_t grpid = item.get_group(0);
+    const uint32_t lid = item.get_local_id(0);
+    const auto f = restore<func_t>(f_);
+    const auto ic = restore<in_calc_t>(ic_);
+    if constexpr (full_tile) {
+      apply<vec_size>(f, data_, ic, lid, grpid, grpsz);
+    } else {
+      const uint32_t numel = numel_;
+      if (grpid * grpsz + lid < numel / vec_size) {
+        apply<vec_size>(f, data_, ic, lid, grpid, grpsz);
+      }
+      if (grpid == numel / (vec_size * grpsz) && lid < numel % vec_size) {
+        apply<1>(f, data_, ic, (numel / vec_size) * vec_size + lid, 0, 1);
+      }
     }
   }
 
   VectorizedElementwiseKernel(
       int numel,
-      const func_t f,
+      const func_t& f,
       array_t data,
       in_calc_t ic)
-      : numel_(numel), f_(f), data_(data), ic_(ic) {}
+      : numel_(capture<full_tile>(numel)),
+        f_(capture<is_stateless_functor_v<func_t>>(f)),
+        data_(data),
+        ic_(capture<is_trivial_offset_calculator_v<in_calc_t>>(ic)) {}
 
  private:
-  int numel_;
-  const func_t f_;
+  XPU_NO_UNIQUE_ADDRESS std::conditional_t<full_tile, std::tuple<>, int> numel_;
+  XPU_NO_UNIQUE_ADDRESS
+  std::conditional_t<is_stateless_functor_v<func_t>, std::tuple<>, func_t> f_;
   array_t data_;
-  in_calc_t ic_;
+  XPU_NO_UNIQUE_ADDRESS std::conditional_t<
+      is_trivial_offset_calculator_v<in_calc_t>,
+      std::tuple<>,
+      in_calc_t>
+      ic_;
 };
 
 template <
@@ -401,21 +454,43 @@ static inline void launch_vectorized_kernel(
     in_calc_t input_calc,
     int vec_size) {
   constexpr auto max_scalar_bytes = max_scalar_size<func_t>();
+  // Common wg_sz from getDeviceMaxSubGroupSize() * getDeviceEUCountPerXeCore()
+  // (e.g., 32 * 8 on PVC/BMG), specialized for compile-time offset math.
+  constexpr int specialized_wg_size = 256;
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
   using traits = function_traits<func_t>;
   int64_t wg_sz = at::xpu::getDeviceMaxSubGroupSize() *
       at::xpu::getDeviceEUCountPerXeCore();
 
-#define VEC_KER(vec_size)                                                    \
-  {                                                                          \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
-      auto ker =                                                             \
-          VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
-              N, f, data, input_calc);                                       \
-      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
-      sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
-    }                                                                        \
+#define VEC_KER(vec_size)                                           \
+  {                                                                 \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                  \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {              \
+      auto submit = [&](auto group_size) {                          \
+        auto launch = [&](auto full_tile) {                         \
+          auto ker = VectorizedElementwiseKernel<                   \
+              vec_size,                                             \
+              func_t,                                               \
+              array_t,                                              \
+              in_calc_t,                                            \
+              decltype(full_tile)::value,                           \
+              decltype(group_size)::value>(N, f, data, input_calc); \
+          int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);  \
+          sycl_kernel_submit(                                       \
+              wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);    \
+        };                                                          \
+        if (N % (wg_sz * vec_size) == 0) {                          \
+          launch(std::true_type{});                                 \
+        } else {                                                    \
+          launch(std::false_type{});                                \
+        }                                                           \
+      };                                                            \
+      if (wg_sz == specialized_wg_size) {                           \
+        submit(std::integral_constant<int, specialized_wg_size>{}); \
+      } else {                                                      \
+        submit(std::integral_constant<int, 0>{});                   \
+      }                                                             \
+    }                                                               \
   }
 
   switch (vec_size) {
@@ -710,7 +785,7 @@ struct AUnaryFunctor {
   AUnaryFunctor(func_t f_, opmath_arg1_t a_) : f(f_), a(a_) {}
 
  private:
-  func_t f;
+  XPU_NO_UNIQUE_ADDRESS func_t f;
   opmath_arg1_t a;
 };
 
@@ -724,7 +799,7 @@ struct BUnaryFunctor {
   BUnaryFunctor(func_t f_, opmath_arg2_t b_) : f(f_), b(b_) {}
 
  private:
-  func_t f;
+  XPU_NO_UNIQUE_ADDRESS func_t f;
   opmath_arg2_t b;
 };
 
@@ -878,3 +953,5 @@ void gpu_kernel_multiple_outputs(TensorIteratorBase& iter, const func_t& f) {
 } // namespace xpu
 } // namespace native
 } // namespace at
+
+#undef XPU_NO_UNIQUE_ADDRESS
