@@ -10,7 +10,6 @@ PYTORCH_TEST_DIR = "../../../../test"
 
 skip_dict = {
     # torch-xpu-ops tests, not upstreamed yet, must be sorted alphabetically
-    "complex_tensor/test_complex_tensor_xpu.py": None,
     "dynamo/test_aot_autograd_cache_xpu.py": (
         # CPU-only parametrizations of test_cache_hot_load: not XPU target.
         # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
@@ -33,7 +32,6 @@ skip_dict = {
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "nn/test_parametrization_xpu.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_profiler_use_cases.py": None,
     "profiler/test_profiler_xpu.py": (
@@ -96,8 +94,6 @@ skip_dict = {
         "test_foward_mode_AD_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
-    "test_compile_benchmark_util_xpu.py": None,
-    "test_complex_xpu.py": None,
     "test_cuda_nvml_based_avail_xpu.py": None,
     "test_cuda_primary_ctx_xpu.py": None,
     "test_cuda_sanitizer_xpu.py": None,
@@ -199,7 +195,6 @@ skip_dict = {
         "test_fake_crossref_backward_no_amp_nn_functional_bilinear_xpu_float32",
     ),
     "test_optim_xpu.py": None,
-    "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
     "test_scaled_matmul_cuda_xpu.py": {
         # https://github.com/intel/torch-xpu-ops/issues/5339
@@ -217,11 +212,6 @@ skip_dict = {
         "test_scaled_addmm_cudagraph",
     },
     "test_schema_check_xpu.py": None,
-    "test_segment_reductions_xpu.py": None,
-    "test_shape_ops_xpu.py": (
-        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
-        "test_flip_xpu_float32",
-    ),
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": (
@@ -245,7 +235,6 @@ skip_dict = {
         "test_cufft_plan_cache_xpu_float64",
     ),
     "test_tensor_creation_ops_xpu.py": None,
-    "test_testing_xpu.py": None,
     "test_torch_xpu.py": None,
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
@@ -289,11 +278,11 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/3326
         "test_mem_eff_attention_large_seq_len_uniform_attention_xpu",
     ),
-    "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
     "test_utils_xpu.py": None,
     # upstreamed tests, must be sorted alphabetically
     f"{PYTORCH_TEST_DIR}/autograd/test_functional.py": None,
+    f"{PYTORCH_TEST_DIR}/complex_tensor/test_complex_tensor.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
         # Worker crash on BMG; no dedicated tracking issue yet
         "test_torch_size_tensor_index_scalar_constant_dynamic_shapes",
@@ -363,6 +352,7 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_multihead_attention.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_packed_sequence.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_parametrization.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pooling.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     f"{PYTORCH_TEST_DIR}/profiler/test_execution_trace.py": None,
@@ -409,6 +399,8 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
     f"{PYTORCH_TEST_DIR}/test_autograd_fallback.py": None,
     f"{PYTORCH_TEST_DIR}/test_comparison_utils.py": None,
+    f"{PYTORCH_TEST_DIR}/test_compile_benchmark_util.py": None,
+    f"{PYTORCH_TEST_DIR}/test_complex.py": None,
     f"{PYTORCH_TEST_DIR}/test_content_store.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
     f"{PYTORCH_TEST_DIR}/test_dynamic_shapes.py": None,
@@ -439,11 +431,16 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_ops_gradients.py": None,
     f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     f"{PYTORCH_TEST_DIR}/test_overrides.py": None,
+    f"{PYTORCH_TEST_DIR}/test_prims.py": None,
     f"{PYTORCH_TEST_DIR}/test_python_dispatch.py": None,
     f"{PYTORCH_TEST_DIR}/test_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_scatter_gather_ops.py": None,
+    f"{PYTORCH_TEST_DIR}/test_segment_reductions.py": None,
     f"{PYTORCH_TEST_DIR}/test_serialization.py": None,
+    f"{PYTORCH_TEST_DIR}/test_shape_ops.py": None,
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
+    f"{PYTORCH_TEST_DIR}/test_testing.py": None,
+    f"{PYTORCH_TEST_DIR}/test_type_promotion.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
 }

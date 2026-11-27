@@ -998,6 +998,7 @@ class XPUImportCtx:
             os.path.join(test_dir, "distributions"),
             os.path.join(test_dir, "quantization/core"),
             os.path.join(test_dir, "functorch"),
+            os.path.join(test_dir, "export"),
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
