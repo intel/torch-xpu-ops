@@ -680,8 +680,10 @@ def attribute(r_xpu, r_pt, gating, delta):
     return "inconclusive"
 
 
-def attribution_results(attr_dir, gating, noise, metric):
-    """{case_id: {"attribution", "r_xpu", "r_pt"}} from the P / P' / N run."""
+def attribution_results(attr_dir, gating, noise, metric, man):
+    """{case_id: {"attribution", "r_xpu", "r_pt"}} from the P / P' / N run.
+
+    ``man``: {case_id: Case}; the noise margin is the one of the recheck."""
     raw = os.path.join(attr_dir or "", "raw")
     if not attr_dir or not os.path.isdir(raw):
         return {}
@@ -690,7 +692,9 @@ def attribution_results(attr_dir, gating, noise, metric):
     for (cid, stage), g in groups.items():
         if stage != "attribution" or not all(g.get(s) for s in ("P", "Pp", "N")):
             continue
-        delta = case_delta(cid, "normal", gating, noise)
+        case = man.get(cid)
+        nc = case.bench.noise_class if case else "normal"
+        delta = case_delta(cid, nc, gating, noise)
         r_xpu = compare(g["Pp"], g["N"], delta, gating["n_boot"])
         r_pt = compare(g["P"], g["Pp"], delta, gating["n_boot"], seed=1)
         out[cid] = {
@@ -797,7 +801,7 @@ def run_nightly_check(args):
         new_entries += reference.measure_entries(
             recs, args.run_id or cur.get("run_id"), now, metric=metric
         )
-    attr = attribution_results(args.attribution_dir, gating, noise, metric)
+    attr = attribution_results(args.attribution_dir, gating, noise, metric, man)
 
     # classify confirmed regressions
     confirmed = {c: v for c, v in recheck.items() if v.get("verdict") == "regression"}
