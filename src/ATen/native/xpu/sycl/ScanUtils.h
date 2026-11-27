@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <bit>
 #include <functional>
 #include <type_traits>
@@ -954,6 +955,62 @@ static inline bool dispatch_to_loop_scan_kernel(
   return false;
 }
 
+static inline bool dispatch_to_loop_scan_kernel(
+    const int64_t problem,
+    const int64_t stride,
+    const int64_t batch,
+    const int64_t in_bytes,
+    const int64_t out_bytes) {
+  if (stride > 1) {
+    return false;
+  }
+
+  const auto* dev_prop = at::xpu::getCurrentDeviceProperties();
+  const int64_t xve_count = static_cast<int64_t>(dev_prop->gpu_eu_count);
+  if ((batch > 128 && problem < 16384 /*1024 * 16*/) || batch >= xve_count) {
+    return true;
+  }
+
+  // Single-row small problems fit within one segment_scan work-group in 1 pass
+  // without extra kernel launch overhead.
+  const int64_t max_wg = static_cast<int64_t>(dev_prop->max_work_group_size);
+  if (batch == 1 && problem <= max_wg) {
+    return false;
+  }
+
+  // Estimate peak DRAM bandwidth in GB/s (= 1000 B/us) from device memory clock
+  // (MHz) and bus width (bits), matching triton.testing.get_dram_gbps, with
+  // fallback when the driver reports 0 (e.g. integrated GPUs).
+  double peak_bw_gbps = static_cast<double>(dev_prop->memory_clock_rate) *
+      static_cast<double>(dev_prop->memory_bus_width) * 2.0 / 8.0 / 1000.0;
+  if (peak_bw_gbps <= 0.0) {
+    peak_bw_gbps = dev_prop->is_integrated_gpu ? 100.0 : 400.0;
+  }
+
+  // Compare projected memory time of 1-pass loop_scan (1 subgroup of size 32
+  // per row) against 2-pass segment_scan plus ~4 us extra kernel launch cost.
+  constexpr int64_t kSubGroupSize = 32;
+  constexpr double kExtraLaunchUs = 4.0;
+
+  const double loop_bytes =
+      static_cast<double>(batch) * problem * (in_bytes + out_bytes);
+  const double l3_bytes = static_cast<double>(dev_prop->global_mem_cache_size);
+  const double seg_bytes = (l3_bytes > 0.0 && loop_bytes > l3_bytes)
+      ? static_cast<double>(batch) * problem * (2 * in_bytes + out_bytes)
+      : loop_bytes;
+
+  const double bw_loop_bytes_per_us =
+      (static_cast<double>(batch) / xve_count) * peak_bw_gbps * 1000.0;
+  const int64_t seg_active_xve =
+      std::min(xve_count, batch * at::ceil_div(problem, kSubGroupSize));
+  const double bw_seg_bytes_per_us =
+      (static_cast<double>(seg_active_xve) / xve_count) * peak_bw_gbps * 1000.0;
+
+  const double t_loop_us = loop_bytes / bw_loop_bytes_per_us;
+  const double t_seg_us = seg_bytes / bw_seg_bytes_per_us + kExtraLaunchUs;
+  return t_loop_us <= t_seg_us;
+}
+
 template <class SSConfig, bool TrivialIdxCal = false>
 static inline void accumulate_carrier(const SSConfig& cfg) {
   TORCH_CHECK(
@@ -1221,7 +1278,9 @@ void scan(
   int64_t stride = input_info.innerSize(dim_after_collapse);
   int64_t problem = input_info.sizes[dim_after_collapse];
 
-  if (dispatch_to_loop_scan_kernel(problem, stride, batch)) {
+  if (Type == INCLUSIVE_TYPE &&
+      dispatch_to_loop_scan_kernel(
+          problem, stride, batch, sizeof(scalar_t), sizeof(oscalar_t))) {
     using value_t = std::remove_const_t<scalar_t>;
     if constexpr (std::is_same_v<BinaryFunction, std::plus<value_t>>) {
       // Sum in opmath precision; std::plus<value_t> would round each partial
