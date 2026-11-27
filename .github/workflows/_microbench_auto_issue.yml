@@ -113,12 +113,12 @@ jobs:
 
       - name: File the issues
         # the only step that writes to GitHub
+        if: ${{ inputs.create_issues }}
         run: |
           python3 .github/scripts/microbench_create_issues.py \
             --evidence-dir "${EVIDENCE_DIR}" \
             --drafts "${DRAFTS}" \
-            --report-dir "${{ github.workspace }}/mb_auto_issue_report" \
-            ${{ inputs.create_issues && ' ' || '--dry-run' }}
+            --report-dir "${{ github.workspace }}/mb_auto_issue_report"
 
       - name: Report usage cost
         if: ${{ always() }}
