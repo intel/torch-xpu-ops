@@ -42,6 +42,61 @@ class TestSimpleBinary(TestCase):
         c_cpu = a_cpu - b_cpu
         self.assertEqual(c_cpu, c_xpu.to(cpu_device))
 
+    def test_sub_inner_broadcast_low_precision(self):
+        for dtype, broadcast_left, offset in (
+            (torch.float16, True, 2),
+            (torch.bfloat16, False, 2),
+            (torch.float16, False, 1),
+        ):
+            with self.subTest(dtype=dtype, left=broadcast_left, offset=offset):
+                # Six columns with a ten-element pitch and a two-element offset.
+                dense = torch.arange(50, dtype=dtype, device=xpu_device).view(1, 5, 10)
+                dense = dense[:, :, 2:8]
+                row = torch.arange(31, dtype=dtype, device=xpu_device).view(31, 1, 1)
+                lhs, rhs = (row, dense) if broadcast_left else (dense, row)
+                expected = lhs.cpu() - rhs.cpu()
+                expected_backing = torch.full(
+                    (offset + expected.numel() + 2,), -127, dtype=dtype
+                )
+                backing = expected_backing.to(xpu_device)
+                torch.sub(lhs, rhs, out=backing[offset:-2].view_as(expected))
+                expected_backing[offset:-2] = expected.flatten()
+                self.assertEqual(backing.cpu(), expected_backing, atol=0, rtol=0)
+
+    def test_sub_device_scalar_float_tail(self):
+        # One full work-group of vec4 plus one tail element.
+        size, guard = 1025, 4
+        dense = torch.arange(size, dtype=torch.float32)
+        scalar = torch.tensor(2.5, dtype=dense.dtype)
+        for lhs, rhs in ((scalar, dense), (dense, scalar)):
+            with self.subTest(scalar_on_left=lhs.ndim == 0):
+                expected = torch.full((size + 2 * guard,), -127, dtype=dense.dtype)
+                backing = expected.to(xpu_device)
+                torch.sub(
+                    lhs.to(xpu_device), rhs.to(xpu_device), out=backing[guard:-guard]
+                )
+                expected[guard:-guard] = lhs - rhs
+                self.assertEqual(backing.cpu(), expected, atol=0, rtol=0)
+
+    def test_le_inner_broadcast_int64(self):
+        dense = torch.arange(12, dtype=torch.int64).view(3, 4)
+        dense += torch.tensor([[1 << 32], [-(1 << 32)], [0]])
+        row = torch.tensor([[2], [-1], [9]], dtype=torch.int64)
+        self.assertEqual(
+            torch.le(dense.to(xpu_device), row.to(xpu_device)).cpu(), dense <= row
+        )
+
+    def test_sub_broadcast_overlapping_bounds(self):
+        backing = torch.arange(21, dtype=torch.float32)
+        dense = torch.arange(16, dtype=backing.dtype).view(2, 8)
+        actual = backing.to(xpu_device)
+        # The output lies between the two broadcast values in the same storage.
+        row = actual[::20].view(2, 1)
+        torch.sub(dense.to(xpu_device), row, out=actual[4:20].view(2, 8))
+        expected = backing.clone()
+        expected[4:20] = (dense - backing[::20].view(2, 1)).flatten()
+        self.assertEqual(actual.cpu(), expected)
+
     def test_mul(self, dtype=torch.float):
         a_cpu = torch.randn(2, 3)
         b_cpu = torch.randn(2, 3)

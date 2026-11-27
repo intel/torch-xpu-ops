@@ -471,6 +471,23 @@ static inline bool overlaps_dense_output(
   return input_begin < output_end && output_begin < input_end;
 }
 
+static inline bool broadcast_overlaps_output(
+    const TensorIteratorBase& iter,
+    const void* output,
+    int input,
+    bool broadcast_only = false) {
+  const auto strides = iter.strides(input);
+  const auto input_begin = reinterpret_cast<uintptr_t>(iter.data_ptr(input));
+  auto input_end = input_begin + iter.element_size(input);
+  bool broadcast = !broadcast_only;
+  for (int dim = 0; dim < iter.ndim(); ++dim) {
+    broadcast |= iter.shape()[dim] > 1 && strides[dim] == 0;
+    input_end += (iter.shape()[dim] - 1) * strides[dim];
+  }
+  return broadcast &&
+      overlaps_dense_output(iter, output, input_begin, input_end);
+}
+
 template <typename func_t, typename array_t, typename in_calc_t>
 static inline void launch_vectorized_kernel(
     int64_t N,
@@ -611,6 +628,20 @@ static inline bool can_vectorize_for_non_contigouous(
 
 constexpr int strided_work_group_size = 128;
 
+// Where the inputs of the vector starting at output element `first` are, for
+// BroadcastElementwiseKernel: in a one-dimensional iterator the dense input
+// follows the output and the broadcast input is a single element.
+struct SingleElementBroadcast {
+  template <int broadcast_arg>
+  at::detail::Array<uint32_t, 2> get(uint32_t first) const {
+    at::detail::Array<uint32_t, 2> offsets;
+    offsets[broadcast_arg] = 0;
+    offsets[1 - broadcast_arg] = first;
+    return offsets;
+  }
+  uint32_t numel;
+};
+
 // Reuse the outer quotient directly for a two-dimensional binary iterator.
 static inline auto strided_binary_offsets(
     const OffsetCalculator<2>& ic,
@@ -626,6 +657,238 @@ static inline auto strided_binary_offsets(
     return offsets;
   }
   return ic.get(first);
+}
+
+// Otherwise each innermost row of the broadcast input is a single element.
+struct InnerBroadcast {
+  template <int broadcast_arg>
+  OffsetCalculator<2>::offset_type get(uint32_t first) const {
+    if (calc.dims != 2) {
+      return calc.get(first);
+    }
+    const auto& divider = calc.sizes_[0];
+    const uint32_t row = divider.div(first);
+    constexpr int dense_arg = 1 - broadcast_arg;
+    OffsetCalculator<2>::offset_type offsets;
+    offsets[broadcast_arg] = row * calc.strides_[1][broadcast_arg];
+    // This equals row * pitch + column, including zero outer pitch. The
+    // difference and addition use unsigned offsets in element units.
+    offsets[dense_arg] =
+        first + row * (calc.strides_[1][dense_arg] - divider.divisor);
+    return offsets;
+  }
+  uint32_t numel;
+  OffsetCalculator<2> calc;
+};
+
+// Vectorize binary operations with a dense output and one inner-broadcast
+// input. Each vector stays within a row and reuses one broadcast element.
+// Specialize the broadcast position while preserving operand order.
+template <int vec_size, int broadcast_arg, typename func_t, typename layout_t>
+struct BroadcastElementwiseKernel {
+  // Fix the group size at 256 so the index calculation uses a constant.
+  static constexpr int work_group_size = 256;
+  using traits = function_traits<func_t>;
+  using dense_t =
+      std::decay_t<typename traits::template arg<1 - broadcast_arg>::type>;
+  using broadcast_t =
+      std::decay_t<typename traits::template arg<broadcast_arg>::type>;
+  using return_t = typename traits::result_type;
+
+  return_t apply(dense_t value, broadcast_t broadcast) const {
+    if constexpr (broadcast_arg == 0) {
+      return f_(broadcast, value);
+    } else {
+      return f_(value, broadcast);
+    }
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const uint32_t index = uint32_t(item.get_group(0)) * work_group_size +
+        uint32_t(item.get_local_id(0));
+    const uint32_t vectors = layout_.numel / vec_size;
+    if (index < vectors) {
+      const auto offsets =
+          layout_.template get<broadcast_arg>(index * vec_size);
+      const auto values =
+          memory::load_vector<vec_size>(dense_ + offsets[1 - broadcast_arg], 0);
+      const broadcast_t broadcast =
+          c10::load(broadcast_ + offsets[broadcast_arg]);
+      memory::aligned_vector<return_t, vec_size> results;
+#pragma unroll
+      for (int j = 0; j < vec_size; ++j) {
+        results.val[j] = apply(values.val[j], broadcast);
+      }
+      reinterpret_cast<memory::aligned_vector<return_t, vec_size>*>(
+          output_)[index] = results;
+    } else if constexpr (std::is_same_v<layout_t, SingleElementBroadcast>) {
+      if (index < vectors + layout_.numel % vec_size) {
+        const uint32_t k = vectors * (vec_size - 1) + index;
+        output_[k] = apply(c10::load(dense_ + k), c10::load(broadcast_));
+      }
+    }
+  }
+
+  BroadcastElementwiseKernel(
+      const dense_t* dense,
+      const broadcast_t* broadcast,
+      return_t* output,
+      const func_t& f,
+      const layout_t& layout)
+      : dense_(dense),
+        broadcast_(broadcast),
+        output_(output),
+        f_(f),
+        layout_(layout) {}
+
+ private:
+  const dense_t* dense_;
+  const broadcast_t* broadcast_;
+  return_t* output_;
+  func_t f_;
+  layout_t layout_;
+};
+
+template <typename func_t, int broadcast_arg, bool single_element>
+struct BroadcastLaunchConfig {
+  using traits = function_traits<func_t>;
+  using dense_t =
+      std::decay_t<typename traits::template arg<1 - broadcast_arg>::type>;
+  using broadcast_t =
+      std::decay_t<typename traits::template arg<broadcast_arg>::type>;
+  using output_t = typename traits::result_type;
+  static constexpr int dense_bytes = sizeof(dense_t);
+  static constexpr int output_bytes = sizeof(output_t);
+  static constexpr int min_bytes = std::min(dense_bytes, output_bytes);
+  static constexpr int max_bytes = std::max(dense_bytes, output_bytes);
+  // The narrowest streamed operand uses at least four bytes per vector.
+  static constexpr int min_vec = std::max(1, 4 / min_bytes);
+  // Prefer up to 16 bytes per vector for the widest streamed operand.
+  static constexpr int max_vec = std::max(min_vec, 16 / max_bytes);
+  // Broadcast rows gain from vectors only when a streamed operand is narrower
+  // than 8 bytes; otherwise the generic kernel already accesses 8 bytes per
+  // work-item, and its grid-stride loop suits long write streams.
+  static constexpr bool vectorize_rows = min_bytes < 8;
+
+  static constexpr int dense = 2 - broadcast_arg;
+
+  template <int vec_size, typename array_t, typename layout_t>
+  static void submit_kernel(
+      const func_t& f,
+      const array_t& data,
+      const layout_t& layout) {
+    const int64_t numel = layout.numel;
+    using kernel_t =
+        BroadcastElementwiseKernel<vec_size, broadcast_arg, func_t, layout_t>;
+    constexpr int64_t wg_size = kernel_t::work_group_size;
+    int64_t items = numel / vec_size;
+    if constexpr (single_element) {
+      items += numel % vec_size;
+    }
+    sycl_kernel_submit(
+        ceil_div(items, wg_size) * wg_size,
+        wg_size,
+        getCurrentSYCLQueue(),
+        kernel_t(
+            reinterpret_cast<const dense_t*>(data[dense]),
+            reinterpret_cast<const broadcast_t*>(data[broadcast_arg + 1]),
+            reinterpret_cast<output_t*>(data[0]),
+            f,
+            layout));
+  }
+
+  template <int vec_size, typename array_t>
+  static bool check_vector_alignment(
+      const TensorIteratorBase& iter,
+      const array_t& data) {
+    constexpr int vec_bytes = vec_size * dense_bytes;
+    if (reinterpret_cast<uintptr_t>(data[0]) % (vec_size * output_bytes) != 0 ||
+        reinterpret_cast<uintptr_t>(data[dense]) % vec_bytes != 0) {
+      return false;
+    }
+    if constexpr (!single_element) {
+      if (iter.shape()[0] % vec_size != 0) {
+        return false;
+      }
+      const int ndim = iter.ndim();
+      for (int dim = 1; dim < ndim; ++dim) {
+        if (iter.strides(dense)[dim] % vec_bytes != 0) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  template <int vec_size, typename array_t>
+  static bool launch_vector(
+      TensorIteratorBase& iter,
+      const func_t& f,
+      const array_t& data,
+      int64_t numel) {
+    if (!check_vector_alignment<vec_size>(iter, data)) {
+      if constexpr (vec_size > min_vec) {
+        return launch_vector<vec_size / 2>(iter, f, data, numel);
+      }
+      return false;
+    }
+    if constexpr (single_element) {
+      submit_kernel<vec_size>(f, data, SingleElementBroadcast{uint32_t(numel)});
+    } else {
+      submit_kernel<vec_size>(
+          f,
+          data,
+          InnerBroadcast{
+              uint32_t(numel), make_input_offset_calculator<2>(iter)});
+    }
+    return true;
+  }
+
+  template <typename array_t>
+  static bool dispatch(
+      TensorIteratorBase& iter,
+      const func_t& f,
+      const array_t& data,
+      int64_t numel) {
+    if constexpr (!single_element && !vectorize_rows) {
+      return false;
+    } else {
+      // A broadcast input stored in the output would be read while written.
+      if (iter.strides(broadcast_arg + 1)[0] != 0 ||
+          iter.strides(dense)[0] != iter.element_size(dense) ||
+          broadcast_overlaps_output(iter, data[0], broadcast_arg + 1)) {
+        return false;
+      }
+      if constexpr (!single_element) {
+        if (broadcast_overlaps_output(iter, data[0], dense, true)) {
+          return false;
+        }
+      }
+      return launch_vector<max_vec>(iter, f, data, numel);
+    }
+  }
+};
+
+// Pack a device scalar or a single innermost stride-zero operand.
+template <typename func_t, typename array_t>
+static inline bool try_launch_broadcast_kernel(
+    TensorIteratorBase& iter,
+    const func_t& f,
+    const array_t& data,
+    int64_t numel,
+    bool dense_output) {
+  static_assert(function_traits<func_t>::arity == 2);
+  if (numel < 2 || !dense_output) {
+    return false;
+  }
+  if (iter.ndim() == 1) {
+    return BroadcastLaunchConfig<func_t, 0, true>::dispatch(
+               iter, f, data, numel) ||
+        BroadcastLaunchConfig<func_t, 1, true>::dispatch(iter, f, data, numel);
+  }
+  return BroadcastLaunchConfig<func_t, 0, false>::dispatch(
+             iter, f, data, numel) ||
+      BroadcastLaunchConfig<func_t, 1, false>::dispatch(iter, f, data, numel);
 }
 
 // An inner broadcast may need values from two adjacent rows.
@@ -814,15 +1077,7 @@ static inline bool try_launch_strided_binary(
     }
     const auto shape = iter.shape();
     for (int input = 1; input <= 2; ++input) {
-      const auto strides = iter.strides(input);
-      const auto begin = reinterpret_cast<uintptr_t>(data[input]);
-      auto end = begin + iter.element_size(input);
-      bool broadcast = false;
-      for (int dim = 0; dim < iter.ndim(); ++dim) {
-        broadcast |= shape[dim] > 1 && strides[dim] == 0;
-        end += (shape[dim] - 1) * strides[dim];
-      }
-      if (broadcast && overlaps_dense_output(iter, data[0], begin, end)) {
+      if (broadcast_overlaps_output(iter, data[0], input, true)) {
         return false;
       }
     }
@@ -898,8 +1153,12 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   } else {
     const bool dense_output = (packed_strided_unary || traits::arity == 2) &&
         has_dense_output(iter, sizeof(arg0_t));
-    // Keep the legacy row-vector restrictions for split iterators. Packed
-    // strided paths validate their own geometry and also serve split iterators.
+    if constexpr (traits::arity == 2) {
+      if (try_launch_broadcast_kernel(iter, f, data, numel, dense_output)) {
+        return;
+      }
+    }
+    // Split iterators disable the legacy row-vector path.
     if constexpr (enable_broadcast_vec) {
       if (!latency_case &&
           can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
