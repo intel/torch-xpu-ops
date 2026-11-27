@@ -1,28 +1,57 @@
 # Models excluded from specific test cases for priority p2.
 #
-# torchbench_models_list.txt, huggingface_models_list.txt and
-# timm_models_list.txt in this folder contain the full model set for this
-# priority. A model listed under a given suite/scenario/mode here is skipped for
-# that run configuration.
+# config.yaml in this folder contains the full model set for this priority.
+# A model listed under a given suite/scenario/mode here is skipped at launch
+# for that run configuration (in addition to suite-level skips in <suite>.yaml).
 skip:
   huggingface:
     accuracy:
       inference: []
-      training: []
+      training:
+        # OOM on 24 GB VRAM (BMG B60); eager training lacks labels (#6348)
+        - google/gemma-2-2b
+        # Eager training lacks labels in benchmark (#6348)
+        - meta-llama/Llama-3.2-1B
+        - openai/whisper-tiny
+        - Qwen/Qwen3-0.6B
+        - Qwen/Qwen3.5-0.8B
     performance:
       inference: []
-      training: []
+      training:
+        # OOM on 24 GB VRAM (BMG B60); eager training lacks labels (#6348)
+        - google/gemma-2-2b
+        # Eager training lacks labels in benchmark (#6348)
+        - meta-llama/Llama-3.2-1B
+        - openai/whisper-tiny
+        - Qwen/Qwen3-0.6B
+        - Qwen/Qwen3.5-0.8B
   timm:
     accuracy:
       inference: []
-      training: []
+      training:
+        # OOM on 24 GB VRAM (BMG B60) and 64 GB PVC
+        - cait_m36_384
+        # OOM on 24 GB VRAM (BMG B60); non-deterministic eager in timm_models.yaml
+        - xcit_large_24_p8_224
     performance:
       inference: []
-      training: []
+      training:
+        # OOM on 24 GB VRAM (BMG B60) and 64 GB PVC
+        - cait_m36_384
   torchbench:
     accuracy:
-      inference: []
+      inference:
+        # OOM on 24 GB VRAM (BMG B60) and 64 GB PVC
+        - llava
+        # Quantized QAT eval is CPU-only in TorchBench (#6348)
+        - mobilenet_v2_quantized_qat
+        - resnet50_quantized_qat
+        # Requires CUDA-only DDP initialization in TorchBench (#6348)
+        - moco
+        # Requires CUDA-only fbgemm_gpu
+        - torchrec_dlrm
       training:
+        # Excluded from training in torchbench.yaml (skip.test.training)
         - doctr_det_predictor
         - doctr_reco_predictor
         - maml
@@ -30,9 +59,39 @@ skip:
         - pyhpc_isoneutral_mixing
         - pyhpc_turbulent_kinetic_energy
         - sam_fast
+        # Training not implemented in TorchBench (#6348)
+        - hf_distil_whisper
+        # Generation-only model without grad_fn in training (#6348)
+        - hf_T5_generate
+        # OOM on 24 GB VRAM (BMG B60) during fp64 golden ref
+        - hf_GPT2_large
+        - hf_Roberta_base
+        - hf_T5_base
+        - hf_T5_large
+        - timm_vision_transformer_large
+        # OOM on 24 GB VRAM (BMG B60) and 64 GB PVC
+        - llava
+        # Requires CUDA-only DDP initialization in TorchBench (#6348)
+        - moco
+        # Eager GradSampleModule hook error in TorchBench (#6348)
+        - opacus_cifar10
+        # SamPredictor wraps forward in @torch.no_grad() in training (#6348)
+        - sam
+        # Requires CUDA-only fbgemm_gpu
+        - torchrec_dlrm
     performance:
-      inference: []
+      inference:
+        # OOM on 24 GB VRAM (BMG B60) and 64 GB PVC
+        - llava
+        # Quantized QAT eval is CPU-only in TorchBench (#6348)
+        - mobilenet_v2_quantized_qat
+        - resnet50_quantized_qat
+        # Requires CUDA-only DDP initialization in TorchBench (#6348)
+        - moco
+        # Requires CUDA-only fbgemm_gpu
+        - torchrec_dlrm
       training:
+        # Excluded from training in torchbench.yaml (skip.test.training)
         - doctr_det_predictor
         - doctr_reco_predictor
         - maml
@@ -40,3 +99,17 @@ skip:
         - pyhpc_isoneutral_mixing
         - pyhpc_turbulent_kinetic_energy
         - sam_fast
+        # Training not implemented in TorchBench (#6348)
+        - hf_distil_whisper
+        # Generation-only model without grad_fn in training (#6348)
+        - hf_T5_generate
+        # OOM on 24 GB VRAM (BMG B60) and 64 GB PVC
+        - llava
+        # Requires CUDA-only DDP initialization in TorchBench (#6348)
+        - moco
+        # Eager GradSampleModule hook error in TorchBench (#6348)
+        - opacus_cifar10
+        # SamPredictor wraps forward in @torch.no_grad() in training (#6348)
+        - sam
+        # Requires CUDA-only fbgemm_gpu
+        - torchrec_dlrm

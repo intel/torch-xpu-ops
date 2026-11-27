@@ -28,40 +28,19 @@ hf_Bert_large,pass,pass,pass,pass,pass
 hf_BigBird,pass,pass,pass,pass,pass
 hf_DistilBert,pass,pass,pass,pass,pass
 hf_GPT2,pass,pass,pass,pass,pass
-# hf_GPT2_large float32/bfloat16/float16/amp_bf16/amp_fp16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
-hf_GPT2_large,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR
 hf_Longformer,pass,pass,pass,pass,pass
 hf_Reformer,pass,pass,pass,pass,pass
-# hf_Roberta_base float32/bfloat16/float16/amp_bf16/amp_fp16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
-hf_Roberta_base,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR
 hf_T5,pass,pass,pass,pass,pass
-# hf_T5_base float32/bfloat16/float16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
-# hf_T5_base amp_bf16/amp_fp16: out of memory - out of memory on B60 (24 GB)
-hf_T5_base,UR_RESULT_ERROR,UR_RESULT_ERROR,UR_RESULT_ERROR,out of memory,out of memory
-# hf_T5_generate float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6348
-hf_T5_generate,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-# hf_T5_large float32: out of memory - out of memory on B60 (24 GB)
-# hf_T5_large bfloat16/amp_bf16/amp_fp16: eager_1st_run_fail - out of memory on B60 (24 GB)
-# hf_T5_large float16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
-hf_T5_large,out of memory,eager_1st_run_fail,UR_RESULT_ERROR,eager_1st_run_fail,eager_1st_run_fail
 hf_Whisper,pass,pass,pass,pass,pass
-# hf_distil_whisper float32/bfloat16/float16/amp_bf16/amp_fp16: model_fail_to_load - model fails to load (also on PVC), #6348
-hf_distil_whisper,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 lennard_jones,pass,pass,pass,pass,pass
-# llava float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - out of memory on B60 (24 GB) (also OOM on PVC)
-llava,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 maml_omniglot,pass,pass,pass,pass,pass
 microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
 mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 mobilenet_v2_quantized_qat,pass,pass,pass,pass,pass
 mobilenet_v3_large,pass,pass,pass,pass,pass
-# moco float32/bfloat16/float16/amp_bf16/amp_fp16: model_fail_to_load - model fails to load (also on PVC), #6348
-moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
-# opacus_cifar10 float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6348
-opacus_cifar10,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 phlippe_densenet,pass,pass,pass,pass,pass
 phlippe_resnet,pass,pass,pass,pass,pass
 pytorch_stargan,pass,pass,pass,pass,pass
@@ -71,8 +50,6 @@ resnet18,pass,pass,pass,pass,pass
 resnet50,pass,pass,pass,pass,pass
 resnet50_quantized_qat,pass,pass,pass,pass,pass
 resnext50_32x4d,pass,pass,pass,pass,pass
-# sam float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6348
-sam,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 shufflenet_v2_x1_0,pass,pass,pass,pass,pass
 soft_actor_critic,pass,pass,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
@@ -85,15 +62,8 @@ timm_nfnet,pass,pass,pass,pass,pass
 timm_regnet,pass,pass,pass,fail_accuracy,pass
 timm_resnest,pass,pass,pass,pass,pass
 timm_vision_transformer,pass,pass,pass,pass,pass
-# timm_vision_transformer_large float32: eager_1st_run_fail - out of memory on B60 (24 GB)
-# timm_vision_transformer_large bfloat16: eager_2nd_run_fail - out of memory on B60 (24 GB)
-# timm_vision_transformer_large float16: Memory>1.0 - out of memory on B60 (24 GB)
-# timm_vision_transformer_large amp_bf16/amp_fp16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
-timm_vision_transformer_large,eager_1st_run_fail,eager_2nd_run_fail,Memory>1.0,UR_RESULT_ERROR,UR_RESULT_ERROR
 timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
-# torchrec_dlrm float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - env: fbgemm_gpu not available
-torchrec_dlrm,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
 vision_maskrcnn,pass,pass,pass,pass,pass
