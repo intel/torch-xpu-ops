@@ -12,7 +12,9 @@ on:
       - '.github/scripts/test_fold_details.js'
 
 env:
-  BEDROCK_MODEL: global.anthropic.claude-opus-5
+  # Default model for every AI task. Override with the AWS_BEDROCK_MODEL secret;
+  # each task can be overridden on its own with AWS_BEDROCK_MODEL_<TASK>.
+  AWS_BEDROCK_MODEL: ${{ secrets.AWS_BEDROCK_MODEL || 'global.anthropic.claude-opus-5-5' }}
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
   # Cost rows go to a tracker outside this repo so they do not add noise here.
   COST_TRACKING_REPO: torchxpubot/ci-infra
@@ -24,8 +26,13 @@ permissions:
 # GitHub keeps only one pending run per group and cancels older pending ones.
 # #5272 receives every DISABLED-queue trigger, so give each comment its own group
 # there; runs then wait on the xpu-agent runner pool instead of cancelling each other.
+# Non-command comments (including the bot's own review replies) also get their own
+# group, so they cannot replace a queued `@torchxpubot review` and skip it.
+# The gate's automatic `@torchxpubot review` (bot_review_label.yml, marked by its
+# `_Automated review (` footer) queues apart from other commands, so a push
+# cannot replace a pending maintainer command such as `merge` or `rebase`.
 concurrency:
-  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ github.event.issue.number == 5272 && format('-{0}', github.event.comment.id) || '' }}
+  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}${{ (github.event.issue.number == 5272 || !startsWith(github.event.comment.body, '@torchxpubot')) && format('-{0}', github.event.comment.id) || contains(github.event.comment.body, '_Automated review (') && '-auto-review' || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -48,6 +55,7 @@ jobs:
       fixes: ${{ steps.parse.outputs.fixes }}
       fix_runner: ${{ steps.parse.outputs.fix_runner }}
       fix_image: ${{ steps.parse.outputs.fix_image }}
+      omix_note: ${{ steps.parse.outputs.omix_note }}
       dry_run: ${{ steps.parse.outputs.dry_run }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
       issue_number: ${{ steps.parse.outputs.issue_number }}
@@ -156,6 +164,7 @@ jobs:
             let fixes = '';
             let fixRunner = '';
             let fixImage = '';
+            let omixNote = '';
 
             if (command === 'merge') {
               if (args.includes('-f')) {
@@ -254,6 +263,13 @@ jobs:
               }
               fixRunner = runner;
               fixImage = `intel/omix:${tag}`;
+              // Report the real version behind `latest` and how it compares with PyTorch CI's pin.
+              const digest = (await res.json()).digest;
+              const hub = await fetch('https://hub.docker.com/v2/repositories/intel/omix/tags?page_size=100').then(r => r.json()).then(d => d.results, () => []);
+              const ver = hub.find(t => t.digest === digest && /^\d+\.\d+\.\d+-/.test(t.name))?.name.split('-')[0] || omix;
+              const ci = await github.rest.repos.getContent({ owner: 'pytorch', repo: 'pytorch', path: '.ci/docker/build.sh' })
+                .then(r => Buffer.from(r.data.content, 'base64').toString().match(/OMIX_VERSION=(\d+\.\d+\.\d+)/)?.[1], () => undefined) || 'unknown';
+              omixNote = `OMIX ${ver}${omix === 'latest' ? ' (`latest`)' : ''} · PyTorch CI: OMIX ${ci} · ${ver === ci ? 'same as CI' : '**differs from CI**'}`;
             }
 
             core.setOutput('command', normalizedCommand);
@@ -267,6 +283,7 @@ jobs:
             core.setOutput('fixes', fixes);
             core.setOutput('fix_runner', fixRunner);
             core.setOutput('fix_image', fixImage);
+            core.setOutput('omix_note', omixNote);
             core.setOutput('authorized', String(authorized));
 
   invalid-command:
@@ -452,7 +469,7 @@ jobs:
                 owner: context.repo.owner, repo: context.repo.repo, ref: sha, per_page: 100
               }),
               github.rest.repos.getCombinedStatusForRef({
-                owner: context.repo.owner, repo: context.repo.repo, ref: sha
+                owner: context.repo.owner, repo: context.repo.repo, ref: sha, per_page: 100
               })
             ]);
             const latestByName = new Map();
@@ -475,12 +492,14 @@ jobs:
             }
             const acceptable = new Set(['success', 'skipped', 'neutral']);
             const failedChecks = latestChecks.filter(c => !acceptable.has(c.conclusion));
-            const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
+            // `bot-review` records the bot review gate for promotion only; it never blocks merging.
+            const blockingStatuses = statuses.data.statuses.filter(s => s.context !== 'bot-review');
+            const statusFailed = blockingStatuses.some(s => s.state !== 'success');
             if (failedChecks.length > 0 || statusFailed) {
               const failedNames = failedChecks.map(c => `${c.name}: ${c.conclusion}`).join(', ');
               const msg = [
                 failedChecks.length > 0 ? `Failed checks: ${failedNames}` : '',
-                statusFailed ? `Combined commit status: ${statuses.data.state}` : ''
+                statusFailed ? `Failed statuses: ${blockingStatuses.filter(s => s.state !== 'success').map(s => `${s.context}: ${s.state}`).join(', ')}` : ''
               ].filter(Boolean).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
@@ -904,18 +923,39 @@ jobs:
     if: >-
       needs.parse-command.outputs.command == 'review'
       && needs.parse-command.outputs.authorized == 'true'
+    # The model reads untrusted PR text, so it gets a read-only token; posting
+    # and labeling happen in the `review-post` job, which holds MERGE_TOKEN.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      head_sha: ${{ steps.head.outputs.sha }}
+      started_at: ${{ steps.head.outputs.started_at }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      # The commit this review is about; the `bot-review` status lands on it,
+      # so a push during or after the review leaves the new head without one.
+      - name: Record PR head
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(gh api repos/${{ github.repository }}/pulls/${{ needs.parse-command.outputs.pr_number }} --jq .head.sha)" >> "$GITHUB_OUTPUT"
 
       - name: Run AI review
         id: ai-review
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
-          github_token: ${{ secrets.MERGE_TOKEN }}
+          github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
+          # --max-turns only stops a runaway session. A review that reaches it is
+          # lost with its whole cost, so keep it well above what a review needs.
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_REVIEW || env.AWS_BEDROCK_MODEL }} --max-turns 150 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
             in the ${{ github.repository }} repository.
@@ -923,18 +963,69 @@ jobs:
             Start your output with a single line `VERDICT: <one sentence>`
             summarising the outcome. Everything after it is folded behind a
             summary in the posted comment, so that line has to stand alone.
+            Follow it with the skill's `GATE:` line.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          # Sub-agents start in the background by default, and the action stops
+          # at the first result message. A review that ends its turn waiting for
+          # them is cut off there, and "the reviewers are still running" gets
+          # posted as the review. With this set, Claude waits for each sub-agent.
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
 
+      # Hand the result to `review-post` as data. Steps that hold MERGE_TOKEN run
+      # in a separate job on a fresh runner, so nothing the model did on this
+      # runner (edited files, leftover processes) can reach that token.
+      # The transcript holds tool outputs (e.g. `env`), and artifacts are not
+      # masked: keep only the final result entry and redact secrets from it.
+      - name: Save review output
+        id: save
+        if: always() && steps.ai-review.outputs.execution_file
+        env:
+          TRANSCRIPT: ${{ steps.ai-review.outputs.execution_file }}
+          SECRETS: |
+            ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+            ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p review-output
+          out=review-output/execution.json
+          jq '[.[] | select(.type == "result")] | .[-1:] | map({type, subtype, is_error, result, total_cost_usd, modelUsage})' "$TRANSCRIPT" > "$out"
+          while IFS= read -r secret; do
+            [ -n "$secret" ] || continue
+            b64="$(printf 'x-access-token:%s' "$secret" | base64 -w0)"
+            SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$out"
+            SECRET="$b64"    perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$out"
+          done <<< "$SECRETS"
+      - name: Upload review output
+        if: always() && steps.save.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-output
+          path: review-output/execution.json
+          retention-days: 7
+
+  review-post:
+    needs: [parse-command, review]
+    if: always() && needs.review.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download review output
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: review-output
+          path: review-output
       - name: Post review comment
-        if: steps.ai-review.outputs.execution_file
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = 'review-output/execution.json';
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -946,23 +1037,100 @@ jobs:
             const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
-            const footer = `\n\n---\n_Generated by [\`review\` job](${jobUrl})._`;
             // require() reads the tree actions/checkout populated, and that
             // checkout pins no ref -- so on issue_comment it lands on the default
             // branch, and a helper added by a PR is absent until that PR merges.
             // Fall back to raw text: losing the fold beats losing the comment.
+            // Without parseGate the verdict cannot be read, so the gate fails closed.
             let foldDetails = (text) => text;
+            let parseGate = () => null;
             try {
-              ({ foldDetails } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/fold_details.js`));
+              ({ foldDetails, parseGate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/fold_details.js`));
             } catch (error) {
               core.warning(`fold_details.js unavailable (${error.message}); posting unfolded`);
             }
+            // Bot review gate, same labels as pytorch: a passing review moves the
+            // PR from `in progress` to `ready for review`; otherwise it stays.
+            const { owner, repo } = context.repo;
+            const issue_number = ${{ needs.parse-command.outputs.pr_number }};
+            // Only the GATE line right after VERDICT counts (tested in test_fold_details.js).
+            // null: no verdict could be read, so the output is not a finished review.
+            const gate = parseGate(result.result);
+            const ready = gate === 'ready_for_human_review';
+            const sha = '${{ needs.review.outputs.head_sha }}';
+            // The gate covers open, non-draft PRs labeled `in progress`. A manual
+            // review elsewhere still gets its comment, but no status or labels.
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data;
+            const labels = pr.labels.map(l => l.name);
+            const inGate = pr.state === 'open' && !pr.draft
+              && labels.includes('in progress') && !labels.includes('no automated review');
+            // Per-commit record of the verdict for the promotion check. Not a
+            // required check: it never blocks merging.
+            if (!inGate) {
+              core.info('PR is not in the bot review gate; no bot-review status');
+            } else if (/^[0-9a-f]{40}$/.test(sha)) {
+              await github.rest.repos.createCommitStatus({
+                owner, repo, sha, context: 'bot-review', target_url: jobUrl,
+                state: ready ? 'success' : 'failure',
+                description: ready ? 'No blocking issues' : gate ? 'Blocking issues found' : 'Review did not finish'
+              });
+            } else {
+              core.warning(`no valid head sha (${sha}); skipping bot-review status`);
+            }
+            // Like pytorch's promotion: a maintainer comment posted after the
+            // review started was not seen by it, so do not promote on this verdict.
+            let maintainerActivity = [];
+            let skipReason = '';
+            const startedAt = '${{ needs.review.outputs.started_at }}';
+            if (ready) {
+              // Promote only the commit that was reviewed, and only PRs in the gate.
+              if (pr.head.sha !== sha) skipReason = `new commits were pushed after the reviewed ${sha.slice(0, 7)}`;
+              else if (!inGate) skipReason = 'the PR is not `in progress` in the bot review gate';
+              const since = startedAt || new Date(0).toISOString();
+              const [comments, reviews, reviewComments] = await Promise.all([
+                github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, since, per_page: 100 }),
+                github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: issue_number, per_page: 100 }),
+                github.paginate(github.rest.pulls.listReviewComments, { owner, repo, pull_number: issue_number, since, per_page: 100 }),
+              ]);
+              const activity = [
+                ...comments.map(c => ({ user: c.user, at: c.created_at })),
+                ...reviews.filter(r => r.state !== 'APPROVED' || r.body).map(r => ({ user: r.user, at: r.submitted_at })),
+                ...reviewComments.map(c => ({ user: c.user, at: c.created_at })),
+              ];
+              const logins = new Set(activity
+                .filter(a => a.user && a.at && Date.parse(a.at) > Date.parse(since)
+                  && a.user.login !== pr.user.login && a.user.login !== 'torchxpubot' && a.user.type !== 'Bot')
+                .map(a => a.user.login));
+              for (const username of logins) {
+                // Fail closed: an unknown role blocks promotion but still posts the review.
+                const role = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username }).then(
+                  r => r.data.role_name,
+                  e => { core.warning(`permission lookup for ${username} failed: ${e.message}`); return 'unknown'; });
+                if (['triage', 'write', 'maintain', 'admin', 'unknown'].includes(role)) maintainerActivity.push(username);
+              }
+            }
+            const promote = ready && !skipReason && maintainerActivity.length === 0;
+            if (promote) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['ready for review'] });
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'in progress' }).catch(() => {});
+            }
+            const banner = promote
+              ? '**Bot review: no blocking issues.** Labeled `ready for review` for maintainers.\n\n'
+              : ready && skipReason
+              ? `**Bot review: no blocking issues, but labels unchanged: ${skipReason}.**\n\n`
+              : ready
+              ? `**Bot review: no blocking issues, but ${maintainerActivity.map(u => '@' + u).join(', ')} commented after this review started (or their access could not be checked).** Address those comments, then push, or ask a maintainer to comment \`@torchxpubot review\`, to re-run the review.\n\n`
+              : gate
+              ? '**Bot review: blocking issues found.** Fix them and push; the review re-runs while the PR is `in progress`. If a finding does not apply, reply in a PR comment naming it and saying why; the next review reads it.\n\n'
+              : '**Bot review: did not finish.** No `VERDICT:` / `GATE:` lines could be read from the output below, so it does not count as a review. Comment `@torchxpubot review` to re-run it.\n\n';
+            const footer = `\n\n---\n_Generated by [\`review\` job](${jobUrl})._`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ needs.parse-command.outputs.pr_number }},
-              body: header + foldDetails(result.result, core.warning) + footer
+              body: header + banner + foldDetails(result.result, core.warning) + footer
             });
+            if (!gate) core.setFailed('The review output has no readable VERDICT/GATE lines.');
 
       - name: "Verify: AI review succeeded"
         uses: actions/github-script@v9
@@ -972,20 +1140,27 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
-            let ok = false;
+            const file = 'review-output/execution.json';
+            let result;
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-              const result = data.filter(e => e.type === 'result').pop();
+              result = data.filter(e => e.type === 'result').pop();
               console.log('Result:', JSON.stringify(result, null, 2));
-              ok = result && !result.is_error && result.total_cost_usd > 0;
             }
+            const ok = result && result.subtype === 'success' && !result.is_error && result.total_cost_usd > 0;
             if (!ok) {
+              // A review that ran into a limit says nothing about the PR or the AWS token.
+              const reason = !result
+                ? 'the `review` job ended as `${{ needs.review.result }}` without a result: it was cancelled, ran past `timeout-minutes`, or never started Claude.'
+                : result.subtype === 'error_max_turns'
+                ? 'the review reached its turn limit (`--max-turns`) before it finished, so there is no verdict. Re-run it, or raise the limit if large PRs keep reaching it.'
+                : 'Bedrock returned an error or no output. Please check AWS token validity.';
+              const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: ${{ needs.parse-command.outputs.pr_number }},
-                body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot review\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
+                body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot review\` failed: ${reason} ([run](${runUrl}))`
               });
               core.setFailed('AI review failed.');
             }
@@ -999,7 +1174,7 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            const file = 'review-output/execution.json';
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
@@ -1062,7 +1237,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 40 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_UT_CHECK || env.AWS_BEDROCK_MODEL }} --max-turns 40 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /ut-check skill to analyze UT results for
             PR #${{ needs.parse-command.outputs.pr_number }} on ${{ github.repository }}.
@@ -1240,6 +1415,8 @@ jobs:
               --shm-size=8g --privileged -e ZE_AFFINITY_MASK
     env:
       ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+      OMIX_NOTE: ${{ needs.parse-command.outputs.omix_note }}
+      FIX_IMAGE: ${{ needs.parse-command.outputs.fix_image }}
       GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -1278,7 +1455,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: `Starting automated fix on this issue. Follow progress in the [workflow run](${runUrl}).`
+              body: `Starting automated fix on this issue. Follow progress in the [workflow run](${runUrl}).\n\n> **Environment:** ${process.env.OMIX_NOTE} · \`${process.env.FIX_IMAGE}\``
             });
             // Handed to the agent as SESSION_COMMENT_ID: the pipeline edits this
             // same comment at every stage, so a run leaves exactly one comment.
@@ -1362,7 +1539,7 @@ jobs:
                 }]
               }
             }
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 200 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }},Write,Edit"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_FIX || env.AWS_BEDROCK_MODEL }} --max-turns 200 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }},Write,Edit"
           prompt: |
             Use the /issue-handler skill in pipeline mode to fix issue
             #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
@@ -1563,6 +1740,8 @@ jobs:
           C="/repos/${{ github.repository }}/issues/comments/$ID"
           gh api "$C" --jq .body > body.md
           grep -q '<!-- agent:review -->' body.md && exit 0
+          # Stage 1 replaces the starting text, so restate the environment here.
+          printf '\n\n> **Environment:** %s · `%s`\n' "$OMIX_NOTE" "$FIX_IMAGE" >> body.md
           cat >> body.md <<'EOF'
 
           <!-- agent:review -->
@@ -1673,7 +1852,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot fix\` failed: ${reason}\n\nSee the [\`fix\` job](${jobUrl}) for details.`
+              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot fix\` failed: ${reason}\n\n> **Environment:** ${process.env.OMIX_NOTE} · \`${process.env.FIX_IMAGE}\`\n\nSee the [\`fix\` job](${jobUrl}) for details.`
             });
             if (outcome !== 'cancelled') {
               core.setFailed(`AI fix failed: ${reason}`);
@@ -1805,7 +1984,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.GITHUB_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 40 --allowedTools Bash,Read,Glob,Grep,Write,Skill"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_LABEL || env.AWS_BEDROCK_MODEL }} --max-turns 40 --allowedTools Bash,Read,Glob,Grep,Write,Skill"
           prompt: |
             Use the /label-issue skill with issue_ref=${{ needs.parse-command.outputs.issue_number }}
             on ${{ github.repository }}. Write its labels.md and stop there: do not
@@ -2045,7 +2224,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 20 --allowedTools Bash,Read,Glob,Grep"
+          claude_args: "--model ${{ secrets.AWS_BEDROCK_MODEL_TRIAGE || env.AWS_BEDROCK_MODEL }} --max-turns 20 --allowedTools Bash,Read,Glob,Grep"
           prompt: |
             Use the /issue-triage skill to triage issue
             #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
@@ -2341,7 +2520,7 @@ jobs:
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 1"
+          claude_args: "--model ${{ env.AWS_BEDROCK_MODEL }} --max-turns 1"
           use_sticky_comment: "true"
           show_full_output: "true"
           prompt: |
