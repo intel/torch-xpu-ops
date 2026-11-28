@@ -17,6 +17,7 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 
@@ -198,6 +199,25 @@ void copy_kernel(TensorIteratorBase& iter) {
         AT_EXPAND(AT_FLOAT8_TYPES),
         AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
   }
+}
+
+struct CopyBytesFunctor {
+  void operator()(sycl::item<1> item) const {
+    dst_[item.get_id(0)] = src_[item.get_id(0)];
+  }
+  CopyBytesFunctor(char* dst, const char* src) : dst_(dst), src_(src) {}
+
+ private:
+  char* dst_;
+  const char* src_;
+};
+
+void copy_bytes_kernel(void* dst, const void* src, size_t nbytes) {
+  sycl_kernel_submit(
+      sycl::range<1>(nbytes),
+      getCurrentSYCLQueue(),
+      CopyBytesFunctor(
+          reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src)));
 }
 
 } // namespace at::native::xpu
