@@ -13,6 +13,11 @@
 
 namespace at::native::xpu {
 
+// True when the current device lists 32 among its sub-group sizes. The fused
+// foreach reductions pin their stage-1 kernel to that width; other devices
+// use the slow path.
+TORCH_XPU_API bool is_sg32_supported();
+
 TORCH_XPU_API std::vector<Tensor> foreach_norm_kernel(
     TensorList tensors,
     const Scalar& ord,
