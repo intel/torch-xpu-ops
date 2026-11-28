@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <bit>
 #include <functional>
 #include <type_traits>
@@ -18,7 +19,6 @@
 #include <ATen/ceil_div.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
-#include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
@@ -542,110 +542,145 @@ void group_y_scan_with_indices(
   }
 }
 
+template <typename T>
+struct TrivialTensorPtr {
+  using scalar_t = T;
+  T* data;
+};
+
+template <bool TrivialOffCal, bool ConstPtr, typename Info>
+inline auto to_scan_tensor_info(const Info& info) {
+  if constexpr (TrivialOffCal) {
+    using ElemT = typename Info::scalar_t;
+    using PtrT =
+        std::conditional_t<ConstPtr, const std::remove_const_t<ElemT>, ElemT>;
+    return TrivialTensorPtr<PtrT>{info.data};
+  } else {
+    return info;
+  }
+}
+
+struct ScanItemDesc {
+  size_t chunk;
+  size_t chunk_size;
+  size_t chunk_off;
+  size_t chunk_num;
+  size_t glb_batch;
+  size_t glb_problem;
+};
+
+struct ScanLaunchConfig {
+  size_t wg_range_x;
+  size_t wg_range_y;
+  size_t glb_range_x;
+  size_t glb_range_y;
+  int64_t problem_wg_range;
+  int64_t problem_glb_range;
+
+  sycl::range<2> global_size() const {
+    return {glb_range_y, glb_range_x};
+  }
+
+  sycl::range<2> group_size() const {
+    return {wg_range_y, wg_range_x};
+  }
+};
+
+template <auto* kptr>
+static inline ScanLaunchConfig make_scan_launch_config(
+    int64_t problem,
+    int64_t problem_batch,
+    bool problem_along_x) {
+  size_t sg_size = at::xpu::getDeviceMaxSubGroupSize();
+  size_t wg_size = at::xpu::getKernelMaxWorkGroupSize<kptr>();
+  size_t wg_range_x = sg_size;
+  size_t wg_range_y = wg_size / wg_range_x;
+
+  size_t range_bound_x =
+      static_cast<size_t>(problem_along_x ? problem : problem_batch);
+  size_t range_bound_y =
+      static_cast<size_t>(problem_along_x ? problem_batch : problem);
+
+  wg_range_y = std::min<size_t>(
+      wg_range_y, std::bit_ceil(static_cast<uint64_t>(range_bound_y)));
+  wg_range_x = std::max<size_t>(
+      std::min<size_t>(
+          wg_size / wg_range_y,
+          std::bit_ceil(static_cast<uint64_t>(range_bound_x))),
+      sg_size);
+  wg_range_y = std::min<size_t>(
+      wg_size / wg_range_x,
+      std::bit_ceil(static_cast<uint64_t>(range_bound_y)));
+
+  size_t glb_range_x = at::ceil_div(range_bound_x, wg_range_x) * wg_range_x;
+  size_t glb_range_y = at::ceil_div(range_bound_y, wg_range_y) * wg_range_y;
+
+  int64_t problem_wg_range =
+      static_cast<int64_t>(problem_along_x ? wg_range_x : wg_range_y);
+  int64_t problem_glb_range =
+      static_cast<int64_t>(problem_along_x ? glb_range_x : glb_range_y);
+  return {
+      wg_range_x,
+      wg_range_y,
+      glb_range_x,
+      glb_range_y,
+      problem_wg_range,
+      problem_glb_range};
+}
+
+inline ScanItemDesc get_scan_item_desc(
+    sycl::nd_item<2> item,
+    bool problem_along_x) {
+  auto lix = item.get_local_id(1);
+  auto liy = item.get_local_id(0);
+  auto lrx = item.get_local_range(1);
+  auto lry = item.get_local_range(0);
+  auto wgrx = item.get_group_range(1);
+  auto wgry = item.get_group_range(0);
+  auto gix = item.get_global_id(1);
+  auto giy = item.get_global_id(0);
+  auto gx = item.get_group(1);
+  auto gy = item.get_group(0);
+
+  if (problem_along_x) {
+    return {gx, lrx, lix, wgrx, giy, gix};
+  } else {
+    return {gy, lry, liy, wgry, gix, giy};
+  }
+}
+
+template <class InputInfo, class OutputInfo, typename T, class BinaryFunction>
+struct SegmentScanParam {
+  using arg_t = T;
+  using func_t = BinaryFunction;
+  using InputInfoType = InputInfo;
+  using OutputInfoType = OutputInfo;
+
+  InputInfo iinfo_;
+  OutputInfo oinfo_;
+  T* carrier_;
+  int64_t problem_;
+  int64_t stride_;
+  int64_t problem_batch_;
+  T init_;
+  ScanType type_;
+  BinaryFunction func_;
+  bool problem_along_x_;
+};
+
 template <
     class InputInfo,
     class OutputInfo,
     class IndicesInfo,
     typename T,
     class BinaryFunction>
-class SegmentScanConfig : public BatchKernelConfig {
- public:
-  using arg_t = T;
-  using func_t = BinaryFunction;
-  using InputInfoType = InputInfo;
-  using OutputInfoType = OutputInfo;
+struct SegmentScanWithIndicesParam
+    : SegmentScanParam<InputInfo, OutputInfo, T, BinaryFunction> {
   using IndicesInfoType = IndicesInfo;
   using IndicesT = typename IndicesInfo::scalar_t;
 
-  SegmentScanConfig() = default;
-
-  SegmentScanConfig(
-      InputInfo input_info,
-      OutputInfo output_info,
-      IndicesInfo indices_info,
-      int64_t batch,
-      int64_t problem,
-      int64_t stride,
-      bool problem_along_x,
-      T init,
-      ScanType type,
-      BinaryFunction func)
-      : BatchKernelConfig(
-            batch,
-            problem,
-            stride,
-            batch * stride,
-            problem_along_x),
-        iinfo_(input_info),
-        oinfo_(output_info),
-        idxinfo_(indices_info),
-        init_(init),
-        type_(type),
-        func_(func),
-        carrier_(nullptr),
-        carrier_idx_(nullptr) {}
-
-  template <auto* kptr>
-  static SegmentScanConfig<
-      InputInfo,
-      OutputInfo,
-      IndicesInfo,
-      T,
-      BinaryFunction>
-  make_config(
-      InputInfo& input_info,
-      OutputInfo& output_info,
-      IndicesInfo& indices_info,
-      int scan_dim,
-      T init,
-      ScanType type,
-      BinaryFunction func) {
-    int64_t batch = input_info.outerSize(scan_dim);
-    int64_t stride = input_info.innerSize(scan_dim);
-    int64_t problem = input_info.sizes[scan_dim];
-    bool problem_along_x = input_info.strides[scan_dim] == 1 ? true : false;
-
-    SegmentScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>
-        cfg = {
-            input_info,
-            output_info,
-            indices_info,
-            batch,
-            problem,
-            stride,
-            problem_along_x,
-            init,
-            type,
-            func};
-    cfg.template build<kptr>();
-    return cfg;
-  }
-
-  int64_t carrier_size() {
-    return problem_glb_range_ / problem_wg_range_ * batch_ * stride_;
-  }
-
-  void set_carrier(T* other) {
-    carrier_ = other;
-  }
-
-  void set_carrier_idx(IndicesT* other) {
-    carrier_idx_ = other;
-  }
-
-  void set_type(ScanType other) {
-    type_ = other;
-  }
-
- public:
-  InputInfo iinfo_;
-  OutputInfo oinfo_;
   IndicesInfo idxinfo_;
-  T init_;
-  ScanType type_;
-  BinaryFunction func_;
-  /* contiguous temp buffer */ T* carrier_;
-  /* contiguous temp buffer */ IndicesT* carrier_idx_;
+  IndicesT* carrier_idx_;
 };
 
 template <
@@ -664,10 +699,9 @@ inline void segment_scan_kernel(SSConfig_ cfg_) {
 
   // Use SYCL work group static/scratch memory
   // instead of SYCL local accessor for SLM usage.
-  // int slm_size = cfg.wg_range_x_ * cfg.wg_range_y_;
   T* slm_ = static_cast<T*>(syclexp::get_work_group_scratch_memory());
 
-  auto id = cfg_.get_item_desc(item);
+  auto id = get_scan_item_desc(item, cfg_.problem_along_x_);
   int64_t si, pi, bi, glb_ldr_off, glb_str_off, glb_str_off_0,
       glb_ldr_logical_off, glb_str_logical_off, crr_off;
 
@@ -755,9 +789,10 @@ inline void segment_scan_with_indices_kernel(SSConfig_ cfg_) {
   auto item = syclext::this_work_item::get_nd_item<2>();
 
   T* slm_ = static_cast<T*>(syclexp::get_work_group_scratch_memory());
-  IndicesT* slm_idx_ = (IndicesT*)(slm_ + cfg_.wg_range_x_ * cfg_.wg_range_y_);
+  IndicesT* slm_idx_ =
+      (IndicesT*)(slm_ + item.get_local_range(0) * item.get_local_range(1));
 
-  auto id = cfg_.get_item_desc(item);
+  auto id = get_scan_item_desc(item, cfg_.problem_along_x_);
   int64_t si, pi, bi, glb_ldr_off, glb_str_off, glb_str_off_0, glb_idx_off,
       glb_idx_off_0, glb_ldr_logical_off, glb_str_logical_off, crr_off,
       glb_idx_logical_off;
@@ -851,43 +886,73 @@ inline void segment_scan_with_indices_kernel(SSConfig_ cfg_) {
 }
 
 template <
-    typename SSConfig,
+    typename ScanParam,
     bool TrivialOffCal = false,
     bool TrivialIdxCal = false>
-static inline void launch_segment_scan(const SSConfig& cfg) {
+static inline void launch_segment_scan(
+    const ScanLaunchConfig& launch_cfg,
+    const ScanParam& param) {
   auto& queue = getCurrentSYCLQueue();
   // free function
-  int slm_size =
-      cfg.wg_range_x_ * cfg.wg_range_y_ * sizeof(typename SSConfig::arg_t);
+  int slm_size = launch_cfg.wg_range_x * launch_cfg.wg_range_y *
+      sizeof(typename ScanParam::arg_t);
   sycl_kernel_submit<
-      segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal>>(
-      cfg.global_size(), cfg.group_size(), queue, slm_size, cfg);
+      segment_scan_kernel<ScanParam, TrivialOffCal, TrivialIdxCal>>(
+      launch_cfg.global_size(),
+      launch_cfg.group_size(),
+      queue,
+      slm_size,
+      param);
 }
 
 template <
-    typename SSConfig,
+    typename ScanParam,
     bool TrivialOffCal = false,
     bool TrivialIdxCal = false,
     bool is_idx_carried = false>
-static inline void launch_segment_scan_with_indices(const SSConfig& cfg) {
+static inline void launch_segment_scan_with_indices(
+    const ScanLaunchConfig& launch_cfg,
+    const ScanParam& param) {
   auto& queue = getCurrentSYCLQueue();
-  int num_elments = cfg.wg_range_x_ * cfg.wg_range_y_;
-  int slm_size = num_elments * sizeof(typename SSConfig::arg_t) +
-      num_elments * sizeof(typename SSConfig::IndicesT);
+  int num_elments = launch_cfg.wg_range_x * launch_cfg.wg_range_y;
+  int slm_size = num_elments * sizeof(typename ScanParam::arg_t) +
+      num_elments * sizeof(typename ScanParam::IndicesT);
   sycl_kernel_submit<segment_scan_with_indices_kernel<
-      SSConfig,
+      ScanParam,
       TrivialOffCal,
       TrivialIdxCal,
       is_idx_carried>>(
-      cfg.global_size(), cfg.group_size(), queue, slm_size, cfg);
+      launch_cfg.global_size(),
+      launch_cfg.group_size(),
+      queue,
+      slm_size,
+      param);
 }
 
-template <class SSConfig, bool TrivialIdxCal = false>
+template <typename OutputT, typename T, class BinaryFunction>
+struct AccumulateCarrierParam {
+  OutputT* out_;
+  const T* carrier_;
+  int64_t problem_;
+  int64_t stride_;
+  int64_t problem_batch_;
+  BinaryFunction func_;
+  bool problem_along_x_;
+};
+
+template <typename OutputT, typename T, typename IndicesT, class BinaryFunction>
+struct AccumulateCarrierWithIndicesParam
+    : AccumulateCarrierParam<OutputT, T, BinaryFunction> {
+  IndicesT* idx_;
+  const IndicesT* carrier_idx_;
+};
+
+template <class ACParam, bool TrivialIdxCal = false>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-inline void accumulate_carrier_kernel(SSConfig cfg) {
+inline void accumulate_carrier_kernel(ACParam cfg) {
   auto item = syclext::this_work_item::get_nd_item<2>();
 
-  auto id = cfg.get_item_desc(item);
+  auto id = get_scan_item_desc(item, cfg.problem_along_x_);
   int64_t si, pi, bi, glb_off, crr_off;
   if constexpr (TrivialIdxCal) {
     glb_off = item.get_global_linear_id();
@@ -900,17 +965,16 @@ inline void accumulate_carrier_kernel(SSConfig cfg) {
     crr_off = si + id.chunk * cfg.stride_ + bi * id.chunk_num * cfg.stride_;
   }
   if (id.glb_problem < cfg.problem_ && id.glb_batch < cfg.problem_batch_) {
-    cfg.oinfo_.data[glb_off] =
-        cfg.func_(cfg.oinfo_.data[glb_off], cfg.carrier_[crr_off]);
+    cfg.out_[glb_off] = cfg.func_(cfg.out_[glb_off], cfg.carrier_[crr_off]);
   }
 }
 
-template <class SSConfig, bool TrivialIdxCal = false>
+template <class ACParam, bool TrivialIdxCal = false>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-inline void accumulate_carrier_with_indices_kernel(SSConfig cfg_) {
+inline void accumulate_carrier_with_indices_kernel(ACParam cfg_) {
   auto item = syclext::this_work_item::get_nd_item<2>();
 
-  auto id = cfg_.get_item_desc(item);
+  auto id = get_scan_item_desc(item, cfg_.problem_along_x_);
   int64_t si, pi, bi, glb_off, crr_off;
   if constexpr (TrivialIdxCal) {
     glb_off = item.get_global_linear_id();
@@ -925,9 +989,9 @@ inline void accumulate_carrier_with_indices_kernel(SSConfig cfg_) {
   if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
     binary_op_update(
         cfg_.carrier_[crr_off],
-        cfg_.oinfo_.data[glb_off],
+        cfg_.out_[glb_off],
         cfg_.carrier_idx_[crr_off],
-        cfg_.idxinfo_.data[glb_off],
+        cfg_.idx_[glb_off],
         cfg_.func_);
   }
 }
@@ -954,28 +1018,60 @@ static inline bool dispatch_to_loop_scan_kernel(
   return false;
 }
 
-template <class SSConfig, bool TrivialIdxCal = false>
-static inline void accumulate_carrier(const SSConfig& cfg) {
+template <class ScanParam, bool TrivialIdxCal = false>
+static inline void accumulate_carrier(
+    const ScanLaunchConfig& launch_cfg,
+    const ScanParam& param) {
   TORCH_CHECK(
-      cfg.carrier_ != nullptr, "scan: nullptr carrier in accumulation ...");
+      param.carrier_ != nullptr, "scan: nullptr carrier in accumulation ...");
   auto& queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit<accumulate_carrier_kernel<SSConfig, TrivialIdxCal>>(
-      cfg.global_size(), cfg.group_size(), queue, 0, cfg);
+  using OutputT = typename ScanParam::OutputInfoType::scalar_t;
+  using T = typename ScanParam::arg_t;
+  using BinaryFunction = typename ScanParam::func_t;
+  using ACParam = AccumulateCarrierParam<OutputT, T, BinaryFunction>;
+  ACParam ac_param{
+      param.oinfo_.data,
+      param.carrier_,
+      param.problem_,
+      param.stride_,
+      param.problem_batch_,
+      param.func_,
+      param.problem_along_x_};
+  sycl_kernel_submit<accumulate_carrier_kernel<ACParam, TrivialIdxCal>>(
+      launch_cfg.global_size(), launch_cfg.group_size(), queue, 0, ac_param);
 }
 
-template <class SSConfig, bool TrivialIdxCal = false>
-static inline void accumulate_carrier_with_indices(const SSConfig& cfg) {
+template <class ScanParam, bool TrivialIdxCal = false>
+static inline void accumulate_carrier_with_indices(
+    const ScanLaunchConfig& launch_cfg,
+    const ScanParam& param) {
   TORCH_CHECK(
-      cfg.carrier_ != nullptr, "scan: nullptr carrier in accumulation ...");
+      param.carrier_ != nullptr, "scan: nullptr carrier in accumulation ...");
   TORCH_CHECK(
-      cfg.carrier_idx_ != nullptr,
+      param.carrier_idx_ != nullptr,
       "scan_with_indices: nullptr carrier in accumulation ...");
   auto& queue = getCurrentSYCLQueue();
 
+  using OutputT = typename ScanParam::OutputInfoType::scalar_t;
+  using T = typename ScanParam::arg_t;
+  using IndicesT = typename ScanParam::IndicesT;
+  using BinaryFunction = typename ScanParam::func_t;
+  using ACParam =
+      AccumulateCarrierWithIndicesParam<OutputT, T, IndicesT, BinaryFunction>;
+  ACParam ac_param{
+      {param.oinfo_.data,
+       param.carrier_,
+       param.problem_,
+       param.stride_,
+       param.problem_batch_,
+       param.func_,
+       param.problem_along_x_},
+      param.idxinfo_.data,
+      param.carrier_idx_};
   sycl_kernel_submit<
-      accumulate_carrier_with_indices_kernel<SSConfig, TrivialIdxCal>>(
-      cfg.global_size(), cfg.group_size(), queue, 0, cfg);
+      accumulate_carrier_with_indices_kernel<ACParam, TrivialIdxCal>>(
+      launch_cfg.global_size(), launch_cfg.group_size(), queue, 0, ac_param);
 }
 
 template <
@@ -1052,49 +1148,57 @@ static inline void _segment_scan_kernel(
     int dim_after_collapse,
     T init,
     BinaryFunction func) {
-  using SSConfig = SegmentScanConfig<
-      InputInfo,
-      OutputInfo,
-      OutputInfo /*not used*/,
-      T,
-      BinaryFunction>;
-  auto cfg = SegmentScanConfig<
-      InputInfo,
-      OutputInfo,
-      OutputInfo /*not used*/,
-      T,
-      BinaryFunction>::
-      template make_config<
-          segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal>>(
-          input_info,
-          output_info,
-          output_info /*not used*/,
-          dim_after_collapse,
-          init,
-          Type,
-          func);
+  int64_t batch = input_info.outerSize(dim_after_collapse);
+  int64_t stride = input_info.innerSize(dim_after_collapse);
+  int64_t problem = input_info.sizes[dim_after_collapse];
+  int64_t problem_batch = batch * stride;
+  bool problem_along_x = input_info.strides[dim_after_collapse] == 1;
+  auto scan_input_info = to_scan_tensor_info<TrivialOffCal, true>(input_info);
+  auto scan_output_info =
+      to_scan_tensor_info<TrivialOffCal, false>(output_info);
+  using ScanInputInfo = decltype(scan_input_info);
+  using ScanOutputInfo = decltype(scan_output_info);
+  using ScanParam =
+      SegmentScanParam<ScanInputInfo, ScanOutputInfo, T, BinaryFunction>;
+  auto launch_cfg = make_scan_launch_config<
+      segment_scan_kernel<ScanParam, TrivialOffCal, TrivialIdxCal>>(
+      problem, problem_batch, problem_along_x);
+  ScanParam param{
+      scan_input_info,
+      scan_output_info,
+      nullptr,
+      problem,
+      stride,
+      problem_batch,
+      init,
+      Type,
+      func,
+      problem_along_x};
   // 0. recursive convergence
-  if (cfg.problem_ <= cfg.problem_wg_range_) {
-    cfg.set_carrier(nullptr);
-    launch_segment_scan<decltype(cfg), TrivialOffCal, TrivialIdxCal>(cfg);
+  if (problem <= launch_cfg.problem_wg_range) {
+    launch_segment_scan<ScanParam, TrivialOffCal, TrivialIdxCal>(
+        launch_cfg, param);
     return;
   }
 
   // 1. inclusive scan in each chunk
   Tensor carrier_holder = at::empty(
-      {cfg.batch_, cfg.problem_glb_range_ / cfg.problem_wg_range_, cfg.stride_},
+      {batch,
+       launch_cfg.problem_glb_range / launch_cfg.problem_wg_range,
+       stride},
       map_options<T>());
   TensorInfo<T, int64_t> carrier_info =
       getTensorInfo<T, int64_t>(carrier_holder);
-  cfg.set_carrier(carrier_info.data);
-  launch_segment_scan<decltype(cfg), TrivialOffCal, TrivialIdxCal>(cfg);
+  param.carrier_ = carrier_info.data;
+  launch_segment_scan<ScanParam, TrivialOffCal, TrivialIdxCal>(
+      launch_cfg, param);
 
   // 2. recursion for carrier
   _segment_scan_kernel<EXCLUSIVE_TYPE, TrivialOffCal, TrivialIdxCal>(
       carrier_info, carrier_info, 1, init, func);
 
   // 3. accumulate among all chunk
-  accumulate_carrier<decltype(cfg), TrivialIdxCal>(cfg);
+  accumulate_carrier<ScanParam, TrivialIdxCal>(launch_cfg, param);
 
   return;
 }
@@ -1117,53 +1221,76 @@ static inline void _segment_scan_kernel_with_indices(
     T init,
     BinaryFunction func) {
   using IndicesT = typename IndicesInfo::scalar_t;
-  using SSConfig =
-      SegmentScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>;
-  auto cfg =
-      SegmentScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>::
-          template make_config<segment_scan_with_indices_kernel<
-              SSConfig,
-              TrivialOffCal,
-              TrivialIdxCal,
-              is_idx_carried>>(
-              input_info,
-              output_info,
-              indices_info,
-              dim_after_collapse,
-              init,
-              Type,
-              func);
+  int64_t batch = input_info.outerSize(dim_after_collapse);
+  int64_t stride = input_info.innerSize(dim_after_collapse);
+  int64_t problem = input_info.sizes[dim_after_collapse];
+  int64_t problem_batch = batch * stride;
+  bool problem_along_x = input_info.strides[dim_after_collapse] == 1;
+  auto scan_input_info = to_scan_tensor_info<TrivialOffCal, true>(input_info);
+  auto scan_output_info =
+      to_scan_tensor_info<TrivialOffCal, false>(output_info);
+  auto scan_indices_info =
+      to_scan_tensor_info<TrivialOffCal, false>(indices_info);
+  using ScanInputInfo = decltype(scan_input_info);
+  using ScanOutputInfo = decltype(scan_output_info);
+  using ScanIndicesInfo = decltype(scan_indices_info);
+  using ScanParam = SegmentScanWithIndicesParam<
+      ScanInputInfo,
+      ScanOutputInfo,
+      ScanIndicesInfo,
+      T,
+      BinaryFunction>;
+  auto launch_cfg = make_scan_launch_config<segment_scan_with_indices_kernel<
+      ScanParam,
+      TrivialOffCal,
+      TrivialIdxCal,
+      is_idx_carried>>(problem, problem_batch, problem_along_x);
+  ScanParam param{
+      {scan_input_info,
+       scan_output_info,
+       nullptr,
+       problem,
+       stride,
+       problem_batch,
+       init,
+       Type,
+       func,
+       problem_along_x},
+      scan_indices_info,
+      nullptr};
   // 0. recursive convergence
-  if (cfg.problem_ <= cfg.problem_wg_range_) {
-    cfg.set_carrier(nullptr);
-    cfg.set_carrier_idx(nullptr);
+  if (problem <= launch_cfg.problem_wg_range) {
     launch_segment_scan_with_indices<
-        decltype(cfg),
+        ScanParam,
         TrivialOffCal,
         TrivialIdxCal,
-        is_idx_carried>(cfg);
+        is_idx_carried>(launch_cfg, param);
     return;
   }
 
   // 1. inclusive scan in each chunk
   Tensor carrier_holder = at::empty(
-      {cfg.batch_, cfg.problem_glb_range_ / cfg.problem_wg_range_, cfg.stride_},
+      {batch,
+       launch_cfg.problem_glb_range / launch_cfg.problem_wg_range,
+       stride},
       map_options<T>());
   TensorInfo<T, int64_t> carrier_info =
       getTensorInfo<T, int64_t>(carrier_holder);
-  cfg.set_carrier(carrier_info.data);
+  param.carrier_ = carrier_info.data;
 
   Tensor carrier_idx_holder = at::empty(
-      {cfg.batch_, cfg.problem_glb_range_ / cfg.problem_wg_range_, cfg.stride_},
+      {batch,
+       launch_cfg.problem_glb_range / launch_cfg.problem_wg_range,
+       stride},
       map_options<IndicesT>());
   TensorInfo<IndicesT, int64_t> carrier_idx_info =
       getTensorInfo<IndicesT, int64_t>(carrier_idx_holder);
-  cfg.set_carrier_idx(carrier_idx_info.data);
+  param.carrier_idx_ = carrier_idx_info.data;
   launch_segment_scan_with_indices<
-      decltype(cfg),
+      ScanParam,
       TrivialOffCal,
       TrivialIdxCal,
-      is_idx_carried>(cfg);
+      is_idx_carried>(launch_cfg, param);
 
   // 2. recursion for carrier
   _segment_scan_kernel_with_indices<
@@ -1173,7 +1300,7 @@ static inline void _segment_scan_kernel_with_indices(
       true>(carrier_info, carrier_info, carrier_idx_info, 1, init, func);
 
   // 3. accumulate among all chunk
-  accumulate_carrier_with_indices<decltype(cfg), TrivialIdxCal>(cfg);
+  accumulate_carrier_with_indices<ScanParam, TrivialIdxCal>(launch_cfg, param);
 
   return;
 }
