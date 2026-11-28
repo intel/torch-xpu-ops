@@ -9,8 +9,12 @@
 # Owner(s): ["module: intel"]
 
 import torch
-from torch.testing._internal.common_device_type import largeTensorTest
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+    largeTensorTest,
+)
+from torch.testing._internal.common_utils import parametrize, run_tests, TestCase
 
 
 class TestNNMethod(TestCase):
@@ -140,3 +144,85 @@ class TestNNMethod(TestCase):
                 torch.xpu.synchronize()
                 self.assertEqual(cpu_vals, xpu_vals.cpu())
                 self.assertEqual(cpu_ids, xpu_ids.cpu())
+
+
+class TestSortMediumWidePairs(TestCase):
+    @dtypes(torch.int64, torch.float64)
+    @parametrize("length", [2048, 2049, 3072, 4095, 4096, 4097, 8192])
+    @parametrize("descending", [False, True])
+    @parametrize("stable", [False, True])
+    def test_sort_medium_wide_pairs(self, device, dtype, length, descending, stable):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        shape = (2, 3, length)
+        if dtype == torch.int64:
+            input_cpu = torch.randint(
+                -(2**31), 2**31, shape, generator=generator, dtype=dtype, device="cpu"
+            )
+            input_cpu <<= 32
+            input_cpu |= torch.randint(
+                2**32, shape, generator=generator, dtype=dtype, device="cpu"
+            )
+            limits = torch.iinfo(dtype)
+            edges = [
+                limits.min,
+                limits.max,
+                0,
+                0,
+                -1,
+                -1,
+                1,
+                1,
+                (1 << 32) + 7,
+                (1 << 48) + 7,
+                -(1 << 48) + 7,
+                -(1 << 32) + 7,
+            ]
+        else:
+            input_cpu = torch.randn(
+                shape, generator=generator, dtype=dtype, device="cpu"
+            )
+            edges = [
+                float("-inf"),
+                float("inf"),
+                -1.0,
+                -1.0,
+                1.0,
+                1.0,
+                -1e100,
+                1e100,
+                -1e-100,
+                1e-100,
+            ]
+        edges_cpu = torch.tensor(edges, dtype=dtype, device="cpu")
+        input_cpu[..., : len(edges)] = edges_cpu
+        input_cpu[..., -len(edges) :] = edges_cpu
+        input_device = input_cpu.to(device)
+        expected_values, expected_indices = torch.sort(
+            input_cpu, dim=-1, descending=descending, stable=stable
+        )
+        values, indices = torch.sort(
+            input_device, dim=-1, descending=descending, stable=stable
+        )
+        self.assertEqual(values.dtype, dtype)
+        self.assertEqual(indices.dtype, torch.int64)
+        self.assertEqual(values.shape, shape)
+        self.assertEqual(indices.shape, shape)
+        values_cpu, indices_cpu = values.cpu(), indices.cpu()
+        self.assertEqual(values_cpu, expected_values, rtol=0, atol=0)
+        self.assertEqual(
+            indices_cpu.sort(dim=-1).values,
+            torch.arange(length, dtype=torch.int64, device="cpu").expand(shape),
+        )
+        self.assertEqual(input_cpu.gather(-1, indices_cpu), values_cpu, rtol=0, atol=0)
+        self.assertEqual(input_device.cpu(), input_cpu, rtol=0, atol=0)
+        if stable:
+            self.assertEqual(indices_cpu, expected_indices)
+
+
+instantiate_device_type_tests(
+    TestSortMediumWidePairs, globals(), only_for="xpu", allow_xpu=True
+)
+
+
+if __name__ == "__main__":
+    run_tests()
