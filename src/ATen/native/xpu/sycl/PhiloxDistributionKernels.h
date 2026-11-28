@@ -22,6 +22,12 @@ TORCH_XPU_API Tensor& _philox_uniform_xpu_(
     double low,
     double high);
 
+TORCH_XPU_API Tensor& _philox_uniform_tensor_xpu_(
+    Tensor& self,
+    const Tensor& key,
+    const Tensor& low,
+    const Tensor& high);
+
 TORCH_XPU_API Tensor& _philox_normal_xpu_(
     Tensor& self,
     const Tensor& key,
