@@ -458,3 +458,55 @@ class TestMixedDtypeVectorized(TestCase):
 instantiate_device_type_tests(
     TestMixedDtypeVectorized, globals(), only_for="xpu", allow_xpu=True
 )
+
+
+class TestBinaryLayout(TestCase):
+    @dtypes(torch.float16, torch.bfloat16)
+    @parametrize(
+        "batches,rows,cols,pitch,broadcast,offset",
+        [
+            (19, 5, 129, 7, False, 3),
+            (17, 12, 531, 12, True, 8),
+            (3, 65, 257, 66, False, 4),
+        ],
+    )
+    def test_conflicting_layout_sub(
+        self, device, dtype, batches, rows, cols, pitch, broadcast, offset
+    ):
+        # Short matrices have partial chunks and partially active work-groups.
+        # The other cases cover broadcast batches and two-dimensional tails.
+        shape = (batches, rows, cols)
+        count = batches * rows * cols
+        transposed_batches = 1 if broadcast else batches
+        transposed_count = (transposed_batches * cols - 1) * pitch + rows
+        direct = (torch.arange(count).reshape(shape) % 23 - 11).to(dtype)
+        storage = (torch.arange(transposed_count) % 19 - 9).to(dtype)
+
+        def transposed(backing):
+            return backing.as_strided(
+                shape, (0 if broadcast else cols * pitch, 1, pitch)
+            )
+
+        tensors = (direct, transposed(storage))
+        device_tensors = (direct.to(device), transposed(storage.to(device)))
+        guard = 8
+        for reverse in (False, True):
+            with self.subTest(reverse=reverse):
+                args = tensors[::-1] if reverse else tensors
+                device_args = device_tensors[::-1] if reverse else device_tensors
+                backing = torch.full((offset + count + guard,), -127, dtype=dtype)
+                result = backing.to(device)
+                torch.sub(
+                    *device_args, alpha=0.5, out=result[offset:-guard].view(shape)
+                )
+                backing[offset:-guard] = torch.sub(*args, alpha=0.5).flatten()
+                self.assertEqual(result.cpu(), backing, atol=0, rtol=0)
+
+        expected = torch.sub(*tensors, alpha=0.5)
+        device_tensors[0].sub_(device_tensors[1], alpha=0.5)
+        self.assertEqual(device_tensors[0].cpu(), expected, atol=0, rtol=0)
+
+
+instantiate_device_type_tests(
+    TestBinaryLayout, globals(), only_for="xpu", allow_xpu=True
+)
