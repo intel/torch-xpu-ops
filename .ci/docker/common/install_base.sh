@@ -1,6 +1,6 @@
 #!/bin/bash
 set -xeuo pipefail
-# Install the base system packages and set GCC_VERSION as the default gcc
+# Install minimal system packages for Linux XPU test containers and set GCC_VERSION as default
 
 : "${GCC_VERSION:?GCC_VERSION must be set}"
 # shellcheck source=/dev/null
@@ -10,27 +10,22 @@ apt-get update
 if [ "${APT_UPGRADE:-0}" == "1" ]; then
     apt-get upgrade -y --no-install-recommends
 fi
-apt-get install -y --no-install-recommends \
-    ca-certificates \
-    gnupg \
-    software-properties-common \
-    apt-transport-https \
-    lsb-release
+
 if [ "${VERSION_ID}" == "22.04" ]; then
+    apt-get install -y --no-install-recommends ca-certificates software-properties-common
     add-apt-repository ppa:ubuntu-toolchain-r/test -y
     apt-get update
 fi
 
 packages=(
-    # System utilities
-    wget curl sudo git unzip zip gh numactl rsync jq
-    # Build tools
-    gcc g++ "gcc-${GCC_VERSION}" "g++-${GCC_VERSION}"
-    build-essential cmake ninja-build pkg-config autoconf automake libtool
-    # Graphics libraries
-    libgl1 libglib2.0-0 libglib2.0-dev zlib1g zlib1g-dev
-    # Python libraries
-    python3 python3-dev
+    # Core utilities & runner tools
+    ca-certificates curl wget git sudo rsync
+    # Device topology & affinity (detect-devices.sh, benchmark workers)
+    numactl pciutils clinfo
+    # Compiler toolchain for Inductor / Triton / C++ extensions
+    make "gcc-${GCC_VERSION}" "g++-${GCC_VERSION}"
+    # Runtime shared libraries for OpenCV in UT/E2E
+    libgl1 libglib2.0-0
 )
 apt-get install -y --no-install-recommends "${packages[@]}"
 

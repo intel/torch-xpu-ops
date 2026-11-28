@@ -2,7 +2,7 @@
 """
 Accuracy Check Script
 Compares test results against reference data and calculates pass rates.
-Reference last updated: https://github.com/intel/torch-xpu-ops/pull/1223
+Reference: bmg/ (p0/p1/p2)
 """
 
 import csv
@@ -151,7 +151,7 @@ def main():
         description="Accuracy Check",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--driver", type=str, default="rolling", help="rolling or lts")
+    parser.add_argument("--driver", type=str, default="bmg", help="reference directory under ci_expected_accuracy (bmg)")
     parser.add_argument("--category", type=str, default="inductor", help="inductor")
     parser.add_argument("--suite", type=str, required=True, help="huggingface, timm_models or torchbench")
     parser.add_argument("--mode", type=str, required=True, help="inference or training")

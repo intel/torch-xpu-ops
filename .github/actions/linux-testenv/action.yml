@@ -1,45 +1,31 @@
 name: Setup Test Environment
+description: Install python, gcc, PyTorch and torch-xpu-ops for Linux XPU tests
 
 inputs:
   pytorch:
-    type: string
     default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
-    type: string
     default: 'pinned'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
-    type: string
     default: ''
     description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
   suite:
-    type: string
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
   category:
-    type: string
     default: ''
     description: 'Optional tag (e.g. target/baseline) used to select the matching wheel artifact'
 
 runs:
   using: composite
   steps:
-    - name: Install base packages
-      shell: bash -xe {0}
-      env:
-        GCC_VERSION: '13'
-        # keep the image's driver packages as shipped
-        APT_UPGRADE: '0'
-        INSTALL_BASE: ${{ github.action_path }}/../../../.ci/docker/common/install_base.sh
-      run: |
-        if [ ! -f /.dockerenv ]; then
-          echo "Not in a container, keeping the host packages"
-          exit 0
-        fi
-        SUDO=""
-        [ "$(id -u)" -eq 0 ] || SUDO="sudo -E"
-        ${SUDO} bash "${INSTALL_BASE}"
+    - name: Setup CI config and gcc
+      uses: ./.github/actions/ci-config
+      with:
+        python: ${{ inputs.python }}
+        setup_gcc: 'true'
     - name: Check runner
       shell: bash -xe {0}
       run: |
@@ -47,7 +33,7 @@ runs:
         cat /etc/os-release
         gcc -v && g++ -v
         uname -a
-        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
+        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd' || true
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python

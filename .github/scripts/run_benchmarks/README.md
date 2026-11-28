@@ -44,7 +44,7 @@ It is copied into the PyTorch checkout as `run_e2e` and executed from there (`py
 - The `backend` column wins when present; otherwise `--backend` applies.
 - **No task file**: the cross product of the filters is generated from the model list files (`benchmarks/dynamo/<suite>_models_list.txt`), or from `--model-only`.
 
-Models listed in `benchmarks/dynamo/<suite>.yaml` under `skip` (including `device.xpu`) are dropped with a warning.
+Models listed in `benchmarks/dynamo/<suite>.yaml` under `skip` (including `device.xpu`) and in `benchmarks/dynamo/<tier>/skip.yaml` (`linux.<suite>.<scenario>.<mode>` on Linux, `skip.<suite>.<scenario>.<mode>` on Windows) are dropped at launch with a warning.
 
 ### Task counting
 

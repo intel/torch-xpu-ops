@@ -3,6 +3,7 @@
 import csv
 import os
 import queue
+import re
 import shlex
 import subprocess
 import tempfile
@@ -158,6 +159,7 @@ def run_single(
 
     def _error_monitor():
         scan_pos = 0
+        in_fp64_fallback = False
         memory_threshold = parse_memory_threshold()
         deadline = time.time() + config.task_timeout_seconds
 
@@ -165,12 +167,24 @@ def run_single(
             with log_buffer_lock:
                 new_lines = log_buffer[scan_pos:]
                 scan_pos = len(log_buffer)
-            if new_lines:
-                content = "\n".join(new_lines).lower()
+            for raw_line in new_lines:
+                line = re.sub(r"^\[[^\]]+\]\s?", "", raw_line)
+                low = line.lower()
+                # benchmarks/dynamo/common.py catches cast_to_fp64 OOMs, logs a
+                # warning with exc_info=True, and falls back to cosine check.
+                if "fp64 golden ref were not generated" in low:
+                    in_fp64_fallback = True
+                    continue
+                if in_fp64_fallback:
+                    if line.startswith(("Traceback ", " ", "\t")):
+                        continue
+                    in_fp64_fallback = False
+                    if "out of memory" in low or "outofmemory" in low:
+                        continue
                 for pattern in config.error_patterns:
                     if pattern.startswith("Memory>"):
                         continue
-                    if pattern.lower() in content:
+                    if pattern.lower() in low:
                         log(f"Detected '{pattern}' — killing process", level="WARN", worker=worker_id)
                         with kill_reason_lock:
                             kill_reason[0] = pattern

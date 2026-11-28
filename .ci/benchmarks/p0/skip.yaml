@@ -38,3 +38,35 @@ skip:
         - detectron2_fcos_r_50_fpn
         - llama_v2_7b_16h
         - moondream
+
+# Models excluded on Linux for priority p0 (in addition to <suite>.yaml skips).
+linux:
+  huggingface:
+    accuracy:
+      inference:
+        # OOM on 24 GB VRAM (BMG B60)
+        - google/gemma-2-2b
+      training:
+        # OOM on 24 GB VRAM (BMG B60); large model skipped in huggingface.yaml
+        - BlenderbotForCausalLM
+    performance:
+      inference: []
+      training: []
+  timm:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  torchbench:
+    accuracy:
+      inference:
+        # OOM on 24 GB VRAM (BMG B60); large model skipped in torchbench.yaml
+        - llama_v2_7b_16h
+      training: []
+    performance:
+      inference:
+        # OOM on 24 GB VRAM (BMG B60)
+        - llama_v2_7b_16h
+      training: []

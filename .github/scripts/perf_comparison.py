@@ -176,6 +176,24 @@ def calculate_comparison_ratios(xpu_value: Optional[pd.Series],
     return eager_ratio, inductor_ratio
 
 
+def load_category_data(search_path: str) -> dict[str, pd.DataFrame]:
+    """
+    Load and merge tier performance CSV files grouped by category.
+    """
+    grouped: dict[str, list[pd.DataFrame]] = {}
+    for csv_file in sorted(find_files("*-performance.csv", search_path)):
+        try:
+            df = pd.read_csv(csv_file)
+            category = multiple_replace(csv_file)
+            grouped.setdefault(category, []).append(df)
+        except Exception as e:
+            print(f"Error processing {csv_file}: {e}")
+    return {
+        category: pd.concat(dfs, ignore_index=True).drop_duplicates(subset=["name"], keep="last")
+        for category, dfs in grouped.items()
+    }
+
+
 def process_comparison_data(args: argparse.Namespace) -> tuple[list[list[Any]], list[str]]:
     """
     Process and compare performance data between target and baseline.
@@ -194,30 +212,30 @@ def process_comparison_data(args: argparse.Namespace) -> tuple[list[list[Any]], 
     ]
     output_data = []
 
-    # Process target files
-    xpu_files = find_files("*-performance.csv", args.target)
+    target_by_cat = load_category_data(args.target)
+    baseline_by_cat = load_category_data(args.baseline)
 
-    for xpu_file in xpu_files:
-        try:
-            xpu_data = pd.read_csv(xpu_file)
-            category = multiple_replace(xpu_file)
+    for category in sorted(target_by_cat):
+        xpu_data = target_by_cat[category]
+        if category in baseline_by_cat:
+            process_matching_models(xpu_data, baseline_by_cat[category], category, output_data)
+        else:
+            process_target_only_models(xpu_data, category, output_data)
 
-            # Find corresponding baseline file
-            refer_file = xpu_file.replace(args.target, args.baseline)
-
-            if os.path.isfile(refer_file):
-                refer_data = pd.read_csv(refer_file)
-                process_matching_models(xpu_data, refer_data, category, output_data)
-            else:
-                process_target_only_models(xpu_data, category, output_data)
-
-        except Exception as e:
-            print(f"Error processing {xpu_file}: {e}")
-            continue
-
-    # Process baseline-only files if not in PR mode
+    # Process baseline-only categories if not in PR mode
     if not args.pr:
-        process_baseline_only_models(args, output_data)
+        for category in sorted(set(baseline_by_cat) - set(target_by_cat)):
+            refer_data = baseline_by_cat[category]
+            for model_name in sorted(refer_data["name"].tolist()):
+                refer_value = find_matching_row(refer_data, model_name)
+                if refer_value is not None:
+                    refer_eager = refer_value["speedup"] * refer_value["abs_latency"]
+                    output_data.append([
+                        category, model_name,
+                        -1, -1, -1,
+                        refer_eager, refer_value["abs_latency"],
+                        refer_value["speedup"], -1, -1
+                    ])
 
     return output_data, output_header
 
@@ -261,38 +279,6 @@ def process_target_only_models(xpu_data: pd.DataFrame, category: str,
                 xpu_eager, xpu_value["abs_latency"], xpu_value["speedup"],
                 -1, -1, -1, -1, -1
             ])
-
-
-def process_baseline_only_models(args: argparse.Namespace,
-                                output_data: list[list[Any]]) -> None:
-    """
-    Process models that only exist in baseline data.
-    """
-    refer_files = find_files("*-performance.csv", args.baseline)
-
-    for refer_file in refer_files:
-        try:
-            # Find corresponding target file
-            xpu_file = refer_file.replace(args.baseline, args.target)
-            if os.path.isfile(xpu_file):
-                continue
-
-            refer_data = pd.read_csv(refer_file)
-            category = multiple_replace(refer_file)
-
-            for model_name in sorted(refer_data["name"].tolist()):
-                refer_value = find_matching_row(refer_data, model_name)
-                if refer_value is not None:
-                    refer_eager = refer_value["speedup"] * refer_value["abs_latency"]
-                    output_data.append([
-                        category, model_name,
-                        -1, -1, -1,
-                        refer_eager, refer_value["abs_latency"],
-                        refer_value["speedup"], -1, -1
-                    ])
-        except Exception as e:
-            print(f"Error processing baseline file {refer_file}: {e}")
-            continue
 
 
 def generate_summary(output_data: pd.DataFrame, args: argparse.Namespace) -> pd.DataFrame:

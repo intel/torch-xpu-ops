@@ -6,7 +6,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc-1100'
+        default: 'bmg'
         description: Test node
       search_commits:
         required: true
@@ -47,24 +47,32 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  biisect-search:
+  bisect-search:
+    name: bisect-search
     runs-on: ${{ inputs.runner }}
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: ${{ contains(inputs.runner, 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intel/omix:0.5.0-devel-ubuntu26.04' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
       env:
         SEARCH_COMMITS: ${{ inputs.search_commits }}
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}
         SEARCH_CRITERIA: ${{ inputs.search_criteria }}
-        TORCH_XPU_ARCH_LIST: pvc
+        TORCH_XPU_ARCH_LIST: ${{ contains(inputs.runner, 'pvc') && 'pvc' || 'bmg' }}
         USE_XCCL: 0
         USE_KINETO: 0
     steps:
+      # linux-testenv resolves its nested actions and install_base.sh from the workspace root
+      - name: Checkout CI actions
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github
+            .ci/docker/common
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
@@ -205,7 +213,8 @@ jobs:
         if: ${{ always() }}
         run: |
           bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh unlock
-          chown 1000:1000 /__w /github ./ -R
+          # Runner user's uid differs per node; /__e is its read-only externals mount.
+          chown "$(stat -c %u:%g /__e)" /__w /github ./ -R
       - name: Upload Logs
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7

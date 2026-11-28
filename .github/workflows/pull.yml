@@ -39,16 +39,56 @@ jobs:
     outputs:
       pr_body_cmd: ${{ steps.reproducer-check.outputs.pr_cmd }}
       skip_all: ${{ steps.live-labels.outputs.skip_all }}
+      skip_build: ${{ steps.live-labels.outputs.skip_build }}
       skip_ut: ${{ steps.live-labels.outputs.skip_ut }}
       skip_e2e: ${{ steps.live-labels.outputs.skip_e2e }}
       skip_distributed: ${{ steps.live-labels.outputs.skip_distributed }}
       skip_win: ${{ steps.live-labels.outputs.skip_win }}
       force_win_ut: ${{ steps.live-labels.outputs.force_win_ut }}
+      pytorch: ${{ steps.live-labels.outputs.pytorch }}
+      torch_xpu_ops: ${{ steps.pr-context.outputs.head_sha }}
+      e2e_test_type: ${{ steps.live-labels.outputs.e2e_test_type }}
+      runner_ut: ${{ steps.ci-config.outputs.ut }}
+      image_ut: ${{ steps.ci-config.outputs.ut_image }}
+      runner_accuracy: ${{ steps.ci-config.outputs.accuracy }}
+      image_accuracy: ${{ steps.ci-config.outputs.accuracy_image }}
+      runner_performance: ${{ steps.ci-config.outputs.performance }}
+      image_performance: ${{ steps.ci-config.outputs.performance_image }}
     steps:
+      - name: Resolve PR context
+        id: pr-context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUM_INPUT: ${{ inputs.pr_number }}
+          PR_NUM_EVENT: ${{ github.event.pull_request.number }}
+          HEAD_SHA_EVENT: ${{ github.sha }}
+          BASE_REF_EVENT: ${{ github.base_ref }}
+        run: |
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${PR_NUM_INPUT}" ]; then
+            PR_JSON=$(gh pr view "${PR_NUM_INPUT}" --repo "${GITHUB_REPOSITORY}" \
+              --json number,headRefOid,baseRefName)
+            PR_NUMBER=$(jq -r '.number' <<< "${PR_JSON}")
+            HEAD_SHA=$(jq -r '.headRefOid' <<< "${PR_JSON}")
+            BASE_REF=$(jq -r '.baseRefName' <<< "${PR_JSON}")
+          else
+            PR_NUMBER="${PR_NUM_EVENT}"
+            HEAD_SHA="${HEAD_SHA_EVENT}"
+            BASE_REF="${BASE_REF_EVENT:-${GITHUB_REF_NAME}}"
+          fi
+          {
+            echo "pr_number=${PR_NUMBER}"
+            echo "head_sha=${HEAD_SHA}"
+            echo "base_ref=${BASE_REF}"
+          } | tee -a "$GITHUB_OUTPUT"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
           path: torch-xpu-ops
+      - name: Select runners
+        id: ci-config
+        uses: ./torch-xpu-ops/.github/actions/ci-config
       - name: Run lint check
         id: lint-python
         continue-on-error: true
@@ -191,27 +231,49 @@ jobs:
         id: live-labels
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr-context.outputs.pr_number }}
+          BASE_REF: ${{ steps.pr-context.outputs.base_ref }}
+          PYTORCH_REF: ${{ inputs.pytorch_ref }}
+          FALLBACK_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
-          LABELS=$(gh pr view ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} \
-            --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
+          LABELS=""
+          if [ -n "${PR_NUMBER}" ]; then
+            LABELS=$(gh pr view "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "${FALLBACK_LABELS}")
+          fi
           echo "Live PR labels: $LABELS"
           has() { echo "$LABELS" | tr ',' '\n' | grep -qx "$1" && echo "true" || echo "false"; }
-          echo "skip_all=$(has disable_all)" >> "$GITHUB_OUTPUT"
-          echo "skip_ut=$(has disable_ut)" >> "$GITHUB_OUTPUT"
-          echo "skip_e2e=$(has disable_e2e)" >> "$GITHUB_OUTPUT"
-          echo "skip_distributed=$(has disable_distributed)" >> "$GITHUB_OUTPUT"
-          echo "skip_win=$(has disable_win)" >> "$GITHUB_OUTPUT"
-          echo "force_win_ut=$(has windows_ci)" >> "$GITHUB_OUTPUT"
+          skip_build="$(has disable_build)"
+          if [ -n "${PYTORCH_REF}" ]; then
+            pytorch="${PYTORCH_REF}"
+          elif [ "${skip_build}" = "true" ]; then
+            pytorch="nightly_wheel"
+          else
+            pytorch="${BASE_REF}"
+          fi
+          [[ "${pytorch}" == *_wheel ]] && e2e_test_type="wheel-cicd" || e2e_test_type="build-cicd"
+          {
+            echo "skip_all=$(has disable_all)"
+            echo "skip_build=${skip_build}"
+            echo "skip_ut=$(has disable_ut)"
+            echo "skip_e2e=$(has disable_e2e)"
+            echo "skip_distributed=$(has disable_distributed)"
+            echo "skip_win=$(has disable_win)"
+            echo "force_win_ut=$(has windows_ci)"
+            echo "pytorch=${pytorch}"
+            echo "e2e_test_type=${e2e_test_type}"
+          } | tee -a "$GITHUB_OUTPUT"
 
   conditions-filter-win:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+    if: ${{ github.repository_owner == 'intel' && !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
     steps:
       - uses: dorny/paths-filter@v4
+        if: ${{ github.event_name == 'pull_request' }}
         id: check-files
         with:
           filters: |
@@ -233,7 +295,7 @@ jobs:
 
   linux-build:
     needs: preci-lint-check
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && needs.preci-lint-check.outputs.skip_all != 'true' }}
+    if: ${{ !github.event.pull_request.draft && needs.preci-lint-check.outputs.skip_all != 'true' }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -242,8 +304,8 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ github.sha }}
+      pytorch: ${{ needs.preci-lint-check.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.preci-lint-check.outputs.torch_xpu_ops }}
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
@@ -256,8 +318,8 @@ jobs:
     uses: ./.github/workflows/_linux_reproducer.yml
     with:
       runner: build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ github.sha }}
+      pytorch: ${{ needs.preci-lint-check.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.preci-lint-check.outputs.torch_xpu_ops }}
       pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
 
   linux-ut:
@@ -275,9 +337,10 @@ jobs:
         ut_name: [op_ut,basic,xpu_profiling]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: bmg-test
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ github.sha }}
+      runner: ${{ needs.preci-lint-check.outputs.runner_ut }}
+      image: ${{ needs.preci-lint-check.outputs.image_ut }}
+      pytorch: ${{ needs.preci-lint-check.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.preci-lint-check.outputs.torch_xpu_ops }}
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
@@ -295,24 +358,11 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ github.sha }}
+      runner: ${{ needs.preci-lint-check.outputs.runner_ut }}
+      image: ${{ needs.preci-lint-check.outputs.image_ut }}
+      pytorch: ${{ needs.preci-lint-check.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.preci-lint-check.outputs.torch_xpu_ops }}
       ut: ${{ matrix.ut_name }}
-
-  ut-report:
-    name: ut-report
-    needs: [linux-ut, linux-distributed, windows-ut, preci-lint-check]
-    if: >-
-      ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true'
-      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.linux-distributed.result, 'ed')
-      || !endsWith(needs.windows-ut.result, 'ed')) }}
-    secrets: inherit
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: write
-    uses: ./.github/workflows/_ut_report.yml
 
   linux-e2e:
     name: linux-e2e
@@ -326,38 +376,27 @@ jobs:
         scenario: [accuracy, performance]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
-      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ github.sha }}
+      runner: ${{ needs.preci-lint-check.outputs[format('runner_{0}', matrix.scenario)] }}
+      image: ${{ needs.preci-lint-check.outputs[format('image_{0}', matrix.scenario)] }}
+      test_type: ${{ needs.preci-lint-check.outputs.e2e_test_type }}
+      pytorch: ${{ needs.preci-lint-check.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.preci-lint-check.outputs.torch_xpu_ops }}
       suite: ${{ matrix.suite }}
       scenario: ${{ matrix.scenario }}
-  linux-e2e-summary:
-    name: linux-e2e-summary
-    needs: [linux-e2e, preci-lint-check]
-    if: ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true' && !endsWith(needs.linux-e2e.result, 'ed') }}
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-      pull-requests: write
-    uses: ./.github/workflows/_linux_e2e_summary.yml
-    with:
-      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
 
   windows-build:
     name: windows-build
     needs: preci-lint-check
     if: >-
-      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false
+      ${{ !github.event.pull_request.draft
       && needs.preci-lint-check.outputs.skip_all != 'true'
       && needs.preci-lint-check.outputs.skip_win != 'true' }}
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
       runner: windows-build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ github.sha }}
+      pytorch: ${{ needs.preci-lint-check.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.preci-lint-check.outputs.torch_xpu_ops }}
 
   windows-ut:
     name: windows-ut
@@ -377,5 +416,32 @@ jobs:
     with:
       ut: ${{ matrix.ut_name }}
       runner: windows-test
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ github.sha }}
+      pytorch: ${{ needs.preci-lint-check.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.preci-lint-check.outputs.torch_xpu_ops }}
+
+  ut-report:
+    name: ut-report
+    needs: [linux-ut, linux-distributed, windows-ut, preci-lint-check]
+    if: >-
+      ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true'
+      && (!endsWith(needs.linux-ut.result, 'ed') || !endsWith(needs.linux-distributed.result, 'ed')
+      || !endsWith(needs.windows-ut.result, 'ed')) }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/_ut_report.yml
+
+  linux-e2e-summary:
+    name: linux-e2e-summary
+    needs: [linux-e2e, preci-lint-check]
+    if: ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true' && !endsWith(needs.linux-e2e.result, 'ed') }}
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: ${{ needs.preci-lint-check.outputs.e2e_test_type }}

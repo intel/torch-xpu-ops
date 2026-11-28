@@ -1,3 +1,5 @@
+# BMG (Arc Pro B60) accuracy reference (p0/p1/p2).
+# Comment lines above a model explain its non-pass results.
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 AlbertForMaskedLM,pass,pass,pass,pass,pass
 AlbertForQuestionAnswering,pass,pass,pass,pass,pass
@@ -9,11 +11,8 @@ BertForQuestionAnswering,pass,pass,pass,pass,pass
 BlenderbotForCausalLM,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 BlenderbotSmallForCausalLM,pass,pass,pass,pass,pass
 BlenderbotSmallForConditionalGeneration,pass,pass,pass,pass,pass
-CamemBert,pass,pass,pass,pass,pass
-DebertaForMaskedLM,pass,pass,pass,pass,pass
-DebertaForQuestionAnswering,pass,pass,pass,pass,pass
-DebertaV2ForMaskedLM,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
-DebertaV2ForQuestionAnswering,pass,pass,pass,pass,pass
+# DebertaV2ForQuestionAnswering float32/bfloat16/float16/amp_bf16/amp_fp16: eager_fail_to_run - also fails on PVC, #6203
+DebertaV2ForQuestionAnswering,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 DistilBertForMaskedLM,pass,pass,pass,pass,pass
 DistilBertForQuestionAnswering,pass,pass,pass,pass,pass
 DistillGPT2,pass,pass,pass,pass,pass
@@ -36,24 +35,20 @@ PLBartForCausalLM,pass,pass,pass,pass,pass
 PLBartForConditionalGeneration,pass,pass,pass,pass,pass
 PegasusForCausalLM,pass,pass,pass,pass,pass
 PegasusForConditionalGeneration,pass,pass,pass,pass,pass
+Qwen/Qwen3-0.6B,pass,pass,pass,pass,pass
+Qwen/Qwen3.5-0.8B,pass,pass,pass,pass,pass
 RobertaForCausalLM,pass,pass,pass,pass,pass
 RobertaForQuestionAnswering,pass,pass,pass,pass,pass
-Speech2Text2ForCausalLM,pass,pass,pass,pass,pass
 T5ForConditionalGeneration,pass,pass,pass,pass,pass
 T5Small,pass,pass,pass,pass,pass
 TrOCRForCausalLM,pass,pass,pass,pass,pass
 XGLMForCausalLM,pass,pass,pass,pass,pass
 XLNetLMHeadModel,pass,pass,pass,pass,pass
 YituTechConvBert,pass,pass,pass,pass,pass
-Qwen/Qwen3-0.6B,pass,pass,pass,pass,pass
-google/gemma-2-2b,pass,pass,pass,pass,pass
+# google/gemma-2-2b float32/bfloat16: out of memory - out of memory on B60 (24 GB)
+# google/gemma-2-2b float16: UR_RESULT_ERROR - out of memory on B60 (24 GB)
+# google/gemma-2-2b amp_bf16/amp_fp16: eager_fail_to_run - out of memory on B60 (24 GB)
+google/gemma-2-2b,out of memory,out of memory,UR_RESULT_ERROR,eager_fail_to_run,eager_fail_to_run
 meta-llama/Llama-3.2-1B,pass,pass,pass,pass,pass
-openai/whisper-tiny,pass,pass,pass,pass,pass
-BlenderbotForConditionalGeneration,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
-GPTJForCausalLM,pass,pass,pass,pass,pass
-GPTJForQuestionAnswering,pass,pass,pass,pass,pass
-GPTNeoForCausalLM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
-GPTNeoForSequenceClassification,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
-google/gemma-3-4b-it,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
-Qwen/Qwen3.5-0.8B,pass,pass,pass,pass,pass
-mistralai/Mistral-7B-Instruct-v0.3,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM,eager_1st_run_OOM
+# openai/whisper-tiny amp_bf16: fail_accuracy - BMG only, #6273
+openai/whisper-tiny,pass,pass,pass,fail_accuracy,pass

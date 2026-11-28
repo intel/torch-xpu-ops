@@ -52,19 +52,70 @@ validate_directories() {
 }
 
 cleanup_temp_files() {
-    rm -rf /tmp/tmp-*.txt /tmp/tmp-*.json
+    rm -rf /tmp/tmp-*.txt /tmp/tmp-*.json /tmp/tmp-merged-accuracy
     rm -rf accuracy.*.html performance.*.html
+}
+
+# Merge tier CSVs (p0/p1/p2) so each (suite, dtype, mode) has one combined CSV.
+merge_accuracy_csvs() {
+    local results_dir="$1" merged_dir="$2"
+    mkdir -p "$merged_dir"
+    python - "$results_dir" "$merged_dir" <<'PY'
+import csv
+import os
+import sys
+
+results_dir, merged_dir = sys.argv[1], sys.argv[2]
+csv_files = sorted(
+    os.path.join(root, f)
+    for root, _, files in os.walk(results_dir)
+    for f in files
+    if f.endswith("-accuracy.csv")
+)
+
+groups = {}
+headers = {}
+for path in csv_files:
+    with open(path, newline="", encoding="utf-8") as fh:
+        rows = [[c.rstrip("\r") for c in r] for r in csv.reader(fh) if r]
+    if len(rows) < 2:
+        continue
+    header, data = rows[0], rows[1:]
+    name_idx = header.index("name") if "name" in header else 5
+    for row in data:
+        if len(row) <= max(4, name_idx):
+            continue
+        key = (row[2], row[3], row[4])  # suite, dtype, mode
+        headers.setdefault(key, header)
+        groups.setdefault(key, {})[row[name_idx]] = row
+
+for (suite, dtype, mode), by_model in sorted(groups.items()):
+    out_path = os.path.join(
+        merged_dir, f"inductor-{suite}-{dtype}-{mode}-xpu-accuracy.csv"
+    )
+    with open(out_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh, lineterminator="\n")
+        writer.writerow(headers[(suite, dtype, mode)])
+        for model in sorted(by_model):
+            writer.writerow(by_model[model])
+PY
 }
 
 # Accuracy Processing
 process_accuracy() {
     local results_dir="$1"
+    local merged_dir="/tmp/tmp-merged-accuracy"
 
     if [[ -z "$(find "$results_dir" -name "*-accuracy.csv" -print -quit)" ]]; then
         return
     fi
 
     echo "Processing accuracy results..."
+
+    merge_accuracy_csvs "$results_dir" "$merged_dir"
+    if [[ -z "$(find "$merged_dir" -name "*-accuracy.csv" -print -quit)" ]]; then
+        return
+    fi
 
     # Get E2E accuracy issues; models in "skipped"/"skipped_bmg"/"random" ones are not checked.
     python "$SCRIPT_DIR/../scripts/get_issue.py" \
@@ -73,8 +124,8 @@ process_accuracy() {
         --labels "test: e2e" Accuracy \
         --output /tmp/tmp-known-issue.json
 
-    generate_accuracy_summary "$results_dir"
-    generate_accuracy_details "$results_dir"
+    generate_accuracy_summary "$merged_dir"
+    generate_accuracy_details "$merged_dir"
 }
 
 generate_accuracy_summary() {
@@ -227,15 +278,15 @@ process_model() {
 get_model_result() {
     local results_dir="$1" suite="$2" model="$3" dtype="$4" mode="$5"
     local tmp_file="/tmp/tmp-${suite}-${mode}-${dtype}.txt"
-    local color="" csv_file value=""
+    local csv_file="$results_dir/inductor-${suite}-${dtype}-${mode}-xpu-accuracy.csv"
+    local color="" value=""
 
-    if [[ -f "$tmp_file" ]]; then
-        color=$(determine_color "$tmp_file" "$model")
+    if [[ -f "$csv_file" ]]; then
+        value=$(read_csv_field "$csv_file" "$model" accuracy)
     fi
 
-    csv_file=$(find "$results_dir" -name "*-${suite}-${dtype}-${mode}-*-accuracy.csv" -type f | head -1)
-    if [[ -n "$csv_file" ]]; then
-        value=$(read_csv_field "$csv_file" "$model" accuracy)
+    if [[ -n "$value" && -f "$tmp_file" ]]; then
+        color=$(determine_color "$tmp_file" "$model")
     fi
 
     echo "${color}${value}"
@@ -259,7 +310,7 @@ read_csv_field() {
 
 determine_color() {
     local tmp_file="$1" model="$2"
-    grep -Fw -- "$model" "$tmp_file" | awk '
+    grep -F -- "['${model}'," "$tmp_file" | awk '
         /Real failed models:/ { print "🔴"; exit }
         /Expected failed models:|New models:/ { print "🔵"; exit }
         /Warning timeout models:/ { print "🟡"; exit }
@@ -351,11 +402,11 @@ generate_header() {
     cat << EOF
 
 #### Note:
-🔴: Failed cases needing investigation
-🟢: New passed cases needing reference update
-🔵: Expected failed or new enabled cases
-🟡: Warning cases
-Empty: Cases not run
+- 🔴: Failed cases needing investigation
+- 🟢: New passed cases needing reference update
+- 🔵: Expected failed or new enabled cases
+- 🟡: Warning cases
+- Empty: Cases not run
 
 EOF
 }
@@ -395,7 +446,7 @@ EOF
     cat accuracy.details.html 2>/dev/null || echo "No accuracy details"
     cat performance.details.html 2>/dev/null || echo "No performance details"
 
-    echo "</details>"
+    echo -e "\n</details>"
 }
 
 # Run main if script is executed directly

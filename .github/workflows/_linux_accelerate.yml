@@ -24,10 +24,10 @@ on:
         default: ''
         description: Python version. Empty uses the `python` entry of .github/ci-config/defaults.yaml
       runner:
-        required: true
+        required: false
         type: string
-        default: 'pvc'
-        description: Runner label
+        default: ''
+        description: Runner label. Empty uses runner_ut of .github/ci-config/defaults.yaml
       accelerate:
         required: false
         type: string
@@ -53,14 +53,34 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  tests:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc' }}
+  config:
     if: >-
-      github.event.pull_request.draft == false
-      && !contains(github.event.pull_request.labels.*.name, 'disable_all')
-      && !contains(github.event.pull_request.labels.*.name, 'disable_accelerate')
+      github.repository_owner == 'intel'
+      && (github.event_name != 'pull_request'
+          || (!github.event.pull_request.draft
+              && !contains(github.event.pull_request.labels.*.name, 'disable_all')
+              && !contains(github.event.pull_request.labels.*.name, 'disable_accelerate')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      runner: ${{ steps.runner.outputs.ut }}
+      image: ${{ steps.runner.outputs.ut_image }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - name: Select runner and image
+        id: runner
+        uses: ./.github/actions/ci-config
+        with:
+          runner: ${{ inputs.runner }}
+
+  tests:
+    needs: config
+    runs-on: ${{ needs.config.outputs.runner }}
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: ${{ needs.config.outputs.image }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
@@ -78,6 +98,11 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
+      - name: Setup gcc
+        uses: ./.github/actions/ci-config
+        with:
+          python: ${{ inputs.python }}
+          setup_gcc: 'true'
       - name: Detect devices
         run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-rsf'
       - name: Checkout Accelerate
@@ -171,4 +196,5 @@ jobs:
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
-          chown 1000:1000 /__w /github ./ -R
+          # Runner user's uid differs per node; /__e is its read-only externals mount.
+          chown "$(stat -c %u:%g /__e)" /__w /github ./ -R

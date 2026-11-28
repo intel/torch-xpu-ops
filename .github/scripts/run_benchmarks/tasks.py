@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .config import (
     INDUCTOR_DT,
+    IS_WINDOWS,
     PT2E_DT,
     VALID_DT,
     VALID_MODES,
@@ -46,6 +47,15 @@ def get_torch_version() -> str:
         return "0.0.0"
 
 
+def _flatten_yaml_items(items):
+    # Anchors such as *DETECTRON2_MODELS expand to a nested list, "~" to None.
+    for item in items or []:
+        if isinstance(item, list):
+            yield from _flatten_yaml_items(item)
+        elif item is not None:
+            yield str(item).strip()
+
+
 @cache
 def get_skipped_models(suite: str) -> frozenset[str]:
     """Return the models that ``benchmarks/dynamo/<suite>.yaml`` skips on XPU."""
@@ -58,15 +68,37 @@ def get_skipped_models(suite: str) -> frozenset[str]:
     with yaml_file.open(encoding="utf-8") as f:
         skip = (yaml.safe_load(f) or {}).get("skip") or {}
 
-    def flatten(items):
-        # Anchors such as *DETECTRON2_MODELS expand to a nested list, "~" to None.
-        for item in items or []:
-            if isinstance(item, list):
-                yield from flatten(item)
-            elif item is not None:
-                yield str(item)
+    return frozenset(_flatten_yaml_items(skip.get("all"))) | frozenset(
+        _flatten_yaml_items((skip.get("device") or {}).get("xpu"))
+    )
 
-    return frozenset(flatten(skip.get("all"))) | frozenset(flatten((skip.get("device") or {}).get("xpu")))
+
+@cache
+def get_tier_skipped_models(tier_dir: Path, suite: str, scenario: str, mode: str) -> frozenset[str]:
+    """Return models skipped for *(suite, scenario, mode)* in ``<tier_dir>/skip.yaml``.
+
+    The top-level ``skip`` section is legacy Windows configuration; Linux uses the
+    top-level ``linux`` section (or ``skip.linux`` if nested).
+    """
+    skip_file = tier_dir / "skip.yaml"
+    if not skip_file.is_file():
+        return frozenset()
+
+    import yaml
+
+    with skip_file.open(encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    platform_key = "windows" if IS_WINDOWS else "linux"
+    raw_skip = data.get("skip") or {}
+    if platform_key in data:
+        skip = data[platform_key] or {}
+    elif platform_key in raw_skip:
+        skip = raw_skip[platform_key] or {}
+    else:
+        skip = raw_skip if IS_WINDOWS else {}
+    suite_key = "timm" if suite == "timm_models" and "timm" in skip else suite
+    items = (((skip.get(suite_key) or {}).get(scenario) or {}).get(mode)) or []
+    return frozenset(_flatten_yaml_items(items))
 
 
 @cache
@@ -86,8 +118,13 @@ def get_model_list(suite: str, mode: str, model_only: str | None, scenario: str 
                     models_by_suite = (yaml.safe_load(f) or {}).get("models") or {}
                 if mode not in models_by_suite.get(suite, {}):
                     raise ValueError(f"No '{suite} {mode}' models in {path}")
-                models.extend(str(m).strip() for m in models_by_suite[suite][mode] or [] if m is not None)
-            models = list(dict.fromkeys(models))
+                tier_models = _drop_skipped(
+                    suite, [str(m).strip() for m in models_by_suite[suite][mode] or [] if m is not None]
+                )
+                if scenario is not None:
+                    tier_models = _drop_tier_skipped(Path(path).resolve().parent, suite, scenario, mode, tier_models)
+                models.extend(tier_models)
+            return list(dict.fromkeys(models))
         elif os.path.isfile(model_only):
             import pandas as pd
             df = pd.read_csv(model_only)
@@ -128,6 +165,23 @@ def _drop_skipped_cached(suite: str, models: tuple[str, ...]) -> tuple[str, ...]
     skipped = get_skipped_models(suite)
     if dropped := sorted(set(models) & skipped):
         log(f"Skipping {suite} models disabled in {suite}.yaml: {', '.join(dropped)}", level="WARN")
+    return tuple(model for model in models if model not in skipped)
+
+
+def _drop_tier_skipped(tier_dir: Path, suite: str, scenario: str, mode: str, models: list[str]) -> list[str]:
+    return list(_drop_tier_skipped_cached(tier_dir, suite, scenario, mode, tuple(models)))
+
+
+@cache
+def _drop_tier_skipped_cached(
+    tier_dir: Path, suite: str, scenario: str, mode: str, models: tuple[str, ...]
+) -> tuple[str, ...]:
+    skipped = get_tier_skipped_models(tier_dir, suite, scenario, mode)
+    if dropped := sorted(set(models) & skipped):
+        log(
+            f"Skipping {suite} ({scenario}/{mode}) models disabled in {tier_dir.name}/skip.yaml: {', '.join(dropped)}",
+            level="WARN",
+        )
     return tuple(model for model in models if model not in skipped)
 
 
@@ -267,6 +321,7 @@ def load_tasks_from_scope(
     """Build tasks from a tier config.yaml; combinations not claimed by any group come from the top level."""
     import yaml
 
+    tier_dir = Path(path).resolve().parent
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
@@ -284,15 +339,17 @@ def load_tasks_from_scope(
             if suites and suite not in suites:
                 continue
             scenario_list = [s for s in group["scenario"] if not scenarios or s in scenarios]
-            for scenario, model in product(scenario_list, dict.fromkeys(models)):
-                if suite == "pt2e":
-                    # pt2e has no backend axis; generating it per backend would duplicate runs.
-                    tasks.extend(_pt2e_tasks(dt, scenario, model))
-                else:
-                    tasks.extend(
-                        TestTask(suite, dt, mode, scenario, model, backend=backend)
-                        for backend in group["backends"]
-                    )
+            for scenario in scenario_list:
+                active_models = _drop_tier_skipped(tier_dir, suite, scenario, mode, list(dict.fromkeys(models)))
+                for model in active_models:
+                    if suite == "pt2e":
+                        # pt2e has no backend axis; generating it per backend would duplicate runs.
+                        tasks.extend(_pt2e_tasks(dt, scenario, model))
+                    else:
+                        tasks.extend(
+                            TestTask(suite, dt, mode, scenario, model, backend=backend)
+                            for backend in group["backends"]
+                        )
 
     seen: set[tuple] = set()
     unique: list[TestTask] = []
@@ -317,7 +374,7 @@ def generate_tasks(
     tasks = [
         TestTask(suite, dt, mode, scenario, model)
         for suite, mode, dt, scenario in product(non_pt2e_suites, modes, inductor_dts, scenarios)
-        for model in sorted(set(get_model_list(suite, mode, model_only)))
+        for model in sorted(set(get_model_list(suite, mode, model_only, scenario)))
     ]
 
     # PT2E tasks are inference-only (dtypes: float32/int8), so skip them for other modes.
