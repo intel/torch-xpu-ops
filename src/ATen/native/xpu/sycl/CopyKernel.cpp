@@ -184,6 +184,12 @@ void copy_kernel(TensorIteratorBase& iter) {
       (iter.dtype(1) == kFloat &&
        (iter.dtype(0) == kHalf || iter.dtype(0) == kBFloat16))) {
     float16_bfloat16_copy_kernel_xpu(iter);
+  } else if (iter.dtype(1) == kInt && iter.dtype(0) == kLong) {
+    gpu_kernel_nocast(iter, CastScalarFunc<int32_t, int64_t>());
+  } else if (iter.dtype(1) == kBool && iter.dtype(0) == kLong) {
+    gpu_kernel_nocast(iter, CastScalarFunc<bool, int64_t>());
+  } else if (iter.dtype(1) == kBool && iter.dtype(0) == kDouble) {
+    gpu_kernel_nocast(iter, CastScalarFunc<bool, double>());
   } else {
     AT_DISPATCH_V2(
         dtype,
