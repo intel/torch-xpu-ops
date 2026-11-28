@@ -26,6 +26,9 @@ std::tuple<int, int, int, int> get_adaptive_config(
     const int vec_size,
     int max_wg_size,
     int loops_per_item = 8) {
+  // The kernel max work-group size may not be a power of two (e.g. 768),
+  // but welford_vertical_merge halves group_size_y.
+  max_wg_size = last_pow2(max_wg_size);
   loops_per_item /= vec_size;
   int group_size_x = std::min(last_pow2(n_channels / vec_size), 32);
   int group_size_y = std::min(

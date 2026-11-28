@@ -374,11 +374,14 @@ constexpr int ELEMENTS_PER_ITER =
 constexpr int ELEMENTS_PER_WORK_ITEM = 4;
 
 std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
-    const int max_wg_size,
+    int max_wg_size,
     const int reduction,
     const int stride,
     const bool coop_flag = false,
     const int loops_per_item = 1) {
+  // The kernel max work-group size may not be a power of two (e.g. 768),
+  // but the vertical merge halves group_y.
+  max_wg_size = last_pow2(max_wg_size);
   int group_x = std::min(last_pow2(stride), 32);
   int group_y = std::min(
       last_pow2(at::ceil_div(reduction, loops_per_item)),

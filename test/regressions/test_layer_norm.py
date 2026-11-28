@@ -9,7 +9,10 @@
 # Owner(s): ["module: intel"]
 import torch
 import torch.nn as nn
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
@@ -271,11 +274,26 @@ class TestLayerNormMultidimBackward(TestCase):
                 self.assertEqual(grad.cpu(), ref, name, atol=1e-3, rtol=1e-3)
 
 
+class TestLayerNormWideRows(TestCase):
+    # Wide rows reach the SLM subgroup tree in compute_stats, sized from the
+    # kernel max work-group size (not always a power of two).
+    @dtypes(torch.float32, torch.bfloat16)
+    @parametrize("n", (384, 768, 1536, 3072, 12288))
+    def test_layer_norm_wide_rows(self, device, dtype, n):
+        x = torch.randn(64, n) * 3 + 1
+        expected = nn.functional.layer_norm(x.to(dtype).float(), (n,))
+        actual = nn.functional.layer_norm(x.to(device, dtype), (n,))
+        self.assertEqual(actual.cpu().float(), expected, atol=5e-2, rtol=1e-2)
+
+
 instantiate_device_type_tests(
     TestLayerNormMultidimBackward, globals(), only_for="xpu", allow_xpu=True
 )
 instantiate_device_type_tests(
     TestLayerNormBackwardFp16, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestLayerNormWideRows, globals(), only_for="xpu", allow_xpu=True
 )
 
 

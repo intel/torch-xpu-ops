@@ -15,6 +15,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/xpu/XPUContext.h>
+#include <c10/util/llvmMathExtras.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -769,9 +770,12 @@ struct VectorizedLayerNormKernelSmallFunctor {
 };
 
 int64_t layer_norm_wg_size_select(
-    const int64_t max_wg_size,
+    int64_t max_wg_size,
     const int64_t M,
     const int n) {
+  // compute_stats tree-reduces subgroups by halving, so keep wg_size a power
+  // of two even if the kernel max work-group size is not (e.g. 768).
+  max_wg_size = c10::llvm::PowerOf2Floor(max_wg_size);
   if (n >= max_wg_size)
     return max_wg_size;
 
