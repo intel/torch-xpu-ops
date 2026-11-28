@@ -83,6 +83,8 @@ class TensorShelf {
   std::mutex mutex_;
 };
 
+struct PendingWorks;
+
 class TORCH_API ProcessGroupXCCL : public Backend {
  public:
   class WorkXCCL : public Work {
@@ -481,6 +483,13 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   void enableCollectivesTiming() override;
 
+  // Blocks until the last work enqueued on each stream this PG has used
+  // completes, then retires the finished flight recorder entries, unless a
+  // dump is reading; the next sweep retires them then. Callers must stop
+  // submitting work to this PG first. Works enqueued during XPU graph capture,
+  // and their replays, are not waited for.
+  void waitForPendingWorks() override;
+
   std::string createLogPrefix() const;
 
   const std::string& logPrefix() const;
@@ -490,9 +499,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::vector<uint64_t>& groupRanks() const;
   const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
-  void attachRetireAndStatusCallback(
-      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
-      std::shared_ptr<ProcessGroupStatus> pgStatus);
   void attachRecordFunctionEndCallback(
       c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
@@ -503,6 +509,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   // The flag is the isP2P half of the pair RECORD_PARAM_COMMS_DATA expects.
   std::tuple<int64_t, bool> predictNextCollectiveSeqId() const;
   std::tuple<int64_t, bool> predictNextP2PSeqId() const;
+
+  void enqueuePendingWork(
+      const c10::intrusive_ptr<WorkXCCL>& work,
+      const at::xpu::XPUStream& stream);
 
   std::unordered_map<std::string, at::xpu::XPUStream> xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
@@ -529,6 +539,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const c10::intrusive_ptr<Options> options_;
   std::shared_ptr<ProcessGroupStatus> pgStatus_ =
       std::make_shared<ProcessGroupStatus>();
+  std::shared_ptr<PendingWorks> pendingWorks_;
   std::unique_ptr<HeartbeatMonitorXCCL> heartbeatMonitor_;
   int traceBufferSize_;
   bool enableNanCheck_;
