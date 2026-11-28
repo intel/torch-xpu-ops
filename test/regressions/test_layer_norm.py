@@ -271,6 +271,44 @@ class TestLayerNormMultidimBackward(TestCase):
                 self.assertEqual(grad.cpu(), ref, name, atol=1e-3, rtol=1e-3)
 
 
+class TestLayerNormGammaBetaBackward(TestCase):
+    # N == 1 used to divide by zero in the host-side tile selection; the
+    # small-M shapes take the two-stage gamma/beta column reduction.
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @parametrize("M,N", [(10, 1), (8192, 1), (3136, 64), (2048, 128)])
+    @parametrize("has_weight,has_bias", [(True, True), (True, False), (False, True)])
+    def test_layer_norm_backward_gamma_beta(
+        self, device, dtype, M, N, has_weight, has_bias
+    ):
+        torch.manual_seed(0)
+        x = torch.randn(M, N).to(dtype)
+        weight = torch.randn(N).to(dtype) if has_weight else None
+        bias = torch.randn(N).to(dtype) if has_bias else None
+        grad_out = torch.randn(M, N).to(dtype)
+
+        def grads(dev, dt):
+            tensors = [t for t in (x, weight, bias) if t is not None]
+            inputs = [t.to(dev, dt).requires_grad_() for t in tensors]
+            w = inputs[1] if has_weight else None
+            b = inputs[-1] if has_bias else None
+            out = nn.functional.layer_norm(inputs[0], (N,), w, b)
+            return torch.autograd.grad(out, inputs, grad_out.to(dev, dt))
+
+        tol = {torch.float32: 1e-4, torch.float16: 5e-3, torch.bfloat16: 2e-2}[dtype]
+        # float64 reference: with N == 1, grad_input is exactly 0 but a float32
+        # CPU reference leaves ~1e-4 rounding noise amplified by rstd=1/sqrt(eps).
+        for actual, expected in zip(grads(device, dtype), grads("cpu", torch.double)):
+            self.assertEqual(
+                actual.cpu().double(),
+                expected,
+                atol=tol * max(expected.abs().max().item(), 1.0),
+                rtol=0,
+            )
+
+
+instantiate_device_type_tests(
+    TestLayerNormGammaBetaBackward, globals(), only_for="xpu", allow_xpu=True
+)
 instantiate_device_type_tests(
     TestLayerNormMultidimBackward, globals(), only_for="xpu", allow_xpu=True
 )

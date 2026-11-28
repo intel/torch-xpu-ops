@@ -223,6 +223,37 @@ class TestRMSNormMultidimBackward(TestCase):
                 self.assertEqual(grad.cpu(), ref, name, atol=1e-3, rtol=1e-3)
 
 
+class TestRMSNormGammaBackward(TestCase):
+    # N == 1 used to divide by zero in the host-side tile selection; the
+    # small-M shapes take the two-stage gamma column reduction.
+    @parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @parametrize("M,N", [(10, 1), (8192, 1), (3136, 64), (2048, 128)])
+    @parametrize("has_weight", [True, False])
+    def test_rms_norm_backward_gamma(self, device, dtype, M, N, has_weight):
+        torch.manual_seed(0)
+        x = torch.randn(M, N).to(dtype)
+        weight = torch.randn(N).to(dtype) if has_weight else None
+        grad_out = torch.randn(M, N).to(dtype)
+
+        def grads(dev, dt):
+            tensors = [t for t in (x, weight) if t is not None]
+            inputs = [t.to(dev, dt).requires_grad_() for t in tensors]
+            out = nn.functional.rms_norm(inputs[0], (N,), *inputs[1:], eps=1e-6)
+            return torch.autograd.grad(out, inputs, grad_out.to(dev, dt))
+
+        tol = {torch.float32: 1e-4, torch.float16: 5e-3, torch.bfloat16: 2e-2}[dtype]
+        for actual, expected in zip(grads(device, dtype), grads("cpu", torch.float)):
+            self.assertEqual(
+                actual.cpu().float(),
+                expected,
+                atol=tol * max(expected.abs().max().item(), 1.0),
+                rtol=0,
+            )
+
+
+instantiate_device_type_tests(
+    TestRMSNormGammaBackward, globals(), only_for="xpu", allow_xpu=True
+)
 instantiate_device_type_tests(
     TestRMSNormMultidimBackward, globals(), only_for="xpu", allow_xpu=True
 )

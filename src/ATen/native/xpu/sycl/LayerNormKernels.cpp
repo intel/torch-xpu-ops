@@ -1361,6 +1361,48 @@ void gamma_beta_bwd_simple_kernel(
 #undef VECTORIZE_KERNEL
 }
 
+struct LayerNormBwdTileConfig {
+  int tile_size_m;
+  int tile_size_n;
+  int num_tile_m;
+  int num_tile_n;
+};
+
+inline LayerNormBwdTileConfig layer_norm_bwd_tile_config_select(
+    int64_t M,
+    int64_t N,
+    int64_t thread_slots,
+    size_t local_size_x = 8,
+    size_t SIMD = 32) {
+  int tile_size_m = 1024;
+  int tile_size_n = N < 32 ? static_cast<int>(N) : 32;
+  int num_tile_m = (M + tile_size_m - 1) / tile_size_m;
+  int num_tile_n = (N + tile_size_n - 1) / tile_size_n;
+  bool adjust_m = true;
+
+  const int max_sg_size = at::xpu::getDeviceMaxSubGroupSize();
+
+  for (int i = 0; i < 3; ++i) {
+    if (num_tile_m * num_tile_n * local_size_x * SIMD / max_sg_size * 2 >
+        thread_slots) {
+      break;
+    }
+
+    // occupancy <= 50%
+    if (adjust_m) {
+      tile_size_m /= 2;
+      num_tile_m = (M + tile_size_m - 1) / tile_size_m;
+      adjust_m = false;
+    } else {
+      tile_size_n = std::max(1, tile_size_n / 2);
+      num_tile_n = (N + tile_size_n - 1) / tile_size_n;
+      adjust_m = true;
+    }
+  }
+
+  return {tile_size_m, tile_size_n, num_tile_m, num_tile_n};
+}
+
 template <
     typename scalar_t,
     typename mean_t,
@@ -1456,44 +1498,32 @@ void layer_norm_backward_kernel_impl(
        dY.dtype() == kHalf) &&
       norm_config_global_size / at::xpu::getDeviceMaxSubGroupSize() * 2 <=
           thread_slots;
-  // cuda uses condition M > 64 * 1024 && N / 32 < sm_count / 2 to parallelize
-  // in the M dimension
   int xe_core_count = at::xpu::getDeviceXeCoreCount();
   int tile_n = N / 32;
-  if (use_two_stage_col_reduction && M > xe_core_count * 1024 &&
-      tile_n < xe_core_count * 2) {
-    const size_t local_size_x = 8;
-    const size_t SIMD = 32;
-    // workgroup size is 256
-    // slm is 16KB, 64*32 float * 2
-    // elements_per_thread is at least 16
-    const int elements_per_thread = 16;
-    int tile_size_m = 1024;
-    int tile_size_n = N < 32 ? N : 32;
-    int num_tile_m = (M + tile_size_m - 1) / tile_size_m;
-    int num_tile_n = (N + tile_size_n - 1) / tile_size_n;
-    bool adjust_m = true;
-    // for M = 64*1024, N = 1, we choose tile size (256, 16) on pvc
-    // TODO: Consider tuning the tile size selection logic (tile_size_m,
-    // tile_size_n) and occupancy calculation
-    for (auto i = 0; i < 3; i++) {
-      // occupancy <= 50%
-      if (num_tile_m * num_tile_n * local_size_x * SIMD /
-              at::xpu::getDeviceMaxSubGroupSize() * 2 <=
-          thread_slots) {
-        if (adjust_m) {
-          tile_size_m /= 2;
-          num_tile_m = (M + tile_size_m - 1) / tile_size_m;
-          adjust_m = false;
-        } else {
-          tile_size_n /= 2;
-          num_tile_n = (N + tile_size_n - 1) / tile_size_n;
-          adjust_m = true;
-        }
-      } else {
-        break;
-      }
-    }
+
+  const size_t local_size_x = 8;
+  const size_t SIMD = 32;
+  const int elements_per_thread = 16;
+  // TODO: Consider tuning the tile size selection logic (tile_size_m,
+  // tile_size_n) and occupancy calculation
+  const auto tile_config =
+      layer_norm_bwd_tile_config_select(M, N, thread_slots, local_size_x, SIMD);
+  const int tile_size_m = tile_config.tile_size_m;
+  const int tile_size_n = tile_config.tile_size_n;
+  const int num_tile_m = tile_config.num_tile_m;
+  const int num_tile_n = tile_config.num_tile_n;
+
+  size_t num_workgroup = std::min(
+      num_tile_m * num_tile_n, static_cast<int>(thread_slots / local_size_x));
+
+  // choose two-stage path when its chain of each work-item is shorter.
+  int64_t simple_serial_iters_per_item =
+      (M + config_w.block_row - 1) / config_w.block_row;
+  int64_t two_stage_serial_iters_per_item = tile_size_m / local_size_x *
+      ((num_tile_m * num_tile_n + num_workgroup - 1) / num_workgroup);
+
+  if (use_two_stage_col_reduction && tile_n < xe_core_count * 2 &&
+      simple_serial_iters_per_item > two_stage_serial_iters_per_item) {
     // tile size can be (1024,32), (512,32), (512,16), (256, 16)
     // Modifying these parameters (num_subgroup, workgroup_size, tile_size,
     // elements_per_thread) will alter the kernel configuration, potentially
@@ -1518,8 +1548,6 @@ void layer_norm_backward_kernel_impl(
       }
     }
 
-    size_t num_workgroup = std::min(
-        num_tile_m * num_tile_n, static_cast<int>(thread_slots / local_size_x));
     if (dgamma->defined() && dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
